@@ -86,7 +86,10 @@ import (
 //     since a cell renders one live) or, other than a keyed results row or
 //     its header, an unescaped "|" outside inline code — a table
 //     of another shape, with no separator row, with no leading pipe, inside
-//     a blockquote, or in HTML — or a non-blank line right after a results
+//     a blockquote, or in HTML; a one-line paragraph that GFM can never read
+//     as a table row (heldOneLineProse: column 0, no container marker, not
+//     led by "|", blank lines on both sides) is prose, not such a line
+//     (#4294) — or a non-blank line right after a results
 //     table, which GFM may read as one more row of it. One earlier key the
 //     last entry did not cover, one earlier row that cannot be aligned or
 //     keyed, one such table line, or earlier entries with no keyed row at all
@@ -116,6 +119,51 @@ import (
 //     latest, whatever date its heading carries, because Evidence is
 //     appended and a heading's date is free text the scan does not trust.
 //     The held occurrences of the last entry itself are always read.
+//     A key cell that is a Verify row number with one parenthetical annotation
+//     ("3 (Verify 3, negative)") keys as the bare number (heldCanonKeys,
+//     #4294) when every number in the annotation is that number, and only
+//     when, across the whole Evidence, the bare number under that header never
+//     appears with two different annotations and no entry records it in two
+//     forms ("3" beside "3 (negative)", "3 (positive)" beside "3 (negative)"):
+//     those may be sub-rows of one Verify row, so they keep their written keys
+//     and a bare later "3" covers neither. Only the entries before the last
+//     are shortened: the last entry covers an earlier row under the bare
+//     number or under the earlier row's own key exactly as written ("3
+//     (negative)" re-ran as "3 (negative)"), never under an annotation the
+//     earlier row did not carry. A lettered key ("3a"), nested parentheses,
+//     text after the annotation or a number in it that names another row ("3
+//     (Verify 4)", a date) is never shortened. Stated residual: an earlier
+//     annotated row and a later bare number are one row, so a later bare "3"
+//     that ran only one sub-case covers an earlier lone "3 (negative)"; the
+//     format records no sub-case on a bare key that could tell them apart.
+//  4. Observed output (#4294). An occurrence of "could-not-check" (never HELD)
+//     in a Result-type cell (heldColResult) of an aligned, keyed row is what
+//     the verified product printed, not the row's disposition, only when the
+//     cell matches a closed grammar, every part of which must hold: the row's
+//     table has an Exit column and every Exit cell of the row reads clean
+//     (heldOutcome); the cell opens on PASS, passed or ok, optionally with a
+//     positive or negative case label (heldObserveLeadRe); the words between
+//     that lead and the marker, as written, are one named subject that is the
+//     product under test (heldObserveSubject: "the planted brief", "the
+//     product"), then one product-output verb, then only words of a small
+//     object vocabulary (heldObserveObject: "its named diagnostic, a lint
+//     PROBLEM and a"), so a cell with no subject, a subject that names the
+//     row's own instrument (its command, tool, cli, binary, output or stdout:
+//     the Command cell is the verify script), the verifier, its runner or
+//     fixture, a case, a half or rows, a pronoun or a digit, or a second verb
+//     after the first, leaves the row read; an article or possessive
+//     comes right before the marker and, in the clause that holds it (since
+//     the last ; . ! ? or dash), a verb of product output governs it
+//     (heldObserveVerbRe: "prints", "yields", "lists"; never "reports" or
+//     "shows", which a verifier also uses for its own instrument); the text
+//     after the marker is a noun it qualifies (heldObserveHead: "mission
+//     section", "banner") followed only by words of a small neutral vocabulary
+//     (heldObserveTail; never "rows", "all" or "both", which count or name
+//     Verify rows or cases), so any other word, a digit or a hold reason leaves
+//     the row read; the line has no struck span; and no read cell of the row
+//     holds a hold or fail word (heldObserveHoldRe, a second check behind the
+//     grammar; a HELD there is read as its own occurrence). Wording the
+//     grammar does not recognise is read as a hold.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
@@ -125,6 +173,9 @@ type heldLineRead struct {
 	blank [][2]int // byte ranges of the line (cell contents) the scan must not read
 	key   string   // the row key of an aligned results-table data row; "" for any other line
 	whole bool     // a line of an entry that whole-entry supersession (rule 3b) may drop: any line outside a non-comment HTML block
+	// observe are the byte ranges of the Result-type cells of an aligned
+	// results row whose Exit cells all read clean (rule 4); nil otherwise.
+	observe [][2]int
 }
 
 // heldScope is heldScanScope's decision: what to read of each line, and
@@ -636,6 +687,25 @@ func heldPipeOutsideCode(line string) bool {
 	return false
 }
 
+// heldOneLineProse reports whether line i is a paragraph of one line that GFM
+// can never read as part of a table (#4294): outside fenced code, at column 0
+// with no container marker (heldContainerStrip leaves it whole), not led by
+// "|", holding no carriage return, and with a line holding only spaces or
+// tabs straight before and after it. A GFM table needs a header row and a
+// delimiter row on adjacent lines and ends at a blank line, so such a line is
+// neither a header nor a delimiter nor a body row; its "|" is prose. A line
+// with no line before or after it in the Evidence is not exempt.
+func heldOneLineProse(lines []string, inFence []bool, i int) bool {
+	if i == 0 || i+1 >= len(lines) || inFence[i] {
+		return false
+	}
+	l := lines[i]
+	if l == "" || strings.ContainsRune(l, '\r') || l[0] == '|' || heldContainerStrip(l) != l {
+		return false
+	}
+	return strings.Trim(lines[i-1], " \t") == "" && strings.Trim(lines[i+1], " \t") == ""
+}
+
 // heldCloseRun returns where a backtick run of exactly n starts in line at or
 // after from, or -1.
 func heldCloseRun(line string, from, n int) int {
@@ -1043,6 +1113,247 @@ func heldRowKey(header, cell string) string {
 	return ""
 }
 
+var (
+	// heldAnnotatedKeyRe is a key cell (heldNorm) that is a Verify row number
+	// with one parenthetical annotation and nothing after it:
+	// "3 (verify 3, negative)".
+	heldAnnotatedKeyRe = regexp.MustCompile(`^(\d+)[ \t]*\(([^()]*)\)$`)
+	heldNumberRe       = regexp.MustCompile(`\d+`)
+)
+
+// heldKeyBase splits a row key (heldRowKey) into the key of its bare row
+// number and its annotation (rule 3, #4294). ok is false — and base is the key
+// itself — unless the key cell is a row number with an annotation in which
+// every number is that row number.
+func heldKeyBase(key string) (base, ann string, ok bool) {
+	i := strings.IndexByte(key, '\x1f')
+	if i < 0 {
+		return key, "", false
+	}
+	m := heldAnnotatedKeyRe.FindStringSubmatch(key[i+1:])
+	if m == nil {
+		return key, "", false
+	}
+	for _, n := range heldNumberRe.FindAllString(m[2], -1) {
+		if n != m[1] {
+			return key, "", false
+		}
+	}
+	return key[:i+1] + m[1], strings.TrimSpace(m[2]), true
+}
+
+// heldCanonKeys rewrites each annotated row key to the key of its bare row
+// number (rule 3, #4294), in out and in keys alike, unless that number may
+// have sub-rows: the bare number appears, anywhere in the Evidence, with two
+// different annotations, or one entry records it in two forms (bare and
+// annotated, or two annotations). Such keys stay as written.
+//
+// The rewrite is directional: it applies only to the entries before the last
+// one (lines before last, keys of all but the final entry). The last entry's
+// keys stay as written, so a row covers an earlier one under the earlier
+// row's own key or under the bare number, never under an annotation the
+// earlier row did not carry. An earlier key the last entry records exactly
+// as written is left as written, so the raw keys still match.
+func heldCanonKeys(out []heldLineRead, keys [][]string, last int) {
+	lastRaw := map[string]bool{} // the last entry's keys, as written
+	if len(keys) > 1 {
+		for _, k := range keys[len(keys)-1] {
+			lastRaw[k] = true
+		}
+	}
+	forms := map[string]map[string]bool{} // bare key → the non-empty annotations seen
+	split := map[string]bool{}            // bare key → two forms in one entry
+	for e := range keys {
+		seen := map[string]string{}
+		for _, k := range keys[e] {
+			base, ann, ok := heldKeyBase(k)
+			if !ok {
+				base, ann = k, ""
+			}
+			if prev, dup := seen[base]; dup && prev != ann {
+				split[base] = true
+			}
+			seen[base] = ann
+			if ann != "" {
+				if forms[base] == nil {
+					forms[base] = map[string]bool{}
+				}
+				forms[base][ann] = true
+			}
+		}
+	}
+	canon := func(k string) string {
+		base, _, ok := heldKeyBase(k)
+		if !ok || lastRaw[k] || split[base] || len(forms[base]) > 1 {
+			return k
+		}
+		return base
+	}
+	for r := 0; r < last && r < len(out); r++ {
+		if out[r].key != "" {
+			out[r].key = canon(out[r].key)
+		}
+	}
+	for e := 0; e+1 < len(keys); e++ {
+		for j, k := range keys[e] {
+			keys[e][j] = canon(k)
+		}
+	}
+}
+
+// heldObserveCells returns the Result-type cells (heldColResult) of an aligned
+// results row, line, whose table, with header line hline, has an Exit column
+// and whose every Exit cell reads clean (rule 4, #4294); nil otherwise.
+func heldObserveCells(hline string, header [][2]int, line string, cells [][2]int, notResult []bool) [][2]int {
+	exit := false
+	var res [][2]int
+	for c, rg := range cells {
+		if notResult[c] {
+			continue
+		}
+		switch heldCoverColumn(hline[header[c][0]:header[c][1]]) {
+		case heldColExit:
+			if heldOutcome(line[rg[0]:rg[1]], true) != heldCellPass {
+				return nil
+			}
+			exit = true
+		case heldColResult:
+			res = append(res, rg)
+		}
+	}
+	if !exit {
+		return nil
+	}
+	return res
+}
+
+// heldObserveVerbs are the verbs of product output (rule 4).
+const heldObserveVerbs = `prints?|printed|yields?|yielded|emits?|emitted|outputs?|lists?|listed|renders?|rendered`
+
+var (
+	// heldObserveLeadRe is a Result cell that opens on a passing outcome,
+	// past space, quotes, emphasis and backticks: `"PASS: negative" …`.
+	// A case label may follow it directly ("PASS: negative"): the label is
+	// part of the lead, not a subject of the text after it.
+	heldObserveLeadRe = regexp.MustCompile("(?i)^[\\s\"'“”‘’*_`]*(?:pass(?:ed)?|ok)\\b(?:[ \\t]*:[ \\t]*(?:positive|negative)\\b)?")
+	// heldObserveBeforeRe is an article or possessive right before the marker.
+	heldObserveBeforeRe = regexp.MustCompile(`(?i)(?:^|[^\pL\pN-])(?:a|an|the|its|their)[ \t]+$`)
+	// heldObserveTailRe is a word of the text after the marker.
+	heldObserveTailRe = regexp.MustCompile(`[\pL\pN]+(?:-[\pL\pN]+)*`)
+	// heldObserveClauseRe is a clause break; the text after the last one,
+	// up to the marker, is the clause that governs it.
+	heldObserveClauseRe = regexp.MustCompile(`[;.!?—–]`)
+	// heldObserveVerbRe is a verb of product output that must govern the
+	// marker in its clause ("prints", "yields"): the row says what the product
+	// wrote. Verbs a verifier also uses for its own instrument's disposition
+	// (reports, shows, contains, includes, displays) are not among them.
+	heldObserveVerbRe = regexp.MustCompile(`(?i)\b(?:` + heldObserveVerbs + `)\b`)
+	// heldObserveVerbWordRe is one word that is such a verb.
+	heldObserveVerbWordRe = regexp.MustCompile(`^(?:` + heldObserveVerbs + `)$`)
+	// heldObserveSubject are the subjects, as lowercased words joined by one
+	// space, that may stand between the lead and the output verb: each names
+	// the product under test, never the verification. "planted brief" is an
+	// input the product reads; a bare "brief" can name the brief whose Verify
+	// table holds the row, so it is not one. The generic names of a program
+	// or what it wrote (command, tool, cli, binary, lint, linter, output,
+	// stdout) and "fixture" can name the row's own instrument, which the
+	// Command cell runs, so none is a subject; nor is the verifier, its
+	// runner or harness, a case, a half, rows, a pronoun or a digit. A cell
+	// with no subject leaves the row held too: its implied subject is the
+	// row's command.
+	heldObserveSubject = map[string]bool{"the planted brief": true, "the product": true}
+	// heldObserveObject are the words that may follow the output verb, up to
+	// the marker: articles, "its", "and", and nouns of what the product wrote
+	// ("its named diagnostic, a lint PROBLEM and a"). With no verb among them
+	// none can open a clause of its own, so "lint" here only qualifies a
+	// noun. "their" is not among them: the cell's one subject is singular,
+	// so it would point outside the cell, at rows or cases.
+	heldObserveObject = map[string]bool{"a": true, "an": true, "the": true, "its": true, "and": true,
+		"named": true, "diagnostic": true, "diagnostics": true, "lint": true, "problem": true,
+		"problems": true}
+	// heldObserveHoldRe is a hold or fail word anywhere in a row's read cells.
+	// It is a second check behind the closed grammar, never the only one.
+	// HELD is not among them: every HELD occurrence is read on its own, and
+	// rule 4 never excuses one.
+	heldObserveHoldRe = regexp.MustCompile(`(?i)\b(?:blocked|fail\w*|skip\w*|unrun|deferred|pending|awaiting|awaits?|waiting|needs?|needed|still|open|remain\w*|outstanding|incomplete|partial\w*|offline|unavailable|unreachable|unverified|not[ \t]+(?:yet|exercised|executed|available|checked|re-?run|run)|no[ \t]+runner|cannot|can't|unable|todo)\b`)
+	// heldObserveHead are the words that may follow the marker directly: the
+	// noun it qualifies. heldObserveTail adds the neutral words that may
+	// follow that noun. Any other word, or a digit, leaves the row held.
+	heldObserveHead = map[string]bool{"section": true, "sections": true, "banner": true, "heading": true,
+		"headings": true, "label": true, "labels": true, "mission": true}
+	heldObserveTail = map[string]bool{"section": true, "sections": true, "banner": true, "heading": true,
+		"headings": true, "label": true, "labels": true, "mission": true, "with": true, "no": true,
+		"empty": true, "content": true, "once": true, "twice": true,
+		"the": true, "a": true, "an": true, "its": true, "and": true, "as": true, "expected": true,
+		"correctly": true, "in": true, "output": true, "text": true, "lists": true, "listing": true,
+		"printed": true, "shown": true}
+)
+
+// heldObserveWords reports whether words, lowercased, are one product subject
+// (heldObserveSubject), one output verb and then only object words
+// (heldObserveObject), in that order (rule 4, #4294).
+func heldObserveWords(words []string) bool {
+	for i, w := range words {
+		if !heldObserveVerbWordRe.MatchString(w) {
+			continue
+		}
+		if !heldObserveSubject[strings.Join(words[:i], " ")] {
+			return false
+		}
+		for _, o := range words[i+1:] {
+			if !heldObserveObject[o] {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// heldObservedOutput reports whether the occurrence at clean[h[0]:h[1]] is a
+// row's record of what the product printed rather than its disposition (rule
+// 4, #4294). line is the row with its non-result cells blanked, clean the same
+// row as the scan reads it; the caller passes only a line with no struck span,
+// so the offsets of both agree.
+func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
+	if read.key == "" || !strings.EqualFold(clean[h[0]:h[1]], "could-not-check") || heldObserveHoldRe.MatchString(line) {
+		return false
+	}
+	for _, rg := range read.observe {
+		if h[0] < rg[0] || h[1] > rg[1] {
+			continue
+		}
+		before, after := clean[rg[0]:h[0]], clean[h[1]:rg[1]]
+		lead := heldObserveLeadRe.FindStringIndex(line[rg[0]:rg[1]])
+		if lead == nil || !heldObserveBeforeRe.MatchString(before) || heldReasonAfterRe.MatchString(after) {
+			return false
+		}
+		// The words between the lead and the marker, as the row is
+		// written (inline code included): the subject of the verb is the
+		// product, never the verification.
+		if !heldObserveWords(heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1)) {
+			return false
+		}
+		if i := heldObserveClauseRe.FindAllStringIndex(before, -1); len(i) > 0 {
+			before = before[i[len(i)-1][1]:]
+		}
+		if !heldObserveVerbRe.MatchString(before) {
+			return false
+		}
+		words := heldObserveTailRe.FindAllString(strings.ToLower(after), -1)
+		if len(words) == 0 || !heldObserveHead[words[0]] {
+			return false
+		}
+		for _, w := range words {
+			if !heldObserveTail[w] {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 // heldSeparatorRow reports whether line is a table's header separator.
 func heldSeparatorRow(line string) bool {
 	t := strings.Trim(strings.TrimSpace(line), "|")
@@ -1200,6 +1511,7 @@ func heldScanScope(evidence string) heldScope {
 							continue
 						}
 						keys[e] = append(keys[e], out[r].key)
+						out[r].observe = heldObserveCells(lines[i], header, lines[r], cells, tb.notResult)
 					}
 				}
 			}
@@ -1210,7 +1522,7 @@ func heldScanScope(evidence string) heldScope {
 			// An HTML table renders live in any cell, header and keyed rows
 			// included; only a results table's own pipes are exempt.
 			tableish := heldHTMLTableRe.MatchString(lines[i])
-			if !out[i].skip && out[i].key == "" {
+			if !out[i].skip && out[i].key == "" && !heldOneLineProse(lines, inFence, i) {
 				tableish = tableish || heldPipeOutsideCode(lines[i])
 			}
 			if !inFence[i] && tableish {
@@ -1226,6 +1538,8 @@ func heldScanScope(evidence string) heldScope {
 			}
 		}
 	}
+
+	heldCanonKeys(out, keys, starts[len(starts)-1])
 
 	scope := heldScope{lines: out, from: -1}
 	if len(starts) > 1 {

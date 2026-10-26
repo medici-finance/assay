@@ -52,6 +52,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"gopkg.in/yaml.v3"
 )
 
@@ -425,7 +426,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // riskKeyOrder is the canonical order of the four risk questions, so prompts and
 // the emitted risk block are deterministic.
-var riskKeyOrder = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
+var riskKeyOrder = briefdoc.RiskKeys()
 
 // newBriefRiskAnswers resolves the four risk answers. Non-interactive: each must be
 // "yes" or "no" — an empty (unanswered) one is a REFUSAL, because a defaulted

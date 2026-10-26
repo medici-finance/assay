@@ -12,7 +12,11 @@
 # THREE OUTCOMES, decided from the diff and trusted PR metadata:
 #   REFUSE  — the PR adds a bullet under `## Unreleased` in CHANGELOG.md
 #             (deprecation guard; absolute — checked first, a skip label does
-#             not excuse it).
+#             not excuse it); OR the PR ADDS a fragment below the top level
+#             (changelog/<dir>/<name>.md — the flat rule: the aggregator reads
+#             only changelog/*.md, so a nested fragment is silently dropped from
+#             releases). Pre-existing nested files the PR does not add are
+#             not judged.
 #   PASS    — the changelog:skip label is present, OR the PR adds/updates a
 #             fragment file under changelog/ (other than README.md), OR — the
 #             PROXY path, for a PR whose branch maintainers cannot commit to —
@@ -120,6 +124,28 @@ if [ -n "$added" ]; then
   exit 1
 fi
 
+# 1b) FLAT-FRAGMENT GUARD (absolute, like rule 1). The release aggregator reads
+#    ONLY the top level of changelog/ (changelog/*.md); a fragment in a
+#    subdirectory (e.g. changelog/feat/x.md, which a branch named feat/x would
+#    otherwise suggest) satisfies a path-glob gate and is then silently dropped
+#    from every release. So a PR may not ADD a fragment below the top level.
+#    --diff-filter=A with --no-renames: only paths the PR newly creates (a move
+#    INTO a subdirectory shows as an add; a move OUT of one, or a pre-existing
+#    nested file the PR leaves alone, never trips the guard). Checked before the
+#    skip label: a skip label does not make a dropped fragment any less dropped.
+nested="$(git diff --no-renames --name-status --diff-filter=A "${BASE_SHA}...${HEAD_SHA}" -- 'changelog/' \
+            | awk '{print $2}' \
+            | grep -E '^changelog/.+/.+\.md$' || true)"
+if [ -n "$nested" ]; then
+  nested_first="$(printf '%s\n' "$nested" | head -n 1)"
+  flat_hint="changelog/${slug}.md"
+  [ "$slug" = "<slug>" ] && flat_hint="changelog/$(basename "$nested_first")"
+  echo "::error title=nested changelog fragment refused::Changelog fragments must sit DIRECTLY under changelog/ (changelog/<slug>.md) — never in a subdirectory. The release aggregator reads only the top level, so a nested fragment would pass this gate and then be silently dropped from the release notes. Move it to the top level, e.g. git mv ${nested_first} ${flat_hint} (a branch named feat/x still gets changelog/x.md: use the branch BASENAME, never the branch path). See changelog/README.md."
+  echo "Refused — nested fragment path(s) (flat rule: changelog/<slug>.md):"
+  printf '%s\n' "$nested"
+  exit 1
+fi
+
 # Board reconciliation records existing delivery state, not a release highlight.
 # Runtime event metadata and the complete immutable Git diff must both qualify.
 # This is separate from the workflow's existing Evidence classification and the
@@ -137,12 +163,13 @@ if [ "$SKIP" = "true" ]; then
   exit 0
 fi
 
-# 3) FRAGMENT added/updated? Any added-or-modified changelog/*.md other than
-#    README.md satisfies the gate. --diff-filter=AM: an added fragment (the norm)
+# 3) FRAGMENT added/updated? Any added-or-modified TOP-LEVEL changelog/*.md other
+#    than README.md satisfies the gate (a nested path never counts: the
+#    aggregator would not read it — see 1b). --diff-filter=AM: an added fragment (the norm)
 #    or a modified one; a deletion never satisfies it.
 frag="$(git diff --name-status --diff-filter=AM "${BASE_SHA}...${HEAD_SHA}" -- 'changelog/' \
           | awk '{print $2}' \
-          | grep -E '^changelog/.+\.md$' \
+          | grep -E '^changelog/[^/]+\.md$' \
           | grep -v '^changelog/README\.md$' || true)"
 if [ -n "$frag" ]; then
   # FILENAME is not enough — a 0-byte, whitespace-only, or bullet-less fragment

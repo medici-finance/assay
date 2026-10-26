@@ -1,6 +1,8 @@
 package deskkit
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"fmt"
 	"sort"
 	"strings"
@@ -358,34 +360,18 @@ func VerifyGateCardCommentAdmitted(authorLogin string, labels []string) bool {
 
 // expectedID resolves a trusted login (any accepted rendered form) to its pinned
 // numeric id. ok is false for logins outside the trusted set.
-func expectedID(login string) (id int64, ok bool) {
+func expectedID(login string) (int64, bool) {
 	c := EffectiveConfig()
 	if !c.Configured() {
 		return 0, false
 	}
-	l := strings.ToLower(login)
-	if id, ok := c.Humans[l]; ok {
-		return id, true
+	bare := map[string]int64{}
+	for l, b := range c.BotIdents {
+		if b.Forge == ForgeGitLab {
+			bare[l] = b.ID
+		}
 	}
-	// A GitLab service account renders as its BARE username (BotIdentity.AcceptedLogins —
-	// there is no [bot]/app/ decoration on that forge to key the flat Bots view on), so its
-	// pinned USER id is read from the forge-qualified identity table. Only a GitLab entry
-	// resolves here: a GitHub App's bare slug is in the same table and stays untrusted (the
-	// username-squatting fail-close below), because its accepted renderings are decorated.
-	if b, ok := c.BotIdents[l]; ok && b.Forge == ForgeGitLab {
-		return b.ID, true
-	}
-	slug := l
-	switch {
-	case strings.HasSuffix(l, "[bot]"):
-		slug = strings.TrimSuffix(l, "[bot]")
-	case strings.HasPrefix(l, "app/"):
-		slug = strings.TrimPrefix(l, "app/")
-	default:
-		return 0, false // bare slug is never trusted (username-squatting fail-close)
-	}
-	id, ok = c.Bots[slug]
-	return id, ok
+	return trustcore.ExpectedID(login, c.Humans, c.Bots, bare)
 }
 
 // TrustedAuthorID is the id-aware form of TrustedAuthor: when the surface has the
@@ -408,18 +394,9 @@ func expectedID(login string) (id int64, ok bool) {
 // mutation A (removing it) survived the whole suite. Restored to the old semantics
 // and pinned by the shared coupling vector's unpinned-human cases.
 func TrustedAuthorID(login string, id int64) bool {
-	if !TrustedAuthor(login) {
-		return false
-	}
-	if id == 0 {
-		// The SURFACE has no id (gh CLI list JSON). Login-only, as before.
-		return true
-	}
-	want, ok := expectedID(login)
-	if !ok {
-		return false
-	}
-	return want != 0 && want == id
+	c := EffectiveConfig()
+	pin, _ := expectedID(login)
+	return trustcore.Admit(c.Configured(), TrustedAuthor(login), pin, id, trustcore.IsBot(strings.ToLower(login)), trustcore.ObservedID)
 }
 
 // trustedContentAuthor is the STRICT id-aware trust check for surfaces where the
@@ -435,28 +412,9 @@ func TrustedAuthorID(login string, id int64) bool {
 // statusgen's analogous check (post-T10) already failed closed on the same input.
 // KEEP IN SYNC with statusgen/trustgate.go's trustedAuthorID.
 func trustedContentAuthor(login string, id int64) bool {
-	if !TrustedAuthor(login) {
-		return false
-	}
-	if id == 0 {
-		// Bots stay trusted by login alone even without an id (Apps cannot be
-		// recycled) — same as the general-purpose TrustedAuthorID. Human accounts
-		// fail closed without a numeric id: this is the ONLY delta from
-		// TrustedAuthorID, closing the divergence the #315 review
-		// found (statusgen's trustedAuthorID already required id!=0 for human
-		// logins; the two copies disagreed on this exact input).
-		lower := strings.ToLower(login)
-		return strings.HasSuffix(lower, "[bot]") || strings.HasPrefix(lower, "app/")
-	}
-	// id != 0: identical to TrustedAuthorID — an exact match required for BOTH
-	// human and bot logins (a trusted login carrying the wrong id is untrusted).
-	want, ok := expectedID(login)
-	if !ok {
-		return false
-	}
-	// want == 0 (configured, never pinned) is NOT a match on an id-bearing surface:
-	// there is nothing to check the id against, and this is the STRICT path.
-	return want != 0 && want == id
+	c := EffectiveConfig()
+	pin, _ := expectedID(login)
+	return trustcore.Admit(c.Configured(), TrustedAuthor(login), pin, id, trustcore.IsBot(strings.ToLower(login)), trustcore.Content)
 }
 
 // IsBlessAuthority reports whether login is the CONFIGURED blessing authority —
@@ -483,10 +441,8 @@ func IsBlessAuthority(login string) bool {
 // refuses a bare one — so the id==0 arm here means only "this surface did not
 // supply an id", never "no id was configured".
 func IsBlessAuthorityID(login string, id int64) bool {
-	if !IsBlessAuthority(login) {
-		return false
-	}
-	return id == 0 || id == EffectiveConfig().Bless.ID
+	c := EffectiveConfig()
+	return trustcore.Admit(c.Configured(), IsBlessAuthority(login), c.Bless.ID, id, false, trustcore.ObservedID)
 }
 
 // IsBlessAuthorityIDStrict is IsBlessAuthorityID with the id==0 compatibility arm
@@ -498,7 +454,8 @@ func IsBlessAuthorityID(login string, id int64) bool {
 // a `ada`-login reaction carrying no numeric id must be refused, not
 // silently trusted via the general-purpose id==0 fallback).
 func IsBlessAuthorityIDStrict(login string, id int64) bool {
-	return IsBlessAuthority(login) && id != 0 && id == EffectiveConfig().Bless.ID
+	c := EffectiveConfig()
+	return trustcore.Admit(c.Configured(), IsBlessAuthority(login), c.Bless.ID, id, false, trustcore.NumericID)
 }
 
 // ItemTrusted reports whether a GitHub item (issue or PR) may enter a desk work
@@ -567,44 +524,13 @@ type ContentEvent struct {
 // is the shipped v1.
 func Blessed(bodyEditedAt time.Time, events []ContentEvent) bool {
 	if !EffectiveConfig().Configured() {
-		return false // P1: no roster ⇒ no blessing authority ⇒ nothing is blessed
-	}
-	var bless time.Time
-	for _, e := range events {
-		// The id==0 arm IsBlessAuthorityID admits here is dead in practice:
-		// trustedContentAuthor (used below) requires id!=0 for a human login, so an
-		// id-less blessing event accepted here would immediately void itself as
-		// untrusted content at its own timestamp (last == bless, tie fails closed).
-		// Kept via IsBlessAuthorityID rather than inlined strict, since that is the
-		// general exported blessing-authority check with its own documented
-		// id-absent semantics (ported comment from statusgen/trustgate.go's T10).
-		if IsBlessAuthorityID(e.Author, e.AuthorID) && e.CreatedAt.After(bless) {
-			bless = e.CreatedAt
-		}
-	}
-	if bless.IsZero() {
 		return false
 	}
-	// T3: use !Before rather than After so a tie (same-second edit) voids
-	// the blessing — fail-closed on ties. Ported from statusgen/trustgate.go;
-	// the two copies are a documented duplicate (KEEP IN SYNC).
-	if !bodyEditedAt.Before(bless) {
-		return false // body edited at/after the blessing — void
-	}
+	facts := make([]trustcore.Event, 0, len(events))
 	for _, e := range events {
-		if trustedContentAuthor(e.Author, e.AuthorID) {
-			continue
-		}
-		last := e.CreatedAt
-		if e.EditedAt.After(last) {
-			last = e.EditedAt
-		}
-		// T3: tie voids the blessing — fail-closed on same-second edits.
-		if !last.Before(bless) {
-			return false // untrusted content added/edited at/after the blessing
-		}
+		facts = append(facts, trustcore.Event{Authority: IsBlessAuthorityIDStrict(e.Author, e.AuthorID), Trusted: trustedContentAuthor(e.Author, e.AuthorID), Created: e.CreatedAt, Edited: e.EditedAt})
 	}
-	return true
+	return trustcore.Blessed(bodyEditedAt, facts)
 }
 
 // ItemTrustedEvents is the edit-aware trust decision: trusted authorship admits the
