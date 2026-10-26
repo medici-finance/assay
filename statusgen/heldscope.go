@@ -119,39 +119,46 @@ import (
 //     latest, whatever date its heading carries, because Evidence is
 //     appended and a heading's date is free text the scan does not trust.
 //     The held occurrences of the last entry itself are always read.
-//     A key cell that is a Verify row number with one parenthetical
-//     annotation ("3 (Verify 3, negative)") keys as the bare number
-//     (heldCanonKeys, #4294) when every number in the annotation is that
-//     number, and only when, across the whole Evidence, the bare number under
-//     that header never appears with two different annotations and no entry
-//     records it in two forms ("3" beside "3 (negative)", "3 (positive)"
-//     beside "3 (negative)"): those may be sub-rows of one Verify row, so they
-//     keep their written keys and a bare later "3" covers neither. Only the
-//     entries before the last are shortened: the last entry covers an earlier
-//     row under the bare number alone, never under an annotated key. A lettered
-//     key ("3a"), nested parentheses, text after the annotation or a number
-//     in it that names another row ("3 (Verify 4)", a date) is never
-//     shortened. Stated residual: an earlier annotated row and a later bare
-//     number are one row, so a later bare "3" that ran only one
-//     sub-case covers an earlier lone "3 (negative)"; the format records no
-//     sub-case on a bare key that could tell them apart.
-//  4. Observed output (#4294). An occurrence of "could-not-check" (never
-//     HELD) in a Result-type cell (heldColResult) of an aligned, keyed row is
-//     what the verified product printed, not the row's disposition, only when
-//     the cell matches a closed grammar, every part of which must hold: the
-//     row's table has an Exit column and every Exit cell of the row reads
-//     clean (heldOutcome); the cell opens on PASS, passed or ok
-//     (heldObserveLeadRe); an article or possessive comes right before the
-//     marker and, in the clause that holds it (since the last ; . ! ? or
-//     dash), a verb of output governs it (heldObserveVerbRe: "prints",
-//     "yields", "lists"); the text after the marker is a noun it qualifies
-//     (heldObserveHead: "mission section", "banner") followed only by words of
-//     a small neutral vocabulary (heldObserveTail), so any other word, a
-//     digit or a hold reason leaves the row read; the line has no struck
-//     span; and no read cell of the row holds a hold or fail word
-//     (heldObserveHoldRe, a second check behind the grammar; a HELD there is
-//     read as its own occurrence). Wording the grammar does not recognise is
-//     read as a hold.
+//     A key cell that is a Verify row number with one parenthetical annotation
+//     ("3 (Verify 3, negative)") keys as the bare number (heldCanonKeys,
+//     #4294) when every number in the annotation is that number, and only
+//     when, across the whole Evidence, the bare number under that header never
+//     appears with two different annotations and no entry records it in two
+//     forms ("3" beside "3 (negative)", "3 (positive)" beside "3 (negative)"):
+//     those may be sub-rows of one Verify row, so they keep their written keys
+//     and a bare later "3" covers neither. Only the entries before the last
+//     are shortened: the last entry covers an earlier row under the bare
+//     number or under the earlier row's own key exactly as written ("3
+//     (negative)" re-ran as "3 (negative)"), never under an annotation the
+//     earlier row did not carry. A lettered key ("3a"), nested parentheses,
+//     text after the annotation or a number in it that names another row ("3
+//     (Verify 4)", a date) is never shortened. Stated residual: an earlier
+//     annotated row and a later bare number are one row, so a later bare "3"
+//     that ran only one sub-case covers an earlier lone "3 (negative)"; the
+//     format records no sub-case on a bare key that could tell them apart.
+//  4. Observed output (#4294). An occurrence of "could-not-check" (never HELD)
+//     in a Result-type cell (heldColResult) of an aligned, keyed row is what
+//     the verified product printed, not the row's disposition, only when the
+//     cell matches a closed grammar, every part of which must hold: the row's
+//     table has an Exit column and every Exit cell of the row reads clean
+//     (heldOutcome); the cell opens on PASS, passed or ok, optionally with a
+//     positive or negative case label (heldObserveLeadRe); every word between
+//     that lead and the marker, as written, is a product-output verb or a word
+//     of a small vocabulary that names the product under test and its output
+//     (heldObserveSubject: "the planted brief yields its named diagnostic"),
+//     so a subject that names the verifier, its runner, a case, a half or
+//     rows, a pronoun or a digit leaves the row read; an article or possessive
+//     comes right before the marker and, in the clause that holds it (since
+//     the last ; . ! ? or dash), a verb of product output governs it
+//     (heldObserveVerbRe: "prints", "yields", "lists"; never "reports" or
+//     "shows", which a verifier also uses for its own instrument); the text
+//     after the marker is a noun it qualifies (heldObserveHead: "mission
+//     section", "banner") followed only by words of a small neutral vocabulary
+//     (heldObserveTail), so any other word, a digit or a hold reason leaves
+//     the row read; the line has no struck span; and no read cell of the row
+//     holds a hold or fail word (heldObserveHoldRe, a second check behind the
+//     grammar; a HELD there is read as its own occurrence). Wording the
+//     grammar does not recognise is read as a hold.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
@@ -1138,9 +1145,17 @@ func heldKeyBase(key string) (base, ann string, ok bool) {
 //
 // The rewrite is directional: it applies only to the entries before the last
 // one (lines before last, keys of all but the final entry). The last entry's
-// keys stay as written, so a row covers an earlier one only under the bare
-// number; an annotated key in the last entry is a different key.
+// keys stay as written, so a row covers an earlier one under the earlier
+// row's own key or under the bare number, never under an annotation the
+// earlier row did not carry. An earlier key the last entry records exactly
+// as written is left as written, so the raw keys still match.
 func heldCanonKeys(out []heldLineRead, keys [][]string, last int) {
+	lastRaw := map[string]bool{} // the last entry's keys, as written
+	if len(keys) > 1 {
+		for _, k := range keys[len(keys)-1] {
+			lastRaw[k] = true
+		}
+	}
 	forms := map[string]map[string]bool{} // bare key → the non-empty annotations seen
 	split := map[string]bool{}            // bare key → two forms in one entry
 	for e := range keys {
@@ -1164,7 +1179,7 @@ func heldCanonKeys(out []heldLineRead, keys [][]string, last int) {
 	}
 	canon := func(k string) string {
 		base, _, ok := heldKeyBase(k)
-		if !ok || split[base] || len(forms[base]) > 1 {
+		if !ok || lastRaw[k] || split[base] || len(forms[base]) > 1 {
 			return k
 		}
 		return base
@@ -1207,10 +1222,15 @@ func heldObserveCells(hline string, header [][2]int, line string, cells [][2]int
 	return res
 }
 
+// heldObserveVerbs are the verbs of product output (rule 4).
+const heldObserveVerbs = `prints?|printed|yields?|yielded|emits?|emitted|outputs?|lists?|listed|renders?|rendered`
+
 var (
 	// heldObserveLeadRe is a Result cell that opens on a passing outcome,
 	// past space, quotes, emphasis and backticks: `"PASS: negative" …`.
-	heldObserveLeadRe = regexp.MustCompile("(?i)^[\\s\"'“”‘’*_`]*(?:pass(?:ed)?|ok)\\b")
+	// A case label may follow it directly ("PASS: negative"): the label is
+	// part of the lead, not a subject of the text after it.
+	heldObserveLeadRe = regexp.MustCompile("(?i)^[\\s\"'“”‘’*_`]*(?:pass(?:ed)?|ok)\\b(?:[ \\t]*:[ \\t]*(?:positive|negative)\\b)?")
 	// heldObserveBeforeRe is an article or possessive right before the marker.
 	heldObserveBeforeRe = regexp.MustCompile(`(?i)(?:^|[^\pL\pN-])(?:a|an|the|its|their)[ \t]+$`)
 	// heldObserveTailRe is a word of the text after the marker.
@@ -1218,9 +1238,24 @@ var (
 	// heldObserveClauseRe is a clause break; the text after the last one,
 	// up to the marker, is the clause that governs it.
 	heldObserveClauseRe = regexp.MustCompile(`[;.!?—–]`)
-	// heldObserveVerbRe is a verb of output that must govern the marker in
-	// its clause ("prints", "yields"): the row says what the product wrote.
-	heldObserveVerbRe = regexp.MustCompile(`(?i)\b(?:prints?|printed|yields?|yielded|reports?|reported|contains?|contained|lists?|listed|shows?|showed|shown|includes?|included|emits?|emitted|outputs?|renders?|rendered|displays?|displayed)\b`)
+	// heldObserveVerbRe is a verb of product output that must govern the
+	// marker in its clause ("prints", "yields"): the row says what the product
+	// wrote. Verbs a verifier also uses for its own instrument's disposition
+	// (reports, shows, contains, includes, displays) are not among them.
+	heldObserveVerbRe = regexp.MustCompile(`(?i)\b(?:` + heldObserveVerbs + `)\b`)
+	// heldObserveVerbWordRe is one word that is such a verb.
+	heldObserveVerbWordRe = regexp.MustCompile(`^(?:` + heldObserveVerbs + `)$`)
+	// heldObserveSubject are the words, besides the output verbs, that may
+	// stand between the lead and the marker: articles, "and", and nouns that
+	// name the product under test and its output ("the planted brief yields
+	// its named diagnostic, a lint PROBLEM and a"). A word that names the
+	// verifier, its runner or harness, a case, a half or rows, a pronoun, or
+	// a digit is not among them, so it leaves the row held.
+	heldObserveSubject = map[string]bool{"a": true, "an": true, "the": true, "its": true, "their": true,
+		"and": true, "brief": true, "planted": true, "fixture": true, "command": true, "tool": true,
+		"cli": true, "binary": true, "lint": true, "linter": true, "output": true, "stdout": true,
+		"diagnostic": true, "diagnostics": true, "named": true, "problem": true, "problems": true,
+		"product": true}
 	// heldObserveHoldRe is a hold or fail word anywhere in a row's read cells.
 	// It is a second check behind the closed grammar, never the only one.
 	// HELD is not among them: every HELD occurrence is read on its own, and
@@ -1253,9 +1288,17 @@ func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
 			continue
 		}
 		before, after := clean[rg[0]:h[0]], clean[h[1]:rg[1]]
-		if !heldObserveLeadRe.MatchString(line[rg[0]:rg[1]]) || !heldObserveBeforeRe.MatchString(before) ||
-			heldReasonAfterRe.MatchString(after) {
+		lead := heldObserveLeadRe.FindStringIndex(line[rg[0]:rg[1]])
+		if lead == nil || !heldObserveBeforeRe.MatchString(before) || heldReasonAfterRe.MatchString(after) {
 			return false
+		}
+		// Every word between the lead and the marker, as the row is
+		// written (inline code included), is a product word or an output
+		// verb: the subject of the verb is the product, never the verifier.
+		for _, w := range heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1) {
+			if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) {
+				return false
+			}
 		}
 		if i := heldObserveClauseRe.FindAllStringIndex(before, -1); len(i) > 0 {
 			before = before[i[len(i)-1][1]:]

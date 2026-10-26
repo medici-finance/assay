@@ -898,8 +898,8 @@
     {
       "name": "#4294 key: two annotations across entries still merge",
       "file": "heldscope.go",
-      "old": "if !ok || split[base] || len(forms[base]) > 1 {",
-      "new": "if !ok || split[base] {"
+      "old": "if !ok || lastRaw[k] || split[base] || len(forms[base]) > 1 {",
+      "new": "if !ok || lastRaw[k] || split[base] {"
     },
     {
       "name": "#4294 key: text after the annotation is admitted",
@@ -940,14 +940,14 @@
     {
       "name": "#4294 observe: the cell need not open on a pass",
       "file": "heldscope.go",
-      "old": "if !heldObserveLeadRe.MatchString(line[rg[0]:rg[1]]) || ",
-      "new": "if "
+      "old": "lead := heldObserveLeadRe.FindStringIndex(line[rg[0]:rg[1]])",
+      "new": "lead := []int{0, 0}"
     },
     {
       "name": "#4294 observe: the pass lead need not end a word",
       "file": "heldscope.go",
-      "old": "(?:pass(?:ed)?|ok)\\\\b\")",
-      "new": "(?:pass(?:ed)?|ok)\")"
+      "old": "(?:pass(?:ed)?|ok)\\\\b(?:",
+      "new": "(?:pass(?:ed)?|ok)(?:"
     },
     {
       "name": "#4294 observe: no article is needed before the marker",
@@ -972,12 +972,6 @@
       "file": "heldscope.go",
       "old": "len(words) == 0 || !heldObserveHead[words[0]]",
       "new": "false"
-    },
-    {
-      "name": "#4294 cover: the last entry's keys are also shortened (lines)",
-      "file": "heldscope.go",
-      "old": "for r := 0; r < last && r < len(out); r++ {",
-      "new": "for r := 0; r < len(out); r++ {"
     },
     {
       "name": "#4294 observe: hold words in the row are ignored",
@@ -1218,6 +1212,126 @@
       "file": "verifyissues.go",
       "old": "(?:[a-z]+[ \\t]+)?(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)",
       "new": "(?:[a-z]+[ \\t]+)?[a-z]+[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)"
+    },
+    {
+      "name": "#4294 cover: an earlier key the last entry records as written is still shortened (C1)",
+      "file": "heldscope.go",
+      "old": "if !ok || lastRaw[k] || split[base] || len(forms[base]) > 1 {",
+      "new": "if !ok || split[base] || len(forms[base]) > 1 {"
+    },
+    {
+      "name": "#4294 cover: the as-written set is read from the first entry, not the last (C1)",
+      "file": "heldscope.go",
+      "old": "for _, k := range keys[len(keys)-1] {\n\t\t\tlastRaw[k] = true",
+      "new": "for _, k := range keys[0] {\n\t\t\tlastRaw[k] = true"
+    },
+    {
+      "name": "#4294 observe: words before the marker are not checked against the vocabulary",
+      "file": "heldscope.go",
+      "old": "if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) {",
+      "new": "if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) && false {"
+    },
+    {
+      "name": "#4294 observe: an output verb is not admitted before the marker",
+      "file": "heldscope.go",
+      "old": "if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) {",
+      "new": "if !heldObserveSubject[w] {"
+    },
+    {
+      "name": "#4294 observe: a word that only holds an output verb counts as the verb",
+      "file": "heldscope.go",
+      "old": "heldObserveVerbWordRe = regexp.MustCompile(`^(?:` + heldObserveVerbs + `)$`)",
+      "new": "heldObserveVerbWordRe = regexp.MustCompile(`(?:` + heldObserveVerbs + `)`)"
+    },
+    {
+      "name": "#4294 observe: the vocabulary is read from the scan's cleaned row (inline code dropped)",
+      "file": "heldscope.go",
+      "old": "range heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1)",
+      "new": "range heldObserveTailRe.FindAllString(strings.ToLower(clean[rg[0]+lead[1]:h[0]]), -1)"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits runner",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"runner\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits verifier",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"verifier\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits harness",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"harness\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits case and positive",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"case\": true, \"on\": true, \"positive\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits half and negative",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"half\": true, \"negative\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits rows and digits",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"rows\": true, \"row\": true, \"1-2\": true, \"4\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits a pronoun",
+      "file": "heldscope.go",
+      "old": "\"product\": true}",
+      "new": "\"product\": true, \"it\": true}"
+    },
+    {
+      "name": "#4294 observe: reports is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `reports?|prints?|"
+    },
+    {
+      "name": "#4294 observe: shows is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `shows?|prints?|"
+    },
+    {
+      "name": "#4294 observe: contains is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `contains?|prints?|"
+    },
+    {
+      "name": "#4294 observe: includes is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `includes?|prints?|"
+    },
+    {
+      "name": "#4294 observe: displays is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `displays?|prints?|"
+    },
+    {
+      "name": "#4294 observe: the case label in the lead may be any word",
+      "file": "heldscope.go",
+      "old": "(?:positive|negative)\\\\b)?",
+      "new": "\\\\w+\\\\b)?"
+    },
+    {
+      "name": "#4294 observe: the lead takes no case label",
+      "file": "heldscope.go",
+      "old": "\\\\b(?:[ \\\\t]*:[ \\\\t]*(?:positive|negative)\\\\b)?\")",
+      "new": "\\\\b\")"
     }
   ]
 }
