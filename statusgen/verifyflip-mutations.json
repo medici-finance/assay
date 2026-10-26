@@ -10,8 +10,8 @@
     {
       "name": "every-base rule restored (a criss-cross merge whose branch side made no net change is judged — the #4466 false positive)",
       "file": "verifyflip.go",
-      "old": "\t\tcase xev:\n",
-      "new": "\t\tdefault:\n"
+      "old": "if bev == xev {",
+      "new": "if bev != yev {"
     },
     {
       "name": "any merge base accepted unconditionally (a criss-cross merge that drops a later FAIL from the other side is not judged)",
@@ -24,6 +24,24 @@
       "file": "verifyflip.go",
       "old": "return some && !xAt, nil",
       "new": "return some || (some && !xAt), nil"
+    },
+    {
+      "name": "equal-Evidence guard lost: the kept side's base test runs only when the other side's fails, so with equal Evidence a base matching both reads as the other side bringing nothing",
+      "file": "verifyflip.go",
+      "old": "\t\t}\n\t\tif bev == xev {\n",
+      "new": "\t\t} else if bev == xev {\n"
+    },
+    {
+      "name": "octopus merge compared on its first two parents only (a later FAIL carried by a third parent and dropped by the merge is not judged)",
+      "file": "verifyflip.go",
+      "old": "for y := range parents {",
+      "new": "for y := range parents[:min(len(parents), 2)] {"
+    },
+    {
+      "name": "refusal names the PASS commit instead of the judged one (the refusal class holds, the refused commit does not)",
+      "file": "verifyflip.go",
+      "old": "h, base, why)",
+      "new": "since[0], base, why)"
     }
   ]
 }
