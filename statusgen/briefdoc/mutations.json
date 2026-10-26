@@ -190,20 +190,20 @@
     {
       "name": "line backstop: values are compared without lower-casing gate and exec-tier",
       "file": "briefdoc/document.go",
-      "old": "\tif key == \"gate\" || key == \"exec-tier\" {\n\t\tv = strings.ToLower(v)",
+      "old": "\tif r.key == \"gate\" || r.key == \"exec-tier\" {\n\t\tv = strings.ToLower(v)",
       "new": "\tif false {\n\t\tv = strings.ToLower(v)"
     },
     {
       "name": "line backstop: a trailing comment stays in the line reading",
       "file": "briefdoc/document.go",
-      "old": "\tif i := strings.Index(v, \" #\"); i >= 0 {\n\t\tv = v[:i]\n\t}\n\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key",
-      "new": "\tif i := strings.Index(v, \" #\"); false && i >= 0 {\n\t\tv = v[:i]\n\t}\n\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key"
+      "old": "\tif i := strings.Index(v, \" #\"); i >= 0 && !r.keepsComment {",
+      "new": "\tif i := strings.Index(v, \" #\"); false && i >= 0 && !r.keepsComment {"
     },
     {
       "name": "line backstop: quotes stay in the line reading",
       "file": "briefdoc/document.go",
-      "old": "\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key",
-      "new": "\tv = strings.TrimSpace(v)\n\tif key"
+      "old": "\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif r.key",
+      "new": "\tv = strings.TrimSpace(v)\n\tif r.key"
     },
     {
       "name": "line backstop: the gate reader with gap \\s* is dropped",
@@ -238,25 +238,25 @@
     {
       "name": "line backstop: the implementer reader with gap \\s* is dropped",
       "file": "briefdoc/document.go",
-      "old": "\tnewLineReader(\"implementer\", `\\s*`),\n",
+      "old": "\tnewCommentLineReader(\"implementer\", `\\s*`),\n",
       "new": ""
     },
     {
       "name": "line backstop: the blocked-until reader with gap \\s* is dropped",
       "file": "briefdoc/document.go",
-      "old": "\tnewLineReader(\"blocked-until\", `\\s*`),\n",
+      "old": "\tnewCommentLineReader(\"blocked-until\", `\\s*`),\n",
       "new": ""
     },
     {
       "name": "line backstop: the verify-lane reader with gap \\s* is dropped",
       "file": "briefdoc/document.go",
-      "old": "\tnewLineReader(\"verify-lane\", `\\s*`),\n",
+      "old": "\tnewCommentLineReader(\"verify-lane\", `\\s*`),\n",
       "new": ""
     },
     {
       "name": "line backstop: the in-repair reader with gap \\s* is dropped",
       "file": "briefdoc/document.go",
-      "old": "\tnewLineReader(\"in-repair\", `\\s*`),\n",
+      "old": "\tnewCommentLineReader(\"in-repair\", `\\s*`),\n",
       "new": ""
     },
     {
@@ -282,6 +282,78 @@
       "file": "briefdoc/document.go",
       "old": "\tnewLineReader(\"homed-in\", `\\s*`),\n",
       "new": ""
+    },
+    {
+      "name": "comment keeping: the implementer reader cuts the inline comment",
+      "file": "briefdoc/document.go",
+      "old": "\tnewCommentLineReader(\"implementer\", `\\s*`),\n",
+      "new": "\tnewLineReader(\"implementer\", `\\s*`),\n"
+    },
+    {
+      "name": "comment keeping: the blocked-until reader cuts the inline comment",
+      "file": "briefdoc/document.go",
+      "old": "\tnewCommentLineReader(\"blocked-until\", `\\s*`),\n",
+      "new": "\tnewLineReader(\"blocked-until\", `\\s*`),\n"
+    },
+    {
+      "name": "comment keeping: the verify-lane reader cuts the inline comment",
+      "file": "briefdoc/document.go",
+      "old": "\tnewCommentLineReader(\"verify-lane\", `\\s*`),\n",
+      "new": "\tnewLineReader(\"verify-lane\", `\\s*`),\n"
+    },
+    {
+      "name": "comment keeping: the in-repair reader cuts the inline comment",
+      "file": "briefdoc/document.go",
+      "old": "\tnewCommentLineReader(\"in-repair\", `\\s*`),\n",
+      "new": "\tnewLineReader(\"in-repair\", `\\s*`),\n"
+    },
+    {
+      "name": "comment keeping: a comment-keeping reader still cuts the inline comment",
+      "file": "briefdoc/document.go",
+      "old": " i >= 0 && !r.keepsComment {",
+      "new": " i >= 0 {"
+    },
+    {
+      "name": "comment keeping: readers' values are not kept over the parsed mapping",
+      "file": "briefdoc/document.go",
+      "old": "\tkeepReaderValues(block, f.Values)\n",
+      "new": ""
+    },
+    {
+      "name": "comment keeping: a reader's value is kept from a line that is not the key's own",
+      "file": "briefdoc/document.go",
+      "old": "ok && line == strings.Count(block[:loc[0]], \"\\n\")+1 {",
+      "new": "ok && line > 0 {"
+    },
+    {
+      "name": "comment keeping: a key the mapping lacks takes the reader's value",
+      "file": "briefdoc/document.go",
+      "old": "ok && line == strings.Count(block[:loc[0]], \"\\n\")+1 {",
+      "new": "!ok || line == strings.Count(block[:loc[0]], \"\\n\")+1 {"
+    },
+    {
+      "name": "comment keeping: the key's own line is counted from zero",
+      "file": "briefdoc/document.go",
+      "old": "strings.Count(block[:loc[0]], \"\\n\")+1 {",
+      "new": "strings.Count(block[:loc[0]], \"\\n\") {"
+    },
+    {
+      "name": "comment keeping: the kept reading is taken without its comment-cut form matching the parsed value",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif lineValue(cut, capture) != values[r.key] {",
+      "new": "\t\tif false && lineValue(cut, capture) != values[r.key] {"
+    },
+    {
+      "name": "comment keeping: the agreement check compares the comment-kept reading instead of the cut one",
+      "file": "briefdoc/document.go",
+      "old": "\t\tcut.keepsComment = false\n",
+      "new": "\t\tcut.keepsComment = true\n"
+    },
+    {
+      "name": "comment keeping: the agreement check compares the comment-cut line with its quotes kept",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif lineValue(cut, capture) != values[r.key] {",
+      "new": "\t\tif strings.TrimSpace(strings.SplitN(capture, \" #\", 2)[0]) != values[r.key] {"
     }
   ]
 }
