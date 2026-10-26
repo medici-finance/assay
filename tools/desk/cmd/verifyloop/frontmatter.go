@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/medici-finance/assay/statusgen/briefdoc"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -26,13 +28,14 @@ func parseFrontmatter(content string) briefFrontmatter {
 		fm.ParseError = err.Error()
 		return fm
 	}
-	fm.Gate = f.Values["gate"]
-	fm.Effort = f.Values["effort"]
-	fm.ExecTier = f.Values["exec-tier"]
-	fm.Implementer = f.Values["implementer"]
-	fm.BlockedUntil = f.Values["blocked-until"]
-	fm.VerifyLane = f.Values["verify-lane"]
-	fm.InRepair = f.Values["in-repair"]
+	// This loop trimmed space from every value its earlier reader returned.
+	fm.Gate = strings.TrimSpace(f.Values["gate"])
+	fm.Effort = strings.TrimSpace(f.Values["effort"])
+	fm.ExecTier = strings.TrimSpace(f.Values["exec-tier"])
+	fm.Implementer = strings.TrimSpace(f.Values["implementer"])
+	fm.BlockedUntil = strings.TrimSpace(f.Values["blocked-until"])
+	fm.VerifyLane = strings.TrimSpace(f.Values["verify-lane"])
+	fm.InRepair = strings.TrimSpace(f.Values["in-repair"])
 	fm.Risk = loopengine.RiskFlags(f.Risk)
 	return fm
 }

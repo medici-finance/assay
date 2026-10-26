@@ -123,58 +123,116 @@ func textRiskBackstop(block string, r Risk) error {
 }
 
 // lineReader is one of the first-match column-0 line readers the desk tools
-// used for a frontmatter key before this parser.
+// used for a frontmatter key before this parser. keepsComment is set when
+// every reader a key had kept an inline " #" comment as part of the value.
 type lineReader struct {
-	key string
-	re  *regexp.Regexp
+	key          string
+	re           *regexp.Regexp
+	keepsComment bool
 }
 
 func newLineReader(key, gap string) lineReader {
-	return lineReader{key, regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `:` + gap + `(.*)$`)}
+	return lineReader{key, regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `:` + gap + `(.*)$`), false}
+}
+
+// newCommentLineReader is a reader that kept the inline comment.
+func newCommentLineReader(key, gap string) lineReader {
+	r := newLineReader(key, gap)
+	r.keepsComment = true
+	return r
 }
 
 // lineReaders are those readers, with the gap each one allowed after the
-// colon: "\s*" can cross into the next line, "[ \t]*" cannot.
+// colon: "\s*" can cross into the next line, "[ \t]*" cannot. The work loops
+// were the only readers of implementer, blocked-until, verify-lane and
+// in-repair, and they kept the comment. gate, exec-tier and effort were also
+// read by readers that cut it, so for those keys the cut reading stands.
 var lineReaders = []lineReader{
 	newLineReader("gate", `\s*`),
 	newLineReader("exec-tier", `\s*`),
 	newLineReader("exec-tier", `[ \t]*`),
 	newLineReader("effort", `\s*`),
 	newLineReader("effort", `[ \t]*`),
-	newLineReader("implementer", `\s*`),
-	newLineReader("blocked-until", `\s*`),
-	newLineReader("verify-lane", `\s*`),
-	newLineReader("in-repair", `\s*`),
+	newCommentLineReader("implementer", `\s*`),
+	newCommentLineReader("blocked-until", `\s*`),
+	newCommentLineReader("verify-lane", `\s*`),
+	newCommentLineReader("in-repair", `\s*`),
 	newLineReader("decision-issue", `[ \t]*`),
 	newLineReader("brief", `[ \t]*`),
 	newLineReader("deliverable_repo", `\s*`),
 	newLineReader("homed-in", `\s*`),
 }
 
-// lineValue cleans a line reader's capture the way those readers did: text
-// from " #" on is a comment, then surrounding space and quotes are trimmed.
-// gate and exec-tier compare lower-cased, as the parsed mapping holds them.
-func lineValue(key, v string) string {
-	if i := strings.Index(v, " #"); i >= 0 {
+// lineValue cleans a line reader's capture the way that reader did: unless it
+// kept comments, text from " #" on is a comment; then surrounding space and
+// quotes are trimmed. gate and exec-tier compare lower-cased, as the parsed
+// mapping holds them.
+func lineValue(r lineReader, v string) string {
+	if i := strings.Index(v, " #"); i >= 0 && !r.keepsComment {
 		v = v[:i]
 	}
 	v = strings.Trim(strings.TrimSpace(v), `"'`)
-	if key == "gate" || key == "exec-tier" {
+	if r.key == "gate" || r.key == "exec-tier" {
 		v = strings.ToLower(v)
 	}
 	return v
 }
 
+// topLevelKeyLines maps each top-level mapping key in block to its 1-based line.
+func topLevelKeyLines(block string) map[string]int {
+	lines := map[string]int{}
+	var doc yaml.Node
+	if yaml.Unmarshal([]byte(block), &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return lines
+	}
+	m := doc.Content[0]
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		lines[m.Content[i].Value] = m.Content[i].Line
+	}
+	return lines
+}
+
+// keepReaderValues gives each key whose readers kept the inline comment the
+// value its reader read, so "in-repair: no # x" reads as "no # x" where YAML
+// drops the comment. It does so only when the reader's first match is the
+// parsed mapping's own line for the key AND that reading, with the comment
+// cut, is the parsed value. Any other reading keeps the parsed value, which
+// lineBackstop then compares with the reader's, so a key whose line and
+// parsed value disagree is refused just as it is for the comment-cutting keys.
+func keepReaderValues(block string, values map[string]string) {
+	lines := topLevelKeyLines(block)
+	for _, r := range lineReaders {
+		if !r.keepsComment {
+			continue
+		}
+		loc := r.re.FindStringSubmatchIndex(block)
+		if loc == nil {
+			continue
+		}
+		capture := block[loc[2]:loc[3]]
+		cut := r
+		cut.keepsComment = false
+		if lineValue(cut, capture) != values[r.key] {
+			continue
+		}
+		if line, ok := lines[r.key]; ok && line == strings.Count(block[:loc[0]], "\n")+1 {
+			values[r.key] = lineValue(r, capture)
+		}
+	}
+}
+
 // lineBackstop refuses a block where any of those line readers reads a key
 // differently from the parsed mapping, for example a column-0 "gate: human"
-// line that YAML reads as the continuation of an earlier multi-line value. The
-// parser then never reads a policy key differently from the readers it
-// replaced without saying so.
+// line that YAML reads as the continuation of an earlier multi-line value.
+// After keepReaderValues, a key that only comment-keeping readers read holds
+// their value only where its comment-cut form is the parsed value; gate,
+// exec-tier and effort take the comment-cut value their cutting readers took,
+// because their readers did not agree.
 func lineBackstop(block string, values map[string]string) error {
 	for _, r := range lineReaders {
 		got := ""
 		if m := r.re.FindStringSubmatch(block); m != nil {
-			got = lineValue(r.key, m[1])
+			got = lineValue(r, m[1])
 		}
 		if got != values[r.key] {
 			return fmt.Errorf("frontmatter line reads %s differently from the parsed mapping", r.key)
@@ -195,17 +253,19 @@ func LineFields(block string) map[string]string {
 			continue
 		}
 		if m := r.re.FindStringSubmatch(block); m != nil {
-			out[r.key] = lineValue(r.key, m[1])
+			out[r.key] = lineValue(r, m[1])
 		}
 	}
 	return out
 }
 
-// backstop runs both text backstops over a block the mapping parsed cleanly.
+// backstop runs both text backstops over a block the mapping parsed cleanly,
+// after giving comment-keeping keys their readers' values.
 func backstop(block string, f Fields) error {
 	if err := textRiskBackstop(block, f.Risk); err != nil {
 		return err
 	}
+	keepReaderValues(block, f.Values)
 	return lineBackstop(block, f.Values)
 }
 
