@@ -105,7 +105,7 @@ never-autonomous escalation points below.
   section — the pinned `statusgen-windows-<arch>.exe` is acquired through the PowerShell
   bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control; a
   `deskinstall` built from this tree also refuses any asset whose build attestation does not
-  verify — see that section), with the SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
+  verify — see that section), with the SessionStart-hook `bash`+`jq` workaround and the not-CI-proven caveat stated there.
 
 **What the skill does** — it DELEGATES every PRIMITIVE and every human-gate to the manual runbook
 below; the two are **one story with one mechanism**, not two implementations:
@@ -1192,9 +1192,9 @@ delivery layer is real: a Windows release matrix (`statusgen-windows-<arch>.exe`
 `desk-tools-windows-<arch>.tar.gz`, checksummed), a Go-native install path with the
 sha256-verify-or-refuse control intact, and a portability triage of every shell-assuming surface.
 Two honesty caveats travel with it, spelled out below: the SessionStart hooks need a documented
-`bash`+`jq` workaround, and the **native `windows/arm64` smoke is BLOCKED** for want of an arm64
-Windows runner. Do not read "runs on Windows" as "every surface is native and CI-green" — read the
-specifics.
+`bash`+`jq` workaround, and **no CI job runs anything on native Windows** (the native-Windows CI
+was retired, #4106; the `windows/arm64` native smoke never ran). Do not read "runs on Windows" as
+"every surface is native and CI-green" — read the specifics.
 
 ### The three-command install (Cursor + GitLab, channel E)
 
@@ -1229,8 +1229,8 @@ rather than warning and continuing on a sha256 mismatch, but they signal it diff
 - The **bootstrap** throws a `REFUSED: …` error. It does this on a digest mismatch
   (`scripts/bootstrap-windows.ps1:108`) and on every manifest-resolve failure (`:52-96`). Under
   `powershell -File` that is a non-zero exit (not `5`), and nothing is placed.
-  `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that refusal's message text (for
-  example `sha256 mismatch`), not on the `REFUSED:` prefix.
+  The message text names the cause (for example `sha256 mismatch`). No CI job runs this
+  refusal on native Windows (see the CI status below).
 - **`deskinstall`** exits `5` (refused, nothing placed). A `deskinstall` built from this tree
   runs a second check after the sha256 one: it downloads each asset's Sigstore build attestation
   (`<asset>.sigstore.json`, from the same release) and refuses unless it verifies as SLSA
@@ -1311,8 +1311,8 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 
 ### Prerequisites
 - A **native 64-bit Windows host** (Windows 10 / 11 or Windows Server), `windows/amd64`. The
-  `windows/arm64` binaries are published and checksummed, but their native smoke is BLOCKED (see
-  **CI-proven status**); an arm64 host installs the same way, with that caveat stated.
+  `windows/arm64` binaries are published and checksummed; neither architecture is CI-run on
+  native Windows (see **CI status**). An arm64 host installs the same way, with that caveat stated.
 - **PowerShell** (ships with Windows) — for the ~5-line first-install bootstrap (channel E).
 - **Channel E:** **No Go toolchain and no `gh` are required to install.** The adopter downloads the
   *pinned release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest`
@@ -1458,34 +1458,25 @@ statusgen-windows-arm64.exe  v0.26.0  9b01f839841742634377dd1b8c70e07503fe905ed3
 
 (These are the `v0.26.0` pins from `plugins/assay/paired-versions.yaml`; the desk-tools tarballs
 `desk-tools-windows-<arch>.tar.gz` pin the same way.) `windows/arm64` is pinned and checksummed
-like any other platform — the BLOCKED item below is only its *native smoke*, never its release
-asset.
+like any other platform; only a *native* `windows/arm64` run is missing (see below), never its
+release asset.
 
-### CI-proven status — the Windows leg is live
+### CI status — native Windows is not CI-proven
 
-A Windows CI leg is **live**, under `.github/workflows/windows-ci-leg.yml` (promoted by a
-maintainer's workflow-scoped credential; `windows-port/04` is `done` on this stream's board). It
-carries two running jobs — `windows-smoke` (`statusgen --lint` plus an **offline** `--version`
-smoke on `windows-latest`, and a fail-first demonstration that the leg genuinely reddens on a
-broken input) and `windows-bootstrap-smoke` (exercises `bootstrap-windows.ps1`'s sha256
-hash-verify at Windows runtime — a tampered checksum refuses, the pinned one installs) — plus one
-**held** job, `arm64-native-smoke` (`if: false`, by design, so it can never read as a passing
-arm64 result): the **native `windows/arm64` smoke stays BLOCKED** pending a `windows-11-arm`
-runner, and is never greened from the `windows-smoke` amd64 result. The `windows/arm64` release
-assets themselves still ship cross-compiled and checksummed regardless of that block.
+No CI job runs on a native Windows runner. The Windows CI leg (`windows-port/04`) and the other
+native-Windows workflows were retired (#4106). Nothing in CI now executes `statusgen` or the desk
+tools on Windows, runs the Windows PowerShell 5.1 parse check, or exercises
+`bootstrap-windows.ps1`'s runtime sha256 refusal of a tampered download. The Windows claims in this
+section rest on the Go code paths, the cross-compiled builds and earlier recorded runs, not on a
+current CI run.
 
-**When it runs.** "Live" means the workflow is installed, not that it gates every change. It
-triggers only on a `v*` **tag push** and on a manual **`workflow_dispatch`**
-(`.github/workflows/windows-ci-leg.yml`, `on:`). It is not a per-PR or per-push check. The
-fail-first step runs only on a dispatch with `failfirst: true` (`if: ${{ inputs.failfirst }}`).
-So the Windows claim is re-proven at each release tag, not on each PR.
-
-The earlier staged copy under `ci/staged-workflows/windows-ci-leg.yml` was not removed at
-promotion and still exists — but it is **not** a stale duplicate to clean up here: diffed against
-the live file, it carries additional not-yet-promoted jobs (a Windows PowerShell 5.1 parse check
-and the `verify-in-container` / `windows-verify-in-container` legs staged for `windows-port/10`).
-Retiring or promoting the rest of that staged content is a separate decision for whichever brief
-owns those jobs, not a side effect of this docs correction.
+What CI still covers runs on Linux. The `windows/amd64` and `windows/arm64` release assets are
+cross-compiled and checksummed in `release.yml`, and their sha256 pins in
+`plugins/assay/paired-versions.yaml` are unchanged. `ci.yml`'s `desk-platform-compile` job vets
+the desk tools and compiles their test binaries for `windows/amd64` without running them.
+`winparity.yml` keeps the Windows build's
+target set equal to the `Makefile`'s, and a build-test guard rejects any `*.ps1` carrying a
+non-ASCII byte without a UTF-8 BOM. The native `windows/arm64` smoke was never run.
 
 ### Known gaps — documented workarounds
 The portability audit (`docs/streams/windows-port/portability-audit.md`) triaged every

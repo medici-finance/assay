@@ -170,41 +170,18 @@ reviewable artifact, not a run.
   script runs the same `tools/winparity` guard as a preflight; this leg is the Linux-CI half, so a
   Makefile-only edit (the change that never runs the Windows script) is still caught. Promote it to
   `.github/workflows/winparity.yml` to activate.
-- `windows-ci-leg.yml` — the Windows CI leg (`windows-port/04`): the first check in this repo
-  to run on a Windows runner. On GitHub-hosted `windows-latest` it installs Go
-  (`actions/setup-go`, which works there — unlike the self-hosted Linux pool), builds
-  `statusgen.exe` from source, asserts `statusgen.exe --root .. --lint` exits 0, and runs an
-  OFFLINE desk-verb smoke (`statusgen.exe --version` — pure introspection, no forge/network, no
-  POSIX shell-out). It runs NO mutating/forge verb. The native windows/arm64 smoke is held
-  BLOCKED (`arm64-native-smoke`, `if: false`) pending a `windows-11-arm` runner and is never
-  inferred from the amd64 result. A `workflow_dispatch` input `failfirst=true` runs the
-  fail-first demonstration (the leg must redden on a bogus verb). The leg also carries a
-  **Windows PowerShell 5.1 parse check** in `windows-smoke` (#1569, now live): under
-  `shell: powershell` it runs `[System.Management.Automation.Language.Parser]::ParseFile` over
-  every tracked `*.ps1` (case-insensitive pathspec) and fails on any parse error, with a
-  `failfirst` twin that plants a BOM-less em dash and a PowerShell 7 `? :` ternary and
-  requires 5.1 to reject each. The PR-time half of the ENCODING class needs
-  no promotion: `TestPS1EncodingIs51Safe` in `tools/desk/internal/deskkit`
-  (run by `ci.yml`'s build-test job) fails any `*.ps1` carrying a byte above 0x7F without a
-  UTF-8 BOM. It is a byte scan, not a parser: any other 5.1-only parse error (a PowerShell 7
-  operator such as the `? :` ternary, for example) is caught only by this step, which runs on
-  the leg's version-tag and on-demand triggers, not at PR time.
-
-  **Already live, like `evidence-automerge.yml` above** — this copy is kept as the reviewable
-  edit surface for `.github/workflows/windows-ci-leg.yml`, no App may push a workflow-file
-  change. The `windows-bootstrap-smoke` job resolves the pinned `windows-amd64` tag **and** its
-  sha256 from `plugins/assay/paired-versions.yaml` and hands both to
-  `scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), exercising the sha256
-  hash-verify at Windows runtime. **This staged copy is byte-identical to the live file**
-  (declared `identical` in `declared-changes.json`, enforced by the drift guard below), so it
-  carries no pending change and cannot silently revert a later live fix (the #1187-class drift
-  the caveat below warns about). A later change lands here first; a maintainer then re-promotes
-  it by copying this file over the live one:
-  ```
-  cp ci/staged-workflows/windows-ci-leg.yml .github/workflows/windows-ci-leg.yml
-  git commit -m "ci: promote windows-ci-leg.yml"
-  git push
-  ```
+- `windows-ci-leg.yml` — **retired** (#4106), with the live `.github/workflows/windows-ci-leg.yml`,
+  `celllaunch-windows.yml`, `git-maintenance-windows.yml` and
+  `scripts/windows-bootstrap-hashcheck-smoke.ps1`. Every CI job that needed a native Windows runner
+  is gone, and so are the other jobs that lived in that file. Nothing in CI now executes on native
+  Windows: not the desk suite, the `statusgen --lint`/`--version` smoke, the Windows PowerShell 5.1
+  parse check, or the bootstrap's runtime sha256 refusal of a tampered download. What remains
+  runs on Linux: the Windows release assets are still cross-compiled and checksummed in
+  `release.yml`, `ci.yml`'s `desk-platform-compile` job vets the desk tools and compiles their
+  test binaries for `windows/amd64` without running them, `winparity.yml` (above) still guards the Windows build's target set, and
+  `TestPS1EncodingIs51Safe` in `tools/desk/internal/deskkit` (run by `ci.yml`'s build-test job)
+  still fails any `*.ps1` carrying a byte above 0x7F without a UTF-8 BOM. That byte scan is not a
+  parser: any other 5.1-only parse error is no longer caught by CI.
 
 - `release-on-merge.yml` — the "release by merge" merge-detector (iso-9001/07). **New,
   pending promotion.** On `push: branches: [main]` it detects that the pushed commit is the
@@ -278,59 +255,6 @@ reviewable artifact, not a run.
   those steps against a stub forge. The manifest declares it `pending` until a
   maintainer promotes it.
 
-### `windows-ci-leg.yml` status
-
-Already activated (`windows-port/04`) — see "Already live" above for how a later change to
-this file is promoted now that it exists at `.github/workflows/windows-ci-leg.yml`.
-
-**`windows-port/10` added two jobs to this file**, since promoted (both are present in the live
-file, re-promoted by a maintainer copy exactly as `windows-port/06` was):
-- `verify-in-container` — the execution-witness runner leg. On `ubuntu-latest` it builds
-  `statusgen`, asserts the wrapper REFUSES an un-digest-pinned harness image (the fail-closed pin
-  control, green on promotion), and — once a maintainer harvests and pins the harness image's real
-  registry digest — runs a fixture Verify table THROUGH the pinned container and asserts the
-  witness lands in Evidence, host-owned. It runs on `ubuntu-latest` because the harness image is a
-  Linux image whichever host launches it; the Windows value is that Windows adopters USE the
-  container because a native pipefail `bash` is unreliable there (#1418).
-- `windows-verify-in-container` — the native-Windows-host proof, HELD BLOCKED (`if: false`):
-  `windows-latest` has no Linux-container Docker backend to run the Linux harness image, so this
-  awaits a Windows runner configured with one. Never inferred from the ubuntu result — the same
-  "blocked is a state" contract `arm64-native-smoke` uses.
-
-**Landing-mechanism caveat — read before promoting a later change.** Any later change to this
-leg rides the same staged-copy → maintainer-hand-copy pattern `windows-port/04`/`/06`/`/10`
-used. That pattern is the subject of an OPEN, unratified decision record (`docs/streams/decisions/DR-workflow-app-landing.md`)
-and an in-flight retirement brief (`docs/streams/desk-supervision/brief-12-...`), which cite real
-drift (a staged copy authored against one base silently reverts intervening fixes when the live
-file moves — #1187) and indefinite stalls (a hand-copy step sitting `BLOCKED-ON-HUMAN` 9+ days —
-#1175/#1185). Whoever promotes such a change should check `desk-supervision/12`'s current state
-first: if the workflow-App PR path has landed, the change should travel through THAT path (a
-single workflow-only PR the workflow App authors) rather than a verbatim hand-copy — and this
-staged copy may itself be reduced to a pointer by that brief.
-
-The leg runs only on version tags (`push` with `tags: ['v*']`, #1215) plus on-demand
-`workflow_dispatch`; a green `windows-smoke` job is the
-authoritative evidence for the brief's rows 2-3 (record its run URL, the `--lint` exit, and the
-`--version` smoke result on the brief). The `failfirst` fail-first demo is run on demand via
-`workflow_dispatch`. The `arm64-native-smoke` row stays held until a `windows-11-arm` runner is
-available; flip it to that runner then — do not derive it from the amd64 leg. The offline
-constraint is a design invariant: the smoke uses only `--lint`/`--version`, and any change that
-adds a live-forge or mutating verb to the `windows-smoke` job breaks the offline envelope the
-brief's row 4 asserts.
-
-The file also carries a SECOND `windows-latest` job, `windows-bootstrap-smoke` — the sanctioned
-ONLINE exception (windows-port/03, decision #508). It exercises `scripts/bootstrap-windows.ps1`'s
-sha256 hash-verify at Windows runtime via `scripts/windows-bootstrap-hashcheck-smoke.ps1`: a
-tampered checksum must REFUSE (nothing installed), the pinned checksum installs, and a
-check-removed copy installs the tampered asset (so the refusal is non-vacuous). The bootstrap
-downloads a release asset (`Invoke-WebRequest` to the GitHub release CDN), so this job is
-deliberately kept SEPARATE from `windows-smoke` — the download is decision #508's sanctioned
-live-forge exception and does not weaken the offline invariant of the `windows-smoke` job. It is
-live with the rest of this file; a green `windows-bootstrap-smoke` run is the evidence for
-the brief's row 8 (record its run URL). The job hands the pinned tag **and** sha256 to
-`scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), so the untampered path
-downloads the real published asset while a tampered checksum still REFUSES.
-
 ## Declared changes and drift guard
 
 `declared-changes.json` inventories every staged YAML file. `identical` means no
@@ -340,8 +264,6 @@ separate review of the full `diff -u` against live. Pending proposals are exclud
 from the parity check, rather than certified as drift-free or activated here.
 The manifest records the sibling scope decisions, without pinning unrelated bases.
 
-The Windows leg currently has no pending difference: its staged copy includes
-`desk-windows-tests` and the bootstrap pull-request guard already present live.
 `go test ./internal/deskkit -run '^TestStagedDrift'` from `tools/desk` checks every
 staged YAML has a classification and every identical twin equals live. New staged
 files require explicit classification: either a manifest entry or a nonempty
