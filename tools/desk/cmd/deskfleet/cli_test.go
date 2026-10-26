@@ -473,10 +473,10 @@ func TestCLILegacyForms(t *testing.T) {
 			check func(r *fleetRecorder) bool
 		}{
 			// docs/adopting-assay*.md and the install skill.
-			{[]string{"provision", "--group", "mygroup", "--prefix", "myorg", "--project", "mygroup/myproject", "--owner-token-file", `C:\Users\op\.config\assay\gitlab-owner.token`},
+			{[]string{"provision", "--group", "mygroup", "--prefix", "myorg", "--project", "mygroup/myproject", "--owner-token-file", `owner\gitlab-owner.token`},
 				func(r *fleetRecorder) bool {
 					return r.p.group == "mygroup" && r.p.prefix == "myorg" && r.p.project == "mygroup/myproject" &&
-						r.p.ownerTokenFile == `C:\Users\op\.config\assay\gitlab-owner.token` && !r.p.dryRun && r.p.patExpiryDays == 7
+						r.p.ownerTokenFile == `owner\gitlab-owner.token` && !r.p.dryRun && r.p.patExpiryDays == 7
 				}},
 			{[]string{"labels", "--forge", "github", "--repo", "o/r", "--token-file", "t.token"},
 				func(r *fleetRecorder) bool {
