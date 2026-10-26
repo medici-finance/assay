@@ -802,8 +802,11 @@ passing run — which is why they are lint rules and not review vigilance.
       Under `--acceptance-record` the protected run set is witnessed by ONE
       run that covers it whole (no `--rows`, or one naming every protected
       row): its `Verification-Table:` descriptor must appear exactly once in
-      the run closure reads, so split `--rows` runs under one transition
-      fail closed and never close.
+      the run closure reads, so split `--rows` runs under one protected
+      record or transition fail closed and never close. A protected record
+      (the `Verification-Table:` line alone) needs no `--acceptance-forge`;
+      it refuses an original row whose delivered definition differs from
+      its original one, and witnesses supplemental rows `author-added`.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).

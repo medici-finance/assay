@@ -373,3 +373,108 @@ func evidenceSectionTouchedByOtherIdentity(root, relPath, authoringID string) (t
 	}
 	return false, true
 }
+
+// evidenceSectionText returns the "## Evidence" section of a brief's content —
+// the heading's body up to the next "## " heading, or EOF — with line endings
+// normalized, so two versions of one brief can be compared by WHAT their
+// Evidence says. ok is false when the content carries no "## Evidence" heading.
+func evidenceSectionText(content []byte) (section string, ok bool) {
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	start, end, found := evidenceSectionSpan(lines)
+	if !found {
+		return "", false
+	}
+	return strings.TrimRight(strings.Join(lines[start:end], "\n"), "\n"), true
+}
+
+// evidenceSectionAtCommit returns relPath's Evidence section as committed in sha
+// (evidenceSectionText over `git show <sha>:<path>`). ok is false when that
+// version is unreadable or has no Evidence heading — callers treat it as
+// could-not-check, never as a match.
+func evidenceSectionAtCommit(root, sha, relPath string) (section string, ok bool) {
+	content, err := gitShowObject(root, sha, filepath.ToSlash(relPath))
+	if err != nil {
+		return "", false
+	}
+	return evidenceSectionText(content)
+}
+
+// frontmatterKeyLineProvenance finds the single line `<key>: <value>` in the
+// YAML frontmatter of relPath as COMMITTED at HEAD and returns that line's value
+// (quotes stripped) together with the commit that last wrote the line, that
+// commit's author identity and its committer date (YYYY-MM-DD, in the committer's
+// own timezone).
+//
+// git blame is consulted for the commit sha ONLY. The identity is read from that
+// commit object itself with `%ae` and mailmap use explicitly off: blame's own
+// author-mail applies the repository's .mailmap, while every other identity in the
+// committer-identity cross-check (buildPathAuthorIndex, gitPathLastAuthorIdentity,
+// evidenceSectionTouchedByOtherIdentity) is the commit object's unmapped `%ae`. Both
+// sides of the not-self-serve comparison are therefore the same identity key —
+// email, lowercased — and a committed .mailmap cannot fold one into the other.
+//
+// Both git reads go through historyGit, like every other provenance read: blame
+// gets --no-ignore-revs-file, so a configured blame.ignoreRevsFile cannot hand the
+// line to an earlier commit, and replace refs, grafts and repository-locating
+// environment variables are ignored. The recorder is then the same on every runner.
+// TestHistoryGitIsolated pins this.
+//
+// ok is false when HEAD has no such frontmatter line (the key is absent or
+// uncommitted) or git cannot attribute it; callers MUST treat !ok as "provenance
+// unknown", never as a pass.
+func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identity, day string, ok bool) {
+	slashPath := filepath.ToSlash(relPath)
+	content, err := gitShowObject(root, "HEAD", slashPath)
+	if err != nil {
+		return "", "", "", "", false
+	}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
+		return "", "", "", "", false
+	}
+	lineNo := 0
+	for i := 1; i < len(lines); i++ {
+		ln := strings.TrimRight(lines[i], "\r")
+		if ln == "---" {
+			break
+		}
+		if rest, found := strings.CutPrefix(ln, key+":"); found {
+			lineNo = i + 1
+			value = strings.TrimSpace(rest)
+			if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+				value = value[1 : len(value)-1]
+			}
+			break
+		}
+	}
+	if lineNo == 0 {
+		return "", "", "", "", false
+	}
+	out, err := historyGit(root, "blame", "--porcelain",
+		"-L", fmt.Sprintf("%d,%d", lineNo, lineNo), "HEAD", "--", slashPath).Output()
+	if err != nil {
+		return "", "", "", "", false
+	}
+	// The porcelain header's first field is the blamed commit's sha; nothing else
+	// in blame's output is read (its author-mail is mailmap-applied).
+	if first, _, _ := strings.Cut(string(out), "\n"); first != "" {
+		if f := strings.Fields(first); len(f) > 0 {
+			sha = f[0]
+		}
+	}
+	if sha == "" {
+		return "", "", "", "", false
+	}
+	meta, err := historyGit(root, "log", "-1", "--no-use-mailmap",
+		"--format=%ae%x00%cs", sha, "--").Output()
+	if err != nil {
+		return "", "", "", "", false
+	}
+	mail, date, _ := strings.Cut(strings.TrimSpace(string(meta)), "\x00")
+	identity = strings.ToLower(strings.TrimSpace(mail))
+	day = strings.TrimSpace(date)
+	if identity == "" || day == "" {
+		return "", "", "", "", false
+	}
+	return value, sha, identity, day, true
+}

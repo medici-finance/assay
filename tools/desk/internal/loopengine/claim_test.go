@@ -145,6 +145,25 @@ func TestCheckAuthorRunner_AllowsDifferentAndEmpty(t *testing.T) {
 	}
 }
 
+// TestCheckAuthorRunner_RefusesAnnotatedSelf pins that an implementer value
+// carrying an inline comment still names its author: the guard refuses when
+// either the value as read or the value with the comment cut is the runner.
+func TestCheckAuthorRunner_RefusesAnnotatedSelf(t *testing.T) {
+	for _, impl := range []string{
+		"runner-a # note", "runner-a\t# note", "runner-a  #note",
+		"runner-a\" # note", "runner-a' # note", "runner-a\"  #", "runner-a\"  #note", "runner-a\" # x # y",
+	} {
+		if err := CheckAuthorRunner(Item{ID: "a", Implementer: impl}, "runner-a"); err == nil {
+			t.Errorf("implementer %q not refused for runner-a", impl)
+		}
+	}
+	for _, impl := range []string{"runner-b # runner-a", "runner-b\" # 'runner-a'", "runner-ab\" # x"} {
+		if err := CheckAuthorRunner(Item{ID: "a", Implementer: impl}, "runner-a"); err != nil {
+			t.Errorf("implementer %q naming another author was refused: %v", impl, err)
+		}
+	}
+}
+
 func TestExitCodeOf_DelegatesToDeskkit(t *testing.T) {
 	if ExitCodeOf(nil) != deskkit.ExitOK {
 		t.Fatal("nil should map to ExitOK")

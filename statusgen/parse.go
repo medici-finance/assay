@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -43,19 +45,7 @@ type frontmatter struct {
 // LF file instead of silently missing the "---\n" byte-prefix and having its
 // entire content — fence lines included — swallowed as "frontmatter" with an
 // empty body (the exact register-entry data-loss bug).
-func splitFrontmatter(content string) (string, string, error) {
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return "", "", fmt.Errorf("no frontmatter: first line must be ---")
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return strings.Join(lines[1:i], "\n"), strings.Join(lines[i+1:], "\n"), nil
-		}
-	}
-	return "", "", fmt.Errorf("unterminated frontmatter")
-}
+func splitFrontmatter(content string) (string, string, error) { return briefdoc.Split(content) }
 
 var linkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 

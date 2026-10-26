@@ -154,6 +154,8 @@ package main
 // TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -162,7 +164,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -489,7 +490,6 @@ func bulkMigrationReason(shape prShape) string {
 // briefLikeTrailerRe matches a `Brief:` or `Authors:` trailer line (deskkit's
 // trailer grammar: the key, a colon, then non-empty content on the same line).
 // The first group is the key, the second the trimmed value.
-var briefLikeTrailerRe = regexp.MustCompile(`^[ \t]*(Brief|Authors):[ \t]*(\S.*?)[ \t]*$`)
 
 // parseBriefLikeTrailers reads the Brief:/Authors: trailer lines in a PR body,
 // skipping fenced code blocks — the same fence-aware grammar as prlink.go's
@@ -498,22 +498,13 @@ var briefLikeTrailerRe = regexp.MustCompile(`^[ \t]*(Brief|Authors):[ \t]*(\S.*?
 // (the bulk-shape signal) and the canonical key of each `Brief:` value (the
 // attribution signal).
 func parseBriefLikeTrailers(body string) (count int, briefs []string) {
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		m := briefLikeTrailerRe.FindStringSubmatch(strings.TrimRight(raw, "\r"))
-		if m == nil {
+	for _, t := range trailers.Scan([]byte(body)) {
+		if t.Kind != trailers.TrailerBrief && t.Kind != trailers.TrailerAuthors {
 			continue
 		}
 		count++
-		if m[1] == "Brief" {
-			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(m[2], ".,;:")))
+		if t.Kind == trailers.TrailerBrief {
+			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(t.Value, ".,;:")))
 		}
 	}
 	return count, briefs

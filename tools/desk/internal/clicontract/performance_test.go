@@ -118,6 +118,7 @@ var parserArgs = map[string][]string{
 	"deskgitlab":    {"create"},
 	"deskread":      {"issues", "--repo", "example/project"},
 	"desktoken":     {"coverage", "invalid-role"},
+	"deskwt":        nil,
 }
 
 // recorderBinaries derives the binaries whose parsed context reaches the

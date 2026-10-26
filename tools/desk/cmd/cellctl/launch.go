@@ -132,6 +132,10 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if harness != "codex" {
 		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
 	}
+	// The pinned desk-tools directory the shims above were generated against (genShims reads
+	// the same deskToolsBin), so deskboot's binary-pin step classifies them against the SAME
+	// directory, including one set only in defaults.env or cell.env.
+	env = envSet(env, deskkit.DeskToolsBinEnv, deskToolsBin(c.Env))
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
 	env = envSet(env, "ASSAY_SOURCE_REVISION", sha)

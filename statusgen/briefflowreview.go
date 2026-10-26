@@ -37,6 +37,8 @@ package main
 // is could-not-check, never a fabricated pass rate.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -125,15 +127,8 @@ var bfBriefTrailerRe = regexp.MustCompile(`(?m)^[ \t]*Brief:[ \t]*(\S+)[ \t]*$`)
 // code block — prlink.go's rePRLinkFence reused verbatim so a trailer shown as
 // a documentation example is not read as a real link.
 func extractBriefTrailer(body string) (string, bool) {
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
+	for _, source := range trailers.OutsideFences(body) {
+		raw := source.Text
 		if m := bfBriefTrailerRe.FindStringSubmatch(raw); m != nil {
 			return strings.TrimRight(m[1], ".,;:"), true
 		}

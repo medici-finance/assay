@@ -746,7 +746,7 @@ Rows 2, 5, 6, 8 and 10 ran on the host with the installed statusgen verifyrun --
 | 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:57f9f3c09f54 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) | base=060980aa0f1a red rc=1 · head=4aeecf71626f |
 Verification-Attestation: medici-finance/assay#4432 run=30bc0a6848988039eb299f544a658106e986cc5d81c2dd82a5ad1b5234bdccd6 source=4aeecf71626f485c4938dec3165e887a2f74e20d brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
 
-Fail-first, row 10: base=060980aa0f1a red rc=1, head=4aeecf71626f pass. Diagnostic, no separate credit: on a detached checkout of the base, the row's statusgen --consumers call prints "COULD-NOT-CHECK: delivery must be an ancestor of the checkout's HEAD" and exits 2, so the row's own exit-status guard exits 1. The red therefore shows that the row cannot pass on a tree that lacks the delivering commit; it does not show a claim disproved at base. That is the discrimination this row's delivery-check form provides, recorded here as observed.
+Fail-first, row 10: base=060980aa0f1a red rc=1, head=4aeecf71626f pass. Diagnostic, no separate credit: on a detached checkout of the base, the row's statusgen --consumers call prints "`COULD-NOT-CHECK: delivery must be an ancestor of the checkout's HEAD`" and exits 2, so the row's own exit-status guard exits 1. The red therefore shows that the row cannot pass on a tree that lacks the delivering commit; it does not show a claim disproved at base. That is the discrimination this row's delivery-check form provides, recorded here as observed.
 
 Rows 2 and 8 end in echo rc=$?, so the witness checks exit status only; the lines they print were read directly at this commit, as diagnostics with no separate credit. Row 2 printed "patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned)" then rc=0. Row 8 printed LINT: PASS then rc=0, with NOTICE lines only and no PROBLEM line. Row 10 at head corroborated spec/README.md, statusgen/main.go and docs/lifecycle.md §Review gates against the immutable delivered snapshot 5b384e52c, diffed from the base above, left the desk-skill entry UNCHECKED (out-of-scope, the reviewer's call), and printed the exact "summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing" with s=0. Row 6's grep printed 1.
 
@@ -783,3 +783,12 @@ Gate: model (from frontmatter). Reviewer records verdict + date in the stream RE
 Reviewer questions: (1) can any node in either shipped pattern act with an authority the
 role it names does not hold today? (2) is every node at a durable boundary, or has a shell
 step been promoted to a node?
+
+Hold, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/1933#issuecomment-6419943765
+This brief's `done` flip is held until graph-execution/33 reaches `verified` (its implementation
+merged and its Verify rows evidenced by a non-implementer). /33 reshapes this brief's `merge` node
+into a `human` decision and re-pins the pattern; the hold releases on that status alone.
+This note is not machine-read: `statusgen --auto-flip-model` decides a `gate: model` flip from
+Evidence and does not read `## Review`. The desk watching the board holds the flip by hand until
+/33 is `verified`; a machine-read form of the hold is a follow-up.

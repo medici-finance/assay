@@ -245,7 +245,7 @@ func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
 // and reported, once; so are branches whose window was full.
 //
 // A package-level var so tests substitute a fake lister without a network call,
-// exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
+// exactly as listRemoteBranches / defaultIssueMetricLister are stubbed.
 var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 	out, err := ghBranchPRJSON(root)
 	if err != nil {

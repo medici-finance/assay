@@ -628,10 +628,9 @@
       "path": "tools/desk/cmd/deskwt",
       "module": "tools/desk",
       "parser_owner": "desktools-v2/22",
-      "parser_state": "pending",
-      "context": "current-parser-gap",
-      "owner": "desktools-v2/22",
-      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
     },
     {
       "executable": "fanoutloop",

@@ -63,7 +63,7 @@ image.
 
 ## How it's built and published
 
-- `Dockerfile` (repo root) is a multi-stage build: a `golang:1.27.2-alpine`
+- `Dockerfile` (repo root) is a multi-stage build: a `golang:1.27.3-alpine`
   builder compiles every binary `CGO_ENABLED=0` (static) with the same version
   stamps the release workflows use, and a small `alpine` final stage carries
   the binaries plus `git`, `gh`, and `ca-certificates` under a non-root user.
