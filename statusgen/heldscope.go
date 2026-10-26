@@ -86,7 +86,10 @@ import (
 //     since a cell renders one live) or, other than a keyed results row or
 //     its header, an unescaped "|" outside inline code — a table
 //     of another shape, with no separator row, with no leading pipe, inside
-//     a blockquote, or in HTML — or a non-blank line right after a results
+//     a blockquote, or in HTML; a one-line paragraph that GFM can never read
+//     as a table row (heldOneLineProse: column 0, no container marker, not
+//     led by "|", blank lines on both sides) is prose, not such a line
+//     (#4294) — or a non-blank line right after a results
 //     table, which GFM may read as one more row of it. One earlier key the
 //     last entry did not cover, one earlier row that cannot be aligned or
 //     keyed, one such table line, or earlier entries with no keyed row at all
@@ -634,6 +637,25 @@ func heldPipeOutsideCode(line string) bool {
 		}
 	}
 	return false
+}
+
+// heldOneLineProse reports whether line i is a paragraph of one line that GFM
+// can never read as part of a table (#4294): outside fenced code, at column 0
+// with no container marker (heldContainerStrip leaves it whole), not led by
+// "|", holding no carriage return, and with a line holding only spaces or
+// tabs straight before and after it. A GFM table needs a header row and a
+// delimiter row on adjacent lines and ends at a blank line, so such a line is
+// neither a header nor a delimiter nor a body row; its "|" is prose. A line
+// with no line before or after it in the Evidence is not exempt.
+func heldOneLineProse(lines []string, inFence []bool, i int) bool {
+	if i == 0 || i+1 >= len(lines) || inFence[i] {
+		return false
+	}
+	l := lines[i]
+	if l == "" || strings.ContainsRune(l, '\r') || l[0] == '|' || heldContainerStrip(l) != l {
+		return false
+	}
+	return strings.Trim(lines[i-1], " \t") == "" && strings.Trim(lines[i+1], " \t") == ""
 }
 
 // heldCloseRun returns where a backtick run of exactly n starts in line at or
@@ -1210,7 +1232,7 @@ func heldScanScope(evidence string) heldScope {
 			// An HTML table renders live in any cell, header and keyed rows
 			// included; only a results table's own pipes are exempt.
 			tableish := heldHTMLTableRe.MatchString(lines[i])
-			if !out[i].skip && out[i].key == "" {
+			if !out[i].skip && out[i].key == "" && !heldOneLineProse(lines, inFence, i) {
 				tableish = tableish || heldPipeOutsideCode(lines[i])
 			}
 			if !inFence[i] && tableish {

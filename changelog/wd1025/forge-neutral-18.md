@@ -1,0 +1,2 @@
+### Changed
+- `statusgen --decision-latency`, `--assayscore` (its Value dimension), `--issues` and `--self-improvement` now read issue lists through the desk-tools `deskread issue-list` verb instead of shelling out to `gh issue list`. A list the verb cannot serve in full (unreadable, or stopped at its page bound) now reports could-not-check; the old `gh --limit 1000` read cut off larger lists without saying so.

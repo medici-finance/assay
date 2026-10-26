@@ -68,7 +68,7 @@ var (
 
 // bracketReceipt is the open step's receipt file. Runner, RunnerSource,
 // RunnerTree and OnBehalfOf are every part of a witness Runner cell, as the
-// HOST derived them at the open step (executingRunner, treeSHA and
+// HOST derived them at the open step (executingRunner, briefTreeSHA and
 // onBehalfOfSuffix on the home), never values the container derives or a
 // caller types (#4208): a home cut as a linked worktree keeps its git
 // directory outside the mounted tree, and the container's own roster and git
@@ -123,7 +123,7 @@ func receiptRunnerProblem(r bracketReceipt) error {
 }
 
 // hostRunnerCell derives, on the host, every part of the Runner cell a witness
-// row taken on home for brief carries: the same executingRunner, treeSHA and
+// row taken on home for brief carries: the same executingRunner, briefTreeSHA and
 // onBehalfOfSuffix (for the repo the row is written into) a host-lane row uses.
 // ok is false when no executing identity is available.
 func hostRunnerCell(home, brief string) (r bracketReceipt, ok bool) {
@@ -131,7 +131,7 @@ func hostRunnerCell(home, brief string) (r bracketReceipt, ok bool) {
 	if !ok {
 		return bracketReceipt{}, false
 	}
-	r.RunnerTree = treeSHA(home)
+	r.RunnerTree = briefTreeSHA(home, brief)
 	r.OnBehalfOf = onBehalfOfSuffix(r.Runner, witnessAnnotationRepo(witnessTargetRepo(brief), witnessOriginRepo(home)))
 	return r, true
 }

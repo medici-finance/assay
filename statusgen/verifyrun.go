@@ -1248,6 +1248,100 @@ func treeSHA(root string) string {
 	return sha
 }
 
+// briefTreeSHA is treeSHA for a run of brief (#4299). The one change it does
+// not count as dirty is an edit confined to brief's own `## Evidence` section:
+// a witness or verdict the verifier recorded there is not source the commands
+// ran against, and admission already reads such an edit as clean. Any other
+// change, including an untracked file, a second changed path, an edit outside
+// that section, a new section heading or a carriage return, keeps `+dirty`.
+func briefTreeSHA(root, brief string) string {
+	tree := treeSHA(root)
+	if strings.HasSuffix(tree, "+dirty") && evidenceOnlyChange(root, brief) {
+		return strings.TrimSuffix(tree, "+dirty")
+	}
+	return tree
+}
+
+// evidenceOnlyChange reports whether the working tree's ONLY change against
+// HEAD is to brief, and brief differs from its HEAD blob only inside the
+// `## Evidence` section the brief parser bounds (evidenceSectionSpan).
+func evidenceOnlyChange(root, brief string) bool {
+	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return false
+	}
+	dir, err := filepath.EvalSymlinks(strings.TrimSpace(string(top)))
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(brief)
+	if err == nil {
+		abs, err = filepath.EvalSymlinks(abs)
+	}
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(dir, abs)
+	if err != nil || !filepath.IsLocal(rel) {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain=v1", "-z", "--untracked-files=all").Output()
+	if err != nil {
+		return false
+	}
+	entries := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(entries) != 1 || len(entries[0]) < 4 || entries[0][3:] != rel {
+		return false
+	}
+	switch entries[0][:2] {
+	case " M", "M ", "MM":
+	default:
+		return false
+	}
+	head, err := exec.Command("git", "-C", dir, "show", "HEAD:"+rel).Output()
+	if err != nil {
+		return false
+	}
+	work, err := os.ReadFile(abs)
+	if err != nil {
+		return false
+	}
+	a, okA := outsideEvidence(string(head))
+	b, okB := outsideEvidence(string(work))
+	return okA && okB && a == b
+}
+
+// outsideEvidence is a brief's text with its `## Evidence` section's lines cut
+// out, bounded exactly as the brief parser bounds them: the frontmatter fence
+// is split off first, then evidenceSectionSpan finds the section in the body.
+// ok is false for text the comparison cannot read the same way on both sides:
+// a carriage return, an unterminated frontmatter, or no Evidence section.
+func outsideEvidence(text string) (string, bool) {
+	if strings.Contains(text, "\r") {
+		return "", false
+	}
+	lines := strings.Split(text, "\n")
+	body := 0
+	if strings.TrimSpace(lines[0]) == "---" {
+		body = -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				body = i + 1
+				break
+			}
+		}
+		if body < 0 {
+			return "", false
+		}
+	}
+	start, end, ok := evidenceSectionSpan(lines[body:])
+	if !ok {
+		return "", false
+	}
+	return strings.Join(lines[:body+start], "\n") + "\x00" + strings.Join(lines[body+end:], "\n"), true
+}
+
 // ---------------------------------------------------------------------------
 // The run
 // ---------------------------------------------------------------------------
@@ -2468,13 +2562,17 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 	}
-	executionTree := treeSHA(root)
+	executionTree := briefTreeSHA(root, path)
 	if netnsContainer {
 		executionTree = container.cell.RunnerTree
 	}
 	if transitionDescriptor != "" {
+		// A transition run binds the full HEAD as its immutable source, so it
+		// keeps the strict check: even an Evidence-only edit (an earlier run's
+		// uncommitted witnesses) refuses it, and a transition run records its
+		// rows on a committed tree before any container bracket is opened.
 		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
-		if err != nil || strings.Contains(executionTree, "+") {
+		if err != nil || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
 			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
 			return verifyrunExitCouldNot
 		}
