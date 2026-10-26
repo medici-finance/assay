@@ -450,7 +450,7 @@ fallback must raise row 3's count from `2` to `4`.
 
 **The GraphQL blocks of the moved reads go with them (amended 2026-10-25).** Three non-test
 statusgen lines build a `pullRequest(` GraphQL block for a read this brief moves:
-`autonomy.go:548` and `:557` (the check-rollup reads behind the `autonomy.go:539` launch) and
+`autonomy.go:548` and `:557` (the check-rollup reads behind the `exec.CommandContext` launch in `autonomyGates`'s `run` helper) and
 `autoflip.go:1470` (the `lastEditedAt` read, `PRTrustEvents.BodyEdited` in the table below).
 They are `forge-ban.sh` class c sites, and nothing else owns them: the typed reads build their
 queries inside the backend, so each block is deleted with its launch, never kept beside the

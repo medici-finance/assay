@@ -177,7 +177,8 @@ supersedes the 2026-10-08 amendment above (kept as history):
   counter's class a) at zero. statusgen's other counted forge facts are not /08's: the GraphQL
   blocks (class c) retire with forge-neutral/18's reads, and the `origin`-based forge
   classification (class b) and API host literals (class d) with /77, whose row 9 asserts the
-  whole `statusgen sites:` total at `0`.
+  whole `statusgen sites:` total at `0`. Its Task 7 then widens /08's class a gate to that whole
+  total, so a site re-added later fails CI (row 11).
 
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 

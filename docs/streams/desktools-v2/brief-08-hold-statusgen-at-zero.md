@@ -28,14 +28,14 @@ sources:
   - "tools/desk/scripts/forge-ban.sh (desktools-v2/02) — the counter whose statusgen half this brief flips to failing"
   - "freshness-checked 2026-09-17 @ 57509073 — 26 exec.Command(\"gh\" sites remain in 15 non-test statusgen files, so forge-neutral/18 is NOT yet at zero and this brief is not yet startable; statusgen/go.mod imports nothing from tools/desk"
 consumers:
-  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08 (this brief; the statusgen column of class a, the gh launches, becomes failing — flips to fixed-here when the implementation edits the script). Classes b to d stay advisory here: forge-neutral/18 and desktools-v2/77 take them to 0 and /77 row 9 asserts it"
+  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08 (this brief; the statusgen column of class a, the gh launches, becomes failing — flips to fixed-here when the implementation edits the script). Classes b to d stay advisory here: forge-neutral/18 and desktools-v2/77 take them to 0, /77 row 9 asserts it, and /77 Task 7 widens this gate to the whole statusgen total (its row 11 proves the script exits non-zero)"
   - ".github/workflows/forge-surface-control.yml: follow-up desktools-v2/08 (this brief; the advisory step's statusgen half becomes a gate)"
   - "statusgen/forgeread_nogh_test.go and statusgen/reader_boundary_test.go: follow-up desktools-v2/08 (tests only; read migration stays with forge-neutral)"
   - "forgeread/ scan and path-trigger coverage: out-of-scope (forge-neutral/36 owns it and lands it with the extraction)"
 exec-tier: strong
 exec-tier-why: Cross-module capability checks must tell the permitted offline packages apart from indirect credential or write reach.
 domain: complicated
-version: 6
+version: 7
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -132,7 +132,9 @@ changes here, and what does not:
   forge-neutral/18's, at its row 24. Classes b (`forge.go:113`, the `origin` read behind
   `detectForge`) and d (`claimdecay_github.go:116`, `:140`, `ghfetch.go:42`, `:47`) are
   desktools-v2/77's, Tasks 2 and 6, and /77 row 9 asserts the whole total at `0`. /08 does not
-  make those classes failing.
+  make those classes failing; /77 Task 7 does, widening this brief's class a gate to the whole
+  total once row 9 reads `0`, so the end-state CI gate covers the same classes a to d the
+  counter was always meant to hold.
 - **Row 5 stands.** The library is a separate root module, so statusgen's manifest still names
   nothing under `tools/desk`.
 - **Row 10's allowed set widens by exactly one package, and only when desktools-v2/77 lands**:
@@ -158,7 +160,8 @@ changes here, and what does not:
 2. Make `forge-ban.sh` exit non-zero when the statusgen column of its class a (gh subprocess)
    line is above zero, leaving the desk-tools half and statusgen's classes b to d advisory.
    Make the workflow step a gate for that column. Do not gate on the `statusgen sites:` total:
-   it also sums classes b to d, which reach `0` only under desktools-v2/77 (its row 9).
+   it also sums classes b to d, which reach `0` only under desktools-v2/77 (its row 9). That
+   brief's Task 7 then widens this gate to the whole total.
 3. Add `TestScanNeverEmptyWithoutForgeBinary` in `statusgen/forgeread_nogh_test.go` (planned): with `PATH`
    set to an empty temp directory, (a) a stub `deskread` placed on it that prints a valid
    envelope yields the stub's issues — the scan needs no `gh`; (b) with no `deskread` either,

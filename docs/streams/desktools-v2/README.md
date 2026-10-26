@@ -416,4 +416,5 @@ human-gated briefs carry it; each cites the record with its `design:` key:
 Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 77`; /76 is independent. /08 keeps its
 own sequence; its row 10 already admits the library's caller package. /08 holds statusgen's gh
 column of the counter at zero; the rest of the statusgen total (the `origin` classifier and the
-API host literals) is /77's, and /77 row 9 asserts it at `0`.
+API host literals) is /77's: /77 row 9 asserts it at `0`, and /77 Task 7 widens /08's gate to the
+whole total so it stays there (row 11 proves the script exits non-zero).
