@@ -411,6 +411,90 @@ Superseded results: for rows 1–9 this bracketed witness supersedes the run-1 c
 Accounting: original obligations 9; passed 9 (each with an execution witness inside the closed bracket and its mutation control killed); observed failed obligations 0; could-not-run 0. Supplemental row 10: executed exit 0, 10 corroborated / 0 disproved / 2 unchecked, no acceptance credit; the downstream consumption holds stay with graph-execution/23, /29 and /19.
 
 **VERIFY: PASS** — original rows 1–9 pass with container-netns witnesses in a closed admission bracket, mutation controls killed; supplemental row 10 exit 0, uncredited.
+### Run 4 — independent installed-v1.0.63 verification — 2026-10-26
+
+Source: 8663d6ae05797bb259dd6af3535b15e8111c67b1, fetched merged main. The independently observed host and release-pinned network-off runner both report statusgen v1.0.63. Runner image: ghcr.io/medici-finance/verify-runner@sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8. This run preserves every earlier Evidence block. Original rows 1–9 remain mandatory; supplemental row 10 receives no acceptance credit. The coordinate-only protected-record path is used without an acceptance transition. The prior installed-path qualification used a separate admission (#4532) and dry-run only; it supplies no acceptance credit to this run.
+
+Verification-Table: delivery=3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf base=0580e0a02df8dce18bd2d65359225e49d525bcd6 original=0580e0a02df8dce18bd2d65359225e49d525bcd6
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief graph-execution/28 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | author-added; execution exit=0; no acceptance credit | sha256:dc7c78017bbe | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4533 run=a4b43053394e5a840170b3dad515dfa7ee4262fd2dffa77a046531748d3055b7 source=8663d6ae05797bb259dd6af3535b15e8111c67b1 brief=docs/streams/graph-execution/brief-28-verifier-domain-contracts.md model=gpt-6.1-sol tier=strong
+
+
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainPathIsNotIdentity$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainPathIsNotIdentity " "$out")` | pass exit=0 sandbox=container-netns | sha256:30640e44a49b | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainMissingFactHolds$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainMissingFactHolds " "$out")` | pass exit=0 sandbox=container-netns | sha256:9ea43021c397 | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainAcceptanceBindsCandidate$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainAcceptanceBindsCandidate " "$out")` | pass exit=0 sandbox=container-netns | sha256:762acb9363ef | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainExecutionIsNotAcceptance$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainExecutionIsNotAcceptance " "$out")` | pass exit=0 sandbox=container-netns | sha256:95d989fc9be8 | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainReevaluationGeneration$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainReevaluationGeneration " "$out")` | pass exit=0 sandbox=container-netns | sha256:17238e0eb24d | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainEvaluationSeam$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainEvaluationSeam " "$out")` | pass exit=0 sandbox=container-netns | sha256:2ba2a5fd8c3e | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./domain/) && test "$name" = domain && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./domain/) && test -z "$bad")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainSchemaFixtures$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainSchemaFixtures " "$out")` | pass exit=0 sandbox=container-netns | sha256:e1ecf4456a55 | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainStageSeparation$" ./domain/ > "$out" && grep -Fq -- "--- PASS: TestDomainStageSeparation " "$out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ 8663d6ae0579 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a5142d6f9fbf011bca58ebacf26a193eafe13b971683acd0975acf7696debbad
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4533 run=a4b43053394e5a840170b3dad515dfa7ee4262fd2dffa77a046531748d3055b7 source=8663d6ae05797bb259dd6af3535b15e8111c67b1 brief=docs/streams/graph-execution/brief-28-verifier-domain-contracts.md model=gpt-6.1-sol tier=strong
+Admission-Bracket: run=a4b43053394e5a840170b3dad515dfa7ee4262fd2dffa77a046531748d3055b7 source=8663d6ae05797bb259dd6af3535b15e8111c67b1 tree=sha256:a5142d6f9fbf011bca58ebacf26a193eafe13b971683acd0975acf7696debbad witness=sha256:fafac26910a45343a27cddcbe34e58d6aab45f3dd284063f576091df3e227dce opened=2026-10-26T19:03:52Z closed=2026-10-26T19:04:47Z before=receipt after=check-verifier
+
+
+Run accounting: 9 original obligations, 9 pass, 0 fail, 0 could-not-run. Supplemental row 10 executed on the host with exit 0 and the exact primary-output digest sha256:dc7c78017bbee5e9d684c4e1c67e2827a686c05ca7b3d7f279c6a636dc62314f. Its output is 10 corroborated, 0 disproved, 2 unchecked, 0 briefs claiming nothing; the two unchecked exclusions are reviewer judgments, not passing consumers. The candidate-workspace, regression-adapter and durable-store actual-use obligations remain deferred to graph-execution/23, graph-execution/29 and graph-execution/19, respectively. No downstream acceptance, deployment or runtime activation is claimed.
+
+Independent failure controls: in the same release-pinned image, with network none, GOPROXY=off and GOTOOLCHAIN=local, python3 statusgen/domain/mutate.py exited 0: PASS unmutated snapshot; 11 of 11 mutations produced their named behavioral failure, with no build/setup failure accepted as a kill. The killed cases were path-identity, unknown-fact, candidate-binding, success-acceptance, generation, commit-for-tree, stage-conflation, effect-import, schema-open, schema-drift and canonical-order. These are the production test paths; no mutation touched the admitted home. The row-3 mutation changes the candidate comparison to repository-only, because the candidate record has no branch field; the wrong-subject assertion fails. No branch-only mutation is claimed.
+
+Post-delivery input accounting (A4): compare immutable delivery 3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf with this run's observed source, across every Context file/directory and the transitive contexthandoff, evaluation, workref, instance-schema and module inputs. Changed paths are:
+
+- changelog/k8s-verifier-domain-contracts.md
+- docs/contracts.md
+- docs/streams/desktools-v2/cli-migration.json
+- statusgen/contexthandoff/check.go
+- statusgen/contexthandoff/decode.go
+- statusgen/contexthandoff/discover.go
+- statusgen/contexthandoff/doc.go
+- statusgen/contexthandoff/fixtures_test.go
+- statusgen/contexthandoff/ids.go
+- statusgen/contexthandoff/ids_test.go
+- statusgen/contexthandoff/patch.go
+- statusgen/contexthandoff/plan.go
+- statusgen/contexthandoff/product.go
+- statusgen/contexthandoff/productbinding_test.go
+- statusgen/contexthandoff/recheck.go
+- statusgen/contexthandoff/records.go
+- statusgen/contexthandoff/resolver_test.go
+- statusgen/contexthandoff/rules.go
+- statusgen/contexthandoff/snapshot.go
+- statusgen/contexthandoff/withdrawn_test.go
+- statusgen/domain/mutate.py
+- statusgen/domain/mutate_test.py
+- statusgen/evaluation/selectedclosure.go
+- statusgen/evaluation/selectedclosure_test.go
+- statusgen/go.mod
+- statusgen/go.sum
+- statusgen/workref/README.md
+- statusgen/workref/boundary_test.go
+- statusgen/workref/legacy.go
+- statusgen/workref/trailers/trailers.go
+- statusgen/workref/trailers/trailers_test.go
+- statusgen/workref/workref.go
+- statusgen/workref/workref_test.go
+
+No other path in that declared/transitive comparison changed. In particular, the production domain Go files, domain JSON fixtures, verification-domain spec/schema, schema helper, lifecycle note, named maintenance fixture and changelog fragment are unchanged. The newly observed shared workref resolver, all changed contexthandoff files and evaluation selection code were present for this run; the real evaluator seam, schema and all original behavior rows ran afresh at the observed source. The current mutation runner copied the real shared-identity dependency into its temporary snapshot and passed its baseline before planting any mutation. This is not the earlier incomplete claim that only contexthandoff/ids.go changed.
+
+Risk-value inventory: independently enumerated all 32 files of the actual delivered diff (base 0580e0a02df8dce18bd2d65359225e49d525bcd6 to delivery 3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf), retaining every nonblank added source line as a conservative superset, including fixtures and source-only test constants. This complete line inventory has 3113 entries (including lines without literals); its serialized digest is sha256:4ce1db2e8b48827c594258810a7247622ce8998ffccea1c701b8ccf9a6e70663. The raw delivered diff digest is sha256:1fc489b0ac9ff9d076038d4642cb1374eb5239d84b6d058b35f4ce6f778f3a9a. This enumeration includes schema strings, state vocabularies, refusal labels, regex bounds, fixture identities and numeric/boolean/null literals; naming the top values below is not a claim the other literals were absent. The brief is all-risk-no and irreversible-no; every value is reversible by an edit and redeploy. Highest consequence is wrong subject or incomplete facts supporting acceptance; encoding/capability and state-separation constraints follow; fixture PID 4242, file mode 0600 and source-only mutation timeouts 30s/60s rank last as reversible test knobs.
+
+RISK-VALUE: DERIVED — Present = "present", Missing = "missing", CouldNotCheck = "could-not-check" @ statusgen/domain/records.go:171-173 — Task 1 fixes these three required-fact states. Task 2 permits assessment only with complete supplied facts; assess.go:77 maps every non-Present state to an explicit FactHold before invoking either evaluator. Rows 2 and 6 and their mutations discriminate unknown facts and wrong revision.
+RISK-VALUE: DERIVED — eligibility subject count = 1 and coverage brief count = 1 @ statusgen/domain/assess.go:101,104 — Task 2 binds one assessment to exactly one qualified subject and candidate; zero or multiple subjects cannot establish that claim, so both bounds refuse before evaluation.
+RISK-VALUE: DERIVED — objectRE = ^([0-9a-f]{40}|[0-9a-f]{64})$ @ statusgen/domain/records.go:60 and schemas/verification-domain-v1.json:94 — a full Git SHA-1 object is 20 bytes/40 hex digits; SHA-256 is 32 bytes/64 hex digits. The record requires immutable objects, not abbreviations, symbolic refs or branches, and records.go:122 requires the candidate's four objects to use one format.
+RISK-VALUE: DERIVED — digestRE = ^sha256:[0-9a-f]{64}$ @ statusgen/domain/records.go:61 — Task 1 pins a manifest and acceptance digest, which the contract names as SHA-256. The algorithm label plus 32-byte hex representation makes unsupported forms explicit rather than guessing.
+RISK-VALUE: DERIVED — instanceRE = ^inst-[a-z0-9][a-z0-9-]{2,62}$ @ statusgen/domain/records.go:57 — Task 1 consumes graph-execution/09's existing instance grammar, matching schemas/workflow-instance-v1.json. It is compatibility with the owner, not a newly justified global size limit.
+RISK-VALUE: DERIVED — schema additionalProperties = false @ schemas/verification-domain-v1.json:7 — Task 1 requires normalized supported record shapes; unsupported mandatory content must refuse. JSON-schema shape and domain cross-field validation are both needed, as the schema description explicitly states; row 8 and schema-open/schema-drift controls exercise that boundary.
+
+The new witness supersedes the execution and closure limitations of earlier runs for local /28 acceptance; historical rows and their observations are preserved verbatim. This run supplies no acceptance credit for the supplemental row and closes none of the separately owned consumer obligations.
+
+**VERIFY: PASS** — all 9 original obligations have fresh execution witnesses at 8663d6ae05797bb259dd6af3535b15e8111c67b1 in the pinned v1.0.63 network-off runner, 11/11 mutation controls killed, and supplemental row 10 is machine-recorded author-added with no acceptance credit. The admission bracket is closed with a matching digest. Protected-table closure and landing checks are performed against this exact assembled Evidence.
 
 ## Review
 
