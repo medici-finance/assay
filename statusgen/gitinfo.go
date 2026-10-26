@@ -413,6 +413,12 @@ func evidenceSectionAtCommit(root, sha, relPath string) (section string, ok bool
 // sides of the not-self-serve comparison are therefore the same identity key —
 // email, lowercased — and a committed .mailmap cannot fold one into the other.
 //
+// Both git reads go through historyGit, like every other provenance read: blame
+// gets --no-ignore-revs-file, so a configured blame.ignoreRevsFile cannot hand the
+// line to an earlier commit, and replace refs, grafts and repository-locating
+// environment variables are ignored. The recorder is then the same on every runner.
+// TestHistoryGitIsolated pins this.
+//
 // ok is false when HEAD has no such frontmatter line (the key is absent or
 // uncommitted) or git cannot attribute it; callers MUST treat !ok as "provenance
 // unknown", never as a pass.
@@ -444,7 +450,7 @@ func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identi
 	if lineNo == 0 {
 		return "", "", "", "", false
 	}
-	out, err := exec.Command("git", "-C", root, "blame", "--porcelain",
+	out, err := historyGit(root, "blame", "--porcelain",
 		"-L", fmt.Sprintf("%d,%d", lineNo, lineNo), "HEAD", "--", slashPath).Output()
 	if err != nil {
 		return "", "", "", "", false
@@ -459,7 +465,7 @@ func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identi
 	if sha == "" {
 		return "", "", "", "", false
 	}
-	meta, err := exec.Command("git", "-C", root, "log", "-1", "--no-use-mailmap",
+	meta, err := historyGit(root, "log", "-1", "--no-use-mailmap",
 		"--format=%ae%x00%cs", sha, "--").Output()
 	if err != nil {
 		return "", "", "", "", false

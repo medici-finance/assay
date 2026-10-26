@@ -2,7 +2,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -106,6 +108,11 @@ func TestAttributionIdentityOverrideHonored(t *testing.T) {
 	if !strings.Contains(joined, "gitattr/brief-01") || !strings.Contains(joined, "OVERRIDDEN") ||
 		!strings.Contains(joined, "human:"+overrideHuman) {
 		t.Fatalf("an honored override must be reported as a NOTICE naming the brief and the human; got:\n%s", joined)
+	}
+	// Offline, lint knows only that a different git author identity committed a line
+	// naming the human; the NOTICE must say so, not assert the human's authorization.
+	if !strings.Contains(joined, "does not corroborate") || strings.Contains(joined, "recorded human authorization") {
+		t.Fatalf("the honored NOTICE must state that the human's authorization is not corroborated offline; got:\n%s", joined)
 	}
 }
 
@@ -352,6 +359,62 @@ func TestAttributionIdentityOverrideRecorderIsCommitAuthor(t *testing.T) {
 			t.Fatalf("the honored override must be reported; notices:\n%s", strings.Join(notices, "\n"))
 		}
 	})
+}
+
+// TestAttributionIdentityOverrideRecorderIndependentOfRunnerConfig: which commit last
+// wrote the override line is read the same way on every runner. User-level git
+// configuration that tells blame to skip a commit does not change the recorder, so an
+// override line the excused identity last rewrote stays refused.
+func TestAttributionIdentityOverrideRecorderIndependentOfRunnerConfig(t *testing.T) {
+	root, b1 := overrideRepo(t)
+	setOverride(t, b1, validOverride())
+	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
+	setOverride(t, b1, `"human:`+overrideHuman+` 2026-10-25 any future re-touch at all"`)
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice rewrites the override")
+
+	tmp := t.TempDir()
+	revs, cfg := filepath.Join(tmp, "revs"), filepath.Join(tmp, "gitconfig")
+	if err := os.WriteFile(revs, []byte(vfRev(t, root, "HEAD")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte("[blame]\n\tignoreRevsFile = "+filepath.ToSlash(revs)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+
+	// Positive control: the configuration is live in this git, and plain blame hands
+	// the override line to the earlier commit.
+	line := 0
+	for i, l := range strings.Split(mustRead(t, b1), "\n") {
+		if strings.HasPrefix(l, "independence-override:") {
+			line = i + 1
+		}
+	}
+	if line == 0 {
+		t.Fatal("fixture assumption broke: no override line")
+	}
+	rel, err := filepath.Rel(root, b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L := strconv.Itoa(line) + "," + strconv.Itoa(line)
+	out, err := exec.Command("git", "-C", root, "blame", "--porcelain", "-L", L, "HEAD", "--", filepath.ToSlash(rel)).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := strings.Fields(string(out)); len(f) == 0 || f[0] != vfRev(t, root, "HEAD^") {
+		t.Fatalf("positive control: the configuration must hand the line to the earlier commit; got %q", string(out))
+	}
+
+	problems, notices := attrProblemsAndNotices(t, root)
+	p := problemFor(problems, "gitattr/brief-01")
+	if !strings.Contains(p, "NOT honored") || !strings.Contains(p, "same git identity") {
+		t.Fatalf("an override line the excused identity last rewrote must stay refused whatever the runner's git configuration; problems:\n%s\nnotices:\n%s",
+			strings.Join(problems, "\n"), strings.Join(notices, "\n"))
+	}
+	if strings.Contains(strings.Join(notices, "\n"), "OVERRIDDEN") {
+		t.Fatalf("a refused override must not also read as honored; notices:\n%s", strings.Join(notices, "\n"))
+	}
 }
 
 // TestAttributionIdentityOverrideInFixtureCorpusRefused: a brief inside a declared fixture

@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestAttributionIdentity|TestIndependenceOverride' -count=1 -timeout 120s",
+  "test": "go test . -run 'TestAttributionIdentity|TestIndependenceOverride|TestHistoryGitIsolated' -count=1 -timeout 120s",
   "control": {
     "name": "CONTROL — the committer-identity cross-check's hard PROBLEM demoted back to a NOTICE (measured-status/05 Option 1 undone)",
     "file": "attribution.go",
@@ -84,6 +84,18 @@
       "file": "gitinfo.go",
       "old": "\"--no-use-mailmap\",\n\t\t\"--format=%ae%x00%cs\"",
       "new": "\"--use-mailmap\",\n\t\t\"--format=%aE%x00%cs\""
+    },
+    {
+      "name": "recorder blame read bypasses the isolated provenance helper (runner git configuration decides which commit wrote the line)",
+      "file": "gitinfo.go",
+      "old": "out, err := historyGit(root, \"blame\", \"--porcelain\",",
+      "new": "out, err := exec.Command(\"git\", \"-C\", root, \"blame\", \"--porcelain\","
+    },
+    {
+      "name": "recorder commit-metadata read bypasses the isolated provenance helper",
+      "file": "gitinfo.go",
+      "old": "meta, err := historyGit(root, \"log\", \"-1\", \"--no-use-mailmap\",",
+      "new": "meta, err := exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--no-use-mailmap\","
     },
     {
       "name": "recorder identity never resolves (provenance always unknown)",

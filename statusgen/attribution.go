@@ -389,7 +389,7 @@ func evidenceFloorFailure(evidence string) (reason string, failed bool) {
 //
 // THE OVERRIDE PATH (measured-status/05). The hard PROBLEM above stays the default.
 // The one sanctioned way through it for a legitimate same-identity re-touch is a
-// recorded, human-authorized `independence-override:` frontmatter value that
+// recorded `independence-override:` frontmatter value naming a human that
 // independenceOverrideRefusal accepts — a current human, not the author, committed
 // under a git author identity other than the one excused, and still covering the
 // Evidence as it stands. An accepted override is reported as a NOTICE, never silently; a refused
@@ -633,7 +633,7 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 				}
 			}
 			for _, p := range confirmed {
-				// The recorded, human-authorized override (measured-status/05): the
+				// The recorded override naming a human (measured-status/05): the
 				// hard failure stays the default, and only an override that passes
 				// EVERY condition of independenceOverrideRefusal turns it into a
 				// visible NOTICE. An absent override is the default path, unchanged.
@@ -642,9 +642,9 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 					ov, sha, why := independenceOverrideRefusal(p.root, p.rel, p.id, p.override, p.authored)
 					if why == "" {
 						addNotice("%s: committer-identity cross-check FAILS (authoring and every Evidence commit "+
-							"share one git identity, %q) but is OVERRIDDEN by a recorded human authorization — "+
-							"independence-override: human:%s on %s, committed under a different git author identity "+
-							"in %s; reason: %s",
+							"share one git identity, %q) but is OVERRIDDEN by a recorded independence-override naming "+
+							"human:%s, dated %s, committed under a different git author identity in %s (lint does not "+
+							"corroborate that the named human authorized it); reason: %s",
 							p.label, p.id, ov.name, ov.date, shortSHA(sha), ov.reason)
 						continue
 					}

@@ -47,7 +47,7 @@ files:
 - `statusgen/attribution_test.go` — the two cross-check tests asserting today's NOTICE-only behaviour.
 - `statusgen/testdata/attribution/` — the brief fixtures the tests read.
 - `statusgen/brieffile.go` — parses the optional `independence-override:` frontmatter key (Option 3).
-- `statusgen/gitinfo.go` — the git reads the override is judged on: the commit that last wrote the committed override line, that commit's own author email and date, and the Evidence section's text at that commit (compared by content, not by commit ancestry).
+- `statusgen/gitinfo.go` — the git reads the override is judged on: the commit that last wrote the committed override line (through the isolated provenance read, so runner git configuration cannot move it), that commit's own author email and date, and the Evidence section's text at that commit (compared by content, not by commit ancestry).
 - `statusgen/attribution_override_test.go` — the override path's tests, including that an override committed under the excused identity's own author email is refused, with or without a `.mailmap`.
 - `schemas/brief-v1.json`, `schemas/brief-v2.json`, `schemas/brief-v3.json` (and their `statusgen/schemas/` copies) — type the `independence-override` key as a string.
 - `statusgen/attribution-mutations.json` — the mutation spec for the override's refusal conditions (muhar).
@@ -70,11 +70,12 @@ facts:
   already demonstrates the red-before state — no separate mutation is needed.
 - freshness-checked 2026-10-25: the Option 1 hard PROBLEM is already on main (the escalated,
   confirmed same-identity pair calls `add(...)`; the single-identity and git-unreadable cases stay
-  NOTICEs). The ruling chose Option 3, so the remaining delta is the recorded, human-authorized
-  override path: an `independence-override: "human:<name> YYYY-MM-DD <reason>"` frontmatter value,
+  NOTICEs). The ruling chose Option 3, so the remaining delta is the recorded override path
+  (an override naming a human): an `independence-override: "human:<name> YYYY-MM-DD <reason>"` frontmatter value,
   honored only when the name is a CURRENT human who is not the author, the brief is outside any
   declared fixture corpus, the committed line was last written by a commit whose git author email
-  differs from the identity it excuses, the date is not later than that commit, and the Evidence
+  differs from the identity it excuses, the date is no more than one day after that commit's
+  committer date, and the Evidence
   section has not changed since that commit. Anything else keeps the hard PROBLEM and says why the
   override was refused.
 - the offline check reads git metadata, which the committer sets. It refuses an override committed
@@ -130,7 +131,7 @@ Default if no answer: none — blocks until answered (this narrows a trust gate 
 | 2 | check | `cd statusgen && go test . -run 'TestAttributionIdentity' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (both the hard-reject and the inconclusive-NOTICE cases ran and passed) |
 | 3 | check | `cd statusgen && go vet ./...` | exit 0 (the flipped branch compiles and vets clean) |
 | 4 | check | `cd statusgen && go test . -count=1` | exit 0 (the whole statusgen suite is green with the flip) |
-| 5 | check +flow | `cd statusgen && go test . -run 'TestAttributionIdentityOverride\|TestIndependenceOverride\|TestAttributionIdentityNoOverrideStaysHard' -count=1 -v 2>&1 \| grep -c -- '--- PASS'` | ≥ 10 — the honored override, every refusal (self-serve with and without a `.mailmap`, self-edit, stale, uncommitted, working-tree edit, fixture corpus, postdated, former/unknown human, author, malformed) and the no-override default all ran and passed |
+| 5 | check +flow | `cd statusgen && go test . -run 'TestAttributionIdentityOverride\|TestIndependenceOverride\|TestAttributionIdentityNoOverrideStaysHard' -count=1 -v 2>&1 \| grep -c -- '--- PASS'` | ≥ 10 — the honored override, every refusal (self-serve with and without a `.mailmap`, recorder read independent of runner git configuration, self-edit, stale, uncommitted, working-tree edit, fixture corpus, postdated, former/unknown human, author, malformed) and the no-override default all ran and passed |
 | 6 | check +mutation | `m=$(mktemp -d)/muhar && (cd tools/desk && go build -o "$m" ./cmd/muhar) && cd statusgen && "$m" -spec attribution-mutations.json` | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; every override refusal mutation CAUGHT, "0 NOT CAUGHT, 0 could-not-mutate" |
 
 ## Evidence
