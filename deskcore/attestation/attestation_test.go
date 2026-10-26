@@ -29,6 +29,28 @@ func TestCapabilityProfiles(t *testing.T) {
 		t.Fatal("unknown source accepted")
 	}
 }
+
+// TestBriefPathOutsideRepository pins that a brief path which cleans to the
+// repository's parent (or to the root itself) is refused under every profile,
+// while an ordinary repository path still binds.
+func TestBriefPathOutsideRepository(t *testing.T) {
+	h := strings.Repeat("a", 64)
+	s := strings.Repeat("b", 40)
+	b := Binding{Version: 1, Run: h, Repo: "example-org/tracker", Source: s, BriefSHA256: h, PlanSHA256: h, HomeSHA256: h, Model: "fixture", Tier: "strong", Checkout: "autocrlf=false eol=lf"}
+	for _, p := range []Profile{ContainerV1, GeneralV1V2} {
+		for _, brief := range []string{"..", "../", "docs/../..", "a/../../", `..\`, ".", "./", "/docs/brief.md", "../docs/brief.md"} {
+			b.Brief = brief
+			if BindingProblem(b, b.Repo, p, false) == "" {
+				t.Errorf("profile %v accepted brief path %q", p, brief)
+			}
+		}
+		b.Brief = "docs/streams/demo/../demo/brief-01.md"
+		if why := BindingProblem(b, b.Repo, p, false); why != "" {
+			t.Errorf("profile %v refused an in-repository brief path: %s", p, why)
+		}
+	}
+}
+
 func TestStandingStamp(t *testing.T) {
 	labels := []string{"dispatched-model:fixture", "dispatched-tier:strong"}
 	ev := []LabelEvent{{Label: labels[0], Authority: true}, {Label: labels[1], Authority: true}}

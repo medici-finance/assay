@@ -3,10 +3,15 @@ package deskkit
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
 )
 
 // ---- pure-loader helpers (offline, no filesystem) --------------------------
@@ -308,9 +313,44 @@ func TestContributorLedgerRosterCoupling(t *testing.T) {
 		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys is gone — nothing declares the " +
 			"recognised roster schema on that side")
 	}
-	// The twin must delegate to the shared schema rather than keep a second list.
-	if !strings.Contains(src, "return trustcore.KnownRosterKeys()") {
-		t.Error("statusgen/rosterconfig.go must use deskcore/trust.KnownRosterKeys")
+	// Structural: scanKnownRosterKeys's body must be exactly one return of the shared
+	// schema, so the twin cannot keep (or grow back) a second list, and the shared
+	// schema itself must list the new key (the same class of gap #491 was).
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "rosterconfig.go", rc, 0)
+	if err != nil {
+		t.Fatalf("statusgen/rosterconfig.go does not parse: %v", err)
+	}
+	delegates := false
+	for _, d := range file.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "scanKnownRosterKeys" || fn.Body == nil || len(fn.Body.List) != 1 {
+			continue
+		}
+		ret, ok := fn.Body.List[0].(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 1 {
+			continue
+		}
+		call, ok := ret.Results[0].(*ast.CallExpr)
+		if !ok || len(call.Args) != 0 {
+			continue
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if pkg, isIdent := sel.X.(*ast.Ident); ok && isIdent && pkg.Name == "trustcore" && sel.Sel.Name == "KnownRosterKeys" {
+			delegates = true
+		}
+	}
+	if !delegates {
+		t.Error("statusgen/rosterconfig.go: scanKnownRosterKeys must be exactly `return trustcore.KnownRosterKeys()` " +
+			"(deskcore/trust), not a second list")
+	}
+	shared := map[string]bool{}
+	for _, k := range trustcore.KnownRosterKeys() {
+		shared[k] = true
+	}
+	if !shared[EnvContributorLedger] {
+		t.Errorf("deskcore/trust.KnownRosterKeys() does not list %s — declaring the constant without "+
+			"recognising it changes nothing", EnvContributorLedger)
 	}
 
 	// ---- (3) behavioural: this reader actually resolves a configured path ----

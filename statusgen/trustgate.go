@@ -42,8 +42,9 @@ import (
 // For the BOARD surface (planScan), this is the login-only check — the REST API
 // (gh issue list --json author) does not return a numeric user id, so recycled-
 // login defense for human accounts is deferred to the blessing path
-// (evalIssueBlessing), which verifies numeric id via GraphQL. Bot accounts are
-// trusted by login alone: GitHub Apps cannot be recycled.
+// (evalIssueBlessing), which verifies numeric id via GraphQL. This surface carries
+// no id at all; every surface that does supply one goes through trustedAuthorID,
+// where a supplied id must match its pin for bots and humans alike.
 func trustedAuthor(login string) bool {
 	if login == "" {
 		return false
@@ -57,9 +58,11 @@ func trustedAuthor(login string) bool {
 
 // trustedAuthorID reports whether a login+id pair is a trusted desk identity,
 // requiring NUMERIC ID match for human accounts as a recycled-login defense.
-// Bot accounts (the [bot] suffix or app/ prefix) are trusted by login alone —
-// GitHub Apps cannot be recycled. When id is zero (caller has no numeric id),
-// human accounts fail closed (not trusted). This is the strict form used in
+// Any supplied (nonzero) id must equal the identity's configured pin, for bot
+// accounts (the [bot] suffix or app/ prefix) as well as humans; a mismatched or
+// unpinned id is refused (deskcore/trust Admit). A bot rendering that carries no
+// id (id == 0) is admitted on its rostered login, since GitHub Apps cannot be
+// recycled; a human with id zero fails closed (not trusted). This is the strict form used in
 // the GraphQL blessing path (evalIssueBlessing) where numeric ids ARE available.
 //
 // A configured human identity with NO pinned id (the id is optional on
@@ -118,9 +121,10 @@ func authorizedAuthorSet() map[string]int64 {
 // lane? Two disjoint identity classes, each id-pinned to the extent GitHub
 // allows:
 //
-//   - a rostered desk App (type Bot, or a login that renders as one): trusted by
-//     login alone — GitHub Apps cannot be recycled — but ONLY when the login is in
-//     the rostered bot set (ASSAY_TRUSTED_BOT_SLUGS). The bare slug is never
+//   - a rostered desk App (type Bot, or a login that renders as one): trusted on
+//     its login when no id is supplied — GitHub Apps cannot be recycled — and a
+//     supplied id must match its pin; ONLY when the login is in the rostered bot
+//     set (ASSAY_TRUSTED_BOT_SLUGS). The bare slug is never
 //     trusted (scanParseConfig only registers the `slug[bot]` and `app/slug`
 //     renderings), so a plain user squatting a slug stays untrusted.
 //   - a human authorized author: the login MUST be in authorizedAuthorSet AND the
@@ -138,8 +142,8 @@ func authorizedByIdentity(login string, id int64, typ string) bool {
 	if !c.Configured() {
 		return false
 	}
-	// Desk App identity: type Bot, or a login rendering as a bot/App. Trusted by
-	// login alone, but only if it is a REGISTERED bot rendering.
+	// Desk App identity: type Bot, or a login rendering as a bot/App. Only a
+	// REGISTERED bot rendering is trusted, and a supplied id must match its pin.
 	if typ == "Bot" || scanLooksLikeBot(lower) {
 		return trustedAuthorID(login, id)
 	}

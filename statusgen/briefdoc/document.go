@@ -6,6 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -37,12 +38,99 @@ type Risk struct{ Regulatory, Customer, Irreversible, SensitiveData bool }
 
 func UnreadableRisk() Risk { return Risk{true, true, true, true} }
 
+// riskKeys are the four risk questions in canonical order. They are the one
+// source every reader derives the risk-answer key set from.
+var riskKeys = [...]string{"regulatory", "customer", "irreversible", "sensitive-data"}
+
+// RiskKeys returns the four risk questions in canonical order.
+func RiskKeys() []string { return append([]string(nil), riskKeys[:]...) }
+
+// answers maps each risk question to its field, in riskKeys order.
+func (r *Risk) answers() map[string]*bool {
+	fields := [len(riskKeys)]*bool{&r.Regulatory, &r.Customer, &r.Irreversible, &r.SensitiveData}
+	m := make(map[string]*bool, len(riskKeys))
+	for i, k := range riskKeys {
+		m[k] = fields[i]
+	}
+	return m
+}
+
+// isRiskKey reports whether a mapping key names a risk question, ignoring case
+// and surrounding space so a near-miss spelling cannot slip past as an
+// ordinary key.
+func isRiskKey(k string) bool {
+	k = strings.ToLower(strings.TrimSpace(k))
+	for _, r := range riskKeys {
+		if k == r {
+			return true
+		}
+	}
+	return false
+}
+
+// misplacedRiskKey returns the first risk-answer key found at any depth in v,
+// which is a value outside the top-level risk mapping.
+func misplacedRiskKey(v interface{}) (string, bool) {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		for k, child := range x {
+			if isRiskKey(k) {
+				return k, true
+			}
+			if found, ok := misplacedRiskKey(child); ok {
+				return found, true
+			}
+		}
+	case map[interface{}]interface{}:
+		for k, child := range x {
+			if s, ok := k.(string); ok && isRiskKey(s) {
+				return s, true
+			}
+			if found, ok := misplacedRiskKey(child); ok {
+				return found, true
+			}
+		}
+	case []interface{}:
+		for _, child := range x {
+			if found, ok := misplacedRiskKey(child); ok {
+				return found, true
+			}
+		}
+	}
+	return "", false
+}
+
+// textMarkers are free-text frontmatter markers whose value is shown as
+// written. An unquoted date or timestamp decodes as a YAML timestamp, so these
+// keys take the scalar's source text instead of refusing it.
+var textMarkers = map[string]bool{"blocked-until": true, "in-repair": true}
+
+// scalarKeys must hold a scalar; a mapping or sequence value is an error.
+var scalarKeys = map[string]bool{"gate": true, "effort": true, "exec-tier": true, "implementer": true, "verify-lane": true, "in-repair": true, "blocked-until": true}
+
+// sourceScalar returns the source text of a top-level scalar value.
+func sourceScalar(block, key string) (string, bool) {
+	var doc yaml.Node
+	if yaml.Unmarshal([]byte(block), &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return "", false
+	}
+	m := doc.Content[0]
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key && m.Content[i+1].Kind == yaml.ScalarNode {
+			return m.Content[i+1].Value, true
+		}
+	}
+	return "", false
+}
+
 type Fields struct {
 	Values map[string]string
 	Risk   Risk
 }
 
 // ParseFields decodes real YAML, rejects duplicate keys and invalid risk answers.
+// A risk answer is read only from the top-level risk mapping; a risk-answer key
+// anywhere else is an error, which every caller treats as risk-bearing.
 func ParseFields(block string) (Fields, error) {
 	f := Fields{Values: map[string]string{}}
 	var values map[string]interface{}
@@ -50,19 +138,28 @@ func ParseFields(block string) (Fields, error) {
 		return f, err
 	}
 	for k, v := range values {
-		if k == "regulatory" || k == "customer" || k == "irreversible" || k == "sensitive-data" {
+		if isRiskKey(k) {
 			return f, fmt.Errorf("risk answer %s must be under the risk mapping", k)
 		}
 		if k == "risk" {
 			continue
+		}
+		if found, ok := misplacedRiskKey(v); ok {
+			return f, fmt.Errorf("risk answer %s under %s must be under the top-level risk mapping", found, k)
 		}
 		switch x := v.(type) {
 		case string:
 			f.Values[k] = x
 		case int, bool, float64:
 			f.Values[k] = fmt.Sprint(x)
+		case time.Time:
+			if src, ok := sourceScalar(block, k); ok && textMarkers[k] {
+				f.Values[k] = src
+			} else if scalarKeys[k] {
+				return f, fmt.Errorf("%s must be text, not a date", k)
+			}
 		default:
-			if k == "gate" || k == "effort" || k == "exec-tier" || k == "implementer" || k == "verify-lane" || k == "in-repair" || k == "blocked-until" {
+			if scalarKeys[k] {
 				return f, fmt.Errorf("%s must be a scalar", k)
 			}
 		}
@@ -85,7 +182,7 @@ func ParseFields(block string) (Fields, error) {
 	if !ok {
 		return f, fmt.Errorf("risk must be a mapping")
 	}
-	answers := map[string]*bool{"regulatory": &f.Risk.Regulatory, "customer": &f.Risk.Customer, "irreversible": &f.Risk.Irreversible, "sensitive-data": &f.Risk.SensitiveData}
+	answers := f.Risk.answers()
 	for k := range risk {
 		if _, known := answers[k]; !known {
 			return f, fmt.Errorf("unknown risk answer %s", k)

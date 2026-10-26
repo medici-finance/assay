@@ -279,8 +279,9 @@ var (
 		"brief", "title", "wave", "depends", "unblocks", "effort",
 		"gate", "risk", "issues", "authored", "sources",
 	}
-	canonicalRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
-	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
+	// The risk questions are owned by briefdoc; these are projections of that one list.
+	canonicalRiskKeys = briefdoc.RiskKeys()
+	canonicalRiskSet  = riskKeySet(canonicalRiskKeys)
 	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
 	validGate         = map[string]bool{"model": true, "human": true}
 	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field.
@@ -2137,4 +2138,13 @@ func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName m
 		}
 	}
 	add("%s: %s %q references unknown brief %q in stream %s", path, kind, ref, parts[1], parts[0])
+}
+
+// riskKeySet returns keys as a membership set.
+func riskKeySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return set
 }

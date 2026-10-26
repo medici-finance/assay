@@ -60,7 +60,9 @@ func BindingProblem(b Binding, repo string, profile Profile, sourceAllowed bool)
 	if brief != "" {
 		brief = path.Clean(brief)
 	}
-	if brief == "" || strings.HasPrefix(brief, "/") || strings.HasPrefix(brief, "../") {
+	// A cleaned path of exactly ".." (or the root ".") names no file inside the
+	// repository, so it is refused alongside an absolute or "../"-prefixed path.
+	if brief == "" || brief == "." || brief == ".." || strings.HasPrefix(brief, "/") || strings.HasPrefix(brief, "../") {
 		return fmt.Sprintf("the binding's brief %s is not a repository path", b.Brief)
 	}
 	if !ModelSlugOK(b.Model) {
