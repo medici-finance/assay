@@ -10,6 +10,7 @@ package main
 // instance).
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -103,5 +104,30 @@ func TestChangelogFragmentClauseRequiresFlatFileInBothImplementerKits(t *testing
 		if strings.Contains(flat, bare) {
 			t.Errorf("kit %q still says the bare %q for the fragment slug", kit, bare)
 		}
+	}
+}
+
+// The pr-shepherd skill gives the same changelog-fragment advice to a worker repairing a red
+// `changelog` check, so it carries the same flat-file rule. It reads the plugin skill, which is
+// the one home; the Cursor copy is generated from it and drift-checked by deskinstall --check.
+func TestPRShepherdChangelogFragmentRequiresFlatFile(t *testing.T) {
+	const bare = "(`<slug>` = the branch name)"
+	b, err := os.ReadFile("../../../../plugins/assay/skills/pr-shepherd/SKILL.md")
+	if err != nil {
+		t.Fatalf("read pr-shepherd SKILL.md: %v", err)
+	}
+	flat := strings.Join(strings.Fields(string(b)), " ")
+	for _, must := range []string{
+		"with every `/` replaced by `-`",
+		"MUST be a single flat file directly under `changelog/`",
+		"never in a subdirectory",
+	} {
+		if !strings.Contains(flat, must) {
+			t.Errorf("pr-shepherd SKILL.md changelog-fragment advice lost %q — a shepherd on a "+
+				"slashed branch would write a nested fragment that is never aggregated", must)
+		}
+	}
+	if strings.Contains(flat, bare) {
+		t.Errorf("pr-shepherd SKILL.md still says the bare %q for the fragment slug", bare)
 	}
 }
