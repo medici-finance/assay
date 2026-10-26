@@ -174,6 +174,58 @@ Ranking: all are cosmetic and reversible by an edit and a redeploy; the threshol
 RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 — a reversible cosmetic tone choice; the brief's acceptance is the unchanged 20 px proof (proofDeltaE = 25.0, proofIoU = 0.6 at proof.go:12-13, untouched by the delivery), which rows 2 and 5 show passing for every hue.
 
 **VERIFY: BLOCKED** — 5/6 rows pass under the verifyrun witness at 05dc9fbc88f2; row 6 is could-not-check (witness fail exit=2, 0 disproved), blocked on medici-finance/assay#1915 until the Verification-Table marker reaches main.
+### 2026-10-26 re-pass at the current source (fresh verifier, admitted run)
+
+Observed source: f2e232039c99455b0b9a7dacfe639f9f68b164d2 (merged main, detached home, clean before and after the run). Delivery: squash commit f52610f4e036de6b8e01e16c6f7aadde168b5b25 (#3171) on the first-parent chain, single parent 59246f0b7a95c5ac600ef209d6731fd378125e6e. Dispatcher admission check passed before any row ran (Verification-Attestation #4556, run 31eaba7bee4d0b6f2f289a755419be8631b51bec2f9b49b919b74962fd6cacac, brief sha256 c3b8985408b34a3eea1b7835574ed24afa9c77c8ce57e1946e9d8ec5ba7e16a4, model claude-opus-5-5, tier strong). Toolchain: go1.27.2 darwin/arm64, git 2.56.0, statusgen v1.0.63 (installed release).
+
+Source currency: `git diff --stat 05dc9fbc88f2b1b23cd78bebc8634c564327eca4..f2e232039c99455b0b9a7dacfe639f9f68b164d2` over the delivered code and docs (the avatar package, the deskavatar command, the deskavatar doc) printed nothing; the only changes under the stream directory since the prior observed source are Evidence landings (this brief's 2026-10-22 section, which put the Verification-Table marker on main, and an unrelated brief in the same stream).
+
+Table re-derivation: `deskpathguard rederive --main 59246f0b7a95c5ac600ef209d6731fd378125e6e` reports 6 rows, 0 author-added; every row is from-base with its Command and Expect unchanged. No row is classed check:ci, so the darwin network-off sandbox gap does not apply. No row carries a risk-bearing, live, mutating or end-to-end tag and every brief-wide risk field is no, so `--fail-first` selected no row at base (Base cell `not-selected`).
+
+Verification-Table: delivery=f52610f4e036de6b8e01e16c6f7aadde168b5b25 base=59246f0b7a95c5ac600ef209d6731fd378125e6e original=59246f0b7a95c5ac600ef209d6731fd378125e6e
+
+Execution witness (written by `statusgen verifyrun --fail-first --base 59246f0b7a95c5ac600ef209d6731fd378125e6e` at the observed source; copied here unchanged):
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go build -o /tmp/deskavatar ./cmd/deskavatar && rm -rf /tmp/av10 && /tmp/deskavatar --org example --tier team --out /tmp/av10 --sizes 200 && ls /tmp/av10 \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | pass exit=0 | sha256:06e9d52c1720 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=f2e232039c99 |
+| 2 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeam.*Proof' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeam.*Proof'` | pass exit=0 | sha256:53c234e5e847 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=f2e232039c99 |
+| 3 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeamReadActUnchanged' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamReadActUnchanged'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=f2e232039c99 |
+| 4 | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofRejects' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestProofRejects'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=f2e232039c99 |
+| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1` | pass exit=0 | sha256:9c01145ff420 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=f2e232039c99 |
+| 6 | `statusgen --root . --consumers --brief apps-installer/10` | pass exit=0 | sha256:15b833db4d20 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=f2e232039c99 |
+Verification-Attestation: medici-finance/assay#4556 run=31eaba7bee4d0b6f2f289a755419be8631b51bec2f9b49b919b74962fd6cacac source=f2e232039c99455b0b9a7dacfe639f9f68b164d2 brief=docs/streams/apps-installer/brief-10-team-review-avatar.md model=claude-opus-5-5 tier=strong
+`statusgen verifyrun --check` on the witnessed brief: docs/streams/apps-installer/brief-10-team-review-avatar.md: 6 pass, 0 fail, 0 could-not-run/missing (of 6 Verify rows); 0 author-added with no acceptance credit; exit 0.
+
+Output inspection (the witness records hashes only). Rows 1 to 4 end in a count; the sha256 of each expected count followed by a newline equals the recorded hash: row 1 "6" = 06e9d52c1720 (example-read, example-act and example-review, each as .svg and .png), row 2 "2" = 53c234e5e847 (TestTeamThreeTileProof and TestTeamProofEveryHue both PASS; the first covers the logins example, acme, a and a 39-character login, asserting the length), rows 3 and 4 "1" = 4355a46b19d3 (TestTeamReadActUnchanged; TestProofRejectsReviewLikeRead). Row 5 printed `ok github.com/medici-finance/assay/tools/desk/internal/avatar`. Row 6, re-run at the same source, exited 0 and printed:
+
+```text
+consumers corroboration — base 59246f0b7a95c5ac600ef209d6731fd378125e6e..f52610f4e036de6b8e01e16c6f7aadde168b5b25 (immutable delivered snapshot), 1 brief(s)
+  CORROBORATED  tools/desk/internal/avatar/generate.go: fixed-here
+  CORROBORATED  tools/desk/cmd/deskavatar/main.go: fixed-here
+  CORROBORATED  docs/desk-tools/deskavatar.md: fixed-here
+  CORROBORATED  docs/streams/apps-installer/design.md: fixed-here
+summary: 4 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing
+```
+
+Row 6 resolution: the 2026-10-22 section recorded row 6 as could-not-check because no committed Verification-Table marker named the delivery (the case tracked in #1915). That marker is now on main, the bare row command derives the delivered snapshot from it, and row 6 passes with every routing claim corroborated and none disproved.
+
+Supplemental dereference of row 3 (no acceptance credit): the deskavatar command built from the delivery's parent 59246f0b7a95c5ac600ef209d6731fd378125e6e, run with `--org example --tier team --sizes 20`, wrote example-read.svg and example-act.svg byte-identical (cmp) to the committed goldens team-example-read.svg and team-example-act.svg, so the goldens row 3 compares against really are the pre-change bytes.
+
+Risk-bearing value enumeration (diff scope: the delivery's generate.go and deskavatar main.go changes, plus the literals the brief names; tests and docs carry no runtime constant; the item is not irreversible and carries full risk metadata, all no):
+
+- reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 (introduced).
+- review tile App name = org + "-review" @ tools/desk/internal/avatar/generate.go:185 (introduced; the third tile's file name).
+- review glyph = GlyphDisc @ tools/desk/internal/avatar/generate.go:185 (introduced for the team tier).
+- review glyph colour colGlyphLite = "#EAF0FF" @ tools/desk/internal/avatar/compose.go:15 (pre-existing, reused).
+- proof thresholds proofDeltaE = 25.0 and proofIoU = 0.6 @ tools/desk/internal/avatar/proof.go:12 and :13 (named in the brief; the delivery does not touch proof.go).
+- tier help text "team (read+act+review)" @ tools/desk/cmd/deskavatar/main.go (string only, no behaviour).
+
+Ranking: all are cosmetic and reversible by an edit and a redeploy. The proof thresholds rank first, because lowering them would let indistinct tiles through; they are unchanged by the delivery. The tone ratio ranks next.
+
+RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 — a reversible cosmetic tone choice that places the review body between read's dark body and act's accent body; the brief's acceptance is the unchanged 20 px proof (proofDeltaE = 25.0, proofIoU = 0.6 at proof.go:12-13, untouched by the delivery), which rows 2 and 5 show passing for every one of the 360 hues.
+
+**VERIFY: PASS** — 6/6 rows pass under the verifyrun witness at f2e232039c99; row 6, blocked in the 2026-10-22 section, now passes with 4 corroborated and 0 disproved.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
