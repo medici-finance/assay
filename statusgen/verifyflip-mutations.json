@@ -24,6 +24,12 @@
       "file": "verifyflip.go",
       "old": "return some && !xAt, nil",
       "new": "return some || (some && !xAt), nil"
+    },
+    {
+      "name": "equal-Evidence guard removed (a base equal to both sides' Evidence reads as the other side bringing nothing)",
+      "file": "verifyflip.go",
+      "old": "\tif xev == yev {\n\t\treturn false, nil\n\t}\n",
+      "new": ""
     }
   ]
 }

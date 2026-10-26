@@ -52,8 +52,10 @@ func vfGitCommandEnv(root string, env []string, args ...string) *exec.Cmd {
 // carrying the verifier's later FAIL; a human merges them dropping the FAIL
 // (X), the verifier merges them keeping it (Y), and another App merges Y into
 // X keeping X's Evidence (M). X and Y have TWO merge bases, and they disagree
-// about Y's Evidence: one holds the FAIL, one does not. No single base then
-// shows Y's side made no net change, so M is judged. Each case puts the FAIL
+// about Y's Evidence: one holds the FAIL, so it equals Y's Evidence, and the
+// other does not, so it equals X's. A base equal to X's Evidence says X's side
+// made no net change while Y's did, so M picked a side of a disagreement and is
+// judged, though one base does match Y's. Each case puts the FAIL
 // on a different base, so a check of only the first base git lists is red in
 // one of them whichever order git lists them in.
 func TestVflipEveryMergeBase(t *testing.T) {
@@ -176,7 +178,30 @@ func TestVflipCrissCrossNoNet(t *testing.T) {
 // judged and another App's merge refuses.
 func TestVflipCrissCrossDropsFail(t *testing.T) {
 	root, readme := vfCrissCross(t, true)
-	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+	// The refusal names the commit it judged: the final merge, not some other
+	// commit in the fixture.
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance: commit "+vfRev(t, root, "HEAD")[:12]+" changed the Evidence section")
+}
+
+// TestVflipSideBroughtNothingEqualEvidence: when both sides hold the same
+// Evidence there is no disagreement to judge, and the helper answers false
+// whatever the merge bases hold. Without that guard the match on Y's Evidence
+// hides the match on X's, and a base equal to both reads as "Y brought
+// nothing".
+func TestVflipSideBroughtNothingEqualEvidence(t *testing.T) {
+	ev := map[string]string{"base": "pass", "other": "fail"}
+	evAt := func(rev string) (string, error) { return ev[rev], nil }
+
+	// Positive control: with differing sides, a base equal to Y's Evidence and
+	// none equal to X's holds.
+	if got, err := flipSideBroughtNothing("fail", "pass", []string{"base"}, evAt); err != nil || !got {
+		t.Fatalf("positive control: flipSideBroughtNothing(fail, pass, [base]) = %v, %v; want true", got, err)
+	}
+	for _, e := range []string{"pass", "fail", "elsewhere"} {
+		if got, err := flipSideBroughtNothing(e, e, []string{"base", "other"}, evAt); err != nil || got {
+			t.Errorf("flipSideBroughtNothing(%q, %q, [base other]) = %v, %v; want false for equal Evidence", e, e, got, err)
+		}
+	}
 }
 
 // TestFlipMergeBasesObjectIDs: the allow-listed merge-base caller refuses any

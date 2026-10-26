@@ -1071,6 +1071,11 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 // Evidence at SOME merge base, and xev equals the Evidence at NONE of them.
 // No merge base (unrelated histories) never holds.
 //
+// Equal Evidence on the two sides is not a call it can judge: with xev == yev
+// the match on yev would hide the match on xev, so it holds no side to have
+// brought anything and reports false. The caller reaches it only for parents
+// whose Evidence differs; a second caller gets the same fail-safe answer.
+//
 // Why SOME base suffices for Y (#4466): a merge base is an ancestor of X, so
 // when Y's Evidence is a base's, every byte Y carries — a later FAIL included
 // — was already in X's own history. X lacking it means a commit on X's side
@@ -1086,6 +1091,9 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 // Y's Evidence. The two sides then resolved one disagreement in opposite
 // directions, and the merge picked a side — that is judged.
 func flipSideBroughtNothing(xev, yev string, bases []string, evAt func(string) (string, error)) (bool, error) {
+	if xev == yev {
+		return false, nil
+	}
 	some, xAt := false, false
 	for _, b := range bases {
 		bev, err := evAt(b)

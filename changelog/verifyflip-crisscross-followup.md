@@ -1,0 +1,2 @@
+### Fixed
+- `verifyflip` provenance: the trivial-merge helper now reports that the other parent brought nothing only when the two parents' Evidence differs. Before, a caller passing equal Evidence for both sides could have read a merge base matching both as "nothing brought"; the only current caller never does, so no behavior changes today. The criss-cross tests now name the judged merge commit in the refusal, and a stale test comment about why `TestVflipEveryMergeBase` refuses was corrected.
