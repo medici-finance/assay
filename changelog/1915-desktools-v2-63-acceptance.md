@@ -1,0 +1,1 @@
+- Pin desktools-v2/63 consumer verification to its immutable delivery and exact first parent; preserve the distinct protected-table baseline, original assertions, historical Evidence, human approval and independent reverification gates.

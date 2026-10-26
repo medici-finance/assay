@@ -82,6 +82,16 @@
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
     },
     {
+      "class": "library",
+      "pattern": "tools/release/bundles.py",
+      "reason": "internal release provenance-bundle check imported by fixed release workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3094)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/bundles_test.py",
+      "reason": "offline provenance-bundle and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#3094)"
+    },
+    {
       "class": "test",
       "pattern": "tools/release/images_test.py",
       "reason": "offline image producer and manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#3204)"
