@@ -368,11 +368,20 @@ whatever profile context is set.
   processes a switch-off run starts. The one addition is the offline `deskread --help` check,
   made only when a `deskread` child is started.
 
-A future context resolver (statusgen/20) may consume explicit, source-bound, immutable input
-snapshots that a run already holds; it may not weaken independent membership enumeration — a
-new file outside an earlier read set still invalidates completeness, and HEAD equality alone
-never makes a dirty working-tree parse reusable. The snapshot-reuse inventory and the
-repeatable workload bench for these phases are follow-up work under statusgen/26.
+The offline context resolver (statusgen/20, #3839) now consumes explicit source snapshots
+and independently enumerates their available files on discovery and recheck. It does not share
+an index with these modes or expose a reusable context-index API. Any later reuse must be
+source-bound and immutable, with compatible parser/evaluator versions; a new file outside an
+earlier read set still invalidates completeness, and HEAD equality alone never makes a dirty
+working-tree parse reusable.
+
+Statusgen's existing brief parser already reuses results by path and content hash, over its
+stamp-validated invocation-local read/directory memos. No second parser or persistent semantic
+cache is introduced. The [workload and inventory](../statusgen/bench/README.md) document the
+four mode owners, repeatable small/large corpora, fresh-reference output/exit/coverage checks,
+and fake deskread boundary. Cold/warm owner replays and fresh-process CLI measurements have
+different boundaries. File/directory counts cover only the shared memo seam; other reads are
+unmeasured, and neither fixture timings nor child-inclusive totals establish fleet savings.
 
 ## Dependency posture
 
