@@ -1,2 +1,0 @@
-### Fixed
-- The worker prompt kits and the `pr-shepherd` skill now tell a worker or shepherd on a slashed branch (for example `feat/foo`) to name its changelog fragment with every `/` replaced by `-` (`changelog/feat-foo.md`) and to keep it a single flat file directly under `changelog/`. The old wording, which made the slug simply the branch name, produced a nested `changelog/feat/foo.md` that the release aggregation never picked up, so the highlight was silently dropped (medici-finance/assay#4186).
