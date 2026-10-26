@@ -63,7 +63,7 @@ type pin struct {
 
 var (
 	reSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	reTag    = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+`)
+	reTag    = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 )
 
 // detectPlatform reports this host's "<os>-<arch>" token (e.g. windows-amd64).

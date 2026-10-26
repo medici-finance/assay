@@ -10,6 +10,12 @@ required path. Earlier revision-bound approvals and activation gates retain thei
 
 Request tracked by [Assay #3669](https://github.com/medici-finance/assay/issues/3669).
 
+Implementation admission update: approval of amendment 27 and activation of the
+agent-execution stream are proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
+maintainer's merge of it. That merge removes the stream-level hold. This chapter's concrete custody/profile
+decisions, effective qualification and deployment gates retain their independent scope.
+
 ## Outcome and checked starting point
 
 An operator enters a dedicated Linux operator container and uses `cellctl` to start,
@@ -211,8 +217,11 @@ The managed branch is `/26 + /22 -> /27`, with `agent-execution/01–03`, then
 `agent-execution/09 -> desk-containers/28 -> /29`. `/06` and `/27` (database) join it;
 /29 also checks /18 lifecycle and /20 inventory. This is the true implementation head,
 not a Windows port or putting an unmodified `cellctl` binary in an image. The execution
-stream remains parked until its controlling contract is admitted. This requested
-amendment does not silently unpark it or claim any production profile qualified.
+stream's stream-level hold is lifted only by amendment 27's admission (see the
+implementation admission update above), which takes effect on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349). Neither that admission nor
+this requested amendment claims any production profile qualified; profile qualification
+and deployment keep their own gates.
 
 
 ## Desk instances amendment — requested 25 October 2026

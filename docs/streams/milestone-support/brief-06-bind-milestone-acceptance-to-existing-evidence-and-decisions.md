@@ -82,6 +82,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 Before changing the governed boundary, present the concrete implementation/design through the existing decision mechanism. Confirm the preserved actor, subject, revocation and effect-admission rules. Options: accept the bounded implementation; request corrections; hold. No answer supplies no approval. Do not infer this ruling from the planning request.
 
+Default if no answer: none — blocks until answered
+
 ## Task
 
 1. Choose and implement the §10 receipt adapter over existing authorized decision, verification and Evidence mechanisms; document its precise record pointers/subject binding. Do not introduce a parallel approval store, signer role or unverified self-acceptance stamp.

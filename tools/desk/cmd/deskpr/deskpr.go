@@ -259,7 +259,7 @@ func cmdCreate(args []string) (err error) {
 	// A real run checks against the destination immediately before its push below.
 	if *check {
 		fmt.Fprintln(deskprStderr, "publish-identity: remote branch head was not checked (offline); judging the whole base-to-HEAD range. A real create confirms the destination before checking new commits.")
-		if ierr := publishIdentityGate(facts.dir, *base, "", facts.head); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, *base, "", "", facts.head); ierr != nil {
 			return ierr
 		}
 	}
@@ -602,12 +602,12 @@ func cmdUpdate(args []string) (err error) {
 	// the push, against the head the forge reports, which HEAD must descend from and the push
 	// destination must hold. Under --check there is no live stage, so the whole range is
 	// judged here (fail closed) and a refusal names the offline way to the narrow judgement.
-	offlineTip := remoteTrackingTip(facts.branch)
+	offlineTip, offlineWhy := deskkit.PublishTrackingTip(facts.dir, facts.branch)
 	if *prNum > 0 {
-		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
+		offlineTip, offlineWhy = "", "" // head ref unknown offline: judge the whole range, fail closed
 	}
 	if *prNum == 0 || *check {
-		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, facts.head); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, offlineWhy, facts.head); ierr != nil {
 			if *prNum > 0 {
 				return prCheckWideNote(ierr)
 			}
@@ -738,7 +738,7 @@ func cmdUpdate(args []string) (err error) {
 	// authority on what the remote branch holds. Re-judge against it before anything is
 	// pushed. A head the forge did not report, one not fetched here, or one this branch does
 	// not descend from (a force-moved PR head) falls back to the whole range — fail closed.
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, "", facts.head); ierr != nil {
 		return ierr
 	}
 

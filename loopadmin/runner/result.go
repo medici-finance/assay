@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -84,6 +85,9 @@ type Observation struct {
 	ActualModel string  `json:"actual_model,omitempty"`
 	Usage       Usage   `json:"usage"`
 	Result      *Result `json:"result,omitempty"`
+	// Extensions carries adapter-reported extension values, such as the
+	// execution-profile/v1 report. They are untrusted and grant no authority.
+	Extensions map[string]json.RawMessage `json:"ext,omitempty"`
 }
 
 // Receipt is the adapter's launch acknowledgment.
@@ -91,6 +95,8 @@ type Receipt struct {
 	Ref         Ref    `json:"ref"`
 	SessionID   string `json:"session_id,omitempty"`
 	ActualModel string `json:"actual_model,omitempty"`
+	// Extensions carries adapter-reported extension values; see Observation.
+	Extensions map[string]json.RawMessage `json:"ext,omitempty"`
 }
 
 // CancelAck is the adapter's cancel acknowledgment. Acknowledged means the

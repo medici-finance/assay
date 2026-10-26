@@ -1,0 +1,131 @@
+{
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly)$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
+    "file": "verifyflip.go",
+    "old": "\t\tif !flipSHAAgree(strings.ToLower(m[2]), strings.ToLower(sha)) {",
+    "new": "\t\tif !strings.EqualFold(m[2], m0[2]) {"
+  },
+  "mutations": [
+    {
+      "name": "flipSHAAgree drops the minimum prefix length (any abbreviation agrees)",
+      "file": "verifyflip.go",
+      "old": "\treturn a == b || (len(a) >= treeSHALen && strings.HasPrefix(b, a))",
+      "new": "\treturn a == b || strings.HasPrefix(b, a)"
+    },
+    {
+      "name": "flipSHAAgree minimum prefix length one short (11 hex agree)",
+      "file": "verifyflip.go",
+      "old": "\treturn a == b || (len(a) >= treeSHALen && strings.HasPrefix(b, a))",
+      "new": "\treturn a == b || (len(a) >= treeSHALen-1 && strings.HasPrefix(b, a))"
+    },
+    {
+      "name": "flipSHAAgree reads a substring anywhere as agreement, not an exact prefix",
+      "file": "verifyflip.go",
+      "old": "\treturn a == b || (len(a) >= treeSHALen && strings.HasPrefix(b, a))",
+      "new": "\treturn a == b || (len(a) >= treeSHALen && strings.Contains(b, a))"
+    },
+    {
+      "name": "flipSHAAgree reads a suffix as agreement",
+      "file": "verifyflip.go",
+      "old": "\treturn a == b || (len(a) >= treeSHALen && strings.HasPrefix(b, a))",
+      "new": "\treturn a == b || (len(a) >= treeSHALen && (strings.HasPrefix(b, a) || strings.HasSuffix(b, a)))"
+    },
+    {
+      "name": "the qualifier tail after the sha is no longer compared (+dirty, on-behalf-of, source)",
+      "file": "verifyflip.go",
+      "old": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {",
+      "new": "\t\tif !flipSHAAgree(m[2], sha) {"
+    },
+    {
+      "name": "the exact-case sha comparison dropped (an upper-cased prefix agrees)",
+      "file": "verifyflip.go",
+      "old": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {",
+      "new": "\t\tif m[3] != m0[3] {"
+    },
+    {
+      "name": "the run's sha is the first row's, not its longest form",
+      "file": "verifyflip.go",
+      "old": "\t\tif m := flipRunnerRe.FindStringSubmatch(r[1]); m != nil && len(m[2]) > len(sha) {",
+      "new": "\t\tif m := flipRunnerRe.FindStringSubmatch(r[1]); m != nil && sha == \"\" {"
+    },
+    {
+      "name": "the stamp keeps the first row's sha form",
+      "file": "verifyflip.go",
+      "old": "\tp.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})",
+      "new": "\tp.Stamp, p.StampErr = flipStamp(date, m0)"
+    },
+    {
+      "name": "transitionWitnessTree drops git's resolution of the short token",
+      "file": "acceptancetransition.go",
+      "old": "\tif err != nil || strings.TrimSpace(string(out)) != runSHA {",
+      "new": "\tif false && (err != nil || strings.TrimSpace(string(out)) != runSHA) {"
+    },
+    {
+      "name": "transitionWitnessTree drops the exact-prefix check",
+      "file": "acceptancetransition.go",
+      "old": "len(tree) < treeSHALen || !strings.HasPrefix(runSHA, tree) {",
+      "new": "len(tree) < treeSHALen {"
+    },
+    {
+      "name": "transitionWitnessTree drops the minimum length",
+      "file": "acceptancetransition.go",
+      "old": "!isObjectID(runSHA) || len(tree) < treeSHALen ||",
+      "new": "!isObjectID(runSHA) ||"
+    },
+    {
+      "name": "transitionWitnessTree maps every token to the run's sha",
+      "file": "acceptancetransition.go",
+      "old": "\tif isObjectID(tree) || !isObjectID(runSHA) || len(tree) < treeSHALen || !strings.HasPrefix(runSHA, tree) {\n\t\treturn tree\n\t}",
+      "new": "\tif isObjectID(tree) || !isObjectID(runSHA) {\n\t\treturn tree\n\t}\n\treturn runSHA"
+    },
+    {
+      "name": "the closure audit reads the witness tree raw again (pre-#4299)",
+      "file": "acceptancetransition.go",
+      "old": "\t\t\ttree := transitionWitnessTree(dir, witnessTreeOf(latest), p.SHA)",
+      "new": "\t\t\ttree := witnessTreeOf(latest)"
+    },
+    {
+      "name": "evidenceOnlyChange ignores other changed or untracked paths",
+      "file": "verifyrun.go",
+      "old": "\tif len(entries) != 1 || len(entries[0]) < 4 || entries[0][3:] != rel {",
+      "new": "\tif len(entries) < 1 || len(entries[0]) < 4 {"
+    },
+    {
+      "name": "evidenceOnlyChange accepts any status code (an unmerged brief reads clean)",
+      "file": "verifyrun.go",
+      "old": "\tcase \" M\", \"M \", \"MM\":\n\tdefault:\n\t\treturn false\n\t}",
+      "new": "\tdefault:\n\t}"
+    },
+    {
+      "name": "evidenceOnlyChange no longer compares the text outside Evidence",
+      "file": "verifyrun.go",
+      "old": "\treturn okA && okB && a == b",
+      "new": "\treturn okA && okB && (a == b || a != b)"
+    },
+    {
+      "name": "outsideEvidence accepts a carriage return",
+      "file": "verifyrun.go",
+      "old": "\tif strings.Contains(text, \"\\r\") {\n\t\treturn \"\", false\n\t}\n\tlines := strings.Split(text, \"\\n\")",
+      "new": "\tlines := strings.Split(text, \"\\n\")"
+    },
+    {
+      "name": "a transition run accepts an Evidence-only edit (strict tree check dropped)",
+      "file": "verifyrun.go",
+      "old": "\t\tif err != nil || strings.Contains(executionTree, \"+\") || strings.Contains(treeSHA(root), \"+\") {",
+      "new": "\t\tif err != nil || strings.Contains(executionTree, \"+\") {"
+    },
+    {
+      "name": "the host lane stamps treeSHA again (an Evidence-only edit reads +dirty)",
+      "file": "verifyrun.go",
+      "old": "\texecutionTree := briefTreeSHA(root, path)",
+      "new": "\texecutionTree := treeSHA(root)"
+    },
+    {
+      "name": "the bracket open step derives treeSHA again",
+      "file": "containerbracket.go",
+      "old": "\tr.RunnerTree = briefTreeSHA(home, brief)",
+      "new": "\tr.RunnerTree = treeSHA(home)"
+    }
+  ]
+}
