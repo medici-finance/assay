@@ -2,6 +2,8 @@ package runner_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -514,4 +516,54 @@ func profileSchemaDrift(s map[string]any) []string {
 		}
 	}
 	return drift
+}
+
+// digestVector is the exact byte sequence ProfileDigest hashes for one
+// profile, written by hand for a non-Go adapter to check its own encoder
+// against: compact, members in the spec's order, digest empty, strings as
+// themselves (no HTML escaping of "&", "<" or ">"), and an empty list as [].
+const digestVector = `{"digest":"","runner_profile":"profile-a","roles":["worker"],"harness":{"implementation":"harness-x","version":"1.4.2","bundle_digest":"sha256:a02a49f49507c2acda4c89a292c70db848da8684014c4491e8719ae853746128","bundle_provenance":"attestations/harness-x-1.4.2"},"model":{"profile":"model-profile-a","model":"model-a"},"backend":{"profile":"backend-local","platform":"linux-arm64"},"preservation":{"resume":{"files":"supported","conversation":"unsupported","process_memory":"unsupported","descendants":"unknown","pending_interactions":"unknown"},"restart":{"files":"supported","conversation":"unknown","process_memory":"unknown","descendants":"unknown","pending_interactions":"unknown"}},"cancellation":"supported","budget_scopes":[],"telemetry":"complete","qualification":{"evidence":["https://example.test/run?a=1&b=2"],"limits":["<linux-arm64> & later"]}}`
+
+const digestVectorSum = "sha256:4d13fa543142fa0549f8cb3bb2e23f848a36fb2988d33f49b5f3d8d96bd4b621"
+
+// TestExecutionProfileDigestVector: ProfileDigest hashes exactly the fixed
+// vector's bytes, so "&", "<" and ">" are not HTML-escaped and an empty list is
+// []; the sealed profile validates and its JSON form decodes with the same
+// digest; a nil list, which would hash as null and whose JSON form decoding
+// refuses, does not validate.
+// regression: agent-execution/01
+func TestExecutionProfileDigestVector(t *testing.T) {
+	sum := sha256.Sum256([]byte(digestVector))
+	if got := "sha256:" + hex.EncodeToString(sum[:]); got != digestVectorSum {
+		t.Fatalf("the vector itself: got %s, want %s", got, digestVectorSum)
+	}
+	var p runner.QualifiedProfile
+	if err := json.Unmarshal([]byte(digestVector), &p); err != nil {
+		t.Fatal(err)
+	}
+	if got := runner.ProfileDigest(p); got != digestVectorSum {
+		t.Fatalf("ProfileDigest: got %s, want %s", got, digestVectorSum)
+	}
+	p.Digest = digestVectorSum
+	if err := p.Validate(); err != nil {
+		t.Fatalf("the sealed vector profile: %v", err)
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, err := runner.DecodeQualifiedProfile(b); err != nil || d.Digest != digestVectorSum {
+		t.Fatalf("the vector profile's JSON form: %v", err)
+	}
+	for what, nilList := range map[string]func(*runner.QualifiedProfile){
+		"nil limits":        func(q *runner.QualifiedProfile) { q.Qualification.Limits = nil },
+		"nil budget scopes": func(q *runner.QualifiedProfile) { q.BudgetScopes = nil },
+	} {
+		q := p
+		nilList(&q)
+		q = conformance.Seal(q)
+		if err := q.Validate(); !errors.Is(err, runner.ErrInvalidRequest) {
+			t.Fatalf("%s: got %v, want %v", what, err, runner.ErrInvalidRequest)
+		}
+	}
 }

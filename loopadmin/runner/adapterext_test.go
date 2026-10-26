@@ -133,8 +133,9 @@ func wantIs(t *testing.T, what string, got, want error) {
 
 // TestRunnerAdapterExtensionsScreened: an ext value on a receipt or an
 // observation is refused when the request did not carry that extension or the
-// adapter does not declare it, and when any value carries credential material,
-// in both modes; the refused observation is neither returned nor recorded,
+// adapter does not declare it (each half on its own), and when any key or
+// value carries credential material or a value does not decode, in both
+// modes; the refused observation is neither returned nor recorded,
 // and the invocation's result is not accepted even after a later clean
 // observation. An extension the request carried and the adapter declares
 // still passes.
@@ -204,9 +205,39 @@ func TestRunnerAdapterExtensionsScreened(t *testing.T) {
 			t.Fatalf("%s: an invocation whose adapter sent a screened value must not be accepted: got %v", mode, err)
 		}
 
-		// Positive control: carried by the request and declared by the adapter.
+		// Declared by the adapter, but the request never carried it: refused
+		// on the observation and on the receipt alike.
 		caps := fake.FullCapabilities()
 		caps.Extensions = []string{otherExt}
+		f = fake.New(caps)
+		e = &extAdapter{Adapter: f, observed: map[string]json.RawMessage{otherExt: otherValue("benign")}}
+		_, obsErr, accErr = screened(t, mode+": uncarried extension", e, f, base)
+		wantIs(t, mode+": uncarried extension on the observation", obsErr, runner.ErrMalformedResult)
+		wantIs(t, mode+": uncarried extension at acceptance", accErr, runner.ErrMalformedResult)
+		f = fake.New(caps)
+		e = &extAdapter{Adapter: f, receipt: map[string]json.RawMessage{otherExt: otherValue("benign")}}
+		startErr, _, accErr = screened(t, mode+": uncarried extension on the receipt", e, f, base)
+		wantIs(t, mode+": uncarried extension on the receipt", startErr, runner.ErrMalformedResult)
+		wantIs(t, mode+": acceptance after an uncarried extension on the receipt", accErr, runner.ErrMalformedResult)
+
+		// Keys are screened as well as values: a credential-shaped key with a
+		// clean value refuses as a credential, not merely as unlisted.
+		const slotKey = "token/v1"
+		f = fake.New(fake.FullCapabilities())
+		e = &extAdapter{Adapter: f, observed: map[string]json.RawMessage{slotKey: otherValue("benign")}}
+		_, obsErr, accErr = screened(t, mode+": screened key", e, f, base, slotKey)
+		wantIs(t, mode+": screened key on the observation", obsErr, runner.ErrCredential)
+		wantIs(t, mode+": screened key at acceptance", accErr, runner.ErrCredential)
+
+		// A value that does not decode fails closed, even under an extension
+		// the request carried and the adapter declares.
+		f = fake.New(caps)
+		e = &extAdapter{Adapter: f, observed: map[string]json.RawMessage{otherExt: json.RawMessage(`{"note":"cut`)}}
+		_, obsErr, accErr = screened(t, mode+": undecodable value", e, f, carried)
+		wantIs(t, mode+": undecodable value on the observation", obsErr, runner.ErrCredential)
+		wantIs(t, mode+": undecodable value at acceptance", accErr, runner.ErrCredential)
+
+		// Positive control: carried by the request and declared by the adapter.
 		f = fake.New(caps)
 		e = &extAdapter{Adapter: f, observed: map[string]json.RawMessage{otherExt: otherValue("answer")}}
 		startErr, obsErr, accErr = screened(t, mode+": declared extension", e, f, carried)

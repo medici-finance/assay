@@ -1510,5 +1510,47 @@
     "file": "runner/fake/fake.go",
     "old": "need, err := runner.AdmitExecutionProfile(req, a.profiles)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
     "new": "need, _ := runner.DecodeProfileRequirement(req.Extensions[runner.ExecutionProfileExt])"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client accepts an adapter-reported extension the adapter declares but the request did not carry",
+    "file": "runner/executionprofile.go",
+    "old": "!carried || !caps.hasExtension(k) {",
+    "new": "(false && !carried) || !caps.hasExtension(k) {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the adapter-reported extension check screens the value but no longer the key",
+    "file": "runner/executionprofile.go",
+    "old": "if extensionCarriesCredential(k, v) {",
+    "new": "if extensionCarriesCredential(k[:0]+\"notes/v1\", v) {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: an adapter-reported extension value that does not decode passes the credential screen",
+    "file": "runner/secrets.go",
+    "old": "if err := dec.Decode(&x); err != nil {\n\t\treturn true",
+    "new": "if err := dec.Decode(&x); err != nil {\n\t\treturn false"
+  },
+  {
+    "test": "TestExecutionProfileDigestVector",
+    "why": "agent-execution/01: the profile digest hashes HTML-escaped strings",
+    "file": "runner/executionprofile.go",
+    "old": "enc.SetEscapeHTML(false)",
+    "new": "enc.SetEscapeHTML(true)"
+  },
+  {
+    "test": "TestExecutionProfileDigestVector",
+    "why": "agent-execution/01: the profile digest hashes the encoder's trailing newline",
+    "file": "runner/executionprofile.go",
+    "old": "bytes.TrimSuffix(b.Bytes(), []byte(\"\\n\"))",
+    "new": "b.Bytes()"
+  },
+  {
+    "test": "TestExecutionProfileDigestVector",
+    "why": "agent-execution/01: a qualified profile with a nil list validates",
+    "file": "runner/executionprofile.go",
+    "old": "if p.BudgetScopes == nil || p.Qualification.Limits == nil {",
+    "new": "if false {"
   }
 ]

@@ -175,11 +175,16 @@ var profileDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // ProfileDigest is the digest a qualified profile's Digest must carry: sha256
 // over the profile's compact JSON encoding (struct field order, as the spec lists
-// the members) with Digest itself empty.
+// the members) with Digest itself empty. Strings are written as themselves:
+// no HTML escaping, so "&", "<" and ">" in an evidence URL are hashed as those
+// bytes. A profile Validate accepts has no nil list, so no list hashes as null.
 func ProfileDigest(p QualifiedProfile) string {
 	p.Digest = ""
-	b, _ := json.Marshal(p) // a struct of strings, slices and nested structs always marshals
-	sum := sha256.Sum256(b)
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(p) // a struct of strings, slices and nested structs always encodes
+	sum := sha256.Sum256(bytes.TrimSuffix(b.Bytes(), []byte("\n")))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
@@ -262,6 +267,11 @@ func (p QualifiedProfile) Validate() error {
 	}
 	if len(p.Qualification.Evidence) == 0 {
 		return fmt.Errorf("%w: a qualified profile references its qualification evidence", ErrInvalidRequest)
+	}
+	// Every list is required, as decoding requires it: an empty list is a
+	// declaration, a nil one is a missing field (null in its JSON form).
+	if p.BudgetScopes == nil || p.Qualification.Limits == nil {
+		return fmt.Errorf("%w: a qualified profile list is missing", ErrInvalidRequest)
 	}
 	for _, e := range append(cloneSlice(p.Qualification.Evidence), p.Qualification.Limits...) {
 		if blank(e) {

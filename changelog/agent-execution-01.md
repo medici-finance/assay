@@ -6,3 +6,4 @@
 
 - The runner client now checks every extension value an adapter reports on a launch receipt or an observation, not only the execution report: credential material anywhere is refused, so is a value for an extension the request did not carry or the adapter does not declare, a refused observation is neither returned nor recorded, and the invocation can no longer be accepted.
 - A launch request, and an extension value decoded on its own, longer than 1 MiB is refused before it is parsed.
+- A qualified profile's digest hashes strings as written, with no HTML escaping of `&`, `<` or `>`, and a profile with a missing list no longer validates, so the digest has one byte sequence a non-Go encoder can reproduce; a fixed vector in the tests pins it.
