@@ -33,8 +33,8 @@ sources:
   - "statusgen/17 — adds `risk:high` to the label set that derives `gate: human`, and the intake-desk sentence this brief extends"
   - "freshness-checked 2026-10-08 @ 979e5453f (origin/main) — `planScan` skips an existing placeholder without reading its gate; no Go file compares a stored gate with the issue's labels; statusgen/17 is `todo`, so `risk:high` is not yet in `riskGateLabels` and its skill bullet is not yet in the tree; no open PR touches `statusgen/scanissues.go`"
 consumers:
-  - "statusgen/scanissues.go: follow-up statusgen/18 (this brief; the comparison at the existing-placeholder skip and the notice it appends)"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/18 (this brief; two sentences appended to the scored-triage bullet statusgen/17 adds)"
+  - "statusgen/scanissues.go: fixed-here (this brief; the comparison at the existing-placeholder skip and the notice it appends)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here (this brief; two sentences appended to the scored-triage bullet statusgen/17 adds)"
   - "tools/desk/cmd/scanloop/lane.go: out-of-scope (the drain runs `statusgen --root . --scan-issues` and discards that command's output when it succeeds, so it does not show the notice; relaying it is not part of the answer on #2405 and is left open, see Context)"
   - "statusgen/transcribescan.go: out-of-scope (the same-repo transcriber has the same skip and prints its own notices under its own prefix; it ships inert and no workflow in this repo runs it, and the answer on #2405 names the scan)"
 ---
