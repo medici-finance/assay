@@ -14,7 +14,7 @@ BEGIN = '<!-- statusgen:briefs:begin -->'
 END = '<!-- statusgen:briefs:end -->'
 HEADER = '| # | Brief | Wave | Effort | Status | Verified | Reviewed |'
 SEPARATOR = '|---|-------|------|--------|--------|----------|----------|'
-STATES = {'todo', 'in-progress', 'implemented', 'verified', 'done', 'blocked'}
+STATES = {'todo', 'in-progress', 'implemented', 'verified', 'done', 'blocked', 'withdrawn'}
 
 
 def git(*args):
@@ -49,7 +49,12 @@ def normalized(raw):
         seen.add(number)
         if cells[5] != ' '+cells[5].strip()+' ' or cells[5].strip() not in STATES:
             raise ValueError('unsupported Status value')
-        cells[5] = ' <status> '
+        # Withdrawal is a separate lifecycle action, never a reconciliation
+        # exemption. Existing withdrawn rows may coexist with live Status
+        # updates, but keep their bytes in the comparison so neither a new
+        # withdrawal nor a revival can qualify.
+        if cells[5].strip() != 'withdrawn':
+            cells[5] = ' <status> '
         lines[index] = '|'.join(cells)
     return prefix + BEGIN + ''.join(lines) + END + suffix
 
