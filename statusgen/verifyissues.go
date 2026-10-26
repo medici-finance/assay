@@ -336,7 +336,9 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 //     a bare list marker, right after a count label and its colon ("summary:
 //     0 HELD"), or right after ", " / "; " that closes another count item
 //     whose noun is a verdict count (heldCountItemRe: "7 PASS, 0 HELD", "5/5
-//     rows, 0 HELD"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
+//     rows, 0 HELD"), or a ratio item that passed every row or check it
+//     counts (heldCountRatioRe: "2 of 2 required rows passed; 0
+//     could-not-check", never "1 of 2 rows passed;"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
 //     1, 0", "row 3 exit, 0"), a row label ("row 0"), a decimal or version
 //     ("2.0", "v1.0") or a parenthesis ("(0 HELD)") is not a count position
 //     and never excuses.
@@ -383,6 +385,12 @@ var (
 	// "5/5 rows,"). The noun is a short allowlist of verdict counts, so a
 	// number followed by an arbitrary word ("row 3 exit,") is not a count.
 	heldCountItemRe = regexp.MustCompile(`(?i)\b\d+[ \t]+(?:pass(?:ed|es)?|fail(?:ed|s|ures?)?|held|could-not-check|checked-clean|checked-failed|unrun|skip(?:ped|s)?|rows?|checks?)[,;]$`)
+	// heldCountRatioRe is a prior count item that passed every row or check
+	// it counts, closed by "," or ";" ("2 of 2 required rows passed;",
+	// #4294): at most one qualifier word before the noun, and both counts the
+	// same and above zero (heldDetailCounts), so "1 of 2 rows passed;" is not
+	// a count position.
+	heldCountRatioRe = regexp.MustCompile(`(?i)\b(\d+)[ \t]+of[ \t]+(\d+)[ \t]+(?:[a-z]+[ \t]+)?(?:rows?|checks?)[ \t]+(?:pass(?:ed)?|ran|green)[,;]$`)
 	// heldCuePrevWordRe is a linking word allowed directly before a word cue.
 	heldCuePrevWordRe = regexp.MustCompile(`(?i)\b(?:is|are|was|were|has|have|had|with|and|but|otherwise|means)$`)
 	// heldReasonAfterRe is a hold reason after the marker, past any run of
@@ -425,6 +433,9 @@ func heldWordCueAllowed(before string) bool {
 // heldZeroCueAllowed reports whether before — the trimmed text in front of a
 // "0" cue — is a count position.
 func heldZeroCueAllowed(before string) bool {
+	if m := heldCountRatioRe.FindStringSubmatch(before); m != nil && heldDetailCounts(m[1:]) {
+		return true
+	}
 	return before == "" || heldListMarkerRe.MatchString(before) ||
 		heldCountLabelRe.MatchString(before) || heldCountItemRe.MatchString(before)
 }
@@ -1021,6 +1032,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			// means ("could-not-check → exit 6") is not a disposition; the
 			// row's own result cell is (heldScanScope rule 2, #1894).
 			if read.prose && heldExitMapping(clean, h) {
+				continue
+			}
+			// A passing row's Result cell that records the product's own
+			// could-not-check output ("a could-not-check mission section")
+			// is not the row's disposition (heldScanScope rule 4, #4294).
+			if cuts == nil && heldObservedOutput(line, clean, read, h) {
 				continue
 			}
 			keywordAfter := false
