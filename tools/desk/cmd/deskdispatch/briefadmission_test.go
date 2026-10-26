@@ -300,3 +300,19 @@ func TestDeliverableUnreadableFrontmatter(t *testing.T) {
 		t.Errorf("readable brief with no declaration: %+v, %v", d, err)
 	}
 }
+
+// TestDeliverableIgnoresSiblingKeys pins that a quoted key which merely starts with
+// "deliverable_repo:", "homed-in:" or "brief:" is not read as that declaration: a brief with only
+// such keys declares nothing and stays inactive.
+func TestDeliverableIgnoresSiblingKeys(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "brief-decoy.md")
+	content := "---\ngate: model\n'deliverable_repo: example-tool': x\n'homed-in: example-org/console': x\n" +
+		"'brief: c:other:s:01': x\n---\nbody\n"
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := resolveDeliverable(dispatchOpts{brief: p, root: root}); err != nil || d.active {
+		t.Errorf("sibling keys read as a declaration: %+v, %v", d, err)
+	}
+}

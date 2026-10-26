@@ -43,3 +43,19 @@ var continuationLines = []string{
 	"title: 'first\nexec-tier: strong\n  end'",
 	"meta: {a: 1,\ndecision-issue: 12\n}",
 }
+
+// TestCommentedImplementerReadsAsBefore pins that implementer reads exactly as
+// this loop's earlier reader read it, inline comment included.
+func TestCommentedImplementerReadsAsBefore(t *testing.T) {
+	for line, want := range map[string]string{
+		"implementer: one # x":   "one # x",
+		`implementer: "" # x`:    " # x",
+		"implementer: one":       "one",
+		"implementer: 'one # x'": "one # x",
+	} {
+		fm := parseFrontmatter("---\ngate: model\n" + line + "\n---\n")
+		if fm.ParseError != "" || fm.Implementer != want {
+			t.Errorf("%q: read %q (parse error %q); the earlier reader read %q", line, fm.Implementer, fm.ParseError, want)
+		}
+	}
+}
