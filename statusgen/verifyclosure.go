@@ -35,6 +35,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"os"
 	"strings"
 )
@@ -124,10 +125,12 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	}
 	findings, err := checkSelectedClosure(root, key, br.Status, br.Verified, art)
 	if err != nil {
-		// Preserve this command's protected-table refusal vocabulary while the
-		// shared validator retains the explicit brief-check context.
-		detail := strings.TrimPrefix(err.Error(), "verified outcome requires well-formed Verify and Evidence sections: ")
-		fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, detail)
+		var structural *evaluation.ClosureStructureError
+		if errors.As(err, &structural) {
+			fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, structural.Detail)
+		} else {
+			fmt.Fprintf(stdout, "%s: NOT accepted — %v\n", key, err)
+		}
 		return verifyclosureExitNotAccepted
 	}
 

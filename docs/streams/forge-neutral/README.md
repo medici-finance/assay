@@ -488,8 +488,8 @@ findings and do not exist yet.
   18 depends on 08, 33 and 34 and stays in wave 5.
 - **Wave 1 (beside 01)** — `forge-neutral/36` (the importable fact-reader module and its first
   shared read, human-gated; depends on nothing and unblocks nothing — its library-first
-  premise is ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, and it
-  keeps its own human gate; no other brief waits on it).
+  premise was ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, since
+  superseded by `DR-forge-library`, and it keeps its own human gate; no other brief waits on it).
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -563,6 +563,15 @@ not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskrea
 every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
 enforcement in desktools-v2/08 waits for both /18 and /35.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+**Superseded 2026-10-25 (`DR-forge-library`).** The driver's later ruling on #2395 replaces the
+offline-and-frozen limit: one shared forge library for reads and writes, built by
+desktools-v2/75, which statusgen links for its forge calls (desktools-v2/77), with the credential
+held privately by the library. For this stream: /18 and /35 still move statusgen's reads onto its
+injected reader seam, and still add no credential of statusgen's own; their transport-specific
+checks (/18 rows 21 to 23) are restated so they hold for either transport, and desktools-v2/77
+swaps the seam from `deskread` to the library after both land. /36's delivered module and
+Evidence stand.
 
 ## Non-CI coordination applicability — 2026-10-13
 

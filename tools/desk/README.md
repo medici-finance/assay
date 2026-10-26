@@ -1249,7 +1249,12 @@ Boundaries mirror the push-transport gate's:
   confirmed history, and pins the existing ref during its plain push. An absent branch
   keeps the whole range; unreadable or divergent state refuses. `create --check` judges
   the whole range and explicitly reports that it cannot confirm the remote head.
-  `deskevidence` offers no tip (its base already is the branch it writes). Every caller's tip choice is pinned
+  `deskevidence flip` offers a snapshot of `refs/remotes/origin/<branch>` for the branch it
+  commits on, as an offline estimate only: it pushes nothing, and `deskpr` re-judges the range
+  against live state when the branch is published. A snapshot that yields no tip still names
+  why, and a widened refusal never offers to amend a commit the remote may already hold. The
+  conditional-write Evidence landing offers no tip (it judges its admitted source against
+  `main`, and pushes no source commit). Every caller's tip choice is pinned
   by `TestPubIdentityCallersTip`; the fail-first evidence is
   `internal/deskkit/publishidentity-mutations.json`.
 - **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is
@@ -2738,6 +2743,16 @@ deskwt prune --no-cache                                # …or skip the cell-cac
 deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
+
+`deskwt` generates its help with Cobra: `deskwt --help`, `deskwt <verb> --help` and
+`deskwt help maintain objects` print to stdout, exit 0, before any configuration, roster,
+credential or network read, lock or child process. Every flag above keeps its spelling,
+default and single-dash form. A usage error (unknown verb or flag, bad value, wrong number
+of positionals) now exits 2 before the kill switch and writes no audit row; domain refusals
+keep exit 5. Every verb also accepts the eight shared persistent `--perf-*` attribution
+flags, which fall back to `ASSAY_PERF_*` (and `DESK_LOOP`) when unset. The
+[compatibility page](../../docs/deskwt-cli-compat.md) pins the baseline
+inventory and lists every observable change.
 
 - **`role-init`** is the isolate-first step every desk role takes before `deskboot`: from a
   FRESHLY FETCHED `origin/main` of the checkout it is pointed at (`--repo-root <checkout>`, else

@@ -41,6 +41,13 @@ composition can live in `tools/desk/internal/forgeservice/`, with a thin `forges
 the public typed read/client contracts extend the dependency-free `forgeread` module in
 separate packages. Root/offline consumers acquire no HTTP, database or credential dependency.
 Do not export all of deskkit or add a generic raw-request interface.
+*(Note, 25 October 2026: `DR-forge-library` records the driver's ruling of one shared forge
+library for reads and writes. Its desk-default placement is a separate repository-root module,
+`forgeclient/`, which composes the `forgeread` adapters, rather than further packages of the
+`forgeread` module. This keeps the `forgeread` module itself free of any credential. The path is
+decided at desktools-v2/75's human gate. The library's typed operation surface is the same
+shape as this document's role executor, so the custody service described here stays future
+work.)*
 
 A query process holds only its admitted read access and mirror-reader role. Each existing
 role-bound publisher/executor retains its own credential custody and process boundary;

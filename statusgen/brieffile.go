@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
@@ -69,6 +72,13 @@ type BriefFile struct {
 	// which derivation question(s) it answered yes and why.
 	// NOTICEd when exec-tier: strong but exec-tier-why is absent or empty.
 	ExecTierWhy string
+	// IndependenceOverride is the optional `independence-override:` key: the
+	// recorded, human-authorized override of the committer-identity cross-check's
+	// hard PROBLEM for one brief (measured-status/05; attribution.go,
+	// independenceOverrideRefusal). "" when absent. Only its TYPE is checked at
+	// parse; its grammar, the named human, and who committed it are checked by
+	// attributionProblems, and only when the brief actually fails that check.
+	IndependenceOverride string
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
 	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
@@ -276,8 +286,9 @@ var (
 		"brief", "title", "wave", "depends", "unblocks", "effort",
 		"gate", "risk", "issues", "authored", "sources",
 	}
-	canonicalRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
-	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
+	// The risk questions are owned by briefdoc; these are projections of that one list.
+	canonicalRiskKeys = briefdoc.RiskKeys()
+	canonicalRiskSet  = riskKeySet(canonicalRiskKeys)
 	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
 	validGate         = map[string]bool{"model": true, "human": true}
 	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field.
@@ -1038,6 +1049,17 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("ruling must be a string (an issue-comment URL)")
 		}
 	}
+	// independence-override is an OPTIONAL but KNOWN key (measured-status/05): a
+	// single-line "human:<name> YYYY-MM-DD <reason>" value. A wrong TYPE is a parse
+	// error; everything else is judged where the override would apply
+	// (attribution.go), so a malformed value is echoed back there, never here.
+	if v, ok := data["independence-override"]; ok {
+		if s, isStr := v.(string); isStr {
+			bf.IndependenceOverride = strings.TrimSpace(s)
+		} else {
+			addBad("independence-override must be a string (\"human:<name> YYYY-MM-DD <reason>\")")
+		}
+	}
 	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1
 	// file that carries one of these keys is untouched here (an unknown key is not
 	// schema drift under v1 — the same tolerance every other optional key gets).
@@ -1308,57 +1330,23 @@ func extractEvidence(body string) string {
 // section's boundaries are decided; extractEvidence and the auto-flip's
 // Evidence-only classifier (evidenceshape.go) both read them from here, so a
 // line the parser does not read as Evidence is never classified as Evidence.
-func evidenceSectionSpan(lines []string) (start, end int, ok bool) {
-	start = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Evidence" {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return 0, 0, false
-	}
-	end = len(lines)
-	for i := start; i < len(lines); i++ {
-		if isSectionHeading(lines[i]) {
-			end = i
-			break
-		}
-	}
-	return start, end, true
+func evidenceSectionSpan(lines []string) (int, int, bool) {
+	return briefdoc.SectionBounds(lines, "Evidence", false)
 }
 
 // isSectionHeading reports whether a brief line is a `## ` section heading as
 // the parser reads one: leading and trailing whitespace ignored.
-func isSectionHeading(l string) bool {
-	return strings.HasPrefix(strings.TrimSpace(l), "## ")
-}
+func isSectionHeading(l string) bool { return briefdoc.IsSection(l) }
 
 // evidenceHasContent reports whether an Evidence section has at least one
 // content row: a non-empty line outside HTML comments (the contract comment
 // alone does not count).
-func evidenceHasContent(section string) bool {
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
-	for _, l := range strings.Split(stripped, "\n") {
-		if strings.TrimSpace(l) != "" {
-			return true
-		}
-	}
-	return false
-}
+func evidenceHasContent(section string) bool { return briefdoc.HasContent(section) }
 
 // hasHumanReviewer reports whether a Reviewed-column value names a human — a
 // whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
 // that merely contains the substring (e.g. "superhuman:x") does NOT count.
-func hasHumanReviewer(reviewed string) bool {
-	for _, tok := range strings.Fields(reviewed) {
-		if strings.HasPrefix(tok, "human:") {
-			return true
-		}
-	}
-	return false
-}
+func hasHumanReviewer(reviewed string) bool { return evaluation.HasHumanReviewer(reviewed) }
 
 // verifyTableHasRow reports whether a `## Verify` section body contains at least
 // one table data row whose Command and Expect cells are both non-empty. It
@@ -2168,4 +2156,13 @@ func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName m
 		}
 	}
 	add("%s: %s %q references unknown brief %q in stream %s", path, kind, ref, parts[1], parts[0])
+}
+
+// riskKeySet returns keys as a membership set.
+func riskKeySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return set
 }

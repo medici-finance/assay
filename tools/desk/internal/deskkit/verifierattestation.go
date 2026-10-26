@@ -1,6 +1,8 @@
 package deskkit
 
 import (
+	"github.com/medici-finance/assay/deskcore/attestation"
+
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,7 +16,7 @@ import (
 	"strings"
 )
 
-const VerifierAttestationTitle = "[verification-attestation] "
+const VerifierAttestationTitle = attestation.Title
 const verifierRecordName = "assay-verifier-attestation.json"
 
 // VerifierAttestationRecord is the file name of a verifier home's local admission
@@ -26,11 +28,7 @@ const VerifierAttestationRecord = verifierRecordName
 // This is dispatch provenance, NEVER a Verify result or evidence of execution.
 // Checkout pins the line-ending conversion the home was checked out with, so
 // admission renders attested blobs from the commit and this record only.
-type VerifierBinding struct {
-	Version                                                                              int
-	SourceRepo, TrackingSource, TrackingHomeSHA256, TrackingCheckout                     string `json:",omitempty"`
-	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier, Checkout string
-}
+type VerifierBinding = attestation.Binding
 
 // verifierPhase names the admission checkpoint. Before execution every source
 // file, the stream index included, must hold its attested bytes; at Evidence
@@ -339,11 +337,8 @@ func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
 	}
 	return verifierSave(home, r)
 }
-func verifierBody(b VerifierBinding) string {
-	data, _ := json.MarshalIndent(b, "", "  ")
-	return "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(data) + "\n"
-}
-func verifierAuthority(login string) bool { return attestationAuthority("verifier")(login) }
+func verifierBody(b VerifierBinding) string { return attestation.Body(b) }
+func verifierAuthority(login string) bool   { return attestationAuthority("verifier")(login) }
 func verifierIssue(f Forge, repo ForgeRepo, r verifierLocal) (*Issue, error) {
 	return attestationRecord(f, repo, r.Issue, VerifierAttestationTitle+r.Binding.Run, verifierBody(r.Binding), verifierAuthority, "verifier")
 }
@@ -552,40 +547,19 @@ func readVerifierAttestation(f verifierAttestationReader, repo ForgeRepo, n int)
 	if issue == nil {
 		return r, Refused("missing verifier attestation")
 	}
-	_, raw, ok := strings.Cut(issue.Body, "\n\n")
-	if !ok {
+	r.Binding, err = attestation.ParseBody(issue.Body)
+	if err != nil {
 		return r, Refused("verifier attestation body is not a binding")
 	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&r.Binding); err != nil {
-		return r, Refused("verifier attestation body is not a binding")
-	}
+
 	b := r.Binding
-	if (b.Version != 1 && b.Version != 2) || b.Repo != repo.Slug() || !workerHex64.MatchString(b.Run) ||
-		len(b.Source) != 40 || !workerHexCommit.MatchString(b.Source) || !workerHex64.MatchString(b.HomeSHA256) || !workerHex64.MatchString(b.BriefSHA256) || !workerHex64.MatchString(b.PlanSHA256) {
-		return r, Refused("invalid verifier attestation binding")
+	if why := attestation.BindingProblem(b, repo.Slug(), attestation.GeneralV1V2, IsAllowedRepo(b.SourceRepo)); why != "" {
+		return r, Refused("invalid verifier attestation binding: " + why)
 	}
 	if err := r.CheckEvidenceTarget(b.Brief); err != nil {
 		return r, err
 	}
-	if b.Version == 1 && (b.SourceRepo != "" || b.TrackingSource != "" || b.TrackingHomeSHA256 != "" || b.TrackingCheckout != "") {
-		return r, Refused("same-repository verifier has cross-repository fields")
-	}
-	if b.Version == 2 && (!IsAllowedRepo(b.SourceRepo) || strings.EqualFold(b.SourceRepo, b.Repo) || len(b.TrackingSource) != 40 || !workerHexCommit.MatchString(b.TrackingSource) || !workerHex64.MatchString(b.TrackingHomeSHA256)) {
-		return r, Refused("invalid cross-repository verifier binding")
-	}
-	if b.Version == 2 {
-		if _, err := parseVerifierCheckout(b.TrackingCheckout); err != nil {
-			return r, err
-		}
-	}
-	if _, err := ModelStampLabels(b.Model, b.Tier); err != nil {
-		return r, err
-	}
-	if _, err := parseVerifierCheckout(b.Checkout); err != nil {
-		return r, err
-	}
+
 	title, body := VerifierAttestationTitle+b.Run, verifierBody(b)
 	issue, err = attestationRecordObserved(f, repo, n, issue, title, body, verifierAuthority, "verifier")
 	if err != nil {
@@ -612,10 +586,15 @@ func readVerifierAttestation(f verifierAttestationReader, repo ForgeRepo, n int)
 	if err != nil {
 		return r, err
 	}
-	stamp, state := AttestedModelStampOf(tl, verifierAuthority)
-	if state != ModelStamped || stamp.Model != b.Model || stamp.Tier != b.Tier {
+	facts := make([]attestation.LabelEvent, 0, len(tl.Events))
+	for _, e := range tl.Events {
+		facts = append(facts, attestation.LabelEvent{Label: e.Name, Removed: e.Removed, Authority: verifierAuthority(e.AppliedBy)})
+	}
+	model, tier, why := attestation.Stamp(tl.Present, facts)
+	if why != "" || model != b.Model || tier != b.Tier {
 		return r, Refused("missing or mismatched dispatcher verifier stamp")
 	}
+
 	r.URL = issue.URL
 	return r, nil
 }

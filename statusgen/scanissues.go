@@ -293,6 +293,7 @@ func renderPlaceholder(repo string, issue int, gate string, labels []string) str
 	}
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "See issue #%d — the issue body is the spec.\n", issue)
+	b.WriteString("\nIntake: classification-needed until an accountable handoff companion is recorded.\n")
 	return b.String()
 }
 
@@ -556,6 +557,10 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				}
 				rel = filepath.ToSlash(rel)
 				dest := archivedPath(ph.Path)
+				if ph.Status != "done" && ph.HandoffAssessment.State != "observed" && (!openSet[ph.Issue] || openExcluded[ph.Issue]) {
+					notices = append(notices, fmt.Sprintf("scan-issues: %s#%d retained: classification-needed; closure or labels do not discharge intake", repo, ph.Issue))
+					continue
+				}
 				if !openSet[ph.Issue] {
 					// Issue is NOT open → closed.
 					if ph.Status != "done" {
@@ -933,6 +938,11 @@ func applyCloseOut(c closeOutPlan) error {
 				continue
 			}
 			if inFrontmatter {
+				key, _, _ := strings.Cut(trimmed, ":")
+				key = strings.Trim(strings.TrimSpace(key), "\"'")
+				if reactivate && (key == "handoff" || key == "handoff-opened") {
+					continue
+				} // a new source event needs a new judgment
 				if strings.HasPrefix(trimmed, "status:") {
 					hasStatus = true
 					switch c.Action {
@@ -1069,6 +1079,43 @@ func writeCloseOut(c closeOutPlan, body []byte) error {
 	if dest != c.Path {
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return fmt.Errorf("%s: %w", c.Rel, err)
+		}
+	}
+	if dest != c.Path && strings.Contains(string(body), "\nhandoff:") {
+		ph, ok, err := parsePlaceholderFile(c.Path)
+		if err != nil {
+			return err
+		}
+		if ok && ph.Handoff != "" {
+			if filepath.Base(ph.Handoff) != ph.Handoff || !strings.HasSuffix(ph.Handoff, ".json") {
+				return fmt.Errorf("invalid handoff companion filename")
+			}
+			src, err := os.OpenRoot(filepath.Dir(c.Path))
+			if err != nil {
+				return err
+			}
+			defer src.Close()
+			raw, err := src.ReadFile(ph.Handoff)
+			if err != nil {
+				return err
+			}
+			dst, err := os.OpenRoot(filepath.Dir(dest))
+			if err != nil {
+				return err
+			}
+			defer dst.Close()
+			previous, err := dst.ReadFile(ph.Handoff)
+			if err == nil && string(previous) != string(raw) {
+				return fmt.Errorf("handoff archive collision; preserve both source records")
+			}
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if os.IsNotExist(err) {
+				if err := dst.WriteFile(ph.Handoff, raw, 0600); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if err := os.WriteFile(dest, body, 0o644); err != nil {

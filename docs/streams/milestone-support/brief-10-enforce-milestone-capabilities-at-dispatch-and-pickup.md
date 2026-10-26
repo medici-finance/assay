@@ -83,6 +83,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 Before changing the governed boundary, present the concrete implementation/design through the existing decision mechanism. Confirm the preserved actor, subject, revocation and effect-admission rules. Options: accept the bounded implementation; request corrections; hold. No answer supplies no approval. Do not infer this ruling from the planning request.
 
+Default if no answer: none — blocks until answered
+
 ## Task
 
 1. Consume the canonical eligibility output and readercaps assessment at selection and immediately before claim/start/resume. Bind packet source revisions and required capability/brief versions; re-read current holds at the existing admission boundary so a stale eligible snapshot cannot authorize launch.

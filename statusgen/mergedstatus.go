@@ -26,6 +26,8 @@ package main
 // could not read.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"bytes"
 	"fmt"
 	"os/exec"
@@ -83,34 +85,12 @@ func (p mergedPR) deliveryOf(id string) mergeDelivery {
 // body with the same fence-aware grammar parseBriefLikeTrailers uses, each reduced
 // to its canonical `<stream>/<NN>` key. Pure; no I/O.
 func mergeTrailerKeys(body string) (delivers, authors []string) {
-	// A ``` fence is closed only by ```, a ~~~ fence only by ~~~ (the rule
-	// backfillOneFileReport keeps): the other marker inside an open fence is text.
-	fence := ""
-	for _, raw := range strings.Split(body, "\n") {
-		mark := ""
-		switch {
-		case rePRLinkFence.MatchString(raw):
-			mark = "```"
-		case reMergeTildeFence.MatchString(raw):
-			mark = "~~~"
-		}
-		if mark != "" && (fence == "" || mark == fence) {
-			if fence == "" {
-				fence = mark
-			} else {
-				fence = ""
-			}
+	for _, t := range trailers.Scan([]byte(body)) {
+		if t.Kind != trailers.TrailerBrief && t.Kind != trailers.TrailerAuthors {
 			continue
 		}
-		if fence != "" {
-			continue
-		}
-		m := briefLikeTrailerRe.FindStringSubmatch(strings.TrimRight(raw, "\r"))
-		if m == nil {
-			continue
-		}
-		key := canonicalBriefKey(strings.TrimRight(m[2], ".,;:"))
-		if m[1] == "Brief" {
+		key := canonicalBriefKey(strings.TrimRight(t.Value, ".,;:"))
+		if t.Kind == trailers.TrailerBrief {
 			delivers = append(delivers, key)
 		} else {
 			authors = append(authors, key)
@@ -121,7 +101,6 @@ func mergeTrailerKeys(body string) (delivers, authors []string) {
 
 // reMergeTildeFence is the `~~~` fence opener/closer rePRLinkFence (backticks only)
 // does not cover: a trailer shown inside a tilde fence is documentation, not delivery.
-var reMergeTildeFence = regexp.MustCompile("^[ \t]*~~~")
 
 // mergeSubjectRe matches GitHub's merge-commit subject and captures PR number + branch.
 var mergeSubjectRe = regexp.MustCompile(`^Merge pull request #(\d+) from [^/\s]+/(\S+)`)
