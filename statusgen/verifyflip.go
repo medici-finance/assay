@@ -1065,16 +1065,19 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 	return true, nil
 }
 
-// flipSideBroughtNothing reports whether a merge parent Y, whose Evidence yev
-// differs from the kept parent X's xev, made no net change that X lacks,
-// judged against every merge base of X and Y. It holds when yev equals the
-// Evidence at SOME merge base, and xev equals the Evidence at NONE of them.
-// No merge base (unrelated histories) never holds.
+// flipSideBroughtNothing reports whether a merge parent Y, with Evidence yev,
+// made no net change that the kept parent X, with Evidence xev, lacks, judged
+// against every merge base of X and Y. It holds when yev equals the Evidence
+// at SOME merge base, and xev equals the Evidence at NONE of them. No merge
+// base (unrelated histories) never holds.
 //
-// Equal Evidence on the two sides is not a call it can judge: with xev == yev
-// the match on yev would hide the match on xev, so it holds no side to have
-// brought anything and reports false. The caller reaches it only for parents
-// whose Evidence differs; a second caller gets the same fail-safe answer.
+// The two base tests are independent, so the answer is that rule for every
+// input and asks nothing of the caller. When xev == yev, a base that matches
+// yev also matches xev, so the rule cannot hold and the answer is false: the
+// pair does not make the merge trivial. False is the fail-closed answer for
+// equal Evidence, which the rule was not written for. flipEvidenceChanged
+// skips a parent whose Evidence equals the merge's before it asks, so today
+// it never passes equal Evidence.
 //
 // Why SOME base suffices for Y (#4466): a merge base is an ancestor of X, so
 // when Y's Evidence is a base's, every byte Y carries — a later FAIL included
@@ -1091,19 +1094,16 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 // Y's Evidence. The two sides then resolved one disagreement in opposite
 // directions, and the merge picked a side — that is judged.
 func flipSideBroughtNothing(xev, yev string, bases []string, evAt func(string) (string, error)) (bool, error) {
-	if xev == yev {
-		return false, nil
-	}
 	some, xAt := false, false
 	for _, b := range bases {
 		bev, err := evAt(b)
 		if err != nil {
 			return false, err
 		}
-		switch bev {
-		case yev:
+		if bev == yev {
 			some = true
-		case xev:
+		}
+		if bev == xev {
 			xAt = true
 		}
 	}
