@@ -92,11 +92,17 @@ History retains every event; one latest event per issue enters the existing clai
 and trust path. Replay goes to judgment, never another mechanical scan carrier.
 Read/write errors are could-not-check, not an empty queue. A dry-run uses only the
 existing throwaway state copy. Observation retention does not infer discharge
-from labels, closure, a scan PR or a v1 exit. Current companion assessments are
-shown beside the routing work; the owning records remain authoritative.
+from labels, closure, a scan PR or a mechanical v1 exit. Current companion
+assessments are shown beside the routing work; the owning records remain
+authoritative.
 
-A retained issue leaves replay only on its latest event. A recorded companion
-whose current assessment is `observed` or `external-wait` discharges it. An
+A retained issue leaves replay only on its latest event. Two recorded judgments
+discharge it. A companion whose current assessment is `observed` or
+`external-wait` does. So does an intake-exit-v1 record for that same event whose
+exit is `rejected-watching` and whose `decided_by` is `judgment`, whether its
+detail is `rejected` or `watching`: an accountable rejection has no successor to
+read back, so the companion vocabulary has no state for it, and the intake lane's
+own judgment record is the discharge. A mechanical exit never discharges. An
 owed, held or unreadable judgment does not. A newer source event on the same
 issue is a new key, so the issue is presented again.
 
@@ -112,8 +118,12 @@ errors and reads in a degraded repository are never retired.
 Replayed events share the poller's per-repository burst bound
 (`INBOUND_MONITOR_BURST_CAP`, default 25). One pass presents at most that many
 retained events per repository, oldest first. The pass names the rest as
-deferred, and they stay retained for later passes. The poll's own delta is
-already bounded by the poller and is not counted again.
+deferred, and they stay retained. They are presented, oldest first, once an
+earlier retained event is discharged or retired. An event that stays owed or
+unreadable, such as one whose trust read keeps failing transiently, keeps its
+slot, and the pass names the deferral every time rather than hiding it. Raise
+the knob to see further. The poll's own delta is already bounded by the poller
+and is not counted again.
 
 Raw placeholders remain representations. Ordinary scheduling requires a recorded
 repair disposition naming that same issue as the repair target, plus existing
@@ -128,7 +138,7 @@ event cannot reuse a prior judgment.
 
 `TestIntakeHandoffDisposition` exercises production composition, restart, current
 trust, role/event binding, successor existence, partial writes and retries,
-settled discharge, the replay bound and terminal retirement.
+settled discharge, accountable-rejection discharge, the replay bound and terminal retirement.
 `TestScanHandoffAdmission` exercises scanner output, placeholder scheduling and
 both committed-register exports. Executable negative controls live in
 `statusgen/testdata/verification-handoff/03-mutations.json` and use the existing

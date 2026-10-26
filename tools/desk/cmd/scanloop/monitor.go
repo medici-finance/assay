@@ -220,7 +220,8 @@ type MonitorReport struct {
 	// discarded: a poller that grew a new line kind must not be silently half-read.
 	Unparsed []string
 	// Deferred names, per repo, retained observations held back by the replay cap. They are
-	// retained (not lost) and presented oldest first on a later pass; the surface WAS read.
+	// retained (not lost) and presented oldest first once an earlier retained event is
+	// discharged or retired; the surface WAS read.
 	Deferred []string
 	// Retired names the terminal dispositions the drain recorded for retained events this pass.
 	Retired []string

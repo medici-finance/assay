@@ -957,13 +957,12 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			}
 			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true})
 			intake := assessIssueHandoff(ph, fmt.Sprintf("%s#%d", repo, ph.Issue), nil, now)
+			if title == "" {
+				title = "(title unavailable — issue closed)"
+			}
 			if intake.State != "observed" {
 				action = actAwait
 				title = "[intake:" + intake.State + "] " + title
-			}
-
-			if title == "" {
-				title = "(title unavailable — issue closed)"
 			}
 			rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: title, Action: action})
 		}

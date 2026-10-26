@@ -293,9 +293,13 @@ raw placeholders or open a new issue merely to acknowledge an observation.
 The drain replays durable observations after restart and still applies current
 trust; use the displayed judgment to reconcile existing work, not to repeat it.
 Replay of an issue stops only when its latest event has a recorded companion
-assessed `observed` or `external-wait`. Read that assessment back with
-`statusgen --intake-handoffs` before treating the issue as settled. A newer
-source event on the issue presents it again. A `RETIRED` line records a terminal
+assessed `observed` or `external-wait`, or an exit you recorded by judgment as
+`rejected-watching`. A mechanical exit never stops it. Read the result back in
+the next pass report: an issue still owed prints an `intake:` line under
+`EMITTED` with its assessment, and a settled one no longer queues.
+`statusgen --intake-handoffs` reads only the committed intake register, never an
+issue's local companion, so it cannot confirm an issue. A newer source event on
+the issue presents it again. A `RETIRED` line records a terminal
 `gone` or `quarantined` disposition for one event. A `DEFERRED` line names
 retained events held past this pass's replay bound. Neither line is an empty queue.
 Before committing a companion to a public repository, scrub its free-text

@@ -283,6 +283,62 @@ func TestIntakeHandoffDisposition(t *testing.T) {
 		}
 	})
 
+	// regression: an accountable rejection (a judgment-decided rejected-watching exit)
+	// had no way out of replay, so with the oldest-first replay cap such items took
+	// every slot on every pass and starved newer owed events.
+	t.Run("accountable rejection discharges replay and cannot starve newer owed events", func(t *testing.T) {
+		isolatedDeskHome(t)
+		t.Setenv("INBOUND_MONITOR_BURST_CAP", "2")
+		dir := t.TempDir()
+		scope := []string{"medici-finance/assay"}
+		baseline := filepath.Join(dir, "medici-finance__assay.state")
+		if err := os.WriteFile(baseline, []byte("medici-finance/assay#80 2026-08-24T11:50:00Z\nmedici-finance/assay#81 2026-08-24T11:51:00Z\nmedici-finance/assay#82 2026-08-24T11:52:00Z\nmedici-finance/assay#83 2026-08-24T11:53:00Z\nmedici-finance/assay#84 2026-08-24T11:54:00Z\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		rejected := judgmentFixture("medici-finance/assay#80", "2026-08-24T11:50:00Z", ExitRejectedWatching)
+		rejected.Detail = "rejected"
+		plantRecord(t, rejected)
+		watched := judgmentFixture("medici-finance/assay#81", "2026-08-24T11:51:00Z", ExitRejectedWatching)
+		watched.Detail = "watching"
+		plantRecord(t, watched)
+		// A MECHANICAL exit never discharges: only an accountable judgment does.
+		mech := judgmentFixture("medici-finance/assay#82", "2026-08-24T11:52:00Z", ExitRejectedWatching)
+		mech.Detail, mech.DecidedBy, mech.TriagerTier = "rejected", decidedMechanical, tierNone
+		plantRecord(t, mech)
+		// A judgment on a DIFFERENT event of the same issue never discharges this one.
+		other := judgmentFixture("medici-finance/assay#83", "2026-08-24T11:30:00Z", ExitRejectedWatching)
+		other.Detail = "rejected"
+		plantRecord(t, other)
+
+		pollOut := ""
+		poll := func() (*MonitorReport, error) { return ParseMonitorOutput(pollOut), nil }
+		pass := func() (*ScanLoop, []string) {
+			t.Helper()
+			loop := passLoop(t, "")
+			loop.Monitor = retainingMonitor(dir, scope, poll)
+			if _, err := loop.SelectQueue(); err != nil {
+				t.Fatal(err)
+			}
+			pollOut = ""
+			return loop, loop.Queued()
+		}
+		for n := 1; n <= 3; n++ {
+			loop, q := pass()
+			if strings.Join(q, ",") != "medici-finance/assay#82,medici-finance/assay#83" {
+				t.Fatalf("pass %d: rejected/watched must leave replay and the owed events must be presented: %v", n, q)
+			}
+			// #84 is behind the cap of two, owed, and named as deferred rather than lost.
+			if rep := loop.Report(); rep == nil || len(rep.Deferred) != 1 || !strings.HasPrefix(rep.Deferred[0], "medici-finance/assay 1 ") {
+				t.Fatalf("pass %d: deferred line wrong: %+v", n, rep)
+			}
+		}
+		// A newer source event on a rejected issue is a new key: it is owed again.
+		pollOut = "INBOUND: medici-finance/assay#80 2026-08-24T13:00:00Z\n"
+		if _, q := pass(); !strings.Contains(strings.Join(q, ","), "medici-finance/assay#80") {
+			t.Fatalf("newer event on a rejected issue lost: %v", q)
+		}
+	})
+
 	t.Run("retained unreadable or untrusted observation retires", func(t *testing.T) {
 		isolatedDeskHome(t)
 		dir := t.TempDir()

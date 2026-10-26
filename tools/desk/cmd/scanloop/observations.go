@@ -56,7 +56,10 @@ func observationKey(item string, opened time.Time) string {
 // replayCap bounds how many RETAINED (replayed) events per repo one pass presents.
 // It reuses the poller's own per-repo burst knob, so retention cannot route around
 // the bound the poller already applies to a fresh delta. The rest stay retained and
-// are named as deferred; they are presented oldest first on later passes.
+// are named as deferred and presented oldest first once an earlier retained event
+// is discharged (settled judgment, accountable rejection) or retired. An event that
+// stays owed or unreadable keeps its slot, which is why the deferral is named on
+// every pass rather than silent.
 func replayCap() int {
 	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv("INBOUND_MONITOR_BURST_CAP"))); err == nil && v > 0 {
 		return v
@@ -66,9 +69,19 @@ func replayCap() int {
 
 // settledHandoff reports whether a recorded accountable judgment discharges the
 // event from the routing queue. Only a recorded, assessed judgment does; labels,
-// closure, a scan PR or a v1 exit never do. Owed, held or unreadable states stay.
+// closure, a scan PR or a mechanical v1 exit never do. Owed, held or unreadable
+// states stay.
 func settledHandoff(state string) bool {
 	return state == "observed" || state == "external-wait"
+}
+
+// judgedRejection reports whether an intake-exit-v1 record is an accountable
+// rejection of one issue event: the exit is rejected-watching and the intake
+// lane's judgment, not a mechanical default, decided it. The companion
+// vocabulary has no rejection, and a rejected issue has no successor to read
+// back, so this recorded judgment is its discharge.
+func judgedRejection(r IntakeExitRecord) bool {
+	return r.Source == "issue" && r.Exit == ExitRejectedWatching && r.DecidedBy == decidedJudgment && r.Opened != ""
 }
 
 func readObservations(dir string) (intakeObservations, error) {
@@ -238,9 +251,13 @@ func retireObservations(dir string, rs []observationRetirement) error {
 func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, error)) func() (*MonitorReport, error) {
 	return func() (*MonitorReport, error) {
 		var judgments []issueflow.IntakeHandoff
+		var exits []IntakeExitRecord
 		if err := withAuditLock(func(state string) error {
 			var err error
-			judgments, err = readHandoffRecords(filepath.Join(state, handoffRecordsFile))
+			if judgments, err = readHandoffRecords(filepath.Join(state, handoffRecordsFile)); err != nil {
+				return err
+			}
+			exits, err = readExitRecords(filepath.Join(state, intakeExitsFile))
 			return err
 		}); err != nil {
 			return nil, deskkit.Unverifiable("cannot read accountable intake dispositions", err)
@@ -312,12 +329,25 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 				retired[observationKey(e.Item, e.Opened)] = true
 			}
 		}
+		rejected := map[string]bool{}
+		for _, r := range exits {
+			if !judgedRejection(r) {
+				continue
+			}
+			opened, err := time.Parse(time.RFC3339, r.Opened)
+			if err != nil {
+				continue
+			}
+			rejected[observationKey(r.Item, opened)] = true
+		}
 		var current []Inbound
 		for _, item := range latest {
-			// The LATEST event decides: a recorded terminal disposition or a settled
-			// accountable judgment on it discharges the issue from replay. A newer
-			// event is a different key, so it is presented again.
-			if retired[observationKey(item.ID(), item.UpdatedAt)] || settledHandoff(item.HandoffState) {
+			// The LATEST event decides: a recorded terminal disposition, a settled
+			// accountable judgment or an accountable rejection of it discharges the
+			// issue from replay. A newer event is a different key, so it is
+			// presented again.
+			key := observationKey(item.ID(), item.UpdatedAt)
+			if retired[key] || rejected[key] || settledHandoff(item.HandoffState) {
 				continue
 			}
 			current = append(current, item)
@@ -345,7 +375,7 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 		}
 		for _, repo := range scope {
 			if n := deferred[repo]; n > 0 {
-				report.Deferred = append(report.Deferred, fmt.Sprintf("%s %d retained observation(s) deferred to a later pass (replay cap %d per repo; retained, oldest first)", repo, n, limit))
+				report.Deferred = append(report.Deferred, fmt.Sprintf("%s %d retained observation(s) deferred (replay cap %d per repo; retained, oldest first)", repo, n, limit))
 			}
 		}
 		report.retire = func(rs []observationRetirement) error { return retireObservations(dir, rs) }

@@ -124,6 +124,23 @@ func TestPositiveClosedRead_RetainsUnclassified(t *testing.T) {
 	testPositiveClosedRead(t, false)
 }
 
+// An empty positive-read title keeps the fallback text under the intake prefix.
+func TestPositiveClosedRead_EmptyTitleKeepsFallback(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), placeholderFixture(homeRepo, "todo", ""))
+	installForge(t, map[string]*repoFixture{homeRepo: {
+		issues: []deskkit.IssueSummary{{Number: 1, Title: "open one", Author: deskkit.Account{Login: "shared-agent"}}},
+		titles: map[int]string{3: ""},
+	}})
+	var out, errb bytes.Buffer
+	if code := run([]string{"--root", root, "issues"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d, want 0; stderr=%s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "[intake:classification-needed] (title unavailable") {
+		t.Errorf("an empty title must show the fallback after the intake prefix; got:\n%s", out.String())
+	}
+}
+
 // A classified source still needs a positive closed read before retirement.
 // Keep this named control for the cross-package fault-injection harness.
 func TestPositiveClosedRead_StillRetires(t *testing.T) {
