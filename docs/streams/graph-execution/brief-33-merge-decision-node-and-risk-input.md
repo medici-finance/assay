@@ -129,7 +129,7 @@ Options:
    (and verify from standard up). Elevated then equals standard, and telling them apart needs a
    separate lane, which is an open question with no ruling yet.
 
-Default if no answer: option 1 after 7 days.
+Default if no answer: option 1 after 2026-11-02.
 
 ## Ground rules
 
