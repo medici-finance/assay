@@ -789,3 +789,6 @@ https://github.com/medici-finance/assay/issues/1933#issuecomment-6419943765
 This brief's `done` flip is held until graph-execution/33 reaches `verified` (its implementation
 merged and its Verify rows evidenced by a non-implementer). /33 reshapes this brief's `merge` node
 into a `human` decision and re-pins the pattern; the hold releases on that status alone.
+This note is not machine-read: `statusgen --auto-flip-model` decides a `gate: model` flip from
+Evidence and does not read `## Review`. The desk watching the board holds the flip by hand until
+/33 is `verified`; a machine-read form of the hold is a follow-up.

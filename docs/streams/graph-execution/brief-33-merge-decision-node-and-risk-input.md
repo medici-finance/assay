@@ -64,10 +64,16 @@ files: `spec/workflow-patterns/implementation-v1.yaml`, `statusgen/testdata/patt
 `statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned),
 `docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned).
 
-single-point-of-failure: who performs the merge is guarded by one control today, the forge binding,
-which grants no role a merge permission — behind it, admission's human-floor refusal at dispatch once
-graph-execution/14 binds it (/14 depends on this brief and owns that second layer). This brief adds <!-- graph: encoded graph-execution/33→graph-execution/14 -->
-no control on the act itself. Its three layers guard the DECLARED shape only: (1) the pattern schema
+single-point-of-failure: no verified control confines the merge act to a human today — NONE until
+graph-execution/14 binds admission's human-floor refusal at dispatch (/14 depends on this brief and <!-- graph: encoded graph-execution/33→graph-execution/14 -->
+owns that layer; it is deferred, not infeasible). What is established about the forge: the `main`
+ruleset requires a pull request, an approving review that is not from the last pusher, and the
+required status checks (read 2026-10-26: its rule types are `deletion`, `non_fast_forward`,
+`required_status_checks`, `pull_request`). None of those restricts which identity performs the merge,
+and `.github/workflows/evidence-automerge.yml` already merges evidence PRs as a workflow identity,
+kept off implementation PRs only by that workflow's own author guard. Whether any other forge setting
+confines the merge act to a human is UNVERIFIED (could-not-check here). This brief adds no control on
+the act itself. Its three layers guard the DECLARED shape only: (1) the pattern schema
 refuses `role: human` on anything but an effect-free decision node, checked by an independent JSON
 Schema validator; (2) the pattern lint refuses any node outputting or targeting a human-floor
 artifact unless it is a `human` decision node, whatever its effect is labelled; (3) the instance
@@ -110,8 +116,9 @@ facts (b1a7e4233, 2026-10-26):
 layering: no new component. The pattern schema owns the shape (`human` only on effect-free decision
 nodes); the pattern lint owns the cross-field rule (human-floor outputs); the instance validator owns
 the actor rule. Each check runs in a different component on a different signal, so a declared-shape
-fault in one is caught by the next. None of them sees the merge act; admission (from
-graph-execution/14) and the forge binding stay the only layers that do.
+fault in one is caught by the next. None of them sees the merge act. Admission (from
+graph-execution/14) is the only planned layer that does; the forge's confinement of the act is
+unverified.
 
 design-fit:
   owner: statusgen/patterns.go (pattern contract) and statusgen/instance.go (instance contract)
@@ -124,7 +131,10 @@ design-fit:
 
 The shared workflow pattern for implementation work has a merge step currently owned by an
 automated coordinator. It will become a decision that only a person closes, by their own
-authenticated act; no automated role will be able to produce a merge. The same change states which
+authenticated act. This change declares that rule and checks the declaration; it does not by itself
+stop an automated identity from merging. Today's code-hosting rules require an approving review and
+passing checks but do not limit who presses merge, and the check that refuses an automated merge at
+dispatch comes in a later step. The same change states which
 gates each risk class must pass before the final integration check.
 
 Proposed mapping: low risk needs review; standard risk needs review then post-merge verification;
@@ -184,9 +194,10 @@ Default if no answer: option 1 after 2026-11-02.
      step 10, `humanFloorOperations` in `admission.go`), and a `gate: human` brief carries a human
      Review gate.
    - The merge floor itself holds for every class by node shape, not by `risk-input`: the node is a
-     `human` decision whichever class runs it. The node shape only declares the floor. The act is
-     enforced by the forge binding, which grants no role a merge, and, once graph-execution/14
-     binds it at dispatch, by admission's human-floor refusal. The §8 decision record
+     `human` decision whichever class runs it. The node shape only declares the floor. No verified
+     control enforces the act today: the forge ruleset requires a non-author approval and the
+     required checks but does not restrict who merges (see the single-point-of-failure line).
+     Admission's human-floor refusal enforces it once graph-execution/14 binds it at dispatch. The §8 decision record
      (`spec/workflow-instance-v1.md`) states that a human act happened. It does not prove who did it.
 3. **Schema: `human` on effect-free decision nodes only.** In `schemas/workflow-pattern-v1.json`, add
    `human` to the node `role` enum and an `if {role: const human} then {kind: const decision, and
@@ -295,7 +306,7 @@ one appeared. Neither is a pass.
 | 11 | check | `(cmp spec/workflow-patterns/implementation-v1.yaml statusgen/testdata/patterns/good-implementation-v1.yaml && tail -n +3 statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml \| cmp - spec/workflow-patterns/implementation-v1.yaml && cmp schemas/workflow-pattern-v1.json statusgen/schemas/workflow-pattern-v1.json && ! grep -rFq edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94 statusgen/testdata)` | exit 0 |
 | 12 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go test -count=1 -v -run '^(TestPatterns\|TestInstance)' .) > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; for t in TestPatternsHumanFloorOutput TestPatternsHumanRoleDecision TestInstanceHumanNodeActor; do grep -Fq -- "--- PASS: $t (" "$T/out" \|\| exit 4; done)` | exit 0 (exit 4 = a named test did not run and pass) |
 | 13 | check | `(cd tools/desk && GOWORK=off go test -count=1 -run '^TestAgenticAdmissionRiskInputUnion$' ./internal/deskkit/)` | exit 0; output contains "ok" |
-| 14 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-floor-effect-target.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; grep -Fq 'target: merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" \|\| exit 3; grep -Fq 'outputs: [merge-commit]' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" && exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-floor-output]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (effect-target branch alone: the fixture outputs no floor artifact. Fail-first: on 36665f2b0 the same file lints clean, `patterns: 1 checked-clean`, exit 0) |
+| 14 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-floor-effect-target.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; grep -Fq 'target: merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" \|\| exit 3; [ "$(grep -Fc 'merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml")" -eq 1 ] \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-floor-output]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (effect-target branch alone: `merge-commit` appears exactly once in the fixture, on the effect target, so no flow- or block-style output names it; exit 3 otherwise. Fail-first: on 36665f2b0 the same file lints clean, `patterns: 1 checked-clean`, exit 0) |
 
 ## Pre-mortem
 
@@ -303,8 +314,9 @@ one appeared. Neither is a pass.
   keys on the output (row 4) and on any effect targeting a human-floor artifact, whatever the effect
   kind (row 14).
 - An agent performs the merge and writes a well-formed `decisions[]` record: nothing in this brief
-  catches it, because the record is not bound to an identity. The forge binding is the control, and
-  admission's human-floor refusal joins it at graph-execution/14.
+  catches it, because the record is not bound to an identity, and the forge ruleset does not
+  restrict who merges. Nothing verified catches it until admission's human-floor refusal is bound at
+  graph-execution/14, whose Verify table carries the row for it.
 - A new output name (`merged-head`) escapes the closed list: the list is a named constant with the
   three floor operations, and the spec text ties it one-to-one to admission's `humanFloorOperations`;
   a pattern adding a new floor-shaped output is a pattern review question.
@@ -327,14 +339,17 @@ one appeared. Neither is a pass.
 ## Review
 
 Gate: human (frontmatter). The reviewer answers both rule-10 questions in the verdict:
-(1) the single control between an agent merge and the damage is the forge binding, which grants no
-role a merge permission. Schema, lint and instance validator sit behind it only for the declared
-shape (a pattern or instance that names an agent merge); none of them sees the act, because a
-decision record carries no verified identity. Admission's human-floor refusal becomes the second
-layer on the act when graph-execution/14 binds it at dispatch; /14 depends on this brief, and the <!-- graph: encoded graph-execution/33→graph-execution/14 -->
-runtime record of a human act belongs to /14 and /21. Is one layer on the act until /14 acceptable?
+(1) no verified control stands between an agent merge and the damage today. The forge ruleset
+requires a pull request, a non-last-pusher approving review and the required checks; it does not
+restrict which identity performs the merge, and whether anything else on the forge does is
+unverified. Schema, lint and instance validator guard only the declared shape (a pattern or instance
+that names an agent merge); none of them sees the act, because a decision record carries no verified
+identity. Admission's human-floor refusal becomes the first verified layer on the act when
+graph-execution/14 binds it at dispatch (its Verify row 9); /14 depends on this brief, and the <!-- graph: encoded graph-execution/33→graph-execution/14 -->
+runtime record of a human act belongs to /14 and /21. Is it acceptable to land the declared-shape
+layers while the act itself stays unconfined until /14?
 (2) do any rows prove a lower layer catches the fault with the upper layer bypassed? For the
 declared shape, yes: rows 4, 5, 6, 9, 10 and 14 each feed one fault straight to one validator with
 no other layer present. For the act, no: no row here proves a lower layer catches an agent that
 performs a merge and records it as a human decision. That proof is owed by graph-execution/14's
-admission rows, not claimed here.
+Verify row 9, which runs `TestGraphAdmissionHumanFloorMerge` (planned), not claimed here.

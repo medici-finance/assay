@@ -44,7 +44,7 @@ consumers:
 - 'tools/desk/internal/loopengine: fixed-here'
 - 'operator clients: out-of-scope (consume records through their own authorized APIs)'
 - 'workflow/controller: follow-up graph-execution/21'
-version: 4
+version: 5
 id: 00bb0ac0-ea54-437e-9274-629839c91ada
 ---
 
@@ -112,6 +112,15 @@ trusted provenance selection. Both must refuse the affected admission. Keep a pe
 positive case. No stronger custody claim or one-human waiver is added. Existing human
 activation gate and historical Evidence remain unchanged.
 
+## Human-floor amendment — 2026-10-26
+
+graph-execution/33 makes the implementation pattern's `merge` node a `human` decision and leaves the
+merge act itself with no verified control until this brief binds admission at dispatch. That layer is
+owned here. Add `TestGraphAdmissionHumanFloorMerge` (planned) to the graphadmission test surface: an
+instance whose node would perform `merge` for any agent role is refused at dispatch at every
+disposition, fed straight to admission with the pattern lint and instance validator bypassed, and a
+well-formed `decisions[]` record naming that merge does not authorize the agent. Verify row 9 holds it.
+
 ## Task
 
 1. Add an opt-in cohort binding that consumes the existing eligibility verdict plus 13 admission and 16 ownership/budget reservation before dispatch. CLI and loop callers use the same implementation; defaults remain current behavior outside the cohort.
@@ -136,6 +145,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 6 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDeskProgramRace$" ./... > "$routing_out" && grep -q -- "--- PASS: TestGraphAdmissionDeskProgramRace " "$routing_out")` | exit 0; named PASS; concurrent desk/program claims permit one owner and one launch; direct stale invocation is denied; mutation: skip the claim-generation compare on the program path — the named test must fail |
 | 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAdmissionContext$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestAdmissionContext " "$out")` | exit 0; named PASS; expired or incomplete evaluation context holds, while a current authorized context permits the existing admission path; mutation: accept a cached eligibility flag |
 | 8 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAdmissionDuty$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestAdmissionDuty " "$out")` | exit 0; named PASS; same principal under different keys and uncorroborated caller provenance cannot satisfy independent evidence; mutation: compare only role labels |
+| 9 | check:ci +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionHumanFloorMerge$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestGraphAdmissionHumanFloorMerge " "$out")` | exit 0; named PASS; a dispatch that would perform `merge` for an agent role is refused at every disposition with the pattern and instance validators bypassed, and a recorded decision does not authorize it; mutation: drop `merge` from `humanFloorOperations` — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
