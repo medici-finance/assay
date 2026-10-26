@@ -27,7 +27,7 @@ profile. Later adoption, profile qualification and activation gates remain separ
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Qualified harness, model and backend capability contract](brief-01-qualified-execution-profile.md) | 1 | M | todo | — | — |
+| 01 | [Qualified harness, model and backend capability contract](brief-01-qualified-execution-profile.md) | 1 | M | implemented | — | — |
 | 02 | [Prepared-environment receipts and reusable workspace port](brief-02-prepared-environment-receipts.md) | 2 | M | todo | — | — |
 | 03 | [Enforce qualified profiles and workspace readiness in local execution](brief-03-local-readiness-enforcement.md) | 8 | M | todo | — | — |
 | 04 | [Qualify restored execution against ownership and external effects](brief-04-recovery-effect-qualification.md) | 12 | M | todo | — | — |

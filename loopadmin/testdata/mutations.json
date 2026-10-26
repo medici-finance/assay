@@ -1370,5 +1370,187 @@
     "file": "runner/secrets.go",
     "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
     "new": "if slotWords[w] && len(words) == i+1 {"
+  },
+  {
+    "test": "TestExecutionProfileV1Compatibility",
+    "why": "agent-execution/01: an adapter that does not declare a required extension accepts it anyway",
+    "file": "runner/request.go",
+    "old": "if !c.hasExtension(ext) {",
+    "new": "if false && !c.hasExtension(ext) {"
+  },
+  {
+    "test": "TestExecutionProfileV1Compatibility",
+    "why": "agent-execution/01: the client ignores require and checks the profile only when a value is carried",
+    "file": "runner/executionprofile.go",
+    "old": "return r.requires(RequireExecutionProfile) || (carried && c.hasExtension(ExecutionProfileExt))",
+    "new": "return carried && c.hasExtension(ExecutionProfileExt)"
+  },
+  {
+    "test": "TestExecutionProfilePreservationFlow",
+    "why": "agent-execution/01: admission treats every resume declaration as full process preservation",
+    "file": "runner/executionprofile.go",
+    "old": "checkPreservation(p.Preservation.Resume, need.Needs.Resume, \"needs.resume\")",
+    "new": "checkPreservation(Preservation{SupportYes, SupportYes, SupportYes, SupportYes, SupportYes}, need.Needs.Resume, \"needs.resume\")"
+  },
+  {
+    "test": "TestExecutionProfilePreservationFlow",
+    "why": "agent-execution/01: acceptance treats every reported restoration as full process preservation",
+    "file": "runner/executionprofile.go",
+    "old": "checkPreservation(*rep.Restored, need.Needs.Resume, \"restored\")",
+    "new": "checkPreservation(Preservation{SupportYes, SupportYes, SupportYes, SupportYes, SupportYes}, need.Needs.Resume, \"restored\")"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: accept a declared profile whose digest is not the digest of its content",
+    "file": "runner/executionprofile.go",
+    "old": "if p.Digest != ProfileDigest(p) {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: accept a report naming another qualified profile digest",
+    "file": "runner/executionprofile.go",
+    "old": "return rep.Digest != need.Digest || rep.Harness != need.Harness",
+    "new": "return rep.Harness != need.Harness"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: the adapter trusts the client's admission and runs its own check no longer",
+    "file": "runner/fake/fake.go",
+    "old": "need, err := runner.AdmitExecutionProfile(req, a.profiles)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+    "new": "need, _ := runner.DecodeProfileRequirement(req.Extensions[runner.ExecutionProfileExt])"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: the caller commits without checking its own current profile",
+    "file": "runner/conformance/profiles.go",
+    "old": "if acc.Execution == nil || acc.Execution.Digest != cur {",
+    "new": "if false && cur != \"\" {"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: a Go type drifts from the schema (a required dimension becomes optional)",
+    "file": "runner/executionprofile.go",
+    "old": "Descendants         Support `json:\"descendants\"`",
+    "new": "Descendants         Support `json:\"descendants,omitempty\"`"
+  },
+  {
+    "test": "TestRunnerProfileBeforeStart",
+    "why": "agent-execution/01: the client skips the execution-profile admission",
+    "file": "runner/client.go",
+    "old": "need, err := req.checkExecutionProfile(c.caps, c.profiles)",
+    "new": "need, err := (*ProfileRequirement)(nil), error(nil)"
+  },
+  {
+    "test": "TestExecutionReportScreened",
+    "why": "agent-execution/01: the adapter-reported extension check stops screening values for credential material",
+    "file": "runner/executionprofile.go",
+    "old": "\t\tif extensionCarriesCredential(k, v) {\n\t\t\treturn extCredential",
+    "new": "\t\tif extensionCarriesCredential(k, v) && false {\n\t\t\treturn extCredential"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client accepts an adapter-reported extension the request did not carry or the adapter does not declare",
+    "file": "runner/executionprofile.go",
+    "old": "if _, carried := req.Extensions[k]; !carried || !caps.hasExtension(k) {",
+    "new": "if _, carried := req.Extensions[k]; false && (!carried || !caps.hasExtension(k)) {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client accepts an adapter-reported extension the adapter does not declare",
+    "file": "runner/executionprofile.go",
+    "old": "!carried || !caps.hasExtension(k) {",
+    "new": "!carried {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client stops checking the receipt's extensions",
+    "file": "runner/client.go",
+    "old": "if r := checkAdapterExtensions(req, c.caps, rec.Extensions); r != extClean {",
+    "new": "if r := extClean; r != extClean {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client stops checking an observation's extensions",
+    "file": "runner/client.go",
+    "old": "if r := checkAdapterExtensions(in.req, c.caps, obs.Extensions); r != extClean {",
+    "new": "if r := extClean; r != extClean {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: acceptance forgets an earlier refusal of the invocation's extensions",
+    "file": "runner/client.go",
+    "old": "\tif extRefused != extClean {\n\t\treturn Accepted{}, extRefused.err()",
+    "new": "\tif false {\n\t\treturn Accepted{}, extRefused.err()"
+  },
+  {
+    "test": "TestExecutionProfileEvidenceRequired",
+    "why": "agent-execution/01: a qualified profile with no qualification evidence validates",
+    "file": "runner/executionprofile.go",
+    "old": "if len(p.Qualification.Evidence) == 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerDocumentSizeCap",
+    "why": "agent-execution/01: a launch request longer than the size cap decodes",
+    "file": "runner/request.go",
+    "old": "\tif len(b) > MaxDocumentBytes {",
+    "new": "\tif false {"
+  },
+  {
+    "test": "TestRunnerDocumentSizeCap",
+    "why": "agent-execution/01: an extension value longer than the size cap decodes",
+    "file": "runner/executionprofile.go",
+    "old": "\tif len(raw) > MaxDocumentBytes {",
+    "new": "\tif false {"
+  },
+  {
+    "test": "TestRunnerProfileAdmittedByAdapter",
+    "why": "agent-execution/01: the adapter trusts the client's admission and runs its own check no longer",
+    "file": "runner/fake/fake.go",
+    "old": "need, err := runner.AdmitExecutionProfile(req, a.profiles)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+    "new": "need, _ := runner.DecodeProfileRequirement(req.Extensions[runner.ExecutionProfileExt])"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client accepts an adapter-reported extension the adapter declares but the request did not carry",
+    "file": "runner/executionprofile.go",
+    "old": "!carried || !caps.hasExtension(k) {",
+    "new": "(false && !carried) || !caps.hasExtension(k) {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the adapter-reported extension check screens the value but no longer the key",
+    "file": "runner/executionprofile.go",
+    "old": "if extensionCarriesCredential(k, v) {",
+    "new": "if extensionCarriesCredential(k[:0]+\"notes/v1\", v) {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: an adapter-reported extension value that does not decode passes the credential screen",
+    "file": "runner/secrets.go",
+    "old": "if err := dec.Decode(&x); err != nil {\n\t\treturn true",
+    "new": "if err := dec.Decode(&x); err != nil {\n\t\treturn false"
+  },
+  {
+    "test": "TestExecutionProfileDigestVector",
+    "why": "agent-execution/01: the profile digest hashes HTML-escaped strings",
+    "file": "runner/executionprofile.go",
+    "old": "enc.SetEscapeHTML(false)",
+    "new": "enc.SetEscapeHTML(true)"
+  },
+  {
+    "test": "TestExecutionProfileDigestVector",
+    "why": "agent-execution/01: the profile digest hashes the encoder's trailing newline",
+    "file": "runner/executionprofile.go",
+    "old": "bytes.TrimSuffix(b.Bytes(), []byte(\"\\n\"))",
+    "new": "b.Bytes()"
+  },
+  {
+    "test": "TestExecutionProfileDigestVector",
+    "why": "agent-execution/01: a qualified profile with a nil list validates",
+    "file": "runner/executionprofile.go",
+    "old": "if p.BudgetScopes == nil || p.Qualification.Limits == nil {",
+    "new": "if false {"
   }
 ]
