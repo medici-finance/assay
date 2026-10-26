@@ -1,0 +1,29 @@
+{
+  "test": "go test . -run 'Vflip|FlipMergeBases' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — provenance history judging disabled (every commit after the PASS is skipped, so a later FAIL deleted by a worker flips)",
+    "file": "verifyflip.go",
+    "old": "\t\tif !changed {\n\t\t\tcontinue\n\t\t}",
+    "new": "\t\tif !changed || true {\n\t\t\tcontinue\n\t\t}"
+  },
+  "mutations": [
+    {
+      "name": "every-base rule restored (a criss-cross merge whose branch side made no net change is judged — the #4466 false positive)",
+      "file": "verifyflip.go",
+      "old": "\t\tcase xev:\n",
+      "new": "\t\tdefault:\n"
+    },
+    {
+      "name": "any merge base accepted unconditionally (a criss-cross merge that drops a later FAIL from the other side is not judged)",
+      "file": "verifyflip.go",
+      "old": "return some && !xAt, nil",
+      "new": "return len(bases) > 0 || (some && !xAt), nil"
+    },
+    {
+      "name": "pure some-base rule (a merge that keeps the side equal to one base and drops the other side's change is not judged)",
+      "file": "verifyflip.go",
+      "old": "return some && !xAt, nil",
+      "new": "return some || (some && !xAt), nil"
+    }
+  ]
+}
