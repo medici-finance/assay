@@ -6,6 +6,8 @@ package main
 //	statusgen context discover --snapshot DIR [--json]
 //	statusgen context recheck  --snapshot DIR RECEIPT [--json]
 //	statusgen context check    --snapshot DIR HANDOFF [MANIFEST] [PATCH...] [--json]
+//	statusgen context dispose  RECEIPT --subject ID --outcome REF --decision D
+//	                           --expected-revision REV --rationale TEXT --by ROLE --basis DIGEST [--json]
 //
 // The adapter opens the snapshot root and the named files and calls the
 // package; every conclusion is the package's. It reads no git repository,
@@ -89,9 +91,15 @@ discover  enumerate owners and consumers of the declaring brief's target and
 recheck   compare a prior receipt with a new snapshot: preserved, reconcile or hold
 check     check a handoff's amendment obligations (and manifest, patches) against
           the snapshot
+dispose   record a continue, adapt or stop decision on a product-binding
+          mismatch in a context-handoff-v3 receipt
 
-Every verb reads only --snapshot DIR and the files it names. A receipt covers
-architecture only: product alignment is reported unchecked, never aligned.
+Every verb reads only --snapshot DIR (dispose reads none) and the files it
+names. A snapshot with no product section gives an architecture-only receipt:
+product alignment is reported unchecked, never aligned. A snapshot with one
+gives a context-handoff-v3 receipt that assesses each brief's declared
+outcome-revision against the current approved product target; an unbound or
+undiscovered binding is unknown, and a mismatch is a projection, never a veto.
 Exit: 0 pass, 1 refuse/reconcile/invalid input, 2 usage, 3 hold (could-not-check).
 See docs/context-handoff.md.`,
 		SilenceErrors:     true,
@@ -99,7 +107,7 @@ See docs/context-handoff.md.`,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return fmt.Errorf("unknown verb %q (want one of: discover, recheck, check)", args[0])
+				return fmt.Errorf("unknown verb %q (want one of: discover, recheck, check, dispose)", args[0])
 			}
 			return nil
 		},
@@ -108,14 +116,14 @@ See docs/context-handoff.md.`,
 			return ctxExit{ctxExitUsage}
 		},
 	}
-	root.AddCommand(newContextDiscoverCmd(), newContextRecheckCmd(), newContextCheckCmd())
+	root.AddCommand(newContextDiscoverCmd(), newContextRecheckCmd(), newContextCheckCmd(), newContextDisposeCmd())
 	root.AddCommand(&cobra.Command{
 		Use:                cobra.ShellCompRequestCmd,
 		Aliases:            []string{cobra.ShellCompNoDescRequestCmd},
 		Hidden:             true,
 		DisableFlagParsing: true,
 		Args: func(cmd *cobra.Command, _ []string) error {
-			return fmt.Errorf("unknown verb %q (want one of: discover, recheck, check)", cmd.CalledAs())
+			return fmt.Errorf("unknown verb %q (want one of: discover, recheck, check, dispose)", cmd.CalledAs())
 		},
 		Run: func(*cobra.Command, []string) {},
 	})
@@ -212,15 +220,39 @@ func ctxWriteJSON(w io.Writer, v any) error {
 	return err
 }
 
-// ctxCoverageLines prints the coverage a receipt states, including that it
-// covers architecture only.
+// ctxCoverageLines prints the coverage a receipt states: architecture only,
+// or architecture plus the product-binding assessment of a v3 receipt.
 func ctxCoverageLines(w io.Writer, h *contexthandoff.Handoff) {
 	cov := h.Discovery.Coverage
 	fmt.Fprintf(w, "coverage: %s\n", cov.State)
 	for _, u := range cov.Unavailable {
 		fmt.Fprintf(w, "  could-not-check: %s: %s\n", u.Source, u.Reason)
 	}
-	fmt.Fprintf(w, "scope: %s\n", contexthandoff.ArchitectureOnly)
+	pr := h.Product
+	if pr == nil {
+		fmt.Fprintf(w, "scope: %s\n", contexthandoff.ArchitectureOnly)
+		return
+	}
+	fmt.Fprintf(w, "scope: %s\n", contexthandoff.ProductAssessed)
+	for _, t := range pr.Targets {
+		fmt.Fprintf(w, "product target %s@%s: %s (%s)\n", t.Outcome, t.Revision, t.Approval, t.Reference)
+	}
+	for _, b := range pr.Bindings {
+		fmt.Fprintf(w, "product binding %s: %s outcome %s declared %s selected %s: %s\n", b.Subject, b.State, ctxOpt(b.Outcome), ctxOpt(b.Declared), ctxOpt(b.Selected), b.Reason)
+	}
+	for _, a := range pr.Assessments {
+		fmt.Fprintf(w, "product %s %s %s: %s (%s) bound %s current %s: %s\n", a.Relation, a.Subject, ctxOpt(a.Outcome), a.Result, a.Coverage, ctxOpt(a.Bound), ctxOpt(a.Current), a.Reason)
+	}
+	for _, d := range pr.Dispositions {
+		fmt.Fprintf(w, "product disposition %s %s: %s against %s by %s on %s: %s\n", d.Subject, d.Outcome, d.Decision, d.ExpectedRevision, d.DecidedBy, d.Basis, d.Rationale)
+	}
+}
+
+func ctxOpt(s *string) string {
+	if s == nil {
+		return "-"
+	}
+	return *s
 }
 
 func newContextDiscoverCmd() *cobra.Command {
@@ -401,6 +433,66 @@ cancellation, patches a delivered brief, or contradicts an approved rival.`,
 		case contexthandoff.OutcomeHold:
 			return ctxExitWith(ctxExitHold)
 		}
+		return nil
+	}
+	return cmd
+}
+
+func newContextDisposeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dispose RECEIPT --subject ID --outcome REF --decision continue|adapt|stop --expected-revision REV --rationale TEXT --by ROLE --basis DIGEST [--json]",
+		Short: "record a continue, adapt or stop decision on a product-binding mismatch",
+		Long: `dispose reads RECEIPT (a context-handoff-v3 receipt) and writes it back to
+stdout with one product disposition appended. --basis is the digest of the
+receipt the decision was made on and --expected-revision the current approved
+product target it was made against: a disposition prepared on another receipt,
+or against a target that is no longer current (a stale rebinding), is refused.
+--by must be the receipt's deciding role. A disposition changes no lifecycle,
+impact disposition or next act; stop is a recorded decision, not a cancellation.
+Exit: 0 recorded, 1 refused or invalid input, 2 usage.`,
+		Args: cobra.ExactArgs(1),
+	}
+	f := cmd.Flags()
+	for _, name := range []string{"subject", "outcome", "decision", "expected-revision", "rationale", "by", "basis"} {
+		f.String(name, "", name+" of the disposition; required")
+	}
+	f.Bool("json", false, "emit the updated receipt as canonical JSON (default: a summary)")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		v := viper.NewWithOptions(viper.KeyDelimiter("::"))
+		vals := map[string]string{}
+		for _, name := range []string{"subject", "outcome", "decision", "expected-revision", "rationale", "by", "basis"} {
+			v.SetDefault(name, "")
+			if fl := cmd.Flags().Lookup(name); fl != nil && fl.Changed {
+				v.Set(name, fl.Value.String())
+			}
+			if vals[name] = v.GetString(name); vals[name] == "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "statusgen context dispose: --%s is required\n", name)
+				return ctxExit{ctxExitUsage}
+			}
+		}
+		asJSON := false
+		if fl := cmd.Flags().Lookup("json"); fl != nil && fl.Changed {
+			asJSON = fl.Value.String() == "true"
+		}
+		h, err := ctxReadHandoff(cmd, args[0])
+		if err != nil {
+			return err
+		}
+		out, err := contexthandoff.Dispose(h, contexthandoff.ProductDisposition{
+			Subject: vals["subject"], Outcome: vals["outcome"], Decision: vals["decision"],
+			ExpectedRevision: vals["expected-revision"], Rationale: vals["rationale"],
+			DecidedBy: vals["by"], Basis: vals["basis"],
+		})
+		if err != nil {
+			return ctxFail(cmd, "%v", err)
+		}
+		w := cmd.OutOrStdout()
+		if asJSON {
+			fmt.Fprintf(w, "%s\n", out.Canonical())
+			return nil
+		}
+		fmt.Fprintf(w, "receipt %s (was %s)\n", out.Digest(), h.Digest())
+		ctxCoverageLines(w, out)
 		return nil
 	}
 	return cmd
