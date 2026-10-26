@@ -55,6 +55,8 @@ package deskkit
 // so the duplication cannot drift.
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -573,96 +575,7 @@ func autoLaneRawKeys() []string {
 //
 // Keys OUTSIDE the ASSAY_ namespace are not listed and never refuse: they are
 // legitimate co-tenants in the same file and are echoed as UnknownKeys.
-func knownRosterKeys() []string {
-	return []string{
-		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
-		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
-		// EnvOSUserLoginMap (ASSAY_OS_USER_LOGIN_MAP) is CONSUMED here, by
-		// scanoverride.go's OverrideIdentity alone; statusgen recognises it only.
-		// Bound to statusgen's scanKnownRosterKeys by the shared key list.
-		EnvOSUserLoginMap,
-		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
-		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
-		EnvStampTrustedLogins,
-		// The outbound-write check's house callout (desktools-v2/11). Consumed by
-		// outboundcallout.go; recognised here in the SAME change so a roster carrying them
-		// is not refused whole. KEEP IN SYNC with statusgen's scanKnownRosterKeys.
-		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
-		// STATUSGEN-only keys: recognised so a shared roster.env that configures
-		// statusgen does not collapse deskkit's configuration; not consumed here.
-		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
-		EnvFormerHumanLoginMap,
-		EnvChannelDriftTarget, EnvDeterministicGatePatterns,
-		// EnvGitLabSessionEmails (ASSAY_GITLAB_SESSION_EMAILS) is CONSUMED here, not
-		// merely recognised: parseConfig lands it on cfg.GitLabSessionEmails and the
-		// GitLab commit-identity preflight reads it via GitLabSessionEmailAllowed()
-		// (#643). It must be recognised or a roster carrying it collapses the whole
-		// configuration on the unknown-ASSAY_-key refusal.
-		EnvGitLabSessionEmails,
-		// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is STATUSGEN-only (its
-		// Evidence-actor offline fallback, #1477), recognised-not-applied here so a roster
-		// arming that fallback does not collapse deskkit's configuration.
-		EnvGitLabDisplayNames,
-		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
-		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
-		// scanConfig — but the de-housing REQUIRES the house to set it in the
-		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
-		// activating that de-housing collapses the whole roster on the
-		// unknown-ASSAY_-key refusal. Bound to statusgen's
-		// scanEnvSweepWithheldStreams by the shared key list.
-		EnvSweepWithheldStreams,
-		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is CONSUMED
-		// here, not merely recognised: parseConfig lands it on cfg.WithheldIdentifiers and
-		// the public-repo self-containment scan reads it through WithheldIdentifiers(),
-		// environment first and this roster value second. Recognised-and-ignored is what
-		// it used to be, and #490 is the bug that shape produced — a roster carrying the
-		// key loaded clean and the scan's register category still never ran.
-		//
-		// statusgen consumes it in NEITHER form and recognises it only, which is why it
-		// still belongs in the shared key list: consumption is per-binary, recognition is
-		// not.
-		EnvWithheldIdentifiers,
-		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
-		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
-		// RECOGNISED so that an operator who records it in the shared roster.env does not
-		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
-		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
-		// is a per-shell export by design.
-		EnvAllowCluster,
-		// EnvStreamCap (ASSAY_STREAM_CAP) is STATUSGEN-only (the active-stream cap,
-		// attention-budget/04): consumed by statusgen's stream-cap lint, recognised
-		// and ignored here so a shared roster.env that configures the cap does not
-		// collapse the desk tools' configuration. Bound to statusgen's
-		// scanEnvStreamCap by the shared key list.
-		EnvStreamCap,
-		// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is
-		// STATUSGEN-only (the drives critical tier's stamped-security authority set):
-		// recognised and ignored here, bound to statusgen's key by the shared list.
-		EnvCriticalStampAuthorities,
-		// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) is CONSUMED by cmd/deskcalibrate
-		// (the reviewer-calibration SPOF vendor check) via a direct os.Getenv, and
-		// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) is a documented policy key no tool
-		// enforces yet. Both are RECOGNISED here so a roster.env carrying either does
-		// not collapse the whole desk-tools configuration on the unknown-ASSAY_-key
-		// refusal. KEEP IN SYNC with statusgen's scanKnownRosterKeys() and the
-		// coupling vector (statusgen/testdata/roster_coupling.json).
-		EnvReviewerVendor, EnvVerifierVendor,
-		// EnvRunCredentials (ASSAY_RUN_CREDENTIALS) is CONSUMED here: parseConfig lands it
-		// on cfg.RunCredentials and cmd/deskrun reads it through ResolveRunCredential
-		// (forge-neutral brief 14). statusgen recognises it only.
-		EnvRunCredentials,
-		// EnvClaimStore / EnvClaimDir / EnvClaimSingleHost are CONSUMED by the claim-store
-		// resolver (claimstore.go), which reads them directly and parses them through
-		// parseClaimStoreKeys; parseConfig only RECOGNISES them, so a roster that sets the
-		// claim store does not collapse the whole configuration on the unknown-ASSAY_-key
-		// refusal. statusgen recognises them too (the coupling vector binds the two).
-		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir,
-		// The auto-approve lane keys are CONSUMED here (autolane.go, through cfg.AutoLaneRaw).
-		// statusgen recognises them only.
-		EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap,
-		EnvAutoApproveSignOffThread,
-	}
-}
+func knownRosterKeys() []string { return trustcore.KnownRosterKeys() }
 
 // rosterSchemaVersion is the format version this build speaks.
 const rosterSchemaVersion = "1"
@@ -1254,73 +1167,22 @@ func checkOwnerPerms(path string, isDir bool) error {
 // parseDotenv reads KEY=VALUE lines. A leading "export " is tolerated, "#"
 // comment lines are skipped, and surrounding quotes are trimmed — the same shape
 // appconfig.go's apps.env already uses.
-func parseDotenv(s string) map[string]string {
-	m := map[string]string{}
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		eq := strings.IndexByte(line, '=')
-		if eq < 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:eq])
-		val := strings.TrimSpace(line[eq+1:])
-		val = strings.Trim(val, `"'`)
-		if v := strings.TrimSpace(val); v != "" {
-			m[key] = v
-		}
-	}
-	return m
-}
+func parseDotenv(s string) map[string]string { return trustcore.ParseDotenv(s) }
 
 // ---- parsing -----------------------------------------------------------------
 
 // splitList splits a list value on the separators every list-shaped variable
 // accepts. ASSAY_BLESS_LOGIN deliberately does NOT go through here.
-func splitList(raw string) []string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
-	})
-	out := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if f = strings.TrimSpace(f); f != "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
+func splitList(raw string) []string { return trustcore.SplitList(raw) }
 
 // splitIdentity splits `login[:id]`. ok is false when an id is present but not a
 // number — a typo'd id must never degrade to login-only trust.
-func splitIdentity(entry string) (login string, id int64, ok bool) {
-	l, rest, found := strings.Cut(entry, ":")
-	l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "@")))
-	if l == "" {
-		return "", 0, false
-	}
-	if !found || strings.TrimSpace(rest) == "" {
-		return l, 0, true
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
-	if err != nil || n <= 0 {
-		return "", 0, false
-	}
-	return l, n, true
-}
+func splitIdentity(entry string) (string, int64, bool) { return trustcore.SplitIdentity(entry) }
 
 // looksLikeBot reports whether a login renders as a GitHub App / bot / shared
 // agent account. The argument: "the authorisation half of a two-factor mechanism
 // has to be a human act". A blessing IS that authorisation half.
-func looksLikeBot(login string) bool {
-	l := strings.ToLower(strings.TrimSpace(login))
-	return strings.HasSuffix(l, "[bot]") ||
-		strings.HasPrefix(l, "app/") ||
-		strings.HasSuffix(l, "-app") ||
-		strings.HasSuffix(l, "-bot")
-}
+func looksLikeBot(login string) bool { return trustcore.LooksLikeBot(login) }
 
 func parseConfig(class ToolClass, source string, vals map[string]string) Config {
 	cfg := Config{

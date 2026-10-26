@@ -86,6 +86,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 Before changing the governed boundary, present the concrete implementation/design through the existing decision mechanism. Confirm the preserved actor, subject, revocation and effect-admission rules. Options: accept the bounded implementation; request corrections; hold. No answer supplies no approval. Do not infer this ruling from the planning request.
 
+Default if no answer: none — blocks until answered
+
 ## Task
 
 1. Introduce version-aware edge adapters around existing context-handoff, verification-domain and human-gate readers. Resolve the new typed reference with workref, then pass existing numeric fullId plus an independently retained subject/version binding to legacy APIs. Do not globally broaden their existing strict grammar or reinterpret old digests.

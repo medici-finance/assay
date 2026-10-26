@@ -240,7 +240,7 @@ wins, and the credit rule above is unchanged. A bad selector (an unknown, empty,
 shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
 before any row runs. Under `--acceptance-record`, witness the protected run set in ONE run
 that covers it whole: its `Verification-Table:` descriptor must appear exactly once, so split
-`--rows` runs under one transition fail closed and never close.
+`--rows` runs under one protected record or transition fail closed and never close.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator

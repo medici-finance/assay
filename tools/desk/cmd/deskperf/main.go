@@ -38,7 +38,12 @@ usage:
   deskperf report [--days N] [--tool X] [--role R] [--top N] [--json] [--by-day]
       [--perf-profile workflow] [--group-by tool|work|session|agent|deskRole|role]
       [--session-id ID] [--agent-id ID] [--desk-role ROLE] [--assigned-role ROLE] [--work JSON]
-      per tool: count, p50 / p90 / max wall ms, total wall ms, share of total wall,
+      command overview first: tool + command, count, summed invocation wall,
+      p50 / p90 / max, outcomes, measured CPU and HTTP with coverage. Largest
+      command costs appear first. Timing cohorts remain separate rows and shares
+      use only their own cohort; nested/concurrent invocation work is not unique
+      elapsed time. JSON adds commands without moving the existing fields.
+      Then per tool: count, p50 / p90 / max wall ms, total wall ms, share of total wall,
       refusal ratio (refused + unwritten + unverifiable over count); then the top-N
       slowest invocations (default 10) as ts / tool / verb / wallMs. Legacy
       records (the original schema) and perf-v2 records are reported as SEPARATE

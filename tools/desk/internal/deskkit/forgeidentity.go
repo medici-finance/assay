@@ -26,6 +26,8 @@ package deskkit
 // rather than inventing an underivable value or falling back to the GitHub shape.
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"fmt"
 	"regexp"
 	"sort"
@@ -70,23 +72,11 @@ var gitlabServiceAccountRe = regexp.MustCompile(`^service_account_group_[0-9]+_[
 // `github`/`gitlab`, so the discriminator does not collide with a real identity.
 // semantic: S-identity
 func splitBotEntry(entry string) (BotIdentity, bool) {
-	b := BotIdentity{Forge: ForgeGitHub, ForgeInferred: true}
-	head, rest, found := strings.Cut(entry, ":")
-	switch strings.ToLower(strings.TrimSpace(head)) {
-	case string(ForgeGitHub), string(ForgeGitLab):
-		if found {
-			b.Forge = ForgeKind(strings.ToLower(strings.TrimSpace(head)))
-			b.ForgeInferred = false
-			entry = rest
-		}
-	}
-	slug, id, ok := splitIdentity(entry)
+	b, ok := trustcore.ParseBot(entry, trustcore.KnownForges)
 	if !ok {
 		return BotIdentity{}, false
 	}
-	b.Slug = slug
-	b.ID = id
-	return b, true
+	return BotIdentity{Forge: ForgeKind(b.Forge), ForgeInferred: b.Inferred, Slug: b.Slug, ID: b.ID}, true
 }
 
 // PrimaryLogin is the CANONICAL rendering of this identity on its own forge — the login
@@ -122,12 +112,7 @@ func (b BotIdentity) PrimaryLogin() string {
 //
 // The first element is always PrimaryLogin, so the two views cannot drift.
 func (b BotIdentity) AcceptedLogins() []string {
-	switch b.Forge {
-	case ForgeGitLab:
-		return []string{b.PrimaryLogin()}
-	default:
-		return []string{b.PrimaryLogin(), "app/" + b.Slug}
-	}
+	return trustcore.AcceptedLogins(string(b.Forge), b.Slug)
 }
 
 // CommitEmailSpec is the expected commit author address for a forge-qualified identity.
