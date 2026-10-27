@@ -123,6 +123,14 @@ func TestMain(m *testing.M) {
 	if err := os.Unsetenv("GITHUB_ACTIONS"); err != nil {
 		panic("cannot clear GITHUB_ACTIONS for the test binary: " + err.Error())
 	}
+	// No test inherits the caller's DESK_ROOTS either. Every board read now
+	// takes cross-root delivery witnesses from the configured roots, so an
+	// operator's map would read real checkouts' merge history into fixture
+	// boards. A test that needs roots sets DESK_ROOTS itself with t.Setenv;
+	// TestDeskRootsCleared pins this line.
+	if err := os.Unsetenv("DESK_ROOTS"); err != nil {
+		panic("cannot clear DESK_ROOTS for the test binary: " + err.Error())
+	}
 	if err := pinFixtureGoCaches(); err != nil {
 		panic(err)
 	}
