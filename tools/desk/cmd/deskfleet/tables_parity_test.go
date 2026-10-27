@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -164,10 +166,7 @@ func TestPATDaysDefaultMatchesBash(t *testing.T) {
 	if len(found) == 0 {
 		t.Fatal("no numeric default PAT lifetime found in the bash sources")
 	}
-	o, err := parseProvisionFlags([]string{"--group", "g", "--prefix", "p", "--out-dir", t.TempDir()}, &env{stderr: os.Stderr})
-	if err != nil {
-		t.Fatal(err)
-	}
+	o := provisionDefaults(t)
 	for _, d := range found {
 		if d != strconv.Itoa(o.patExpiryDays) {
 			t.Errorf("default --pat-expiry-days %d, bash default %s", o.patExpiryDays, d)
@@ -199,4 +198,21 @@ func TestFleetNoAvatarsFlag(t *testing.T) {
 			t.Errorf("%v: stderr does not name the contradiction:\n%s", args, h.err.String())
 		}
 	}
+}
+
+// provisionDefaults runs `provision` through the command tree with only the required flags
+// and returns the typed options that reached the handler — its declared defaults.
+func provisionDefaults(t *testing.T) provisionOpts {
+	t.Helper()
+	var got provisionOpts
+	calls := 0
+	prev := provisionFn
+	provisionFn = func(o provisionOpts, _ *env) int { calls++; got = o; return exitOK }
+	defer func() { provisionFn = prev }()
+	var errb bytes.Buffer
+	e := &env{stdout: io.Discard, stderr: &errb, lookupEnv: func(string) (string, bool) { return "", false }}
+	if code := run([]string{"provision", "--group", "g", "--prefix", "p", "--out-dir", t.TempDir(), "--dry-run"}, e); code != exitOK || calls != 1 {
+		t.Fatalf("provision with only the required flags: exit %d, handler %d\n%s", code, calls, errb.String())
+	}
+	return got
 }

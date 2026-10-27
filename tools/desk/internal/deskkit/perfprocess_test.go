@@ -2,7 +2,6 @@ package deskkit
 
 import (
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -33,18 +32,21 @@ func TestPerfProcessCoverage(t *testing.T) {
 	if ran, err := (Hooks{BeforeRun: "exit 0"}).Run(HookBeforeRun, HookEnv{}); !ran || err != nil {
 		t.Fatal(ran, err)
 	}
-	// Real production minter (no credential): a PATH shim only prints a fixture path.
-	path := t.TempDir()
-	if err := os.WriteFile(filepath.Join(path, "desktoken"), []byte("#!/bin/sh\nprintf '/fixture-token-path\\n'\n"), 0700); err != nil {
-		t.Fatal(err)
+	// Real production minter (no credential, no desktoken anywhere on PATH): it runs the
+	// credential provider IN PROCESS, so it fails closed on the missing credential and starts
+	// no child — the five children above are the whole count (desktools-v2/58).
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(EnvConfigHome, filepath.Join(home, "cfg"))
+	t.Setenv("PATH", t.TempDir())
+	for _, k := range []string{"WORKER_APP_ID", "WORKER_PEM", "WORKER_TOKEN", "WORKER_INSTALL_ID"} {
+		t.Setenv(k, "")
 	}
-	t.Setenv("PATH", path+string(os.PathListSeparator)+os.Getenv("PATH"))
-	token, _, err := tokenMinter("worker", "example-org/tracker")
-	if err != nil || token != "/fixture-token-path" {
-		t.Fatalf("minter behavior changed %q %v", token, err)
+	if token, _, err := tokenMinter("worker", "example-org/tracker"); err == nil || token != "" {
+		t.Fatalf("minter with no credential returned %q %v, want a refusal", token, err)
 	}
 	children, wall, _ := PerfCounters()
-	if children != 6 || wall <= 0 {
-		t.Fatalf("child attempts=%d wall=%v, want exactly six (including failed start)", children, wall)
+	if children != 5 || wall <= 0 {
+		t.Fatalf("child attempts=%d wall=%v, want exactly five (including failed start; the minter starts none)", children, wall)
 	}
 }
