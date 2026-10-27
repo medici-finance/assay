@@ -84,11 +84,25 @@ var (
 )
 
 // containerAttestation is what the bracket reads from a container witness's
-// attestation line, in either version: the run, the deliverable source commit
-// and the repository-relative brief.
+// attestation line, in either version. repo#issue names the attestation record
+// in the tracking repository; source is the deliverable source commit and brief
+// the repository-relative brief. sourceRepo and trackingSource are set on a
+// version-2 (cross-repository) line only.
 type containerAttestation struct {
-	version            int
-	run, source, brief string
+	version               int
+	repo, issue, run      string
+	sourceRepo, source    string
+	trackingSource, brief string
+	model, tier           string
+}
+
+// containerAttestationFields names the fields values returns, in its order.
+var containerAttestationFields = []string{"repo", "issue", "run", "source-repo", "source", "tracking-source", "brief", "model", "tier"}
+
+// values is every field of the line, in containerAttestationFields' order; a
+// version-1 line has empty source-repo and tracking-source.
+func (a containerAttestation) values() []string {
+	return []string{a.repo, a.issue, a.run, a.sourceRepo, a.source, a.trackingSource, a.brief, a.model, a.tier}
 }
 
 // parseContainerAttestation reads a version-1 or version-2 attestation line. A
@@ -96,13 +110,13 @@ type containerAttestation struct {
 // one and the deliverable one; any other line is not a container attestation.
 func parseContainerAttestation(line string) (containerAttestation, bool) {
 	if m := attestationV1Re.FindStringSubmatch(line); m != nil {
-		return containerAttestation{version: 1, run: m[3], source: m[4], brief: m[5]}, true
+		return containerAttestation{version: 1, repo: m[1], issue: m[2], run: m[3], source: m[4], brief: m[5], model: m[6], tier: m[7]}, true
 	}
 	m := attestationV2Re.FindStringSubmatch(line)
 	if m == nil || !repoFrontmatterRe.MatchString(m[1]) || !repoFrontmatterRe.MatchString(m[4]) || strings.EqualFold(m[1], m[4]) {
 		return containerAttestation{}, false
 	}
-	return containerAttestation{version: 2, run: m[3], source: m[5], brief: m[7]}, true
+	return containerAttestation{version: 2, repo: m[1], issue: m[2], run: m[3], sourceRepo: m[4], source: m[5], trackingSource: m[6], brief: m[7], model: m[8], tier: m[9]}, true
 }
 
 // bracketReceipt is the open step's receipt file. Runner, RunnerSource,

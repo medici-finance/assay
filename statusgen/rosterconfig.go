@@ -597,6 +597,35 @@ func (c scanConfig) Configured() bool {
 	return len(c.Problems) == 0 && c.Bless.Login != "" && len(c.Logins) > 0
 }
 
+// allowedRepo reports whether repo (owner/name) is in the configured repository
+// set: an explicit ASSAY_ALLOWED_REPOS entry, or an owner/* pattern entry for its
+// owner. Matching is exact-case, and an unconfigured set (a collapsed
+// configuration carries no Repos) answers false for every repo. This reader keeps
+// a pattern entry as the literal key "owner/*"; scanParseConfig refuses the
+// pattern entries deskkit refuses (a policy token, or '*' in the owner half), so
+// the two readers agree on which rosters configure a set at all. The shared
+// vector testdata/roster_coupling.json holds both to the same answers.
+//
+// It is deliberately STRICTER than IsAllowedRepo on one shape: a repo argument
+// whose name half is "*" or whose owner half contains '*' answers false here,
+// where IsAllowedRepo can answer true (it matches "owner/*" against a configured
+// owner/* pattern). No real repository has that name, and the difference only
+// ever refuses: the span's source-repo= is already held to the owner/name slug
+// shape by the attestation parser, and a record whose binding names such a
+// source repository is refused here rather than credited. KEEP IN SYNC with
+// deskkit's IsAllowedRepo.
+func (c scanConfig) allowedRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" || name == "*" || strings.Contains(name, "/") || strings.Contains(owner, "*") {
+		return false
+	}
+	if _, ok := c.Repos[repo]; ok {
+		return true
+	}
+	_, ok = c.Repos[owner+"/*"]
+	return ok
+}
+
 var (
 	scanCfgMu    sync.Mutex
 	scanCfgClass scanToolClass
@@ -971,6 +1000,25 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		if strings.Count(slug, "/") != 1 || strings.HasPrefix(slug, "/") || strings.HasSuffix(slug, "/") {
 			bad("%s: %q is not an owner/name repo slug", scanEnvAllowedRepos, entry)
 			continue
+		}
+		// A PATTERN entry (owner/*) gets deskkit's two refusals, worded alike so the
+		// shared vector's rejectedRosters bind both readers: an owner half carrying
+		// '*', and any trailing ci/visibility token. Without them allowedRepo would
+		// turn a roster deskkit refuses whole into a grant for every repo of that
+		// owner. A valid pattern keeps the literal key owner/* (read by allowedRepo)
+		// with the fail-closed policy below.
+		if owner, name, _ := strings.Cut(slug, "/"); name == "*" {
+			if strings.Contains(owner, "*") {
+				bad("%s: %q — the owner half of a pattern entry may not itself contain '*'",
+					scanEnvAllowedRepos, entry)
+				continue
+			}
+			if len(parts) > 1 {
+				bad("%s: %q is a pattern entry (owner/*) and may not carry a ci/visibility policy — "+
+					"a pattern-matched repo gets fail-closed CI/visibility defaults (CI-required, "+
+					"visibility unknown) from the explicit census instead", scanEnvAllowedRepos, entry)
+				continue
+			}
 		}
 		// Fail-closed defaults, identical to deskkit: CI required unless stated,
 		// visibility UNKNOWN unless stated (unknown risk-classes every PR).
