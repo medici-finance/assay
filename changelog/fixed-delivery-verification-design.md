@@ -1,0 +1,1 @@
+- Propose fixed-delivery acceptance with separate main health, review-owned context assessment and bounded historical migration; record backlog experiments without changing runtime or Evidence.

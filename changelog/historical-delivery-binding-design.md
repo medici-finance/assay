@@ -1,1 +1,0 @@
-- Extend the delivery-binding design to eligible historical briefs and separate verification context from tests within existing records. Put context readiness at the review desk ready flip and preserve applicable test results across bookkeeping-only repairs; changed acceptance and unresolved provenance retain their existing authority requirements.
