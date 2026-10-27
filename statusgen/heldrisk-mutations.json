@@ -1,0 +1,17 @@
+{
+  "test": "go test . -run 'TestHeldRisk|TestVflipRisk' -count=1 -timeout 90s",
+  "control": {
+    "name": "definitions read as holds again",
+    "file": "heldscope.go",
+    "old": "func heldRiskDefinition(clean string, h []int) bool {",
+    "new": "func heldRiskDefinition(clean string, h []int) bool {\n return false\n"
+  },
+  "mutations": [
+    {
+      "name": "blanket definition exemption hides independent holds",
+      "file": "heldscope.go",
+      "old": "func heldRiskDefinition(clean string, h []int) bool {",
+      "new": "func heldRiskDefinition(clean string, h []int) bool {\n return true\n"
+    }
+  ]
+}
