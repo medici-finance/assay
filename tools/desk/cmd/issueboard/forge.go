@@ -79,8 +79,11 @@ type issueReadForge interface {
 // authenticated client setup, never issue observations. Every original read and
 // its outbound checks still runs in order. The next invocation resolves anew.
 type issueReader struct {
-	forge issueReadForge
-	repo  deskkit.ForgeRepo
+	forge         issueReadForge
+	repo          deskkit.ForgeRepo
+	eventNumbers  []int
+	eventNext     int
+	eventPayloads map[int]*deskkit.TrustPayload
 }
 
 func newIssueReader(repo string, observers ...deskkit.RequestObserver) (*issueReader, error) {
