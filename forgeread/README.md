@@ -3,7 +3,9 @@
 The importable fact reader: one narrow `Reader` API (`OpenIssues(ctx, repos)`) for the open issues
 of an explicit repository set, and the types, envelope parser and offline/frozen readers that go
 with it. Design record: `docs/library-first.md` ("The first shared read") and the decision
-`docs/streams/decisions/DR-forge-neutral-36.md`.
+`docs/streams/decisions/DR-forge-neutral-36.md`, superseded on 2026-10-25 by
+`docs/streams/decisions/DR-forge-library.md` (one shared forge library for reads and writes,
+which composes this module's adapters).
 
 ## Layout
 
@@ -18,8 +20,12 @@ with it. Design record: `docs/library-first.md` ("The first shared read") and th
 ## Who links what
 
 statusgen links the root package only (offline and frozen inputs; its online reads run the
-`deskread` verb). desk-tools links the adapters and composes them over its own authenticated
-transport. An external consumer can use the root package, or write its own `Access`.
+`deskread` verb until desktools-v2/77 moves them onto the shared forge library). desk-tools
+links the adapters and composes them over its own authenticated transport; under
+`DR-forge-library` that composition moves into the shared forge library (desktools-v2/75), which
+statusgen then links instead of linking any adapter directly. An external consumer can use the
+root package, or write its own `Access`. The root package stays free of any transport or
+credential either way.
 
 ## Three states, never two
 
@@ -39,7 +45,8 @@ Go API version 1.1 adds the typed positive-state adapter without changing the ro
 offline/frozen reader or JSON envelope schema. Desk-tools composes this adapter
 over its existing admitted, authenticated transport and explicit read-only
 wrappers. Statusgen does not link authenticated adapters: its online reads remain
-on `deskread`. The adapter is an observation, never closure inferred from absence
+on `deskread` until desktools-v2/77, and after it reach the adapters only through the
+shared forge library. The adapter is an observation, never closure inferred from absence
 or permission to retire a placeholder. Comment, trust and label histories retain
 their separate readers and all original completeness/identity checks.
 

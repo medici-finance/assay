@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskboot/ -count=1 -timeout 600s -run '^(TestBinaryPinOutlived|TestBinaryPinOverlayOwner|TestBinaryPinBypass|TestBinaryPinCellConfigBin|TestBinaryPinForgeUnreachable)$'",
+  "control": {
+    "name": "CONTROL: TestBinaryPinOutlived wants the wrong reason",
+    "file": "cmd/deskboot/binarypin_test.go",
+    "old": "\twantPinRefusal(t, err, deskkit.HotfixReasonOutlived, \"deskboard\")",
+    "new": "\twantPinRefusal(t, err, deskkit.HotfixReasonExpired, \"deskboard\")"
+  },
+  "mutations": [
+    {
+      "name": "binary-pin ignores ValidateHotfix's verdict (outlived, owner, ceiling, source rule, expired)",
+      "file": "cmd/deskboot/binarypin.go",
+      "old": "\t\tif verr != nil {\n\t\t\tif errorsIsNoHotfix(verr) {",
+      "new": "\t\tif verr != nil && false {\n\t\t\tif errorsIsNoHotfix(verr) {"
+    },
+    {
+      "name": "binary-pin accepts a shim aimed anywhere outside the overlay",
+      "file": "cmd/deskboot/binarypin.go",
+      "old": "\t\t\t\tcase deskkit.WithinDir(p, pinDir):",
+      "new": "\t\t\t\tcase true:"
+    },
+    {
+      "name": "binary-pin does not ask the forge (TestBinaryPinForgeUnreachable)",
+      "file": "cmd/deskboot/binarypin.go",
+      "old": "\t\tif ferr := forge.CheckSourceOnMain(e.SourceSHA); ferr != nil {",
+      "new": "\t\tif ferr := forge.CheckSourceOnMain(e.SourceSHA); ferr != nil && false {"
+    }
+  ]
+}

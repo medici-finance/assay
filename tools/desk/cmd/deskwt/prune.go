@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -103,7 +102,7 @@ type pruneOpts struct {
 	// sweep. Default OFF: every sweep pressure-checks the marked cell Go-cache roots.
 	noCache bool
 	// cellsRoot is the cells root Step D sweeps, already resolved from --cells-root /
-	// $CELLS_ROOT / the compiled default by cmdPrune. "" skips the pass.
+	// $CELLS_ROOT / the compiled default by runPrune. "" skips the pass.
 	cellsRoot string
 	// minIdle is the ACTIVITY gate's window (activity.go): a worktree whose newest
 	// activity evidence is younger than this is held by the ordinary arm and the
@@ -112,7 +111,7 @@ type pruneOpts struct {
 	minIdle time.Duration
 }
 
-// cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
+// runPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
 // [--reclaim-stale-locks [--lock-ttl <dur>]]`: bounded
 // worktree-count reduction so stale worktrees can never accumulate into the E2BIG sandbox
 // failure or the #742 writeguard false-positives (both driven by worktree sprawl).
@@ -213,76 +212,17 @@ type pruneOpts struct {
 // It is a local-only verb (filesystem/worktree state only, no outward call): it takes the
 // audit line and the kill switch but NOT the outward-write rate limit, mirroring
 // add/remove's classification (deskkit/ratelimit.go "Verb classes").
-func cmdPrune(args []string) (err error) {
+func runPrune(f pruneFlags) (err error) {
 	ac := &auditCtx{verb: "prune"}
 	defer func() { ac.finalize(err) }()
 
-	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	// --repo lets a pod / manual sweep point prune at a sibling repo without a session cwd.
-	// It only sets the git working DIR (never an argv value), so no injection surface; it
-	// must be an existing directory inside a git worktree (verified via newPathGuard).
-	repo := fs.String("repo", "", "run against this repo root instead of the current directory")
-	// --interval turns the one-shot sweep into a self-contained ticking loop (Go
-	// time.ParseDuration, e.g. 30m). Empty/zero → one-shot.
-	intervalStr := fs.String("interval", "", "if set (e.g. 30m), loop: sweep every interval instead of once")
-	// --reclaim-stale-locks is the lock LIFECYCLE opt-in. Default OFF: a sweep that was not
-	// asked to reclaim behaves exactly as it always has. It only ever UNLOCKS — every removal
-	// gate below still runs, unchanged, on the unlocked worktree.
-	reclaim := fs.Bool("reclaim-stale-locks", false,
-		"unlock worktree locks PROVEN stale (locking session gone, or older than --lock-ttl) so the normal prune rules can apply; default off")
-	// --lock-ttl is the age fallback for locks that name no session. Default 0 = disabled,
-	// because "old" is not by itself evidence that a session is gone.
-	lockTTLStr := fs.String("lock-ttl", "0",
-		"with --reclaim-stale-locks or --reap-dead-sessions: also treat any lock older than this (e.g. 24h) as stale; 0 disables the age test")
-	// --reap-dead-sessions is the DEAD-SESSION arm's opt-in. Default OFF for the same
-	// reason --reclaim-stale-locks is: it is a new destructive capability, and the operator
-	// arms it deliberately after reading a --dry-run plan.
-	reapDead := fs.Bool("reap-dead-sessions", false,
-		"remove a worktree no live session owns (dead-session lock, or no lock at all) when it is clean AND fully pushed, deleting its stale local branch too; default off")
-	dryRun := fs.Bool("dry-run", false, "report what a sweep would remove and the before_remove hook plan; delete nothing (one-shot only)")
-	// --singleton-ttl is the RECENCY half of the prune singleton (prunesingleton.go): a
-	// sweep that completed less than this ago holds a new one, so N desk windows booting
-	// together run ONE sweep rather than N. 0 disables the debounce; the singleton's LOCK
-	// is always taken and there is no flag that disables it.
-	singletonTTLStr := fs.String("singleton-ttl", defaultSingletonTTL.String(),
-		"skip the sweep when one completed less than this ago (e.g. 10m); 0 disables the recency check (the singleton lock is always taken)")
-	noSingleton := fs.Bool("no-singleton", false,
-		"disable the singleton's recency check (equivalent to --singleton-ttl 0); the lock is still taken, so a live sweep still holds this one")
-	// --no-branches / --branches-only are the cadence split for the local-branch GC
-	// (Step C, branchgc.go): the GC runs at the same moments as prune by default, and a
-	// boot path that wants the worktree arms more (or less) often than the branch pass
-	// controls that here.
-	noBranches := fs.Bool("no-branches", false,
-		"skip the local-branch GC (run the worktree arms only)")
-	branchesOnly := fs.Bool("branches-only", false,
-		"run ONLY the local-branch GC (skip every worktree arm)")
-	noMaintenance := fs.Bool("no-maintenance", false, "skip the daily offline object-store maintenance pass")
-	// --no-cache / --cells-root are the cache pressure pass's (Step D,
-	// cachepressure.go) cadence and scope knobs: the pass runs at the same moments as
-	// prune by default, against $CELLS_ROOT unless told otherwise.
-	noCache := fs.Bool("no-cache", false,
-		"skip the cell-cache pressure pass")
-	cellsRootFlag := fs.String("cells-root", "",
-		"cells root the cache pressure pass sweeps for marked cell Go-cache roots (default: $CELLS_ROOT, then the per-user data-directory default)")
-	// --min-idle is the activity gate's window (activity.go). It can be tuned, never
-	// disabled: a removal gate with an off switch is a --force by another name.
-	minIdleStr := fs.String("min-idle", "",
-		"hold any worktree git shows activity in more recently than this (e.g. 2h; default "+defaultMinIdle.String()+"); must be positive")
-	positionals, perr := parseInterspersed(fs, args)
-	if perr != nil {
-		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
-		if deskkit.IsHelpRequest(perr) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
-			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl, " +
-			"--no-singleton, --no-branches, --branches-only, --no-cache, --cells-root, --min-idle and --no-maintenance " +
-			"(there is no --force): " + perr.Error())
-	}
-	if len(positionals) != 0 {
-		return deskkit.Refused("refused: prune takes no positional arguments")
-	}
+	// The one Cobra tree (cli.go) parsed every flag, and refused any positional, before this
+	// handler ran. The duration knobs arrive as the strings the operator wrote: their
+	// validation and every combination refusal stay below, in the domain.
+	repo, intervalStr, reclaim, lockTTLStr := &f.repo, &f.interval, &f.reclaim, &f.lockTTL
+	reapDead, dryRun, singletonTTLStr, noSingleton := &f.reapDead, &f.dryRun, &f.singletonTTL, &f.noSingleton
+	noBranches, branchesOnly, noMaintenance, noCache := &f.noBranches, &f.branchesOnly, &f.noMaintenance, &f.noCache
+	cellsRootFlag, minIdleStr := &f.cellsRoot, &f.minIdle
 
 	opts := pruneOpts{
 		reclaimStaleLocks: *reclaim,

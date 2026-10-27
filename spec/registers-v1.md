@@ -409,7 +409,8 @@ The semantic owner is `statusgen/productintent` (`Decode`, `Validate`, `Resolve`
 `CheckHistory`); the shape is `schemas/product-intent-v1.json`. This extension adds no
 mandatory base field and changes neither REQ IDs nor acceptance, status, satisfaction,
 `outcome:` or `satisfies:` meaning. It does not add `outcome-revision` to brief readers;
-that consumer binding remains statusgen/23's separately versioned work.
+that consumer binding is statusgen/23's separately versioned work
+([brief-v1](./brief-v1.md) §3.2, [context-handoff-v3](./context-handoff-v3.md)).
 
 Example synthetic extension (the complete two-revision fixture, including observed
 and operational references, is `statusgen/testdata/productintent/record.json`):

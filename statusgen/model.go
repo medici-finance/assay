@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/streamview"
@@ -95,8 +96,9 @@ type Stream struct {
 }
 
 type Brief struct {
-	Num   string // "01", "12a"
-	Title string
+	IntakeAssessment issueflow.IntakeAssessment
+	Num              string // "01", "12a"
+	Title            string
 	// RawCell is the raw, un-unwrapped text of the `Brief` column cell as read
 	// from the stream README table (before unwrapTitleLink strips a `[text](url)`
 	// link to its text). It preserves a ROW-level re-home marker — the rendered

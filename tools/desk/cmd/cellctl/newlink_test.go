@@ -425,6 +425,8 @@ var mkdirAllowed = map[string]string{
 	"git.go:fetchMainUnderLock":              "a mkdir LOCK; oracle `mkdir \"$lock\"` is exclusive by design",
 	"reset.go:resetFetchMain":                "same shared repository mkdir-lock protocol as fetchMainUnderLock; exclusive creation owns only this reset's prefetch",
 	"modelreset.go:lockModelPins":            "a mkdir LOCK beside cell.env and its pin record; no oracle counterpart, exclusive creation IS the lock and the parent cell directory already exists",
+	"hotfix.go:ensureHotfixOverlay":          "the root-owned overlay directory and its bin/: no oracle counterpart; each create is exclusive and then owner-checked, parents deliberately not made (a missing parent is a refusal)",
+	"hotfix.go:buildHotfix":                  "the fixed subdirectories of a fresh private mkdtemp build dir: no oracle counterpart, each one path element",
 	"lock.go:takeSessionLock":                "the session mkdir lock; oracle `mkdir \"$lockdir\"` is exclusive by design",
 }
 

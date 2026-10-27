@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
@@ -110,7 +110,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | exit 0; named PASS. Real entrypoints record stable allowlisted subcommands/kit mappings, including aliases/help/error forms; unknown/private argv never leak. Existing perf-v1 fixtures decode unchanged. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | exit 0; named PASS. Production runner and transport record planted child/HTTP attempts, retry and 304 exactly once on instrumented paths; consent-off and broken optional sinks preserve exit/stdout/work/audit/budget. Successful file-list, intake and stamp entrypoints preserve seeded history, append exactly one successful audit record and leave the same real budget/breaker decisions; skipped-work and erased-history production mutations fail these assertions. |
-| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/38` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 3 | check:ci +dereference | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/38 --delivery eded7ba6e4461a3afac436ff7196987d83268bb3 --base da7a4be21e61acf2f8a2c09749f8cec7d60468f1 > "$o" && cat "$o" && grep -Fxq 'summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 
 ## Pre-mortem and detection
 
@@ -500,6 +500,57 @@ Row 3 is part of the protected delivered table, so this run does not re-author i
 Prior verdicts, in plain words: the 2026-10-19 container block and the earlier 2026-10-25 block recorded blocked results, and the 2026-10-21 block's pass was superseded because it had no execution witness.
 
 **VERIFY: BLOCKED** — all 3 rows pass in the network-off container witness at source dd8bdafc4dec, inside a closed admission bracket (`verdict=match`), and no row was observed to fail. The closure lint refuses the flip because delivered row 3 pins no `--delivery` or `--base` (check-definition, medici-finance/assay#1915), so this is not a completed verification and the README row stays `implemented`.
+### Container re-verification — 2026-10-26 (source f2e232039c99, after the row 3 amendment)
+
+Observed source: merged main f2e232039c99 (detached home, admitted by `deskdispatch --check-verifier`, attestation medici-finance/assay#4558). Actual delivery: merged PR #3332, squash eded7ba6e446, first parent da7a4be21e61. Row 3's Command was later amended by merged PR #4414 (two-parent merge 1e1ba401077b, version 4 to 5); that amendment changes only row 3's Command code span. `deskpathguard rederive` at the observed source reports 3 rows, 0 author-added.
+
+The table directly below is the execution witness: `statusgen verifyrun` v1.0.63, non-dry, `--sandbox=container-netns`, run inside a closed admission bracket. The bracket was opened on the host at 2026-10-26T23:51:59Z and closed on the host at 23:52:58Z. `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match`. The witness bytes, including the `Admission-Bracket:` line, follow unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | pass exit=0 sandbox=container-netns | sha256:9cd32f8ccdde | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | pass exit=0 sandbox=container-netns | sha256:a107eec5098f | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/38 --delivery eded7ba6e4461a3afac436ff7196987d83268bb3 --base da7a4be21e61acf2f8a2c09749f8cec7d60468f1 > "$o" && cat "$o" && grep -Fxq 'summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing' "$o")` | pass exit=0 sandbox=container-netns | sha256:b2a1fdbd63e3 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1806a4c7c139c5cfb774c1c1583d621fbff2c448bfc91d072623359555b4dc97
+Container-Image: sha256:955fd6c46c93ee746d8f560b4c90b172a759d2543337d8173cdaabcd2013bca4
+Verification-Attestation: medici-finance/assay#4558 run=5c8ca2cf0680cf7b9bcf22a6b06d7f469ba9b4e4b9e6806a1c57b006de8dcdef source=f2e232039c99455b0b9a7dacfe639f9f68b164d2 brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=5c8ca2cf0680cf7b9bcf22a6b06d7f469ba9b4e4b9e6806a1c57b006de8dcdef source=f2e232039c99455b0b9a7dacfe639f9f68b164d2 tree=sha256:1806a4c7c139c5cfb774c1c1583d621fbff2c448bfc91d072623359555b4dc97 witness=sha256:7c8fa2e770c92b25c9ebd855fe6ca2bf12a0e4a291ddb67dd2df4930e1c6f110 opened=2026-10-26T23:51:59Z closed=2026-10-26T23:52:58Z before=receipt after=check-verifier
+
+Environment: a local docker container from image assay-verify:go1.27 (local image id sha256:955fd6c46c93, linux/arm64, Go 1.27.2), started with `--network none`, the engine's default seccomp profile and no added privileges. The home, its git directory, the Go module cache, the statusgen binary and the admission receipt were bind-mounted read-only; the only writable mount was a new directory for the witness file. GOPROXY=off. statusgen is the published v1.0.63 linux-amd64 release binary, sha256 6775de412839… checked against the release checksums, run under the engine's amd64 emulation. The host statusgen is the same release (darwin-arm64, sha256 matches the release checksums). The container's admission step recomputed the mounted home's tree digest and matched the sha256:1806a4c7c139 value the host recorded at the open step.
+
+Primary output (supplemental, no acceptance credit): the three row commands were re-run in a separate throwaway network-off container at the same source, with output kept for inspection.
+
+| # | Exit | Key output | Output sha256 | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | 0 | `--- PASS: TestPerfCommandKit (7.64s)`; 20 named subtests pass, among them deskboard, issueboard and deskdispatch help, version, alias and error forms, two private-argument cases and `mutation_actual_kit_assignment` | f6315960e29e | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+| 2 | 0 | `--- PASS: TestPerfCoverageFlow (17.00s)`; subtests `ordinary_deskboard`, `ordinary_issueboard`, `ordinary_deskdispatch`, `mutation_skips_ordinary_work`, `mutation_erases_budget_history` and `mutation_counts_local_refusal` all pass | 8d3c613ec765 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+| 3 | 0 | `consumers corroboration — base da7a4be21e61..eded7ba6e446 (immutable delivered snapshot)`; `summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing` | 06431386e68c | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+
+The 7 unchecked entries in row 3 are the brief's out-of-scope consumer judgments (deskperf, deskread, deskwt, deskroster, verifyloop, the class sweep of other desk commands, and perfrec). The Expect cell leaves them to review, and the first 2026-10-19 re-verification block above records why each holds. The original pre-amendment row 3 command, `statusgen --root . --consumers --brief desk-tools/38`, was also run in that throwaway container. It resolved the same immutable delivered range by itself and exited 0 with the same summary line. That run is supplemental and gets no acceptance credit.
+
+Risk-bearing rows: none. The risk metadata is present and all answers are no, and no Verify row carries a risk-bearing, live, mutating or end-to-end tag, so no fail-first witness is required.
+
+Closure gate: this brief's Evidence is a protected record (the 2026-10-25 container block records `Verification-Table: delivery=eded7ba6e4461a3afac436ff7196987d83268bb3 base=da7a4be21e61acf2f8a2c09749f8cec7d60468f1 original=62007f78172b17e7d800dbeb3c3a03efb3ced771`). Row 3's delivered command differs from its current command, so closure needs the explicit human-approved acceptance transition in docs/protected-paths.md. PR #4414 says so directly: a merge or review is not that approval. On the forge at landing time, no issue in this repository carries the acceptance-transition marker for this brief, and no `Approve acceptance-transition v1` comment exists for it. The protected-record route without a transition refuses at this source before any row runs, with nothing written:
+
+```
+statusgen verifyrun --root <home> --brief docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md --acceptance-record <descriptor> --dry-run
+protected table: current Verify section differs from immutable delivery
+exit=2
+```
+
+Even after an approval lands, two further limits apply. First, a transition run executes on the host only (`--in-container` refuses), and on a darwin host every check:ci row is could-not-run (#1800). Second, a container bracket combined with a host transition run does not close yet (#4299). The delivered table also differs from the original in row 2's Expect, which the delivery strengthened while keeping the required exit 0. Whether the transition route accepts that is the open question in #4505.
+
+`statusgen verifyrun --check` on this block, applied to a scratch checkout at the observed source: it refuses as landed, exit 2: `refused — protected table: refusing: verdict mismatch: the latest recorded verdict is VERIFY: BLOCKED, not PASS`. A scratch-only probe put a live `Verification-Table:` marker and a strict PASS marker in place of this verdict. It refused too, exit 2, with and without `--acceptance-forge`: `refused — protected table: current Verify section differs from immutable delivery`. Neither form produces an N-pass summary line.
+
+Input drift: none. The home stayed detached at the observed source for the whole run, and the attestation's source is the observed source.
+
+Risk-value: the item is not irreversible and its risk metadata is all no. The attribution literals sit at the same values as in the 2026-10-25 enumeration; only perf.go gained one boot-step roster entry since then, which is not a diff literal of this item. None of the literals is a numeric bound, and all are reversible by an edit and a redeploy.
+
+RISK-VALUE: DERIVED — perfKitVerb fallback = "other" @ tools/desk/cmd/deskdispatch/kits.go:127 — Task 1 requires unknown kits to stay explicit with no raw argv; a fixed compiled fallback carries no caller text and matches the perf-v1 fallback.
+RISK-VALUE: DERIVED — perfKitVerb review label = "dispatch:review" @ tools/desk/cmd/deskdispatch/kits.go:111 — a compiled label chosen by the parsed kit; any kit outside the four accepted ones maps to "other", and the label grants no role authority.
+RISK-VALUE: DERIVED — perfActive start = true @ tools/desk/internal/deskkit/perf.go:196, finish = false (deferred) @ tools/desk/internal/deskkit/perf.go:197 — PerfCommand selects an attribution only while a PerfRun is executing (perf.go:226 returns early otherwise), and the deferred reset closes that window on every return path.
+
+**VERIFY: BLOCKED** — all 3 rows pass in the network-off container witness at source f2e232039c99, inside a closed admission bracket (`verdict=match`), and no row was observed to fail. Closure is blocked because row 3's amended command (#4414) has no recorded human acceptance-transition approval. The amendment is only creditable through that approval, and the host transition run and its combination with a container witness remain limited (#1800, #4299). The README row stays `implemented`.
 
 ## Review
 

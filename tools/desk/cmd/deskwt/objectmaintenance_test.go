@@ -54,10 +54,15 @@ func TestMaintenanceInvalidOptionsNeverReachEngine(t *testing.T) {
 	for _, tail := range [][]string{
 		{"--apply", "--dry-run"}, {"--min-interval", "0"}, {"--min-interval", "-1h"},
 		{"--min-interval", "1ns"}, {"--timeout", "0"}, {"--timeout", "500ms"}, {"--timeout", "6m"},
-		{"--prefetch"}, {"--force"}, {"gc"},
 	} {
 		if code := run(append([]string{"maintain", "objects"}, tail...)); code != deskkit.ExitRefused {
 			t.Fatalf("%v: exit %d, want refused", tail, code)
+		}
+	}
+	// An undeclared flag or a stray word is a malformed command line: the usage code.
+	for _, tail := range [][]string{{"--prefetch"}, {"--force"}, {"gc"}, {"--timeout", "soon"}} {
+		if code := run(append([]string{"maintain", "objects"}, tail...)); code != 2 {
+			t.Fatalf("%v: exit %d, want 2 (usage)", tail, code)
 		}
 	}
 	if len(*calls) != 0 {

@@ -32,6 +32,11 @@ Put one — or a few — human-legible highlight bullets in it, the same
   `touch changelog/x.md`).
 - **Keep it to highlights**, not a commit log — descriptive lines a reader
   understands without the diff.
+- **Flat only.** The fragment sits directly under `changelog/` — never in a
+  subdirectory. The release aggregator reads only `changelog/*.md`, so a nested
+  path such as `changelog/feat/x.md` would be dropped from the release notes;
+  `changelog-check` refuses a PR that adds one. A branch named `feat/x` gets
+  `changelog/x.md` (the branch basename).
 - **Slug uniqueness** is what keeps two PRs from colliding: name the file after
   your branch/PR so no two open PRs write the same path.
 

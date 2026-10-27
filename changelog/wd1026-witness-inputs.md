@@ -1,0 +1,2 @@
+### Added
+- build-less-brittle/15, ruled by the driver: verification witnesses will record the files each Verify row actually read, so an unrelated merge stops holding verified briefs. A static go compile-input floor catches a recorder that misses a read, the read set is bound to the commit that introduced its witness, and anything the recorder cannot attribute, or a run on a host that is not Linux, is marked could-not-check and keeps today's whole-tree check.

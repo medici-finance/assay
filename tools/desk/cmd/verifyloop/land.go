@@ -59,6 +59,9 @@ func (v *VerifyLoop) Land(r loopengine.Result) error {
 	if receipt.Binding != run.receipt.Binding || receipt.Issue != run.receipt.Issue {
 		return fmt.Errorf("verifier result run binding changed")
 	}
+	if err := v.landWorld(run.receipt, receipt); err != nil {
+		return err
+	}
 	if receipt.Binding.Version == 2 {
 		payload := make(map[string]string, len(r.Item.Payload))
 		for key, value := range r.Item.Payload {

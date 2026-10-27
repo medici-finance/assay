@@ -92,6 +92,14 @@ Options:
 
 Default if no answer: none — blocks until answered.
 
+**Superseded direction (note added 2026-10-25).** `DR-forge-neutral-36`, the design this brief
+cites, is superseded by `DR-forge-library` (the driver's ruling of 2026-10-25 on #2395): one
+shared forge library for reads and writes, linked by statusgen, holding the role-and-repo
+credential. Option 1's clause that statusgen's online reads stay on the deskread process adapter,
+and Task 3's matching clause, are superseded going forward by desktools-v2/77, which replaces
+that adapter with the library. This brief's delivered module, Verify table and Evidence are
+unchanged and stand as recorded; the `forgeread` root package stays dependency-free (row 11).
+
 ## Ground rules
 
 Offline fixtures/fake providers only. No production query, credential provisioning, release,

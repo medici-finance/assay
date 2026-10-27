@@ -271,6 +271,10 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"schemas/perf-v4.json"},
+			runInvokes: []string{`*/perfrec|perfrec) extra="go test ./..." ;;`},
+			why:        "The exact v4 reference schema derives from canonical recorder types; unfiltered source CI runs the perfrec suite on schema-only edits."},
 		{
 			test: "statusgen/regressionfloor_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,

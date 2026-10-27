@@ -206,7 +206,11 @@ Consume [the verifier migration amendment](../../streams/graph-execution/verifie
 An adopter may move evidence production through its existing qualified owner before R2–R8,
 and evaluate shared assessment in shadow after R1. This grants neither a second standing
 claim authority nor a publisher. Managed completion retains R1–R8 and repository-wide
-handover. The proposed Kubernetes profile is agent-execution/08; its stream remains parked.
+handover. The Kubernetes verifier profile is agent-execution/08. Admission of amendment 27
+and its stream for implementation is proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes effect on the
+maintainer's merge of it; that does not authorize a concrete profile, cluster contact or
+live deployment.
 
 ## Perf-v3 delivery — requested amendment, 19 October 2026
 
