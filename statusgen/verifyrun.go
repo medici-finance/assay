@@ -1976,9 +1976,13 @@ Flags:
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
-                    this brief (version 1 only) and it names a runner, and
-                    refuses after the rows if they changed that tree. Its rows'
-                    Runner cell is the receipt's, never derived in the container.
+                    this brief and it names a runner, and refuses after the
+                    rows if they changed that tree. Its rows' Runner cell is
+                    the receipt's, never derived in the container. A version-2
+                    (cross-repository) receipt also needs --root naming the
+                    deliverable home and --brief naming the tracking brief
+                    outside it, holding the bytes the receipt's BriefSHA256
+                    names; its attestation line names both repositories.
   --container-image-digest sha256:<64 hex>  the image the rows run in, named by
                     the host; recorded as Container-Image on the witness.
   --witness <file>  container-netns: a NEW file outside the home the witness
@@ -2045,9 +2049,12 @@ Flags:
                     login-only verifier entry or a shallow clone is
                     could-not-check), (b) the span's attestation line equal
                     to the line rendered from its record, read with deskread
-                    (issue, trust, label-events): a same-repository, closed,
-                    never-edited issue written by the dispatcher, not the
-                    verifier, carrying the dispatcher's model stamp, and
+                    (issue, trust, label-events): a closed, never-edited
+                    issue in the brief's own repository, written by the
+                    dispatcher, not the verifier, carrying the dispatcher's
+                    model stamp; a version-2 (cross-repository) line also
+                    needs its source-repo= in the configured repository set
+                    (ASSAY_ALLOWED_REPOS), else it is not-credited, and
                     (c) the attestation's brief= equal to the --witness
                     file's repository path and its source= equal to
                     --source. A failed read is could-not-check. Exit 0 only
