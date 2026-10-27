@@ -82,7 +82,7 @@ or removing any human gate (spec §5 states the divergence).
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Eligibility evaluator — gates and feathers become gating, with a reason](brief-01-eligibility-evaluator.md) | 0 | L | done | 2026-09-17 sonnet-5-verifier (9/12 clean PASS; rows 6/12 literal-fail-shaped but independently proven pre-existing board-drift, not regressions; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1298 @ d3b1f88dd9a6941e7c8449a460513e4638b8ae38) |
-| 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | implemented | — | — |
+| 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | verified | 2026-10-25 assay-verifier-app[bot] @ 4aeecf71626f (forge-identity) | — |
 | 03 | [Evidence coverage rule and the observe evidence kind](brief-03-evidence-coverage-rule.md) | 1 | L | implemented | — | — |
 | 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 4 | L | todo | — | — |
 | 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 8 | L | todo | — | — |
@@ -113,6 +113,7 @@ or removing any human gate (spec §5 states the divergence).
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | implemented | — | — |
+| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -387,3 +388,16 @@ integration prerequisite; calibrated-provider activation still requires /12. Kub
 the separately gated agent-execution/08 profile, not an interim runner prerequisite.
 
 The historical critical-path sketch retains the former /12 → /18 edge for history; it is superseded by the 19 October verifier migration sequence above.
+
+## Merge decision amendment — 2026-10-26
+
+[Brief 33](brief-33-merge-decision-node-and-risk-input.md) amends the shipped implementation
+pattern, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/1933#issuecomment-6419943765
+Its `merge` node becomes a `human` decision closed by an external authenticated act, `human`
+is allowed as an owner only on effect-free decision nodes, the pattern and its testdata twins
+are re-pinned, and the `risk-input` mapping is derived rather than named. The role-effect table
+is not widened. graph-execution/02 stays held until /33 lands, read as /33 reaching `verified`;
+the hold note is in brief 02's `## Review` section. /33 is a Wave 0 item with no open
+dependency, because /02 and /09's deliverables are already on main; it is a new prerequisite of
+/14, which binds the re-pinned pattern at dispatch.

@@ -1860,6 +1860,7 @@ func main() {
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	bottleneckMode := flag.Bool("bottleneck", false, "emit the daily factory-floor bottleneck report (per-stage WIP + dwell, constraint, shift, action). With --json: a side-effect-free machine-readable emitter (no dated file written) for the publish pipeline")
+	intakeHandoffsMode := flag.Bool("intake-handoffs", false, "emit versioned intake handoff companions and classification-needed legacy entries; v1 exits unchanged")
 	intakeExitsMode := flag.Bool("intake-exits", false, "emit the intake register's intake-exit-v1 records (spec/intake-exit-v1.md): with --json, one JSON line per triaged entry that maps to an exit AND carries a complete triage stamp, then a {stamped, unstamped, unmapped} summary line. Could-not-check (exit 6) when no intake register exists")
 	intakeDebtMode := flag.Bool("intake-debt", false, "emit the intake front-door debt aggregate (untriaged count, over-threshold, oldest age). With --json: a leak-safe counts-only object for the publish pipeline (no entry ids/dates)")
 	// Brief-flow metrics (statusgen/07): the AssayScore (statusgen/08) input
@@ -1878,9 +1879,9 @@ func main() {
 	ciHoursPerDay := flag.Float64("ci-hours-per-day", 0, "--flow: available CI wall-clock hours per day, the ci_slot_saturation divisor. Absent (0 or unset) ⇒ could-not-check, never an invented number")
 	firstPassYieldMode := flag.Bool("first-pass-yield", false, "emit first-pass yield: the share of to:\"done\" briefs, linked to their merged PR via the Brief: trailer, merged with 0 CHANGES_REQUESTED, no VERIFY:FAIL, and no unresolved finding naming them. Reuses --since / --until / --json; reads gh")
 	reviewReworkMode := flag.Bool("review-rework", false, "emit the CHANGES_REQUESTED rounds/PR distribution over brief-linked merged PRs, from the full (un-laundered) reviews array. Reuses --since / --until / --json; reads gh")
-	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads gh")
+	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads through the desk-tools `deskread` verb")
 	netFlowMode := flag.Bool("net-flow", false, "emit per-stream net flow (historian arrivals - completions in the window) plus a live stall flag (active ∧ backlog>0 ∧ no transition >=14d). Reuses --since / --until / --json")
-	assayScoreMode := flag.Bool("assayscore", false, "emit the composite AssayScore (statusgen/08): geometric mean of the four 0–100 sub-scores (Speed/Flow/Quality/Value) rolled up from the brief-flow metrics, always published with its four sub-scores + raw inputs + baseline_window. A could-not-check dimension is excluded (never coerced to 0) and the composite is flagged `incomplete`. Reuses --since / --until / --json; Quality/Value read gh")
+	assayScoreMode := flag.Bool("assayscore", false, "emit the composite AssayScore (statusgen/08): geometric mean of the four 0–100 sub-scores (Speed/Flow/Quality/Value) rolled up from the brief-flow metrics, always published with its four sub-scores + raw inputs + baseline_window. A could-not-check dimension is excluded (never coerced to 0) and the composite is flagged `incomplete`. Reuses --since / --until / --json; Quality reads gh, Value reads through the desk-tools `deskread` verb")
 	launchMode := flag.Bool("launch", false, "print launch-readiness rollup — transitive depends: of the go-live gate (assay-launch/05) with live status (never reads/writes STATUS.md)")
 	// Per-release requirement traceability rollup (sdlc/02): per requirement, its
 	// acceptance criteria, the briefs that name it, each brief's status + Evidence,
@@ -2026,6 +2027,7 @@ func main() {
 			"--cynefin":               *cynefinMode,
 			"--intake-debt":           *intakeDebtMode,
 			"--intake-exits":          *intakeExitsMode,
+			"--intake-handoffs":       *intakeHandoffsMode,
 			"--throughput":            *throughputMode,
 			"--leadtime":              *leadtimeMode,
 			"--flow-efficiency":       *flowEfficiencyMode,
@@ -2326,15 +2328,18 @@ func main() {
 		exitProcess(runIntakeDebt(*root, *doraJSON))
 	}
 	// Intake exit records (desk-supervision/33): self-contained, offline, STATUS.md-free.
+	if *intakeHandoffsMode {
+		exitProcess(writeIntakeHandoffs(*root, os.Stdout, os.Stderr))
+	}
 	if *intakeExitsMode {
 		exitProcess(runIntakeExits(*root, *doraJSON))
 	}
 	// Brief-flow metrics (statusgen/07). All seven are self-contained,
 	// STATUS.md-free sub-commands, same discipline as --dora-timing/--bottleneck;
-	// the two that read gh (--review-rework/--first-pass-yield share a source,
-	// --decision-latency has its own) degrade to could-not-check rather than
-	// error when gh or the target repo is unavailable (briefflowreview.go,
-	// briefdecision.go).
+	// the two that read the forge (--review-rework/--first-pass-yield share a
+	// gh source; --decision-latency reads through deskread) degrade to
+	// could-not-check rather than error when the read or the target repo is
+	// unavailable (briefflowreview.go, briefdecision.go).
 	if *throughputMode {
 		exitProcess(runThroughput(*root, *since, *doraTimingUntil, *doraJSON))
 	}
@@ -2359,13 +2364,13 @@ func main() {
 		exitProcess(runReviewRework(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
 	}
 	if *decisionLatencyMode {
-		exitProcess(runDecisionLatency(*root, *since, *doraTimingUntil, *doraJSON, ghDecisionQueueSource{}))
+		exitProcess(runDecisionLatency(*root, *since, *doraTimingUntil, *doraJSON, defaultDecisionQueueSource))
 	}
 	if *netFlowMode {
 		exitProcess(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	if *assayScoreMode {
-		exitProcess(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, ghDecisionQueueSource{}))
+		exitProcess(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, defaultDecisionQueueSource))
 	}
 	// Roadmap deck overview + per-stream pages — RETAINED (Ian ruling #1213).
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA

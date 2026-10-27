@@ -46,7 +46,7 @@ consumers:
   - "tools/desk/cmd/deskprovenance/main.go: follow-up contributor-trust/01 (this brief; the verb that renders and posts the card)"
   - "docs/contributor-provenance.md: follow-up contributor-trust/01 (this brief; the published description of what the card measures and what it deliberately does not)"
   - ".github/workflows/inbound-triage.yml: out-of-scope (the card is posted by a desk verb under a role identity, not by a workflow; folding it into the pull_request_target job would put signal-gathering network reads next to a write-capable token, which that job's safety argument rests on not doing)"
-version: 1
+version: 2
 ---
 
 # Brief 01 — Contributor provenance probe
@@ -170,7 +170,7 @@ until this is decided.
 | 7 | `cd tools/desk && ./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/bulk-sweep-author.json` | exit 1; output contains `not a judgement of the change` (the abstention is present on the flagged path, which is the path where it matters) | check |
 | 8 | `git -C . grep -n -e follower -e employer -e geograph -- tools/desk/internal/deskkit/provenance.go` | exit 1; no matching line (the excluded categories appear nowhere in the gatherer) | check |
 | 9 | `grep -n 'deliberately' docs/contributor-provenance.md` | exit 0; at least one matching line naming the excluded signals | check |
-| 10 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:01` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
+| 10 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief assay:assay:contributor-trust:01 --delivery 01da8dfd6625f2fd70f1a70cf929170a2ef7c8a7 --base 4bf9c299243b41a9300ce058723d1e4b9083c77e > "$o" && cat "$o" && grep -Fxq 'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "A signal fails to read and the card says everything is fine" is
 caught by row 4, which requires both the third exit state and the visible token. "The card

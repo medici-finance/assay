@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"sort"
 	"strings"
 	"time"
@@ -585,7 +586,7 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 		// wave/dep gated. Claim-awareness (checked above) still
 		// excludes one whose issue has an open branch.
 		if b.Schema == "placeholder-v1" {
-			if b.Blocked != "" {
+			if b.Blocked != "" || !issueflow.RepairDispositionSettled(b.IntakeAssessment) {
 				return false // blocked awaiting issue response
 			}
 			return true

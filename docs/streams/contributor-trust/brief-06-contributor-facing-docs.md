@@ -39,7 +39,7 @@ consumers:
   - ".github/PULL_REQUEST_TEMPLATE.md: follow-up contributor-trust/06 (this brief; the claims checklist and the how-I-verified prompt — landed by the partial, outside this branch's diff)"
   - "docs/contributor-trust.md: fixed-here (this change lands the provenance-card hop — the published model gains its contributor-facing entry point into what a submission is measured on)"
   - "SECURITY.md: out-of-scope (the reporting path is unchanged; the new sections link to it rather than restating it, since a second copy of a security contact is the copy that goes stale)"
-version: 1
+version: 2
 ---
 
 # Brief 06 — Contributor-facing documents
@@ -151,7 +151,7 @@ that is the review gate's judgement.
 | 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | exit 1; no matching line (contributor-facing pages name no internal automation identity) | check |
 | 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | exit 0; at least one matching line (the reporting path is linked, not restated) | check +neighbour |
 | 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; at least one matching line from each (the contributor's path runs `CONTRIBUTING.md` to the published model to the description of what the provenance comment measures, and every hop exists) | check +flow |
-| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
+| 11 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief assay:assay:contributor-trust:06 --delivery a5c8286832514bf1e1ce2dad552612389bbc02b1 --base 7e5f189e36e774a13925beb3ab85e7ed8c6720b4 > "$o" && cat "$o" && grep -Fxq 'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The new section quietly describes an advisory guideline as
 enforced, so the page promises something the repository does not do" is caught by row 5. "The

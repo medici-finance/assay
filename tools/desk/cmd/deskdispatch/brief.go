@@ -20,6 +20,8 @@ package main
 // keys on (strings.EqualFold(Gate, "human")).
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,16 +34,14 @@ var briefGateRe = regexp.MustCompile(`(?m)^gate:\s*(.*)$`)
 // briefGatesHuman reports whether the brief's own frontmatter gates on a human
 // (`gate: human`, case-insensitive) — the metadata half of the human-decision gate contract.
 //
-// It is best-effort by design: a brief that cannot be read, carries no frontmatter fence, or
-// names no gate yields FALSE, and the caller falls back to the explicit `--gate-human` flag,
-// which stays the guaranteed path. It never returns a false POSITIVE that would file a
-// spurious decision issue, and its miss on an unreadable file is covered by the explicit flag.
+// Existing files with unreadable metadata take the conservative human-gate
+// profile. File resolution and the explicit --gate-human flag remain caller concerns.
 func briefGatesHuman(root, brief string) bool {
 	return strings.EqualFold(briefFrontmatterGate(root, brief), "human")
 }
 
 // briefFrontmatterGate returns the trimmed value of the brief's top-level `gate:` frontmatter
-// field, or "" when the file cannot be read, opens with no `---` fence, or names no gate. The
+// field, "human" for unreadable metadata, or "" for an absent gate/file. The
 // brief path is resolved against --root when relative — the same base the decision script is
 // invoked from, so the file this reads is the file that script derives the issue from.
 func briefFrontmatterGate(root, brief string) string {
@@ -53,23 +53,16 @@ func briefFrontmatterGate(root, brief string) string {
 	if err != nil {
 		return ""
 	}
-	body := briefFrontmatterBlock(string(raw))
-	if body == "" {
-		return ""
+	block, _, err := briefdoc.Split(string(raw))
+	if err != nil {
+		return "human"
 	}
-	m := briefGateRe.FindStringSubmatch(body)
-	if m == nil {
-		return ""
+	f, err := briefdoc.ParseFields(block)
+	if err != nil {
+		return "human"
 	}
-	return strings.Trim(strings.TrimSpace(m[1]), `"'`)
+	return f.Values["gate"]
 }
-
-// briefExecTierRe / briefEffortRe match the top-level `exec-tier:` and `effort:` frontmatter
-// lines the dispatch record carries; `brief:` is deliverable.go's briefIDRe.
-var (
-	briefExecTierRe = regexp.MustCompile(`(?m)^exec-tier:[ \t]*(.*)$`)
-	briefEffortRe   = regexp.MustCompile(`(?m)^effort:[ \t]*(.*)$`)
-)
 
 // briefRecordFields is what the dispatch record reads from the brief's OWN frontmatter, with the
 // same extractor as `gate:`. Each is nil when the brief cannot be read, has no frontmatter fence,
@@ -97,27 +90,16 @@ func readBriefRecordFields(root, brief string) briefRecordFields {
 	if front == "" {
 		return f
 	}
-	opt := func(re *regexp.Regexp) *string {
-		if v := briefField(front, re); v != "" {
+	opt := func(key string) *string {
+		if v := briefField(front, key); v != "" {
 			return &v
 		}
 		return nil
 	}
-	f.id, f.execTier, f.effort = opt(briefIDRe), opt(briefExecTierRe), opt(briefEffortRe)
+	f.id, f.execTier, f.effort = opt("brief"), opt("exec-tier"), opt("effort")
 	return f
 }
 
 // briefFrontmatterBlock returns the text between the leading `---` fences, or "" if the
 // content does not open with one. Mirrors verifyloop.frontmatterBlock.
-func briefFrontmatterBlock(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return ""
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return strings.Join(lines[1:i], "\n")
-		}
-	}
-	return ""
-}
+func briefFrontmatterBlock(content string) string { return briefdoc.Frontmatter(content) }

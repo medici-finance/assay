@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/credential"
 )
 
 // errForgeTokenMissing identifies local credential absence without changing the
@@ -43,12 +45,12 @@ func missingForgeToken(msg string) error {
 	return &forgeTokenMissingError{Unverifiable(msg, nil)}
 }
 
-// GitHubAPIBase is the single home of the GitHub REST/GraphQL host literal. Desk commands
-// that keep a package-level test hook (`var apiBaseURL = GitHubAPIBase`) source their
-// default from here so the literal is constructed in exactly one place — the forge module —
-// and never in a cmd package (the "no direct API construction outside the forge
-// implementation" contract).
-const GitHubAPIBase = "https://api.github.com"
+// GitHubAPIBase is the GitHub REST/GraphQL host. Desk commands that keep a package-level
+// test hook (`var apiBaseURL = GitHubAPIBase`) source their default from here, and this is the
+// role-credential provider's constant (credential.GitHubAPIBase) — the literal's single home
+// now that the App mint lives there — so it is constructed in exactly one place and never in a
+// cmd package (the "no direct API construction outside the forge implementation" contract).
+const GitHubAPIBase = credential.GitHubAPIBase
 
 // GitHubBaseURLOrDefault resolves an override base to a concrete GitHub host: the override
 // when non-empty, else GitHubAPIBase. It is the ONE place the "" → default resolution lives,

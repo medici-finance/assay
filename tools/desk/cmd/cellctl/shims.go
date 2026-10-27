@@ -2,10 +2,16 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // shimTemplate is the generated wrapper body. Everything in it is LITERAL shell, evaluated when
@@ -67,6 +73,70 @@ unset ambient
 exec gh "$@"
 `
 
+// hotfixShimPrelude is the layer-1 selection a hotfix shim runs before the ordinary shim body
+// (shimTemplate, whose exec lines then run "$bin"). The expiry is compiled into the shim as an
+// epoch; past it, or when the clock cannot be read, the shim runs the pinned binary with a
+// one-line NOTICE. While the hotfix is live it exports DESK_HOTFIX_FALLBACK, the pinned path
+// the binary's own self-check (layer 2) falls back to.
+const hotfixShimPrelude = `# hotfix overlay (layer 1): __HOTFIX_TAG__ over pin __PIN_TAG__, expires __HOTFIX_EXPIRES__.
+hotfix_bin="__HOTFIX_BIN__"
+pinned_bin="__PINNED_BIN__"
+bin="$hotfix_bin"
+now="$(date +%s 2>/dev/null || true)"
+if [[ ! "$now" =~ ^[0-9]+$ ]] || (( now >= __HOTFIX_EXPIRES_EPOCH__ )); then
+  echo "cellctl NOTICE: hotfix __HOTFIX_TAG__ expired __HOTFIX_EXPIRES__; running pin __PIN_TAG__" >&2
+  bin="$pinned_bin"
+  unset DESK_HOTFIX_FALLBACK
+else
+  export DESK_HOTFIX_FALLBACK="$pinned_bin"
+fi
+`
+
+// hotfixOwner and hotfixClock are the owner check and clock shim selection uses. Production
+// keeps the real root-owner check and wall clock; only _test.go files, or a build carrying the
+// test-only hotfixseam tag, reassign them.
+var (
+	hotfixOwner = deskkit.ActiveHotfixOwner
+	hotfixClock = time.Now
+)
+
+// cellDeskToolsPin is the desk-tools pin of the cell's repo checkout.
+func (c *Cell) cellDeskToolsPin() string {
+	tag, _, _ := deskkit.DeskToolsReleasePin(c.Repo, runtime.GOOS+"-"+runtime.GOARCH)
+	return tag
+}
+
+// hotfixShimChoice decides one tool's shim target and prints the NOTICE for a retired hotfix.
+func (c *Cell) hotfixShimChoice(tool, pinnedDir string, stderr io.Writer) deskkit.HotfixShimChoice {
+	ch := deskkit.ChooseHotfixShim(deskkit.HotfixOverlayDir(), pinnedDir, tool, c.cellDeskToolsPin(), hotfixClock(), hotfixOwner())
+	if ch.Notice != "" {
+		fmt.Fprintln(stderr, "cellctl NOTICE: "+ch.Notice)
+	}
+	return ch
+}
+
+// hotfixShimBody is a hotfix tool's shim: the layer-1 prelude, then the ordinary shim body
+// exec'ing "$bin".
+func hotfixShimBody(c *Cell, ghWrapDir string, ch deskkit.HotfixShimChoice) string {
+	expires, _ := time.Parse(time.RFC3339, ch.Entry.Expires)
+	prelude := strings.NewReplacer(
+		"__HOTFIX_TAG__", ch.Entry.Tag(),
+		"__PIN_TAG__", ch.Entry.BasePin,
+		"__HOTFIX_EXPIRES__", expires.UTC().Format(time.RFC3339),
+		"__HOTFIX_EXPIRES_EPOCH__", strconv.FormatInt(expires.Unix(), 10),
+		"__HOTFIX_BIN__", ch.Bin,
+		"__PINNED_BIN__", ch.Pinned,
+	).Replace(hotfixShimPrelude)
+	body := strings.NewReplacer(
+		"__CELL__", c.Name,
+		"__CELL_HOME__", c.Home,
+		"__GH_WRAP__", ghWrapDir,
+		`"__BIN__"`, `"$bin"`,
+	).Replace(shimTemplate)
+	nl := strings.IndexByte(body, '\n')
+	return body[:nl+1] + prelude + body[nl+1:]
+}
+
 // genShims writes one wrapper per installed desk verb into <cell>/shim, the cell's `gh` wrapper
 // into <cell>/shim-gh, plus a symlink per binary in <cell>/bin so the cell's own deskd/deskcli
 // come first on PATH too. Substitution is by plain replacement, never sed: a bin path or CELL
@@ -102,6 +172,9 @@ func (c *Cell) genShims() {
 				"__GH_WRAP__", ghWrapDir,
 				"__BIN__", p,
 			).Replace(shimTemplate)
+			if ch := c.hotfixShimChoice(en.Name(), bin, os.Stderr); ch.Hotfix {
+				body = hotfixShimBody(c, ghWrapDir, ch)
+			}
 			if werr := os.WriteFile(filepath.Join(shimDir, en.Name()), []byte(body), 0o755); werr != nil {
 				die("desk: cannot write shim %s: %v", en.Name(), werr)
 			}

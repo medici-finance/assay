@@ -1,0 +1,1659 @@
+{
+  "schema": "candidate-cohort/v1",
+  "brief": "derived-board/07",
+  "repo": "medici-finance/assay",
+  "cutoff": "2026-10-26T23:59:39Z",
+  "inventory_snapshot_sha256": "d74af4a3ec1ef6ca091ab33ebd91938bdf3657ab20b95c323af1f2625967fb5b",
+  "members": [
+    {
+      "number": 3945,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Issue: #2703`. It amends brief 10 (that brief's file and a changelog fragment) and names derived-board/07 only as the subject brief 10 repairs. It changes no statusgen code, workflow or consumer repo, so it delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "aaefe56d033061fbdb2a23d022613aa1f1135a0c",
+      "files_sha256": "6fb22c16d3b2502b32e4eaf811aa559a59bb981c361255517a495ddcdad3823f",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 3945,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-21T21:49:40Z",
+        "merge_commit_sha": "aaefe56d033061fbdb2a23d022613aa1f1135a0c",
+        "head_sha": "20dfb7faf4d6c75c5a8ebece0400e4bcfdc320be",
+        "trailers": [
+          "Issue: #2703"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/derived-board-10-amendments.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 3794,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Authors: derived-board/10`. It authors brief 10 (adds that brief's file, edits the derived-board README, adds a changelog fragment) and names derived-board/07 only as the brief whose partial-delivery coverage brief 10 plans. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "da85bf699cd6e5c361c5c1c8c00c33f7765442fc",
+      "files_sha256": "c77ce470fadaed9f45e0a769f8648c4b1321361bac3328e19e31ebcd15bd3470",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 3794,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T23:16:21Z",
+        "merge_commit_sha": "da85bf699cd6e5c361c5c1c8c00c33f7765442fc",
+        "head_sha": "fdc231b22d8c78a1e14c273cd504ec2162596be5",
+        "trailers": [
+          "Authors: derived-board/10"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/k8s-partial-witness-design.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md",
+          "status": "added",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 3787,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Issue: #2703`. It records partial-delivery metadata (statusgen/witnessadmission_test.go, delivery notes on brief 07 and two other briefs, a changelog fragment). It declares brief 07's partial deliveries; it delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "a9d09f6fb6d78a525de1254285aa67d739a0edbf",
+      "files_sha256": "1f81b335fcc4cd642c9e93889c25f7f3bdeaa715497e1f87edd3b3ce96126478",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 3787,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T22:00:39Z",
+        "merge_commit_sha": "a9d09f6fb6d78a525de1254285aa67d739a0edbf",
+        "head_sha": "c45ef4ec6d3c3f1220cd72d0932ae10ffd77bda7",
+        "trailers": [
+          "Issue: #2703"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/2703-lane-b-witness-metadata.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-07-rollout-backfill.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-08-objectives-over-transitions.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-13-cursor-live-desk-smoke.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/witnessadmission_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 1457,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Issue: #1339`. It adds the deskreconcile desk tool under tools/desk/ and edits the derived-board README for that issue; it names derived-board/07 in its body only. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "664e9aae383bef62ce22ed4f7353b6f3793d6921",
+      "files_sha256": "bb687057187e14ff131f94cf3b33004313c127581d8c51cec8cb1675a810c7f7",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 1457,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-22T17:41:24Z",
+        "merge_commit_sha": "664e9aae383bef62ce22ed4f7353b6f3793d6921",
+        "head_sha": "2109e9397a7fa7b06a34c728a340cdfbda4dbe06",
+        "trailers": [
+          "Issue: #1339"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/feat-medici-finance-assay--issue-1339-reconcile.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/cmd/deskreconcile/main.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/cmd/deskreconcile/realexec.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/cmd/deskreconcile/reconcile.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/cmd/deskreconcile/reconcile_test.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/audittoolkey.go",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 1358,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Brief: derived-board/03`. It re-baselines brief 03's Verify (brief 03's file and a changelog fragment only) and names derived-board/07 in its body. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "f645d2fcb84df5ff13880ab412645c405fd8b760",
+      "files_sha256": "009790949ef61e22c065e3214ad034865acfd00b119b71ebfac37908fad0e4a7",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 1358,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-20T14:18:28Z",
+        "merge_commit_sha": "f645d2fcb84df5ff13880ab412645c405fd8b760",
+        "head_sha": "663ba04f5b0aeb30be92dc3f2bfe961c3066ce07",
+        "trailers": [
+          "Brief: derived-board/03"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/derived-board-03-verify-rebaseline.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-03-reconcile-derivation.md",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 1251,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Brief: graph-execution/01`. It delivers graph-execution/01's eligibility evaluator (statusgen eligibility and brief-v2 code, design docs) and names derived-board/07 in its body only. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "92aa88273c7a3566186819c643625e78898b2dcb",
+      "files_sha256": "9ec5c43d4111d2458d7baf7178d86cf3fec0aa18641011b96d8cabd9c3a39e7a",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 1251,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-17T15:42:47Z",
+        "merge_commit_sha": "92aa88273c7a3566186819c643625e78898b2dcb",
+        "head_sha": "b0a3dbb9608e8b3e31863f57d127dd76a8949295",
+        "trailers": [
+          "Brief: graph-execution/01"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/graph-execution-01-eligibility.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/dependency-graph-design.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/enforcement-model.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/lifecycle.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/graph-execution/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/graph-execution/brief-01-eligibility-evaluator.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "plugins/assay/skills/author-brief/SKILL.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/brieffile.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/briefv2.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/briefv2_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/drivefrontier.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/eligibility.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/eligibility_test.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/eligibilitycli.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/enforcementstatus.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/main.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/model.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/nextup.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/nextup_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/testdata/eligibility/docs/streams/example-a/README.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/testdata/eligibility/docs/streams/example-a/brief-01-a.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/testdata/eligibility/docs/streams/example-a/brief-02-b.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/testdata/eligibility/docs/streams/example-a/brief-03-c.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/testdata/eligibility/docs/streams/graph-repos.yaml",
+          "status": "added",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 1194,
+      "disposition": "partial",
+      "reason": "Its own trailer `Brief: derived-board/07`. This repo's rollout slice: the regen workflow's reconcile patch, the trailer join repair (statusgen/lifecycle.go, reconcilebackfill.go, a test) and the drift report docs/streams/board-drift-2026-09-16.md. Its scope keeps the brief in progress; Tasks 2-4 remain owed.",
+      "paths": [
+        "backfill",
+        "trailer"
+      ],
+      "merge_commit_sha": "69c7fccdcea77da3dc9b6faedba498dcbc34e69a",
+      "files_sha256": "8f04a2a77ac85293853ce44776d786872d8ed59591d2a6ea6e0764f1f5d5b341",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 1194,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-16T15:25:09Z",
+        "merge_commit_sha": "69c7fccdcea77da3dc9b6faedba498dcbc34e69a",
+        "head_sha": "f58ffdc26dd868261b195abe0277d59d60054b9c",
+        "trailers": [
+          "Brief: derived-board/07"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07",
+          "ref": "feat/derived-board-07"
+        }
+      },
+      "files": [
+        {
+          "filename": ".github/assay-statusgen.reconcile.patch",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "changelog/feat-derived-board-07.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/board-drift-2026-09-16.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/lifecycle.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/lifecycle_hierarchical_test.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcilebackfill.go",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 1010,
+      "disposition": "partial",
+      "reason": "Its own trailer `Brief: derived-board/07`. Adds the reconcile --apply write arm (statusgen/reconcileapply.go with its test, reconcile.go) and Evidence on brief 07: part of Task 1. Tasks 2-4 remain owed.",
+      "paths": [
+        "backfill",
+        "trailer"
+      ],
+      "merge_commit_sha": "aec426ab3d23edce354f84abaa66b11164aa17e0",
+      "files_sha256": "179808fd7a78e2825d6ddbbc89af2319c69ddeec80a84bdde9cc582eb12b364c",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 1010,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-14T01:20:58Z",
+        "merge_commit_sha": "aec426ab3d23edce354f84abaa66b11164aa17e0",
+        "head_sha": "bf8d07037ab021a4823125ed1b289ca9f28ca586",
+        "trailers": [
+          "Brief: derived-board/07"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/statusgen-reconcile-backfill-apply.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-07-rollout-backfill.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcile.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcileapply.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcileapply_test.go",
+          "status": "added",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 1006,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Brief: desktools-go-git/04`. It edits the desktools-go-git README and adds a changelog fragment (two paths) and names derived-board/07 in its body only. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "29d984894506d155cae010ce26c6402388fb56ce",
+      "files_sha256": "c71a8813954f80b521d51731ec0a67941fdb67a40a8d8c91b9fa4efe135ee1cc",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 1006,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-14T01:20:47Z",
+        "merge_commit_sha": "29d984894506d155cae010ce26c6402388fb56ce",
+        "head_sha": "c2be7bdd4630596a036555fb30187373a5c00662",
+        "trailers": [
+          "Brief: desktools-go-git/04"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/worker-desk-house-worker-desk-20260912T120529Z.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 945,
+      "disposition": "partial",
+      "reason": "Its own trailer `Brief: derived-board/07`. Adds the historical backfill (statusgen/reconcilebackfill.go with its test, ghfetch.go, reconcile.go) and this repo's drift report docs/streams/board-drift-2026-09-12.md: Task 1's backfill report, for this repo only. Tasks 2-4 remain owed.",
+      "paths": [
+        "backfill",
+        "trailer"
+      ],
+      "merge_commit_sha": "6dc3808d4471052a1e55a9615ad97b19e52eb273",
+      "files_sha256": "147ee3067930f6888fc047a7acf7e298c79a82d29bfb15eada1cca597f6a1641",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 945,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-12T22:17:41Z",
+        "merge_commit_sha": "6dc3808d4471052a1e55a9615ad97b19e52eb273",
+        "head_sha": "28bdd9dfadd29a2dcdf313cf0e2e1dca5a9944d4",
+        "trailers": [
+          "Brief: derived-board/07"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07",
+          "ref": "feat/derived-board-07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/feat-derived-board-07.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/board-drift-2026-09-12.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/ghfetch.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcile.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcilebackfill.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/reconcilebackfill_test.go",
+          "status": "added",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 736,
+      "disposition": "partial",
+      "reason": "Its own trailer `Brief: derived-board/07`. Changes 168 paths: this repo's brief-v2 migration (stream briefs and READMEs, the regen workflow's reconcile patch, upgrade notes). That is this repo only, a slice of brief 07 Task 1. Tasks 2-4 (consumer repos, overlay re-stage, fallback retirement) remain owed.",
+      "paths": [
+        "backfill",
+        "trailer"
+      ],
+      "merge_commit_sha": "bb2079bdc89feab2bf0d65b59da3e0626eefb92e",
+      "files_sha256": "9ead8683fd2f56add94ef7360b90f984b6d3122358361045a9786d0eda615b28",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 736,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-10T12:04:31Z",
+        "merge_commit_sha": "bb2079bdc89feab2bf0d65b59da3e0626eefb92e",
+        "head_sha": "95a31a5698e3943ae16efb01cb642d08d573da57",
+        "trailers": [
+          "Brief: derived-board/07"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": ".github/assay-statusgen.reconcile.patch",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "changelog/flagday-brief-v2-v1.0.1-0910.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/UPGRADING.txt",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-01-role-app-indirection.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-02-deskapps-manifest-flow.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-03-deskapps-install-prove.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-04-deskapps-resume-status.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-05-deskavatar-generator.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-06-avatar-step-wiring.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-07-install-skill-runbook-cutover.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-08-solo-identity-spec.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/brief-00-manifests-and-lint.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/brief-01-reactive-activation.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/brief-02-ledger-and-inverses.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/brief-03-desired-state-reconcile.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/brief-04-harness-as-key.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/composability/brief-05-promote-spec.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-01-brief-v2-spec.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-02-brief-trailer.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-03-reconcile-derivation.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-04-generated-table.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-05-skill-updates.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-06-v1-migration-and-cut.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/derived-board/brief-07-rollout-backfill.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-01-base-image.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-02-secret-injection-contract.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-03-desk-images-build-matrix.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-04-launch-script.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-05-docker-compose.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-06-k8s-manifests.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-07-desk-control-layer.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-01-observable-probes-and-observer.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-02-run-stop-signal.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-03-eligibility-reconcile.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-04-lifecycle-hooks.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-05-per-class-caps.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-06-workpad.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-07-runtime-snapshot.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-08-objectives-over-transitions.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-supervision/brief-09-ci-fanout-per-push.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-01-binary-channel-and-pin-contract.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-02-generalize-batch-fanout.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-03-published-tree-residual-scrub.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-04-runner-verdict-batching.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-05-escape-valve-decide.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-06-roster-from-deployment.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-07-clusterguard-exec-shim.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-08-deskgit-authenticated-push-fetch.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-09-desktoken-coverage.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-10-deskclaim-stale-probe-and-branch-liveness.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-11-deskwt-add-prunable-holder.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-12-statusgen-brief-subcommand.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-13-paced-pr-monitor.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-14-bodycheck-negative-classes-and-explain.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-16-deskevidence-block-equivalence-noop.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-17-one-trust-bar-public-authors.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-18-allowed-public-repos-write-gate.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-19-verifyloop-risk-fail-safe-routing.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-20-cross-repo-remote-verify.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-01-inventory-and-seam-contract.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-02-gitcore-transport-auth.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-03-migrate-read-plumbing.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-04-migrate-deskpushguard-reads.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-05-migrate-fetch-retire-hardening.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-06-migrate-push-retire-ambient.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-07-deskmerge-exception-fence.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/desktools-go-git/brief-08-flip-gate-and-cve-floor.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-01-forge-interface-extraction.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-02-gitlab-forge-impl.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-03-gitlab-token-custody.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-04-provisioning-and-adopter-doc.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-05-live-pilot-parity-walk.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-06-ultimate-refinements.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-07-github-forge-go-gh.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-gitlab/brief-08-close-the-forge-surface.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-02-forge-qualified-identity.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-03-write-verbs-comment-and-flip.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-04-write-verbs-issues-and-evidence.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-05-claim-layer-forge-shape.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-06-read-verbs-on-the-seam.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-07-statusgen-acting-identity.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-08-statusgen-forge-aware.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-09-substrate-leakgate-and-cellctl.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-10-conformance-round-trip.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-11-install-without-gh.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/forge-neutral/brief-12-deskboard-non-board-reads-onto-the-seam.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-01-codex-capability-ground-truth.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-02-drift-debt-authority-flip.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-03-target-channel-ruling.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-04-neutral-core-skills.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-05-resident-rules-single-source.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-06-codex-packaging.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-07-adoption-live-smoke.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-09-jcode-desk-harness-spike.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-10-specmem-portable-memory-spike.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-11-durable-monitor-capability.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-12-cursor-third-column.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-13-cursor-live-desk-smoke.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-14-code-dehouse.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/harness-portability/brief-15-ci-wiring-harnesslint.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/brief-01-tool-validation-evidence-pack.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/brief-02-disclosure-honesty-fixes.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/brief-03-corrective-action-effectiveness.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/brief-04-release-authorizer-traceability.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/brief-05-records-control-and-retention.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/iso-9001/brief-06-auditor-one-pager.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/brief-01-risk-files-cross-read.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/brief-02-identifier-dereference.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/brief-03-verify-row-obligation-classes.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/brief-04-derived-enforcement-status.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/brief-05-newbrief-scaffolder.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/mistake-proofing/brief-06-mutation-row-obligation.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-01-miner-skeleton.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-02-m1-taxonomy-churn.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-03-m1-hotspots-coupling.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-04-m1-instruction-brittleness.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-05-quality-view-artifacts.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-06-m2-fix-identification.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-07-m2-szz-trace-metrics.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-08-pr-riskscore-features.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-09-check-brittleness-screen.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-10-m3-stage-attribution.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-11-dora-join.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-12-m4-gate-yield-rituals.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-13-m4-session-forensics.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-14-autofile-budgets-retro.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-15-learned-riskscore.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/quality/brief-16-slop-sweep.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/spec-routing/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/spec-routing/brief-01-enforce-lifecycle-and-owed-emitter.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-01-lint-firing-audit.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-02-issue-metrics.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-03-self-improvement-metric.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-04-ladder-position-indicator.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-05-drives-phase3-floors-critical-tier.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-06-findings-register-state-machine.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-07-brief-flow-metrics.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-08-assayscore-computation.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-09-optin-telemetry.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-10-graph-export.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-11-devlake-hybrid-metrics-split.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-12-homed-in-field.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/statusgen/brief-13-cadenced-roadmap-artifacts.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/brief-00-unix-windows-build-tag-split.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/brief-01-release-build-matrix.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/brief-02-portability-audit.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/brief-03-install-path.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/brief-04-windows-ci-leg.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "docs/streams/windows-port/brief-05-adoption-doc-delta.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "migrations/0001-v0.28.0-to-v1.0.0-derived-board.md",
+          "status": "added",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 735,
+      "disposition": "partial",
+      "reason": "Its own trailer `Brief: derived-board/07`. Changes five paths: statusgen/migrate.go, statusgen/readmetable.go, their tests and a changelog fragment (Verify row 10 confirms the set from the merge commit). These are statusgen fixes that unblock this repo's brief-v2 migration, a slice of brief 07 Task 1. Task 2 (each consumer repo), Task 3 (the private overlay re-stage) and Task 4 (fallback retirement) remain owed, as brief 07's own delivery note records.",
+      "paths": [
+        "backfill",
+        "trailer"
+      ],
+      "merge_commit_sha": "d004a756bbe8f0e7920376d96c61d8d50a991914",
+      "files_sha256": "3483708ff013d6e917a91d66a7df6d87a4496de89905fb4443ea5cfbd6a0c2b8",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 735,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-10T00:48:07Z",
+        "merge_commit_sha": "d004a756bbe8f0e7920376d96c61d8d50a991914",
+        "head_sha": "36f817f349b647cd5750dd9e3a46aa8d697038e0",
+        "trailers": [
+          "Brief: derived-board/07"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "changelog/statusgen-migrate-registers-and-table-cells.md",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/migrate.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/migrate_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/readmetable.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/readmetable_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 194,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Brief: derived-board/05`. It edits four desk skill files for brief 05 and names derived-board/07 in its body only. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "ffca87a52abb159d1940fd3eb55e7c76dd6b61aa",
+      "files_sha256": "b03cc8f68110740bc5966e47d8030cc1e2ebf75a5a43b176378e8c3f8285cfd5",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 194,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-08-30T02:33:28Z",
+        "merge_commit_sha": "ffca87a52abb159d1940fd3eb55e7c76dd6b61aa",
+        "head_sha": "7d45c3cc06c6bb6d7b66c95f73bb0f2b32903682",
+        "trailers": [
+          "Brief: derived-board/05"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "plugins/assay/skills/author-brief/SKILL.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "plugins/assay/skills/pr-review-desk/SKILL.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "plugins/assay/skills/verify-desk/SKILL.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "plugins/assay/skills/worker-desk/SKILL.md",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    },
+    {
+      "number": 153,
+      "disposition": "mention-only",
+      "reason": "Its own trailer `Brief: mistake-proofing/01`. It delivers mistake-proofing/01's risk-trigger coupling code and tests and names derived-board/07 in its body only. It delivers none of brief 07's Tasks 1-4.",
+      "paths": [
+        "backfill"
+      ],
+      "merge_commit_sha": "c59958ec9c280be4d0608f2a753b673832ac0ac3",
+      "files_sha256": "087d86f71b91c3db58c023f390a42bbe1ed4fffd611cdc2a4cd802f19ed5c586",
+      "standin": {
+        "synthetic": "SYNTHETIC stand-in: identity fields, verbatim link-trailer lines and the matched backfill form only; not the forge body",
+        "number": 153,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-08-26T20:08:07Z",
+        "merge_commit_sha": "c59958ec9c280be4d0608f2a753b673832ac0ac3",
+        "head_sha": "91d732337f866ca14f4eb7a4acb83c334921ea31",
+        "trailers": [
+          "Brief: mistake-proofing/01"
+        ],
+        "backfill_forms": {
+          "body": "derived-board/07"
+        }
+      },
+      "files": [
+        {
+          "filename": "docs/streams/mistake-proofing/README.md",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/brieffile.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/main.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/riskfilescrossread.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/riskfilescrossread_test.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/riskpathtriggers.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/risktrigger_coupling_test.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/testdata/risk_trigger_coupling.json",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/topologyvalues.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "statusgen/topologyvalues_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/citrigger_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/risktrigger_coupling_test.go",
+          "status": "added",
+          "previous_filename": ""
+        },
+        {
+          "filename": "tools/desk/internal/topology/drift_test.go",
+          "status": "modified",
+          "previous_filename": ""
+        }
+      ]
+    }
+  ]
+}

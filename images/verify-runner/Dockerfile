@@ -15,7 +15,7 @@
 #
 # One reference for both stages: git is built against the libraries of the very
 # image it ships in, so the two stages cannot be bumped apart.
-ARG RUNNER_BASE=golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
+ARG RUNNER_BASE=golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5
 
 # ---- git, built from the fleet's pinned upstream release -----------------
 # Its own stage, so the -dev packages never reach the final image. The tarball
