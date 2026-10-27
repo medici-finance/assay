@@ -36,8 +36,8 @@ consumers:
   - "scripts/build-windows.ps1: follow-up cell-api/08"
   - "deskd/.gitignore: follow-up cell-api/08"
   - "deskd/README.md: follow-up cell-api/08"
-  - "tools/desk/internal/deskkit/deskdimage_test.go: follow-up cell-api/08"
-  - "tools/desk/internal/deskkit/testdata/deskdimage/: follow-up cell-api/08"
+  - "tools/desk/internal/cellapi/deskdimage_test.go: follow-up cell-api/08"
+  - "tools/desk/internal/cellapi/testdata/deskdimage/: follow-up cell-api/08"
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up cell-api/08"
   - "changelog/deskd-image-build.md: follow-up cell-api/08"
   - "image artifact pin and supported service/client matrix: follow-up cell-api/05"
@@ -48,7 +48,7 @@ consumers:
 
 ## Context
 
-files: `images/deskd/Dockerfile` (planned), `images/deskd/Dockerfile.dockerignore` (planned), `Makefile`, `scripts/build-windows.ps1`, `deskd/.gitignore` (planned), `deskd/README.md`, `tools/desk/internal/deskkit/deskdimage_test.go` (planned), `tools/desk/internal/deskkit/testdata/deskdimage/` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `changelog/deskd-image-build.md` (planned)
+files: `images/deskd/Dockerfile` (planned), `images/deskd/Dockerfile.dockerignore` (planned), `Makefile`, `scripts/build-windows.ps1`, `deskd/.gitignore` (planned), `deskd/README.md`, `tools/desk/internal/cellapi/deskdimage_test.go` (planned), `tools/desk/internal/cellapi/testdata/deskdimage/` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `changelog/deskd-image-build.md` (planned)
 
 facts:
 - pin: public main dda6c8c67, inspected 2026-10-27. `deskd/` is a standalone Apache-2.0 Go module (`github.com/medici-finance/assay/deskd`, `go 1.27.0`), landed by [PR #3957](https://github.com/medici-finance/assay/pull/3957). From `deskd/`, `GOWORK=off go build ./cmd/deskd` builds the service; a CGO-off `linux/amd64` build and a `windows/amd64` build of `./cmd/deskd` both compiled at this pin. `images/deskd/` does not exist.
@@ -56,7 +56,8 @@ facts:
 - runtime: the terminal backends resolve executables (`docker`, local shells) from PATH at run time. The service image ships none of them; lifecycle routing through the shared runner is cell-api/06's, not this image's.
 - conventions: the repo already pins `golang:1.27.3-bookworm@sha256:972b4110…` (`images/verify-runner/Dockerfile`, `images/assay-harness/Dockerfile`) and a digest-pinned `# syntax=` frontend (`containers/base/Dockerfile`). `containers/scripts/layer-secret-scan.sh <image-ref>` is the existing per-image credential scan; `containers/secrets.md` states the no-secret-in-a-layer rule.
 - parity: the root Makefile's `.PHONY` line and the `MAKEFILE-PARITY TARGETS` block in `scripts/build-windows.ps1` must be equal sets, and the script must stay ASCII-only with no `>>>`. `tools/winparity` enforces both and reddens on drift.
-- registry: a deskkit test that reads files outside the `tools/desk` module (here `Makefile`, `scripts/build-windows.ps1`, `images/deskd/`) is registered in `ciCrossModuleRegistry` (`tools/desk/internal/deskkit/citrigger_test.go`); `TestCrossModuleReaderRegistryIsNotSilentlyStale` flags an unclassified reader.
+- registry: a `tools/desk` test that reads files outside the `tools/desk` module (here `Makefile`, `scripts/build-windows.ps1`, `images/deskd/`) is registered in `ciCrossModuleRegistry` (`tools/desk/internal/deskkit/citrigger_test.go`); `TestCrossModuleReaderRegistryIsNotSilentlyStale` flags an unclassified reader.
+- package: the contract test lives in `tools/desk/internal/cellapi/` (planned), the package cell-api/05 also plans for its service tests. Whichever brief lands first creates it; neither owns the other's files in it.
 
 layering: This brief carves the image-build duty out of cell-api/05 Task 1 so it can proceed on the already-public source while 05's profile, database and qualification dependencies stay open. It packages the existing deskd closure unchanged. It adds no runtime behaviour, configuration or authority, and it neither pins nor publishes an artifact.
 
@@ -149,7 +150,7 @@ Dockerfile and Makefile-recipe test patterns.
    - Keep the script ASCII-only and free of `>>>`, and run `tools/winparity`.
 
 4. **Static contract test.** Deliver `TestDeskdImageBuildContract` (planned) in
-   `tools/desk/internal/deskkit/deskdimage_test.go` (planned). It parses the real
+   `tools/desk/internal/cellapi/deskdimage_test.go` (planned). It parses the real
    `images/deskd/Dockerfile`, its ignore file and the real `Makefile`, and holds every
    property in Tasks 1–2:
    - every pulled `FROM` and the frontend are digest-pinned;
@@ -205,7 +206,7 @@ this authoring PR. Missing, unknown, not-yet-landed or wrong-parent inputs fail 
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | exit 0; named PASS over the real `images/deskd/Dockerfile`, its ignore file and `Makefile`. Each property from Tasks 1–2 has a negative fixture that the same checker rejects by name: unpinned `FROM` or frontend, root or non-numeric final `USER`, missing `GOWORK=off`/CGO-off/readonly modules, credential-shaped or out-of-context COPY, extra final-stage COPY, secret-named ENV/ARG, baked config path or non-loopback bind, missing target, repo-root context, missing layer-secret scan, and `push`/`--push`/`login`/registry exporter in `deskd-image`. Zero fixtures read fails. |
+| 1 | check:ci +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | exit 0; named PASS over the real `images/deskd/Dockerfile`, its ignore file and `Makefile`. Each property from Tasks 1–2 has a negative fixture that the same checker rejects by name: unpinned `FROM` or frontend, root or non-numeric final `USER`, missing `GOWORK=off`/CGO-off/readonly modules, credential-shaped or out-of-context COPY, extra final-stage COPY, secret-named ENV/ARG, baked config path or non-loopback bind, missing target, repo-root context, missing layer-secret scan, and `push`/`--push`/`login`/registry exporter in `deskd-image`. Zero fixtures read fails. |
 | 2 | check:ci +neighbour | `(cd tools/winparity && GOWORK=off go run . --root ../..)` | exit 0; prints `winparity: OK` for target parity, and the target list includes `deskd-build` and `deskd-image`. Also prints the 5.1-clean line. A target on one side only, or a non-ASCII or `>>>` script, fails. |
 | 3 | check:ci +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 120s -count=1 -v -run '^(TestCrossModuleTestsAreTriggeredByWhatTheyRead\|TestCrossModuleReaderRegistryIsNotSilentlyStale)$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCrossModuleTestsAreTriggeredByWhatTheyRead ' "$o" && grep -F -- '--- PASS: TestCrossModuleReaderRegistryIsNotSilentlyStale ' "$o")` | exit 0; both named PASS. The new test is registered with every path it reads, and the CI job that runs `tools/desk` reaches it on pull_request and push. |
 | 4 | check +flow | `make deskd-build && test -x deskd/dist/deskd && deskd/dist/deskd -h 2>&1 \| grep -F -- '-human-login'` | exit 0; the unprivileged target builds the real service binary from `deskd/` with `GOWORK=off`, and its usage lists the existing `-human-login` flag. Nothing is written outside `deskd/dist/`, and `git status --porcelain` shows no tracked change. |
