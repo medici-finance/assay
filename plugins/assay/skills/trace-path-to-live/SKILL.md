@@ -13,8 +13,9 @@ description: >-
 For one objective answer: what must be `done` before it can go live, and what
 can be done now to move it forward. The answer is a page with:
 
-- daily movement and evidence-backed focus first;
-- month-long queue and outcome context in details;
+- the six-line monthly progress chart first;
+- separate seven-day and four-week movement boards, with evidence-backed focus;
+- outcome context in details;
 - the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.
@@ -122,7 +123,7 @@ Rank the moves in this order:
 
 Read [Report presentation](references/report.md) before writing the HTML. It defines the
 plain-language titles, six-line progress chart (three weekly readings plus seven daily),
-outcome progress, report-to-report changes, blocker categories, remaining-work graph, historical evidence and coverage requirements. Put daily movement and focus first;
+movement and outcome views, report comparisons, blockers, graph and evidence coverage;
 hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
 Write the self-contained report outside repositories and never commit it.
 

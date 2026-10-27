@@ -16,18 +16,37 @@ Distinguish **Total work** (all distinct briefs in scope, including completed wo
 or a zero path weight with full completion. Show weighted-path scores only in an optional
 method explanation as relative work estimates, explicitly not days or brief counts.
 
-### Daily movement and focus — first substantive content
+### Movement boards and focus — after monthly progress
 
-Lead with **What moved each day** for the latest seven calendar days, plus **Where to focus
-now**. Queue sizes and remaining-work lines measure stocks, not movement: keep them as
-secondary context rather than claiming a flat queue proves that no work happened.
+Keep **Progress over the last month** first and visible. Follow it with **What moved each
+day**, **What moved over four weeks**, and **Where to focus now**. Queue sizes measure the
+amount of work in each state; movement records events. A flat queue does not prove that no
+work happened.
 
-Give each day distinct lanes for **Deliveries / repairs landed**, **Verification PASS recorded**,
-**Blocked or failed verification**, **Blockers cleared**, **Blockers reopened / newly opened**,
-and **Dependency readiness changed**. Do not add these into one progress score. Show linked
-events and the affected briefs, not just colored counts. A quiet day says **No qualifying event
-found in the checked sources**; incomplete evidence says **Unknown**. Never invent movement
-to make the page look active.
+Use two separate movement tables with the same row order and appearance. Columns in the
+first table are the latest seven calendar days. Columns in the second are four consecutive
+seven-day blocks covering the same 28-day window as the monthly chart, oldest first; label
+full date ranges and the latest block **so far**. Weekly movement counts are deduplicated
+**event totals within the block**, not the week-end queue counts used by the line chart.
+
+Rows distinguish **Deliveries / repairs landed**, **Verifier recorded PASS**, **Checks passed;
+completion blocked**, **Verification blocked or failed**, **Prerequisite groups cleared**,
+**New / reopened blockers**, and **Briefs finally completed**. Keep newly opened and proven
+reopened obligations distinct in detail. Show dependency verdict changes beside the clearance
+sources; group multiple affected briefs under the same observed obligation without counting
+that group as a completed brief. Use numbered cells with restrained intensity within each row,
+plus text labels; do not draw connecting lines between discrete events or add rows into one
+progress score. Different rows have different units and may describe the same work.
+
+Each cell is a native keyboard-operable button. Selecting it shows the linked events, affected
+briefs, source time basis and what changed for the objective, including remaining conditions.
+Include an accessible table equivalent. Zero means **No qualifying event found in the checked
+sources**; unavailable collection is **Unknown**, never zero. State bounds and coverage for
+each row/period. Do not sum a partially observed week as complete. A current partial calendar
+week can be labelled **so far**; missing source coverage within that interval remains unknown.
+Use the same event identities and timezone for both tables so the last weekly column
+reconciles exactly with the seven daily columns. A quiet period must not be filled with
+inferred activity.
 
 For each event retain its source, event timestamp, observation/capture timestamp, affected
 work, before/after state or result, owning role and effect on the confirmed objective. Use the
@@ -69,9 +88,10 @@ Record event-source coverage (query bounds, pagination, available receipts, hist
 so a missing event cannot be mistaken for no effort. Do not assign hours, effort or causal
 impact from commit/PR volume.
 
-### Recorded queue sizes — secondary context
+### Progress over the last month — first substantive content
 
-Keep the month-long queue chart in a collapsed context section after daily movement and focus.
+Keep the month-long queue chart visible as the first substantive section, before both movement
+tables and focus.
 It has **six lines**, a labelled legend and an accessible table of the same values:
 
 | Line | Count |
@@ -166,7 +186,7 @@ not prove its original failure still exists.
 
 ### What changed since the previous report
 
-Show this section after daily movement and before the detailed action list. Name the exact
+Show this section after movement and focus and before the detailed action list. Name the exact
 baseline report/capture, root revisions, comparison scope and observation limits. Compare
 stable work identities. Show **scope added/removed** separately from changes among shared
 briefs; do not infer progress by subtracting totals for different scopes.
@@ -204,6 +224,7 @@ Write ONE self-contained HTML page: inline CSS and JS, no external fetch, no CDN
 to the progress chart and plain-language counts above, it contains:
 
 - the objective and the confirmed targets;
+- the visible monthly progress chart first, then separate daily and four-week movement tables;
 - outcome progress, a comparable previous-report change view and classified blockers as above;
 - the critical path, overall and per target;
 - the ranked moves;
