@@ -12,6 +12,12 @@
       "file": "heldscope.go",
       "old": "func heldRiskDefinition(clean string, h []int) bool {",
       "new": "func heldRiskDefinition(clean string, h []int) bool {\n return true\n"
+    },
+    {
+      "name": "leading literal anchor removed",
+      "file": "heldscope.go",
+      "old": "regexp.MustCompile(`^` + heldRiskStateDecl +",
+      "new": "regexp.MustCompile(heldRiskStateDecl +"
     }
   ]
 }

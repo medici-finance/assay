@@ -34,6 +34,9 @@ func TestHeldRiskKeepsHolds(t *testing.T) {
 	}
 	for _, line := range []string{
 
+		// F-lit-anchor: a valid declaration cannot erase an observation prefix.
+		"RISK-VALUE: DERIVED — row 3 Unavailable = \"could-not-check\" @ a.go:1 — runner offline",
+		"RISK-VALUE: DERIVED — smoke run CouldNotCheck = \"could-not-check\" @ a.go:1 — runner offline",
 		// F-lit-subject: a declaration-shaped observation is still a hold.
 		"RISK-VALUE: DERIVED — row 3 status = \"held\" @ README.md:12 — no runner online.",
 		"RISK-VALUE: DERIVED — row2 = \"could-not-check\" @ evidence.log:3 — runner unavailable.",
