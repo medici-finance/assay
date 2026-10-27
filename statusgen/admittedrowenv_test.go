@@ -375,11 +375,13 @@ func TestAdmittedEnvNarrowOnly(t *testing.T) {
 var forgeTokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
 
 // regression: #4612
-// TestAdmittedRowsDropForgeTokens: an admitted run's rows see none of the
-// forge credential variables the invoking process holds, while that process
-// keeps them, so its own forge read (the acceptance-approval client) still
-// resolves the token after the rows ran. The unadmitted control proves the
-// plant lands: the same row sees the variables there.
+// TestAdmittedRowsDropForgeTokens: an admitted run's rows no longer inherit
+// the forge credential variables the invoking process holds, while that
+// process keeps them, so its own forge read (the acceptance-approval client)
+// still resolves the token after the rows ran. The unadmitted control proves
+// the plant lands: the same row inherits the variables there. This pins the
+// row's own environment only; a same-user row can still read the invoking
+// process's environment (admittedRowEnv's out-of-scope list).
 func TestAdmittedRowsDropForgeTokens(t *testing.T) {
 	row := "test -z \"${GH_TOKEN+x}${GITHUB_TOKEN+x}${GH_ENTERPRISE_TOKEN+x}${GITHUB_ENTERPRISE_TOKEN+x}\""
 	for _, admit := range []bool{true, false} {

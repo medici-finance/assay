@@ -123,16 +123,25 @@ func sameDirectory(a, b string) bool {
 // a form that narrows what git reads (admittedRowGlobal). Variables the row's
 // shell would run or act on at startup are removed (admittedRowShellStartup),
 // since they can set any of the above before the row's own command runs.
-// Forge credential variables are removed (admittedRowForgeToken), so a row
-// holds a forge credential only when its own command line supplies one. The
-// invoking process keeps them: its own forge reads (the acceptance-approval
-// read) happen there, from os.Getenv, and this function only builds the
-// rows' copy.
+// Forge credential variables are removed (admittedRowForgeToken), so a row no
+// longer inherits one from the invoking environment. That is hygiene against
+// ambient inheritance, not containment. The invoking process keeps them: its
+// own forge reads (the acceptance-approval read) happen there, from
+// os.Getenv, and this function only builds the rows' copy.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
-// config, exactly as admission does, and where a forge CLI keeps its own
-// stored login) and SSH_ASKPASS pass through unchanged.
+// config, exactly as admission does, and where a forge CLI or a git
+// credential helper keeps its stored login), GH_CONFIG_DIR (the forge CLI's
+// config directory, which holds that login), SSH_AUTH_SOCK (an agent a row's
+// git can authenticate through) and SSH_ASKPASS pass through unchanged, as do
+// forge credential variables other than the four above, such as the GitLab
+// ones this repository reads (STATUSGEN_GITLAB_TOKEN, GITLAB_TOKEN,
+// CI_JOB_TOKEN). The invoking process's own environment also stays reachable:
+// a row runs as the same user, and a same-user process can generally read
+// another's startup environment (ps -E on macOS, /proc/<pid>/environ on
+// Linux), which keeps the forge credential variables. A row that looks for a
+// credential can therefore still find one; this removal does not stop it.
 // An unadmitted run keeps the caller's environment.
 func admittedRowEnv(environ []string) []string {
 	home := ""
