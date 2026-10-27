@@ -1,1 +1,1 @@
-- Propose fixed-delivery acceptance with separate main health, review-owned context assessment and bounded historical migration; record backlog experiments without changing runtime or Evidence.
+- Propose fixed-delivery acceptance with separate main health and bounded historical migration; map the deterministic-loop finish to existing briefs, PRs, shipped pieces and missing ownership, without changing runtime or Evidence.

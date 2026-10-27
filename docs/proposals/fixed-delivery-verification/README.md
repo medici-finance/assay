@@ -212,23 +212,133 @@ for its actual job after /36 and /37 are qualified. Fixed-D acceptance itself ca
 conservatively with existing v1 witnesses from a fresh D execution; do not make the whole
 migration wait for narrower content caching or assume that v2 is already shipped.
 
-## Existing work to finish, and work to adapt
+## Deterministic completion through existing work
 
-| Existing owner/work | Required delta / remaining gap |
+The finish line is deterministic **selection, evidence eligibility, next action and
+resumable effects** for the same admitted D/A, observations and recorded conditions.
+Independent judgment remains explicit; a changing external condition is an input,
+not permission to silently change the subject. Freezing D alone does not complete this
+loop. Neither does merging the current open PRs without the assignments below.
+
+The work map was checked on public main
+`5d6ddab1247792e1dc4220cb779f08c24ffe9459` on 2026-10-27, against open/merged PRs,
+brief Tasks, real implementation files and installed v1.0.63 source ancestry. A final
+fetch at `0c292571a3e0794598cb11733d0b6c966c89aae0` adds Evidence and report-skill
+changes, not these implementation slices. Board `todo` is not evidence that code is
+absent. The earlier [152-brief replay](replay.md) retains its own older cutoff; no
+current backlog count or new closure claim is inferred from this work map.
+
+### Two assignment gaps
+
+1. **Binding implementation.** build-less-brittle/14 is a completed design, not an
+   unfinished implementation. Its I-1–I-4 rows describe the independent binder,
+   checker/lint integration, staged writer/ruleset and authoring guidance, but were
+   never authored as execution briefs and have no implementation PR. Keep their
+   existing semantic owners; explicitly route this already-designed work before
+   dispatch. Do not mark /14 unimplemented or pretend its verification shipped a binder.
+2. **Fixed-delivery cutover.** No current brief owns the full replacement of HEAD with
+   admitted D/A through coverage, verification, protected closure, reconciliation and
+   outcome selection. Proposed allocation: adapt statusgen/36–37 for admission,
+   evaluation and execution/recording; desk-tools/46–47 for accepted-run identity and
+   resumption; /51 for the actual operator/skill contract; and PR 4139 for review's
+   context assessment. Explicitly cover protected-amendment audit and same-context
+   last-witness selection. This is proposed scope allocation, not a claim that those
+   briefs already contain or authorize the cutover. Amend their approved scope through
+   existing authoring/review before pickup; this PR changes no operational brief.
+
+These are missing assignments within the existing design and owners. They do not
+justify another evaluator, store, stage, desk or workflow controller.
+
+### Remaining implementation and integration
+
+| Existing brief or PR | Observed position | Exact finish owed |
+|---|---|---|
+| [PR 4579](https://github.com/medici-finance/assay/pull/4579), this proposal | Open, reviewed; design only | Resolve fixed-subject, historical-subject and row-reuse policy on the existing decision surfaces; preserve old decision-token meanings. Publication is not activation |
+| build-less-brittle/14 design I-1–I-4; [4380](https://github.com/medici-finance/assay/issues/4380)/[4381](https://github.com/medici-finance/assay/issues/4381) | Design delivered; implementation assignment absent | Trusted delivery attribution and ref admission, offline graph/marker checks, existing consumer checker/lint integration, writer protection and guidance. Include historical attribution and D/A correction/version semantics. A locally forged tag is not authenticated by a remote ruleset |
+| [PR 4139](https://github.com/medici-finance/assay/pull/4139) | Open, changes requested | Finish prospective ready-flip context check; resolve producer binding for the preflight signal, trusted-base ruling resolution, duplicate classification and outstanding qualification/adopter findings. It assesses the prospective implemented transition, not full Verify closure |
+| statusgen/36, [PR 4409](https://github.com/medici-finance/assay/pull/4409) | Open, changes requested | Finish the shared reader/digest owner and existing old-reader qualification/review. The unresolved qualification choice is tracked on issue 4459. Adapt the acceptance target to D; preserve v1 compatibility and refusal behavior |
+| statusgen/37 → /38 | Authored; no implementation PRs found | Finish the writers/desk readers, then bounded historical witness backfill. Make admission, criteria, actual execution W, recording E and accepted D agree through existing seams; never manufacture missing historical output or identity |
+| desk-tools/46 → /47 | Authored; no implementation PRs found; /46 depends on /45 | Recognize an independently accepted unchanged PASS as continuation, then resume only remaining sanctioned Evidence/outcome/status effects. Preserve applicable rows, same-context failure precedence, partial writes and authority exclusions |
+| desk-tools/48 and /52 → /51 | Authored; no implementation PRs found | Finish existing capacity reporting and distinct decision/verification-card authority, then drive verifier guidance/prompts from the implemented lane-to-action contract. /51 also depends on /45, /46, /47, /49 and /50. Do not silently drop these declared dependencies or invent a new limiter |
+| verification-handoff/02 → /04 → /05 → /06 | Authored; no implementation PRs found | Retain blocker/run/artifacts; discover and claim the existing successor repair; return repaired work to independent acceptance; qualify retries, partial writes and real module boundaries. /02 also depends on /01 and desk-tools/49; /04 also depends on /03. Reconcile /06 guidance with /51 rather than write a second verifier contract |
+| Contracts, lifecycle, template and shipped references | Current lifecycle still defines later-main acceptance | Align S-evidence-coverage and the protected acceptance owner with D/A; keep H health separate. Release compatible tools, pin consumers and qualify the installed loop under /51 and handoff/06. A source merge is not a deployed behavior |
+
+### Delivered pieces to accept and integrate, not rebuild
+
+All five source implementations below are ancestors of installed v1.0.63 source
+`125611dfbdfb950cf09c003e941c48902803fb1f`, despite their observed board rows
+remaining `todo`. Source presence does not establish independent acceptance or live
+adapter activation. Complete the existing verification/sign-off/reconciliation owed;
+do not dispatch duplicate implementation from the stale board label.
+
+| Existing brief | Merged delivery / evidence | Remaining boundary |
+|---|---|---|
+| desk-tools/45, canonical queue | [3376](https://github.com/medici-finance/assay/pull/3376) | Complete independent acceptance and consistent consumer integration; /46 and /51 consume this owner |
+| desk-tools/49, canonical filing identity | [4229](https://github.com/medici-finance/assay/pull/4229) | Complete acceptance; handoff/02 must consume its lookup rather than implement another dedupe rule |
+| desk-tools/50, environment admission | [4392](https://github.com/medici-finance/assay/pull/4392) | Complete acceptance and actual prompt/runner integration; retain issue 4393's authority boundary |
+| verification-handoff/01, shared contract | [4225](https://github.com/medici-finance/assay/pull/4225); independent PASS [4255](https://github.com/medici-finance/assay/pull/4255); design record [4412](https://github.com/medici-finance/assay/pull/4412) | Reconcile existing credited Evidence and remaining human/lifecycle acceptance; production dependents must use the shared assessment |
+| verification-handoff/03, accountable disposition | [4413](https://github.com/medici-finance/assay/pull/4413) | Independently verify and complete its existing acceptance; connect worker discovery through /04 |
+
+Likewise statusgen/28's notice separation is delivered in
+[4140](https://github.com/medici-finance/assay/pull/4140), and /32's reconciliation
+routing in [4137](https://github.com/medici-finance/assay/pull/4137). Neither is a new
+implementation prerequisite to author again. The binding resolver's shared trailer fix
+in PR 4571 is also reused, not duplicated.
+
+### Historical backlog and existing defect work
+
+| Existing owner / work | Finish and limit |
 |---|---|
-| build-less-brittle/14 delivery-binding design; pending issues 4380/4381 | Finish independent writer, trusted ref admission, checker/lint and authoring consumers; add explicitly reviewed historical attribution and D/A version/correction semantics before activation. A locally forged annotated tag is not authenticated by a remote ruleset. Missing/untrusted/conflicting binding holds |
-| PR 4139 prospective delivery at `deskflip` | Finish its outstanding review/CI and adopter applicability work; make the review-owned context check use it. It checks the prospective implemented transition, not full Verify closure |
-| `statusgen/evaluation` and `coverage.go` | Keep one rule owner; admit D per brief, supply appropriate A and same-context observations; retire HEAD as delivery-acceptance default in lifecycle callers, not in health callers |
-| `verifyrun`, protected closure/transition audit, `deskevidence`, Verify-loop admission/outcome writes | Execute D with independently sourced A and write at E; retain row observations on context holds; support approved row reuse without lying about W. Today these paths are not a finished fixed-delivery pipeline |
-| statusgen/36 → /37 → /38 | Reuse planned reader/writer/backfill for qualified cross-revision reuse and missing-object recovery; adapt their “item revision” to D for acceptance. Do not replace them with another digest scheme or rush their open environment/scope ruling |
-| Shared declared-scope grammar; issue 3697 and partial sweep PR 3703 | Finish historical wrapped/prose scope handling and outcome-writer compatibility. The sweep left known refusals; it was not a complete deployed repair |
-| Existing main CI, findings and repair briefs | State H in health output and keep failures out of historical acceptance selection; inspect actual trigger/suite coverage, without claiming exhaustive health |
-| Contracts, lifecycle spec, brief template and shipped desk references | Align the single source of method with D acceptance, review ownership and historical transition; release/pin to consumers and qualify what actually runs |
+| statusgen/38 | Recover only available, attributable content witnesses after /36–37. Delivery attribution and exact amendment authority are separate. Unreachable or narrative-only evidence cannot acquire invented execution credit |
+| statusgen/31 and /35 | Own derivable active metadata repair and active backlog cleanup; preserve closed records and all original Evidence. /35 currently depends on /27–32, including unfinished /27, /29, /30 and /31. Keep that broader debt plan distinct from the minimal D acceptance cutover; it is not permission to add another repair mechanism or to make every delivery wait for all notice debt |
+| Shared declared-scope reader: [3697](https://github.com/medici-finance/assay/issues/3697), [3708](https://github.com/medici-finance/assay/issues/3708) | Finish wrapped/prose and basename handling in the existing owner and outcome-writing path. PR 3703 was a partial corpus cleanup; it did not clear the class |
+| [PR 4371](https://github.com/medici-finance/assay/pull/4371) | Finish relative-brief resolution, containment review finding and merge conflict. Do not claim that this alone fixes every CI/root spelling |
+| [PR 4150](https://github.com/medici-finance/assay/pull/4150), [PR 4149](https://github.com/medici-finance/assay/pull/4149) | Finish evidence-bound historical diagnostics and the specific statusgen/02 table repair. At the work-map read, PR 4150 is approved; PR 4149 still has a changelog-format failure |
+| desktools-v2/73, [PR 4102](https://github.com/medici-finance/assay/pull/4102) | Finish agreement between rendered Evidence and admission/lint interpretation; review still identifies a divergence. Keep one acceptance meaning across these readers |
+| [4596](https://github.com/medici-finance/assay/issues/4596) | Finish authoritative lint's verifier binding and relative-root resolution. Earlier acceptance-forge activation already merged in PR 3515; issue 3493's old publication-blocked comment is not evidence that all wiring is still absent |
+| [4340](https://github.com/medici-finance/assay/issues/4340), [4451](https://github.com/medici-finance/assay/issues/4451), [4598](https://github.com/medici-finance/assay/issues/4598) | Resolve the reported same-evidence disagreements over latest witnesses, Runner eligibility and BLOCKED verdicts against shared fixtures and existing owners. An open issue alone does not prove every historical report still reproduces; verify the residual before changing code |
+| [4554](https://github.com/medici-finance/assay/issues/4554) | Make the existing outcome-record dry run validate/plan without committing. This is an effect-boundary defect within the existing landing tool |
+| [4486](https://github.com/medici-finance/assay/issues/4486) | Fix Evidence merge authentication/merge retries so existing main CI actually triggers. A declared push workflow is insufficient when the merge token suppresses its run; no new main-health checker is proposed |
+
+Original incident PRs 4559, 4561 and 4562 are already merged. Historical recovery stays
+with the admitted original delivery and existing obligations on
+[4560](https://github.com/medici-finance/assay/issues/4560) and
+[4563](https://github.com/medici-finance/assay/issues/4563), not another push to those
+closed branches. Preserve core observations; repair context and obtain missing proof
+on D. desk-supervision/13 remains a substantive hold with two disproved consumer routes.
+The 35 verified entries in the old replay still need valid continuation; they are not
+35 new implementation jobs and are not automatically done.
+
+The existing build-less-brittle/15 recorded-read-set plan, ruled on issue 4512 and
+authored in PR 4510, is not silently cancelled or added to this critical path. Fixed-D
+acceptance can use conservative fresh execution at D without a tracer. Its proposed
+single-main historical re-witness batch must be assessed against the newly selected
+fixed-delivery policy before being treated as this migration. Likewise, the broader
+shared-launcher adoption in graph-execution/26–27 is not a prerequisite for consistent
+verdicts and resumable effects in the existing Verify loop.
+
+### Finish order and qualification ownership
+
+The dependency order is: settle the precise policy and route the two assignment gaps;
+finish binding and common D/A admission; finish accepted-PASS continuation and resumable
+landing; migrate recoverable historical proof and route genuine residual defects;
+then qualify, release, pin and exercise the actual running loop. Independent strands
+above can progress without pretending that an authoring merge is implementation.
+
+Use **verification-handoff/06's existing production-adapter replay** together with
+**desk-tools/51's existing lane-to-action/version qualification** for the complete
+path. Extend their approved scope to cover D/A where necessary; do not create another
+qualification stage or register. They must show the same admitted inputs yield the same
+verdict/next act; unrelated H/bookkeeping movement preserves valid D proof; affected
+criteria/inputs/conditions hold the affected rows; newer applicable failures are not
+hidden by old passes; crashes and duplicate events resume one remaining authorized
+effect; and H regressions remain visible in existing CI. The current backlog replay
+qualifies diagnosis and evaluator seams, not this unimplemented end-to-end behavior.
 
 No new verification mechanism, store, service, witness schema beyond existing /36–38,
-or review/Verify stage is proposed. The eliminated burden is recurrent acceptance against
-moving H and repeated functional reruns caused only by context repairs. Remaining burden
-is honest delivery attribution, one adequate D execution and independent acceptance.
+or review/Verify stage is proposed. This section routes existing work and identifies
+missing scope; it does not author, dispatch or approve execution briefs, change a human
+gate, or activate a dry-run sink. Existing criteria and historical Evidence remain intact.
 
 ## Authority and decisions before implementation
 
@@ -288,6 +398,7 @@ backfills; it cannot be described as independently caught by the same resolver t
 
 Pickup disposition: **adapt existing unfinished work; hold runtime implementation**.
 Pin this proposal, the controlling lifecycle/closure contracts and the then-current
-source/tool revisions at pickup. Recheck open PR 4139, /36–38, attribution/custody decisions
-and actual deployed callers before changing them. No execution briefs are authored or
+source/tool revisions at pickup. Recheck the dated work map, including the open PRs,
+/36–38, desk-tools/45–52, handoff/01–06, attribution/custody decisions and actual
+deployed callers before changing them. No execution briefs are authored or
 dispatched by this design change. Preserve the prior verified design and original Evidence.
