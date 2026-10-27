@@ -517,6 +517,76 @@ Admission: `deskdispatch --check-verifier` exit 0 on the admitted home before an
 Tally: 10 met, 0 fail, 2 could-not-check (rows 8 and 9), of 12 Verify rows, at 05dc9fbc88f2; unchanged from the correction above. Gate is model; risk all no.
 
 **VERIFY: BLOCKED** — rows_passed 10 / rows_total 12 at 05dc9fbc88f2
+### Non-implementer verifier run — 2026-10-27 claude-opus-5-5 verifier at b1d3c0a44a01 (12/12 rows pass; check:ci rows 8 and 9 under an admission-bracketed network-off container witness)
+
+This section is append-only; nothing above it is edited. It is a fresh run at the attested source b1d3c0a44a01, and it supplies the admitted-home witness for check:ci rows 8 and 9 that the 2026-10-22 correction and its addendum found missing.
+
+Admission: `deskdispatch --check-verifier` exit 0 on the admitted home before any row ran, before the evidence was assembled, and again as the close of the container bracket. Binding: medici-finance/assay#4637, run 301a1b1f3ee6, source b1d3c0a44a01, model claude-opus-5-5, tier strong, desk tools v1.0.63. Both tables below carry the tool-written Verification-Attestation line for that binding.
+
+Disclosed attempt with no rows run: the first host run of `statusgen verifyrun` used a throwaway HOME. It was refused at pre-work verifier admission (exit 5) because the throwaway HOME holds no App credentials, and no Verify rows executed. The run was repeated with the operator's own HOME, which is the only change. The Go module and build caches were the real ones in both attempts, and the tests use in-memory seams (no roster, a fake trust ledger).
+
+Host witness (table directly below): `statusgen verifyrun --rows 1,2,3,4,5,6,7,10,11,12` on the darwin host, in the admitted home, at b1d3c0a44a01. All ten selected rows pass exit 0. Rows 8 and 9 were not selected on the host. This host has no `unshare --net`, so they cannot run network-off here.
+
+Container witness (second table below): rows 8 and 9 ran through the statusgen verifyrun admission bracket. The bracket was opened with `--open-bracket` against the admission receipt. The rows then ran with `--sandbox=container-netns` and `--admission-receipt`, and the bracket was closed with `--close-bracket` after a fresh `deskdispatch --check-verifier`. The runner is the release-pinned verify-runner image v1.0.63 (linux/amd64, digest on the Container-Image line). It ran with `--network none`, GOPROXY=off, GOTOOLCHAIN=local and KUBECONFIG=/dev/null, with the admitted home mounted read-only and the host module cache mounted read-only. The gitdir was not mounted separately and no identity was injected. The Tree-Digest, Container-Image, Verification-Attestation and Admission-Bracket lines are the tool's. `statusgen verifyrun --bracket-digest` on this brief reports verdict=match. The host and container row selections are disjoint, and together they cover all 12 Verify rows.
+
+Supplemental captures (no acceptance credit of their own):
+- Row 2's verbose output logs the deep lane set (correctness, security, fact-check, fail-first) and `--- PASS: TestReviewLanesUnknownTierGetsTheDeepSet`.
+- Row 3 logs only correctness and security for the contributor tier, with no fail-first lane.
+- Row 11 logs the following resolutions:
+  - absent ledger: tier unknown (provenance default-absent), deep set
+  - contributor ledger row: [correctness security]
+  - blessed-once row: deep set
+  - unreadable ledger: tier unknown (provenance default-unreadable), deep set
+  - roster identity: maintainer (roster), [correctness security]
+- Row 12 reports `summary: 3 corroborated, 0 disproved, 1 unchecked`. The one unchecked entry is the out-of-scope trust-tier source line, as in earlier runs.
+- Row 9's command ends in `echo rc=$?`, so its exit status alone cannot show the lint's own result. The same command was run again in the same pinned image, network-off, on the same tree. Its output contained `rc=0`, `SKILLSLINT: PASS — 18 skill file(s)` and `HOUSE-VALUES: PASS — 49 markdown file(s) under plugins/`. That re-run's output hashed to sha256:0f166995750e, not to the witnessed sha256:eee17459bd5d. The row's output is not byte-stable from run to run, so the re-run is disclosed but takes no credit. Row 9's credit rests on the witness alone.
+
+Mutation probes, both killed, run in a scratch clone at b1d3c0a44a01 that was restored and left clean afterwards:
+- Row 3: adding LaneFailFirst to the contributor-tier lane set made row 3's test exit 1 with "LanesFor(contributor) = [correctness security fail-first], want the standard path [correctness security]".
+- Row 4: seeding the extracted claim at ClaimConfirmed instead of ClaimUnverified made row 4's test exit 1 with "extracted at state confirmed — extraction must start every claim unverified, never confirm it".
+
+Fail-first: no row is risk-bearing. The brief-wide risk answers are all no, and no Command or Expect cell carries a risk tag. No fail-first witness is required. The base for the probes would be cabdc0b8455a, the parent of the delivering squash 2083064fdeb2 (#1367).
+
+Drift since the implementing squash 2083064fdeb2:
+- reviewlanes.go and the dispatch reference review-lanes.md are byte-identical between 2083064fdeb2 and b1d3c0a44a01.
+- reviewlanes_test.go changed (+78/−2: two added tests and an in-module reference path).
+- The skill body plugins/assay/skills/pr-review-desk/SKILL.md has changed heavily over 67 commits. Its tier-keyed paragraph ("Lane depth is tier-keyed for external authors") is still present, starting at line 479 of b1d3c0a44a01.
+- No Verify row depends on the other changes to that file.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1` | pass exit=0 | sha256:21f564b8ffeb | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v` | pass exit=0 | sha256:2d1ef11bdf1e | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v` | pass exit=0 | sha256:4c7170681293 | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v` | pass exit=0 | sha256:665eb1fdbd2e | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v` | pass exit=0 | sha256:9839994b50d0 | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 | sha256:affec666f7bd | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 | sha256:fb5b5d540866 | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | pass exit=0 | sha256:65696c25e294 | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | pass exit=0 | sha256:edc0a7cdcac6 | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `d=; d=$(mktemp -d "${TMPDIR:-/tmp}/ct04-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 2083064fdeb279d886f4b40e5761b3e958961c61 && statusgen --consumers --root "$d" --brief assay:assay:contributor-trust:04 --base cabdc0b8455aa532fcb9267946c0e8da2e93bb5f; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | pass exit=0 | sha256:b360781282de | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4637 run=301a1b1f3ee6de758534e5ef74567db85b99ad715aaa3e872de27f101605be6e source=b1d3c0a44a01a8fbf65f030c5e08a1e520037e07 brief=docs/streams/contributor-trust/brief-04-review-depth-by-tier.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 8 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:eee17459bd5d | 2026-10-27 | assay-verifier-app[bot] @ b1d3c0a44a01 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:5af4c9a39564d9634cb1089d5ad22ee79687d28690cd5905982c88f2b4a0b8ed
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4637 run=301a1b1f3ee6de758534e5ef74567db85b99ad715aaa3e872de27f101605be6e source=b1d3c0a44a01a8fbf65f030c5e08a1e520037e07 brief=docs/streams/contributor-trust/brief-04-review-depth-by-tier.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=301a1b1f3ee6de758534e5ef74567db85b99ad715aaa3e872de27f101605be6e source=b1d3c0a44a01a8fbf65f030c5e08a1e520037e07 tree=sha256:5af4c9a39564d9634cb1089d5ad22ee79687d28690cd5905982c88f2b4a0b8ed witness=sha256:0dad9a4080942d1b01f31873cd4eefccc63674bd6f792dd716d0eabedce1c26b opened=2026-10-27T20:39:14Z closed=2026-10-27T20:43:10Z before=receipt after=check-verifier
+
+Risk-bearing values, enumerated over the implementing diff 2083064fdeb2 against cabdc0b8455a and re-read at b1d3c0a44a01. The diff has no numeric constants. In rank order:
+
+RISK-VALUE: DERIVED — laneTable rows (unknown and blessed-once get strong correctness, security, fact-check and fail-first; contributor and maintainer get correctness and security) @ tools/desk/internal/deskkit/reviewlanes.go:119-122 — matches the brief's lane-set-by-tier fact; the contributor-row mutation was killed by row 3
+RISK-VALUE: DERIVED — out-of-range tier falls back to laneTable[TierUnknown] @ tools/desk/internal/deskkit/reviewlanes.go:137 — fails closed to the deepest set, per the brief's unknown-tier rule; row 2 and row 11 exercise it
+RISK-VALUE: DERIVED — strong ExecTier on the deep-set correctness lane @ tools/desk/internal/deskkit/reviewlanes.go:105 (with the same tier at :80, :88, :96) — matches the brief's strong-tier fact for the deep set
+RISK-VALUE: DERIVED — ClaimState strings confirmed, contradicted, unverified @ tools/desk/internal/deskkit/reviewlanes.go:182-184, with extraction seeding ClaimUnverified @ :270 and :277 — matches the brief's every-claim-starts-unverified rule; the seed mutation was killed by row 4
+RISK-VALUE: NAMED, NOT DERIVED — claimMarkerRe claim-marker pattern @ tools/desk/internal/deskkit/reviewlanes.go:232 — extraction recall is a review-gate judgement per the brief's pre-mortem, previously routed on medici-finance/assay#1916; no Verify row asserts recall
+
+Tally: 12 met, 0 fail, 0 not run, of 12 Verify rows, at b1d3c0a44a01. Rows 1–7 and 10–12 are on the host witness, and rows 8 and 9 are on the bracketed container witness. Both mutation probes were killed. Gate is model; risk all no.
+
+**VERIFY: PASS** — 12/12 rows pass at b1d3c0a44a01: rows 1–7 and 10–12 on the admitted host witness, check:ci rows 8 and 9 on the admission-bracketed container-netns witness; 0 fail, 0 could-not-run. Both mutation probes killed. Gate is model; risk all no.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
