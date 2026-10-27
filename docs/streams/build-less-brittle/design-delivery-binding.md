@@ -5,11 +5,24 @@ changes no checker, no Verify table, no Evidence and no protected route. Every r
 proposes lands in a later implementation brief, and each of those carries its own
 design-fit block and review.
 
-**Class.** A Verify row whose consumer check names no delivering change. Such a row can be
-satisfied only before the merge and can never pass on merged main. Every instance has the
-same shape: a post-delivery obligation with no immutable delivery coordinate in the
-authored contract. The coordinate does not exist when the row is authored, and adding it
-afterwards is a change to a protected acceptance row.
+**Historical-support amendment, proposed 2026-10-26.** The original recommendation
+removed repeated coordinate amendments only for new rows and left delivered rows on the
+per-brief recovery path. This amendment extends the SAME delivery binding, checker,
+execution witness and protected-acceptance evaluator to a bounded historical class. It
+requires the revised decision 3 below; neither this document nor a merge grants that
+authority. The current implementation and existing individual approvals remain binding
+until the revised policy is explicitly approved, implemented, released and activated.
+Source read for this amendment: main `47ef38f961aa1006ff296034d118630efdc177cb`;
+`statusgen/consumerdelivery.go`, `statusgen/verifyrows.go`,
+`statusgen/acceptancetransition.go`, `statusgen/verifyrun.go`, and the reviewer kit.
+
+**Class.** A post-delivery consumer obligation with no immutable delivery coordinate in
+the authored contract. An unscoped branch check can return zero without corroborating
+anything after merge; a named check can derive a meaningful delivery from committed
+Evidence and still be ineligible for closure under the explicit-pin lint. The missing
+coordinate does not exist when the row is authored, and adding it to the command
+afterwards is a change to a protected acceptance row. Runtime success alone does not
+resolve this acceptance conflict.
 
 **Freshness.** Read on `origin/main` at commit `e4d2346d8b51` (full id in the census block
 below), on 2026-10-25: `docs/consumer-delivery-checks.md`, the
@@ -130,7 +143,9 @@ option D.
 **Result.** Only option B meets every part of the criterion. Option B is not an alternative
 to C and D. It is where C and D belong: C's attribution is run **once, at merge, by a third
 identity**, and its answer is frozen. D's marker is kept as a corroborating cross-check
-rather than the source. Option A remains the route for rows that are already merged.
+rather than the source. The historical-support proposal below extends option B to
+eligible unchanged original rows. Option A remains the route for actual command or
+acceptance changes and historical rows whose intended subject cannot be established.
 
 ## Recommended design
 
@@ -202,14 +217,16 @@ rather than the source. Option A remains the route for rows that are already mer
 
    The last check is option D kept as a cross-check: a disagreement between the verifier's
    record and the binding is a refusal, not a choice between them.
-5. **Rows that are already merged stay on the protected route.** Rows with explicit pins
-   keep them. Bare-form rows keep today's marker-derived meaning. A row that needs
-   correcting still goes through the human-approved acceptance transition, as #4228 and
-   #4213 did. The binder may record bindings for briefs that are already merged, because a
-   binding is only a record, but it gives no credit to a row whose Command does not name
-   `--delivery bound`. Rewriting an existing row to the symbolic spelling is itself a
-   protected command correction. Whether the bare form should also cross-check against a
-   binding when one exists is owed to the driver (decision 3 below).
+5. **Historical rows use the same binding under a bounded compatibility policy.**
+   Decision 3 now proposes resolving a missing delivery coordinate for an eligible,
+   unchanged original consumer row, without editing its Command or relaxing its Expect.
+   The historical-support section defines eligibility, historical backfill, execution
+   context and closure. Rows with explicit pins retain them. Actual command changes,
+   including already-landed amendments, retain the existing human-approved acceptance
+   transition; the proposal does not discharge approvals for #4414, #4228 or #4213.
+   Until the revised decision is approved and activated, historical behaviour remains
+   unchanged. A disagreement with an existing live marker always holds; an absent marker
+   cannot force the verifier to invent the delivery before a first eligible run.
 6. **How it works with the open prospective-delivery PR, #4139.** #4139's lifecycle preflight
    is bound to the PR head. It validates the prospective delivery before ready-to-merge,
    using the reconciliation classifiers. The binder applies the same delivering-PR
@@ -225,10 +242,121 @@ rather than the source. Option A remains the route for rows that are already mer
    exits 2. A brief that also needs a pre-merge pass keeps a separate, explicitly
    `pre-merge` row under the authoring contract in `docs/consumer-delivery-checks.md`.
 
-**What this retires.** For briefs authored after the mechanism lands, it retires the manual
-recovery of delivery coordinates by hand edit or acceptance transition (census rows 1–9),
-and the per-row shell resolution of the delivery (census row 2). Nothing is removed by this
-record.
+**What this retires.** For new symbolic rows AND eligible unchanged historical rows,
+it retires manual delivery-coordinate recovery by command edit, the associated per-brief
+approval, and per-row shell resolution. It retires none of the original assertions or
+unchecked obligations. Rows requiring substantive changes keep the existing transition.
+Nothing is removed or granted acceptance by this record.
+
+### Historical support: provenance migration without rewriting acceptance
+
+**Scope and authority.** The revised decision 3 is one explicit human decision about
+how the existing consumer command obtains its delivery subject in an admitted historical
+run. It is not a blanket waiver, a bulk acceptance approval, or permission for a verifier
+to change a row. The original table remains the authority for Command, Expect, class,
+shell, row identity/order and all obligations. Every original row still requires fresh
+independent evidence under the existing closure rules. No historical PASS is reinterpreted
+or credited under the new policy. No new record type, approval service, queue, scheduler
+or parallel delivery store is proposed.
+
+**Eligible class.** Establish eligibility from the immutable original row and original
+brief/PR intent, before executing it. All of these must hold:
+
+- The brief was delivered before the activated historical cutover and is still open
+  (`implemented`, `in-progress` or `blocked`); a fresh binding alone never reopens a
+  `verified`, `done`, withdrawn or archived record.
+- The original obligation is a post-delivery `statusgen --consumers` check in the admitted
+  deliverable repository. It omits an immutable delivery range and either names this
+  brief or runs without a brief inside this brief's admitted execution witness.
+- The Command, Expect, class, shell, row identity/order and other obligations are unchanged
+  between original, delivered and current acceptance. A command-only amendment is still
+  an amendment; this route cannot approve one by calling it provenance.
+- Neither Command nor Expect specifies pre-merge/branch-only semantics. Explicit `--base`
+  or `--delivery` values, computed ranges, ambiguous shell shapes and cross-repository
+  roots are excluded from automatic compatibility. Their existing repair route remains.
+- The same independently established delivery binding used by new rows exists and passes
+  its graph, file-scope, identity/version and live-marker checks. Unreadable declared scope
+  is an authoring repair, not an empty scope or a passing eligibility result.
+
+The automated class is intentionally narrower than every old range warning. A census
+finding is a candidate, not authority to rewrite or accept it. The existing active-brief
+census lists each candidate's original revision/row and either its eligibility or its
+specific remaining repair. Keep that accounting in the existing class/census records.
+
+**Backfill the subject with the existing binder.** For historical candidates, the same
+CI writer replays delivery attribution at the original mainline delivery boundaries, in
+first-parent chronological order, using the then-declared files/version and the existing
+PR-body, review and partial-delivery rules. It must not bind today's newest matching
+follow-up. Missing historical forge data, multiple credible deliveries, unsupported
+scope, a changed original contract or an existing contradictory binding means no new
+binding and an explicit could-not-check. An independently reviewed historical delivery
+remains necessary; accepting whichever candidate makes the consumers check pass is
+forbidden. Backfill never moves an existing binding, alters a brief or advances status.
+The same immutable store and writer restrictions cover new and backfilled bindings.
+
+**Execution remains the original command.** A named original `--consumers --brief <id>`
+uses that brief's authoritative binding during an eligible historical run. For an original
+unscoped `--consumers`, the existing `verifyrun --brief` admission already identifies
+one brief and row; the same execution path supplies that row's bound delivery context
+to the consumer resolver. That context is tied to the admitted repo, source, original row
+and immutable binding object. An arbitrary environment variable, working directory,
+most-recent marker or user-supplied brief name cannot establish eligibility or authority.
+The implementation must define and test this transport inside existing admission and
+row execution; this document does not claim the installed runner already supports it.
+A standalone unscoped command outside that admitted context keeps its ordinary branch
+meaning. Never use compatibility to override an explicit range or another brief's flag.
+
+The witness preserves the literal original command and records, in the SAME run/evidence
+record, the binding object, actual delivery and computed first-parent base used. It states
+that the historical policy supplied provenance. It must not pretend the command contained
+explicit flags, record a substituted command as the original, or hide an execution change
+in a supplemental probe. All consumer outcomes still come from the existing immutable
+snapshot evaluator: zero corroboration or missing provenance is could-not-check, a
+disproved claim fails, and every unchecked exclusion remains an explicit obligation.
+
+**Closure and lint must use the same eligibility decision.** The existing protected-table
+plan, row lint, witness audit and executor must agree that an eligible unchanged original
+row can obtain its subject through the approved binding. The command-text heuristic alone
+must not reject a row for the exact provenance omission this policy admits. That contextual
+acceptance applies only with the approved policy, qualified binding and fresh matching
+witness; a bare command outside that context remains a range finding. No lifecycle flip
+happens merely because a tag exists, the backfill succeeded or the command exited zero.
+Missing authority or a changed binding between admission and closure holds the run.
+
+**Exceptions are finite repair work, not a second migration system.** A changed expectation,
+class, row inventory, shell or intended scope is outside this class and retains its
+existing authoring/acceptance authority. Already-amended commands retain their exact
+transition approval and fresh-run requirements. Malformed Context declarations need the
+remaining authoring cleanup before admission; the binder does not repair them. Completed
+records and previous Evidence remain unchanged. If fresh verification of a settled record
+is later requested, its current authorization path must explicitly establish the new
+run's eligibility; backfill is not that request.
+
+**One cutover, including the historical cohort.** Inventory now with the existing lint and
+scope readers; repair urgent unsupported cases through today's authorized route. Before
+activation, review the exact policy and eligible historical cohort together and repair
+its declared scopes. Release/install the binder/checker/lint/runner support together,
+then activate the server restrictions and existing CI writer, perform historical backfill,
+and prove trusted binding retrieval. Only then activate historical acceptance and admit
+ready rows through preflight. A partial rollout grants no historical compatibility credit. Do not first ship new-row support and leave historical
+compatibility as an unowned later phase. Do not mass-edit original Verify commands just
+to adopt the new spelling.
+
+The existing independent correctness review rechecks whether each row will still be
+meaningful after delivery and able to support closure; the existing dispatch preflight
+checks execution readiness. A missing post-merge binding before merge is an expected
+phase prerequisite, never a fabricated pass. No additional review stage is introduced.
+
+**Release acceptance for this migration.** Inside I-1 to I-4, demonstrate the entire path
+for both an apps-installer/10-shaped named row and a desktools-v2/23-shaped unscoped row:
+original acceptance unchanged; historical subject backfilled independently; binding
+retrieved through the same trusted path as new rows; full fresh original-row execution;
+matching provenance in the witness; closure accepted by the existing lint/evaluator; and
+no per-brief command amendment. Then merge a later follow-up and prove the subject does
+not change. Removing the binding, supplying another brief's context, using an unadmitted
+ambient context, or contradicting a live marker must hold before credit. A real disproved
+consumer must still fail. An explicit-pin amendment such as #4414 must still require its
+existing approval, and completed historical Evidence must remain byte-identical.
 
 ## Independent layers
 
@@ -273,7 +401,7 @@ driver, not settled here. The first option in each is the proposed default.
 
 - Decision 1, approval semantics — needs-decision medici-finance/assay#4380: does a row whose Command reads `--delivery bound` count as a complete, unchanged original obligation when a later merge-time binding fixes what it names, so that briefs authored after the mechanism lands need no per-brief acceptance transition? (a) yes, for new rows only; (b) yes, but each binding also needs a human approval comment in the transition payload form; (c) no, keep explicit per-row pins and the transition route.
 - Decision 2, binding writer and store — needs-decision medici-finance/assay#4381: which identity writes delivery bindings, and which server-side rule protects them? (a) the main-branch CI workflow identity, writing annotated tags in a reserved namespace under a create-only tag ruleset; (b) a dedicated binding App that is not the worker, reviewer or verifier, with the same tag store; (c) a generated file committed to main by its single CI writer, protected by a lint on the commit author rather than by a server rule.
-- Decision 3, existing bare-form rows — needs-decision medici-finance/assay#4380 (second question, https://github.com/medici-finance/assay/issues/4380#issuecomment-6398480713): when a binding exists, should today's bare `--consumers --brief` derived path also require the committed marker to agree with it? (a) no, the evaluation of existing rows is unchanged, and bindings affect only rows that name them; (b) yes, a disagreement is could-not-check for every record, including ones already verified; (c) yes, but only for records not yet verified or done.
+- Decision 3, historical compatibility (REVISED PROPOSAL, not yet a ruling) — needs-decision medici-finance/assay#4380: (a) authorize the bounded historical-support policy above: independently backfilled bindings supply provenance to eligible unchanged original post-delivery consumer rows, including an unscoped row only inside its admitted brief execution; keep original assertions, fresh verification and all other closure requirements; (b) keep per-brief protected amendments for every historical row; (c) defer historical support and leave those briefs held. Option (a) is recommended. This replaces the earlier cross-check-only question at https://github.com/medici-finance/assay/issues/4380#issuecomment-6398480713; that issue still needs the revised decision text and an explicit human ruling before implementation authority exists. No option retroactively accepts old evidence or approves changed commands.
 
 ## Implementation briefs
 
@@ -282,14 +410,16 @@ above are settled.
 
 | # | Title | Owning module | Depends | Effort | Risk (regulatory / customer / irreversible / sensitive-data) | Verify row proving the lower layer with the upper one bypassed |
 |---|---|---|---|---|---|---|
-| I-1 | Record a delivery binding at merge from the delivering-PR resolver | `statusgen` (the resolver in `autoflip.go`/`deliveryfiles.go`, new binder verb) | decisions 1, 2 | M | no / no / no / no | A fixture in the desk-tools/38 shape (the squash commit's message carries a trailer naming another brief; the PR body names this brief) is bound to that PR, which pins that the binder attributes by the PR body and never by a commit-message search. A fixture whose PR body names another brief writes no binding, even though the PR touches the declared files: it is walked past, never credited on files overlap alone, and I-1 does not change that attribution rule. A fixture with the forge read unavailable writes no binding, and the verb exits could-not-check |
-| I-2 | Accept `--delivery bound` in the consumer checker and the range lint, with the graph and marker cross-checks | `statusgen/consumerdelivery.go`, `statusgen/verifyrows.go` | I-1, decisions 1, 3 | M | no / no / no / no | With the binder bypassed, a hand-made fixture tag that names a side-branch commit, a commit touching none of the declared files, or a commit that contradicts the committed marker reads exit 2 COULD-NOT-CHECK |
-| I-3 | Staged CI job and tag ruleset for delivery bindings | `ci/staged-workflows/`, forge configuration (documented; activation is the maintainer's) | I-1, decision 2 | S | no / no / no / no | With the CI writer bypassed, a binding tag pushed by a non-CI identity is refused by the forge. This is a human-run row: it is could-not-check offline |
-| I-4 | Author new post-merge consumer rows with `--delivery bound` | author-brief kit, `docs/consumer-delivery-checks.md` | I-2 | S | no / no / no / no | A planted bare `--base` row in a new brief is still a `consumer-delivery-range` finding with the kit's guidance in place |
+| I-1 | Record and historically backfill delivery bindings with the existing delivering-PR resolver | `statusgen` (the resolver in `autoflip.go`/`deliveryfiles.go`, new binder verb) | decisions 1, 2 | M | no / no / no / no | A fixture in the desk-tools/38 shape (the squash commit's message carries a trailer naming another brief; the PR body names this brief) is bound to that PR, which pins that the binder attributes by the PR body and never by a commit-message search. A fixture whose PR body names another brief writes no binding, even though the PR touches the declared files: it is walked past, never credited on files overlap alone, and I-1 does not change that attribution rule. A fixture with the forge read unavailable writes no binding, and the verb exits could-not-check. Historical replay binds the original eligible delivery before a later matching follow-up; ambiguity writes no binding |
+| I-2 | Resolve new and eligible unchanged historical rows through one delivery-binding policy in execution, lint and protected closure | `statusgen/consumerdelivery.go`, `statusgen/verifyrows.go`, `statusgen/verifyrun.go`, existing protected-acceptance evaluator | I-1, decisions 1, 3 | M | no / no / no / no | With the binder bypassed, a hand-made fixture tag that names a side-branch commit, a commit touching none of the declared files, or a commit that contradicts the committed marker reads exit 2 COULD-NOT-CHECK. Named and unscoped original historical rows close with unchanged acceptance and fresh bound witnesses; unadmitted ambient context, changed commands and another brief's binding receive no compatibility credit |
+| I-3 | Activate the same protected CI binding writer, historical backfill and trusted binding retrieval | `ci/staged-workflows/`, forge configuration (documented; activation is the maintainer's) | I-1, decision 2 | S | no / no / no / no | With the CI writer bypassed, a binding tag pushed by a non-CI identity is refused by the forge. This is a human-run row: it is could-not-check offline. Also prove local execution uses the protected remote binding object and holds a substituted plausible local tag; a ruleset alone cannot authenticate an arbitrary local ref |
+| I-4 | Complete author/reviewer guidance and the historical cutover census with new-row and historical closure examples | existing author/reviewer kits, `docs/consumer-delivery-checks.md`, existing class census | I-2, I-3 | S | no / no / no / no | A planted bare `--base` row in a new brief is still a `consumer-delivery-range` finding with the kit's guidance in place. Run the end-to-end historical migration examples above; report every candidate as supported, substantive repair, scope repair, ambiguity hold or settled record left unchanged |
 
 **Ordering.** Verify rows 4 and 5 of build-less-brittle/14 pin today's derived-path behaviour.
 That includes the fact that a marker naming a later mainline delivery is accepted, and the
 fact that the path refuses to pass when its source is unavailable. This brief must therefore
-be verified before any implementation brief that changes that behaviour merges, and I-2
-under decision 3 (b) or (c) is such a brief. After that merge, rows 4 and 5 going red is the
-expected effect of the successor, not a defect in this record.
+be verified before any implementation brief that changes that behaviour merges. The
+revised decision 3(a) changes eligible admitted historical runs; its implementation must
+retain coverage of unchanged standalone behaviour and add explicit coverage of the new
+admitted behaviour. A superseded historical behaviour test is not justification to drop
+its fail-closed obligations. This amendment changes no existing Verify row or Evidence.
