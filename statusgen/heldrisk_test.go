@@ -33,6 +33,14 @@ func TestHeldRiskKeepsHolds(t *testing.T) {
 		cases = append(cases, heldScanCase{tail, "**VERIFY: PASS**\n\n" + def + tail + "\n", true})
 	}
 	for _, line := range []string{
+
+		// F-lit-subject: a declaration-shaped observation is still a hold.
+		"RISK-VALUE: DERIVED — row 3 status = \"held\" @ README.md:12 — no runner online.",
+		"RISK-VALUE: DERIVED — row2 = \"could-not-check\" @ evidence.log:3 — runner unavailable.",
+		"RISK-VALUE: DERIVED — smoke run = \"could-not-check\" @ runner.log:1 — no runner online.",
+		"RISK-VALUE: DERIVED — smoke = \"held\" @ a.go:1 — pending",
+		"RISK-VALUE: DERIVED — Row2 = \"could-not-check\" @ a.go:1 — runner offline",
+		"RISK-VALUE: DERIVED — Unavailable = \"could-not-check\", row2 = \"could-not-check\" @ a.go:1 — runner offline",
 		"RISK-VALUE: DERIVED — row 2 could-not-check — runner unavailable",
 		"RISK-VALUE: NAMED, NOT DERIVED — Unavailable = \"could-not-check\" @ examples/facts.go:12 — definition pending",
 		"RISK-VALUE: DERIVED — Unavailable = \"could-not-check\" — source unavailable",

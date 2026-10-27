@@ -1864,9 +1864,13 @@ func heldBlankRanges(s string, rs [][2]int) string {
 // marker occurrences within these closed declaration/semantic phrases are
 // excluded. A second, unrecognised occurrence on the same line is still read.
 // No entry supersession or passing witness is needed to recognise a definition.
+// Only the declared product fact-state vocabulary is recognised. Arbitrary
+// identifiers, even in assignment syntax, may be row/run observations.
+const heldRiskStateDecl = `(?:Present = "present"|Missing = "missing"|(?:CouldNotCheck|Unavailable) = "could-not-check")`
+
 var (
 	heldRiskRecordRe  = regexp.MustCompile(`^RISK-VALUE: DERIVED — ([^@|\r\n]+) @ [a-zA-Z0-9_./-]+:[1-9][0-9]*(?:-[1-9][0-9]*)? — `)
-	heldRiskLiteralRe = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9_-]* = "(?:could-not-check|held)"`)
+	heldRiskLiteralRe = regexp.MustCompile(`^` + heldRiskStateDecl + `(?:(?:, | and )` + heldRiskStateDecl + `)*$`)
 	heldRiskMeaningRe = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
 )
 
@@ -1881,7 +1885,9 @@ func heldRiskDefinition(clean string, h []int) bool {
 	}
 	var spans [][]int
 	if h[1] <= record[3] {
-		spans = heldRiskLiteralRe.FindAllStringIndex(clean[:record[3]], -1)
+		// The whole declaration list must match: accepting a substring
+		// would hide an observation before or beside a valid constant.
+		return heldRiskLiteralRe.MatchString(clean[record[2]:record[3]])
 	} else if h[0] >= record[1] && !heldNamesRowRe.MatchString(clean[record[1]:]) {
 		for _, span := range heldRiskMeaningRe.FindAllStringIndex(clean[record[1]:], -1) {
 			spans = append(spans, []int{record[1] + span[0], record[1] + span[1]})
