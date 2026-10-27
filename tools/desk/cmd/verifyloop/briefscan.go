@@ -13,6 +13,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // briefRow is one parsed stream-README table row plus its resolved brief file.
@@ -41,6 +42,7 @@ type briefRow struct {
 // self-contained (the deliberate "desk mirrors statusgen, does not import it" pattern —
 // statusgen is package main and unimportable anyway).
 type briefFrontmatter struct {
+	ParseError  string
 	Gate        string
 	Risk        loopengine.RiskFlags
 	Effort      string
@@ -393,9 +395,8 @@ func headerIndex(line string) map[string]int {
 	return idx
 }
 
-func splitRow(line string) []string {
-	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
-}
+// splitRow is verifycmd.SplitRow: an escaped `\|` stays inside its cell (#1953).
+func splitRow(line string) []string { return verifycmd.SplitRow(line) }
 
 func normalizeMark(s string) string {
 	switch strings.TrimSpace(s) {
@@ -426,6 +427,9 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 	}
 	rel := relTo(root, path)
 	fm = parseFrontmatter(string(raw))
+	if fm.ParseError != "" {
+		return rel, fm, true, "brief frontmatter unreadable: " + fm.ParseError, nil
+	}
 	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
 	for _, vr := range parseVerifyRowsIn(extractVerify(string(raw))) {
@@ -714,8 +718,10 @@ func deriveContentSignalsRows(fm *briefFrontmatter, rows []verifyRow) {
 	runnable := 0
 	lane, blocked := "", ""
 	for _, r := range rows {
-		rl := deriveOnlineLane(r.Command)
-		rb := deriveBlockedUntil(r.Command)
+		// The whole cell, not the lift: the lane and window phrases are prose
+		// around the command, which the first-span lift drops (#3147).
+		rl := deriveOnlineLane(r.Cell)
+		rb := deriveBlockedUntil(r.Cell)
 		if rl == "" && rb == "" {
 			runnable++
 			continue

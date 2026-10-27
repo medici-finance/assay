@@ -199,6 +199,9 @@ func platformContract(t *testing.T, backend, name string) {
 			if r.Method != http.MethodPost && r.Method != http.MethodPut {
 				continue
 			}
+			if backend == "github" && r.Path == "/graphql" && strings.Contains(string(r.Body), "query FileEntryMode(") {
+				continue // the pre-write read's tree-entry lookup (#3149): a GraphQL read, not a write
+			}
 			writes++
 			if backend == "github" {
 				if r.Method != http.MethodPut || !strings.Contains(r.Path, "/contents/EXAMPLE.md") {

@@ -91,6 +91,14 @@ tear a cell's session down
   --keep-deskd                        leave the cell's deskd running
 ```
 
+## `cellctl hotfix install|status|clear`
+
+install, inspect or clear a local desk-tools hotfix (install and clear need sudo)
+
+```
+  (no flags)
+```
+
 ## `cellctl ls`
 
 list the cells under the registry
@@ -266,3 +274,4 @@ argv verbatim (no flag parsing by the command layer) and are not part of the ope
 - `comms-reader`
 - `container-run`
 - `model-policy`
+- `scrubbed-run`

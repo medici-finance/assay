@@ -89,7 +89,7 @@
     {
       "name": "reader-raw-comment-check-omitted",
       "file": "cmd/verifyloop/verifyrows.go",
-      "old": "verifycmd.CommentLed(cell(cmdCol))",
+      "old": "verifycmd.Refused(cell(cmdCol))",
       "new": "\"\""
     },
     {

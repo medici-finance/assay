@@ -318,3 +318,45 @@ func TestScratchPartialWorkspaceRestart(t *testing.T) {
 		})
 	}
 }
+
+// regression: #3353
+func TestMaintenanceScanBound(t *testing.T) {
+	s := scratchStore(t)
+	small := scratchRun(t, s)
+	finish(t, small, 0)
+	acknowledge(t, small)
+	r := scratchRun(t, s)
+	finish(t, r, 0)
+	acknowledge(t, r)
+	for i := 0; i < 65; i++ {
+		if err := os.WriteFile(filepath.Join(r.Work(), fmt.Sprintf("wide-%03d", i)), []byte("retain"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
+	rep, err := s.Sweep(DefaultPolicy(), true)
+	if err == nil || !rep.Partial || rep.Reclaimed != 0 {
+		t.Fatalf("incomplete scan gained authority: %+v %v", rep, err)
+	}
+	if _, err := os.Stat(filepath.Join(r.Work(), "build")); err != nil {
+		t.Fatalf("partial inventory deleted acknowledged work: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(small.Work(), "build")); err != nil {
+		t.Fatalf("partial inventory authorized earlier candidate: %v", err)
+	}
+	for i := 0; i < 40; i++ {
+		if err := os.Mkdir(filepath.Join(s.Path, fmt.Sprintf("wide-%03d", i)), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep, err = s.Sweep(DefaultPolicy(), true)
+	if err == nil || !rep.Partial || len(rep.Entries) != 0 || rep.Reclaimed != 0 {
+		t.Fatalf("partial root listing gained authority: %+v %v", rep, err)
+	}
+	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "256")
+	rep, err = s.Sweep(DefaultPolicy(), true)
+	if err != nil || rep.Partial || rep.Reclaimed == 0 {
+		t.Fatalf("finite raised-budget recovery failed: %+v %v", rep, err)
+	}
+
+}

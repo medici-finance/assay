@@ -2,7 +2,7 @@
 stream: performance-collection
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
 track: platform
 issues: []
@@ -12,12 +12,21 @@ spec: docs/streams/performance-collection/README.md
 
 # Optional performance collection
 
-**Status:** draft — collection and reporting amendment, updated 15 October 2026.
+**Status:** approved — the driver's full-scope approval ruling of 21 October 2026: https://github.com/medici-finance/assay/pull/3381#issuecomment-6322683460
+
+**Routes-to:** docs/streams/performance-collection/
+
 Collection can start locally before any database, API or managed cell exists. This stream
 owns delivery of optional collection/storage plumbing; it does not replace the semantic
 owners of work, runner accounting, measurement definitions or continuing outcomes.
-The stream is parked pending review and capacity admission. Authored is not implemented;
-no collection, deployment or new permission is activated by this document.
+The driver asked on 18 October 2026 for this stream to be unparked, and the approval ruling
+above admits the whole stream. Every brief is dispatchable once its `depends:` are met, the
+remote-path briefs /03, /04, /05 and /06 included; no brief is held for a later ruling.
+The `depends:` of /03 and /05 name only /01; those of /02 also name desktools-v2/63, /64 and /65.
+The delivery priority is the local-first path /01 → /02 → /07 → /08. The remote path keeps its
+separate scope and gates. Brief dependencies, verification and human gates stay in force. All
+existing todo states stay todo. Activation does not enable collection, transmission, deployment
+or a new permission.
 
 ## Direction and source boundary
 
@@ -244,7 +253,7 @@ The remote path remains `01 → 03 → 04 → 06`, with 02 and 05 also required 
 Remote qualification does not hold local 07/08 hostage. The real local head is qualifying
 source coverage/retention, not deploying PostgreSQL. Existing perf-v1 import can start
 now, but absent historical CPU/call samples cannot be backfilled from delivery activity.
-Stream admission and acceptance remain separate from authoring these todo briefs.
+Stream admission covers the whole stream; implementation acceptance and runtime/collection activation remain separate.
 
 ## Three operating reports — requested 15 October 2026
 
@@ -330,7 +339,9 @@ proposals are separate rollout modes; activation requires the applicable recorde
 
 ## Workflow-efficiency contract amendment — 17 October 2026
 
-The stream stays parked. /01, /02 and /07 receive bounded phase/correlation, producer and tool-panel acceptance from the approved workflow-efficiency spec. There is no new spool, profile activation or DB/API requirement for early local qualification. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+The stream was parked when this amendment was authored.
+It is active under the full-scope approval ruling of 21 October 2026: https://github.com/medici-finance/assay/pull/3381#issuecomment-6322683460
+/01, /02 and /07 receive bounded phase/correlation, producer and tool-panel acceptance from the approved workflow-efficiency spec. There is no new spool, profile activation or DB/API requirement for early local qualification. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
 
 ## Local instrument reuse — 2026-10-16
 
@@ -346,7 +357,7 @@ availability explicitly; do not fabricate comparable zeroes or additive nested t
 
 [The attributed local contract](../../performance-attribution-spec.md) supersedes v2-only
 future instrument intent. Main 2e02111ed has perf-v2 (/61 implemented); no v3/perfdata is
-claimed. The preceding dated reuse schedule is historical. This stream stays parked.
+claimed. The preceding dated reuse schedule is historical. This amendment does not change the stream's admission state.
 
 /01 freezes collection meanings independently; /02 imports all three local instrument versions
 after /63–65, using the existing source/epoch alias mapper. Local identifiable workflow v3 is

@@ -28,7 +28,7 @@ var gitOutput = func(dir string, args ...string) (string, bool) {
 }
 
 // runCommand runs the row's command in dir under `sh -c` and reports whether it EXECUTED at
-// all (ran) plus its exit code. ran is false for the shell's could-not-execute codes (127
+// all (ran), its exit code and its combined output (the Expect judge reads it). ran is false for the shell's could-not-execute codes (127
 // command-not-found, 126 not-executable): those are stale-path signals, not behaviour
 // changes. It is a package var so tests can probe behaviour without executing anything.
 //
@@ -38,23 +38,29 @@ var gitOutput = func(dir string, args ...string) (string, bool) {
 // command"). As defence in depth for the offline envelope (common clause C3) the probe
 // forces KUBECONFIG=/dev/null in the child's environment, so a row command that would reach a
 // cluster cannot, whatever the ambient KUBECONFIG (F-dryrun-executes-command, PR #1511).
-var runCommand = func(dir, command string) (ran bool, rc int) {
+var runCommand = func(dir, command string) (ran bool, rc int, out string) {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null")
-	err := cmd.Run()
+	b, err := cmd.CombinedOutput()
 	if err == nil {
-		return true, 0
+		return true, 0, string(b)
 	}
 	if ee, ok := err.(*exec.ExitError); ok {
 		code := ee.ExitCode()
 		if code == 126 || code == 127 {
-			return false, code
+			return false, code, string(b)
 		}
-		return true, code
+		return true, code, string(b)
 	}
 	// The process could not be started at all — not a behaviour signal.
-	return false, -1
+	return false, -1, string(b)
+}
+
+// probeRow runs command and judges it against the row's raw Expect cell (expect.go).
+func probeRow(dir, command, expectCell string) (ran bool, j judgement) {
+	ran, rc, out := runCommand(dir, command)
+	return ran, parseExpect(expectCell).judge(ran, rc, out)
 }
 
 // pathToken matches a path-like token in a command cell: a run of path characters that
@@ -78,6 +84,20 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 
 	f.PathRef, f.PathExists, f.RenameHop = resolvePinnedPath(repoRoot, row.Command)
 
+	// mayRun is the ONE gate both execution paths below test, the rename-proof re-run
+	// and the behaviour probe: a row whose raw cell statusgen refuses (a shell comment,
+	// a no-op, a prose mention, a blank lift) is never executed, nor is a lifted command
+	// that is itself blank, a comment or a no-op (a row built without a cell). Each exits
+	// 0 having checked nothing, and either probe would read that zero as proof: a rename
+	// proven safe, or a row that still passes (#2684, #3147).
+	mayRun := row.Refused == "" && verifycmd.CommandRefused(row.Command) == ""
+
+	// A rename hop is only proof once the row, rewritten to the hop, passes its own Expect
+	// against the renamed file (#1953). This runs the rewritten command, even in dry-run.
+	if mayRun && f.PathRef != "" && !f.PathExists && f.RenameHop != "" {
+		_, f.RenameProbe = probeRow(repoRoot, renamed(row.Command, f), renamed(row.ExpectCell, f))
+	}
+
 	// NOTE: this gatherer populates the rename + behaviour-probe facts only. It does NOT set
 	// CountShaped/OnlyAdditions (safe:count) or RetiredIdiom (safe:idiom): those classes are
 	// classifier-ready scaffolding not yet wired to a real fact source, so the shipped verb
@@ -85,16 +105,11 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 	// docs/rebaseline.md marks safe:count/safe:idiom not-yet-implemented for that reason.
 
 	// Behaviour probe only when there is no stale-path question to answer first.
-	if f.PathRef == "" || f.PathExists {
-		// A command that is only a shell comment runs nothing and exits 0 (#2684): the
-		// probe would read that as "the row still passes", so it is not probed. The
-		// raw cell's verdict is used when the row was parsed from one (review S1).
-		if row.Command != "" && row.CommentLed == "" && !verifycmd.CommentOnly(row.Command) {
-			ran, rc := runCommand(repoRoot, row.Command)
-			f.CommandProbed = true
-			f.CommandRan = ran
-			f.RCDiffers = ran && rc != 0 // a passing row historically exited 0
-		}
+	if mayRun && (f.PathRef == "" || f.PathExists) {
+		ran, j := probeRow(repoRoot, row.Command, row.ExpectCell)
+		f.CommandProbed = true
+		f.CommandRan = ran
+		f.RCDiffers = j == judgeFail // judged against the row's Expect, not rc != 0 (#1953)
 	}
 	return f
 }

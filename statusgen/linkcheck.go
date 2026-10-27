@@ -721,7 +721,7 @@ func (idx *sourceIndex) resolves(token string) bool {
 // identifierDereferenceFatal severity phasing. Returns (problems, notices); which
 // one a hit lands in is gated by identifierDereferenceFatal.
 func identifierDereferenceCheck(root string, files []string) (problems, notices []string) {
-	const tag = "[id-dereference]"
+	const tag = "[" + ruleIDDereference + "]"
 	emit := func(msg string) {
 		if identifierDereferenceFatal {
 			problems = append(problems, tag+" "+msg)

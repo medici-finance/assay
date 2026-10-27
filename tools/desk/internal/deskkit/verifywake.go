@@ -519,12 +519,24 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		sum := sha256.Sum256(b)
 		return hex.EncodeToString(sum[:]), true
 	case strings.HasPrefix(input, InputKeyScopePrefix):
-		decl := strings.TrimPrefix(input, InputKeyScopePrefix)
-		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
-		if err != nil {
+		// Key on the declaration, not the key string: a legacy directory key and its
+		// slash form name the same declaration and read the same digest. A kind change
+		// changes the digest, so it wakes; it never reads as missing.
+		decl, _, ok := ParseScopeInputKey(input)
+		if !ok {
 			return "", false
 		}
-		return scope.Shapes[input], true
+		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		if err != nil || len(scope.Shapes) != 1 {
+			return "", false
+		}
+		for _, digest := range scope.Shapes {
+			if digest == "" {
+				return "", false
+			}
+			return digest, true
+		}
+		return "", false
 	default:
 		return "", false
 	}

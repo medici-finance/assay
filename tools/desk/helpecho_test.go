@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // helpOptIn is the closed set of verbs that call deskkit.EchoConfigHelpNotice. A verb joins it
@@ -75,7 +77,7 @@ func TestHelpEchoAcrossVerbs(t *testing.T) {
 		pkgs = append(pkgs, "./cmd/"+v)
 	}
 	build := exec.Command("go", append([]string{"build", "-o", bin + string(os.PathSeparator)}, pkgs...)...)
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("building the verbs: %v\n%s", err, out)
 	}
 	home := t.TempDir()

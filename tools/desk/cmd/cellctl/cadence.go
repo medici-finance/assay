@@ -107,10 +107,7 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	ctx, stop := cellprocess.NotifyContext(context.Background())
 	defer stop()
 	fmt.Printf("[cadence] cell=%s role=%s interval=%s budget=%s state=%s; Go supervisor owns subsequent passes\n", c.Name, role, c.Cadence.Interval, c.Cadence.Budget, c.cadenceDir(role))
-	err = c.cadenceLease.Run(ctx, cellcadence.Config{
-		Cell: c.Name, Role: role, Interval: c.Cadence.Interval, Budget: c.Cadence.Budget,
-		Guard: func() error { return c.cadenceGuard(role) },
-	}, func(pass context.Context) cellcadence.Result {
+	err = c.cadenceLease.Run(ctx, c.cadenceConfig(role), func(pass context.Context) cellcadence.Result {
 		return c.executeCadencePass(pass, role, harness, args, env, wt)
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -118,13 +115,30 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	}
 }
 
+func (c *Cell) cadenceConfig(role string) cellcadence.Config {
+	return cellcadence.Config{
+		Cell: c.Name, Role: role, Interval: c.Cadence.Interval, Budget: c.Cadence.Budget,
+		Guard:         func() error { return c.cadenceGuard(role) },
+		BetweenPasses: c.cadenceCacheMaintenance,
+	}
+}
+
 // childStarted records a pass's role child on the role lease, then in the scratch
 // record. The lease record is what lets a blocked sibling launch tell a holder
 // with a live role session (current) from one whose child has exited (stale).
 func (c *Cell) childStarted(scratch *scratchLaunch) func(int) error {
+	began := time.Now()
 	return func(pid int) error {
 		c.recordRoleChild(pid)
-		return scratch.run.Started(pid)
+		err := scratch.run.Started(pid)
+		c.recordLaunchStep("launch-child-start", time.Since(began), err)
+		if err == nil && !c.launchStarted.IsZero() {
+			elapsed := time.Since(c.launchStarted)
+			c.recordLaunchStep("launch-first-start", elapsed, nil)
+			c.recordLaunchStep("launch-all-starts", elapsed, nil)
+			c.launchStarted = time.Time{}
+		}
+		return err
 	}
 }
 
@@ -362,7 +376,7 @@ func (c *Cell) printCadenceStatus(role string) {
 	} else {
 		health = "could-not-check"
 	}
-	fmt.Printf("[cadence] role=%s supervisor=%s last=%s running=%t next=%s heartbeat=%s\n", role, health, s.Outcome, s.Running, s.NextDue.UTC().Format(time.RFC3339), s.Heartbeat.UTC().Format(time.RFC3339))
+	fmt.Printf("[cadence] role=%s supervisor=%s last=%s running=%t next=%s heartbeat=%s maintenance=%s\n", role, health, s.Outcome, s.Running, s.NextDue.UTC().Format(time.RFC3339), s.Heartbeat.UTC().Format(time.RFC3339), s.Maintenance)
 }
 
 // Request cancellation before closing cockpit panes, which otherwise could kill

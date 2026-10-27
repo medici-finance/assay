@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/gitquiet"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // fixtureRoster is the config-home file contents. 0600, in a directory this
@@ -52,7 +53,7 @@ ASSAY_SCAN_REPOS=example-org/tracker,example-org/agents,example-org/examples,exa
 // fixture replaces HOME. Every Go child compiler, including the cross-module
 // heads bridge, must use the dependencies prepared by the caller (#3327).
 func pinFixtureGoCaches() error {
-	out, err := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH").Output()
+	out, err := goquiet.Cmd(exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH")).Output()
 	if err != nil {
 		return fmt.Errorf("resolve Go fixture paths: %w", err)
 	}
@@ -121,6 +122,14 @@ func TestMain(m *testing.M) {
 	// TestGitHubActionsCleared pins this line.
 	if err := os.Unsetenv("GITHUB_ACTIONS"); err != nil {
 		panic("cannot clear GITHUB_ACTIONS for the test binary: " + err.Error())
+	}
+	// No test inherits the caller's DESK_ROOTS either. Every board read now
+	// takes cross-root delivery witnesses from the configured roots, so an
+	// operator's map would read real checkouts' merge history into fixture
+	// boards. A test that needs roots sets DESK_ROOTS itself with t.Setenv;
+	// TestDeskRootsCleared pins this line.
+	if err := os.Unsetenv("DESK_ROOTS"); err != nil {
+		panic("cannot clear DESK_ROOTS for the test binary: " + err.Error())
 	}
 	if err := pinFixtureGoCaches(); err != nil {
 		panic(err)

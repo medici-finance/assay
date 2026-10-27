@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/credential"
 )
 
 // errForgeTokenMissing identifies local credential absence without changing the
@@ -43,12 +45,12 @@ func missingForgeToken(msg string) error {
 	return &forgeTokenMissingError{Unverifiable(msg, nil)}
 }
 
-// GitHubAPIBase is the single home of the GitHub REST/GraphQL host literal. Desk commands
-// that keep a package-level test hook (`var apiBaseURL = GitHubAPIBase`) source their
-// default from here so the literal is constructed in exactly one place — the forge module —
-// and never in a cmd package (the "no direct API construction outside the forge
-// implementation" contract).
-const GitHubAPIBase = "https://api.github.com"
+// GitHubAPIBase is the GitHub REST/GraphQL host. Desk commands that keep a package-level
+// test hook (`var apiBaseURL = GitHubAPIBase`) source their default from here, and this is the
+// role-credential provider's constant (credential.GitHubAPIBase) — the literal's single home
+// now that the App mint lives there — so it is constructed in exactly one place and never in a
+// cmd package (the "no direct API construction outside the forge implementation" contract).
+const GitHubAPIBase = credential.GitHubAPIBase
 
 // GitHubBaseURLOrDefault resolves an override base to a concrete GitHub host: the override
 // when non-empty, else GitHubAPIBase. It is the ONE place the "" → default resolution lives,
@@ -143,6 +145,7 @@ type PullRequest struct {
 	// to tell "no CI rollup because nothing is required" apart from "no rollup because the
 	// required checks have not reported". Empty when the forge did not report a base branch,
 	// which the consumer treats as could-not-check rather than as "no branch".
+	BaseSHA string `json:",omitempty"` // exact provider base endpoint, when supplied
 	BaseRef string
 	// UpdatedAt is the forge's own last-modified timestamp, RFC3339, empty when the forge
 	// did not report one. Consumed by the loopengine liveness taxonomy's PR-activity probe
@@ -510,6 +513,11 @@ type SearchIssuesInput struct {
 	// DecisionGateBrief optionally narrows marker discovery to one exact brief
 	// spelling. It is an opaque marker token, never provider search syntax.
 	DecisionGateBrief string
+	// FilingKey selects the exact filing-identity lookup: OPEN issues of this repo whose body
+	// carries the key's marker, walked to completion or an error (a truncated read is unknown,
+	// never an empty answer). Query and the decision fields must be empty in this mode. The key
+	// is an opaque FilingKey value; callers still confirm each hit with MatchFiledIssues.
+	FilingKey string
 }
 
 // IssueSearchResult is one issue matched by SearchIssues: the fields deskfile's dedupe scores
@@ -524,7 +532,12 @@ type IssueSearchResult struct {
 	State  string // open | closed
 	Labels []string
 	URL    string
-	Body   string `json:",omitempty"` // decision-marker discovery only
+	Body   string `json:",omitempty"` // decision-marker and filing-key discovery only
+	// Author and AuthorID are the issue AUTHOR's login and numeric id as the forge reports them,
+	// carried by the filing-key discovery only (zero elsewhere). A hit whose author the trust
+	// gate does not admit is never a case's filing (MatchFiledIssues).
+	Author   string `json:",omitempty"`
+	AuthorID int64  `json:",omitempty"`
 }
 
 // LabelSpec names a label plus the cosmetic metadata used ONLY when the label has to be
@@ -648,7 +661,8 @@ type FileContent struct {
 	// reads Exists, never len(Content).
 	Exists bool
 	// Kind is what the forge says the path holds at the ref: FileKindRegular for an ordinary
-	// file served with its own bytes, FileKindSymlink for a symbolic link (served as its
+	// file served with its own bytes, whose tree entry has a regular-file mode (100644 or
+	// 100755) where the forge exposes one (#3149), FileKindSymlink for a symbolic link (served as its
 	// target's bytes or as nothing), FileKindSubmodule for a submodule, FileKindUnproven when the
 	// bytes served cannot be shown to be the entry's own, or "" when the forge does not say.
 	// A caller that must read a file as a plain record (the decision-gate hold's branch
@@ -1551,6 +1565,94 @@ type RunState struct {
 	URL        string `json:",omitempty"`
 }
 
+// RunLogPart is one job's log text (RunLog). Name is the job (GitHub: the archive's whole-job
+// file name, or the job directory when the archive carries only per-step files; GitLab: the
+// job name), Text its log, Truncated true when the log exceeded RunLogPartCap and only its
+// tail is kept. Both strings are forge-origin: a renderer control-strips them.
+type RunLogPart struct {
+	Name      string
+	Text      string
+	Truncated bool `json:",omitempty"`
+}
+
+// The run-log bounds, so a hostile or runaway log cannot exhaust memory or be passed off as
+// whole:
+//
+//   - RunLogPartCap bounds the text KEPT per RunLogPart (4 MiB). The TAIL is kept — a failing
+//     step's message is at the end of a log — and the whole log is streamed through to find it.
+//   - RunLogReadCap bounds the bytes READ per part (64 MiB). A log longer than that is a
+//     could-not-check naming the job, never a slice of it presented as its tail.
+//   - RunLogMaxParts bounds the jobs read from one run (200); more is a could-not-check.
+//   - RunLogRunCap bounds the text KEPT across all of one run's parts (64 MiB), so the per-part
+//     cap times the part count (800 MiB) is never held at once; more is a could-not-check.
+//   - runLogArchiveCap bounds the bytes of a GitHub log archive downloaded (64 MiB); more is a
+//     could-not-check.
+const (
+	RunLogPartCap    = 4 << 20
+	RunLogReadCap    = 64 << 20
+	RunLogMaxParts   = 200
+	RunLogRunCap     = 64 << 20
+	runLogArchiveCap = 64 << 20
+)
+
+// runLogBounds carries the run-log bounds into a backend's read. Production always passes
+// defaultRunLogBounds (the constants above and GitLab's pagination constants); a test passes
+// smaller values to prove each bound fires — the bounds are parameters, never mutable state.
+type runLogBounds struct {
+	partCap    int   // bytes of tail kept per part
+	readCap    int64 // bytes read per part before could-not-check
+	maxParts   int   // jobs per run
+	runCap     int   // bytes of text kept across one run's parts
+	archiveCap int64 // bytes of one GitHub archive
+	perPage    int64 // GitLab job-list page size
+	maxPages   int   // GitLab job-list pages walked before could-not-check
+}
+
+var defaultRunLogBounds = runLogBounds{
+	partCap:    RunLogPartCap,
+	readCap:    RunLogReadCap,
+	maxParts:   RunLogMaxParts,
+	runCap:     RunLogRunCap,
+	archiveCap: runLogArchiveCap,
+	perPage:    gitlabPerPage,
+	maxPages:   gitlabMaxCIPage,
+}
+
+// errRunLogOverRead is what a runLogSink answers once its read bound is passed.
+var errRunLogOverRead = errors.New("run log exceeds its read bound")
+
+// runLogSink is the one bounded writer every run-log byte goes through. It accepts at most
+// limit bytes in total — past that, Write fails with errRunLogOverRead and the caller reports
+// could-not-check — and, when keep > 0, retains only the LAST keep bytes (the tail), so a log of
+// any length up to limit is streamed in bounded memory and its true end survives. keep == 0
+// retains every byte (the GitHub archive, which must be whole to be unzipped).
+type runLogSink struct {
+	limit int64
+	keep  int
+	n     int64
+	buf   []byte
+}
+
+func (s *runLogSink) Write(p []byte) (int, error) {
+	if s.n+int64(len(p)) > s.limit {
+		return 0, errRunLogOverRead
+	}
+	s.n += int64(len(p))
+	s.buf = append(s.buf, p...)
+	if s.keep > 0 && len(s.buf) > 2*s.keep {
+		s.buf = append(s.buf[:0], s.buf[len(s.buf)-s.keep:]...)
+	}
+	return len(p), nil
+}
+
+// tail returns the kept text and whether anything before it was dropped.
+func (s *runLogSink) tail() (string, bool) {
+	if s.keep > 0 && len(s.buf) > s.keep {
+		return string(s.buf[len(s.buf)-s.keep:]), true
+	}
+	return string(s.buf), s.keep > 0 && s.n > int64(s.keep)
+}
+
 // ValidateRunID checks a RunRef's id is a bare positive integer before it is interpolated
 // into any request path — the ValidateRefPath shape applied to a run id. A caller-supplied id
 // that is anything else is a could-not-check refusal with zero requests.
@@ -2057,6 +2159,28 @@ type Forge interface {
 	// `GET …/actions/runs/{id}`; GitLab: `GET /projects/:id/pipelines/:id`. A state the
 	// mapping does not know is could-not-check, never rounded to a known one.
 	RunStatus(repo ForgeRepo, run RunRef) (*RunState, error)
+	// RunLog reads one run's log as text, one RunLogPart per job (forge-neutral brief 17;
+	// consumer: cmd/deskrun log). It is READ-ONLY and runs under the calling role's own token
+	// (GitHub `actions: read`, GitLab `read_api`). GitHub: `GET …/actions/runs/{id}/logs` (a
+	// redirect to a zip holding a top-level whole-job file per job plus a directory of step
+	// files per job; one part per whole-job file, the step files grouped by job directory only
+	// when no whole-job file exists; an archive with no log file is could-not-check, and an
+	// expired or deleted log answers 404, surfaced as IsForgeNotFound, never as an empty
+	// success). GitLab's trace is per JOB, so EVERY page of the pipeline's jobs is listed and
+	// EVERY job's trace is streamed — a multi-job pipeline is never reduced to the first job or
+	// the first page. A part over RunLogPartCap keeps its true TAIL and is marked Truncated; a
+	// part over RunLogReadCap, a run over RunLogMaxParts jobs, a run keeping more than
+	// RunLogRunCap across its parts or a GitHub archive over its download cap is
+	// could-not-check, never a silently shortened log.
+	RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error)
+	// RetryRun re-runs the FAILED work of one run and nothing else (forge-neutral brief 17;
+	// consumer: cmd/deskrun retry). It needs GitHub `actions: write` / GitLab `api`, the
+	// over-broad scopes that made RunWorkflow roster-bound, so it runs ONLY under the run
+	// credential ResolveRunCredential binds. GitHub: `POST …/actions/runs/{id}/rerun-failed-jobs`
+	// (the narrower of the two rerun endpoints). GitLab: the pipeline's FAILED jobs are listed
+	// and each is retried (`POST /projects/:id/jobs/:job_id/retry`). A run with nothing failed
+	// is a could-not-check naming the run, never a whole-run rerun.
+	RetryRun(repo ForgeRepo, run RunRef) error
 
 	// --- Identity / transport ---
 

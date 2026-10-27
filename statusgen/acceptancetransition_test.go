@@ -342,3 +342,37 @@ func TestTransitionCISkip(t *testing.T) {
 		t.Fatalf("CI skip conferred coverage: %+v", cov["vf/01"])
 	}
 }
+
+// regression: #4596
+func TestTransitionRootPaths(t *testing.T) {
+	for _, mode := range []string{"dot", "nested", "symlink"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			root := "."
+			cwd := f.root
+			switch mode {
+			case "nested":
+				cwd = filepath.Join(f.root, "docs", "streams", "vf")
+				root = "../../.."
+			case "symlink":
+				root = filepath.Join(t.TempDir(), "checkout")
+				if err := os.Symlink(f.root, root); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+			}
+			t.Chdir(cwd)
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if problems := protectedClosureProblems(streams); len(problems) != 0 {
+				t.Fatalf("relative-root lint: %v", problems)
+			}
+			code, out, diag := captureVerifyclosure(t, []string{"--root", root, "--brief", "vf/01", "--acceptance-forge"})
+			if code != 0 {
+				t.Fatalf("relative-root closure: %d %s %s", code, out, diag)
+			}
+		})
+	}
+}

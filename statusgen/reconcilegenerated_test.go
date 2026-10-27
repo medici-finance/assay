@@ -137,7 +137,7 @@ func TestHoldKeepsHandEditedRegion(t *testing.T) {
 	if err := os.WriteFile(planPath, []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if p, _ := driveRegionLintProblems(root, driveTestNow); len(p) != 1 {
+	if p, _ := driveRegionLintProblems(root, nil, nil, driveTestNow); len(p) != 1 {
 		t.Fatalf("fixture drift: the hand edit must drift the region, got %v", p)
 	}
 	rows, held, err := reconcileRegen(root, cells, true)

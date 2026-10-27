@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/verifyloop -run '^TestFlowFileKey$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL - an unreadable exact read no longer stops the filing",
+    "file": "cmd/verifyloop/repair.go",
+    "old": "key)\n\t\tif err != nil {\n\t\t\tfmt.Fprintf(v.emit(), \"verifyloop: could-not-check",
+    "new": "key)\n\t\tif false && err != nil {\n\t\t\tfmt.Fprintf(v.emit(), \"verifyloop: could-not-check"
+  },
+  "mutations": [
+    {
+      "name": "the exact lookup is skipped before filing",
+      "file": "cmd/verifyloop/repair.go",
+      "old": "if src, isSrc := v.Issues.(FiledCaseSource); isSrc {",
+      "new": "if src, isSrc := v.Issues.(FiledCaseSource); isSrc && false {"
+    },
+    {
+      "name": "a found filing no longer reconciles",
+      "file": "cmd/verifyloop/repair.go",
+      "old": "\t\tif len(found) > 0 {",
+      "new": "\t\tif len(found) > 99 {"
+    },
+    {
+      "name": "the case is dropped from the key (brief-wide suppression)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "strings.TrimPrefix(label, RaisedByPrefix), caseID,",
+      "new": "strings.TrimPrefix(label, RaisedByPrefix),"
+    },
+    {
+      "name": "a closed issue counts as the case's filing",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "!strings.EqualFold(strings.TrimSpace(h.State), \"open\") || stampedByOtherRole",
+      "new": "stampedByOtherRole"
+    },
+    {
+      "name": "a failed forge search is read as no issues",
+      "file": "cmd/verifyloop/repair.go",
+      "old": "\thits, err := fg.SearchIssues(repo, deskkit.SearchIssuesInput{FilingKey: key})\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}",
+      "new": "\thits, err := fg.SearchIssues(repo, deskkit.SearchIssuesInput{FilingKey: key})\n\tif err != nil {\n\t\treturn nil, nil, nil\n\t}"
+    },
+    {
+      "name": "an untrusted author's marker-carrying issue counts as the case's filing",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "if trustedContentAuthor(h.Author, h.AuthorID) {",
+      "new": "if true {"
+    },
+    {
+      "name": "the scanner's repo prefix stays on the brief id",
+      "file": "cmd/verifyloop/repair.go",
+      "old": "brief := strings.TrimSpace(itemKey(r.Item))",
+      "new": "brief := strings.TrimSpace(r.Item.ID)"
+    },
+    {
+      "name": "a same-repo item gets no home-repo fallback",
+      "file": "cmd/verifyloop/repair.go",
+      "old": "repo = strings.TrimSpace(homeRepo)",
+      "new": "_ = homeRepo"
+    }
+  ]
+}

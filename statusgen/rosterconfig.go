@@ -2,12 +2,9 @@ package main
 
 // Roster / authority configuration — statusgen's half.
 //
-// KEEP IN SYNC with the desk-tools deskkit roster loader. statusgen and
-// desk-tools are separate Go modules that deliberately share no code (the
-// documented-duplicate pattern), so this is a cross-tree duplicate of deskkit's
-// loader. A behavioural coupling test binds the two READERS over a shared
-// vector file, so the duplication cannot drift. A change to either copy must be
-// made in both.
+// Common lexical roster normalization and trust judgments are owned by deskcore/trust.
+// This adapter retains mode-specific source selection, permissions, echoing and
+// configuration fields; shared behavioral vectors exercise both production adapters.
 //
 // The full rationale — why a repository/organization variable rather than a file
 // in the repo, why the write class must not consult the environment, why an
@@ -92,6 +89,8 @@ package main
 // code question this file can settle.
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"fmt"
 	"io"
 	"os"
@@ -427,6 +426,7 @@ const (
 	// whole trust configuration. Recognised, not applied. KEEP IN SYNC with
 	// deskkit/rosterconfig.go's EnvClaimStore / EnvClaimDir / EnvClaimSingleHost.
 	scanEnvClaimStore      = "ASSAY_CLAIM_STORE"
+	scanEnvUsageDir        = "ASSAY_USAGE_DIR" // Recognized; only deskusage consumes it.
 	scanEnvClaimDir        = "ASSAY_CLAIM_DIR"
 	scanEnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
 
@@ -476,50 +476,7 @@ const (
 // scanApplyProductConfig / scanProductConfigLines), are absent from the default
 // (open-core) build, and sit outside the namespace whose unknown keys refuse. See
 // openstub.go for the no-op defaults.
-func scanKnownRosterKeys() []string {
-	return []string{
-		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
-		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
-		scanEnvRiskPathTriggersExtra,
-		scanEnvRepoAliases, scanEnvReleaseRepo, scanEnvWriteguardCallout,
-		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
-		// DESK-only, recognised-not-applied (the scan-override audit identity): the
-		// OS-account→login map deskkit's OverrideIdentity consumes — see its
-		// declaration above.
-		scanEnvOSUserLoginMap,
-		// DESK-only, recognised-not-applied (desktools-v2/11): the outbound-write check's
-		// house callout — see their declarations above.
-		scanEnvOutboundCallout, scanEnvOutboundCalloutRequired, scanEnvOutboundCalloutTimeout,
-		scanEnvAuthorizedAuthors, scanEnvChannelDriftTarget,
-		scanEnvSweepWithheldStreams, scanEnvDeterministicGatePatterns,
-		// DESK-only, recognised-not-applied — see their declarations above for who
-		// consumes each and why statusgen must not fail closed on it.
-		scanEnvRepoForges, scanEnvRiskCallout,
-		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
-		scanEnvGitLabSessionEmails,
-		scanEnvGitLabDisplayNames,
-		scanEnvStreamCap,
-		scanEnvCriticalStampAuthorities,
-		scanEnvContributorLedger,
-		// DESK-only, recognised-not-applied (verify-integrity/10): consumed by
-		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
-		// they share this roster.env, so statusgen must not fail closed on either.
-		scanEnvReviewerVendor, scanEnvVerifierVendor,
-		// DESK-only, recognised-not-applied (forge-neutral brief 14): cmd/deskrun's
-		// per-repo run-credential binding.
-		scanEnvRunCredentials,
-		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
-		// desk tools' resolver consumes — see their declarations above.
-		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
-		// DESK-only, recognised-not-applied (the auto-approve lane): the lane config keys the
-		// desk tools' lane parser consumes — see their declarations above.
-		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,
-		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap, scanEnvAutoApproveSignOffThread,
-		// DESK-only, recognised-not-applied (#336): the model-floor's stamp-authority
-		// allowance — see its declaration above.
-		scanEnvStampTrustedLogins,
-	}
-}
+func scanKnownRosterKeys() []string { return trustcore.KnownRosterKeys() }
 
 // scanConfigHomeFile is the local source of truth — outside every ref.
 const scanConfigHomeFile = "~/.config/assay/roster.env"
@@ -638,6 +595,35 @@ type scanConfig struct {
 
 func (c scanConfig) Configured() bool {
 	return len(c.Problems) == 0 && c.Bless.Login != "" && len(c.Logins) > 0
+}
+
+// allowedRepo reports whether repo (owner/name) is in the configured repository
+// set: an explicit ASSAY_ALLOWED_REPOS entry, or an owner/* pattern entry for its
+// owner. Matching is exact-case, and an unconfigured set (a collapsed
+// configuration carries no Repos) answers false for every repo. This reader keeps
+// a pattern entry as the literal key "owner/*"; scanParseConfig refuses the
+// pattern entries deskkit refuses (a policy token, or '*' in the owner half), so
+// the two readers agree on which rosters configure a set at all. The shared
+// vector testdata/roster_coupling.json holds both to the same answers.
+//
+// It is deliberately STRICTER than IsAllowedRepo on one shape: a repo argument
+// whose name half is "*" or whose owner half contains '*' answers false here,
+// where IsAllowedRepo can answer true (it matches "owner/*" against a configured
+// owner/* pattern). No real repository has that name, and the difference only
+// ever refuses: the span's source-repo= is already held to the owner/name slug
+// shape by the attestation parser, and a record whose binding names such a
+// source repository is refused here rather than credited. KEEP IN SYNC with
+// deskkit's IsAllowedRepo.
+func (c scanConfig) allowedRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" || name == "*" || strings.Contains(name, "/") || strings.Contains(owner, "*") {
+		return false
+	}
+	if _, ok := c.Repos[repo]; ok {
+		return true
+	}
+	_, ok = c.Repos[owner+"/*"]
+	return ok
 }
 
 var (
@@ -839,39 +825,9 @@ func scanCheckOwnerPerms(path string, isDir bool) error {
 	return checkFileOwner(path, fi)
 }
 
-func scanParseDotenv(s string) map[string]string {
-	m := map[string]string{}
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		eq := strings.IndexByte(line, '=')
-		if eq < 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:eq])
-		val := strings.Trim(strings.TrimSpace(line[eq+1:]), `"'`)
-		if v := strings.TrimSpace(val); v != "" {
-			m[key] = v
-		}
-	}
-	return m
-}
+func scanParseDotenv(s string) map[string]string { return trustcore.ParseDotenv(s) }
 
-func scanSplitList(raw string) []string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
-	})
-	out := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if f = strings.TrimSpace(f); f != "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
+func scanSplitList(raw string) []string { return trustcore.SplitList(raw) }
 
 // scanSplitDisplayNameEntries splits ASSAY_GITLAB_DISPLAY_NAMES into its `<username>=<display
 // name>` entries. It splits ONLY on `;` and newline — deliberately NOT on space or comma the
@@ -891,32 +847,12 @@ func scanSplitDisplayNameEntries(raw string) []string {
 	return out
 }
 
-func scanSplitIdentity(entry string) (login string, id int64, ok bool) {
-	l, rest, found := strings.Cut(entry, ":")
-	l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "@")))
-	if l == "" {
-		return "", 0, false
-	}
-	if !found || strings.TrimSpace(rest) == "" {
-		return l, 0, true
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
-	if err != nil || n <= 0 {
-		return "", 0, false
-	}
-	return l, n, true
-}
+func scanSplitIdentity(entry string) (string, int64, bool) { return trustcore.SplitIdentity(entry) }
 
 // scanLooksLikeBot mirrors deskkit.looksLikeBot.
 // The authorisation half of a two-factor mechanism has to be a human act, and a
 // blessing IS that authorisation half.
-func scanLooksLikeBot(login string) bool {
-	l := strings.ToLower(strings.TrimSpace(login))
-	return strings.HasSuffix(l, "[bot]") ||
-		strings.HasPrefix(l, "app/") ||
-		strings.HasSuffix(l, "-app") ||
-		strings.HasSuffix(l, "-bot")
-}
+func scanLooksLikeBot(login string) bool { return trustcore.LooksLikeBot(login) }
 
 func scanParseConfig(class scanToolClass, source string, vals map[string]string) scanConfig {
 	cfg := scanConfig{
@@ -1064,6 +1000,25 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		if strings.Count(slug, "/") != 1 || strings.HasPrefix(slug, "/") || strings.HasSuffix(slug, "/") {
 			bad("%s: %q is not an owner/name repo slug", scanEnvAllowedRepos, entry)
 			continue
+		}
+		// A PATTERN entry (owner/*) gets deskkit's two refusals, worded alike so the
+		// shared vector's rejectedRosters bind both readers: an owner half carrying
+		// '*', and any trailing ci/visibility token. Without them allowedRepo would
+		// turn a roster deskkit refuses whole into a grant for every repo of that
+		// owner. A valid pattern keeps the literal key owner/* (read by allowedRepo)
+		// with the fail-closed policy below.
+		if owner, name, _ := strings.Cut(slug, "/"); name == "*" {
+			if strings.Contains(owner, "*") {
+				bad("%s: %q — the owner half of a pattern entry may not itself contain '*'",
+					scanEnvAllowedRepos, entry)
+				continue
+			}
+			if len(parts) > 1 {
+				bad("%s: %q is a pattern entry (owner/*) and may not carry a ci/visibility policy — "+
+					"a pattern-matched repo gets fail-closed CI/visibility defaults (CI-required, "+
+					"visibility unknown) from the explicit census instead", scanEnvAllowedRepos, entry)
+				continue
+			}
 		}
 		// Fail-closed defaults, identical to deskkit: CI required unless stated,
 		// visibility UNKNOWN unless stated (unknown risk-classes every PR).

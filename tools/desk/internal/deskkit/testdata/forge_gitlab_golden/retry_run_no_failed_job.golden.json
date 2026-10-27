@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001/jobs",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "err": "could-not-check: pipeline 9001 on medici-finance/assay has no failed job to retry — nothing was written",
+  "not_found": false
+}

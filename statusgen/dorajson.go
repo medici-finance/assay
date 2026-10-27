@@ -234,6 +234,16 @@ func timingMetric(intervals []doraTimedInterval, limit int, blankNeed string) do
 // second definition of "done" or "revert" here would be a number that disagrees
 // with the board for no visible reason.
 //
+// The numerator is windowed like the denominator. It counts the findings whose
+// recorded date falls in [since, until), resolved or not, plus the window's
+// reversions. A finding dated before the window is not a failure of the window's
+// work even while it is still open, and a finding raised inside the window still
+// counts after it is fixed: resolving it does not un-fail the change that caused
+// it. Counting every currently-open finding instead set an all-time backlog over
+// a windowed denominator, a ratio with no upper bound that tracked the backlog
+// rather than the window. The sample key is `defect_notes_in_window` for that
+// reason; it was `open_defect_notes` while the count meant "open now".
+//
 // Findings are counted ONCE EACH, deliberately NOT via findingsPerGroup: that
 // helper walks a finding's Affects list and increments a counter per entry, which
 // is correct per-group (a finding really does affect each) but double-counts in an
@@ -253,29 +263,42 @@ func changeFailureRate(history []HistoryEntry, findings []Finding, since, until 
 	done := briefDoneCounts(history, since, until, oneGroup)[""]
 	reverts := briefReverts(history, since, until, oneGroup)[""]
 
-	unresolved := 0
+	defects := 0
 	for _, f := range findings {
-		if !f.Resolved {
-			unresolved++
+		if findingInWindow(f, since, until) {
+			defects++
 		}
 	}
 
 	needs := []string{
-		"linkage between a change and the incident it caused; this is an unlinked proxy over completed work items, recorded reversions and open defect records",
+		"linkage between a change and the incident it caused; this is an unlinked proxy over completed work items, recorded reversions and defect records dated in the stated window",
 	}
 	if done == 0 {
 		return buildDoraJSONMetric(false, 0, "ratio", append(needs,
 			"completed work in the stated window to form a denominator"), nil)
 	}
-	rate := float64(unresolved+reverts) / float64(done)
+	rate := float64(defects+reverts) / float64(done)
 	// Round to four places: the inputs are integer counts, so anything beyond this
 	// is float noise, and a byte-stable feed must not churn on it.
 	rate = float64(int64(rate*10000+0.5)) / 10000
 	return buildDoraJSONMetric(true, rate, "ratio", needs, map[string]float64{
-		"completed_items":   float64(done),
-		"reversions":        float64(reverts),
-		"open_defect_notes": float64(unresolved),
+		"completed_items":        float64(done),
+		"reversions":             float64(reverts),
+		"defect_notes_in_window": float64(defects),
 	})
+}
+
+// findingInWindow reports whether a finding's recorded date falls in
+// [since, until). A finding carries a day, not an instant, so it is placed at
+// 00:00 UTC of that day — the same convention the window's own YYYY-MM-DD bounds
+// use, which makes the since day inclusive and the until day exclusive. A finding
+// whose date cannot be parsed cannot be placed in any window and is not counted.
+func findingInWindow(f Finding, since, until time.Time) bool {
+	opened, ok := findingOpenDate(f)
+	if !ok {
+		return false
+	}
+	return !opened.Before(since) && opened.Before(until)
 }
 
 // --- feed assembly ----------------------------------------------------------
@@ -327,7 +350,7 @@ func doraJSONCaps(limit int) []doraJSONCap {
 		},
 		{
 			AppliesTo:        []string{"change_failure_rate"},
-			Probe:            "completed work items, recorded reversions and open defect records, from the in-repo registers",
+			Probe:            "completed work items, recorded reversions and defect records dated in the stated window, from the in-repo registers",
 			Limit:            nil,
 			BehaviourAtLimit: "no result cap; bounded only by the stated window",
 		},

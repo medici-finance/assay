@@ -20,6 +20,25 @@ func transitionFlags(fs *flag.FlagSet) func() {
 	return func() { transitionForge = old }
 }
 
+// transitionWitnessTree is the execution revision a fresh witness of the
+// current run names (#4299). A host transition run records the full HEAD; a
+// container bracket row of the same run records the receipt's 12-hex tree
+// token. The short token stands for the run's full sha only when it is at
+// least treeSHALen long, an exact prefix of runSHA, and git resolves it, on
+// its own, to exactly runSHA. Otherwise the token is returned unchanged and
+// the caller's full-object-id check refuses it.
+func transitionWitnessTree(dir, tree, runSHA string) string {
+	if isObjectID(tree) || !isObjectID(runSHA) || len(tree) < treeSHALen || !strings.HasPrefix(runSHA, tree) {
+		return tree
+	}
+	// tree is a hex prefix of runSHA here, so it can never read as an option.
+	out, err := historyGit(dir, "rev-parse", "--verify", "--quiet", tree+"^{commit}").Output()
+	if err != nil || strings.TrimSpace(string(out)) != runSHA {
+		return tree
+	}
+	return runSHA
+}
+
 func acceptanceTransition(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error)) (string, map[string]string, string) {
 	fail := func(s string) (string, map[string]string, string) { return "", nil, "acceptance transition: " + s }
 	markers := protectedMarkersNamed(normalizedProtectedEvidence(run), "Acceptance-Transition:")
@@ -166,7 +185,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 					latest = er.Text
 				}
 			}
-			tree := witnessTreeOf(latest)
+			tree := transitionWitnessTree(dir, witnessTreeOf(latest), p.SHA)
 			if !isObjectID(tree) {
 				return fail("fresh witnesses must name full immutable execution revisions")
 			}
@@ -183,8 +202,18 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if e != nil {
 		return fail("cannot resolve repository")
 	}
-	root := strings.TrimSpace(string(rootRaw))
-	canonicalPath, e := filepath.EvalSymlinks(path)
+	// Git returns an absolute worktree root, while callers may supply a
+	// relative brief path (notably --root .). Compare physical absolute paths
+	// on both sides so aliases cannot change the ruling's repository coordinate.
+	root, e := filepath.EvalSymlinks(strings.TrimSpace(string(rootRaw)))
+	if e != nil {
+		return fail("cannot resolve canonical repository path")
+	}
+	absolutePath, e := filepath.Abs(path)
+	if e != nil {
+		return fail("cannot resolve absolute brief path")
+	}
+	canonicalPath, e := filepath.EvalSymlinks(absolutePath)
 	if e != nil {
 		return fail("cannot resolve canonical brief path")
 	}

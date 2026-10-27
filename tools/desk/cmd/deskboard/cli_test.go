@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/clicontract"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -107,7 +108,7 @@ func TestCLIHelpOffline(t *testing.T) {
 		bin += ".exe"
 	}
 	cmd := exec.Command("go", "build", "-o", bin, ".")
-	if b, e := cmd.CombinedOutput(); e != nil {
+	if b, e := goquiet.Cmd(cmd).CombinedOutput(); e != nil {
 		t.Fatalf("build: %v %s", e, b)
 	}
 	home := t.TempDir()

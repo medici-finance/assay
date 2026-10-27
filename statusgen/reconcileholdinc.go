@@ -357,15 +357,20 @@ func (st *designGateState) settle(m *holdMove, kept bool, _ []string) {
 // driveLintCtx renders drive-snapshot sections the way driveSnapshotSection
 // does, from one board load and one read of the run's claims and heartbeat.
 type driveLintCtx struct {
-	root      string
-	loaded    bool
-	streams   []*Stream
-	loadErr   error
-	claimed   map[string]bool
-	claimsOK  bool
-	heartbeat string
-	hbOK      bool
-	calls     int
+	root    string
+	loaded  bool
+	streams []*Stream
+	loadErr error
+	// readClaims is the claim read this render may make: nil is the live read
+	// (resolveClaims), as --drive-snapshot and the reconcile hold use; run()'s
+	// --lint passes lintClaims, which reads nothing without --forge (#3323).
+	readClaims claimReader
+	claimed    map[string]bool
+	claimSrc   ClaimSource
+	claimsOK   bool
+	heartbeat  string
+	hbOK       bool
+	calls      int
 }
 
 func (c *driveLintCtx) section(slug string, now time.Time) (string, int) {
@@ -375,6 +380,28 @@ func (c *driveLintCtx) section(slug string, now time.Time) (string, int) {
 // Keep the renderer on the package-local call graph used by the Status-keyed
 // rule registry scanner, including when lint reuses an already hydrated board.
 func driveLintSection(c *driveLintCtx, slug string, now time.Time) (string, int) {
+	section, rc, _ := driveLintRender(c, slug, "", now)
+	return section, rc
+}
+
+// driveClaimAssumption is what a drive-region render assumed about claims it
+// did not read: claimed refs the region's In-flight list needs, and unclaimed
+// refs a claim would move to in-flight that the region does not list. Either
+// non-empty makes a matching region could-not-check, never a clean pass.
+type driveClaimAssumption struct {
+	claimed, unclaimed []string
+}
+
+func (a driveClaimAssumption) any() bool { return len(a.claimed)+len(a.unclaimed) > 0 }
+
+// driveLintRender is driveLintSection given the plan file's current region.
+// When the run read no claim set (ClaimSource not Known) and region is
+// non-empty, the render assumes the claims the region's In-flight list implies
+// — only those a claim would actually move to in-flight — and returns them with
+// the refs it assumed unclaimed, so the caller reports could-not-check instead
+// of drift, or of a clean pass, decided on claims nobody read. With a read
+// claim set, or no region, nothing is assumed.
+func driveLintRender(c *driveLintCtx, slug, region string, now time.Time) (string, int, driveClaimAssumption) {
 	c.calls++
 	if !c.loaded {
 		c.loaded = true
@@ -382,20 +409,31 @@ func driveLintSection(c *driveLintCtx, slug string, now time.Time) (string, int)
 	}
 	if c.loadErr != nil {
 		fmt.Fprintln(os.Stderr, "statusgen: --drive-snapshot could not read the board:", c.loadErr)
-		return "", 2
+		return "", 2, driveClaimAssumption{}
 	}
-	streams := cloneStreamRows(c.streams)
 	if !c.claimsOK {
-		c.claimed, _ = resolveClaims(c.root, streams)
+		read := c.readClaims
+		if read == nil {
+			read = resolveClaims
+		}
+		c.claimed, c.claimSrc = read(c.root, cloneStreamRows(c.streams))
 		c.claimsOK = true
 	}
 	claimed := make(map[string]bool, len(c.claimed))
 	for k, v := range c.claimed {
 		claimed[k] = v
 	}
+	streams := cloneStreamRows(c.streams)
 	ds := loadDrives(c.root, streams, now)
 	for _, w := range ds.Warnings {
 		fmt.Fprintln(os.Stderr, "NOTICE:", w)
+	}
+	var assumed driveClaimAssumption
+	if region != "" && !c.claimSrc.Known {
+		assumed = driveAssumedClaims(ds, c.streams, claimed, slug, region, now)
+		for _, ref := range assumed.claimed {
+			claimed[ref] = true
+		}
 	}
 	if !c.hbOK {
 		c.heartbeat = driveHeartbeatLine(c.root)
@@ -403,9 +441,100 @@ func driveLintSection(c *driveLintCtx, slug string, now time.Time) (string, int)
 	}
 	section, ok := driveSnapshotRender(ds, streams, claimed, slug, c.heartbeat, now)
 	if !ok {
-		return "", 2
+		return "", 2, driveClaimAssumption{}
 	}
-	return section, 0
+	return section, 0, assumed
+}
+
+// driveAssumedClaims returns, sorted, the claims a render of slug against
+// region must assume when the claim set was not read. A ref is claim-sensitive
+// when a claim alone moves it to in-flight: not in flight without one, in flight
+// with one. A claim-sensitive ref listed under the region's In-flight heading is
+// assumed claimed; any other claim-sensitive brief of the drive is assumed
+// unclaimed, because the region matches only while no open branch claims it. A
+// ref in flight on the board's own status, or one a claim does not move, is
+// never assumed either way. claimed is not changed.
+func driveAssumedClaims(ds DriveSet, streams []*Stream, claimed map[string]bool, slug, region string, now time.Time) driveClaimAssumption {
+	// inFlight returns slug's in-flight refs under claims, and every brief ref
+	// on its frontier.
+	inFlight := func(claims map[string]bool) (map[string]bool, []string) {
+		out := map[string]bool{}
+		var briefs []string
+		for _, st := range driveStatuses(ds, cloneStreamRows(streams), claims, now) {
+			if st.Drive.Slug != slug {
+				continue
+			}
+			for _, f := range st.Frontier {
+				if f.Kind == "brief" {
+					briefs = append(briefs, f.Ref)
+				}
+			}
+			for _, ref := range frontierRefs(st.Frontier, fsInFlight) {
+				out[ref] = true
+			}
+		}
+		return out, briefs
+	}
+	before, briefs := inFlight(claimed)
+	listed := driveRegionInFlight(region)
+	// A claim moves only its own brief (briefFrontierState reads claimed[id]
+	// for that id alone), so claiming every candidate at once answers each
+	// ref's question independently.
+	widened := make(map[string]bool, len(claimed)+len(briefs)+len(listed))
+	for k, v := range claimed {
+		widened[k] = v
+	}
+	for _, ref := range append(append([]string(nil), briefs...), listed...) {
+		widened[ref] = true
+	}
+	after, _ := inFlight(widened)
+	isListed := make(map[string]bool, len(listed))
+	for _, ref := range listed {
+		isListed[ref] = true
+	}
+	var a driveClaimAssumption
+	seen := map[string]bool{}
+	for _, ref := range append(append([]string(nil), listed...), briefs...) {
+		if seen[ref] || !after[ref] || before[ref] {
+			continue
+		}
+		seen[ref] = true
+		if isListed[ref] {
+			a.claimed = append(a.claimed, ref)
+		} else {
+			a.unclaimed = append(a.unclaimed, ref)
+		}
+	}
+	sort.Strings(a.claimed)
+	sort.Strings(a.unclaimed)
+	return a
+}
+
+// driveRegionInFlight returns the refs bulleted under the In-flight heading of
+// a rendered drive region (driveDashboardSection's form), or nil.
+func driveRegionInFlight(region string) []string {
+	lines := strings.Split(region, "\n")
+	for i, l := range lines {
+		if strings.TrimSpace(l) != driveInFlightHeading {
+			continue
+		}
+		var refs []string
+		j := i + 1
+		for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+			j++
+		}
+		for ; j < len(lines); j++ {
+			ref, ok := strings.CutPrefix(lines[j], "- ")
+			if !ok {
+				break
+			}
+			if ref = strings.TrimSpace(ref); ref != "" {
+				refs = append(refs, ref)
+			}
+		}
+		return refs
+	}
+	return nil
 }
 
 // cloneStreamRows copies each stream and its row slices, so nothing a render

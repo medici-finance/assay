@@ -344,6 +344,9 @@ change: `expected-observable:` (what will be seen when it worked), `acceptance-t
 that shows it, at the scope the instances failed at), and `outcome: pending` until that check
 has run on merged code. A rehearsal or a PR closed unmerged is not recovery, and an instance's
 `unknown` state stays `unknown` until a same-scope re-check.
+On `redesign` the act before the design brief is the refactor oracle
+(`docs/refactor-oracle-template.md`), assembled from this file; the DR amendment cites it, and
+the design brief carries its `oracle:` line.
 
 **Worked example.**
 

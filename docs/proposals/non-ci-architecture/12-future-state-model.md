@@ -248,3 +248,12 @@ define the immediate manual path. statusgen/20 owns reusable discovery/recheck;
 statusgen/21 owns author/worker and dispatch integration once that interface ships.
 The same receipt and append-only continue/adapt/hold disposition are reused; no
 parallel checker, target registry or unsupported frontmatter field is introduced.
+
+## Wire compatibility in architecture targets — 21 October 2026
+
+Contract-version records must distinguish core major, named extension versions and
+required capabilities. Transition records carry producer/consumer compatibility and
+retained historical-reader obligations. The [JSON contract census](29-extensible-json-contracts.md)
+assigns migration families; observation of an unknown optional facet is unavailable,
+not absence, and an unsupported required facet prevents conformance. A source or
+binary revision alone cannot certify a compatible deployed combination.

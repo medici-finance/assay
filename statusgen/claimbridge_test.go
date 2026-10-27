@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // regression: #3327
@@ -19,7 +21,7 @@ func TestClaimBridgeFlow(t *testing.T) {
 	cmd := exec.Command("go", "test", "-c", "-o", helper, "./cmd/deskgit")
 	cmd.Dir = "../tools/desk"
 	cmd.Env = append(os.Environ(), "GOPROXY=off", "GOSUMDB=off")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 		t.Fatalf("build bridge: %s %v", out, err)
 	}
 	root := t.TempDir()

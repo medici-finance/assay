@@ -4,7 +4,9 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 )
 
@@ -58,6 +60,133 @@ func TestGitHubReadFileKind(t *testing.T) {
 			}
 			if fc.Kind != c.want {
 				t.Fatalf("Kind = %q, want %q", fc.Kind, c.want)
+			}
+		})
+	}
+}
+
+// ghEntry is the GraphQL answer for the file's tree entry at the ref: its mode (decimal, as
+// GitHub serves it) and object id, reached through a commit (wrapped in a tag object when tag
+// is true). A nil mode answers with no entry and the forge's NOT_FOUND error.
+func ghEntry(mode any, oid string, tag bool) map[string]any {
+	if mode == nil {
+		return map[string]any{
+			"data":   map[string]any{"repository": map[string]any{"object": map[string]any{"__typename": "Commit", "file": nil}}},
+			"errors": []any{map[string]any{"type": "NOT_FOUND", "path": []any{"repository", "object", "file"}}},
+		}
+	}
+	commit := map[string]any{"__typename": "Commit", "file": map[string]any{"mode": mode, "oid": oid}}
+	obj := commit
+	if tag {
+		obj = map[string]any{"__typename": "Tag", "target": commit}
+	}
+	return map[string]any{"data": map[string]any{"repository": map[string]any{"object": obj}}}
+}
+
+// regression: #3149 — the blob-hash proof cannot tell a regular file from a symbolic link
+// whose target holds exactly the link's own text: the link's blob is its target path, the
+// target's bytes equal that text, so the served bytes hash to the served sha. Only the tree
+// entry's mode separates them. A regular file is reported only when the entry at the ref
+// has a regular-file mode and is the same blob the Contents API served.
+func TestGitHubReadFileTreeMode(t *testing.T) {
+	const file = "docs/streams/sdlc/brief-18.md"
+	const text = "brief-18.md" // a link to itself would hold this, and so would its "target"
+	served := map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID(text, false), "content": ghB64(text)}
+	oid := blobID(text, false)
+	cases := []struct {
+		name  string
+		ref   string
+		entry any
+		want  string
+	}{
+		{"regular mode", "main", ghEntry(0o100644, oid, false), FileKindRegular},
+		{"executable mode", "main", ghEntry(0o100755, oid, false), FileKindRegular},
+		{"regular mode through a tag", "v1.0.0", ghEntry(0o100644, oid, true), FileKindRegular},
+		{"default branch", "", ghEntry(0o100644, oid, false), FileKindRegular},
+		{"self-identical link", "main", ghEntry(0o120000, oid, false), FileKindSymlink},
+		{"submodule entry", "main", ghEntry(0o160000, oid, false), FileKindSubmodule},
+		{"entry is another blob", "main", ghEntry(0o100644, blobID("moved", false), false), FileKindUnproven},
+		{"no entry at the ref", "main", ghEntry(nil, "", false), FileKindUnproven},
+		{"unknown mode", "main", ghEntry(0o40000, oid, false), FileKindUnproven},
+		{"mode read refused", "main", "500", FileKindUnproven},
+		{"empty answer", "main", map[string]any{"data": map[string]any{"repository": nil}}, FileKindUnproven},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newGoldenServer(t)
+			s.contentsGet = served
+			if c.entry == "500" {
+				s.forceStatus["/graphql"] = http.StatusInternalServerError
+			} else {
+				s.fileEntry = c.entry.(map[string]any)
+			}
+			fc, err := s.forge().ReadFile(forgeTestRepo, ReadFileInput{File: file, Ref: c.ref})
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if fc.Kind != c.want {
+				t.Fatalf("Kind = %q, want %q", fc.Kind, c.want)
+			}
+			if string(fc.Content) != text {
+				t.Fatalf("Content = %q, want the served bytes", fc.Content)
+			}
+			// The entry is looked up at the same ref the Contents API read, and for the same path.
+			var q struct{ Variables map[string]any }
+			for _, r := range s.requests {
+				if r.Method == http.MethodPost && r.Path == "/graphql" {
+					_ = json.Unmarshal(r.Body, &q)
+				}
+			}
+			wantRev := c.ref
+			if wantRev == "" {
+				wantRev = "HEAD"
+			}
+			if q.Variables["rev"] != wantRev || q.Variables["file"] != file {
+				t.Fatalf("entry lookup variables = %v, want rev %q file %q", q.Variables, wantRev, file)
+			}
+		})
+	}
+}
+
+// regression: #3149 — no Contents-API answer alone yields a regular file: whatever the
+// response, the regular kind comes only from the tree-entry check. A read that skips that
+// check reports could-not-check, never "file".
+func TestGhContentsKindNeverRegular(t *testing.T) {
+	const file = "a/b.md"
+	for _, body := range []string{"", "x\n", "b.md"} {
+		w := ghContentsWire{Type: "file", Path: file, Encoding: "base64", SHA: blobID(body, false)}
+		if k := ghContentsKind(w, file, []byte(body)); k == FileKindRegular {
+			t.Fatalf("ghContentsKind(%q) = %q; a regular kind needs the tree entry's mode", body, k)
+		}
+	}
+}
+
+// regression: #3149 — WriteFile's pre-write read goes through the same kind proof, so a
+// branch entry that is a self-identical link is refused with no PUT, while the same bytes
+// held as a regular file still write.
+func TestGitHubWriteFileRefusesLink(t *testing.T) {
+	const file = "docs/streams/sdlc/rows.jsonl"
+	const text = "rows.jsonl"
+	put := map[string]any{"content": map[string]any{"sha": "new"}, "commit": map[string]any{"sha": "c1", "author": map[string]any{"name": "bot"}}}
+	in := WriteFileInput{File: file, Branch: "main", Content: []byte(text + "\nmore\n"), Message: "m"}
+	for _, c := range []struct {
+		name   string
+		mode   int
+		writes int
+	}{{"self-identical link", 0o120000, 0}, {"control: regular file", 0o100644, 1}} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newGoldenServer(t)
+			s.contentsGet, s.contentsPut = ghServedFile(file, text), put
+			s.fileEntry = ghEntry(c.mode, blobID(text, false), false)
+			_, err := s.forge().WriteFile(forgeTestRepo, in)
+			n := 0
+			for _, r := range s.requests {
+				if r.Method == http.MethodPut {
+					n++
+				}
+			}
+			if n != c.writes || (c.writes == 0) != (err != nil && IsUnverifiable(err)) {
+				t.Fatalf("WriteFile = %v with %d PUT(s); want %d", err, n, c.writes)
 			}
 		})
 	}

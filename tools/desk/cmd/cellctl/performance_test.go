@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -19,7 +20,7 @@ func TestPerfV3RealDeskLaunch(t *testing.T) {
 	}
 	child := filepath.Join(t.TempDir(), "deskclaim")
 	build := exec.Command("go", "build", "-o", child, "../deskclaim")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("child build: %v %s", err, out)
 	}
 	for _, harness := range []string{"claude", "codex"} {

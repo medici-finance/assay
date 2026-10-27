@@ -71,7 +71,8 @@ func TestSafeRename(t *testing.T) {
 	}
 	gitCommit(t, root, "move widget")
 
-	row := verifyRow{Num: 1, Class: "check", Command: "test -f tools/old/widget.go", Expect: "exists"}
+	// The Expect names its exit: a rename is proven only by a decided pass (#1953).
+	row := verifyRow{Num: 1, Class: "check", Command: "test -f tools/old/widget.go", Expect: "exit 0", ExpectCell: "exit 0"}
 	facts := gatherRowFacts(root, row, false, "")
 	got := Classify(facts)
 	if got.Verdict != SafeRename {
@@ -160,10 +161,11 @@ func TestRefusesDifferentRC(t *testing.T) {
 	gitCommit(t, root, "add present")
 
 	row := verifyRow{
-		Num:     3,
-		Class:   "check",
-		Command: "test -f pkg/present.txt && exit 3", // runs, exits 3 (differs from the pinned pass)
-		Expect:  "exit 0",
+		Num:        3,
+		Class:      "check",
+		Command:    "test -f pkg/present.txt && exit 3", // runs, exits 3 (differs from the pinned pass)
+		Expect:     "exit 0",
+		ExpectCell: "exit 0",
 	}
 	facts := gatherRowFacts(root, row, false, "")
 	if !facts.CommandProbed || !facts.CommandRan {

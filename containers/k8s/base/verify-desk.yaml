@@ -35,6 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: verify-desk
+          # Recorded by its release build: ../release-images.json (check.sh binds it).
           image: ghcr.io/medici-finance/assay/verify-desk:v1.0.52@sha256:906d3487ae40858ca527af023b1f7443c6fc52d3c3afa771f9c6ba3c2e15423c
           imagePullPolicy: IfNotPresent
           stdin: true

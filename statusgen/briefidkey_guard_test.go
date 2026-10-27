@@ -144,13 +144,49 @@ func briefIDKeyViolations(fset *token.FileSet, name string, src []byte) ([]strin
 			continue
 		}
 		idents := briefFileIdents(fn)
+		// aliases holds locals that carry the raw id: `from := bf.Brief`, and any
+		// local copied from one of those. The #4113 instance laundered the raw id
+		// through such a local before indexing a map with it, which a check on
+		// the selector alone never sees.
+		aliases := map[string]bool{}
 		isRawID := func(e ast.Expr) bool {
+			if id, ok := e.(*ast.Ident); ok {
+				return aliases[id.Name]
+			}
 			sel, ok := e.(*ast.SelectorExpr)
 			if !ok || sel.Sel.Name != "Brief" {
 				return false
 			}
 			id, ok := sel.X.(*ast.Ident)
 			return ok && idents[id.Name]
+		}
+		for grew := true; grew; {
+			grew = false
+			taint := func(lhs ast.Expr, rhs ast.Expr) {
+				l, ok := lhs.(*ast.Ident)
+				if !ok || l.Name == "_" || aliases[l.Name] || !isRawID(rhs) {
+					return
+				}
+				aliases[l.Name] = true
+				grew = true
+			}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.AssignStmt:
+					if len(x.Lhs) == len(x.Rhs) {
+						for i := range x.Lhs {
+							taint(x.Lhs[i], x.Rhs[i])
+						}
+					}
+				case *ast.ValueSpec:
+					if len(x.Names) == len(x.Values) {
+						for i := range x.Names {
+							taint(x.Names[i], x.Values[i])
+						}
+					}
+				}
+				return true
+			})
 		}
 		isEmptyLit := func(e ast.Expr) bool {
 			b, ok := e.(*ast.BasicLit)
@@ -222,14 +258,25 @@ func plantedParsed(path string) {
 		link(p.Brief, d)
 	}
 }
+func plantedAlias(bf *BriefFile, briefIDs map[string]bool) {
+	from := bf.Brief
+	if !briefIDs[from] {
+	}
+	var again = from
+	link(again, "x/01")
+	if from == "" {
+	}
+	_ = fmt.Sprintf("%s", from)
+}
 `)
 	got, err := briefIDKeyViolations(token.NewFileSet(), "planted.go", planted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 4 raw-key sites + the bare waiver comment + the key it failed to waive.
-	if len(got) != 6 {
-		t.Fatalf("positive control: the guard must flag exactly the 6 planted sites, got %d:\n%s", len(got), strings.Join(got, "\n"))
+	// 4 raw-key sites + the bare waiver comment + the key it failed to waive +
+	// the 2 aliased key uses (the pre-fix #4113 graph-edge shape and a copy of it).
+	if len(got) != 8 {
+		t.Fatalf("positive control: the guard must flag exactly the 8 planted sites, got %d:\n%s", len(got), strings.Join(got, "\n"))
 	}
 
 	files, err := filepath.Glob("*.go")

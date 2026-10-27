@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // TestDoraRunEmits pins that the restored --dora entrypoint runs to a clean exit
@@ -41,7 +43,7 @@ func TestBackCompatFlagsParse(t *testing.T) {
 		t.Skip("go toolchain unavailable")
 	}
 	bin := filepath.Join(t.TempDir(), "statusgen")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 

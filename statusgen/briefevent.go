@@ -1078,6 +1078,12 @@ func bfeMustTime(s string) time.Time {
 // directory (created exclusively, mode 0600, so a pre-planted file or symlink
 // is never followed), synced before the rename and removed on any failure.
 func writeAtomic(path string, b []byte) error {
+	return writeAtomicPerm(path, b, 0o600)
+}
+
+// writeAtomicPerm is writeAtomic with the file's permission bits set to perm
+// on the temporary file before the rename, so the replaced file keeps them.
+func writeAtomicPerm(path string, b []byte, perm os.FileMode) error {
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
@@ -1090,6 +1096,9 @@ func writeAtomic(path string, b []byte) error {
 			_ = os.Remove(tmp)
 		}
 	}()
+	if err := f.Chmod(perm); err != nil {
+		return err
+	}
 	if _, err := f.Write(b); err != nil {
 		return err
 	}

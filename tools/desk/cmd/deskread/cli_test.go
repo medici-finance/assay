@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/clicontract"
 )
@@ -43,7 +44,7 @@ func toolBinary(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			out += ".exe"
 		}
-		if b, err := exec.Command("go", "build", "-o", out, ".").CombinedOutput(); err != nil {
+		if b, err := goquiet.Cmd(exec.Command("go", "build", "-o", out, ".")).CombinedOutput(); err != nil {
 			binErr = fmt.Errorf("go build: %v\n%s", err, b)
 			return
 		}

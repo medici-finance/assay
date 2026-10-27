@@ -26,6 +26,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -492,4 +494,139 @@ func ApplyForgeObservation(o RepairObligation, obs RepairForgeObservation) (Repa
 		}
 	}
 	return o, o.State != before
+}
+
+// --- filing identity (example-stream/49) -----------------------------------------------------------
+//
+// A verifier filing is one observation of a CASE: a failed verification of one brief in one
+// repository, identified by the repair obligation's own immutable ID (repo, brief, source
+// receipt, failing rows). Title similarity cannot see that two differently worded filings are the
+// same case, and must not be asked to. FilingKey is the one exact identity put in front of the
+// fuzzy matcher: (repository, canonical brief, raising role, case). The tool that files writes
+// the key into the issue body as a marker; the lookup finds OPEN issues carrying it in the same
+// repository, raised by the same role. Nothing else is suppressed: another repository, another
+// source receipt, another set of failing rows or another role hashes to a different key.
+
+// FilingKeyVersion prefixes every key; a future identity shape gets a new version, never a
+// reinterpretation of an old key.
+const FilingKeyVersion = "fk1"
+
+// FilingKeyMarkerPrefix opens the marker line a filed issue body carries.
+const FilingKeyMarkerPrefix = "filing-key"
+
+var (
+	filingKeyRe       = regexp.MustCompile(`^` + FilingKeyVersion + `/[0-9a-f]{16}$`)
+	filingCaseRe      = regexp.MustCompile(`^(repair|receipt)/[0-9a-f]{16}$`)
+	filingKeyMarkerRe = regexp.MustCompile(`<!--\s*` + FilingKeyMarkerPrefix + `:\s*(` + FilingKeyVersion + `/[0-9a-f]{16})\s*-->`)
+	// filingKeyClaimRe is a superset of filingKeyMarkerRe: any spelling of the marker prefix with
+	// a colon, in any case or spacing. A caller body carrying one is a forged identity record.
+	filingKeyClaimRe = regexp.MustCompile(`(?i)filing[\s_-]*key\s*:\s*fk\d+\s*/`)
+)
+
+// FilingKey derives the canonical filing key. The brief resolves through CanonicalBriefID — the
+// one registry spelling both brief-id forms already reduce to — and the role through the roster
+// vocabulary RaisedByLabel validates; an unknown role or malformed brief, repository or case id
+// is refused rather than hashed into a key that can never match anything.
+func FilingKey(repo, brief, role, caseID string) (string, error) {
+	repo = strings.TrimSpace(repo)
+	if !ValidRepoSlug(repo) {
+		return "", Refused("refused: filing key repository " + fmt.Sprintf("%q", repo) + " is not an owner/name slug")
+	}
+	canon := CanonicalBriefID(strings.TrimSpace(brief))
+	if canon == "" {
+		return "", Refused("refused: filing key brief " + fmt.Sprintf("%q", brief) + " is not a <stream>/<NN> or qualified colon brief id")
+	}
+	label, err := RaisedByLabel(role)
+	if err != nil {
+		return "", err
+	}
+	caseID = strings.TrimSpace(caseID)
+	if !filingCaseRe.MatchString(caseID) {
+		return "", Refused("refused: filing key case " + fmt.Sprintf("%q", caseID) + " is not a repair/<16 hex> or receipt/<16 hex> id")
+	}
+	h := sha256.Sum256([]byte(strings.Join([]string{
+		strings.ToLower(repo), canon, strings.TrimPrefix(label, RaisedByPrefix), caseID,
+	}, "\x00")))
+	return FilingKeyVersion + "/" + hex.EncodeToString(h[:])[:16], nil
+}
+
+// FilingKey is the key of the filing this obligation owes, raised by role.
+func (o RepairObligation) FilingKey(role string) (string, error) {
+	return FilingKey(o.Repo, o.Brief, role, o.ID)
+}
+
+// FilingKeyMarkerText is the exact phrase the lookup searches for.
+func FilingKeyMarkerText(key string) string { return FilingKeyMarkerPrefix + ": " + key }
+
+// FilingKeyMarker is the marker line the filing tool appends to an issue body.
+func FilingKeyMarker(key string) string { return "<!-- " + FilingKeyMarkerText(key) + " -->" }
+
+// HasFilingKeyClaim reports whether a caller-supplied body already carries a filing-key marker in
+// any spelling. Only the filing tool writes the marker, so such a body is refused.
+func HasFilingKeyClaim(body string) bool { return filingKeyClaimRe.MatchString(body) }
+
+func validateFilingKeySearch(in SearchIssuesInput) error {
+	if !filingKeyRe.MatchString(in.FilingKey) {
+		return Refused("filing-key lookup needs a well-formed key")
+	}
+	if strings.TrimSpace(in.Query) != "" || in.DecisionGateMarkers || in.DecisionGateBrief != "" {
+		return Refused("filing-key lookup does not combine with free text or decision-marker discovery")
+	}
+	return nil
+}
+
+// MatchFiledIssues confirms a filing-key search's hits locally: the search is an index, so each
+// candidate must be OPEN, carry the exact marker for key in its body, and be AUTHORED by an
+// identity the trust gate admits. The author check is what keeps the lookup from being a
+// suppression lever: every input to the key is public and the marker is visible in any filing,
+// so anyone able to open (or edit) an issue could otherwise plant a body that makes a legitimate
+// filing look already done. An issue by an untrusted or unreadable author is NOT the case's
+// filing; it is returned in untrusted so the caller can report it, and is never obeyed. The
+// numeric id is required for a human login (trustedContentAuthor); a bot login is trusted by its
+// pinned slug alone.
+//
+// The role is already part of the key's hash, so a hit by another role cannot carry this key; the
+// label check is the second, independent guard: an issue stamped `raised-by:<other role>` is never
+// this role's filing. An UNSTAMPED issue by a trusted author still matches, because the provenance
+// stamp is applied after the create and is allowed to fail without failing the filing — a lookup
+// that required it would miss exactly the issue a half-finished filing left behind and file the
+// case twice. Both results are ordered lowest number first; more than one entry in matched means
+// the case was filed more than once and the caller reconciles to the first.
+func MatchFiledIssues(hits []IssueSearchResult, key, role string) (matched, untrusted []IssueSearchResult) {
+	want, err := RaisedByLabel(role)
+	if err != nil || !filingKeyRe.MatchString(key) {
+		return nil, nil
+	}
+	for _, h := range hits {
+		if !strings.EqualFold(strings.TrimSpace(h.State), "open") || stampedByOtherRole(h.Labels, want) {
+			continue
+		}
+		for _, m := range filingKeyMarkerRe.FindAllStringSubmatch(h.Body, -1) {
+			if m[1] != key {
+				continue
+			}
+			if trustedContentAuthor(h.Author, h.AuthorID) {
+				matched = append(matched, h)
+			} else {
+				untrusted = append(untrusted, h)
+			}
+			break
+		}
+	}
+	byNumber := func(s []IssueSearchResult) {
+		sort.SliceStable(s, func(i, j int) bool { return s[i].Number < s[j].Number })
+	}
+	byNumber(matched)
+	byNumber(untrusted)
+	return matched, untrusted
+}
+
+// stampedByOtherRole reports whether labels carry a raised-by stamp other than want.
+func stampedByOtherRole(labels []string, want string) bool {
+	for _, l := range labels {
+		if strings.HasPrefix(l, RaisedByPrefix) && l != want {
+			return true
+		}
+	}
+	return false
 }

@@ -62,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.52@sha256:64f131ec208def087b50565a4ddd407b95bd89ac418a86597ad1bac1d29047d3
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.60@sha256:33f9aab2bd116023b77c6c602fb03a42e5bc604e64bb5cca0ce2c9fd868dec1a
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -74,7 +74,8 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # (made over the uncompressed tar, by the git maintainer's release key), BEFORE
 # copying anything from it. Then set both ARGs from the release's entry and add
 # the same pair to knownGitTarballs in
-# tools/desk/internal/deskkit/gitfloor_test.go.
+# tools/desk/internal/deskkit/gitfloor_test.go, and set the same two ARGs in
+# images/verify-runner/Dockerfile (a test requires the two pairs to match).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
 ARG GIT_VERSION=2.56.0
 ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
@@ -126,9 +127,9 @@ ARG TARGETARCH=amd64
 #   NODE_VERSION — Node LTS; the runtime the interactive agent CLI installs onto.
 #                 Checksums: https://nodejs.org/dist/v<version>/SHASUMS256.txt
 #                 (signed by the Node release keys: SHASUMS256.txt.asc)
-ARG GO_VERSION=1.27.2
-ARG GO_SHA256_AMD64=ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5
-ARG GO_SHA256_ARM64=94f3e30b8e374bc285e7dadc11e0865726b9bc6e85b841ccceaabc0214c6b7c8
+ARG GO_VERSION=1.27.3
+ARG GO_SHA256_AMD64=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
+ARG GO_SHA256_ARM64=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
 ARG GH_VERSION=2.63.2
 ARG GH_SHA256_AMD64=912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00
 ARG GH_SHA256_ARM64=0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb
@@ -234,9 +235,16 @@ COPY plugins/assay/ /opt/assay/plugin/
 
 # Non-root user. Home is routed onto the persistent volume (see ENV below) so
 # the parts of $HOME that must survive a container restart live on /work.
+# UID/GID 999 are PINNED, not left to system-ID allocation: the Kubernetes
+# manifests (containers/k8s/base/*.yaml) run as 999:999 with fsGroup 999, so the
+# number is a contract with them. groupadd/useradd fail if 999 is already taken,
+# and the id check fails the build if the account resolves to anything else.
+# tools/desk/internal/deskkit/deskuid_test.go holds this line and the manifests
+# to the same value on every PR.
 RUN set -eux; \
-    groupadd --system desk; \
-    useradd --system --gid desk --create-home --home-dir /home/desk --shell /bin/bash desk
+    groupadd --system --gid 999 desk; \
+    useradd --system --uid 999 --gid desk --create-home --home-dir /home/desk --shell /bin/bash desk; \
+    test "$(id -u desk):$(id -g desk)" = "999:999"
 
 # First-run installer for the interactive agent CLI. The CLI is proprietary and
 # is NOT redistributed inside this public image; this script installs it into

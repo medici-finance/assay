@@ -309,7 +309,12 @@ not own.
 The desks are a pipeline, and a pipeline is only as fast as its narrowest stage. This coordinator
 owns the arbitration between stages; it does NOT own their agents.
 
-- **Read the signal every tick: `deskboard throughput`.** Per stage — dispatch / review / verify /
+- **Read the signal every tick: `deskboard throughput`.** Reuse a successful compatible
+  review watcher observation with `--review-observation FILE`, following the
+  [shared handoff](../../references/desk-common.md#review-observation-handoff).
+  This avoids another review collection; stale/incompatible inputs blind that stage.
+  Use the supported legacy reader when the installed version lacks the flag.
+  Do not invent another review ranker or collect merely to populate this option. Per stage — dispatch / review / verify /
   intake — it reports queue DEPTH against pool SLOTS, names the stage with the worst ratio, and
   prints the exact widening command. Slots are CAPACITY, not live occupancy.
 - **Act on TWO CONSECUTIVE ticks, never one.** A single deep tick is a burst; two is a bottleneck.
@@ -434,7 +439,11 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+relay onto the tracker, nor does a durable escalation ride the lane alone. A filing that an open
+PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
+`deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
+count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME

@@ -65,6 +65,18 @@ func (a *attestationAPI) serveEvidenceGraphQL(w http.ResponseWriter, r *http.Req
 		}
 		return true
 	}
+	if strings.Contains(in.Query, "query FileEntryMode") {
+		// ReadFile's tree-entry lookup (#3149): every file this fixture holds is a regular
+		// file whose entry is the blob the Contents API serves for it.
+		a.calls[len(a.calls)-1].Operation = "entry-read"
+		var file any
+		if content, ok := a.files[in.Variables.File]; ok {
+			file = map[string]any{"mode": 0100644, "oid": blobID(content)}
+		}
+		enc(map[string]any{"data": map[string]any{"repository": map[string]any{
+			"object": map[string]any{"__typename": "Commit", "file": file}}}})
+		return true
+	}
 
 	return false
 }
@@ -363,7 +375,8 @@ func TestEvidenceSnapshotSecondInProcessWriteRefuses(t *testing.T) {
 				t.Fatalf("second in-process write was not refused by the publication guard: %v", err)
 			}
 			for _, c := range lf.api.calls[before:] {
-				if c.Method != http.MethodGet {
+				// A GET, or the read's GraphQL tree-entry lookup (#3149), is a read; anything else reached the forge.
+				if c.Method != http.MethodGet && c.Operation != "entry-read" {
 					t.Fatalf("second in-process write reached the forge: %+v", lf.api.calls[before:])
 				}
 			}

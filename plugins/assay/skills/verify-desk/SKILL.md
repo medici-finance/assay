@@ -163,6 +163,106 @@ and stamp but no Evidence already landed. The record admits
 Evidence only for its own brief: that brief, its stream-index row, or an outcome record
 keyed to it. Landing Evidence for any other brief refuses, even with a valid record.
 
+A runner inside a `--network none` container cannot reach the forge, so it never runs
+the check itself. The host brackets the container run instead, within one dispatch and
+with no edit to the home between the steps:
+
+1. Host open: `statusgen verifyrun --open-bracket --root <home> --brief <path> --out
+   <receipt>`, with `<receipt>` outside the home. It runs the check, digests the home's
+   tree and writes the receipt. A refused check writes nothing.
+2. Container run: `statusgen verifyrun --sandbox=container-netns --brief <path>
+   --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness
+   <file>`, with the receipt mounted read-only and `<file>` a new file outside the home.
+   It refuses before any row unless the mounted root digests to the receipt's tree, and
+   refuses after the rows if they changed it, writing no attestation or `Tree-Digest`.
+   Without a receipt it refuses outright.
+3. Host close: `statusgen verifyrun --close-bracket --root <home> --brief <path>
+   --admission-receipt <receipt> --witness <file>`. It re-runs the check and appends one
+   `Admission-Bracket:` line only when the check re-admits the run the witness names and
+   the home still digests to both the receipt's tree and the witness's `Tree-Digest`, read
+   only from the span ending where the line goes (a span with a second `Tree-Digest`,
+   `Container-Image` or attestation line is refused). Its
+   `witness=` value is the digest `statusgen verifyrun --bracket-digest --witness <file>`
+   prints for that bracket (`verdict=match` once closed), which the landing's on-behalf-of
+   stamp does not change.
+
+Land the closed witness file's bytes, bracket line included, as the Evidence block. A
+container row without its `Admission-Bracket` line is unattested and is not a Linux
+witness. On the landed file, `statusgen verifyrun --bracket-digest --witness <brief>` must
+report `verdict=match` and `span-lines=tree-digest:1,container-image:1,attestation:1` on that
+bracket's own `bracket=` line, and the bracket's `opened` must precede `closed`.
+
+`verdict=match` shows only that the bracket is consistent with its span, not who wrote it:
+the digest is keyless and computed from the file's own bytes. A row is credited only when
+all of these conditions hold:
+
+1. The bracket line and every span line were landed by the verifier's landing step
+   (`deskevidence`). Per line, `git blame --line-porcelain` gives an `author-mail` that is the
+   roster verifier's noreply address with its pinned numeric id, never judged by the display
+   name. A roster human does not qualify.
+2. The span's attestation matches the verifier's attestation record for that run. The whole
+   `Verification-Attestation:` line (run, source, brief, model and tier) equals the line
+   rendered from the record its `<repo>#<issue>` names. That record passes every rule
+   `ReadVerifierAttestation` applies: titled exactly `[verification-attestation] <run>`,
+   authored by the roster's dispatcher identity (distinct from the verifier), closed, never
+   edited, and carrying the dispatcher's model stamp for that model and tier. A record by any
+   other author, the verifier included, is not credit.
+3. That attestation names the brief that contains it and the source under verification.
+
+A bracket and span written outside the landing step, a bracketed block copied from another
+brief or an earlier source, or an attestation that does not match its record is not credit,
+even when the digest matches. Check all three with `statusgen verifyrun --bracket-digest
+--witness <brief> --credit --source <40 hex>` on the landed brief: each bracket's line ends
+`credit=credited`, `credit=not-credited` or `credit=could-not-check`, with the reason on
+standard error. Credit a row only on `credit=credited`, never on `verdict=match` alone. The
+record must be in the brief's own repository and authored by the dispatcher; a login-only
+verifier match, a shallow clone, a missing roster or an unreadable record is
+`credit=could-not-check`, which is not credit. Condition 1 reads
+the commit author git records, which is author-asserted attribution, not authorization: whoever can commit
+to the brief can write the verifier's author address. The forge-attributed record in
+condition 2 is the anchor. Only server-side rules on who may push to the brief's branch
+prevent the forgery, and a verifier roster entry with no numeric id leaves condition 1
+could-not-check. A version 2 (cross-repository) receipt runs the same bracket with `--root`
+naming the deliverable home and `--brief` naming the tracking repository's brief outside it;
+every step refuses unless both repositories are named and differ and the brief holds the
+bytes the receipt admits. `--credit` credits such a span only when both repositories pass the
+repository checks: the tracking repository, where the record lives, is the brief's own, and the
+source repository (`source-repo=`) is in the configured repository set; otherwise it answers
+`credit=not-credited`. A linked
+worktree's git directory is not mounted in the container, so rows that need git history
+run on the host.
+
+When a Verify table mixes container-witnessable rows with host-only rows, assemble its
+Evidence with `statusgen verifyrun --rows <id>[,<id>...]`, which runs and records only the
+named rows under the standard witness header and prints every other row as `row <id>: not
+selected`. Run the container bracket above with `--rows` naming the container-witnessable
+rows, then a host `statusgen verifyrun --rows` naming the host-only rows. The two selections
+are **disjoint** and together cover the whole table. Either landing order works; land both
+tables in the same run before its verdict line. Before that verdict, `statusgen verifyrun
+--check <brief>` must accept the whole table: every owed row is satisfied and supplemental
+rows remain explicitly uncredited. `--bracket-digest` must report `verdict=match` for the
+container bracket. Never hand-paste or fence a witness table. `--rows`
+narrows a run, never an audit: `--check` covers the whole table, the last witness for a row
+wins, and the credit rule above is unchanged. A bad selector (an unknown, empty, repeated or
+shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
+before any row runs.
+
+With `--acceptance-record`, execute the protected host rows in **one** host invocation on a
+clean committed source, before inserting uncommitted Evidence. Include every supplemental
+row so the producer records `author-added; no acceptance credit`. Select these host rows
+with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+Then bracket the disjoint container-witnessable rows on that same source and land the
+closed witness through the sanctioned Evidence path. The selections together cover the
+whole protected table, and the assembled run carries exactly one `Verification-Table:`
+descriptor. A second protected host invocation duplicates that descriptor or moves its
+source and cannot close. Container execution may precede the host invocation if its
+witness remains outside the home and the home stays clean; inserting it first makes the
+protected host execution refuse. Never rewrite witness cells or receipt fields to make
+sources agree. The container executes the current table, so a row whose current definition
+differs from its owed original definition still needs the existing protected acceptance
+route; mixed assembly does not exempt that obligation. The whole-table audit and bracket
+credit checks above remain mandatory.
+
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator
 desk, which runs `deskdispatch --attest-verifier --root <home>`. This creates no replacement
@@ -366,7 +466,12 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   `deskpr`, replies via `deskreply` — never a raw forge call.
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
-  unrun with its reason — never silently skipped, never assumed-pass.
+  unrun with its reason — never silently skipped, never assumed-pass. Every submitted execution
+  row has separate `Date` and `Runner` cells, including BLOCKED/unrun rows and supplemental
+  host observations. For unrun rows they identify observation of the blocker, not execution.
+  A dated heading or commit author is insufficient. Recover missing attribution from retained
+  run records or rerun; never infer it. Preflight every submission with `deskevidence … --dry-run`
+  before publishing its Evidence PR; repair any refusal without advancing the brief.
 - **The emitted verifier kit owns command preflight, row coverage and verdict spelling.**
   Its sections 2 and 5 carry the execution procedure; dispatch it verbatim. This desk checks
   the returned accounting and routes the outcome as described below.
@@ -374,6 +479,8 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
   command, exit code, an output hash, the date and the runner identity; that witness table is what
   turns an Evidence row from prose into something a reviewer can re-run and compare.
+  In a `--network none` container, run it only inside the admission bracket (§Pre-work
+  admission); the closed witness file, `Admission-Bracket` line included, is what lands.
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Fail-first: a risk-bearing row must red on the base.** When the table has a risk-bearing row
@@ -563,10 +670,12 @@ sets and the PR shape.
 
 Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
-IS the report. **In addition** write one outcome record with `deskevidence --outcome-record` (since
-#882: one NEW file per outcome under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
+IS the report. **In addition** write one outcome record and land it with `deskevidence --outcome-record` (since
+#882: one NEW file per outcome, landed under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
-computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
+computable from prose). Write the record to the dispatcher-named outcome path from your prompt —
+never invent one, and never write it inside the home, where it is an untracked file that refuses
+admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcome-record`. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
 refresh only the brief in the verifier home from the target branch
@@ -634,6 +743,13 @@ where admission is checked. The admitted forms are:
 - Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
 - Outcome record: `--outcome-record <absolute file outside the home>`.
 Release the home only after the last landing for its run.
+
+**Leave Runner cells unannotated; `deskevidence` owns the on-behalf-of principal.** Never type an
+`on-behalf-of` annotation into a Runner cell; pre-check with `deskevidence … --dry-run` instead.
+The tool stamps the roster's principal into every App-run row the landing adds. It restamps a
+planted or non-principal annotation, and refuses (nothing written) a row naming a different roster
+human. The dry-run runs every refusing gate on the stamped content and prints each stamped row. Do not
+pre-check by linting the home, where App rows read as unstamped PROBLEMs that the landing itself fixes.
 
 **A sanctioned channel is not a way around a blocked write.** `deskevidence` is where the real guards
 live and fire — `VERIFIER_MAIN_OK`, the repo allowlist, the BodyCheck secret/impersonation scan, the
@@ -1099,7 +1215,11 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+relay onto the tracker, nor does a durable escalation ride the lane alone. A filing that an open
+PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
+`deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
+count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME

@@ -3,6 +3,7 @@ package perfrec
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 )
 
@@ -59,21 +60,45 @@ func filterUsed(f V3Filter) bool {
 }
 func workEqual(a, b WorkRef) bool { a.Primary = false; b.Primary = false; return a == b }
 
-// ReduceV3 deduplicates the complete input BEFORE filters, so a conflicting duplicate cannot
-// disappear by choosing a dimension. The source identity is install + fresh invocation ID.
-func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter) (V3Summary, error) {
-	s := V3Summary{Kinds: map[ObservationKind]int{}, RequestCoverage: map[Coverage]int64{}, HandlerUpstreamCoverage: map[Coverage]int64{}, CacheSources: map[string]int64{}, Coalescing: map[string]int64{}, ContextCoverage: map[ContextField]map[Coverage]int64{}}
-	if dimension == "" {
-		dimension = "tool"
+// Used reports whether the filter narrows anything: a filter in use needs workflow
+// permission and keeps only workflow-profile records.
+func (f V3Filter) Used() bool { return filterUsed(f) }
+
+// V3Selection counts the perf-v3 records SelectV3 left out before any filter: Duplicates are
+// exact replays of a kept identity (counted once), Conflicts are identities seen with
+// different contents (every copy excluded), Invalid are records with no usable identity.
+type V3Selection struct {
+	Duplicates int
+	Conflicts  int
+	Invalid    int
+}
+
+// addNonnegative accumulates nonnegative observations without wrapping their units.
+// A caller must discard its aggregate if this returns false.
+func addNonnegative(dst *int64, n int64) bool {
+	if n < 0 || *dst < 0 || *dst > math.MaxInt64-n {
+		return false
 	}
-	if dimension != "tool" && !workflowDimension(dimension) {
-		return s, errors.New("perfrec: unknown grouping dimension")
-	}
-	if (workflowDimension(dimension) || filterUsed(f)) && permission != ProfileWorkflow {
-		return s, errors.New("perfrec: workflow permission required")
+	*dst += n
+	return true
+}
+
+var errAggregateOverflow = errors.New("perfrec: aggregate exceeds integer range")
+
+// SelectV3 is the ONE definition of which perf-v3 records a v3 figure may count — the set
+// ReduceV3 aggregates. It deduplicates the complete input BEFORE filters, so a conflicting
+// duplicate cannot disappear by choosing a filter; the source identity is install + fresh
+// invocation ID. It then applies the workflow filter. Records of any other schema are
+// ignored. The kept records come back in identity order. A reader that buckets perf-v3
+// records (by day, by tool) selects over the WHOLE input first and buckets the result, so a
+// conflict whose copies would land in different buckets is still seen.
+func SelectV3(records []Record, permission Profile, f V3Filter) ([]Record, V3Selection, error) {
+	var sel V3Selection
+	if filterUsed(f) && permission != ProfileWorkflow {
+		return nil, sel, errors.New("perfrec: workflow permission required")
 	}
 	if f.Work != nil && !validWork([]WorkRef{*f.Work}) {
-		return s, errors.New("perfrec: invalid work filter")
+		return nil, sel, errors.New("perfrec: invalid work filter")
 	}
 	unique := map[string]Record{}
 	enc := map[string]string{}
@@ -84,15 +109,15 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 		}
 		b, e := json.Marshal(r)
 		if e != nil || !InstallIDPattern.MatchString(r.Install) {
-			s.Invalid++
+			sel.Invalid++
 			continue
 		}
 		key := r.Install + ":" + r.V3.Attribution.InvocationID
 		if old, ok := enc[key]; ok {
 			if old == string(b) {
-				s.Duplicates++
+				sel.Duplicates++
 			} else if !conflict[key] {
-				s.Conflicts++
+				sel.Conflicts++
 				conflict[key] = true
 			}
 			continue
@@ -100,12 +125,12 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 		unique[key] = r
 		enc[key] = string(b)
 	}
-	groups := map[string]*V3Group{}
 	var keys []string
 	for key := range unique {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	var kept []Record
 	for _, key := range keys {
 		if conflict[key] {
 			continue
@@ -130,6 +155,47 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 				continue
 			}
 		}
+		kept = append(kept, r)
+	}
+	return kept, sel, nil
+}
+
+// ReduceV3 aggregates the records SelectV3 keeps (deduplicated before filters, conflicting
+// identities excluded, the workflow filter applied) under one grouping dimension.
+func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter) (V3Summary, error) {
+	dimension, err := reductionDimension(permission, dimension)
+	if err != nil {
+		return V3Summary{}, err
+	}
+	kept, sel, err := SelectV3(records, permission, f)
+	if err != nil {
+		return V3Summary{}, err
+	}
+	return reduceSelectedObservations(kept, sel, dimension)
+}
+
+func reductionDimension(permission Profile, dimension string) (string, error) {
+	if dimension == "" {
+		dimension = "tool"
+	}
+	if dimension != "tool" && !workflowDimension(dimension) {
+		return "", errors.New("perfrec: unknown grouping dimension")
+	}
+	if workflowDimension(dimension) && permission != ProfileWorkflow {
+		return "", errors.New("perfrec: workflow permission required")
+	}
+	return dimension, nil
+}
+
+// reduceSelectedObservations is the one aggregation pass for already validated,
+// identity-selected observations. V4 does not re-encode/re-select them as V3.
+func reduceSelectedObservations(kept []Record, sel V3Selection, dimension string) (V3Summary, error) {
+	s := V3Summary{Kinds: map[ObservationKind]int{}, RequestCoverage: map[Coverage]int64{}, HandlerUpstreamCoverage: map[Coverage]int64{}, CacheSources: map[string]int64{}, Coalescing: map[string]int64{}, ContextCoverage: map[ContextField]map[Coverage]int64{}}
+	s.Duplicates, s.Conflicts, s.Invalid = sel.Duplicates, sel.Conflicts, sel.Invalid
+	groups := map[string]*V3Group{}
+	for _, r := range kept {
+		v := r.V3
+		d := v.Attribution
 		gkey := r.Tool
 		switch dimension {
 		case "session":
@@ -160,41 +226,66 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 		s.Records++
 		s.Kinds[v.Kind]++
 		if v.Kind == ObservationProcess {
-			g.SumOwnProcessWallMs += r.WallMs
+			if !addNonnegative(&g.SumOwnProcessWallMs, r.WallMs) {
+				return V3Summary{}, errAggregateOverflow
+			}
 			if r.CPU == CPUMeasured && r.CPUMs != nil {
 				g.CPURecords++
-				g.SumOwnCPUMs += *r.CPUMs
+				if !addNonnegative(&g.SumOwnCPUMs, *r.CPUMs) {
+					return V3Summary{}, errAggregateOverflow
+				}
 			}
 		}
 		for field, cov := range d.Coverage {
 			if s.ContextCoverage[field] == nil {
 				s.ContextCoverage[field] = map[Coverage]int64{}
 			}
-			s.ContextCoverage[field][cov]++
+			n := s.ContextCoverage[field][cov]
+			if !addNonnegative(&n, 1) {
+				return V3Summary{}, errAggregateOverflow
+			}
+			s.ContextCoverage[field][cov] = n
 		}
-		s.RequestDrops += v.RequestDrops
-		s.RequestCoverage[v.RequestCoverage]++
+		if !addNonnegative(&s.RequestDrops, v.RequestDrops) {
+			return V3Summary{}, errAggregateOverflow
+		}
+		n := s.RequestCoverage[v.RequestCoverage]
+		if !addNonnegative(&n, 1) {
+			return V3Summary{}, errAggregateOverflow
+		}
+		s.RequestCoverage[v.RequestCoverage] = n
 		for _, x := range v.Requests {
 			merged := false
 			for i := range s.Requests {
 				a := &s.Requests[i]
 				if a.Kind == v.Kind && sameRequest(a.RequestStats, RequestObservation{Class: x.Class, Origin: x.Origin, Protocol: x.Protocol, Resource: x.Resource, Outcome: x.Outcome, Points: x.Points}) {
-					a.Attempts += x.Attempts
-					a.PointSamples += x.PointSamples
-					a.DurationSumMs += x.DurationSumMs
+					if !addNonnegative(&a.Attempts, x.Attempts) ||
+						!addNonnegative(&a.PointSamples, x.PointSamples) ||
+						!addNonnegative(&a.DurationSumMs, x.DurationSumMs) {
+						return V3Summary{}, errAggregateOverflow
+					}
 					if x.DurationMaxMs > a.DurationMaxMs {
 						a.DurationMaxMs = x.DurationMaxMs
 					}
 					for j, n := range x.DurationBins {
-						a.DurationBins[j] += n
+						if !addNonnegative(&a.DurationBins[j], n) {
+							return V3Summary{}, errAggregateOverflow
+						}
 					}
 					for c, n := range x.DurationCoverage {
-						a.DurationCoverage[c] += n
+						total := a.DurationCoverage[c]
+						if !addNonnegative(&total, n) {
+							return V3Summary{}, errAggregateOverflow
+						}
+						a.DurationCoverage[c] = total
 					}
-					a.Bytes += x.Bytes
-					a.BytesSamples += x.BytesSamples
+					if !addNonnegative(&a.Bytes, x.Bytes) || !addNonnegative(&a.BytesSamples, x.BytesSamples) {
+						return V3Summary{}, errAggregateOverflow
+					}
 					if x.Points.Value != nil {
-						*a.Points.Value += *x.Points.Value
+						if !addNonnegative(a.Points.Value, *x.Points.Value) {
+							return V3Summary{}, errAggregateOverflow
+						}
 					}
 					merged = true
 					break
@@ -208,16 +299,33 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 		if q := v.Query; q != nil {
 			switch v.Kind {
 			case ObservationClient:
-				s.LogicalQueries += q.LogicalCalls
-				s.ServiceTransports += q.TransportAttempts
-			case ObservationHandler:
-				s.Handlers++
-				s.HandlerUpstreamCoverage[q.ProviderCoverage]++
-				if q.ProviderCoverage == CoverageMeasured {
-					s.HandlerCoveredAttempts += *q.ProviderAttempts
+				if !addNonnegative(&s.LogicalQueries, q.LogicalCalls) || !addNonnegative(&s.ServiceTransports, q.TransportAttempts) {
+					return V3Summary{}, errAggregateOverflow
 				}
-				s.CacheSources[q.Source]++
-				s.Coalescing[q.Coalescing]++
+			case ObservationHandler:
+				if !addNonnegative(&s.Handlers, 1) {
+					return V3Summary{}, errAggregateOverflow
+				}
+				n := s.HandlerUpstreamCoverage[q.ProviderCoverage]
+				if !addNonnegative(&n, 1) {
+					return V3Summary{}, errAggregateOverflow
+				}
+				s.HandlerUpstreamCoverage[q.ProviderCoverage] = n
+				if q.ProviderCoverage == CoverageMeasured {
+					if !addNonnegative(&s.HandlerCoveredAttempts, *q.ProviderAttempts) {
+						return V3Summary{}, errAggregateOverflow
+					}
+				}
+				n = s.CacheSources[q.Source]
+				if !addNonnegative(&n, 1) {
+					return V3Summary{}, errAggregateOverflow
+				}
+				s.CacheSources[q.Source] = n
+				n = s.Coalescing[q.Coalescing]
+				if !addNonnegative(&n, 1) {
+					return V3Summary{}, errAggregateOverflow
+				}
+				s.Coalescing[q.Coalescing] = n
 			}
 		}
 	}

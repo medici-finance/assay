@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/regression"
@@ -54,7 +55,10 @@ func TestVerifyPerformanceOperationsAndParity(t *testing.T) {
 	root := planFixtureRoot(t, map[string]string{"01": planBrief("model", "no", "no", "no", "no")})
 	old := preflightRoot
 	preflightRoot = func(string) error { return nil }
-	t.Cleanup(func() { preflightRoot = old })
+	// The stubbed envelope admits no prerequisite record (flow_50_test.go gates on one).
+	oldWorld := planWorldGate
+	planWorldGate = func() *worldGate { return nil }
+	t.Cleanup(func() { preflightRoot, planWorldGate = old, oldWorld })
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -285,7 +289,7 @@ func TestVerifyPerformanceMainEntrypoint(t *testing.T) {
 		bin += ".exe"
 	}
 	build := exec.Command("go", "build", "-o", bin, ".")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	for _, tc := range []struct {

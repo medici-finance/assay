@@ -254,8 +254,8 @@ func parseVerdictArgs(verb, verdictValues string, argv []string, extra ...func(*
 // WHY THE TOOL EMITS IT (#197). `deskpost review --head` exists so a verdict
 // cannot be misattributed to a commit it did not assess. The sanctioned fallback,
 // `gh pr review`, has NO head-pinning flag: it attaches to whatever the head is AT POST
-// TIME. Observed on #195 — exit 4, re-posted via the install token, and a
-// CHANGES_REQUESTED written against `151ebe99` landed on `2bbf529c`, a commit that had
+// TIME. Observed once — exit 4, re-posted via the install token, and a
+// CHANGES_REQUESTED written against an earlier commit landed on a later one that had
 // already fixed two of its three findings. Both exit 0; nothing in the output signals it.
 // A stale CHANGES_REQUESTED blocks a flip on closed findings; a stale APPROVED certifies
 // a commit nobody reviewed.
@@ -399,8 +399,8 @@ func cmdComment(argv []string) int {
 	//
 	// When it IS given, it is enforced exactly as `review --head` is (#513,
 	// second defect). Without it the tool stamps whichever head is live at POST time into
-	// the audit ledger and the idempotency key — on #505 the reviewer examined
-	// f9c9ca94 and the recorded head was d7b2d1d3, because a merge landed mid-review. That
+	// the audit ledger and the idempotency key — on one review the reviewer examined
+	// one commit and the recorded head was a later one, because a merge landed mid-review. That
 	// one was a clean keep-current merge so the body's conclusions still held, but the tool
 	// guaranteed nothing: it would have stamped the new head identically had the push been
 	// real work, and a head-pinned claim recorded against a commit nobody read is the same

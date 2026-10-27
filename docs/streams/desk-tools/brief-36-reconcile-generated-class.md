@@ -210,6 +210,108 @@ the diff pin (sha256 and 112,747 bytes, runsheet lines 29-30), and the patch bas
 
 **VERIFY: FAIL** — row 3: the failure still holds at 50bef70d5 with the v1.0.50 tools. The 2026-10-19T01:13Z tick refreshed reconcile draft PR #3200. The direct-CI conversion is unapplied, and its carried diff still does not apply to main, so it must be re-serialized before the driver can apply it (tracked on #2688). Rows 1 and 4 PASS; row 2 is not applicable under mechanism B.
 
+**Re-verify pass, 2026-10-21.** Run by a dispatched non-implementer verifier (verify-desk) at merged
+main 8e7bce689. Each row was run by hand in the admitted detached home; the statusgen binary and
+lint output were written outside it.
+
+Verification-Attestation: medici-finance/assay#3892 run=120ad84da5241560abd836f50bfc963e0d7eee95b29decff994d63af02fd7efe source=8e7bce68999af4f6bf6c3151cc2103c3e55dd224 brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | prints ok | exit 0, prints `ok`. The R-8 section cites 2688; its Sign-off line (line 36) is still empty. | 2026-10-21 | assay-verifier-app[bot] @ 8e7bce68999af4f6bf6c3151cc2103c3e55dd224 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints ok under mechanism A; under B, not applicable with the reason | could-not-check: not applicable under mechanism B. The delivery chose B, so no lane config entry exists and no lane config path was cited; the placeholder has no value to substitute. Neighbour check: `deskautolane --help` exits 0 (build sourceSHA 0f6d392a). | 2026-10-21 | assay-verifier-app[bot] @ 8e7bce68999af4f6bf6c3151cc2103c3e55dd224 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `gh pr list -R medici-finance/assay --head board/reconcile --state all --limit 6 --json number,title,state,isDraft,author,mergedBy,labels` | reconcile PR absent under B, or merged via deskautolane under A, with no reviewer verdict and no authorization-needed label | FAIL as observed. Scheduled assay-statusgen runs succeeded at 2026-10-20T22:16Z, 2026-10-21T00:38Z, 05:59Z, 11:42Z and 17:07Z, and the reconcile still lands as a pull request. PR #3200 (`chore(board): reconcile`, author app/assay-board-writer) took dispatched reviewer verdicts (assay-reviewer-app CHANGES_REQUESTED twice on 2026-10-20, APPROVED 2026-10-21T09:38Z), carried the approval-needed label, and was merged at 2026-10-21T09:44Z by a human account, not via deskautolane. The 17:07Z tick then opened a new draft, PR #3873 (`chore(board): reconcile`, head 92ee58da9, `chore(board): reconcile 2026-10-21`), with no reviews yet. The live workflow still has the step "Push board/reconcile and open or refresh its draft PR" (line 823). The runsheet diff still does not apply: `git apply --check` exits 1 (fails on the live workflow at line 679 and the staged twin at line 478), and the reverse check exits 1, so it is not already applied. Its sha256 and size still match the pin. The ruling issue #2688 is open, last updated 2026-10-18; no re-serialized diff and no driver act. | 2026-10-21 | assay-verifier-app[bot] @ 8e7bce68999af4f6bf6c3151cc2103c3e55dd224 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | prints ok | exit 0, prints `ok`. Lint tail is `LINT: PASS`, 0 lines starting PROBLEM (NOTICE lines only; this brief's three notices are the row-2 placeholder, no consumers row, and an absent outcome). | 2026-10-21 | assay-verifier-app[bot] @ 8e7bce68999af4f6bf6c3151cc2103c3e55dd224 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+**Risk-bearing value.** The enumeration covers the same delivery diff (PR #2706) as the earlier passes:
+the changelog fragment, the rulings register, the issue-flow README, the staged-workflows README, the
+runsheet with its diff file, and the stream index row. It introduces three literals, ranked: the R-8
+Sign-off line (empty, rulings register line 36), the diff pin (sha256 and 112,747 bytes, runsheet
+lines 29-30), and the patch base ca0dad5c4 (runsheet line 34). No commit since 50bef70d5 has changed
+the rulings register, the runsheet or its diff file.
+
+- RISK-VALUE: DERIVED — R-8 Sign-off = (empty) @ docs/streams/issue-flow/rulings.md:36. Mechanism B keeps the class out of the lane, so nothing may be enacted, and the line is still empty at 8e7bce689.
+- RISK-VALUE: DERIVED — reconcile-lane-hunk.diff sha256 = f4e3e0df93e1d7d47088021c61cf2e232cd4b9ca91564e919cb8687f9a866cd8, size = 112,747 @ docs/runsheets/reconcile-lane-hunk.md:29-30. Recomputed at 8e7bce689 with `shasum -a 256` and `wc -c`: same digest, 112747 bytes.
+- RISK-VALUE: NAMED, NOT DERIVED — runsheet base = ca0dad5c4162a7203167340c49d4c241e14060bb @ docs/runsheets/reconcile-lane-hunk.md:34. The base is accurate for the bytes, but the runsheet's clean-apply claim still fails at the tip. A re-serialization against a current base is still owed (help wanted on #2688), and a verifier cannot author it.
+
+**VERIFY: FAIL** — row 3: at 8e7bce689 the reconcile class still lands as a pull request. PR #3200 consumed dispatched reviewer verdicts and a human merge, and the 2026-10-21T17:07Z tick opened PR #3873. The direct-CI conversion is unapplied and its carried diff still does not apply to main (tracked on #2688). Rows 1 and 4 PASS; row 2 is not applicable under mechanism B.
+
+**Re-verify pass, 2026-10-21 (second).** Run by a dispatched non-implementer verifier (verify-desk) at
+merged main af92fe827. Each row was run by hand in the admitted detached home; the statusgen binary and
+lint output were written outside it. 46 commits landed since 8e7bce689; none changed the rulings
+register, the runsheet, its diff file, or the live or staged statusgen workflow.
+
+Verification-Attestation: medici-finance/assay#3984 run=0b37e3c671cffad39fc6b3c556044866f8f44bb20b7f45fcc497248b918a2912 source=af92fe827146129bc50af0df2ddb1cbc82fe0bfe brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | prints ok | exit 0, prints `ok`. The R-8 section cites 2688; its Sign-off line (line 36) is still empty. | 2026-10-21 | assay-verifier-app[bot] @ af92fe827146 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints ok under mechanism A; under B, not applicable with the reason | could-not-check: not applicable under mechanism B. The delivery chose B, so no lane config entry exists and no lane config path was cited; the placeholder has no value to substitute. Neighbour check: `deskautolane --help` exits 0 (v1.0.54 tools, sourceSHA 0f6d392a). | 2026-10-21 | assay-verifier-app[bot] @ af92fe827146 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `gh pr list -R medici-finance/assay --head board/reconcile --state all --limit 6 --json number,title,state,isDraft,author,mergedBy,labels` | reconcile PR absent under B, or merged via deskautolane under A, with no reviewer verdict and no authorization-needed label | FAIL as observed. Scheduled assay-statusgen runs succeeded at 2026-10-21T17:07Z and 20:36Z (and earlier), and the reconcile still lands as a pull request. PR #3873 (`chore(board): reconcile`, author app/assay-board-writer) is an OPEN draft, no reviews and no labels yet; its head 3cc4d0f35 (`chore(board): reconcile 2026-10-21`, committed 21:09Z) was refreshed by the 20:36Z tick. PR #3200 remains merged by a human account with the approval-needed label, not via deskautolane. The live workflow still has the step "Push board/reconcile and open or refresh its draft PR" (line 823). The runsheet diff still does not apply: `git apply --check` exits 1 (live workflow at line 679, staged twin at line 478), and the reverse check exits 1, so it is not already applied. Its sha256 and size still match the pin. Ruling issue #2688 is open; its newest comment is the prior verifier relay, with no re-serialized diff and no driver act. | 2026-10-21 | assay-verifier-app[bot] @ af92fe827146 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | prints ok | exit 0, prints `ok` (binary output directory pointed at verifier scratch outside the home). Lint exits 0, tail `LINT: PASS`, 0 lines starting PROBLEM (NOTICE lines only). | 2026-10-21 | assay-verifier-app[bot] @ af92fe827146 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+**Risk-bearing value.** The enumeration covers the same delivery diff (PR #2706) as the earlier passes:
+the changelog fragment, the rulings register, the issue-flow README, the staged-workflows README, the
+runsheet with its diff file, and the stream index row. It introduces three literals, ranked: the R-8
+Sign-off line (empty, rulings register line 36), the diff pin (sha256 and 112,747 bytes, runsheet
+lines 29-30), and the patch base ca0dad5c4 (runsheet line 34).
+
+- RISK-VALUE: DERIVED — R-8 Sign-off = (empty) @ docs/streams/issue-flow/rulings.md:36. Mechanism B keeps the class out of the lane, so nothing may be enacted, and the line is still empty at af92fe827.
+- RISK-VALUE: DERIVED — reconcile-lane-hunk.diff sha256 = f4e3e0df93e1d7d47088021c61cf2e232cd4b9ca91564e919cb8687f9a866cd8, size = 112,747 @ docs/runsheets/reconcile-lane-hunk.md:29-30. Recomputed at af92fe827 with `shasum -a 256` and `wc -c`: same digest, 112747 bytes.
+- RISK-VALUE: NAMED, NOT DERIVED — runsheet base = ca0dad5c4162a7203167340c49d4c241e14060bb @ docs/runsheets/reconcile-lane-hunk.md:34. The base is accurate for the bytes, but the runsheet's clean-apply claim still fails at the tip. A re-serialization against a current base is still owed (help wanted on #2688), and a verifier cannot author it.
+
+**VERIFY: FAIL** — row 3: at af92fe827 the reconcile class still lands as a pull request; the 20:36Z tick refreshed draft PR #3873. The direct-CI conversion is unapplied and its carried diff still does not apply to main (tracked on #2688). Rows 1 and 4 PASS; row 2 is not applicable under mechanism B.
+
+**Re-verify pass, 2026-10-22.** Run by a dispatched non-implementer verifier (verify-desk) at merged
+main 05dc9fbc8, which equals forge main. The table below is the execution witness, written by
+`statusgen verifyrun` from the admitted detached home on a clean tree; the prose after it records
+the hand checks.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | could-not-run exit=- — unsubstituted placeholder(s) <the lane-config path cited in the PR body> — the row cannot run as written | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `READ FROM THE FORGE after the first scheduled reconcile tick following this brief's merge: the reconcile PR either does not exist (B: direct-CI landing on main) or exists merged by the reviewer App via deskautolane (A) with no dispatched reviewer verdict and no authorization-needed label.` | fail exit=2 | sha256:80dd39947a6e | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4050 run=bda3d59be9a5abf0c460a5ee00595eb1c06f9741df5f712029f0d86e63019254 source=05dc9fbc88f2b1b23cd78bebc8634c564327eca4 brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5 tier=strong
+
+**Hand checks at 05dc9fbc8.** 137 commits landed since af92fe827; none changed the rulings
+register, the runsheet, its diff file, or the live or staged statusgen workflow. No row is classed
+check:ci, so no container run was needed.
+
+- Row 1: pass. The command exits 0 and prints `ok`. The register cites 2688 twice in the R-8
+  section, and its Sign-off line (line 36) is still empty.
+- Row 2: could-not-check: not applicable under mechanism B. The delivery chose B, so no lane
+  config entry exists and no lane config path was cited; the placeholder has no value to
+  substitute, and the witness records the row as could-not-run for that reason. Neighbour check:
+  `deskautolane --help` exits 0 (build sourceSHA 0f6d392a).
+- Row 3: FAIL as observed. Scheduled assay-statusgen runs succeeded at 2026-10-21T17:07Z, 20:36Z
+  and 23:59Z, and the reconcile still lands as a pull request. PR #3873 (`chore(board): reconcile`,
+  authored by the board-writer App) is an OPEN draft whose head b1140868c
+  (`chore(board): reconcile 2026-10-22`, committed 2026-10-22T00:01Z) was pushed by the 23:59Z
+  tick. It now carries the authorization-needed label and the dispatched-tier and dispatched-model
+  labels, so it has entered the review lane; it has no reviews yet. PR #3200 remains merged by a
+  human account, not via deskautolane. The live workflow still has the step "Push board/reconcile
+  and open or refresh its draft PR" (line 823). The runsheet diff still does not apply:
+  `git apply --check` exits 1 (live workflow at line 679, staged twin at line 478), and the
+  reverse check exits 1, so it is not already applied. Ruling issue #2688 is open; its newest
+  comment is the prior verifier relay, with no re-serialized diff and no driver act.
+- Row 4: pass. The command exits 0 and prints `ok`; the binary was built to verifier scratch
+  outside the home. A separate lint run with the same binary exits 0, tail `LINT: PASS`, 0 lines
+  starting PROBLEM (NOTICE lines only; this brief's three notices are the row-2 placeholder, no
+  consumers row, and an absent outcome).
+
+**Risk-bearing value.** The enumeration covers the same delivery diff (PR #2706) as the earlier
+passes: the changelog fragment, the rulings register, the issue-flow README, the staged-workflows
+README, the runsheet with its diff file, and the stream index row. It introduces three literals,
+ranked: the R-8 Sign-off line (empty, rulings register line 36), the diff pin (sha256 and 112,747
+bytes, runsheet lines 29-30), and the patch base ca0dad5c4 (runsheet line 34).
+
+- RISK-VALUE: DERIVED — R-8 Sign-off = (empty) @ docs/streams/issue-flow/rulings.md:36. Mechanism B keeps the class out of the lane, so nothing may be enacted, and the line is still empty at 05dc9fbc8.
+- RISK-VALUE: DERIVED — reconcile-lane-hunk.diff sha256 = f4e3e0df93e1d7d47088021c61cf2e232cd4b9ca91564e919cb8687f9a866cd8, size = 112,747 @ docs/runsheets/reconcile-lane-hunk.md:29-30. Recomputed at 05dc9fbc8 with `shasum -a 256` and `wc -c`: same digest, 112747 bytes.
+- RISK-VALUE: NAMED, NOT DERIVED — runsheet base = ca0dad5c4162a7203167340c49d4c241e14060bb @ docs/runsheets/reconcile-lane-hunk.md:34. The base is accurate for the bytes, but the runsheet's clean-apply claim still fails at the tip. A re-serialization against a current base is still owed (help wanted on #2688), and a verifier cannot author it. Question filed: #4129.
+
+**VERIFY: FAIL** — row 3: at 05dc9fbc8 the reconcile class still lands as a pull request; the 23:59Z tick refreshed draft PR #3873, which now carries the authorization-needed label. The direct-CI conversion is unapplied and its carried diff still does not apply to main (tracked on open issue #2688). Rows 1 and 4 PASS; row 2 is could-not-check (not applicable under mechanism B).
 
 ## Review
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the lane

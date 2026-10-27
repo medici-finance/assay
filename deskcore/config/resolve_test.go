@@ -40,8 +40,8 @@ func TestBudgetsAndRatesDefaultOff(t *testing.T) {
 			t.Errorf("%s: %s; want 0 (off) from the default layer", k.Name, v)
 		}
 	}
-	if n != 5 {
-		t.Fatalf("found %d budget/rate knobs, want 5", n)
+	if n != 6 {
+		t.Fatalf("found %d budget/rate knobs, want 6", n)
 	}
 	if v := get(t, r, "write.breaker.trip", ""); v.Off() {
 		t.Errorf("a fault guard reported Off: %s", v)
@@ -83,6 +83,22 @@ func TestBudgetCountedPerRole(t *testing.T) {
 		if (k.Class == ClassBudget || k.Class == ClassRate) && !k.PerRole {
 			t.Errorf("%s knob %s is not counted per role", k.Class, k.Name)
 		}
+	}
+}
+
+// TestBoundPerPRKnobPerRole: the bound-filing cap is a per-role budget, off by default, and a
+// value set for one role leaves every other role at its own value.
+// regression: #4072
+func TestBoundPerPRKnobPerRole(t *testing.T) {
+	r := resolve(t, map[string]string{"ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR__WORKER": "2"}, KnobFile{})
+	if v := get(t, r, "issue.file.bound_per_pr", "worker"); v.Value != 2 || v.Off() || v.Layer != LayerEnv {
+		t.Errorf("worker: %s; want 2 from env", v)
+	}
+	if v := get(t, r, "issue.file.bound_per_pr", "reviewer"); v.Value != 0 || !v.Off() {
+		t.Errorf("reviewer: %s; want 0 (off)", v)
+	}
+	if _, err := r.Get("issue.file.bound_per_pr", ""); err == nil {
+		t.Error("the bound-filing cap was read without a role")
 	}
 }
 
@@ -242,8 +258,8 @@ func TestTableIsWellFormed(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"issue.file.rate", "issue.file.window", "write.rate.per_pr_hour", "write.rate.per_repo_hour",
-		"evidence.unnumbered_cap", "autolane.daily_cap", "write.breaker.trip", "write.breaker.cooldown",
+		"issue.file.rate", "issue.file.window", "issue.file.bound_per_pr", "write.rate.per_pr_hour",
+		"write.rate.per_repo_hour", "write.bound.repo_hour", "evidence.unnumbered_cap", "autolane.daily_cap", "write.breaker.trip", "write.breaker.cooldown",
 		"review.round_cap", "pool.width", "token.github.refresh_margin", "key.github.max_age",
 		"token.gitlab.pat_days", "token.gitlab.expiry_warn", "token.gitlab.in_use_window", "lease.ttl",
 		"lease.renew_every", "records.retention", "forge.page_size", "timeout.forge", "timeout.callout",
@@ -272,11 +288,11 @@ func TestTableIsWellFormed(t *testing.T) {
 
 func TestValuesForDisplay(t *testing.T) {
 	r := resolve(t, nil, KnobFile{})
-	if n := len(r.Values("")); n != 18 {
-		t.Errorf("Values(\"\") = %d knobs, want the 18 that are not per role", n)
+	if n := len(r.Values("")); n != 19 {
+		t.Errorf("Values(\"\") = %d knobs, want the 19 that are not per role", n)
 	}
-	if n := len(r.Values("worker")); n != 25 {
-		t.Errorf("Values(worker) = %d knobs, want 25", n)
+	if n := len(r.Values("worker")); n != 27 {
+		t.Errorf("Values(worker) = %d knobs, want 27", n)
 	}
 }
 

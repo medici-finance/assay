@@ -322,7 +322,7 @@ func armedStateDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, slug := range deskkit.ScanRepos() {
-		if err := os.WriteFile(filepath.Join(dir, stateFileName(slug)), []byte("x\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, stateFileName(slug)), []byte("\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

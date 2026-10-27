@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -112,7 +113,7 @@ func TestMain(m *testing.M) {
 // Otherwise the real statusgen child build searches an empty fixture module
 // cache instead of the caller's prepared dependencies (#3327, #3343).
 func pinFixtureGoCaches() error {
-	out, err := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH").Output()
+	out, err := goquiet.Cmd(exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH")).Output()
 	if err != nil {
 		return fmt.Errorf("resolve Go fixture paths: %w", err)
 	}

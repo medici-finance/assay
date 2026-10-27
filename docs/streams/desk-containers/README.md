@@ -35,7 +35,7 @@ component list, build/run topology, and open questions.
 | 03 | [per-desk images (named by desk) + build matrix + publish wiring](brief-03-desk-images-build-matrix.md) | 2 | M | done | 2026-09-16 verify-desk (desk-containers/03 dispatched verifier; row 5 now PASS given assay#1025, rows 1-4/7 could-not-check offline-docker-lane, risk-value NAMED-NOT-DERIVED filed assay#1218) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1220 @ c391ed99ccedc80dc426893c265dd8100c8f398f) |
 | 04 | [interactive desktop launch script (desk-run.sh)](brief-04-launch-script.md) | 3 | M | todo | — | — |
 | 05 | [docker-compose definition for the five desks](brief-05-docker-compose.md) | 3 | S | todo | — | — |
-| 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | implemented | — | — |
+| 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | 07 | [Optional Linux operator terminal layout over the shared desk attach path](brief-07-desk-control-layer.md) | 11 | M | todo | — | — |
 | 08 | [A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish](brief-08-tick-contract-for-desk-skills.md) | 3 | M | implemented | — | — |
 | 09 | [cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check`](brief-09-scrubbed-host-cell.md) | 0 | M | implemented | — | — |
@@ -59,6 +59,7 @@ component list, build/run topology, and open questions.
 | 27 | [PostgreSQL on Kubernetes with CloudNativePG — a Kustomize component with one Cluster, a database and role per cell, out-of-band Secrets, object-store backups, and the explicit local-to-CNPG migration procedure](brief-27-cnpg-kubernetes-postgres.md) | 4 | L | todo | — | — |
 | 28 | [Package in-cluster cellctl and bind the interactive desk profile](brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md) | 10 | M | todo | — | — |
 | 29 | [Qualify the Kubernetes desk cell and operator recovery end to end](brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md) | 11 | M | todo | — | — |
+| 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -236,6 +237,25 @@ listener is added for external callers: comms stays desk-to-desk plus the contai
 Tempting-but-wrong first step: building `restart` straight on `down`/`up`. Without 16's
 aimed stop and 18's wait for in-flight work, a restart is today's hand-close with extra
 steps, and it leaves the same unfinished checkpoints behind.
+
+### Role instructions beyond Claude windows — `30` (added 2026-10-24)
+
+A standalone brief in the host launcher, outside every chain above. `CELL_ROLE_CONTEXT`
+(issue #2438) gives each Claude Code role window its own instruction file. It refuses a Codex
+role, and it never reaches the agents a window dispatches. `desk-containers/30` closes both
+gaps: an argv-only Codex binding for `instructions`, and a `dispatch_instructions` key that
+deskdispatch quotes verbatim, digest-checked, into every prompt of the named kit. It depends
+on nothing here; a project that moves role rules out of its shared instruction file needs it
+first.
+
+- **Wave 0** — `desk-containers/30` (no dependencies; exec-tier strong). The Codex half
+  probes the installed Codex at pickup; the dispatch half needs no probe.
+
+The head was checked: on `main` the role-context binding exists for Claude Code only, and
+deskdispatch reads no role-context value, so nothing else has to land first.
+Harness facts for the Codex half come from the `harness-portability` stream's capability
+survey; that stream's resident-rules fragment is not reused, because it writes into a
+session-writable worktree file.
 
 ## Shared conventions
 

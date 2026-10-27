@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha1"
@@ -258,39 +259,9 @@ func (g *GitHubForge) doJSON(method, path string, in, out any) error {
 // reads an issue's absence from the open-issue listing as evidence about that issue, so a
 // listing this seam hands back must be the whole listing or an error.
 func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Header, error) {
-	rc, err := g.restClient()
+	resp, capture, err := g.requestJSON(method, path, in)
 	if err != nil {
 		return nil, err
-	}
-	var bodyReader io.Reader
-	pointsSelected := false
-	if path == "/graphql" && g.Observer.Sink != nil && g.baseURL() == GitHubAPIBase {
-		in, pointsSelected = ghPointInput(in)
-	}
-	if in != nil {
-		b, merr := json.Marshal(in)
-		if merr != nil {
-			return nil, Unverifiable("cannot marshal request body", merr)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-	ctx := context.Background()
-	var capture *pointCapture
-	if pointsSelected {
-		// go-gh sanitizes JSON through another response-body wrapper. Keep the
-		// observation handle on this operation rather than asserting the body's
-		// concrete type after library response processing.
-		capture = &pointCapture{}
-		ctx = context.WithValue(ctx, pointCaptureKey{}, capture)
-	}
-	resp, rerr := rc.RequestWithContext(ctx, method, g.baseURL()+path, bodyReader)
-	if rerr != nil {
-		var he *ghapi.HTTPError
-		if errors.As(rerr, &he) {
-			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
-				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
-		}
-		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
 	defer resp.Body.Close()
 	raw, readErr := io.ReadAll(resp.Body)
@@ -309,6 +280,46 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		}
 	}
 	return resp.Header, nil
+}
+
+// requestJSON owns the existing admitted request path for both ordinary JSON
+// reads and streaming, fixed-shape observations. The caller closes the body.
+func (g *GitHubForge) requestJSON(method, path string, in any) (*http.Response, *pointCapture, error) {
+	rc, err := g.restClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	var bodyReader io.Reader
+	pointsSelected := false
+	if path == "/graphql" && g.Observer.Sink != nil && g.baseURL() == GitHubAPIBase {
+		in, pointsSelected = ghPointInput(in)
+	}
+	if in != nil {
+		b, merr := json.Marshal(in)
+		if merr != nil {
+			return nil, nil, Unverifiable("cannot marshal request body", merr)
+		}
+		bodyReader = bytes.NewReader(b)
+	}
+	ctx := context.Background()
+	var capture *pointCapture
+	if pointsSelected {
+		// go-gh sanitizes JSON through another response-body wrapper. Keep the
+		// observation handle on this operation rather than asserting the body's
+		// concrete type after library response processing.
+		capture = &pointCapture{}
+		ctx = context.WithValue(ctx, pointCaptureKey{}, capture)
+	}
+	resp, rerr := rc.RequestWithContext(ctx, method, g.baseURL()+path, bodyReader)
+	if rerr != nil {
+		var he *ghapi.HTTPError
+		if errors.As(rerr, &he) {
+			return nil, nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
+		}
+		return nil, nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
+	}
+	return resp, capture, nil
 }
 
 // hasNextLink reports whether a REST response's `Link` header advertises another page
@@ -345,6 +356,7 @@ type ghPullWire struct {
 		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"head"`
 	Base struct {
+		SHA  string          `json:"sha"`
 		Ref  string          `json:"ref"`
 		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"base"`
@@ -573,6 +585,7 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		Labels:       labels,
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
+		BaseSHA:      w.Base.SHA,
 		BaseRef:      w.Base.Ref,
 		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
 		// Only a merged pull has a merge commit; an open pull's merge_commit_sha is a
@@ -682,6 +695,9 @@ func (g *GitHubForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullR
 // prefixed with `repo:{o}/{r} is:issue`, so the caller supplies free text and the backend owns
 // the scope qualifiers — the closed-surface property (no caller-supplied search syntax).
 func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	if in.FilingKey != "" {
+		return g.searchFilingKey(repo, in)
+	}
 	if in.DecisionGateMarkers {
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
@@ -1177,6 +1193,11 @@ const (
 // ghIssueEventsRespWire decodes ONE page of IssueEventsQuery. A null `issue` (wrong number,
 // or no access) is distinguished from an issue with no comments — the pointer is nil in the
 // first case, which the caller maps to could-not-check rather than "no events".
+type ghIssueCommentNode struct {
+	CreatedAt string    `json:"createdAt"`
+	Author    *gqlActor `json:"author"`
+}
+
 type ghIssueEventsRespWire struct {
 	Data struct {
 		Repository struct {
@@ -1186,10 +1207,7 @@ type ghIssueEventsRespWire struct {
 						HasNextPage bool   `json:"hasNextPage"`
 						EndCursor   string `json:"endCursor"`
 					} `json:"pageInfo"`
-					Nodes []struct {
-						CreatedAt string    `json:"createdAt"`
-						Author    *gqlActor `json:"author"`
-					} `json:"nodes"`
+					Nodes []ghIssueCommentNode `json:"nodes"`
 				} `json:"comments"`
 			} `json:"issue"`
 		} `json:"repository"`
@@ -1233,20 +1251,10 @@ func (g *GitHubForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayl
 				"could-not-check: %s carries no issue at number %d, so its comment thread could not be read",
 				repo.Slug(), number), nil)
 		}
-		for i := range iss.Comments.Nodes {
-			n := &iss.Comments.Nodes[i]
-			if n.CreatedAt == "" {
-				continue
-			}
-			ct, err := parseTrustTime(n.CreatedAt)
-			if err != nil {
-				return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), err)
-			}
-			var id int64
-			if n.Author != nil {
-				id = n.Author.DatabaseID
-			}
-			events = append(events, ContentEvent{Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct})
+		var err error
+		events, err = appendIssueEvents(events, iss.Comments.Nodes, repo, number)
+		if err != nil {
+			return nil, err
 		}
 		if !iss.Comments.PageInfo.HasNextPage {
 			return &TrustPayload{Events: events, Complete: true}, nil
@@ -1260,6 +1268,24 @@ func (g *GitHubForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayl
 		}
 	}
 	return &TrustPayload{Events: events, Complete: false}, nil
+}
+
+func appendIssueEvents(events []ContentEvent, nodes []ghIssueCommentNode, repo ForgeRepo, number int) ([]ContentEvent, error) {
+	for _, n := range nodes {
+		if n.CreatedAt == "" {
+			continue
+		}
+		ct, err := parseTrustTime(n.CreatedAt)
+		if err != nil {
+			return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), err)
+		}
+		var id int64
+		if n.Author != nil {
+			id = n.Author.DatabaseID
+		}
+		events = append(events, ContentEvent{Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct})
+	}
+	return events, nil
 }
 
 // trustEvents runs one trust-gate GraphQL query through the backend's own authenticated
@@ -2727,18 +2753,25 @@ type ghContentsWire struct {
 	Path string `json:"path"`
 }
 
-// ghContentsKind maps one Contents-API read of file onto FileContent.Kind. content is the
+// ghKindBlobProven is ghContentsKind's answer for a response whose served bytes are shown
+// to be the served blob. It is NOT a FileContent.Kind and never leaves ReadFile: the blob
+// proof cannot tell a regular file from a symbolic link whose target holds exactly the
+// link's own text, so ReadFile settles it from the tree entry's mode (ghTreeEntryKind).
+const ghKindBlobProven = "blob-proven"
+
+// ghContentsKind maps one Contents-API read of file onto FileContent.Kind, except that it
+// never answers FileKindRegular: only the tree entry's mode proves that. content is the
 // decoded body the caller will hand on.
 //
-// The endpoint is not a record of the entry's own bytes, so a regular file is reported only
-// when the response PROVES the bytes are the entry's blob: type "file", base64-encoded, and
-// the git blob hash of the decoded content equal to the served `sha`. Two real responses
-// fail that proof and are FileKindUnproven rather than regular: a symbolic link to a file
-// (served as the target's bytes under the requested path, with the link's own blob sha) and
-// a file the endpoint serves without its content (a large file arrives with encoding
-// "none" and an empty body, which would read as an empty regular file). A link served
-// under a different path than the one requested is still FileKindSymlink. "" when the
-// response names no type.
+// The endpoint is not a record of the entry's own bytes, so a candidate regular file is
+// reported (ghKindBlobProven) only when the response PROVES the bytes are the entry's blob:
+// type "file", base64-encoded, and the git blob hash of the decoded content equal to the
+// served `sha`. Two real responses fail that proof and are FileKindUnproven: a symbolic link
+// to a file (served as the target's bytes under the requested path, with the link's own
+// blob sha) and a file the endpoint serves without its content (a large file arrives with
+// encoding "none" and an empty body, which would read as an empty regular file). A link
+// served under a different path than the one requested is still FileKindSymlink. "" when
+// the response names no type.
 func ghContentsKind(w ghContentsWire, file string, content []byte) string {
 	switch w.Type {
 	case "":
@@ -2753,13 +2786,103 @@ func ghContentsKind(w ghContentsWire, file string, content []byte) string {
 		if w.Encoding != "base64" || !gitBlobMatches(w.SHA, content) {
 			return FileKindUnproven
 		}
-		return FileKindRegular
+		return ghKindBlobProven
 	case "symlink":
 		return FileKindSymlink
 	case "submodule":
 		return FileKindSubmodule
 	default:
 		return w.Type
+	}
+}
+
+// ghFileEntryQuery reads one path's tree entry (mode and object id) at a revision. Commit.file
+// is the same entry lookup the evidence-landing snapshot uses; a tag name resolves to a tag
+// object first, so the tag's own commit is read through it. Any other object is no entry.
+const ghFileEntryQuery = `query FileEntryMode($owner:String!,$name:String!,$rev:String!,$file:String!){
+ repository(owner:$owner,name:$name){
+  object(expression:$rev){__typename
+   ... on Commit{file(path:$file){mode oid}}
+   ... on Tag{target{__typename ... on Commit{file(path:$file){mode oid}}}}
+  }
+ }
+}`
+
+// The git tree-entry modes, as GitHub's TreeEntry.mode serves them (the octal value as an
+// integer).
+const (
+	gitModeRegular    = 0o100644
+	gitModeExecutable = 0o100755
+	gitModeSymlink    = 0o120000
+	gitModeGitlink    = 0o160000
+)
+
+// ghTreeEntryKind settles a blob-proven Contents-API read from the tree entry at the same ref
+// (#3149). The Contents API cannot tell a regular file from a symbolic link whose target holds
+// exactly the link's own text: both serve bytes that hash to the served sha. The entry's mode
+// can. The entry must also be the blob the Contents API served (oid == sha), so a ref that
+// moved between the two reads describes one entry, never two.
+//
+// FileKindRegular only for a regular or executable file mode on that blob; FileKindSymlink /
+// FileKindSubmodule for those modes. Anything else is FileKindUnproven, and so is a lookup
+// that fails or answers incompletely: the content stays readable to a caller that does not
+// need the kind, while one that needs a plain record treats the read as could-not-check, as
+// it does any unproven read. It never fails the ReadFile.
+func (g *GitHubForge) ghTreeEntryKind(repo ForgeRepo, ref, file, sha string) string {
+	rev := ref
+	if rev == "" {
+		// The Contents API reads the default branch when no ref is given; HEAD is the same
+		// branch to the GraphQL revision parser.
+		rev = "HEAD"
+	}
+	type entry struct {
+		Mode *int
+		OID  string
+	}
+	var env struct {
+		Data struct {
+			Repository *struct {
+				Object *struct {
+					Typename string `json:"__typename"`
+					File     *entry
+					Target   *struct {
+						Typename string `json:"__typename"`
+						File     *entry
+					}
+				}
+			}
+		}
+		Errors []json.RawMessage
+	}
+	in := map[string]any{"query": ghFileEntryQuery, "variables": map[string]any{
+		"owner": repo.Owner, "name": repo.Name, "rev": rev, "file": strings.Trim(file, "/"),
+	}}
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &env); err != nil || len(env.Errors) > 0 {
+		return FileKindUnproven
+	}
+	r := env.Data.Repository
+	if r == nil || r.Object == nil {
+		return FileKindUnproven
+	}
+	var e *entry
+	switch {
+	case r.Object.Typename == "Commit":
+		e = r.Object.File
+	case r.Object.Typename == "Tag" && r.Object.Target != nil && r.Object.Target.Typename == "Commit":
+		e = r.Object.Target.File
+	}
+	if e == nil || e.Mode == nil || e.OID == "" || !strings.EqualFold(e.OID, sha) {
+		return FileKindUnproven
+	}
+	switch *e.Mode {
+	case gitModeRegular, gitModeExecutable:
+		return FileKindRegular
+	case gitModeSymlink:
+		return FileKindSymlink
+	case gitModeGitlink:
+		return FileKindSubmodule
+	default:
+		return FileKindUnproven
 	}
 }
 
@@ -2816,6 +2939,8 @@ func stripBase64Whitespace(s string) string {
 
 // ReadFile reads a file's content at a ref via the Contents API. A 404 propagates as a
 // *ForgeAPIError (IsForgeNotFound true) so a caller can distinguish "absent" from "unreadable".
+// A read whose bytes are shown to be the served blob costs one more request, the tree-entry
+// lookup that decides whether it is a regular file (ghTreeEntryKind).
 func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error) {
 	path := fmt.Sprintf("/repos/%s/%s/contents/%s?ref=%s",
 		repo.Owner, repo.Name, in.File, url.QueryEscape(in.Ref))
@@ -2830,7 +2955,11 @@ func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	if derr != nil {
 		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
 	}
-	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true, Kind: ghContentsKind(w, in.File, decoded)}, nil
+	kind := ghContentsKind(w, in.File, decoded)
+	if kind == ghKindBlobProven {
+		kind = g.ghTreeEntryKind(repo, in.Ref, in.File, w.SHA)
+	}
+	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true, Kind: kind}, nil
 }
 
 // WriteFile writes a file's whole content on a branch via the Contents API, as the minted
@@ -3200,6 +3329,180 @@ func (g *GitHubForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"does not know — not rounded to a known state", id, repo.Slug(), StripControl(w.Status)), nil)
 	}
 	return st, nil
+}
+
+// RunLog reads one run's log (`GET /repos/{o}/{r}/actions/runs/{id}/logs`). GitHub answers a
+// redirect to a zip archive; the redirect is followed by the HTTP client, and go-gh's transport
+// attaches the bearer token only when the target is the API host or a subdomain of it (GitHub
+// serves the archive from a separate storage host). The archive is read under a byte cap. Its
+// real layout is a top-level whole-job file per job (`0_build.txt`) PLUS a directory per job of
+// per-step files (`build/1_Set up job.txt`, the same text split), so ONE RunLogPart is built per
+// job: from the whole-job files when the archive has them, else by joining each job directory's
+// step files in archive order — never a part per zip entry, which would print every job twice.
+// An archive with no log file is a could-not-check, not an empty success. An expired or deleted
+// log answers 404 (IsForgeNotFound). Needs only `actions: read`.
+func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	return g.runLog(repo, run, defaultRunLogBounds)
+}
+
+// runLog is RunLog under explicit bounds (production: defaultRunLogBounds).
+func (g *GitHubForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]RunLogPart, error) {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	rc, err := g.restClient()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/logs", repo.Owner, repo.Name, id)
+	resp, rerr := rc.Request(http.MethodGet, g.baseURL()+path, nil)
+	if rerr != nil {
+		var he *ghapi.HTTPError
+		if errors.As(rerr, &he) {
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: http.MethodGet, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
+		}
+		return nil, Unverifiable(fmt.Sprintf("GET %s failed", path), redactURLQuery(rerr))
+	}
+	defer resp.Body.Close()
+	arc := &runLogSink{limit: lim.archiveCap}
+	if _, cerr := io.Copy(arc, resp.Body); cerr != nil {
+		if errors.Is(cerr, errRunLogOverRead) {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s exceeds %d bytes — "+
+				"refusing to read it whole", id, repo.Slug(), lim.archiveCap), nil)
+		}
+		return nil, Unverifiable(fmt.Sprintf("GET %s response body cut off mid-transfer (%d bytes arrived) — "+
+			"refusing to treat a partial log as a complete one", path, arc.n), cerr)
+	}
+	zr, zerr := zip.NewReader(bytes.NewReader(arc.buf), int64(len(arc.buf)))
+	if zerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log for run %d on %s is not a readable archive", id, repo.Slug()), zerr)
+	}
+	jobs := githubLogJobs(zr.File)
+	if len(jobs) == 0 {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s holds no log file, "+
+			"so there is no log to read", id, repo.Slug()), nil)
+	}
+	if len(jobs) > lim.maxParts {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s has more than %d jobs — "+
+			"refusing to return a silently shortened log", id, repo.Slug(), lim.maxParts), nil)
+	}
+	parts := make([]RunLogPart, 0, len(jobs))
+	kept := 0
+	for _, j := range jobs {
+		sink := &runLogSink{limit: lim.readCap, keep: lim.partCap}
+		for _, f := range j.files {
+			rd, oerr := f.Open()
+			if oerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot open log file %q of run %d", StripControl(f.Name), id), oerr)
+			}
+			_, cerr := io.Copy(sink, rd)
+			rd.Close()
+			if errors.Is(cerr, errRunLogOverRead) {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: the log of job %q in run %d on %s exceeds %d bytes — "+
+					"refusing to present a slice of it as its tail", StripControl(j.name), id, repo.Slug(), lim.readCap), nil)
+			}
+			if cerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read log file %q of run %d", StripControl(f.Name), id), cerr)
+			}
+		}
+		text, trunc := sink.tail()
+		if kept += len(text); kept > lim.runCap {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s keeps more than %d bytes of log across its jobs — "+
+				"refusing to return a silently shortened run", id, repo.Slug(), lim.runCap), nil)
+		}
+		parts = append(parts, RunLogPart{Name: j.name, Text: text, Truncated: trunc})
+	}
+	return parts, nil
+}
+
+// redactURLQuery drops the query, fragment and userinfo from a transport error's URL. The log
+// download is redirected to a signed archive URL whose query is a short-lived credential, and
+// this error text reaches stderr and the audit ledger; the scheme, host and path still name
+// where the read failed.
+func redactURLQuery(err error) error {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err
+	}
+	u, perr := url.Parse(ue.URL)
+	if perr != nil {
+		return &url.Error{Op: ue.Op, URL: "(an unparseable URL, withheld)", Err: ue.Err}
+	}
+	u.User, u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = nil, "", false, "", ""
+	return &url.Error{Op: ue.Op, URL: u.String(), Err: ue.Err}
+}
+
+// githubLogJob is one job of a run-log archive and the entries its text is read from.
+type githubLogJob struct {
+	name  string
+	files []*zip.File
+}
+
+// githubLogJobs groups a run-log archive's entries into jobs: each top-level file
+// (`<n>_<job>.txt`) is one job's whole log, and each top-level directory is one job whose step
+// files are joined. A directory is dropped only when a whole file names the SAME job, so a job
+// the archive carries only as steps is still a part when other jobs have whole files. Whole-file
+// jobs come first, in archive order, then the step-only jobs, in archive order. Directory entries
+// carry no text and are skipped.
+func githubLogJobs(files []*zip.File) []*githubLogJob {
+	var whole, steps []*githubLogJob
+	byDir := map[string]*githubLogJob{}
+	for _, f := range files {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		dir, _, nested := strings.Cut(f.Name, "/")
+		if !nested {
+			whole = append(whole, &githubLogJob{name: f.Name, files: []*zip.File{f}})
+			continue
+		}
+		j := byDir[dir]
+		if j == nil {
+			j = &githubLogJob{name: dir}
+			byDir[dir] = j
+			steps = append(steps, j)
+		}
+		j.files = append(j.files, f)
+	}
+	covered := map[string]bool{}
+	for _, w := range whole {
+		covered[githubWholeLogJob(w.name)] = true
+	}
+	out := whole
+	for _, j := range steps {
+		if !covered[j.name] {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// githubWholeLogJob is the job a whole-log file names: `3_build.txt` and `build.txt` both name
+// `build`. A name without the `.txt` suffix names itself, so it covers no step directory.
+func githubWholeLogJob(file string) string {
+	job, ok := strings.CutSuffix(file, ".txt")
+	if !ok {
+		return file
+	}
+	if n, rest, cut := strings.Cut(job, "_"); cut && n != "" && rest != "" && strings.Trim(n, "0123456789") == "" {
+		return rest
+	}
+	return job
+}
+
+// RetryRun re-runs the failed jobs of one run (`POST …/actions/runs/{id}/rerun-failed-jobs`).
+// This is the narrower of GitHub's two rerun endpoints (`…/rerun` re-runs every job, including
+// ones that passed), chosen because a retry's purpose is to recover the failed work. Needs
+// `actions: write`, so the caller holds the roster-bound run credential.
+func (g *GitHubForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/rerun-failed-jobs", repo.Owner, repo.Name, id)
+	return g.doJSON(http.MethodPost, path, nil, nil)
 }
 
 // quotedList renders names for a refusal message; an empty list reads "nothing".
