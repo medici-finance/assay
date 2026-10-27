@@ -141,7 +141,7 @@ _Held by per-stream caps: 18 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f955b97c1 2026-10-27T21:41:49Z_
+_last regen: d2b1d5810 2026-10-27T21:44:26Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -162,7 +162,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f955b97c1 2026-10-27T21:41:49Z_
+_last regen: d2b1d5810 2026-10-27T21:44:26Z_
 
 **Progress:** 35/94 brief items done.
 
@@ -295,7 +295,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 16 [exec:strong] | implemented | 2010 | 0 | — | worker | fix, cite #1281 | — | — |
 | contributor-trust | 09 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite #4193 | — | — |
 | desk-containers | 10 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#2142 | — | — |
-| desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
+| desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1922 | — | — |
 | desk-supervision | 24 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desktools-v2 | 45 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 02 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
@@ -305,7 +305,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 20 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#2111 | — | — |
 | desktools-v2 | 21 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1040 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
-| desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1363 | — | — |
+| desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite #2816 | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1792 — row 5 is a prose PR-body check the witness cannot execute (check-definition); row 1 environment flake #612/#1232; row 4 vacuous post-merge self-diff (#1657 class) | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1784 | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#2179 | — | — |
