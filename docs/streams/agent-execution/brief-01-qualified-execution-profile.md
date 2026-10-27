@@ -17,7 +17,7 @@ exec-tier-why: "Cross-component protocol, recovery and authority boundaries requ
 domain: "complicated"
 outcome: "none"
 consumers: ["loopadmin/runner: fixed-here", "statusgen/portfolio: fixed-here", "loopadmin/workspace: follow-up agent-execution/02", "loopadmin/supervisor: follow-up agent-execution/03", "tools/desk/internal/cellop: follow-up agent-execution/05", "loopadmin/adapters/axcompat: follow-up agent-execution/06"]
-version: 1
+version: 2
 id: "b402ec83-8a07-4551-b382-5dc017a45315"
 ---
 
@@ -59,14 +59,18 @@ A pinned caller/invocation, profile and externally validated ownership enter. Ty
 
 ## Verify
 
-These named tests, fixtures and mutations are deliverables of this brief; they have not been run at authoring time. Each row must exercise the production path and fail under its named mutation, rather than merely checking a file exists. Reports use the resulting evidence; independent review owns design adequacy. The consumer row runs on the delivery branch against its pre-merge base; post-merge verification uses that retained branch/base, not an empty main-to-main diff.
+These named tests, fixtures and mutations are deliverables of this brief; they have not been run at authoring time. Each row must exercise the production path and fail under its named mutation, rather than merely checking a file exists. Reports use the resulting evidence; independent review owns design adequacy. The consumer row reads the immutable delivered snapshot and its first-parent base explicitly; it never uses an empty main-to-main diff.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow +mutation +dereference | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionProfileV1Compatibility$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionProfileV1Compatibility " "$execution_out")` | exit 0; named PASS; old v1 requests still work, while an old adapter refuses a required extension before launch; mutation: ignore the new mandatory extension — the named test must fail |
 | 2 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionProfilePreservationFlow$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionProfilePreservationFlow " "$execution_out")` | exit 0; named PASS; file-only restoration cannot satisfy conversation or process preservation in either caller mode; mutation: treat every resume declaration as full process preservation — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionProfileBindingAndSchema$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionProfileBindingAndSchema " "$execution_out")` | exit 0; named PASS; a substituted backend/profile and drifted schema are rejected; bypassing the client check still leaves adapter/caller checks effective; mutation: accept a mismatched qualified profile digest — the named test must fail |
-| 4 | check:ci | `statusgen --consumers --brief agent-execution/01 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
+| 4 | check:ci | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --root . --consumers --brief agent-execution/01 --delivery 65ca2b848584b1ccde22f28afa4137767317fe4b --base b1a7e42333a4384da45d399bc723e33f4dc3a3f7 > "$consumer_out" && cat "$consumer_out" && grep -Fqx -- "summary: 6 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing" "$consumer_out")` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
+
+## Verify command amendment — 2026-10-27
+
+Version 2 corrects only original row 4's Command under issue #4560. Delivery is the merge of #4501 (`65ca2b848584b1ccde22f28afa4137767317fe4b`); its first parent is `b1a7e42333a4384da45d399bc723e33f4dc3a3f7`. The command pins both endpoints and asserts the delivered summary, including zero unchecked entries. Row 4's original Expect and class, rows 1–3, Task, consumer routes and all historical Evidence remain unchanged. This definition repair is not acceptance or independent verification. After the amendment lands, the explicit human-approved acceptance-transition route in [Protected verifier paths](../../protected-paths.md#explicit-human-approved-acceptance-transitions) must bind this landed amendment and row 4 before fresh independent execution can earn credit. Earlier supplemental probes remain uncredited.
 
 ## Pre-mortem and dispatch checks
 
