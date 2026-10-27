@@ -352,7 +352,7 @@ prose, and never fall back to `latest`.
 
 The installer authors branches and opens **DRAFT PRs only**. An install or re-pin PR delivers no
 brief, so its body carries the `Issue: #<N>` link trailer — file a short tracking issue for the
-install/bump and name it — not a `Brief:` line; both forms satisfy `deskpr` and `pr-review-desk`
+install/bump and name it — not a `Brief:` line (or `Fixes: #<N>`, its resolving form, when merging should close that issue); both forms satisfy `deskpr` and `pr-review-desk`
 (this repo's own front-door re-pin, PR #496, is the precedent). It never performs any of these — it
 hands the human the exact values and waits:
 

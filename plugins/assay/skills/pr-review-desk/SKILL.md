@@ -10,7 +10,7 @@ placeholder briefs; **worker-desk** dispatches workers that implement them behin
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
 **The stream board is a derived, generated surface** — this
-desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>` or `Issue: #<N>`) that
+desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` / its resolving form `Fixes: #<N>`) that
 feed it; it never edits a board row itself.
 
 Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
@@ -983,7 +983,12 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
      briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
      (issue-only work that delivers no brief — e.g. a pin bump / re-pin PR, which by construction
-     carries no brief). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
+     carries no brief). `Fixes: #<N>` (also `Closes:` / `Resolves:`, or `Fixes: <owner>/<repo>#<N>`
+     for another repository) is the RESOLVING form of `Issue:` — the same single link, which
+     GitHub also honours as a closing keyword, so merging closes the issue; it satisfies the gate
+     exactly as `Issue:` does and must not be bounced for lacking a `Brief:` line. With a colon it
+     IS the link, so it may not sit beside a `Brief:`, `Authors:`, `Cross-repo-brief:` or `Issue:`
+     line (a brief-delivering PR that also closes an issue uses the colon-less `Closes #N`). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
      `requireTrailer` enforce, so an `Issue: #<N>`- or `Authors:`-only body is fully compliant and
      must NOT be bounced for lacking a `Brief:` line. The reverse IS a finding: a docs-only PR that
      only adds brief files, board READMEs and changelog fragments but carries `Brief:` makes the
@@ -997,7 +1002,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      catch this, so a PR that reached review with this shape
      is either pre-gate or had its body edited around the writer check — flag it regardless.
      Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
-     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>` or `Issue: #<N>` line; the board can't
+     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>`, `Issue: #<N>` or `Fixes: #<N>` line; the board can't
      link this PR to its work item without it." (`deskpr create` already refuses to open a PR with
      no trailer, so this bounce is the second layer for the no-trailer class only. A PR that carries
      `Issue: #<N>` satisfied that gate legitimately — it is NOT evidence a refusal was routed

@@ -843,7 +843,7 @@ layer; the floor does not wait on one.)
    part of authoring the brief.
 8. **Link the authoring PR with `Authors:`, never `Brief:`.** The PR that writes brief files
    carries exactly one link line `Authors: <stream>/<NN>[, <stream>/<NN> …]` naming every brief it
-   adds (or `Issue: #<N>` when the authoring answers an issue). `Brief: <stream>/<NN>` means the
+   adds (or `Issue: #<N>` when the authoring answers an issue, or `Fixes: #<N>` when merging the authoring PR should close it). `Brief: <stream>/<NN>` means the
    PR DELIVERS that brief: the dispatcher's phantom check, the planner and the derived board all
    read it that way, so an authoring PR carrying it makes the brief it just wrote look delivered
    the moment it merges, and the brief is never dispatched. `deskpr create` refuses a `Brief:`
