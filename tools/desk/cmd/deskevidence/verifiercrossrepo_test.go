@@ -48,7 +48,18 @@ func crossLandRepo(t *testing.T, repo string, files map[string]string) string {
 }
 
 // regression: #2485
-func TestCrossRepoEvidenceOutcome(t *testing.T) {
+func TestCrossRepoEvidenceOutcome(t *testing.T) { crossRepoOutcomeCase(t, "source.txt") }
+
+// A cross-repository brief names its deliverable as ../<sibling>/<path>.
+// regression: #3483
+func TestCrossRepoSiblingOutcome(t *testing.T) { crossRepoOutcomeCase(t, "../source/source.txt") }
+
+// The same run refuses a sibling its binding never named, before any write.
+// regression: #3483
+func TestCrossRepoSiblingEscape(t *testing.T) { crossRepoOutcomeCase(t, "../other/source.txt") }
+
+func crossRepoOutcomeCase(t *testing.T, decl string) {
+	escape := strings.HasPrefix(decl, "../other/")
 	for _, line := range strings.Split(fixtureRoster, "\n") {
 		if k, v, ok := strings.Cut(line, "="); ok && strings.HasPrefix(k, "ASSAY_") {
 			t.Setenv(k, v)
@@ -61,7 +72,7 @@ func TestCrossRepoEvidenceOutcome(t *testing.T) {
 	deskkit.SetToolClass(deskkit.ClassCI)
 	t.Cleanup(func() { deskkit.SetToolClass(deskkit.ClassWrite) })
 	const brief = "docs/streams/sample/brief-01-check.md"
-	body := "---\nhomed-in: example-org/source\n---\n# Tracking canary\n\n## Context\nfiles:\n- `source.txt`\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt` | exit 0 |\n\n## Evidence\n\nPending.\n"
+	body := "---\nhomed-in: example-org/source\n---\n# Tracking canary\n\n## Context\nfiles:\n- `" + decl + "`\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt` | exit 0 |\n\n## Evidence\n\nPending.\n"
 	source := crossLandRepo(t, "example-org/source", map[string]string{"source.txt": "observed\n"})
 	tracking := crossLandRepo(t, "example-org/tracker", map[string]string{brief: body, "docs/streams/graph-repos.yaml": "schema: graph-repos-v1\nrepos:\n  source:\n    repo: example-org/source\n"})
 	api := &attestationAPI{files: map[string]string{brief: body}}
@@ -158,6 +169,15 @@ func TestCrossRepoEvidenceOutcome(t *testing.T) {
 	raw := withRunFields(t, fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"sample/01","outcome":"verify-fail","rows_passed":0,"rows_total":1,"sha":%q,"blocker_kind":"implementation","blocker_ref":"#7"}`, evidenceSHA))
 	record := filepath.Join(t.TempDir(), "record.json")
 	os.WriteFile(record, []byte(raw), 0600)
+	if escape {
+		if err := land("example-org/tracker", "--root", source, "--outcome-record", record); deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), decl) {
+			t.Fatalf("unbound sibling admitted: %v", err)
+		}
+		if len(api.puts) != 1 {
+			t.Fatal("unbound sibling wrote an outcome")
+		}
+		return
+	}
 	if err := land("example-org/tracker", "--root", source, "--outcome-record", record); err != nil {
 		t.Fatal(err)
 	}
@@ -173,6 +193,11 @@ func TestCrossRepoEvidenceOutcome(t *testing.T) {
 	}
 	if wr.Inputs["file:"+brief] != deskkit.Sha256Hex([]byte(api.files[brief])) {
 		t.Fatal("wrong tracking brief input")
+	}
+	for k := range wr.Inputs {
+		if strings.Contains(k, "..") {
+			t.Fatalf("sibling path became a tracking input %q", k)
+		}
 	}
 	for _, mutate := range []string{"missing source", "wrong source", "wrong repo"} {
 		bad := wr

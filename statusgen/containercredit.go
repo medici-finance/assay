@@ -17,6 +17,13 @@ package main
 //	c. binding: that attestation names this brief and the source under
 //	   verification.
 //
+// A version-2 (cross-repository) span is credited on the same three
+// conditions, and only when both of its repositories pass the repository
+// checks: the tracking repository (repo#issue, where the record lives) is the
+// brief's own, and the source repository (source-repo=, the deliverable whose
+// commit source= names) is in the configured repository set. The source check
+// reads the roster alone, so a span that fails it reaches no forge.
+//
 // statusgen does not link deskkit, so (b) reads the record through `deskread`
 // (issue, trust and label-events) and applies the rules itself. Row 11's parity
 // test holds the two readers to the same verdict on shared fixtures
@@ -211,9 +218,9 @@ func (cc *creditContext) credit(c bracketCheck) creditVerdict {
 	if problem != "" {
 		return creditNot("%s", problem)
 	}
-	a := attestationV1Re.FindStringSubmatch(attestation)
-	if a == nil {
-		return creditNot("the span's attestation line is not the version-1 form; a version-2 (cross-repository) span is not credited by this rule")
+	a, ok := parseContainerAttestation(attestation)
+	if !ok {
+		return creditNot("the span's attestation line is not the version-1 or version-2 form")
 	}
 	var verdicts []creditVerdict
 	for _, step := range []func() creditVerdict{
@@ -231,12 +238,12 @@ func (cc *creditContext) credit(c bracketCheck) creditVerdict {
 }
 
 // binding is condition (c): the attestation names this brief and --source.
-func (cc *creditContext) binding(a []string) creditVerdict {
-	if a[5] != cc.rel {
-		return creditNot("binding: the attestation names brief=%s, not this brief %s", a[5], cc.rel)
+func (cc *creditContext) binding(a containerAttestation) creditVerdict {
+	if a.brief != cc.rel {
+		return creditNot("binding: the attestation names brief=%s, not this brief %s", a.brief, cc.rel)
 	}
-	if a[4] != cc.source {
-		return creditNot("binding: the attestation names source=%s, not --source %s", a[4], cc.source)
+	if a.source != cc.source {
+		return creditNot("binding: the attestation names source=%s, not --source %s", a.source, cc.source)
 	}
 	return creditOK()
 }
@@ -288,11 +295,14 @@ type creditRecord struct {
 // record is condition (b). Only the record read is cached per <repo>#<issue>;
 // each bracket's attestation line is compared with the rendered line on its
 // own, so a bracket never inherits another bracket's comparison.
-func (cc *creditContext) record(a []string, attestation string) creditVerdict {
+func (cc *creditContext) record(a containerAttestation, attestation string) creditVerdict {
 	if cc.rec.verdict != creditCredited {
 		return cc.rec
 	}
-	key := a[1] + "#" + a[2]
+	if v := cc.repositories(a); v.verdict != creditCredited {
+		return v
+	}
+	key := a.repo + "#" + a.issue
 	r, ok := cc.records[key]
 	if !ok {
 		r = cc.readRecord(a)
@@ -302,10 +312,11 @@ func (cc *creditContext) record(a []string, attestation string) creditVerdict {
 		return r.verdict
 	}
 	if r.rendered != attestation {
-		m := attestationV1Re.FindStringSubmatch(r.rendered)
+		m, ok := parseContainerAttestation(r.rendered)
+		want, got := m.values(), a.values()
 		var differ []string
-		for i, name := range []string{"repo", "issue", "run", "source", "brief", "model", "tier"} {
-			if m == nil || m[i+1] != a[i+1] {
+		for i, name := range containerAttestationFields {
+			if !ok || want[i] != got[i] {
 				differ = append(differ, name)
 			}
 		}
@@ -314,17 +325,27 @@ func (cc *creditContext) record(a []string, attestation string) creditVerdict {
 	return creditOK()
 }
 
-// readRecord reads and admits a[1]#a[2] as ReadVerifierAttestation would.
-func (cc *creditContext) readRecord(a []string) creditRecord {
+// repositories is the repository checks, read before any record: the record's
+// (tracking) repository is the brief's own, and a version-2 line's source
+// repository is in the configured repository set. Neither reads the forge.
+func (cc *creditContext) repositories(a containerAttestation) creditVerdict {
+	if !strings.EqualFold(a.repo, cc.repo) {
+		return creditNot("record: %s#%s is not in the brief's own repository %s", a.repo, a.issue, cc.repo)
+	}
+	if a.version == 2 && !scanEffectiveConfig().allowedRepo(a.sourceRepo) {
+		return creditNot("record: the source repository %s is not in the configured repository set", a.sourceRepo)
+	}
+	return creditOK()
+}
+
+// readRecord reads and admits a.repo#a.issue as ReadVerifierAttestation would.
+func (cc *creditContext) readRecord(a containerAttestation) creditRecord {
 	v, target, rendered := cc.admitRecord(a)
 	return creditRecord{verdict: v, target: target, rendered: rendered}
 }
 
-func (cc *creditContext) admitRecord(a []string) (creditVerdict, string, string) {
-	repo, issueNo := a[1], a[2]
-	if !strings.EqualFold(repo, cc.repo) {
-		return creditNot("record: %s#%s is not in the brief's own repository %s", repo, issueNo, cc.repo), "", ""
-	}
+func (cc *creditContext) admitRecord(a containerAttestation) (creditVerdict, string, string) {
+	repo, issueNo := a.repo, a.issue
 	n, err := strconv.Atoi(issueNo)
 	if err != nil || n <= 0 {
 		return creditNot("record: %s is not a positive issue number", issueNo), "", ""
@@ -388,17 +409,26 @@ func (cc *creditContext) admitRecord(a []string) (creditVerdict, string, string)
 		return creditNot("record: %s's dispatcher stamp names model=%s tier=%s, the binding model=%s tier=%s", target, model, tier, b.Model, b.Tier), target, ""
 	}
 
-	rendered := fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", b.Repo, n, b.Run, b.Source, b.Brief, b.Model, b.Tier)
-	return creditOK(), target, rendered
+	return creditOK(), target, creditRenderedLine(b, n)
 }
 
-// creditBindingProblem applies ReadVerifierAttestation's field checks. Only a
-// version 1 (same-repository) binding is accepted. The bracket admits version
-// 2 (cross-repository) receipts, but crediting one also needs the source
-// repository checked against the configured repository set, which this rule
-// does not read yet, so a version-2 span stays not-credited.
+// creditRenderedLine is the attestation line a record's binding renders, in
+// deskkit EvidenceBinding's form for its version.
+func creditRenderedLine(b creditBinding, n int) string {
+	if b.Version == 2 {
+		return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=%s tier=%s",
+			b.Repo, n, b.Run, b.SourceRepo, b.Source, b.TrackingSource, b.Brief, b.Model, b.Tier)
+	}
+	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", b.Repo, n, b.Run, b.Source, b.Brief, b.Model, b.Tier)
+}
+
+// creditBindingProblem applies ReadVerifierAttestation's field checks, with
+// its version 1 and version 2 profile: a version-2 (cross-repository) binding
+// is accepted only when its source repository is in the configured repository
+// set, the sourceAllowed answer deskkit gives BindingProblem from IsAllowedRepo.
+// TestCreditBindingSource pins that refusal with repositories() bypassed.
 func creditBindingProblem(b creditBinding, repo string) string {
-	return attestation.BindingProblem(b, repo, attestation.ContainerV1, false)
+	return attestation.BindingProblem(b, repo, attestation.GeneralV1V2, scanEffectiveConfig().allowedRepo(b.SourceRepo))
 }
 
 // creditModelSlugOK is deskkit's model-label shape: lowercased and trimmed,
