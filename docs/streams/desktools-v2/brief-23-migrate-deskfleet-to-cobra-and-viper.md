@@ -99,6 +99,50 @@ Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's s
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
+### Independent verification — 2026-10-26 (run 1, source f2e232039, host)
+
+Runner: assay-verifier-app[bot], model claude-opus-5-5, admitted tier strong; independent non-implementer, fresh context. Observed source: merged main f2e232039c99455b0b9a7dacfe639f9f68b164d2, detached home admitted by `deskdispatch --check-verifier` (medici-finance/assay#4555).
+
+Delivery: the work landed in the merge of medici-finance/assay#4500 (3f15da841717fa597b7473eb8c0efbbd46e594c3; first parent 90da708cb3a192d0fd32b7b85185c0c3fead5392), an ancestor of the observed source.
+
+Runner class: host, darwin-arm64, go1.27.2, statusgen v1.0.63. Every row is class check (none is check:ci), so no network-off sandbox applies and the rows ran on the host through `statusgen verifyrun`. The brief's risk answers are all "no" and no row carries a risk-bearing, live, mutating or end-to-end tag, so no row owes a fail-first witness. Row 4's harness mutates the owned source in place and restores it; the home was confirmed clean after the run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskfleet -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskfleet -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskfleet -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-23.json` | pass exit=0 | sha256:5336c78b84d1 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskfleet/...` | pass exit=0 | sha256:f4805e5aea45 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskfleet` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/23 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:da17a9e0b20a | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:f18a505d9ed3 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:2ec831d2fa39 | 2026-10-26 | assay-verifier-app[bot] @ f2e232039c99 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4555 run=bf50e3bd21fdcbdfa6cc07a228b4005e503cc8070139639bb1a7e5fe8fd8a687 source=f2e232039c99455b0b9a7dacfe639f9f68b164d2 brief=docs/streams/desktools-v2/brief-23-migrate-deskfleet-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Supplemental observations — diagnostics only, no acceptance credit for any row. The same commands re-run on the same source with their output kept, to name the key line behind each digest above.
+
+| Probe | Command or check | Observed | Date | Runner |
+|---|---|---|---|---|
+| S1 | rows 1–3 test commands, output kept | --- PASS: TestCLIHelpOffline (2.86s); --- PASS: TestCLIConfigFlow (0.05s); --- PASS: TestCLILegacyForms (0.02s) | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S2 | row 4 command, output kept | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; last line "Totals: 11 caught, 0 NOT CAUGHT, 0 could-not-mutate." — 11 equals the spec's mutation count | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S3 | row 5 command, output kept | exit 0; ok for the deskfleet package | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S4 | row 7 command, output kept | exit 0; --- PASS: TestCLIOwnerMigrated (3.75s) | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S5 | row 8 command, output kept | exit 0; last line "seed passes=26" | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S6 | row 9 command, output kept | exit 0; "no brief files in the diff against f2e232039c99… — nothing to corroborate": on merged main the default three-dot diff is empty, so this row is green without judging anything | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S7 | statusgen --root . --consumers --brief desktools-v2/23 pinned to the delivery merge (base its first parent) | exit 0; "summary: 7 corroborated, 0 disproved, 0 unchecked"; all seven declared consumers corroborated against the delivered snapshot | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S8 | source read of the deskfleet package at the observed source | no import of the standard flag package and no FlagSet left in non-test source; parsing goes through the Cobra command tree in cli.go only | 2026-10-26 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Row 9 as written is non-discriminating after merge (S6). It is not a risk-bearing row and its Expect (exit 0, nothing disproved) is met; S7 shows the consumer routing holds when judged against the delivery itself.
+
+Risk-bearing values. The brief's risk answers are all "no", gate model, not irreversible, and no risk-classed path is touched. Enumeration over the delivery diff's non-test Go source (cli.go, main.go, provision.go, labels.go, avatars.go of the deskfleet command) found these literals:
+
+- RISK-VALUE: DERIVED — pat-expiry-days Default = 7 @ tools/desk/cmd/deskfleet/cli.go:136 — the brief's design-fit allows "flags +0" and Task 4 requires existing behaviour kept; the replaced Go-flag parser declared the same default 7 (provision.go:55 at the delivery's first parent), the 1–365 bound at provision.go:72 is unchanged, and the legacy-forms test pins the default to 7.
+- RISK-VALUE: DERIVED — exitUsage = 2 @ tools/desk/cmd/deskfleet/main.go:90, wired as UsageExit @ tools/desk/cmd/deskfleet/cli.go:252 — the brief requires exit codes preserved ("refusals +0"); the command's documented contract is "2 usage", the replaced parser returned exitUsage on every parse error, and row 4's positive control (UsageExit changed to 3) is caught.
+
+Verdict accounting: 9 required rows; 9 pass; 0 fail; 0 could-not-run. No risk-bearing row, so no fail-first witness is owed.
+
+**VERIFY: PASS** — 9/9 rows; mutation harness 11/11 caught (supplemental).
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
