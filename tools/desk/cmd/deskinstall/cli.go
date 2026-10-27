@@ -178,6 +178,12 @@ func newInstallCLI(argv []string, stdout, stderr io.Writer) *cobra.Command {
 	root.Flags().Bool("version", false, "print the version and exit (only as the sole argument)")
 	set := cli.Declare(root, bindings()...)
 	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		// Cobra resolves the word help to its own help command, which has none of the root's
+		// flags: `--check help` reaches here with c that command. Help answers only as the
+		// sole word, so the refused word is "help", never the declared flag.
+		if c != c.Root() && c.Name() == "help" {
+			return fmt.Errorf("unknown argument %q", "help")
+		}
 		if a := unknownArg(c, argv); a != "" {
 			return fmt.Errorf("unknown argument %q", a)
 		}
@@ -190,8 +196,6 @@ func newInstallCLI(argv []string, stdout, stderr io.Writer) *cobra.Command {
 		}
 		if len(args) > 0 {
 			switch {
-			case args[0] == "help":
-				return cmd.Help()
 			case len(args) == 1 && args[0] == "version" && cmd.Flags().NFlag() == 0:
 				_, err := fmt.Fprintln(stdout, versionLine())
 				return err

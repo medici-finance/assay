@@ -395,6 +395,11 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"--manifest", "m", "--", "--dest", "d"}, `unknown argument "--"`},
 			{[]string{"--version", "--check"}, `unknown argument "--version"`},
 			{[]string{"version", "--check"}, `unknown argument "version"`},
+			// help answers only as the sole word; after (or before) flags it is refused
+			// naming "help", never a declared flag.
+			{[]string{"--manifest", "m", "help"}, `unknown argument "help"`},
+			{[]string{"--check", "help"}, `unknown argument "help"`},
+			{[]string{"help", "--manifest", "m"}, `unknown argument "help"`},
 			{[]string{"--manifest"}, "--manifest"},
 			{[]string{"--dest"}, "--dest"},
 			{[]string{"--release"}, "--release"},
