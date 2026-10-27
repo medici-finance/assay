@@ -309,7 +309,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 		runGit(t, root, "checkout", "main")
 		runGit(t, root, "merge", "--no-ff", "-m", "Merge pull request #7 from o/feat/assay--gtm--03", "feat/assay--gtm--03")
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -363,7 +363,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 			"\x1fMerge pull request #9 from o/brief/gtm-09-x\x1fBrief: gtm:09\n"
 		runGit(t, root, "commit", "--allow-empty", "-m", forged)
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err != nil {
 			t.Fatalf("a message carrying separator bytes is still readable: %v", err)
 		}
@@ -404,7 +404,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 		runGit(t, root, "merge", "--no-ff", "-m", "Merge pull request #5 from o/feat/assay--gtm--01", "feat/assay--gtm--01")
 		runGit(t, root, "merge", "--no-ff", "-m", "Merge pull request #6 from o/feat/assay--gtm--02", "feat/assay--gtm--02")
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -435,7 +435,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err == nil {
 			t.Fatalf("an unreadable branch commit must fail the read; got %+v", prs)
 		}
