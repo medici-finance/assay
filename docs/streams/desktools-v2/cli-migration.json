@@ -936,11 +936,11 @@
         "tools/desk/README.md",
         "tools/desk/internal/regression/MANIFEST.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "1980 LOC, ~8 verbs, ~15 flags at 3ad1ad83c871",
       "owner": "desktools-v2/23",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskflip",
@@ -1034,7 +1034,7 @@
       "complexity": "simple",
       "basis": "1057 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/35",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "desklabel",

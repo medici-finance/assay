@@ -1,0 +1,83 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIAdmissionBoundary)$' ./cmd/deskinstall/",
+  "control": {
+    "name": "CONTROL — a parse failure exits with the wrong code (refused exit 5 becomes 2)",
+    "file": "cmd/deskinstall/cli.go",
+    "old": "UsageExit:   deskkit.ExitRefused,",
+    "new": "UsageExit:   2,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after an effect: the handler is reached before the tree answers help or version",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "return cli.Run(func() *cobra.Command {",
+      "new": "_ = dispatchFn(options{}, io.Discard, io.Discard)\n\treturn cli.Run(func() *cobra.Command {"
+    },
+    {
+      "name": "undeclared environment key binds --dest",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "{Key: \"dest\", Kind: cli.String, Flag: \"dest\",",
+      "new": "{Key: \"dest\", Kind: cli.String, Flag: \"dest\", Env: []string{\"DESKINSTALL_DEST\"},"
+    },
+    {
+      "name": "config-file source declared for --manifest",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "{Key: \"manifest\", Kind: cli.String, Flag: \"manifest\",",
+      "new": "{Key: \"manifest\", Kind: cli.String, Flag: \"manifest\", Config: true,"
+    },
+    {
+      "name": "legacy -version spelling dropped",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "if len(args) == 1 && args[0] == \"-version\" {",
+      "new": "if false && len(args) == 1 && args[0] == \"-version\" {"
+    },
+    {
+      "name": "legacy bare version word dropped",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "case len(args) == 1 && args[0] == \"version\" && cmd.Flags().NFlag() == 0:",
+      "new": "case false:"
+    },
+    {
+      "name": "legacy flag spelling renamed",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "{Key: \"release-home\", Kind: cli.String, Flag: \"release-home\",",
+      "new": "{Key: \"release-home\", Kind: cli.String, Flag: \"releasehome\","
+    },
+    {
+      "name": "a -- terminator accepted instead of refused",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "if cmd.ArgsLenAtDash() >= 0 {",
+      "new": "if false && cmd.ArgsLenAtDash() >= 0 {"
+    },
+    {
+      "name": "unknown argument no longer named as written",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "if a := unknownArg(c, argv); a != \"\" {",
+      "new": "if a := \"\"; a != \"\" {"
+    },
+    {
+      "name": "a flag beside the help word is named as the unknown argument instead of help",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "if c != c.Root() && c.Name() == \"help\" {",
+      "new": "if false && c != c.Root() && c.Name() == \"help\" {"
+    },
+    {
+      "name": "bare root exits 0",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "_ = cmd.Help()\n\t\t\treturn exitErr(deskkit.ExitRefused)",
+      "new": "_ = cmd.Help()\n\t\t\treturn nil"
+    },
+    {
+      "name": "two-mode refusal moved out of dispatch",
+      "file": "cmd/deskinstall/main.go",
+      "old": "if o.manifest != \"\" || o.dest != \"\" {",
+      "new": "if false && (o.manifest != \"\" || o.dest != \"\") {"
+    },
+    {
+      "name": "hash refusal swallowed by the adapter: a tampered artifact exits 0",
+      "file": "cmd/deskinstall/main.go",
+      "old": "if err != nil {\n\t\tfmt.Fprintf(stderr, \"deskinstall: REFUSED",
+      "new": "if false && err != nil {\n\t\tfmt.Fprintf(stderr, \"deskinstall: REFUSED"
+    }
+  ]
+}
