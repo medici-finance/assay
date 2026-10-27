@@ -10,11 +10,11 @@ description: >-
 
 # Trace path to live: objective → prerequisite graph → ranked moves
 
-Answer two questions about one objective: what must be `done` before it can go live, and what
+For one objective answer: what must be `done` before it can go live, and what
 can be done now to move it forward. The answer is a page with:
 
-- a month of progress at the top, using plain-language labels;
-- outcome progress lines, changes since the previous report, and blocker categories;
+- daily movement and evidence-backed focus first;
+- month-long queue and outcome context in details;
 - the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.
@@ -55,7 +55,7 @@ every later step wrong. Do not walk an unconfirmed guess.
 Run `statusgen --root <dir> --launch --launch-target <id>` in each materialised root. The
 transitive `depends:` closure, with live status, comes from the root that owns the target.
 
-If a target is not found, check freshness first, then the two-digit board id form, then every other root. `--launch` reads one root; report not-found only after every fetched root was tried.
+`target "<id>" not found in any stream`: check freshness (step 2 removes a stale tree), then the two-digit id, then every fetched root. `--launch` reads one root; try all before reporting not-found.
 
 ## 4. Stitch the graph across roots
 
@@ -122,7 +122,7 @@ Rank the moves in this order:
 
 Read [Report presentation](references/report.md) before writing the HTML. It defines the
 plain-language titles, six-line progress chart (three weekly readings plus seven daily),
-outcome progress, report-to-report changes, blocker categories, remaining-work graph, historical evidence and coverage requirements. Put progress first;
+outcome progress, report-to-report changes, blocker categories, remaining-work graph, historical evidence and coverage requirements. Put daily movement and focus first;
 hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
 Write the self-contained report outside repositories and never commit it.
 

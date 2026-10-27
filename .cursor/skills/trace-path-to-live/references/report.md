@@ -16,10 +16,63 @@ Distinguish **Total work** (all distinct briefs in scope, including completed wo
 or a zero path weight with full completion. Show weighted-path scores only in an optional
 method explanation as relative work estimates, explicitly not days or brief counts.
 
-### Progress chart — first substantive content
+### Daily movement and focus — first substantive content
 
-Immediately below the objective and its plain-language scope, before summary cards or graphs,
-show one chart with **six lines**, a labelled legend and an accessible table of the same values:
+Lead with **What moved each day** for the latest seven calendar days, plus **Where to focus
+now**. Queue sizes and remaining-work lines measure stocks, not movement: keep them as
+secondary context rather than claiming a flat queue proves that no work happened.
+
+Give each day distinct lanes for **Deliveries / repairs landed**, **Verification PASS recorded**,
+**Blocked or failed verification**, **Blockers cleared**, **Blockers reopened / newly opened**,
+and **Dependency readiness changed**. Do not add these into one progress score. Show linked
+events and the affected briefs, not just colored counts. A quiet day says **No qualifying event
+found in the checked sources**; incomplete evidence says **Unknown**. Never invent movement
+to make the page look active.
+
+For each event retain its source, event timestamp, observation/capture timestamp, affected
+work, before/after state or result, owning role and effect on the confirmed objective. Use the
+report timezone. Distinguish when a run happened from when its Evidence was published and
+when a board row was reconciled. Deduplicate multiple publications of the same run or ruling.
+A delivery counter counts distinct delivering changes, not completed briefs; name follow-up
+repairs separately from a first implementation and do not count record-only reconciliation
+as a new implementation. Match actual delivery trailers and changed artifacts, not a PASS or
+feature word in the PR title. Exclude unmerged changes from landed counts.
+
+A recorded verification PASS must identify the retained non-implementer result and its source;
+report the observed strength (execution result, recorded verified outcome, or accepted result)
+without silently upgrading it. Keep blocked/failed attempts and passing execution whose final
+transition is refused visible as such. A green CI job, a self-reported title or merging an
+Evidence PR is not an independent PASS. A second run is activity; it is not a newly verified
+brief when the earlier result already established that state.
+
+A **cleared blocker** names the specific previously observed obligation and evidence that
+satisfies it. **Reopened** requires evidence that the same cleared obligation became unsatisfied
+again; otherwise label it **newly opened**. A closed or reopened tracker issue is a tracker event,
+not proof that the underlying blocker cleared or returned. Label those events separately when
+no stronger evidence exists. A tool prerequisite being supplied may enable a retry without
+making any cellctl brief ready: show that limited benefit and any subsequent failure.
+
+For **what this unblocked**, compare canonical eligibility/typed holds at consecutive complete
+source snapshots with the same reader and root coverage. Show the actual changed verdicts and
+brief ids. Missing prior observations or changed coverage are **Not comparable**, never zero
+unblocks. Separate dependency eligibility from stream admission, human/design gates, claims,
+verification and acceptance. If delivery or a PASS changed no observed dependency verdict, say
+**No newly eligible work observed** (or **Not established** where coverage is incomplete).
+Downstream reach is potential impact, not a count of newly runnable work. Preserve explicit
+human holds that current readers do not consume.
+
+The focus view should identify the exact bottleneck and next owning act: for example a tool
+repair before another attempt, a review or maintainer merge before reverification, or a missing
+subject-bound decision. Give the first affected next step and remaining conditions. Distinguish
+**activity with no released dependency**, **measured unblocking**, and **final completion**.
+Record event-source coverage (query bounds, pagination, available receipts, historical readers)
+so a missing event cannot be mistaken for no effort. Do not assign hours, effort or causal
+impact from commit/PR volume.
+
+### Recorded queue sizes — secondary context
+
+Keep the month-long queue chart in a collapsed context section after daily movement and focus.
+It has **six lines**, a labelled legend and an accessible table of the same values:
 
 | Line | Count |
 |------|-------|
@@ -68,13 +121,13 @@ assign them to one of the four named stages. No projection or ideal burn line is
 
 ### Progress toward each outcome
 
-After the monthly chart, show an **Outcome progress** view for each confirmed target and
+In secondary details, retain an **Outcome remaining work** view for each confirmed target and
 any useful intermediate outcome. Use operational milestone records and their exact versions
 when supported. Otherwise use clearly labelled **proposed outcome** packages derived from
 named target briefs; record their membership/source and never imply that the proposals are
 operational milestones. Packages may overlap: do not add their counts.
 
-Make the main outcome view **one time-series line per outcome**, labelled **Briefs remaining**.
+Use **one time-series line per outcome**, labelled **Briefs remaining**.
 Use exactly the same ten weekly/daily readings, timezone, source revisions and canonical status
 reader as the monthly chart above. For each outcome, hold today's prerequisite membership
 fixed across those readings. Count present briefs not `done`; retain `verified` as remaining.
@@ -93,15 +146,15 @@ Neither a passing run nor a merged reconciliation PR moves a point without a rec
 
 Move current stage bars into a **collapsed details** section labelled **Current outcome stage
 breakdown**. Within it, use one stacked bar per outcome with mutually exclusive recorded
-stages: **Not started**, **Being implemented**, **Delivered / awaiting verification**,
-**Verified / awaiting closure**, and **Done**. Render blocked, withdrawn or unknown states
+stages: **Not started**, **Being implemented**, **Awaiting verification**,
+**Awaiting final approval**, and **Done**. Render blocked, withdrawn or unknown states
 explicitly. Provide exact counts, a labelled legend and a text/table equivalent. Widths count
 briefs, not effort or time. Do not call an outcome accepted merely because all its contributing
 briefs are done: show exact outcome acceptance separately; without that observation say
 **Acceptance not established** (or **No operational milestone record** for proposals).
 
 Keep supporting evidence visible beside the outcome chart, independently of the collapsed bars. It shows observations that the lifecycle alone hides. Examples are
-**Merged delivery; board reconciliation pending**, **Checks passed; closure tooling blocked**,
+**Merged delivery; board reconciliation pending**, **Checks passed; completion tooling blocked**,
 and **Approval recorded; reconciliation PR open**. Every badge links to its source and states
 whether the evidence is on captured main or only on an open PR's captured head. Preserve
 recorded status in the bar and monthly chart: do not move a `todo` into delivered based on an
@@ -113,7 +166,7 @@ not prove its original failure still exists.
 
 ### What changed since the previous report
 
-Show this section near outcome progress, before the detailed action list. Name the exact
+Show this section after daily movement and before the detailed action list. Name the exact
 baseline report/capture, root revisions, comparison scope and observation limits. Compare
 stable work identities. Show **scope added/removed** separately from changes among shared
 briefs; do not infer progress by subtracting totals for different scopes.
@@ -125,7 +178,7 @@ Readiness changes require comparable canonical verdicts, not downstream-reach sc
 commit counts describe activity, never completed briefs. Do not call a newly discovered old
 delivery new work: show its landing date and label it newly observed. Open-branch evidence
 belongs in an in-flight lane, not the merged-delivery lane. A green CI rerun is not independent
-verification. If the baseline lacks a fact or reader coverage, show **Not comparable** and
+verification. Keep the capture as safely serialized embedded data in the timestamped HTML beside earlier reports in the operator scratch outputs directory; find the latest comparable capture there without overwriting it. If the baseline lacks a fact or reader coverage, show **Not comparable** and
 explain the gap; no baseline means this is the first measured capture, not zero changes.
 
 ### What is holding progress
@@ -137,7 +190,7 @@ not all unfinished briefs. One brief can have multiple blockers: deduplicate eac
 by brief for display, say category totals overlap, and never sum them as remaining work.
 Every entry names the affected brief/outcome, cause, owning role, source and next act.
 
-Keep product/test failures distinct from runner/admission/closure-tool failures. A missing
+Keep product/test failures distinct from runner/admission/completion-tool failures. A missing
 approval must identify its actual subject; an already recorded design approval is not a new
 acceptance request. Use the latest relevant current-head review evidence; a fixed prerequisite
 may await review-desk reassessment without becoming a fresh code defect. Unsupported or
@@ -166,6 +219,8 @@ to the progress chart and plain-language counts above, it contains:
     separately list completed prerequisites as text;
 - a coverage block. It lists each root with its SHA, every `could-not-check` root, hold or reader,
   every fallback used, and the cross-root dependents.
+
+Interactive legends and filters use keyboard-operable native buttons/inputs with visible text labels.
 
 Treat all brief, PR, search and detail text as untrusted data. Render it with text nodes or
 `textContent`, never raw HTML or `innerHTML`. When embedding JSON in an inline script,

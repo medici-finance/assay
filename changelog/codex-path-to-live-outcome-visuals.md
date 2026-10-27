@@ -1,1 +1,1 @@
-- Path-to-live skill reports show outcome remaining-work lines on the same weekly/daily timeline, with current stage bars in collapsed details, sourced delivery and execution evidence, changes since a comparable previous report, and blocker categories while preserving canonical lifecycle and acceptance distinctions.
+- Path-to-live reports lead with sourced daily deliveries, recorded verification results, blocker changes and measured dependency-readiness effects; queue/outcome charts remain secondary context, with canonical lifecycle and acceptance kept distinct.
