@@ -123,10 +123,16 @@ func sameDirectory(a, b string) bool {
 // a form that narrows what git reads (admittedRowGlobal). Variables the row's
 // shell would run or act on at startup are removed (admittedRowShellStartup),
 // since they can set any of the above before the row's own command runs.
+// Forge credential variables are removed (admittedRowForgeToken), so a row
+// holds a forge credential only when its own command line supplies one. The
+// invoking process keeps them: its own forge reads (the acceptance-approval
+// read) happen there, from os.Getenv, and this function only builds the
+// rows' copy.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
-// config, exactly as admission does) and SSH_ASKPASS pass through unchanged.
+// config, exactly as admission does, and where a forge CLI keeps its own
+// stored login) and SSH_ASKPASS pass through unchanged.
 // An unadmitted run keeps the caller's environment.
 func admittedRowEnv(environ []string) []string {
 	home := ""
@@ -140,6 +146,7 @@ func admittedRowEnv(environ []string) []string {
 		key, _, _ := strings.Cut(kv, "=")
 		switch {
 		case admittedRowShellStartup(key):
+		case admittedRowForgeToken(key):
 		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):
 		default:
 			env = append(env, kv)
@@ -169,4 +176,12 @@ func admittedRowGlobal(kv, home string) bool {
 func admittedRowShellStartup(key string) bool {
 	key = strings.ToUpper(key)
 	return strings.HasPrefix(key, "BASH_FUNC_") || slices.Contains([]string{"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4"}, key)
+}
+
+// admittedRowForgeToken reports whether a variable is one the forge CLI reads
+// as a credential: GH_TOKEN and GITHUB_TOKEN for github.com, GH_ENTERPRISE_TOKEN
+// and GITHUB_ENTERPRISE_TOKEN for an enterprise host. Matched whatever its case,
+// as the GIT_* and shell startup variables are.
+func admittedRowForgeToken(key string) bool {
+	return slices.Contains([]string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}, strings.ToUpper(key))
 }
