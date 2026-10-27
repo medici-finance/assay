@@ -473,21 +473,36 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	// Held by a strong board-honesty finding (boardhonesty.go): already delivered
 	// by a merged `Brief:`-trailer PR, or a re-homed pointer row. NAMED so the
 	// hold is visible; the row stays on the board until it is reconciled.
+	// A delivered row the reconcile's own lint hold refuses to write is named
+	// apart: "reconcile" cannot clear it, so its line carries the hold's PROBLEM
+	// and the record that clears it instead.
 	if len(nu.PhantomElsewhere) > 0 {
 		ids := make([]string, 0, len(nu.PhantomElsewhere))
 		for id := range nu.PhantomElsewhere {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		frags := make([]string, 0, len(ids))
+		var frags, flipFrags []string
 		for _, id := range ids {
-			frags = append(frags, fmt.Sprintf("%s → %s", id, nu.PhantomElsewhere[id]))
+			frag := fmt.Sprintf("%s → %s", id, nu.PhantomElsewhere[id])
+			if nu.PhantomFlipHeld[id] {
+				flipFrags = append(flipFrags, frag)
+				continue
+			}
+			frags = append(frags, frag)
 		}
-		w("> **Already delivered or re-homed — held out of dispatch (%d):** %s. Each is a board-honesty "+
-			"finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose "+
-			"brief file is gone); reconcile or retire the row to clear it.",
-			len(nu.PhantomElsewhere), strings.Join(frags, ", "))
-		w("")
+		if len(frags) > 0 {
+			w("> **Already delivered or re-homed — held out of dispatch (%d):** %s. Each is a board-honesty "+
+				"finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose "+
+				"brief file is gone); reconcile or retire the row to clear it.",
+				len(frags), strings.Join(frags, ", "))
+			w("")
+		}
+		if len(flipFrags) > 0 {
+			w("> **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (%d):** %s. "+
+				"Fix: %s.", len(flipFrags), strings.Join(flipFrags, ", "), phantomFlipHeldRemediation)
+			w("")
+		}
 	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
 	// what the caps show, say so explicitly — never silently truncate. The

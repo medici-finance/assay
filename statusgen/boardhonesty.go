@@ -78,8 +78,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // errNoGitForMerge is the sentinel the caller passes as mergedErr when the tree
@@ -169,6 +171,22 @@ var phantomRemediation = map[string]string{
 	phantomSiblingMergeUnreconciled: "read the merged sibling change Task by Task and reconcile the row, or record a `delivery:` claim naming what it covers",
 }
 
+// phantomFlipHeldRemediation is the "what clears it" for an already-merged-unflipped
+// row the reconcile's own lint hold refuses to write (reconcilehold.go). Telling
+// that reader to "reconcile the row" sends them to the one step that is guaranteed
+// not to move it; what clears it is the lint problem the hold named, so the fix
+// names the two records the Status-keyed rules ask for.
+const phantomFlipHeldRemediation = "the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — " +
+	"clear the problem the hold names: cite the approved design-decision record in the brief's `design:` " +
+	"(lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile " +
+	"then writes the row. Do not re-dispatch it"
+
+// phantomFlipUncheckedRemediation is the fix for a delivered row whose flip the
+// lint hold could not evaluate at all: no conclusion is drawn, so the reader is
+// sent to the evaluation, never to a reconcile that may or may not write.
+const phantomFlipUncheckedRemediation = "the reconcile's lint hold could not evaluate this row, so whether reconciling " +
+	"clears it is unknown — run `statusgen reconcile --backfill` on a full checkout to see the verdict. Do not re-dispatch it"
+
 // classifyPhantom is the pure classifier. Given a todo brief's id, its raw file
 // body, the ROW's own brief-table cell, the set of brief ids a local merge already
 // named, and whether the row's own brief file exists on disk, it returns the
@@ -249,12 +267,21 @@ func classifyPhantom(briefID, body, rowCell string, mergedIDs map[string]bool, b
 // run. A non-nil mergedErr makes the already-merged-unflipped arm could-not-check
 // (one aggregate NOTICE); the text detectors, which need no git, still run — a
 // git failure must not blind the five classes that do not depend on it.
-func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) []string {
-	finds, notices := phantomFindings(streams, merged, mergedErr)
+//
+// root is the board root the reconcile writes under (root/docs/streams/<name>):
+// the already-merged-unflipped rows held on a Brief: trailer are judged by the
+// reconcile's own lint hold there (reconcileFlipVerdicts), so the NOTICE never
+// tells a reader to reconcile a row the reconcile refuses to write.
+func boardHonestyNotices(root string, streams []*Stream, merged []mergedPR, mergedErr error) []string {
+	finds, notices := phantomFindings(root, streams, merged, mergedErr)
 	for _, f := range finds {
+		reason, fix := f.Reason, phantomRemediation[f.Class]
+		if f.Flip != nil && !f.Flip.Clean() {
+			reason, fix = reason+"; "+f.Flip.Label(), f.Flip.Remediation()
+		}
 		notices = append(notices, fmt.Sprintf("NON-DISPATCHABLE (%s): %s — %s. This todo row passes the freshness gate but is not "+
 			"dispatchable from here; it inflates the Next-up count. Fix: %s. (board-honesty)",
-			f.Class, f.ID, f.Reason, phantomRemediation[f.Class]))
+			f.Class, f.ID, reason, fix))
 	}
 	sort.Strings(notices)
 	return notices
@@ -272,6 +299,39 @@ type phantomFinding struct {
 	// Hold is the dispatch-exclusion label ("<class> (<evidence>)") when the
 	// evidence is strong, "" when the finding is notice-only.
 	Hold string
+	// Flip is the reconcile lint hold's verdict on writing this row to
+	// implemented — set only for an already-merged-unflipped row held on a
+	// Brief: trailer, the one class the reconcile is told to clear.
+	Flip *flipVerdict
+}
+
+// flipVerdict is what `statusgen reconcile --apply` would do with one delivered
+// row, read from the reconcile's own decision path (planReconcileWrites) rather
+// than re-derived: admitted, held with the lint PROBLEM(s) the move would add, or
+// could-not-check with why. Unchecked is never a pass.
+type flipVerdict struct {
+	Problems  []string // the hold's PROBLEM lines; empty when admitted or unchecked
+	Unchecked string   // why the hold could not be evaluated; "" when it was
+}
+
+// Clean reports whether the reconcile would write the row.
+func (v *flipVerdict) Clean() bool { return v.Unchecked == "" && len(v.Problems) == 0 }
+
+// Label is the suffix the hold label and the NOTICE carry for a row the
+// reconcile will not write: the same PROBLEM text the reconcile's hold reports.
+func (v *flipVerdict) Label() string {
+	if v.Unchecked != "" {
+		return "flip hold could-not-check: " + v.Unchecked
+	}
+	return "flip held: " + strings.Join(v.Problems, "; ")
+}
+
+// Remediation is the fix for a row the reconcile will not write.
+func (v *flipVerdict) Remediation() string {
+	if v.Unchecked != "" {
+		return phantomFlipUncheckedRemediation
+	}
+	return phantomFlipHeldRemediation
 }
 
 // strongPhantom decides whether a classified row may be HELD from dispatch, or is
@@ -287,14 +347,23 @@ type phantomFinding struct {
 //     delivery;
 //   - re-homed, which is already row-scoped (the row's own cell carries the marker
 //     AND its brief file is gone).
-func strongPhantom(class, id string, delivering map[string]mergedPR, partial bool) string {
+//
+// flip is the reconcile lint hold's verdict for a delivered row (nil when it was
+// not evaluated). A row the reconcile will not write keeps its hold — the work
+// still landed — but the label names the hold's PROBLEM, so "reconcile the row"
+// is never the reading of a row the reconcile refuses.
+func strongPhantom(class, id string, delivering map[string]mergedPR, partial bool, flip *flipVerdict) string {
 	switch class {
 	case phantomMergedUnflipped:
 		if pr, ok := delivering[id]; ok && !partial {
+			evidence := "merged PR, Brief: trailer"
 			if pr.Number > 0 {
-				return fmt.Sprintf("%s (merged PR #%d, Brief: trailer)", class, pr.Number)
+				evidence = fmt.Sprintf("merged PR #%d, Brief: trailer", pr.Number)
 			}
-			return fmt.Sprintf("%s (merged PR, Brief: trailer)", class)
+			if flip != nil && !flip.Clean() {
+				evidence += "; " + flip.Label()
+			}
+			return fmt.Sprintf("%s (%s)", class, evidence)
 		}
 	case phantomReHomed:
 		return fmt.Sprintf("%s (pointer row, brief file gone)", class)
@@ -308,18 +377,75 @@ func strongPhantom(class, id string, delivering map[string]mergedPR, partial boo
 // merge read (mergedErr != nil) holds no merged-delivery row: absent forge/history
 // state is could-not-check, never "delivered". A re-homed pointer row is still held,
 // because its evidence is the row and its missing brief file, not the history.
-func applyPhantomHolds(streams []*Stream, merged []mergedPR, mergedErr error) {
-	finds, _ := phantomFindings(streams, merged, mergedErr)
+func applyPhantomHolds(root string, streams []*Stream, merged []mergedPR, mergedErr error) {
+	finds, _ := phantomFindings(root, streams, merged, mergedErr)
 	for _, f := range finds {
 		if f.Hold != "" {
 			f.Stream.Briefs[f.Index].PhantomHeld = f.Hold
+			f.Stream.Briefs[f.Index].PhantomFlipHeld = f.Flip != nil && !f.Flip.Clean()
 		}
 	}
 }
 
+// reconcileFlipVerdicts asks the reconcile's OWN decision path what it would do
+// with each delivered row: planReconcileWrites, the read-only form of
+// `reconcile --apply` (same cells, same lint hold, nothing written). One
+// evaluator, so the planner's label and the reconcile's write can never
+// disagree about whether reconciling clears a row.
+//
+// Each id is evaluated as a trailer-witnessed todo -> implemented move, the
+// cell the reconcile builds for a merged Brief:-trailer PR. Ids are fed in
+// sorted order; the reconcile evaluates its witnessed cells in its own order
+// with earlier admitted moves kept, so a verdict that depends on another row
+// moving first can differ at the margin — that is the reconcile's ordering,
+// not a second rule. A row the reconcile has no verdict for (no README row it
+// can rewrite) and an evaluation error are both could-not-check, never clean.
+func reconcileFlipVerdicts(root string, ids map[string]string, prs map[string]int) map[string]*flipVerdict {
+	out := map[string]*flipVerdict{}
+	if len(ids) == 0 {
+		return out
+	}
+	keys := make([]string, 0, len(ids))
+	for k := range ids {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	cells := make([]BriefCell, 0, len(keys))
+	for _, k := range keys {
+		cells = append(cells, BriefCell{ID: k, Cell: "implemented", Source: "pr", Witness: fmt.Sprintf("PR #%d", prs[k])})
+	}
+	rows, held, err := planReconcileWrites(root, cells)
+	if err != nil {
+		for _, k := range keys {
+			out[ids[k]] = &flipVerdict{Unchecked: "the reconcile's hold evaluation failed (" + err.Error() + ")"}
+		}
+		return out
+	}
+	for _, r := range rows {
+		if id, ok := ids[r.ID]; ok {
+			out[id] = &flipVerdict{}
+		}
+	}
+	for _, h := range held {
+		if id, ok := ids[h.ID]; ok {
+			out[id] = &flipVerdict{Problems: h.Problems}
+		}
+	}
+	for _, k := range keys {
+		if _, ok := out[ids[k]]; !ok {
+			out[ids[k]] = &flipVerdict{Unchecked: "the reconcile found no todo row for " + k + " under " +
+				filepath.ToSlash(filepath.Join("docs", "streams", strings.SplitN(k, "/", 2)[0], "README.md")) + " to write"}
+		}
+	}
+	return out
+}
+
 // phantomFindings is the walk boardHonestyNotices always did, returning structured
-// findings next to the could-not-check notices.
-func phantomFindings(streams []*Stream, merged []mergedPR, mergedErr error) ([]phantomFinding, []string) {
+// findings next to the could-not-check notices. Every already-merged-unflipped
+// row it holds on a Brief: trailer is then judged by the reconcile's own lint
+// hold under root (reconcileFlipVerdicts), so its label says whether
+// reconciling can clear it.
+func phantomFindings(root string, streams []*Stream, merged []mergedPR, mergedErr error) ([]phantomFinding, []string) {
 	var notices []string
 	var finds []phantomFinding
 	add := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
@@ -431,8 +557,27 @@ func phantomFindings(streams []*Stream, merged []mergedPR, mergedErr error) ([]p
 			}
 			finds = append(finds, phantomFinding{
 				Stream: s, Index: idxByNum[num], ID: id, Class: class, Reason: reason,
-				Hold: strongPhantom(class, id, delivering, partialByNum[num]),
+				Hold: strongPhantom(class, id, delivering, partialByNum[num], nil),
 			})
+		}
+	}
+
+	// The rows a reader is told to reconcile: delivered on a Brief: trailer and
+	// held. Keyed by the stream's directory name — the key the reconcile maps to
+	// docs/streams/<key>/README.md — and mapped back to the finding's id.
+	flipIDs, flipPRs := map[string]string{}, map[string]int{}
+	for _, f := range finds {
+		if f.Class == phantomMergedUnflipped && f.Hold != "" {
+			key := filepath.Base(f.Stream.Dir) + "/" + f.Stream.Briefs[f.Index].Num
+			flipIDs[key], flipPRs[key] = f.ID, delivering[f.ID].Number
+		}
+	}
+	verdicts := reconcileFlipVerdicts(root, flipIDs, flipPRs)
+	for i := range finds {
+		f := &finds[i]
+		if v, ok := verdicts[f.ID]; ok {
+			f.Flip = v
+			f.Hold = strongPhantom(f.Class, f.ID, delivering, false, v)
 		}
 	}
 

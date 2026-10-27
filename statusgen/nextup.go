@@ -183,6 +183,10 @@ type NextUp struct {
 	// `Brief:`-trailer PR, or a re-homed pointer row) to "<class> (<evidence>)".
 	// NAMED, never silently dropped — the HomedElsewhere shape.
 	PhantomElsewhere map[string]string
+	// PhantomFlipHeld marks the PhantomElsewhere ids whose flip the reconcile's
+	// lint hold refuses (Brief.PhantomFlipHeld): reconciling cannot clear them,
+	// so the board names them apart with the fix their PROBLEM asks for.
+	PhantomFlipHeld map[string]bool
 	// --- Drive fields (methodology-metrics/45). All zero when no drive is active,
 	// keeping a no-manifest board byte-identical to the pre-drives generator. ---
 	//
@@ -954,6 +958,12 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 						nu.PhantomElsewhere = map[string]string{}
 					}
 					nu.PhantomElsewhere[s.Name+"/"+b.Num] = b.PhantomHeld
+					if b.PhantomFlipHeld {
+						if nu.PhantomFlipHeld == nil {
+							nu.PhantomFlipHeld = map[string]bool{}
+						}
+						nu.PhantomFlipHeld[s.Name+"/"+b.Num] = true
+					}
 				}
 				continue
 			}

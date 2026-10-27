@@ -355,14 +355,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// mergedstatus.go precedent one block above — a phantom row is surfaced, not
 	// hard-gated, and the git-derived class 1 reuses the same merge read.
 	// Declared source: statusgen/boardhonesty.go.
-	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
+	notices = append(notices, boardHonestyNotices(root, checkStreams, mergedPRs, mergedErr)...)
 	// The same classifier, applied to dispatch: a todo row caught on STRONG evidence
 	// (a merged `Brief:`-trailer PR, a re-homed pointer row) is held out of Next-up
 	// via Brief.PhantomHeld before nextUp() below. Full `streams`, like the
 	// sibling-merge mutation, so an out-of-scope stream's row is held on the board
 	// that renders it. A failed merge read holds no merged-delivery row (re-homed
 	// pointer rows, which need no git, are still held).
-	applyPhantomHolds(streams, mergedPRs, mergedErr)
+	applyPhantomHolds(root, streams, mergedPRs, mergedErr)
 	// Sibling-merge-unreconciled (siblingmerge.go): the
 	// SEVENTH board-honesty phantom class, wired right after class 1 like the
 	// package comment describes, but through its OWN driver rather than

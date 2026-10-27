@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen`'s board-honesty planner now asks the reconcile's own lint hold whether it would write each `already-merged-unflipped` row. A row the hold refuses is labelled `flip held: <problem>` with the same lint problem the reconcile reports, and its fix tells you to cite the design record (`design:`, §4.4) or record the ruling (`ruling:`, §4.5), instead of "reconcile the row". The row is still held out of dispatch, and the board lists it on its own line.
