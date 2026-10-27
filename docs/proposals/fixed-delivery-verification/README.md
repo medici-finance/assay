@@ -200,6 +200,12 @@ Classify historical work before applying compatibility:
 | Older narrative-only or unreachable witnesses | Keep historical record and grandfathering under current cutoff rules | No invented hashes, execution or retroactive execution credit; fresh proof if closing open work |
 | Already verified/done | Preserve the original acceptance statement and its historical limits | New defects use existing findings/repair flow; do not bulk reopen for new formatting |
 
+For verified-but-not-done backlog entries, finish the existing continuation against
+the admitted original D/A and applicable evidence. Their earlier verification remains
+a historical statement; a current-H coverage refusal is not by itself evidence to
+demote it. Missing D/proof still holds completion. Already-done records keep the existing
+grandfathering cutoff and are not given invented retrospective attestation.
+
 Statusgen/38's planned v1-to-v2 backfill can recover available content records; it cannot
 establish delivery identity, invent lost output or approve a changed obligation. Reuse it
 for its actual job after /36 and /37 are qualified. Fixed-D acceptance itself can proceed
