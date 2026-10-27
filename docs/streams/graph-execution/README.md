@@ -112,7 +112,7 @@ or removing any human gate (spec §5 states the divergence).
 | 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
-| 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | implemented | — | — |
+| 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | — | — |
 | 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
