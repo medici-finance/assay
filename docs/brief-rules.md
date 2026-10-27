@@ -788,8 +788,9 @@ passing run — which is why they are lint rules and not review vigilance.
       **disjoint** and together cover the whole Verify table. Either landing
       order satisfies the audit, and both tables must be landed in the same
       run before its verdict line. Before that verdict, `statusgen verifyrun
-      --check` reports every row pass and `--bracket-digest` reports
-      `verdict=match` for the container bracket. Never hand-paste or fence a
+      --check` accepts the whole table: every owed row is satisfied and
+      supplemental rows remain explicitly uncredited. `--bracket-digest`
+      reports `verdict=match` for the container bracket. Never hand-paste or fence a
       witness table: every table in Evidence is one `verifyrun` wrote.
       `--rows` changes only which rows a run executes: `--check` always
       audits the whole table, the last witness for a row still wins, and the
@@ -799,11 +800,19 @@ passing run — which is why they are lint rules and not review vigilance.
       list or element, an ID named twice or shared by two rows, a table with
       no `#` column, and with `--check`, `--open-bracket`, `--close-bracket`
       or `--bracket-digest`.
-      Under `--acceptance-record` the protected run set is witnessed by ONE
-      run that covers it whole (no `--rows`, or one naming every protected
-      row): its `Verification-Table:` descriptor must appear exactly once in
-      the run closure reads, so split `--rows` runs under one protected
-      record or transition fail closed and never close. A protected record
+      With `--acceptance-record`, execute all protected host rows, including
+      supplemental rows, in ONE host invocation on a clean committed source
+      before inserting uncommitted Evidence. A `--rows` selection may omit the
+      disjoint container-witnessable rows: bracket those on the same source
+      and land the closed witness through the sanctioned Evidence path. Both
+      selections together cover the whole protected table, while its
+      `Verification-Table:` descriptor appears exactly once. A second protected
+      host invocation still cannot close. Container execution may happen first
+      with its witness outside the home, but landing that uncommitted Evidence
+      first makes the protected host execution refuse. Current-table container
+      rows receive no exemption from their owed original definitions; retain
+      the protected acceptance route and whole-table/bracket-credit checks.
+      Never rewrite witness cells or receipt fields to align sources. A protected record
       (the `Verification-Table:` line alone) needs no `--acceptance-forge`;
       it refuses an original row whose delivered definition differs from
       its original one, and witnesses supplemental rows `author-added`.
