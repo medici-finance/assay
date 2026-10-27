@@ -145,3 +145,30 @@ func TestSiblingPlannerScope(t *testing.T) {
 		}
 	}
 }
+
+// Exactly one non-empty source key binds a sibling; malformed or ambiguous
+// coverage is refused.
+// regression: #3483
+func TestSiblingCoverageExact(t *testing.T) {
+	one := InputKeyRepoSourcePrefix + "example-org/one"
+	for _, tc := range []struct {
+		decl   string
+		inputs map[string]string
+		ok     bool
+	}{
+		{"../one/x.go", map[string]string{one: siblingTestSource}, true},
+		{"../ONE/x.go", map[string]string{one: siblingTestSource}, true},
+		{"../one/x.go", map[string]string{one: ""}, false},
+		{"../one/x.go", map[string]string{one: siblingTestSource, InputKeyRepoSourcePrefix + "fork-org/one": siblingTestSource}, false},
+		{"../one/x.go", map[string]string{InputKeyRepoSourcePrefix + "example-org/other": siblingTestSource}, false},
+		{"../one/x.go", map[string]string{"file:one/x.go": siblingTestSource}, false},
+		{"../one/../x.go", map[string]string{one: siblingTestSource}, false},
+		{"one/x.go", map[string]string{one: siblingTestSource}, false},
+		{"../one/x.go", map[string]string{InputKeyRepoSourcePrefix + "one": siblingTestSource}, false},
+	} {
+		err := CheckSiblingCoverage([]string{tc.decl}, tc.inputs)
+		if (err == nil) != tc.ok || (err != nil && ExitCodeOf(err) != ExitRefused) {
+			t.Errorf("%q %v: got %v, want ok=%v", tc.decl, tc.inputs, err, tc.ok)
+		}
+	}
+}

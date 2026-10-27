@@ -470,14 +470,12 @@ func SplitSiblingDeclarations(declarations []string) (local, siblings []string) 
 // is refused rather than resolved anywhere else.
 func CheckSiblingCoverage(siblings []string, inputs map[string]string) error {
 	for _, decl := range siblings {
-		name, _, ok := SiblingDeclaration(decl)
-		if !ok {
-			return Refused("refused: unsupported Context files: path " + fmt.Sprintf("%q", decl))
-		}
+		// A malformed declaration has no name, so nothing binds it.
+		name, _, _ := SiblingDeclaration(decl)
 		bound := 0
 		for k, v := range inputs {
 			repo, isSource := strings.CutPrefix(k, InputKeyRepoSourcePrefix)
-			if _, repoName := splitRepo(repo); isSource && strings.TrimSpace(v) != "" && strings.EqualFold(repoName, name) {
+			if _, repoName := splitRepo(repo); isSource && name != "" && strings.TrimSpace(v) != "" && strings.EqualFold(repoName, name) {
 				bound++
 			}
 		}
