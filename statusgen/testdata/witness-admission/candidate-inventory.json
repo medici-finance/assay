@@ -2543,10 +2543,11 @@
   "snapshot_sha256": "d74af4a3ec1ef6ca091ab33ebd91938bdf3657ab20b95c323af1f2625967fb5b",
   "eligible_sha256": "9936eef469b2c0fd0967a06b6c2354ecee5773bba5389abf6027af7451e415e2",
   "known_answer": {
-    "record_response_base64": "eyJudW1iZXIiOjEsInN0YXRlIjoiY2xvc2VkIiwiZHJhZnQiOmZhbHNlLCJib2R5IjoiU1lOVEhFVElDIDxiPiZhbXA7IMOpIP9cbkJyaWVmOiBrdi8wMVxuIiwibWVyZ2VkX2F0IjoiMjAyNi0wMS0wMlQwMzowNDowNVoiLCJtZXJnZV9jb21taXRfc2hhIjoiMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsImhlYWQiOnsic2hhIjoiMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsInJlZiI6Imt2LTAxIn0sInVzZXIiOnsibG9naW4iOiJ4In0sImxhYmVscyI6W119",
+    "invalid_utf8_marker": "<0xff>",
+    "record_response": {"number":1,"state":"closed","draft":false,"body":"SYNTHETIC <b>&amp; é <0xff>\nBrief: kv/01\n","merged_at":"2026-01-02T03:04:05Z","merge_commit_sha":"1111111111111111111111111111111111111111","head":{"sha":"2222222222222222222222222222222222222222","ref":"kv-01"},"user":{"login":"x"},"labels":[]},
     "record_pinned": "{\"number\":1,\"state\":\"closed\",\"draft\":false,\"body\":\"SYNTHETIC \u003cb\u003e\u0026amp; é �\\nBrief: kv/01\\n\",\"merged_at\":\"2026-01-02T03:04:05Z\",\"merge_commit_sha\":\"1111111111111111111111111111111111111111\",\"head\":{\"sha\":\"2222222222222222222222222222222222222222\",\"ref\":\"kv-01\"}}",
     "record_sha256": "83ae2a01dddfca617cd192745736ae109dcd4941a02672cd96f314d7eeae2305",
-    "files_response_base64": "W3sic2hhIjoiMyIsImZpbGVuYW1lIjoiYS88Yj4uZ28iLCJzdGF0dXMiOiJyZW5hbWVkIiwicHJldmlvdXNfZmlsZW5hbWUiOiJhL8OpLmdvIiwiYWRkaXRpb25zIjoxfSx7ImZpbGVuYW1lIjoiYy5tZCIsInN0YXR1cyI6ImFkZGVkIn1d",
+    "files_response": [{"sha":"3","filename":"a/<b>.go","status":"renamed","previous_filename":"a/é.go","additions":1},{"filename":"c.md","status":"added"}],
     "files_pinned": "[{\"filename\":\"a/\u003cb\u003e.go\",\"status\":\"renamed\",\"previous_filename\":\"a/é.go\"},{\"filename\":\"c.md\",\"status\":\"added\",\"previous_filename\":\"\"}]",
     "files_sha256": "cc2968b79f8d3e4db453bae228cace471b2b8e0ad562ee82e58e9bb48e9ebeec",
     "synthetic": "SYNTHETIC: a hand-written response, not forge data; it pins the serialization (HTML escaping off, invalid UTF-8 decoded to U+FFFD, unknown fields dropped, key order fixed)"

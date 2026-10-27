@@ -29,7 +29,7 @@ The first snapshot, taken on 2026-10-21, had 21 pages, 2076 records and 13 membe
 
 | File | SHA-256 at commit | Contents |
 |---|---|---|
-| `candidate-inventory.json` | `b67ae4f064d4de21227cba8e96da49beda6d771bd806af566eebfca093f682f6` | all 2339 records in page-and-position order, as identity fields plus `kept_sha256`, `files_sha256` where a file list is read, per-page request evidence, totals and the known-answer vector. No body or head ref text |
+| `candidate-inventory.json` | `91ed060386c207729f12ddf6b6911c424f70709155a7bb5829fed1c823b32cf2` | all 2339 records in page-and-position order, as identity fields plus `kept_sha256`, `files_sha256` where a file list is read, per-page request evidence, totals and the known-answer vector. No body or head ref text |
 | `candidate-cohort.json` | `c39158eaf2ba5918444f1961c49008a4eb009aad07832eb9621fb01f1631a4ac` | 14 members: disposition, reason, matching paths, merge SHA, `files_sha256`, a labelled synthetic stand-in, and the verbatim file list (253 paths in total) |
 
 - **Committed bytes.** The repository's withheld-content sweep ran over both fixtures and this receipt. Every entry was clean, and no member's file list had to be marked `held`. That includes #1006, so it is not held.

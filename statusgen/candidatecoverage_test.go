@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -155,13 +154,16 @@ type candTotals struct {
 }
 
 type candKnownAnswer struct {
-	RecordResponse  string `json:"record_response_base64"`
-	RecordPinned    string `json:"record_pinned"`
-	RecordSHA       string `json:"record_sha256"`
-	FilesResponse   string `json:"files_response_base64"`
-	FilesPinned     string `json:"files_pinned"`
-	FilesSHA        string `json:"files_sha256"`
-	SyntheticNotice string `json:"synthetic"`
+	// InvalidMarker stands for the one 0xff byte in RecordResponse, so the response is stored as
+	// readable JSON while the decoder still sees invalid UTF-8.
+	InvalidMarker   string          `json:"invalid_utf8_marker"`
+	RecordResponse  json.RawMessage `json:"record_response"`
+	RecordPinned    string          `json:"record_pinned"`
+	RecordSHA       string          `json:"record_sha256"`
+	FilesResponse   json.RawMessage `json:"files_response"`
+	FilesPinned     string          `json:"files_pinned"`
+	FilesSHA        string          `json:"files_sha256"`
+	SyntheticNotice string          `json:"synthetic"`
 }
 
 type candInventory struct {
@@ -602,7 +604,6 @@ func candWriteFile(path string, b []byte) error {
 	}
 	return os.WriteFile(path, b, 0o644)
 }
-
 
 // candMembershipDiff names every disagreement between derived membership and the cohort.
 func candMembershipDiff(mem map[int][]string, c candCohort) []string {
@@ -1373,10 +1374,10 @@ func candClone[T any](t *testing.T, v T) T {
 
 func candCheckKnownAnswer(t *testing.T, ka candKnownAnswer) {
 	t.Helper()
-	rb, err := base64.StdEncoding.DecodeString(ka.RecordResponse)
-	if err != nil {
-		t.Fatal(err)
+	if ka.InvalidMarker == "" || bytes.Count(ka.RecordResponse, []byte(ka.InvalidMarker)) != 1 {
+		t.Fatalf("known-answer record must carry the invalid-byte marker %q exactly once", ka.InvalidMarker)
 	}
+	rb := bytes.Replace(ka.RecordResponse, []byte(ka.InvalidMarker), []byte{0xff}, 1)
 	var p ghPull
 	if err := json.Unmarshal(rb, &p); err != nil {
 		t.Fatal(err)
@@ -1387,12 +1388,8 @@ func candCheckKnownAnswer(t *testing.T, ka candKnownAnswer) {
 	if !strings.Contains(ka.RecordPinned, "<b>&amp;") || !strings.Contains(ka.RecordPinned, "\uFFFD") {
 		t.Fatal("known-answer vector no longer exercises HTML escaping and invalid UTF-8")
 	}
-	fb, err := base64.StdEncoding.DecodeString(ka.FilesResponse)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var fs []prFile
-	if err := json.Unmarshal(fb, &fs); err != nil {
+	if err := json.Unmarshal(ka.FilesResponse, &fs); err != nil {
 		t.Fatal(err)
 	}
 	if got := string(pinnedJSON(pinFiles(fs))); got != ka.FilesPinned || filesSHA(fs) != ka.FilesSHA {
