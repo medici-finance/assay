@@ -1,0 +1,2 @@
+### Fixed
+- statusgen: a merged PR's `Brief: <stream>/<NN>` trailer in any configured root (`DESK_ROOTS`, `--sibling-root`) is now the delivery witness for a brief whose file lives in a different root. Next-up holds the row as already merged and names the PR as `owner/repo#N`, and reconcile writes the row with that PR as its witness. A configured root that cannot be read is reported as could-not-check and holds or writes nothing.

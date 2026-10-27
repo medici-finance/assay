@@ -291,10 +291,7 @@ func strongPhantom(class, id string, delivering map[string]mergedPR, partial boo
 	switch class {
 	case phantomMergedUnflipped:
 		if pr, ok := delivering[id]; ok && !partial {
-			if pr.Number > 0 {
-				return fmt.Sprintf("%s (merged PR #%d, Brief: trailer)", class, pr.Number)
-			}
-			return fmt.Sprintf("%s (merged PR, Brief: trailer)", class)
+			return fmt.Sprintf("%s (merged %s, Brief: trailer)", class, pr.prRef())
 		}
 	case phantomReHomed:
 		return fmt.Sprintf("%s (pointer row, brief file gone)", class)

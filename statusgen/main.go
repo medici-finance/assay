@@ -339,14 +339,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// backlog of drifted rows is reconciled. Skipped outright on a tree with no
 	// .git (the unconditional NOTICE above already states that caveat); otherwise
 	// three-state, with the git read's own error surfaced as could-not-check.
-	var mergedPRs []mergedPR
-	var mergedErr error
-	if hasNoGitDir(root) {
-		mergedErr = errNoGitForMerge
-	} else {
-		mergedPRs, mergedErr = mergedPRsFromGit(root)
+	// deliveryHistory (crossroot.go) also reads every other configured root's
+	// merged `Brief:`-trailer PRs: a brief delivered by a PR that merged in
+	// another repo is as delivered as one that merged here.
+	ownRepo, _ := rootRepo(streams)
+	mergedPRs, crossNotices, mergedErr := deliveryHistory(root, ownRepo)
+	if !errors.Is(mergedErr, errNoGitForMerge) {
 		notices = append(notices, mergedPRStatusNotices(checkStreams, mergedPRs, mergedErr)...)
 	}
+	notices = append(notices, crossNotices...)
 	// Board-honesty phantom-row detector: classify every todo row and surface the
 	// ones that pass the freshness gate but are not dispatchable from here
 	// (already-merged-unflipped, out-of-repo/dehoused/re-homed deliverables,

@@ -48,6 +48,25 @@ type mergedPR struct {
 	// the brief is then unconfirmed, not assumed (mergeDelivery).
 	Delivers []string
 	Authors  []string
+	// SHA is the merge (or squash) commit on the first-parent line.
+	SHA string
+	// Repo is "" for a merge in the board's own root, and the configured
+	// <owner>/<repo> of the OTHER root a cross-root delivery merged in
+	// (crossroot.go). Its PR number is that repo's, never this one's.
+	Repo string
+}
+
+// prRef names the PR for a NOTICE or a hold label: "PR #N" in the board's own
+// repo, "PR <owner>/<repo>#N" for a cross-root delivery, "PR" when the subject
+// carried no number.
+func (p mergedPR) prRef() string {
+	switch {
+	case p.Number <= 0:
+		return "PR"
+	case p.Repo != "":
+		return fmt.Sprintf("PR %s#%d", p.Repo, p.Number)
+	}
+	return fmt.Sprintf("PR #%d", p.Number)
 }
 
 // mergeDelivery is what a merged PR is known to have done to one brief.
@@ -387,7 +406,7 @@ func parseMergedLog(window []string, commits map[string]gitCommit, branchBody fu
 			continue
 		}
 		sort.Strings(refs)
-		prs = append(prs, mergedPR{Number: num, Subject: subject, Briefs: refs, Delivers: delivers, Authors: authors})
+		prs = append(prs, mergedPR{Number: num, Subject: subject, Briefs: refs, Delivers: delivers, Authors: authors, SHA: sha})
 	}
 	return prs
 }
@@ -454,7 +473,7 @@ func mergedPRStatusNotices(streams []*Stream, merged []mergedPR, readErr error) 
 		h := seen[id]
 		where := "a merged PR"
 		if h.pr.Number > 0 {
-			where = fmt.Sprintf("merged PR #%d", h.pr.Number)
+			where = "merged " + h.pr.prRef()
 		}
 		confirm := ""
 		if h.pr.deliveryOf(id) != mergeDelivered {

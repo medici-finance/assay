@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -156,5 +157,22 @@ func TestCrossRootReconcileWrites(t *testing.T) {
 	}
 	if row := res.Applied[0].RowAfter; res.Applied[0].To != "implemented" || !strings.Contains(readFixtureReadme(t, rootA), row) {
 		t.Errorf("dg/03's row must be written implemented; to=%q row=%q", res.Applied[0].To, row)
+	}
+}
+
+// TestDeskRootsCleared pins TestMain's unset: a DESK_ROOTS set by the caller
+// must not reach the tests, or every fixture board would read the operator's
+// real checkouts as cross-root witnesses.
+func TestDeskRootsCleared(t *testing.T) {
+	if os.Getenv("STATUSGEN_DESKROOTS_PROBE") == "1" {
+		if v, ok := os.LookupEnv("DESK_ROOTS"); ok {
+			t.Fatalf("the test binary inherited DESK_ROOTS=%q", v)
+		}
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDeskRootsCleared$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "DESK_ROOTS=example-org/root-b=/nonexistent", "STATUSGEN_DESKROOTS_PROBE=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("a DESK_ROOTS set by the caller reached the tests: %v\n%s", err, out)
 	}
 }
