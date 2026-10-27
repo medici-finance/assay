@@ -3,7 +3,8 @@
 The issue reader selects a population from the complete typed open-issue listing
 before paying trust, comment and label-history reads. Collection stays in the
 existing role-bound forge adapter; pure selection lives in
-`deskcore/issueflow` through the internal compatibility facade. No cache, service, new credential or pool is added.
+`deskcore/issueflow` through the internal compatibility facade. No cross-invocation
+cache, service, new credential or pool is added.
 
 | Caller | Producer | Population and required enrichment |
 |---|---|---|
@@ -96,8 +97,9 @@ that same collection path. The reader owns only the existing read operations;
 selection and classification remain with their existing policy owners.
 
 The reader shares client and credential setup within that repository's current
-invocation. It does not cache issue observations, cross repository boundaries,
-keep a process-global client or reuse success in a later invocation. Required trust and label-history reads retain their original operations and
+invocation. No observation survives that repository's current collection, crosses
+repository boundaries, or grants success to a later invocation. There is no
+process-global client. Required trust and label-history reads retain their original operations and
 order through the original wrapped forge. Positive closure reads retain their
 existing typed batch contract. Selected trusted escalation-comment threads may
 share the bounded read described below; every thread retains its own history. Outbound checks,

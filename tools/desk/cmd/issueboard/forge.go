@@ -75,9 +75,10 @@ type issueReadForge interface {
 	IssueLabelHistory(deskkit.ForgeRepo, int) (*deskkit.LabelHistory, error)
 }
 
-// issueReader belongs to ONE repository in ONE collection invocation. It shares
-// authenticated client setup, never issue observations. Every original read and
-// its outbound checks still runs in order. The next invocation resolves anew.
+// issueReader belongs to ONE repository in ONE collection invocation. Admitted
+// setup and bounded read-ahead results stay within that collection; required
+// observations are consumed in issue order. The next invocation resolves and
+// reads anew, and opaque readers retain their original individual operations.
 type issueReader struct {
 	forge         issueReadForge
 	repo          deskkit.ForgeRepo
