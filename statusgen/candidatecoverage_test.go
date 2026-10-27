@@ -1508,6 +1508,14 @@ func TestCandidatePlant(t *testing.T) {
 	if r := candidateCoverage(inv, c, candStandins(c), d); r.verdict() != "checked-clean" {
 		t.Fatalf("without the plant: %v", r)
 	}
+	// The control depends on the join: with the join disabled the plant reads clean, so
+	// the checked-failed verdict above cannot come from anything else.
+	prev := candidateCoverageJoin
+	candidateCoverageJoin = func([]ghPull, []candMember, declaredPartials) candResult { return candResult{} }
+	t.Cleanup(func() { candidateCoverageJoin = prev })
+	if r := candidateCoverage(inv, c, pulls, d); r.verdict() != "checked-clean" {
+		t.Fatalf("join disabled: the plant still failed, so the control does not test the join: %v", r)
+	}
 }
 
 // regression: #2703
@@ -1837,6 +1845,21 @@ func TestCandidateMentionOnly(t *testing.T) {
 				}
 			}
 		}
+		// A trailerless candidate reached only after the recorded cohort is walked past,
+		// whose file list cannot be read, ends the search unknown with no witness.
+		old := pull(600, "feat/derived-board-07-old", "", "2026-09-01T00:00:00Z")
+		all := append(append([]ghPull{}, standins...), old)
+		_, ok, unread, reads := candMatch(t, candBrief, all, files, map[int]bool{600: true}, partials, nil)
+		if ok || !strings.Contains(unread, "#600") {
+			t.Fatalf("unreadable #600 after a walk-past: ok=%v unread=%q", ok, unread)
+		}
+		walked := false
+		for _, r := range reads {
+			walked = walked || r > 600
+		}
+		if !walked {
+			t.Fatalf("#600 was not reached after a walk-past: reads %v", reads)
+		}
 	})
 }
 
@@ -1851,6 +1874,7 @@ func TestBackfillTrailerPredicate(t *testing.T) {
 	}
 	prev := linkTrailerVerdict
 	linkTrailerVerdict = func(int, []string, string) (candidateVerdict, string) { return candidateCredit, "" }
+	t.Cleanup(func() { linkTrailerVerdict = prev })
 	v, _ := attributeCandidate(other, "x/01")
 	past, _ := backfillTrailerWalkPast("Brief: other/01\n", "x/01")
 	linkTrailerVerdict = prev

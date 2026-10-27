@@ -11,7 +11,7 @@ This is the provenance receipt for `candidate-inventory.json` and `candidate-coh
 | Merged-before cutoff (UTC) | 2026-10-26T23:59:39Z, the collection start |
 | Pages | 24; terminal short page 24 (39 records, under `per_page=100`) |
 | Records | 2339 scanned, 2177 eligible (merged at or before the cutoff) |
-| Requests | 40: 24 collection pages and 16 file-list pages for 14 PRs (#736 needs two pages for its 168 files) |
+| Requests | 40: 24 collection pages and 16 file-list pages for 15 PRs: the 14 members, with two pages for #736's 168 files, and #2651, which the collector's mention filter also matched before eligibility was applied (see Not members) |
 | Decoded collection bytes | 52,427,911 |
 | UTF-8 body bytes | 10,488,296. Task 1 measured 9,095,368 at sizing; the repository grew between the two. The bytes sit in each runner's private replay (amendment A), not in this repository |
 | File-list bytes | not recorded at collection; each list is bound by `files_sha256` instead |
@@ -33,7 +33,7 @@ The first snapshot, taken on 2026-10-21, had 21 pages, 2076 records and 13 membe
 | `candidate-cohort.json` | `c39158eaf2ba5918444f1961c49008a4eb009aad07832eb9621fb01f1631a4ac` | 14 members: disposition, reason, matching paths, merge SHA, `files_sha256`, a labelled synthetic stand-in, and the verbatim file list (253 paths in total) |
 
 - **Committed bytes.** The repository's withheld-content sweep ran over both fixtures and this receipt. Every entry was clean, and no member's file list had to be marked `held`. That includes #1006, so it is not held.
-- **Manual inspection.** The implementing worker read every committed stand-in and every committed file-list path in page-and-PR order. The inventory holds no body or ref text to read. The stand-ins hold only identity fields, the members' own `Brief:`, `Authors:` and `Issue:` lines, and the matched backfill form. Every file-list path is a path in this public repository. Independent review of this receipt against the forge happens in the PR review, before merge.
+- **Manual inspection.** The implementing worker (assay-worker-app) read every committed stand-in and every committed file-list path in page-and-PR order. The inventory holds no body or ref text to read. The stand-ins hold only identity fields, the members' own `Brief:`, `Authors:` and `Issue:` lines, and the matched backfill form. Every file-list path is a path in this public repository. An independent model reviewer then read the fixtures and this receipt before the PR opened. Independent review of this receipt against the forge happens in the PR review, before merge.
 - **Private replay.** Each runner keeps the exact-bytes replay outside the repository (amendment A). The sweep was run over each record's body and head ref in the private replay at this snapshot. 38 of 99 sweep entries matched, across 88 records on 16 pages, and 1 of those records is a cohort member. This receipt gives counts only. Amendment A's 2026-10-21 figures came from a different snapshot and extraction, so they are not directly comparable.
 
 ## Cohort
@@ -58,7 +58,7 @@ The first snapshot, taken on 2026-10-21, had 21 pages, 2076 records and 13 membe
 Each member's reason in `candidate-cohort.json` refers to brief 07's actual obligations. None of the 14 is a full delivery, so brief 07 stays in progress on both paths.
 
 **Not members.**
-- #2651 is a closed, unmerged draft. Both matching paths take merged PRs only, so it is a hash-only record on page 8.
+- #2651 is a closed, unmerged draft. Both matching paths take merged PRs only, so it is a hash-only record on page 8. The collector read its file list once, because its mention filter ran before the merged check; that list is not committed and plays no part in the coverage.
 - The full-delivery positive control (#1196 for desk-tools/27, scoped against #1062) is a different brief. It is not a derived-board/07 candidate, and its evidence lives in the existing witness-admission fixture.
 
 ## Audit bounds (Task 5)
@@ -75,7 +75,7 @@ Each member's reason in `candidate-cohort.json` refers to brief 07's actual obli
 
 ## Per-page checklist
 
-The checklist covers every record on every page, in position order. A `+` marks a record committed as hash plus stand-in, with its file list in the cohort. Every other record is hash-only: identity fields plus `kept_sha256`. A record is eligible if it merged at or before the cutoff. The page counts sum to 2339.
+The checklist covers every record on every page, in position order. A `+` marks a record committed as hash plus stand-in, with its file list in the cohort. Every other record is hash-only: identity fields plus `kept_sha256`. A record is eligible if it merged at or before the cutoff. The page counts sum to 2339. Sweep outcome for every page below: the committed bytes are clean (see Committed form and sweep result); the private-replay matches are given only as the totals above, never per page.
 
 ### Page 1
 

@@ -274,7 +274,12 @@ brief holds the write for the whole board, by design: a scheduled writer then
 writes nothing rather than a partial board. A passing witness with no merged PR on
 record is `unknown` too — the fold cannot settle that contradiction; under
 `--backfill` a branch/body-matched merged PR is that merge, and the cell is
-re-derived over it by the same overlay a trailer merge gets. The demotions
+re-derived over it by the same overlay a trailer merge gets. A branch/body match
+whose own link trailer points elsewhere (it names a different brief, is
+`Authors:` only, or is `Issue:` with no `Brief:`) is a mention, not this brief's
+delivery: the backfill walk passes it, under the same predicate the trailer fold
+uses, and takes the next older candidate. A trailerless match is never passed,
+and a candidate whose file list cannot be read ends the walk `unknown`. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
