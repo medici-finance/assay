@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly)$' -count=1 -timeout 300s",
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
     "file": "verifyflip.go",

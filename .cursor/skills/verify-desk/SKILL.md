@@ -234,14 +234,29 @@ selected`. Run the container bracket above with `--rows` naming the container-wi
 rows, then a host `statusgen verifyrun --rows` naming the host-only rows. The two selections
 are **disjoint** and together cover the whole table. Either landing order works; land both
 tables in the same run before its verdict line. Before that verdict, `statusgen verifyrun
---check <brief>` must report every row pass, and `--bracket-digest` must report
-`verdict=match` for the container bracket. Never hand-paste or fence a witness table. `--rows`
+--check <brief>` must accept the whole table: every owed row is satisfied and supplemental
+rows remain explicitly uncredited. `--bracket-digest` must report `verdict=match` for the
+container bracket. Never hand-paste or fence a witness table. `--rows`
 narrows a run, never an audit: `--check` covers the whole table, the last witness for a row
 wins, and the credit rule above is unchanged. A bad selector (an unknown, empty, repeated or
 shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
-before any row runs. Under `--acceptance-record`, witness the protected run set in ONE run
-that covers it whole: its `Verification-Table:` descriptor must appear exactly once, so split
-`--rows` runs under one protected record or transition fail closed and never close.
+before any row runs.
+
+With `--acceptance-record`, execute the protected host rows in **one** host invocation on a
+clean committed source, before inserting uncommitted Evidence. Include every supplemental
+row so the producer records `author-added; no acceptance credit`. Select these host rows
+with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+Then bracket the disjoint container-witnessable rows on that same source and land the
+closed witness through the sanctioned Evidence path. The selections together cover the
+whole protected table, and the assembled run carries exactly one `Verification-Table:`
+descriptor. A second protected host invocation duplicates that descriptor or moves its
+source and cannot close. Container execution may precede the host invocation if its
+witness remains outside the home and the home stays clean; inserting it first makes the
+protected host execution refuse. Never rewrite witness cells or receipt fields to make
+sources agree. The container executes the current table, so a row whose current definition
+differs from its owed original definition still needs the existing protected acceptance
+route; mixed assembly does not exempt that obligation. The whole-table audit and bracket
+credit checks above remain mandatory.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator

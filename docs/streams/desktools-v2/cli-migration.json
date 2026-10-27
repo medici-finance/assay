@@ -1034,7 +1034,7 @@
       "complexity": "simple",
       "basis": "1057 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/35",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "desklabel",
