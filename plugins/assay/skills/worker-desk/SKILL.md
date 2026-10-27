@@ -11,7 +11,7 @@ in its own window as a standing loop — ONE window at capacity replaces running
 
 **The stream board is a derived, generated surface** — this
 desk opens the PR carrying its link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` for
-issue-only work with no brief, or its resolving form `Fixes: #<N>` when merging should close the issue); it never hand-edits a stream README's Briefs table.
+issue-only work with no brief, or its resolving form `Fixes: #<N>` when merging should close the issue — never for an issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): such work links with `Issue: #<N>` and the close stays on the human-only path); it never hand-edits a stream README's Briefs table.
 
 **The invariants this loop assumes** (state them once wherever your repo keeps house rules, and do not
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
@@ -548,9 +548,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no
   link trailer at all — exactly one `Brief: <stream>/<NN>`, or `Issue: #<N>` for issue-only work
-  that delivers no brief (`Fixes: #<N>` — also `Closes:` / `Resolves:` — is the same link in its
+  that delivers no brief (a briefs-AUTHORING PR carries `Authors: <stream>/<NN>[, …]` instead). `Fixes: #<N>` — also `Closes:` / `Resolves:` — is the same link in its
   resolving form: merging into the default branch closes the issue, where `Issue: #<N>` leaves it
-  open) (a briefs-AUTHORING PR carries `Authors: <stream>/<NN>[, …]` instead) — and that refusal at write time is the enforcement, not a follow-up edit
+  open; it is never for an issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): such work links with `Issue: #<N>` and the close stays on the human-only path. — and that refusal at write time is the enforcement, not a follow-up edit
   to the stream README. `implemented` appears the instant that PR merges. `statusgen` derives both
   cells from the trailer plus the PR's own state — this
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.

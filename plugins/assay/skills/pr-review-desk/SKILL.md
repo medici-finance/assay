@@ -10,7 +10,7 @@ placeholder briefs; **worker-desk** dispatches workers that implement them behin
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
 **The stream board is a derived, generated surface** — this
-desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` / its resolving form `Fixes: #<N>`) that
+desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` / its resolving form `Fixes: #<N>`, never the latter for a decision-gate issue) that
 feed it; it never edits a board row itself.
 
 Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
@@ -986,7 +986,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      carries no brief). `Fixes: #<N>` (also `Closes:` / `Resolves:`, or `Fixes: <owner>/<repo>#<N>`
      for another repository) is the RESOLVING form of `Issue:` — the same single link, which
      GitHub also honours as a closing keyword, so merging closes the issue; it satisfies the gate
-     exactly as `Issue:` does and must not be bounced for lacking a `Brief:` line. With a colon it
+     exactly as `Issue:` does, so it is not bounced for lacking a `Brief:` line. It is NOT acceptable when it names an
+     issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): GitHub would close that issue at merge under
+     the merging human's name, bypassing the human-only close path. A resolving trailer (`Fixes:` / `Closes:` / `Resolves:`, with or
+     without a colon) naming such an issue is a `--request-changes` finding — ask for `Issue: #<N>`. A public PR also never names a
+     private repository's issue in its link trailer (the cross-repository form would publish that reference and close the issue). With a colon it
      IS the link, so it may not sit beside a `Brief:`, `Authors:`, `Cross-repo-brief:` or `Issue:`
      line (a brief-delivering PR that also closes an issue uses the colon-less `Closes #N`). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
      `requireTrailer` enforce, so an `Issue: #<N>`- or `Authors:`-only body is fully compliant and
