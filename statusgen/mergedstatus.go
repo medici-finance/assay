@@ -171,7 +171,10 @@ func briefRefsIn(subject, branch string) []string {
 // rate), shallow enough that --lint stays a sub-second offline check.
 const mergedPRLimit = 400
 
-// mergedPRsFromGit reads recent first-parent merges of the current branch.
+// mergedPRsFromGit reads recent first-parent merges of rev: "HEAD" for the
+// board's own checkout (the branch it is on), or a full object name for a
+// cross-root read (crossroot.go resolves the other root's integration branch to
+// one, so a sibling checkout's work-in-progress HEAD is never read as merged).
 //
 // --first-parent is what keeps this to the integration history: without it every merged
 // side branch's own merges appear, and a topic branch that merged main into itself would
@@ -185,8 +188,8 @@ const mergedPRLimit = 400
 // length-prefixed, so no byte inside a message can end a record early or invent one.
 // A branch read that fails is a failed read: the merges it would have confirmed are
 // not reported as trailer-less (could-not-check, never "no `Brief:` trailer").
-func mergedPRsFromGit(root string) ([]mergedPR, error) {
-	window, parents, err := revListParents(root, []string{"--first-parent", "-n", strconv.Itoa(mergedPRLimit)}, "HEAD")
+func mergedPRsFromGit(root, rev string) ([]mergedPR, error) {
+	window, parents, err := revListParents(root, []string{"--first-parent", "-n", strconv.Itoa(mergedPRLimit)}, rev)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +199,7 @@ func mergedPRsFromGit(root string) ([]mergedPR, error) {
 	// The branch commits of every merge in the window: everything reachable from HEAD
 	// that is not behind the oldest window commit's FIRST parent. Excluding only the
 	// first parent keeps the oldest merge's own branch (its second parent) in the read.
-	rangeArgs := []string{"HEAD"}
+	rangeArgs := []string{rev}
 	if p := parents[window[len(window)-1]]; len(p) > 0 {
 		rangeArgs = append(rangeArgs, "^"+p[0])
 	}

@@ -119,7 +119,7 @@ func TestDeliveryGuardSeesPlant(t *testing.T) {
 
 var plantedAlias = mergedPRsFromGit
 
-func plantedHold(root string) { merged, err := mergedPRsFromGit(root); applyPhantomHolds(nil, merged, err) }
+func plantedHold(root string) { merged, err := mergedPRsFromGit(root, "HEAD"); applyPhantomHolds(nil, merged, err) }
 
 func plantedDerive(in LifecycleInput) []BriefCell { return DeriveLifecycle(in) }
 `
