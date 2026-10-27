@@ -2,9 +2,9 @@
 brief: assay:assay:desk-tools:47
 title: "Resume interrupted Evidence landing through the existing sanctioned paths"
 why: "A successful run can land Evidence and still leave its lifecycle transition unfinished. Repeating verification does not complete that write; an idempotent continuation must resume the remaining authorized effect."
-wave: 3
+wave: 4
 depends: ["desk-tools/46"]
-unblocks: ["desk-tools/51"]
+unblocks: ["desk-tools/51", "verification-handoff/02", "statusgen/35"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -14,13 +14,15 @@ issues: []
 schema: brief-v2
 authored: "2026-10-17 maintainer-directed verify-flow refresh"
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/desk-tools/README.md"
   - "freshness-checked 2026-10-17 @ 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae"
 exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 2
+version: 3
 id: c2ff642d-db3c-47d3-a49d-03b05fbb0dde
 consumers:
   - "tools/desk/cmd/verifyloop/flow_47_test.go: follow-up desk-tools/47 (planned test contract)"
@@ -69,6 +71,36 @@ Default if no answer: none — blocks until answered.
 Hold the change.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: fixed-delivery continuation effects.** Consume /46's admitted accepted-run identity and
+/37's truthful writers, including real dry-run behavior. Reconcile actual remote receipts through
+the existing sanctioned operation; a stored PASS is not authority to bypass closure or a human gate.
+
+- Preserve D/A/W when recording at E or retrying after H has advanced. Re-read landed Evidence,
+  outcome and status effects; resume only the remaining authorized ones. Keep independently
+  applicable row witnesses through context-only repair without rerunning the full table. An
+  unresolved source/criteria/authority change holds its affected effect and proof. - Exercise
+  existing `flow_47` package fixtures for crashes before/after each write, lost acknowledgments,
+  duplicate events, exact-context later failure, same D at later E and a partial historical outcome
+  landing. Dry-run emits no effect. Retain unresolved artifacts/receipts for handoff/02; a live or
+  lost actor/home is recovered through existing custody/admission, never another identity or
+  endpoint. - Keep the original human/risk exclusions, PR-only versus authorized main path and
+  default dry-run sink. Completing this brief supplies a resumable existing operation, not
+  autonomous activation. /35 uses it for historical continuation; /51 documents only supported
+  released actions.
+
+### Existing task obligations
 
 1. Extend the existing Evidence tool/landing adapter with a persisted continuation keyed to the accepted run and its input identity. Re-read which effects actually landed before resuming; do not trust a local success printout or redo completed writes.
 2. For PR-only repositories, use the existing derived model-only flip and draft-PR path. A main landing is available only under that repository’s existing explicit narrow authorization. Unknown profile or any refusal is a hold, never permission to switch identity, endpoint or write channel.

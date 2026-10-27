@@ -4,7 +4,7 @@ title: "Content-bound witness schema v2: the reader and the one digest owner"
 why: "Coverage still binds an execution witness to commit ancestry, so a squash merge orphans a valid witness and a whole-tree scope refuses witnesses whose real inputs never changed. Thirty verified briefs are stuck this way. This brief makes a witness's identity the delivering change request (provenance) plus a digest of the content the row read (staleness), judged in one pure library, with the existing v1 rule kept unchanged and any unknown schema refused."
 wave: 1
 depends: []
-unblocks: ["statusgen/37"]
+unblocks: ["statusgen/37", "statusgen/29", "statusgen/31"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -12,11 +12,13 @@ issues: [2026, 3105, 3658]
 regression-of: "medici-finance/assay#2304"
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 authored: "2026-10-20 by the-desk (design brief for the witness-staleness class)"
 gate-why: "It narrows a verification control. A v2 witness is released on content equality instead of commit ancestry, so a wrong digest scope or a wrong environment rule would release a stale pass. The driver signs off on the release policy in Human decision."
 decision-trigger: start
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "medici-finance/assay#2026 — witnesses refused as wrong-revision: cause 1 squash-orphaned witness commits, cause 2 the whole-tree scope when no dependency manifest exists"
   - "medici-finance/assay#3105 — the stuck verified-to-done report (twelve briefs at filing)"
   - "medici-finance/assay#3658 — 95 of 379 verify-outcome record shas unreachable from main after squash merges; options content binding, merge commits, classification"
@@ -31,6 +33,19 @@ exec-tier: strong
 exec-tier-why: "It changes what releases a verification gate. Negative controls (a changed byte, a missing digest, an unknown schema, an old reader) must each be shown to refuse at more than one site, and the v1 rule must be proven byte-for-byte unchanged."
 domain: complicated
 consumers:
+  - "docs/consumer-delivery-checks.md: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "docs/protected-paths.md: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "spec/lifecycle-v1.md: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/deliveryfiles.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/autoflip.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/lifecycle.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/verifyflip.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/verifyclosure.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/acceptancetransition.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/protectedclosure.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/verifyrows.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/consumerderived_test.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/consumerdelivery.go: follow-up statusgen/36 (fixed-delivery planning amendment; implementation owed)"
   - "statusgen/evaluation/ (coverage_api.go, coverage.go, coverage_inputs.go, declared_api.go, coverage_repo.go; new witness.go): follow-up statusgen/36"
   - "statusgen/coverage.go, statusgen/coverage_repo.go, statusgen/coverage_repomemo.go (adapter: batched per-revision listing, one dependency source for all call sites): follow-up statusgen/36"
   - "statusgen/autoflip.go and statusgen/reconcilefold.go (two of the three evaluateCoverage call sites, none of which passes Dependencies today; the third, coverage.go, is routed on the line above): follow-up statusgen/36"
@@ -70,6 +85,18 @@ files:
 - `docs/brief-template.md`
 - `spec/brief-v1.md`
 - changelog/statusgen-witness-v2-reader.md (planned)
+- `statusgen/consumerdelivery.go`
+- `statusgen/consumerderived_test.go`
+- `statusgen/verifyrows.go`
+- `statusgen/protectedclosure.go`
+- `statusgen/acceptancetransition.go`
+- `statusgen/verifyclosure.go`
+- `statusgen/verifyflip.go`
+- `statusgen/lifecycle.go`
+- `statusgen/deliveryfiles.go`
+- `spec/lifecycle-v1.md`
+- `docs/protected-paths.md`
+- `docs/consumer-delivery-checks.md`
 
 facts (source and date in frontmatter):
 - The class. A witness is judged against the item's revision through commit history: the witness commit must be in the object store, share an ancestor with the item, and (since medici-finance/assay#2304) have a landed twin whose tree matches outside `docs/streams/**` and `STATUS.md`. Every instance of the defect is a witness whose inputs are unchanged but whose commit is unreachable (squash merge) or whose scope is wider than its inputs (no manifest, so every path outside bookkeeping counts). #2304 closed instances (a landing search, a command-text parser) and left the class open.
@@ -120,7 +147,7 @@ Read `EvaluateCoverage`, `CoverageInput`, `DependencyManifest` and `WorkInputDep
 - Feature branch and draft PR only. Never push to main, merge, release or dispatch a workflow. Merge main in, never rebase.
 - Stop at `implemented`. A different, non-implementing identity owns verification and Evidence.
 - Fixture repositories only; no network in tests.
-- Schema v1 is never loosened. Every existing witness is judged exactly as today. A change that releases any v1 witness that main refuses is a defect.
+- Schema v1 comparison is unchanged for the same explicit evaluation revision. The approved fixed-delivery cutover changes the acceptance caller's subject from H to admitted D; it does not weaken v1's comparison or permit credit at H when that comparison refuses. Preserve the original H behavior for health/legacy callers until their reviewed cutover. New policy remains subject to the amendment's authority boundary.
 - Do not edit any Evidence row, verify-outcome record or lifecycle cell. Records are append-only.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Do not guess.
 
@@ -182,6 +209,49 @@ The v1 path, from L348 on, is unchanged (row 6). The witnessed commit, its ances
 **Performance budget.** One `git ls-tree -r`, one `git check-attr --stdin` and one `git log --first-parent --diff-filter=A` over `docs/streams/witnesses/` per distinct revision per run (the default-branch tip counts as one more revision), memoized in the existing `memoRepo`; no per-row git process. The offline `statusgen --root . --coverage` over the corpus stays within 1.10× the wall-clock median of the pinned release before this brief.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: binding admission and the common acceptance evaluator (I-2).** Extend the existing
+`statusgen/evaluation` owner and statusgen adapters. In delivery acceptance, the existing explicit
+revision R means independently admitted delivery D; approved original/amended criteria A, actual
+execution W, recording E and current main H remain distinct. Health callers retain H. Do not
+reinterpret the v2 record's delivering change request as D: that request can deliver the Evidence
+record rather than the product.
+
+- Admit the binding produced by /37 using the existing delivery resolver, protected-table
+  coordinates, git graph and approved custody contract. Missing, ambiguous, conflicting, untrusted
+  or locally forged bindings hold; no convenient W or newest follow-up may be selected as D. Return
+  typed inputs through the existing coverage seam, not another verdict owner. - Own consumer
+  checker/range-lint integration for the previously designed symbolic binding. Keep the exact
+  first-parent range, declared-route evaluation, nonzero corroboration and unchecked judgments. A
+  bare historical row changes effective subject and needs the approved compatibility policy; an
+  empty-diff exit zero cannot become delivery coverage. - Route coverage, auto-flip, reconciliation,
+  protected closure/transition audit and all witness-reading callers through admitted D/A and the
+  same observation selection. Within one D/A/condition context the last applicable result wins,
+  including FAIL or could-not-run; later H health observations cannot replace D proof. Do not search
+  backward for a convenient pass. - Own the canonical lifecycle and protected-acceptance policy
+  update: compare witness applicability to D, and after an approved command amendment retain
+  unchanged applicable rows while requiring fresh proof for affected rows. Explicitly replace the
+  old full-table/descendant-source requirement only when authorized. Keep command-only amendment
+  limits, exact approval, independent actor/admission and human gates. - Extend the existing
+  reader/caller fixture suites and mutation maps with a wrong delivery, forged binding, changed
+  parent, changed A, same-context later failure, unrelated H/E advance and agreement among real
+  callers. Test unchanged v1 behavior for the SAME explicit revision; do not confuse the approved
+  subject cutover with weakening its comparison algorithm. Existing broad package-test Verify rows
+  must execute these added cases. The binding writer and staging remain /37; /29 owns prospective
+  review/authoring consumers.
+
+### Existing task obligations
 
 1. Add `witness.go` to `statusgen/evaluation`: the cell parser (v1, v2, unknown), the record parser and id check, the `inputs:` parser, the implicit-input derivation, the digest computation over the `Repo` port, the landing-form table and the step-2 change-request check, the identity, replay, Evidence Command cell, acceptance-text and dirty-path gates, the `informational.commit` form check for the reported revision, the literal-path lower bound, and `judgeWitnessV2` (the comparison against R in the Interface contract), dispatched from `resolveVerifyClaim` before its Command check (L348), so none of v1's Command check, state branches, prose-led demotion, Expect read at the witness's base or WI-2 loop runs for a v2 claim, and each has its v2 form with a gap name (step 5 and Recorded outcome). Every v2 git read runs with replace objects disabled. Extend the `Repo` port with batched `ListTree(rev)`, `CheckAttr(rev, paths)` and `HashWorktree(paths)`; implement them in `statusgen/coverage_repo.go` and memoize them in `coverage_repomemo.go`.
 2. Route the three `evaluateCoverage` call sites through one function that builds `CoverageInput` with the library's witness-record reader, so no call site judges a v2 claim without its record by omission. The `Dependencies` each call site passes for v1 claims is unchanged.

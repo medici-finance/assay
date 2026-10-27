@@ -29,11 +29,11 @@ Existing work and evidence remain authoritative.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Share the blocker disposition and routing contract](brief-01-share-the-blocker-disposition-and-routing-contract.md) | 0 | M | todo | — | — |
-| 02 | [Persist verifier blockers without losing the handoff](brief-02-persist-verifier-blockers-without-losing-the-handoff.md) | 2 | M | todo | — | — |
+| 02 | [Persist verifier blockers without losing the handoff](brief-02-persist-verifier-blockers-without-losing-the-handoff.md) | 5 | M | todo | — | — |
 | 03 | [Require an accountable intake disposition before repair scheduling](brief-03-require-an-accountable-intake-disposition-before-repair-scheduling.md) | 1 | M | todo | — | — |
-| 04 | [Discover and claim the successor repair work](brief-04-discover-and-claim-the-successor-repair-work.md) | 3 | M | todo | — | — |
-| 05 | [Return repaired blockers to independent verification](brief-05-return-repaired-blockers-to-independent-verification.md) | 4 | M | todo | — | — |
-| 06 | [Qualify the handoff rollout and update desk guidance](brief-06-qualify-the-handoff-rollout-and-update-desk-guidance.md) | 5 | M | todo | — | — |
+| 04 | [Discover and claim the successor repair work](brief-04-discover-and-claim-the-successor-repair-work.md) | 6 | M | todo | — | — |
+| 05 | [Return repaired blockers to independent verification](brief-05-return-repaired-blockers-to-independent-verification.md) | 7 | M | todo | — | — |
+| 06 | [Qualify the handoff rollout and update desk guidance](brief-06-qualify-the-handoff-rollout-and-update-desk-guidance.md) | 8 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Implementation scope
@@ -172,3 +172,33 @@ Authoring validation passed: source-built diff-scoped read-only lint (`--changed
 and wave checks, link/metadata checks and whitespace validation. Independent authoring review
 checked owner reuse, activation holds and separate FAIL/BLOCKED producer coverage. Those checks are not runtime
 verification or evidence that any handoff has been fixed.
+
+## Fixed-delivery completion amendment — 2026-10-27
+
+The [controlling proposal and owner map](../../proposals/fixed-delivery-verification/README.md#ownership-assignments-made-in-this-pr)
+supersedes the original authoring snapshot's assumption that /01 and desk-tools/49
+need implementation: their code is shipped, and /03's implementation is merged too.
+Finish remaining independent acceptance and integration; do not dispatch duplicates.
+
+```text
+/01 + desk-tools/49 + desk-tools/47 -> /02 --+
+/01 --------------------------------> /03 --+-> /04 -> /05 -> /06
+                                              desk-tools/46 -> /05
+                      desk-tools/51 + statusgen/38 ----------> /06
+```
+
+/02's new dependency is the resumable existing landing owner (/47); /05 consumes
+accepted subject/run identity from /46; /06 consumes /51's released action contract
+and /38's bounded historical compatibility plus desktools-v2/73's Evidence admission
+contract (existing PR 4102). The reciprocal edges are in their owners.
+The resulting waves are /02=5, /04=6, /05=7 and /06=8; /03's wave and existing gates
+are unchanged. These supersede the old 2–5 authoring waves for those affected nodes.
+
+/02 preserves blocked historical/current proof and unfinished effects, /05 distinguishes
+bookkeeping resumption at original D/A from a genuine repair at an admitted successor,
+and /06 qualifies the whole path through existing production adapters. Synthetic
+qualification and statusgen/35's real cohort cleanup can run as parallel consumers;
+/06 does not wait for every real historical hold to clear. Use the original incident
+shapes and a substantive consumer failure as controls, not automatic closure candidates.
+Existing human acceptance, source/admission and sink activation boundaries remain.
+No implementation, live routing/backfill or dispatch is performed by this planning PR.

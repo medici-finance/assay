@@ -4,7 +4,7 @@ title: Make deskevidence own the on-behalf-of principal on Runner cells
 why: "deskevidence skips any Runner cell that already mentions on-behalf-of, so a hand-typed annotation that names no roster human reaches the branch, and verifiers who lint their home see red rows the landing would have stamped."
 wave: 1
 depends: []
-unblocks: []
+unblocks: ["verification-handoff/06"]
 effort: M
 gate: human
 decision-issue: 4070

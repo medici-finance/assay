@@ -1,1 +1,1 @@
-- Propose fixed-delivery acceptance with separate main health and bounded historical migration; map the deterministic-loop finish to existing briefs, PRs, shipped pieces and missing ownership, without changing runtime or Evidence.
+- Plan fixed-delivery verification with separate main health; assign binding, acceptance, review context, continuation and historical recovery to existing briefs, add reciprocal dependencies and qualification ownership, and retain original Verify/Evidence without implementing runtime.

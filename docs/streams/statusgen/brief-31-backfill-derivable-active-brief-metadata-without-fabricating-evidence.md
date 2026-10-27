@@ -3,7 +3,7 @@ brief: assay:assay:statusgen:31
 title: "Backfill derivable active brief metadata without fabricating evidence"
 why: "Missing file declarations and one-way routing claims produce persistent debt. Historical provenance can supply some answers; uncertain answers must remain owned work rather than plausible invented metadata."
 wave: 2
-depends: ["statusgen/28"]
+depends: ["statusgen/28", "statusgen/36"]
 unblocks: ["statusgen/35"]
 effort: M
 gate: human
@@ -12,13 +12,15 @@ issues: []
 schema: brief-v2
 authored: "2026-10-17 by the maintainer-directed lint-debt refresh"
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/statusgen/README.md"
   - "freshness-checked 2026-10-17 @ 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae"
 exec-tier: strong
 exec-tier-why: "Cross-artifact classification, rewrite semantics and consumer verification must agree."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: 949bf322-b918-466c-834f-a24009819c3c
 gate-why: "Changes tooling behavior relied on by adopters. Human sign-off confirms the new authoring or repair behavior preserves historical evidence and the existing closure gates."
 decision-trigger: start
@@ -73,6 +75,36 @@ Hold the change; no sign-off is inferred.
 - Stop at implementation; an independent verifier records the execution evidence.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: historical active metadata disposition.** Reuse /36's admitted subject/criteria meanings in
+the already-planned metadata repair owner. Do not mint a trusted delivery binding: /37 owns that
+operation. `files:` remains the implementation-touch declaration; never infer a transitive test read
+set from it.
+
+- For open historical briefs, derive only corroborated source/scope/consumer metadata, preserve
+  original acceptance and Evidence, and classify missing or ambiguous facts as author-owed with the
+  existing review/issue owner and next action. Wrap/prose normalization must retain the same scope;
+  a genuinely changed scope is not bookkeeping. - Resolve parser compatibility through /37's
+  existing deskkit owner, not a new grammar or repair pass. Produce the reviewed
+  metadata/disposition inputs consumed by /35; do not invent a witness, change a routing obligation,
+  or auto-close a missing-context brief. - Extend `TestFixFrontmatter`'s existing fixture matrix
+  with a historical wrapped declaration, an ambiguous delivery, omitted consumers and unchanged
+  closed-record hashes. Keep the old command name/test selector only where it actually matches the
+  existing planned Verify rows; all newly added cases must be exercised by that brief's package-test
+  row.
+
+### Existing task obligations
 
 1. Add fix-frontmatter with a default reviewed dry run and an explicit write mode. Restrict writes to active briefs and preserve Evidence and closed records.
 2. Derive candidate files from immutable carrying-PR history only when the provenance is available and unambiguous. Do not stamp an empty-looking sentinel as a truthful files list. List missing or ambiguous provenance as author-owed.

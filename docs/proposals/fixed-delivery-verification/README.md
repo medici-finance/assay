@@ -1,7 +1,8 @@
 # Fixed-delivery verification — proposed redesign
 
-Status: **draft; design and retrospective experiments only**. No runtime, lifecycle,
-acceptance, brief, Evidence, permission, or activation change is made by this proposal.
+Status: **draft; design, existing-brief amendments and retrospective experiments only**.
+This PR changes planning scope and dependencies, with no runtime, lifecycle-state,
+original Verify/Evidence, permission or activation change.
 The driver requested fixed-delivery acceptance with main health separate. The policy
 changes and historical migration below still need their precise governing decisions
 before implementation. No existing decision token is reinterpreted.
@@ -228,35 +229,43 @@ changes, not these implementation slices. Board `todo` is not evidence that code
 absent. The earlier [152-brief replay](replay.md) retains its own older cutoff; no
 current backlog count or new closure claim is inferred from this work map.
 
-### Two assignment gaps
+### Ownership assignments made in this PR
 
-1. **Binding implementation.** build-less-brittle/14 is a completed design, not an
-   unfinished implementation. Its I-1–I-4 rows describe the independent binder,
-   checker/lint integration, staged writer/ruleset and authoring guidance, but were
-   never authored as execution briefs and have no implementation PR. Keep their
-   existing semantic owners; explicitly route this already-designed work before
-   dispatch. Do not mark /14 unimplemented or pretend its verification shipped a binder.
-2. **Fixed-delivery cutover.** No current brief owns the full replacement of HEAD with
-   admitted D/A through coverage, verification, protected closure, reconciliation and
-   outcome selection. Proposed allocation: adapt statusgen/36–37 for admission,
-   evaluation and execution/recording; desk-tools/46–47 for accepted-run identity and
-   resumption; /51 for the actual operator/skill contract; and PR 4139 for review's
-   context assessment. Explicitly cover protected-amendment audit and same-context
-   last-witness selection. This is proposed scope allocation, not a claim that those
-   briefs already contain or authorize the cutover. Amend their approved scope through
-   existing authoring/review before pickup; this PR changes no operational brief.
+The two gaps identified by the finish-map audit are now assigned in existing briefs.
+Their Task/scope versions and typed dependencies are amended here; implementation,
+acceptance, custody choices and activation remain separate. The verified /14 design and
+all original Verify/Evidence sections remain unchanged. No new brief ID is introduced.
 
-These are missing assignments within the existing design and owners. They do not
-justify another evaluator, store, stage, desk or workflow controller.
+| Existing owner | Assigned slice | Explicit prerequisites |
+|---|---|---|
+| statusgen/36 | I-2 binding admission/checker/lint; common D/A coverage, protected closure and witness-selection policy | Existing authority decisions; one semantic owner and existing v1/v2 guards |
+| statusgen/37 | I-1 binding producer and historical attribution; I-3 staged writer/custody configuration; isolated D execution and truthful E recording; scope/outcome compatibility | /36; existing writer/custody/approval rulings before affected effects |
+| statusgen/29 | I-4 authoring consumers; finish PR 4139 in the existing prospective preflight/deskflip/review owners | /27 and /36 |
+| statusgen/31 | Corroborated historical metadata/disposition, not witness or binding fabrication | /28 and /36 |
+| desk-tools/46 → /47 | Accepted D/A/run scheduling identity, then remaining authorized landing effects | /46 needs /45 and statusgen/37; /47 needs /46 |
+| statusgen/38 | Bounded historical subject compatibility and recoverable witness backfill | /37; per-case metadata/provenance remains a real hold |
+| desk-tools/51 | Released review/Verify context-test/action contract and consumer version qualification | Existing /45–50 and /52, plus statusgen/29 and /38 |
+| verification-handoff/02 → /04 → /05 | Retain blocked artifacts/effects, claim repair, return exact original or successor subject to independent verification | /02 additionally needs desk-tools/47; /05 additionally needs desk-tools/46; other existing edges retained |
+| verification-handoff/06 | Complete fixed-delivery/repair/health production-adapter qualification and installed-version proof | /05, desk-tools/51, statusgen/38 and desktools-v2/73 |
+| statusgen/35 | Execute/report the actual active historical cohort using those existing operations and owned residuals | Existing /27–32 plus /38, desk-tools/47 and handoff/05 |
+
+All new edges have reciprocal `unblocks:` entries. Affected wave increases propagate to
+handoff/04 and statusgen/33. The generator refreshes only authored wave/effort cells;
+lifecycle cells and acceptance stamps stay unchanged. Historical corpus
+execution (/35) and synthetic end-to-end qualification (handoff/06) are parallel consumers,
+so product acceptance does not wait for every historical failure or notice to disappear.
+The authoring amendment is not a claim that these capabilities have shipped. The open
+PRs for affected briefs must be assessed against the amended scope at pickup/review;
+this does not silently revoke unrelated work already approved under its original contract.
 
 ### Remaining implementation and integration
 
 | Existing brief or PR | Observed position | Exact finish owed |
 |---|---|---|
 | [PR 4579](https://github.com/medici-finance/assay/pull/4579), this proposal | Open, reviewed; design only | Resolve fixed-subject, historical-subject and row-reuse policy on the existing decision surfaces; preserve old decision-token meanings. Publication is not activation |
-| build-less-brittle/14 design I-1–I-4; [4380](https://github.com/medici-finance/assay/issues/4380)/[4381](https://github.com/medici-finance/assay/issues/4381) | Design delivered; implementation assignment absent | Trusted delivery attribution and ref admission, offline graph/marker checks, existing consumer checker/lint integration, writer protection and guidance. Include historical attribution and D/A correction/version semantics. A locally forged tag is not authenticated by a remote ruleset |
-| [PR 4139](https://github.com/medici-finance/assay/pull/4139) | Open, changes requested | Finish prospective ready-flip context check; resolve producer binding for the preflight signal, trusted-base ruling resolution, duplicate classification and outstanding qualification/adopter findings. It assesses the prospective implemented transition, not full Verify closure |
-| statusgen/36, [PR 4409](https://github.com/medici-finance/assay/pull/4409) | Open, changes requested | Finish the shared reader/digest owner and existing old-reader qualification/review. The unresolved qualification choice is tracked on issue 4459. Adapt the acceptance target to D; preserve v1 compatibility and refusal behavior |
+| build-less-brittle/14 design I-1–I-4; [4380](https://github.com/medici-finance/assay/issues/4380)/[4381](https://github.com/medici-finance/assay/issues/4381) | Design delivered; I-1/I-3 assigned to /37, I-2 to /36 and I-4 to /29 here | Trusted delivery attribution and ref admission, offline graph/marker checks, existing consumer checker/lint integration, writer protection and guidance. Include historical attribution and D/A correction/version semantics. A locally forged tag is not authenticated by a remote ruleset |
+| [PR 4139](https://github.com/medici-finance/assay/pull/4139) | Open, changes requested | Owned by amended statusgen/29; finish prospective ready-flip context check; resolve producer binding for the preflight signal, trusted-base ruling resolution, duplicate classification and outstanding qualification/adopter findings. It assesses the prospective implemented transition, not full Verify closure |
+| statusgen/36, [PR 4409](https://github.com/medici-finance/assay/pull/4409) | Open, changes requested | Finish the shared reader/digest owner and existing old-reader qualification/review. The unresolved qualification choice is tracked on issue 4459. Amended /36 owns binding admission and common D/A acceptance; preserve comparison behavior for the same explicit v1 target |
 | statusgen/37 → /38 | Authored; no implementation PRs found | Finish the writers/desk readers, then bounded historical witness backfill. Make admission, criteria, actual execution W, recording E and accepted D agree through existing seams; never manufacture missing historical output or identity |
 | desk-tools/46 → /47 | Authored; no implementation PRs found; /46 depends on /45 | Recognize an independently accepted unchanged PASS as continuation, then resume only remaining sanctioned Evidence/outcome/status effects. Preserve applicable rows, same-context failure precedence, partial writes and authority exclusions |
 | desk-tools/48 and /52 → /51 | Authored; no implementation PRs found | Finish existing capacity reporting and distinct decision/verification-card authority, then drive verifier guidance/prompts from the implemented lane-to-action contract. /51 also depends on /45, /46, /47, /49 and /50. Do not silently drop these declared dependencies or invent a new limiter |
@@ -319,7 +328,7 @@ verdicts and resumable effects in the existing Verify loop.
 
 ### Finish order and qualification ownership
 
-The dependency order is: settle the precise policy and route the two assignment gaps;
+The dependency order is: settle the precise policy under the ownership assigned above;
 finish binding and common D/A admission; finish accepted-PASS continuation and resumable
 landing; migrate recoverable historical proof and route genuine residual defects;
 then qualify, release, pin and exercise the actual running loop. Independent strands
@@ -327,7 +336,7 @@ above can progress without pretending that an authoring merge is implementation.
 
 Use **verification-handoff/06's existing production-adapter replay** together with
 **desk-tools/51's existing lane-to-action/version qualification** for the complete
-path. Extend their approved scope to cover D/A where necessary; do not create another
+path. Their planning scope is amended here to cover D/A; do not create another
 qualification stage or register. They must show the same admitted inputs yield the same
 verdict/next act; unrelated H/bookkeeping movement preserves valid D proof; affected
 criteria/inputs/conditions hold the affected rows; newer applicable failures are not
@@ -336,9 +345,9 @@ effect; and H regressions remain visible in existing CI. The current backlog rep
 qualifies diagnosis and evaluator seams, not this unimplemented end-to-end behavior.
 
 No new verification mechanism, store, service, witness schema beyond existing /36–38,
-or review/Verify stage is proposed. This section routes existing work and identifies
-missing scope; it does not author, dispatch or approve execution briefs, change a human
-gate, or activate a dry-run sink. Existing criteria and historical Evidence remain intact.
+or review/Verify stage is proposed. This planning amendment updates existing brief scope and dependencies; it does not
+dispatch work, implement runtime, approve acceptance, change a human gate, or activate a
+dry-run sink. Existing criteria and historical Evidence remain intact.
 
 ## Authority and decisions before implementation
 
@@ -367,7 +376,7 @@ no historical compatibility or witness-reuse relaxation. Do not silently superse
 question or D1(a)'s old merged-row wording. Issue 4381 still owns the writer/custody choice;
 this proposal does not grant a permission or choose a different authority behind it.
 
-Before work is decomposed, put the changed questions together on the existing decision
+Before affected implementation starts, put the changed questions together on the existing decision
 surfaces with unique reply tokens and exact policy deltas. No answer is inferred from an
 old token, a bot relay, a draft proposal, or elapsed time. The design publication itself
 is not activation. Do not add a second decision register or a new blanket human gate.
@@ -400,5 +409,5 @@ Pickup disposition: **adapt existing unfinished work; hold runtime implementatio
 Pin this proposal, the controlling lifecycle/closure contracts and the then-current
 source/tool revisions at pickup. Recheck the dated work map, including the open PRs,
 /36–38, desk-tools/45–52, handoff/01–06, attribution/custody decisions and actual
-deployed callers before changing them. No execution briefs are authored or
-dispatched by this design change. Preserve the prior verified design and original Evidence.
+deployed callers before changing them. Existing execution briefs are amended for review
+in this PR; none is implemented or dispatched by this planning change. Preserve the prior verified design and original Evidence.

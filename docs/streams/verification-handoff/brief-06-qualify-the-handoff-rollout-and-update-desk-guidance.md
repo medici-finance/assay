@@ -2,8 +2,8 @@
 brief: assay:assay:verification-handoff:06
 title: "Qualify the handoff rollout and update desk guidance"
 why: "A set of individually passing adapters can still strand work at their boundaries. A source-to-repair-to-independent-recheck replay must prove the new path before any live adoption."
-wave: 5
-depends: ["verification-handoff/05"]
+wave: 8
+depends: ["verification-handoff/05", "desk-tools/51", "statusgen/38", "desktools-v2/73"]
 unblocks: []
 effort: M
 gate: human
@@ -12,13 +12,15 @@ gate-why: "Changes the handoff integration qualification boundary used to schedu
 decision-trigger: start
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: adba75c3-f110-4c38-bbe8-f2dcf0240002
 authored: "2026-10-23 by assay-worker-app[bot]"
 exec-tier: strong
 exec-tier-why: "Cross-module shared policy, partial writes and independent actor/source binding require coordinated design and negative controls."
 domain: complicated
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/verification-handoff/README.md — controlling implementation scope"
   - "spec/intake-exit-v1.md; docs/streams/desk-supervision/repair-obligation-v1.md; docs/verify-wake.md"
   - "freshness-checked 2026-10-23 @ fbe0331e2fc9f5c822c4edeafb8a18865c916828"
@@ -88,6 +90,42 @@ Default if no answer: none — blocks until answered.
 - New shared parsing/policy must be direct library calls, never a new helper executable. Preserve existing online read/custody boundaries.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: complete-loop qualification through the existing production-adapter replay.** Depend on
+/05, desk-tools/51 and statusgen/38; no additional qualification stage or record. This fixture
+qualification does not depend on exhausting the real /35 corpus or on the larger
+shared-launcher/recorded-read-set programs.
+
+- Exercise prospective review context, independently admitted D/A, execution W, later recording E,
+  main health H, row reuse, partial landing, repair and independent return through the real existing
+  owners. Advance H and repair bookkeeping without changing valid D acceptance; change a relevant
+  input/criterion/condition and hold its affected proof. A later applicable failure within the same
+  context must supersede a pass. - Replay actual historical shapes from PRs 4559/4561/4562 without
+  treating them as approved closures: missing consumer subject, scope/outcome refusal and protected
+  command approval. Include desk-supervision/13's substantive two-route failure, mixed/unrecoverable
+  old evidence, verified-but-not-done continuation and unchanged completed-record hashes. Use
+  synthetic public fixtures, not private incident artifacts. - Crash before/after every owned write
+  and replay duplicate/out-of-order events: one accepted subject and one remaining authorized
+  effect, no lost artifacts, silent false-ready state or duplicate verifier lane. Check existing CI
+  actually triggers for supported Evidence merge paths (4486); keep a real H regression visible
+  without replacing D evidence. - Existing repair completion prerequisites remain explicit: /73 and PR 4102 supply consistent rendered/admitted Evidence; PR 4371 and issue 4596 supply canonical path/CI identity handling in /37; issue 4486 supplies supported Evidence merges that trigger CI. Consume the existing fixing work, never reimplement its policy in this qualification brief. Missing merged/released/activated support is a named adoption hold, not a simulated success.
+- Extend the existing handoff integration and mutation suites, then
+  qualify the released paired tools/skills and actual consumer pins/installed identities with /51.
+  Report unsupported or unreadable paths as unknown. No workflow promotion, release dispatch, live
+  sink activation or runtime implementation is authorized by this planning PR.
+
+### Existing task obligations
 
 1. Create a controlled end-to-end fixture that exercises production adapters with real module boundaries: verifier blocked observation -> durable issue/outcome -> intake disposition -> successor claim -> repair event -> fresh independent verification. Include a #4112-shaped case where source support already exists and the next work is installation qualification; no duplicate implementation brief should be produced. Include #4181-style partial landing/custody loss and #4200-style stopped scan-carrier recovery.
 2. Replay duplicate and out-of-order delivery, crash between writes, unreadable/unauthorized roots, old unknown fields, closed duplicates, multiple failures on one brief and intentionally addressed inboxes. Prove one accountable successor per case, no silent work loss and no false ready/verified state. Test old tools refusing new required semantics before effects and an explicit compatible legacy observation path. Fixtures are synthetic/public, not a copy of private incident material.

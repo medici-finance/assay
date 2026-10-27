@@ -2,7 +2,7 @@
 brief: assay:assay:statusgen:33
 title: "Drive active notice severity from the existing registry after cleanup"
 why: "A registry that only describes severity can disagree with actual lint behavior. One runtime owner should make the approved promotion real while preserving legacy and closure boundaries."
-wave: 4
+wave: 9
 depends: ["statusgen/35"]
 unblocks: []
 effort: M
