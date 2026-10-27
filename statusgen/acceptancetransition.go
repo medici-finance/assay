@@ -98,22 +98,29 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	for _, r := range briefVerifyRows(baseline) {
 		originals[r.ID] = r
 	}
-	changes := map[string]verifyRow{}
-	var ids []string
+	candidates := map[string]verifyRow{}
+	required := map[string]bool{}
+	columns := map[string]string{}
 	for i, old := range oldRows {
 		next := newRows[i]
 		if old.ID != next.ID {
 			return fail("row order or identity changed")
 		}
+		source, owed := originals[old.ID]
+		if owed && expectOnlyChange(source, next) {
+			// An Expect-only original change may have been delivered already or
+			// be introduced by the amendment. It receives no credit unless the
+			// exact human approval explicitly names this row. An older command-
+			// only approval therefore still owes the original Expect.
+			candidates[old.ID], columns[old.ID] = next, "Expect"
+			continue
+		}
 		if reflect.DeepEqual(old, next) {
 			continue
 		}
-		source, owed := originals[old.ID]
 		if !owed {
 			return fail("supplemental rows cannot be amended or promoted")
 		}
-		// Only a command changes. All acceptance assertions, classes, shell and
-		// obligations survive; delivered edits to other rows remain untrusted.
 		oldContext, oldOK := transitionContext(old)
 		nextContext, nextOK := transitionContext(next)
 		if !oldOK || !nextOK || oldContext != nextContext {
@@ -124,16 +131,15 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		comparable.CommandCell = old.CommandCell
 		comparable.RiskText = old.RiskText
 		if next.Command == old.Command || !reflect.DeepEqual(old, comparable) {
-			return fail("only command changes with identical assertions and obligations are supported")
+			return fail("only command-only or Expect-only original-row changes are supported")
 		}
 		if !reflect.DeepEqual(source, old) {
-			return fail("a changed row must still carry its complete original delivered definition")
+			return fail("a changed command must still carry its complete original delivered definition")
 		}
-		changes[old.ID] = next
-		ids = append(ids, old.ID)
+		candidates[old.ID], columns[old.ID], required[old.ID] = next, "Command", true
 	}
-	if len(ids) == 0 {
-		return fail("no changed original command")
+	if len(candidates) == 0 {
+		return fail("no changed original command or Expect")
 	}
 	// Bind the existing brief-v2 acceptance version, not an invented counter.
 	versions := map[string]int{}
@@ -220,7 +226,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if repo == "" {
 		return fail("cannot bind approval to the repository origin")
 	}
-	payload := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=%s", repo, rel, delivery, base, original, amendment, strings.Join(ids, ","))
+	payloadPrefix := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=", repo, rel, delivery, base, original, amendment)
 	if !transitionForge {
 		return fail("could-not-check human authority: --acceptance-forge is required")
 	}
@@ -236,13 +242,33 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if !out.Present || out.Reason != rulingOK {
 		return fail("human approval could not be corroborated: " + out.Detail)
 	}
-	if strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n")) != payload {
+	approvalBody := strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n"))
+	rawIDs, matched := strings.CutPrefix(approvalBody, payloadPrefix)
+	selected := map[string]bool{}
+	for _, id := range strings.Split(rawIDs, ",") {
+		if _, ok := candidates[id]; !ok || selected[id] {
+			return fail("human approval does not name the exact transition payload")
+		}
+		selected[id] = true
+	}
+	changes := map[string]verifyRow{}
+	var ids []string
+	for _, old := range oldRows {
+		if required[old.ID] && !selected[old.ID] {
+			return fail("human approval omits a changed original command")
+		}
+		if selected[old.ID] {
+			changes[old.ID] = candidates[old.ID]
+			ids = append(ids, old.ID)
+		}
+	}
+	if !matched || len(ids) == 0 || strings.Join(ids, ",") != rawIDs {
 		return fail("human approval does not name the exact transition payload")
 	}
-	// Replace only the unique command span in the original table. Unchanged commands,
-	// Expect, row classes and all extra columns retain the original text.
+	// Rewrite only approved columns in the original table. Unselected Expect
+	// drift retains its original obligation; a command change is never optional.
 	lines := strings.Split(baseline, "\n")
-	commandCol := -1
+	commandCol, expectCol := -1, -1
 	rewritten := map[string]bool{}
 	for i, line := range lines {
 		cells := splitRowEscaped(strings.TrimSpace(line))
@@ -257,6 +283,9 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 				if c == "Command" {
 					commandCol = j
 				}
+				if c == "Expect" {
+					expectCol = j
+				}
 			}
 			continue
 		}
@@ -267,11 +296,18 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		if commandCol < 0 || commandCol >= len(cells) {
 			return fail("cannot locate the original command cell")
 		}
-		originalCell := originals[cells[0]].CommandCell
-		if cells[commandCol] != originalCell {
-			return fail("original command cell does not match its parsed definition")
+		if columns[cells[0]] == "Expect" {
+			if expectCol < 0 || expectCol >= len(cells) || cells[expectCol] != originals[cells[0]].Expect {
+				return fail("cannot locate the original Expect cell")
+			}
+			cells[expectCol] = changed.Expect
+		} else {
+			originalCell := originals[cells[0]].CommandCell
+			if cells[commandCol] != originalCell {
+				return fail("original command cell does not match its parsed definition")
+			}
+			cells[commandCol] = strings.Replace(originalCell, codeSpanOf(originals[cells[0]].Command), codeSpanOf(changed.Command), 1)
 		}
-		cells[commandCol] = strings.Replace(originalCell, codeSpanOf(originals[cells[0]].Command), codeSpanOf(changed.Command), 1)
 		rewritten[cells[0]] = true
 		lines[i] = "| " + strings.Join(cells, " | ") + " |"
 	}
@@ -316,4 +352,16 @@ func transitionContext(row verifyRow) ([2]string, bool) {
 		return [2]string{}, false
 	}
 	return [2]string{before, after}, true
+}
+
+// expectOnlyChange retains the complete parsed command, class, shell and
+// obligations. RiskText is derived from the two authored cells, not independent
+// authority; it must be recomputed whenever the Expect cell changes.
+func expectOnlyChange(original, next verifyRow) bool {
+	if next.Expect == original.Expect {
+		return false
+	}
+	comparable := next
+	comparable.Expect, comparable.RiskText = original.Expect, original.RiskText
+	return reflect.DeepEqual(original, comparable)
 }
