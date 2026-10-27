@@ -241,8 +241,10 @@ v1.0.63), run once from the admitted detached home at source
 47ef38f961aa1006ff296034d118630efdc177cb on a clean tree, offline, go1.27.2 darwin/arm64,
 Python 3.15.0. All three rows ran on the host under the witness with exit 0, so every row
 rests on the witness. The delivering change is the squash merge of #3307
-(83c6988d097d), whose parent is 379310083ad5; the five research and changelog files it
-added are byte-unchanged between that merge and the verified source. A
+(83c6988d097d), whose parent is 379310083ad5; the four research files it added under
+`docs/research/criterion-evidence-freshness/` are byte-unchanged between that merge and
+the verified source, and the changelog fragment it added was consumed by the changelog
+aggregation at c3d073572 (no Verify row reads it). A
 `statusgen verifyrun --fail-first --base 379310083ad58b10fcc41bed2e537925823bfbc7`
 rehearsal reported that this table carries no risk-bearing row (the risk frontmatter is
 all no and no row is tagged risk-bearing, live, mutating or end-to-end), so no base run is
