@@ -597,6 +597,24 @@ func (c scanConfig) Configured() bool {
 	return len(c.Problems) == 0 && c.Bless.Login != "" && len(c.Logins) > 0
 }
 
+// allowedRepo reports whether repo (owner/name) is in the configured repository
+// set: an explicit ASSAY_ALLOWED_REPOS entry, or an owner/* pattern entry for its
+// owner. Matching is exact-case, and an unconfigured set (a collapsed
+// configuration carries no Repos) answers false for every repo. This reader keeps
+// a pattern entry as the literal key "owner/*". KEEP IN SYNC with deskkit's
+// IsAllowedRepo.
+func (c scanConfig) allowedRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" || name == "*" || strings.Contains(name, "/") || strings.Contains(owner, "*") {
+		return false
+	}
+	if _, ok := c.Repos[repo]; ok {
+		return true
+	}
+	_, ok = c.Repos[owner+"/*"]
+	return ok
+}
+
 var (
 	scanCfgMu    sync.Mutex
 	scanCfgClass scanToolClass

@@ -423,6 +423,34 @@ func TestBracketCreditCrossRepo(t *testing.T) {
 	check(t, "a source repository matched by an owner pattern", unlisted, verifyrunExitPass, creditCredited, "")
 }
 
+// regression: #4626
+//
+// TestAllowedRepoMirror holds allowedRepo to deskkit IsAllowedRepo's answers:
+// an explicit entry or an owner/* pattern, exact-case, and false for anything
+// that is not one owner/name slug or when nothing is configured.
+func TestAllowedRepoMirror(t *testing.T) {
+	cfg := scanConfig{Repos: map[string]string{"example-org/tracker": "ci:private", "other-org/*": "ci:unknown"}}
+	for repo, want := range map[string]bool{
+		"example-org/tracker": true,
+		"example-org/agents":  false,
+		"Example-org/tracker": false,
+		"other-org/anything":  true,
+		"Other-org/anything":  false,
+		"other-org/*":         false,
+		"other-org/a/b":       false,
+		"other-org":           false,
+		"/tracker":            false,
+		"":                    false,
+	} {
+		if got := cfg.allowedRepo(repo); got != want {
+			t.Errorf("allowedRepo(%q) = %v, want %v", repo, got, want)
+		}
+	}
+	if (scanConfig{}).allowedRepo("example-org/tracker") {
+		t.Error("an unconfigured set admitted a repository")
+	}
+}
+
 // TestCreditRecordFixtures is statusgen's half of row 11: the record reader
 // admits or refuses each shared fixture as its `expect` says. deskkit's
 // TestVerifierAttestationCreditParity reads the same files.
@@ -449,10 +477,13 @@ func TestCreditRecordFixtures(t *testing.T) {
 		if _, raw, ok := strings.Cut(iss.Body, "\n\n"); ok {
 			var b creditBinding
 			if json.Unmarshal([]byte(raw), &b) == nil && b.Run != "" {
-				att = creditAtt(b.Repo, f.Number, b.Run, b.Source, b.Brief, b.Model, b.Tier)
+				att = creditRenderedLine(b, f.Number)
 			}
 		}
-		a := attestationV1Re.FindStringSubmatch(att)
+		a, ok := parseContainerAttestation(att)
+		if !ok {
+			t.Fatalf("%s: %q is not an attestation line", name, att)
+		}
 		cc := &creditContext{desk: "assay-desk-app", repo: creditRepo, rec: creditOK(), records: map[string]creditRecord{}}
 		v := cc.record(a, att)
 		admitted := v.verdict == creditCredited
