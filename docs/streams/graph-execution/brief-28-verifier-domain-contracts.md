@@ -561,6 +561,21 @@ RISK-VALUE: DERIVED — `Stage == "complete"` requires `Acceptance == "accepted"
 RISK-VALUE: DERIVED — `"additionalProperties": false` @ schemas/verification-domain-v1.json:7 — unknown mandatory fields must refuse, never be ignored (Interface contract); the schema-open mutation is killed.
 
 **VERIFY: PASS** — original rows 1–9 pass at e25479a69d69ad678c15253309fcac6b7b0c86b0 inside a closed container-netns admission bracket (verdict=match), 11/11 mutation controls killed; supplemental row 10 exit 0 with 10 corroborated / 0 disproved / 2 unchecked and no acceptance credit.
+**Run 5 closure disposition — 2026-10-27.** The run-5 execution accounting stands: original rows 1–9 pass inside the closed admission bracket above, 11/11 mutation controls killed, and supplemental row 10 carries no acceptance credit. No acceptance obligation was observed to fail.
+
+The canonical implemented-to-verified gate still refuses this Evidence, for the same reason run 4 recorded. Re-run at this branch's run-5 Evidence commit db7fade0d07c3cfc5e96da77219b490509184150:
+
+```text
+$ statusgen verifyflip --root . --brief graph-execution/28 --sha e25479a69d69ad678c15253309fcac6b7b0c86b0 --runner 'assay-verifier-app[bot]' --dry-run
+statusgen verifyflip: graph-execution/28: refusing: brief graph-execution/28 carries **VERIFY: PASS** but Evidence also reads "RISK-VALUE: DERIVED — Present = \"present\" @ statusgen/domain/records.go:171 — Task1/2 names present as the sole complete required-fact state; missing and could-not-check cannot release assessment." on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check
+exit=1
+```
+
+The run-5 lifecycle change on this branch was a row-scoped landing, not the flip verb, so it did not pass through this gate. It is withdrawn: the board row for /28 is restored to implemented, byte-identical to main. The verified outcome record committed earlier on this branch (`28-20261027T021153Z-e0a97380f826.json`) is superseded by a later blocked record. Outcome records are append-only, so the earlier file stays, and the later record governs. No verified, done, ready or merge transition is claimed.
+
+The refused line is the inherited RISK-VALUE definition that names the completeness states. It records no unexecuted row, and this verifier does not rewrite it to get past the gate. The closure-classification defect is tracked on medici-finance/assay#4536, which is still open. After that repair is released and adopted, or a maintainer rules on how that definition line is handled, fresh independent qualification and the ordinary closure gates remain required.
+
+**VERIFY: BLOCKED** — original rows 1–9 pass and supplemental row 10 is uncredited; native lifecycle closure is refused by the RISK-VALUE/hold-scan classification tracked on medici-finance/assay#4536. No acceptance obligation was observed to fail, and the board row stays implemented.
 
 ## Review
 
