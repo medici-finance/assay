@@ -1867,7 +1867,7 @@ func heldBlankRanges(s string, rs [][2]int) string {
 var (
 	heldRiskRecordRe  = regexp.MustCompile(`^RISK-VALUE: DERIVED — ([^@|\r\n]+) @ [a-zA-Z0-9_./-]+:[1-9][0-9]*(?:-[1-9][0-9]*)? — `)
 	heldRiskLiteralRe = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9_-]* = "(?:could-not-check|held)"`)
-	heldRiskMeaningRe = regexp.MustCompile(`(?i)\bcould-not-check cannot release assessment\b|\b(?:a|an) [a-z]+ maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
+	heldRiskMeaningRe = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
 )
 
 // heldRiskDefinition reports whether this occurrence is a declared literal
@@ -1882,7 +1882,7 @@ func heldRiskDefinition(clean string, h []int) bool {
 	var spans [][]int
 	if h[1] <= record[3] {
 		spans = heldRiskLiteralRe.FindAllStringIndex(clean[:record[3]], -1)
-	} else if h[0] >= record[1] {
+	} else if h[0] >= record[1] && !heldNamesRowRe.MatchString(clean[record[1]:]) {
 		for _, span := range heldRiskMeaningRe.FindAllStringIndex(clean[record[1]:], -1) {
 			spans = append(spans, []int{record[1] + span[0], record[1] + span[1]})
 		}

@@ -40,6 +40,9 @@ func TestHeldRiskKeepsHolds(t *testing.T) {
 		"RISK-VALUE: DERIVED — HELD @ examples/facts.go:12 — no runner",
 		"RISK-VALUE: DERIVED — missing and could-not-check cannot release assessment.",
 		"missing and could-not-check cannot release assessment.",
+		"RISK-VALUE: DERIVED — Present = \"present\" @ examples/facts.go:12 — row 2 missing and could-not-check cannot release assessment.",
+		"RISK-VALUE: DERIVED — Present = \"present\" @ examples/facts.go:12 — verifier could-not-check cannot release assessment.",
+		"RISK-VALUE: DERIVED — Present = \"present\" @ examples/facts.go:12 — a runner maps to could-not-check, never to permitted.",
 	} {
 		cases = append(cases, heldScanCase{line, "**VERIFY: PASS**\n\n" + line + "\n", true})
 	}
