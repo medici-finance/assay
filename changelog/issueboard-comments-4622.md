@@ -1,0 +1,1 @@
+- `issueboard` groups selected trusted escalation-comment histories into small authenticated read batches, preserving each thread's complete pagination and row-level overflow behavior. Trust, label-history, unknown-decorator and other-provider reads retain their existing paths; no cross-invocation observations are reused.
