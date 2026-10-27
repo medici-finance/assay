@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +19,10 @@ import (
 // owns the literal expectations; this adapter only calls and projects production code.
 func TestQualificationProbe(t *testing.T) {
 	q := reviewtest.Read(t)
+	if strings.HasPrefix(q.Case, "snapshot") {
+		snapshotProbe(t, q)
+		return
+	}
 	a, p := filepath.Join(q.Root, "actions.json"), filepath.Join(q.Root, "prs.json")
 	for path, data := range map[string][]byte{a: q.Actions, p: q.PRs} {
 		if err := os.WriteFile(path, data, 0600); err != nil {
@@ -48,4 +55,32 @@ func TestQualificationProbe(t *testing.T) {
 		}
 	}
 	reviewtest.Write(t, r)
+}
+
+type rejectNetwork struct{ calls int }
+
+func (r *rejectNetwork) RoundTrip(*http.Request) (*http.Response, error) {
+	r.calls++
+	return nil, errors.New("offline planner tried network")
+}
+func snapshotProbe(t *testing.T, q reviewtest.Request) {
+	t.Helper()
+	trap := &rejectNetwork{}
+	old := http.DefaultTransport
+	http.DefaultTransport = trap
+	t.Cleanup(func() { http.DefaultTransport = old })
+	file := filepath.Join(q.Root, "snapshot.json")
+	if err := os.WriteFile(file, q.Snapshot, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	args := []string{"--snapshot", file, "--selection", q.Selection}
+	if q.Case != "snapshot-no-now" {
+		args = append(args, "--now", q.Now)
+	}
+	if q.Case == "snapshot-conflict" {
+		args = append(args, "--actions", filepath.Join(q.Root, "does-not-exist"))
+	}
+	err := cmdPlan(args, &out)
+	reviewtest.Write(t, reviewtest.Response{Output: out.String(), Exit: deskkit.ExitCodeOf(err), Facts: map[string]string{"networkAttempts": fmt.Sprint(trap.calls)}, HTTPComplete: trap.calls == 0})
 }

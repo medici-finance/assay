@@ -271,6 +271,10 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"schemas/perf-v4.json"},
+			runInvokes: []string{`*/perfrec|perfrec) extra="go test ./..." ;;`},
+			why:        "The exact v4 reference schema derives from canonical recorder types; unfiltered source CI runs the perfrec suite on schema-only edits."},
 		{
 			test: "statusgen/regressionfloor_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
@@ -295,6 +299,13 @@ func ciCrossModuleRegistry() []ciEntry {
 			runInvokes: deskShardInvokes,
 			why:        "the actual built writeguard hook is compared with the core, then uses disposable mutated copies of that producer; deskcore-only edits must rerun parity"},
 
+		{test: "tools/desk/internal/deskkit/reviewcallers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"plugins/assay/scripts/pr-monitor.sh", "plugins/assay/scripts/pr-monitor.test.sh"},
+			runInvokes: deskShardInvokes,
+			why:        "caller qualification executes shipped shell monitor and compatibility tests; the source workflow is unfiltered"},
+		{test: "tools/desk/internal/reviewtest/callers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"plugins/assay/scripts/pr-monitor.sh"}, runInvokes: deskShardInvokes,
+			why: "prose/discrete parity executes the actual monitor against a production collector fixture and built planner; unfiltered desk CI runs after shell-only edits"},
 		{test: "tools/desk/internal/reviewtest/observation_boundary_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"schemas/review-observation-v1.json"},
 			runInvokes: deskShardInvokes,
@@ -2290,6 +2301,7 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 var ciRegistryOptOut = map[string]string{
 	"tools/desk/internal/reviewtest/perf_test.go":                 `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
 	"tools/desk/internal/reviewtest/observation_contract_test.go": `Own-module production source overlays, fixtures and command probes only; all other reads are disposable fixtures. No sibling-module source is read.`,
+	"tools/desk/internal/reviewtest/prepare_test.go":              `Own-module preparation source overlays and command tests only; all other files are disposable Git fixtures. No sibling-module source is read.`,
 	"tools/desk/internal/reviewtest/qualification_test.go":        `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
 	"tools/desk/internal/deskkit/appisolation_test.go":            `WalkDir("../..") from internal/deskkit reads only tools/desk test sources, within its own module; tools/** already covers every observed edit`,
 	"tools/desk/internal/gitcore/ackguard_test.go":                `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,

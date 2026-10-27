@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -147,6 +150,19 @@ func scanFixtureRepo(t *testing.T, placeholders map[string]string) ([]*Stream, s
 		t.Fatal(err)
 	}
 	attachPlaceholders(streams)
+	// These retirement/reactivation fixtures model already classified work.
+	// Raw scanner output is exercised without this fixture in TestScanHandoffAdmission.
+	for _, stream := range streams {
+		for i := range stream.Placeholders {
+			stream.Placeholders[i].HandoffAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
+		}
+		for i := range stream.Briefs {
+			if stream.Briefs[i].Schema == "placeholder-v1" {
+				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
+			}
+		}
+	}
+
 	return streams, root
 }
 
@@ -734,7 +750,15 @@ func TestBlockedPlaceholderNextUpExclusion(t *testing.T) {
 		),
 	})
 
-	// Unblocked placeholder appears in Next-up.
+	for _, stream := range streams {
+		for i := range stream.Briefs {
+			if stream.Briefs[i].Schema == "placeholder-v1" {
+				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
+			}
+		}
+	}
+
+	// Unblocked, classified placeholder appears in Next-up.
 	picks := nextUp(streams, ClaimView{}, nil).Picks
 	found77 := false
 	found88 := false
@@ -1201,6 +1225,8 @@ func TestCloseOutFileModificationRetire(t *testing.T) {
 	rootPath := filepath.Join(issueLoopDir, "issue-620.md")
 	writeTemp(t, issueLoopDir, "issue-620.md", placeholderFile("issue-loop", 620, "bug"))
 
+	settlePlaceholderFixture(t, rootPath)
+
 	// Run scan with issue 620 NOT open → retire.
 	data := map[string][]ghIssue{
 		scanHomeRepo(): {},
@@ -1531,6 +1557,8 @@ func TestCloseOutFileModificationRetireLabel(t *testing.T) {
 	writeTemp(t, issueLoopDir, "README.md", scanStreamREADME)
 	rootPath := filepath.Join(issueLoopDir, "issue-643.md")
 	writeTemp(t, issueLoopDir, "issue-643.md", placeholderFile("issue-loop", 643, "bug"))
+
+	settlePlaceholderFixture(t, rootPath)
 
 	// Issue 643 is open but now carries review-request.
 	data := map[string][]ghIssue{
@@ -1972,5 +2000,158 @@ func TestScanRiskHighPlaceholderGate(t *testing.T) {
 	ph405, ok, err := parsePlaceholderFile(noGate)
 	if err != nil || !ok || ph405.Gate != "human" {
 		t.Errorf("gate-less risk:high file should read human, got ok=%v err=%v gate=%q", ok, err, ph405.Gate)
+	}
+}
+
+func settlePlaceholderFixture(t *testing.T, path string) {
+	t.Helper()
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil || !ok {
+		t.Fatalf("placeholder fixture: %v %v", ok, err)
+	}
+	h := issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema, Item: fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), Opened: "2026-10-25T12:00:00Z", Revision: 1, DecidingRole: "intake-desk", Disposition: issueflow.Repair, Route: "repair", Successor: fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), Evidence: fmt.Sprintf("%s#%d", ph.Repo, ph.Issue)}
+	raw, _ := json.Marshal(h)
+	writeTemp(t, filepath.Dir(path), "handoff.json", string(raw))
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = []byte(strings.Replace(string(body), "status: todo", "status: todo\nhandoff: handoff.json\nhandoff-opened: \"2026-10-25T12:00:00Z\"", 1))
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// regression: statusgen/18
+func TestScanGateMismatchNotice(t *testing.T) {
+	streams, root := scanFixtureRepo(t, map[string]string{
+		"issue-601.md":        placeholderFile("alpha", 601, "bug", "gate: model"),
+		"issue-602.md":        placeholderFile("alpha", 602, "bug", "gate: model"),
+		"issue-603.md":        placeholderFile("alpha", 603, "bug"),
+		"issue-604.md":        placeholderFile("alpha", 604, "bug", "gate: human"),
+		"issue-605.md":        placeholderFile("alpha", 605, "bug", "gate: human"),
+		"issue-606.md":        placeholderFile("alpha", 606, "risk:high"),
+		"issue-607.md":        placeholderFile("alpha", 607, "bug", "gate: model"),
+		"issue-608.md":        placeholderFile("alpha", 608, "risk:high", "gate: model"),
+		"issue-609.md":        placeholderFile("alpha", 609, "bug", "gate: model"),
+		"issue-610.md":        closedPlaceholderFile("alpha", 610, "bug", "gate: model"),
+		"agents-issue-601.md": "---\nschema: placeholder-v1\nbrief: alpha/agents-issue-601\nissue: 601\nrepo: example-org/agents\nwave: 0\nstatus: todo\ngate: human\nlabels: [risk:high]\n---\nSee issue.\n",
+	})
+	archive := filepath.Join(root, "docs/streams/alpha/done")
+	if err := os.MkdirAll(archive, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, archive, "issue-611.md", closedPlaceholderFile("alpha", 611, "bug", "gate: model"))
+	title := "rotate the auth token cache"
+	data := map[string][]ghIssue{
+		scanHomeRepo(): {
+			{Number: 601, Title: "plain bug", Labels: lbl("bug", "risk:high")},
+			{Number: 602, Title: title, Labels: lbl("bug")},
+			{Number: 603, Title: "plain bug", Labels: lbl("bug", "risk:high")},
+			{Number: 604, Title: "plain bug", Labels: lbl("bug", "risk:high")},
+			{Number: 605, Title: "plain bug", Labels: lbl("bug")},
+			{Number: 606, Title: "plain bug", Labels: lbl("risk:high")},
+			{Number: 607, Title: "plain bug", Labels: lbl("bug")},
+			{Number: 609, Title: "plain bug", Labels: lbl("risk:high", "verify-gate")},
+			{Number: 610, Title: "plain bug", Labels: lbl("risk:high")},
+			{Number: 611, Title: "plain bug", Labels: lbl("risk:high")},
+		},
+		"example-org/agents": {{Number: 601, Title: "plain bug", Labels: lbl("risk:high")}},
+	}
+	for pass := 1; pass <= 2; pass++ {
+		plans, closeOuts, notices, skipped := planScan(root, streams, fixtureLister(data, ""), blessAll, labelHoldClearAll)
+		var mismatches []string
+		for _, notice := range notices {
+			if strings.Contains(notice, "derives gate: human but placeholder") {
+				mismatches = append(mismatches, notice)
+			}
+		}
+		if len(mismatches) != 3 {
+			t.Fatalf("pass %d: got %d mismatch notices, want 3: %v", pass, len(mismatches), mismatches)
+		}
+		for i, issue := range []int{601, 602, 603} {
+			want := fmt.Sprintf("scan-issues: %s#%d derives gate: human but placeholder docs/streams/alpha/issue-%d.md reads gate: model — the scan does not change it; set gate: human in the file by hand", scanHomeRepo(), issue, issue)
+			if mismatches[i] != want {
+				t.Errorf("pass %d: notice %d = %q, want %q", pass, i, mismatches[i], want)
+			}
+		}
+		if strings.Contains(strings.Join(mismatches, "\n"), title) {
+			t.Error("mismatch notice must not carry the issue title")
+		}
+		if len(plans) != 0 || len(skipped) != 0 {
+			t.Errorf("existing issues must not be created or skipped: plans=%+v skipped=%+v", plans, skipped)
+		}
+		for issue, action := range map[int]string{608: "retire", 609: "retire-label", 610: "reactivate", 611: "reactivate"} {
+			c := findCloseOut(closeOuts, scanHomeRepo(), issue)
+			if c == nil || c.Action != action {
+				t.Errorf("issue %d close-out = %+v, want %s", issue, c, action)
+			}
+		}
+		if len(closeOuts) != 4 {
+			t.Errorf("got %d close-outs, want 4: %+v", len(closeOuts), closeOuts)
+		}
+	}
+}
+
+// regression: statusgen/18
+func TestScanGateNoticeWritesNothing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+		t.Fatal(err)
+	}
+	streamDir := filepath.Join(root, "docs/streams/issue-loop")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, streamDir, "README.md", scanStreamREADME)
+	path := writeTemp(t, streamDir, "issue-601.md", placeholderFile("issue-loop", 601, "bug", "gate: model"))
+	paths := func() string {
+		t.Helper()
+		var names []string
+		if err := filepath.WalkDir(streamDir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() {
+				names = append(names, path)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		sort.Strings(names)
+		return strings.Join(names, "\n")
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforePaths := paths()
+	data := map[string][]ghIssue{scanHomeRepo(): {{Number: 601, Title: "plain bug", Labels: lbl("bug", "risk:high")}}}
+	for _, dryRun := range []bool{true, false} {
+		t.Run(fmt.Sprintf("dryRun=%v", dryRun), func(t *testing.T) {
+			var code int
+			stderr := captureStderr(t, func() {
+				code = runScanIssues(root, dryRun, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll)
+			})
+			if code != 0 {
+				t.Errorf("exit code = %d, want 0", code)
+			}
+			lines := strings.Split(strings.TrimSpace(stderr), "\n")
+			want := fmt.Sprintf("NOTICE: scan-issues: %s#601 derives gate: human but placeholder docs/streams/issue-loop/issue-601.md reads gate: model — the scan does not change it; set gate: human in the file by hand", scanHomeRepo())
+			if len(lines) != 1 || lines[0] != want {
+				t.Errorf("stderr = %q, want exactly %q", stderr, want)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Error("mismatch notice changed placeholder bytes")
+			}
+			if afterPaths := paths(); afterPaths != beforePaths {
+				t.Errorf("mismatch notice changed stream paths: before=%q after=%q", beforePaths, afterPaths)
+			}
+		})
 	}
 }

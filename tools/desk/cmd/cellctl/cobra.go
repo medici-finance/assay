@@ -112,7 +112,7 @@ func rawVerb(args []string) bool {
 		return false
 	}
 	switch a[0] {
-	case "model-policy", "cache-run", "container-run", "defaults", "comms-reader":
+	case "model-policy", "cache-run", "container-run", "defaults", "hotfix", "comms-reader", "scrubbed-run":
 		return true
 	}
 	return false
@@ -171,11 +171,11 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		// A flag-less verb parses no flags; its help (decision entry 5) is the help verb's.
 		args, flagless = append(append([]string{}, args[:i]...), "help", args[i]), false
 	}
-	if i+2 == len(args) && args[i] == "defaults" && (args[i+1] == "-h" || args[i+1] == "--help") {
+	if i+2 == len(args) && (args[i] == "defaults" || args[i] == "hotfix") && (args[i+1] == "-h" || args[i+1] == "--help") {
 		// defaults reads its words by exact comparison, so the tree parses no flags for it and
 		// Cobra never sees its help flag. Its sole help word is the help verb's, which reads no
 		// roster (decision entries 1 and 9); any other line keeps the verb's own comparison.
-		args = append(append([]string{}, args[:i]...), "help", "defaults")
+		args = append(append([]string{}, args[:i]...), "help", args[i])
 	}
 	if i < len(args) {
 		verbWords = append([]string{}, args[i+1:]...)
@@ -483,7 +483,7 @@ func buildRoot() *cobra.Command {
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
 		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
-		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
+		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
 	cellopFixtureCommands(root)

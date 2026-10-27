@@ -465,14 +465,17 @@ window stops, hands back, or asks the driver for direction.
    (`ratelimit.go`, `BreakerTrip = 5`, 15-minute cooldown) — so an idempotent write on five quiet
    ticks in a row opens the breaker with nothing having failed. Read freely; write only what a real
    change earns.
-4. **Refills stay inside the write budgets.** `deskpr create` and `deskfile new` share one repo-wide
+4. **Refills stay inside the write budgets.** `deskpr create` and an unbound `deskfile new` share one repo-wide
    ceiling of 20 per rolling hour, so a full 8-slot refill each half hour already spends most of it on
    one repo and leaves little for rework pushes on the same repo. Pace refills against that; exit 4
    names a `RetryAfter` — sleep it and attempt ONCE, never retry-loop. A workflow-bound filing
    (`deskfile new --for-pr <owner>/<repo>#<N> --brief <id>`, an issue an open PR's review or
    verification requires) is not counted by the per-session filing budget, so a spent budget never
-   defers it; it still spends this repo-wide ceiling (two writes per filing, with the back-link) and a
-   per-role, per-PR cap when one is configured (off by default).
+   defers it, and it does not spend the fixed ceiling above: it meets the per-PR outward-write tier
+   (two writes per filing, with the back-link), a separate repo-wide backstop of its own
+   (`write.bound.repo_hour`, 60 per repository per hour by default, never off; `deskfile attach
+   --kind mr` replies are held by it too) and a per-role, per-PR cap when one is configured (off by
+   default).
 5. **The tick still reports.** One line per §Output contract, and the sweep obligations of the HARD
    GATE are unaffected by a quiet queue.
 
@@ -987,7 +990,7 @@ relay onto the tracker, nor does a durable escalation ride the lane alone. A fil
 PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
 `deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
 count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
-configured) and the outward-write ceiling, and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME

@@ -55,3 +55,9 @@ answer. It does not retire the read-verb bridge for any online read, and it does
 statusgen make an online forge read in-process. It does not attest the design is correct: it
 records that the alternatives were weighed and names a human approver; whether an
 implementation holds is the review gate's judgement and then each brief's Verify table.
+
+**Superseded (2026-10-25) by [`DR-forge-library`](DR-forge-library.md).** The driver's later
+ruling on #2395 names this record and replaces its limits: one shared forge library for reads and
+writes, which statusgen links for its forge calls, with the credential held privately by the
+library. This record is kept as the register's history and is not rewritten; work delivered under
+it keeps its Evidence.

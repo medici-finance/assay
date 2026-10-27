@@ -10,7 +10,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - docs/desk-workflow-efficiency-spec.md
@@ -105,7 +105,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIssueProjectionFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestIssueProjectionFlow ' "$o")` | exit 0; named PASS. Actual worker/intake/inbox paths select distinct typed projections before history enrichment; oracle outputs match old semantics and unnecessary histories are not requested. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIssueProjectionFaults$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestIssueProjectionFaults ' "$o")` | exit 0; named PASS. Author/edit trust, identity, comments, overflow, permission failures, escalation and positive closure mutations fail; empty work-ready cannot prove intake/inbox idle. Adjacent full board output stays compatible. |
-| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/42` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/42 --delivery a92fea2720a5d2fab84bc5a47c827413adaf762b --base 2f44050f8a706d0865e1a95ca3cd8709abe1bd2f` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 
 ## Pre-mortem and detection
 
@@ -148,3 +148,13 @@ tools/desk-local binding. It does not import cmd/main across modules, duplicate 
 classifier, change this brief's acceptance or add a process supervisor here. Preserve
 the current oracle, authority boundary and planned library home. This is a forward
 consumer, not a dependency on future workflow/controller delivery.
+
+## Prospective planner consumer checkpoint — 23 October 2026
+
+The efficiency spec §2.1/A11–A12 nominates the existing issueflow projection as a
+candidate input to graph-execution/27's shared role planner. Preserve the currently
+assigned Task/Verify/revision until its owner acknowledges any material amendment.
+At pickup, retain all work-ready/intake/inbox populations and projection-before-enrichment;
+qualify per-operation batching only through this owner and existing forge-neutral/37–38.
+No hidden global scan per root, parallel issue classifier or status/acceptance claim is added.
+This checkpoint records requested integration, not new execution Evidence or activation.

@@ -346,6 +346,7 @@ type ghPullWire struct {
 		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"head"`
 	Base struct {
+		SHA  string          `json:"sha"`
 		Ref  string          `json:"ref"`
 		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"base"`
@@ -574,6 +575,7 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		Labels:       labels,
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
+		BaseSHA:      w.Base.SHA,
 		BaseRef:      w.Base.Ref,
 		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
 		// Only a merged pull has a merge commit; an open pull's merge_commit_sha is a
@@ -683,6 +685,9 @@ func (g *GitHubForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullR
 // prefixed with `repo:{o}/{r} is:issue`, so the caller supplies free text and the backend owns
 // the scope qualifiers — the closed-surface property (no caller-supplied search syntax).
 func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	if in.FilingKey != "" {
+		return g.searchFilingKey(repo, in)
+	}
 	if in.DecisionGateMarkers {
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err

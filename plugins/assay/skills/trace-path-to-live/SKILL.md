@@ -2,7 +2,7 @@
 name: trace-path-to-live
 description: >-
   Turn an objective into its prerequisite brief graph and a ranked list of moves. Use when asked
-  "what has to be done before X can go live", "trace the path to live for <stream>/<NN>", "what
+  "what has to be done before X can go live", "trace the path to live for a brief", "what
   is blocking this drive", "what can we do now to move X forward", "map the dependencies of this
   objective", or when given a go-live brief id, a drive slug or a plain-language goal and asked
   for the critical path. Read-only. It does not dispatch, review or verify anything itself.
@@ -10,15 +10,17 @@ description: >-
 
 # Trace path to live: objective → prerequisite graph → ranked moves
 
-Answer two questions about one objective: what must be `done` before it can go live, and what
-can be done now to move it forward. The answer is a page with three parts:
+For one objective answer: what must be `done` before it can go live, and what
+can be done now to move it forward. The answer is a page with:
 
-- the prerequisite graph, with done work greyed;
+- the six-line monthly progress chart first;
+- separate seven-day and four-week movement boards, with evidence-backed focus;
+- outcome context in details;
+- the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.
 
-The skill only puts together what the existing readers already report. It adds no reader of its
-own.
+Combine existing readers with recorded default-branch history; never invent progress.
 
 ## 1. Resolve the objective, then confirm it
 
@@ -54,13 +56,7 @@ every later step wrong. Do not walk an unconfirmed guess.
 Run `statusgen --root <dir> --launch --launch-target <id>` in each materialised root. The
 transitive `depends:` closure, with live status, comes from the root that owns the target.
 
-`target "<id>" not found in any stream` has three known causes. Check them in this order:
-
-1. **The tree is older than the brief.** A local checkout that has not been pulled does not
-   have recently authored briefs. Step 2's fetched tree removes this cause.
-2. **The id form.** Use `<stream>/<NN>` with two digits.
-3. **The brief lives in another root.** `--launch` reads one root only. Try every root, and
-   report "not found" only after all of them have been tried.
+`target "<id>" not found in any stream`: check freshness (step 2 removes a stale tree), then the two-digit id, then every fetched root. `--launch` reads one root; try all before reporting not-found.
 
 ## 4. Stitch the graph across roots
 
@@ -86,6 +82,7 @@ transitive `depends:` closure, with live status, comes from the root that owns t
   it returns. Match a PR to a node by its `Brief: <stream>/<NN>` trailer, by its
   `Cross-repo-brief: <alias>:<stream>/<NN>` trailer (a cross-repo dispatch, whose PR lives in a
   different repo from the brief), or else by the brief id in its title.
+- **Progress evidence and baseline.** Follow [Report presentation](references/report.md); keep supporting evidence separate from canonical lifecycle state.
 - **Claims.** Use the list verb of the repo's dispatch-claim helper. Claim keys have three forms:
   `<repo>--<stream>--<NN>` for a same-repo brief, `<alias>--<stream>--<NN>` for a cross-repo
   brief (keyed under the tracking alias), and `<repo>--issue-<N>` for issue-shaped work. A node
@@ -124,21 +121,11 @@ Rank the moves in this order:
 
 ## 7. The page
 
-Write ONE self-contained HTML page: inline CSS and JS, no external fetch, no CDN. It contains:
-
-- the objective and the confirmed targets;
-- the critical path, overall and per target;
-- the ranked moves;
-- the graph:
-  - each node shows its status, gate, eligibility, PR and claim badges;
-  - the critical path is highlighted;
-  - `verified` and `done` nodes are greyed;
-  - clicking a node isolates its prerequisites and dependents;
-- a coverage block. It lists each root with its SHA, every `could-not-check` root, hold or reader,
-  every fallback used, and the cross-root dependents.
-
-The page names private boards when a root is private, so write it **outside any repository** in
-the operator's scratch location and never commit it. Hand the operator its absolute path.
+Read [Report presentation](references/report.md) before writing the HTML. It defines the
+plain-language titles, six-line progress chart (three weekly readings plus seven daily),
+movement and outcome views, report comparisons, blockers, graph and evidence coverage;
+hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
+Write the self-contained report outside repositories and never commit it.
 
 ## Boundaries
 

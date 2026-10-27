@@ -1,11 +1,75 @@
 # The release's own statusgen bytes plus the fleet's digest-pinned toolchain.
-FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
+#
+# GIT FLOOR - git 2.41 or later at /usr/bin/git (#4207). The admitted verify
+#   runner calls /usr/bin/git with a fixed PATH and renders a converted file from
+#   the attested commit's own attributes via `git --attr-source`, which arrived in
+#   git 2.41. The bookworm git is 2.39.5, so this image builds git from the
+#   upstream release tarball in the `gitbuild` stage, from the SAME pinned
+#   version and sha256 as containers/base/Dockerfile (#2318): one git for the
+#   fleet, not a second pin that can drift. Only the install tree reaches the
+#   final image, over the distro git, which is purged. The last RUN of the final
+#   stage runs containers/scripts/git-floor-check.sh with the runner's fixed
+#   PATH, so a git below the floor fails the build instead of shipping.
+#   tools/desk/internal/deskkit/verifyrunner_gitfloor_test.go holds the pair to
+#   the base image's and holds the check in place.
+#
+# One reference for both stages: git is built against the libraries of the very
+# image it ships in, so the two stages cannot be bumped apart.
+ARG RUNNER_BASE=golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5
+
+# ---- git, built from the fleet's pinned upstream release -----------------
+# Its own stage, so the -dev packages never reach the final image. The tarball
+# is checked against the pinned sha256 before it is unpacked. The pair below is
+# copied from containers/base/Dockerfile; to bump it, follow the "To bump" note
+# above that file's gitbuild stage and change both Dockerfiles in one change.
+FROM ${RUNNER_BASE} AS gitbuild
+ARG GIT_VERSION=2.56.0
+ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gcc \
+        libc6-dev \
+        libcurl4-gnutls-dev \
+        libexpat1-dev \
+        libpcre2-dev \
+        make \
+        xz-utils \
+        zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    curl -fsSL --proto '=https' --proto-redir '=https' \
+        "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" -o /tmp/git.txz; \
+    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \
+    tar -C /tmp -xJf /tmp/git.txz; \
+    cd "/tmp/git-${GIT_VERSION}"; \
+    # prefix=/usr: the runner calls /usr/bin/git, and the install tree replaces
+    # the distro git file for file. NO_OPENSSL: hashing uses git's own
+    # sha1dc/sha256 code and https goes through libcurl (GnuTLS), so no OpenSSL
+    # is linked or shipped. NO_RUST: Rust is still optional in this release, so
+    # no cargo toolchain is fetched.
+    opts="prefix=/usr NO_OPENSSL=YesPlease NO_RUST=YesPlease NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease USE_LIBPCRE2=YesPlease"; \
+    make -j"$(nproc)" $opts all; \
+    make $opts DESTDIR=/out install; \
+    /out/usr/bin/git version
+
+# ---- The runner ------------------------------------------------------------
+FROM ${RUNNER_BASE}
 # Dependency admission and update policy: issue #3469. Install only at build time.
 # Exact direct versions fail closed if the archive changes; review a pin update.
+# The distro git (2.39.5) is purged here, before packages.txt is written, so that
+# file does not list a git the image does not run; the source-built git below is
+# not a Debian package and is not listed in it. Its runtime libraries (libcurl3-
+# gnutls, libexpat1, libpcre2-8-0, zlib1g) stay installed: purge, without
+# --auto-remove, removes only the named packages.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       python3-yaml=6.0-3+b2 \
       python3-jsonschema=4.10.3-1 \
+ && apt-get purge -y git git-man \
  && mkdir -p /usr/local/share/verify-runner \
  && dpkg-query -W -f='${binary:Package}=${Version}\n' \
       > /usr/local/share/verify-runner/packages.txt \
@@ -72,3 +136,47 @@ RUN set -eu; \
     rm -rf /tmp/modsrc /root/.cache
 
 COPY .release-images/harness/statusgen /usr/local/bin/statusgen
+
+# git from the gitbuild stage, over /usr. The check script stays in the image so a
+# running home can re-check itself.
+COPY --from=gitbuild /out/usr/ /usr/
+COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
+
+# The cluster backend's fixed entrypoints. An admission policy that pins each
+# container's command (or the absence of one) to a single script path can only
+# admit a Job whose scripts are already in the image, so they ship here, at a
+# fixed path, root-owned and not writable by the non-root row user. Each one
+# prints its usage and exits 2 when run with no argument; check.py proves that
+# by executing each path directly. The image's ENTRYPOINT and CMD are unchanged.
+COPY images/verify-runner/stage-source.sh images/verify-runner/stage-cache.sh \
+     images/verify-runner/witness.sh /usr/local/bin/
+RUN set -eu; \
+    for f in stage-source.sh stage-cache.sh witness.sh; do \
+      chown 0:0 "/usr/local/bin/$f"; \
+      chmod 0755 "/usr/local/bin/$f"; \
+      test "$(head -n 1 "/usr/local/bin/$f")" = '#!/bin/bash'; \
+    done
+
+# GIT FLOOR CHECK: the last RUN of the final stage, so no later layer can bring in
+# a git unchecked. The test -x lines make a missing binary fail (ldd alone would
+# print its error to stderr and let the grep pass); the ldd gate catches a shared
+# library the image stopped providing (git-remote-http carries the libcurl link);
+# the owner gate keeps the install tree root-owned; the last test proves the
+# distro git's exec directory is gone. git-floor-check then proves every git on
+# PATH is 2.41 or later and that `--attr-source` renders a converted file from a
+# committed tree. It runs with the admitted runner's own fixed PATH, so it is the
+# git the runner reaches that is checked, not whichever one this image's PATH
+# finds first.
+RUN set -eux; \
+    test -x /usr/bin/git; \
+    test -x /usr/libexec/git-core/git-remote-http; \
+    if ldd /usr/bin/git /usr/libexec/git-core/git-remote-http | grep 'not found'; then \
+        echo "source-built git is missing a shared library" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/bin/git /usr/libexec/git-core /usr/share/git-core -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "the source-built git install tree holds files not owned by root:root" >&2; \
+        exit 1; \
+    fi; \
+    test ! -e /usr/lib/git-core; \
+    PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check

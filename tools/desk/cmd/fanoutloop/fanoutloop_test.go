@@ -982,7 +982,7 @@ func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) 
 }
 
 // TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR is the fail-first proof for the merged-PR
-// half of the rework-lane fix (#1028 / at#2026's second defect). A `### Awaiting implementer rework`
+// half of the rework-lane fix (#1028's second defect). A `### Awaiting implementer rework`
 // STATUS.md row whose brief already has a MERGED PR — matched on that PR's `Brief:` trailer, so the
 // modern `feat/<repo>--<stream>--<NN>` branch spelling that the phantom-check used to miss is
 // irrelevant — is a phantom and must NOT be offered. Two lanes stay EXEMPT because a representing PR
@@ -1037,7 +1037,7 @@ func TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR(t *testing.T) {
 		ids = append(ids, it.ID)
 	}
 	if contains(ids, "phantomrework/04") {
-		t.Errorf("a STATUS.md rework row whose deliverable already MERGED was offered — it is a phantom (#1028/at#2026): %v", ids)
+		t.Errorf("a STATUS.md rework row whose deliverable already MERGED was offered — it is a phantom (#1028): %v", ids)
 	}
 	if !contains(ids, "genuinerework/06") {
 		t.Errorf("an unrepresented genuine rework row was wrongly dropped: %v", ids)
@@ -1083,7 +1083,7 @@ func TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens(t *testing.T) {
 
 // TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR is the fanoutloop half of the phantom fix:
 // a fresh Next-up row whose brief already has an OPEN or MERGED PR is NOT offered for dispatch,
-// while an unrepresented row survives. Since #1028/at#2026 the SAME exclusion also gates the
+// while an unrepresented row survives. Since #1028 the SAME exclusion also gates the
 // `### Awaiting implementer rework` STATUS.md lane (proven here by carrying the rework brief in the
 // represented set and asserting the rework item is now DROPPED) — the deeper rework-lane / repair-
 // obligation split is proven in TestSelectQueue_ExcludesReworkRowsRepresentedByMergedPR.
@@ -1101,7 +1101,7 @@ func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
 			// The map carries the two represented fresh briefs (one OPEN, one MERGED) AND the rework
 			// brief. Neither fresh row is offered as fresh DISPATCH: the OPEN one is ROUTED to RESUME
 			// (#1339), the MERGED one is landed-unreconciled; the rework row (represented, either state)
-			// is dropped — the at#2026 phantom this lane used to skip.
+			// is dropped — the #1028 phantom this lane used to skip.
 			return map[string]deskkit.RepresentedPR{
 				"example-a/00": {Number: 100, Merged: false}, // OPEN → resume
 				"example-b/08": {Number: 108, Merged: true},  // MERGED → landed-unreconciled
@@ -1138,7 +1138,7 @@ func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
 		t.Errorf("an unrepresented fresh row was dropped: %v", ids)
 	}
 	if contains(ids, "rew/09") {
-		t.Errorf("a STATUS.md rework row whose brief is represented by a PR was offered — it is a phantom (#1028/at#2026): %v", ids)
+		t.Errorf("a STATUS.md rework row whose brief is represented by a PR was offered — it is a phantom (#1028): %v", ids)
 	}
 }
 

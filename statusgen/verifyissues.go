@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -175,28 +177,7 @@ func briefBody(path string) string {
 // heading and the next `## ` heading (or EOF). Unlike extractEvidence (which
 // requires an exact heading), this matches a decorated heading such as
 // `## Verify (executable — no prose-only DoD items)` via its prefix.
-func extractSectionByPrefix(body, prefix string) string {
-	lines := strings.Split(body, "\n")
-	start := -1
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if rest, ok := strings.CutPrefix(t, "## "); ok && strings.HasPrefix(rest, prefix) {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	var out []string
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
-			break
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
-}
+func extractSectionByPrefix(body, prefix string) string { return briefdoc.Section(body, prefix, true) }
 
 // verifyVerdictBoldRe is the ratified regex for a BOLD VERIFY verdict marker:
 // `**VERIFY: PASS**` or `**VERIFY: FAIL**`, with
@@ -355,7 +336,9 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 //     a bare list marker, right after a count label and its colon ("summary:
 //     0 HELD"), or right after ", " / "; " that closes another count item
 //     whose noun is a verdict count (heldCountItemRe: "7 PASS, 0 HELD", "5/5
-//     rows, 0 HELD"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
+//     rows, 0 HELD"), or a ratio item that passed every row or check it
+//     counts (heldCountRatioRe: "2 of 2 required rows passed; 0
+//     could-not-check", never "1 of 2 rows passed;"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
 //     1, 0", "row 3 exit, 0"), a row label ("row 0"), a decimal or version
 //     ("2.0", "v1.0") or a parenthesis ("(0 HELD)") is not a count position
 //     and never excuses.
@@ -402,6 +385,12 @@ var (
 	// "5/5 rows,"). The noun is a short allowlist of verdict counts, so a
 	// number followed by an arbitrary word ("row 3 exit,") is not a count.
 	heldCountItemRe = regexp.MustCompile(`(?i)\b\d+[ \t]+(?:pass(?:ed|es)?|fail(?:ed|s|ures?)?|held|could-not-check|checked-clean|checked-failed|unrun|skip(?:ped|s)?|rows?|checks?)[,;]$`)
+	// heldCountRatioRe is a prior count item that passed every row or check
+	// it counts, closed by "," or ";" ("2 of 2 required rows passed;",
+	// #4294): at most one qualifier word before the noun, and both counts the
+	// same and above zero (heldDetailCounts), so "1 of 2 rows passed;" is not
+	// a count position.
+	heldCountRatioRe = regexp.MustCompile(`(?i)\b(\d+)[ \t]+of[ \t]+(\d+)[ \t]+(?:[a-z]+[ \t]+)?(?:rows?|checks?)[ \t]+(?:pass(?:ed)?|ran|green)[,;]$`)
 	// heldCuePrevWordRe is a linking word allowed directly before a word cue.
 	heldCuePrevWordRe = regexp.MustCompile(`(?i)\b(?:is|are|was|were|has|have|had|with|and|but|otherwise|means)$`)
 	// heldReasonAfterRe is a hold reason after the marker, past any run of
@@ -444,6 +433,9 @@ func heldWordCueAllowed(before string) bool {
 // heldZeroCueAllowed reports whether before — the trimmed text in front of a
 // "0" cue — is a count position.
 func heldZeroCueAllowed(before string) bool {
+	if m := heldCountRatioRe.FindStringSubmatch(before); m != nil && heldDetailCounts(m[1:]) {
+		return true
+	}
 	return before == "" || heldListMarkerRe.MatchString(before) ||
 		heldCountLabelRe.MatchString(before) || heldCountItemRe.MatchString(before)
 }
@@ -1027,6 +1019,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		keywordLocs := routingKeywordRe.FindAllStringIndex(view, -1)
 		refLocs := routingRefRe.FindAllStringIndex(view, -1)
 		for _, h := range heldLocs {
+			// A sourced derivation may name a product state without observing
+			// a verification hold. Classify only this occurrence, never the
+			// whole RISK-VALUE line or a neighbouring Result cell (#4536).
+			if cuts == nil && read.key == "" && len(read.blank) == 0 && heldRiskDefinition(clean, h) {
+				continue
+			}
 			// A negated or zero-counted occurrence ("no could-not-check",
 			// "summary: 0 HELD") is not a live disposition at all — it is
 			// excused outright, the same as a routed one, without needing a
@@ -1040,6 +1038,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			// means ("could-not-check → exit 6") is not a disposition; the
 			// row's own result cell is (heldScanScope rule 2, #1894).
 			if read.prose && heldExitMapping(clean, h) {
+				continue
+			}
+			// A passing row's Result cell that records the product's own
+			// could-not-check output ("a could-not-check mission section")
+			// is not the row's disposition (heldScanScope rule 4, #4294).
+			if cuts == nil && heldObservedOutput(line, clean, read, h) {
 				continue
 			}
 			keywordAfter := false
@@ -1214,20 +1218,47 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
 
-	if verify := strings.TrimSpace(extractSectionByPrefix(body, "Verify")); verify != "" {
-		fmt.Fprintf(&b, "### Verify\n\n%s\n\n", verify)
-	}
-	if ev := strings.TrimSpace(bf.Evidence); ev != "" {
-		fmt.Fprintf(&b, "### Recorded results (Evidence)\n\n%s\n\n", ev)
-	}
+	// The lifted sections are unbounded; capIssueBody holds the whole body
+	// under the forge limit without touching the header above or the
+	// checklist below (#4091).
+	sections := verifySections(body, bf.Evidence)
 
-	b.WriteString("### Before you close\n\n")
-	b.WriteString("- [ ] Verify results reproduce / acceptable\n")
-	b.WriteString("- [ ] no unresolved findings against this brief\n")
-	b.WriteString("- [ ] I accept this brief as done\n\n")
-	b.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
+	var tail strings.Builder
+	tail.WriteString("### Before you close\n\n")
+	tail.WriteString("- [ ] Verify results reproduce / acceptable\n")
+	tail.WriteString("- [ ] no unresolved findings against this brief\n")
+	tail.WriteString("- [ ] I accept this brief as done\n\n")
+	tail.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
 		"`). Only a human closer is honored.\n")
-	return b.String()
+	return capIssueBody(b.String(), sections, tail.String(), briefLinkAtCommit(root, rel))
+}
+
+// verifySections renders the Verify and Evidence sections a verify-gate card
+// lifts from the brief, each as its own cuttable unit; an empty one is left out.
+func verifySections(body, evidence string) []string {
+	var out []string
+	if verify := strings.TrimSpace(extractSectionByPrefix(body, "Verify")); verify != "" {
+		out = append(out, fmt.Sprintf("### Verify\n\n%s\n\n", verify))
+	}
+	if ev := strings.TrimSpace(evidence); ev != "" {
+		out = append(out, fmt.Sprintf("### Recorded results (Evidence)\n\n%s\n\n", ev))
+	}
+	return out
+}
+
+// briefLinkAtCommit returns the full-text link a cut notice carries: the brief
+// file at the commit the card was rendered from, so the reader sees exactly
+// the text that was cut even after the brief changes on main. Without a
+// readable commit (a tree with no git history) it links main instead.
+func briefLinkAtCommit(root, rel string) func() string {
+	return func() string {
+		ref := gitCurrentSHA(root)
+		if ref == "" {
+			ref = "main"
+		}
+		rel = filepath.ToSlash(rel)
+		return fmt.Sprintf("[%s](https://github.com/%s/blob/%s/%s)", rel, verifyRepoSlug(), ref, rel)
+	}
 }
 
 // renderImplementedGateBody builds the self-contained markdown issue body for a
@@ -1283,44 +1314,49 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	}
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
+	head := b.String()
 
-	if verify := strings.TrimSpace(extractSectionByPrefix(body, "Verify")); verify != "" {
-		fmt.Fprintf(&b, "### Verify\n\n%s\n\n", verify)
-	}
-	if ev := strings.TrimSpace(bf.Evidence); ev != "" {
-		fmt.Fprintf(&b, "### Recorded results (Evidence)\n\n%s\n\n", ev)
-	}
+	// Every section below is lifted from the brief and unbounded; each is a
+	// cuttable unit for capIssueBody, which keeps the header above and the
+	// generated prompts and checklist below whole (#4091).
+	sections := verifySections(body, bf.Evidence)
 
 	// UNRUN/deferred rows — surfaced prominently.
 	if ur := unrunRowsText(bf.Evidence); ur != "" {
-		b.WriteString("### Deferred / UNRUN rows\n\n")
-		b.WriteString("> Closing accepts these as deferred, or run them first:\n\n")
-		fmt.Fprintf(&b, "%s\n\n", ur)
+		sections = append(sections, "### Deferred / UNRUN rows\n\n"+
+			"> Closing accepts these as deferred, or run them first:\n\n"+ur+"\n\n")
 	}
 
 	// Trade-offs section
-	b.WriteString("### Trade-offs\n\n")
 	tradeoffs := strings.TrimSpace(extractSectionByPrefix(body, "Trade-offs"))
+	// The prompts statusgen itself generates (nothing lifted from the brief)
+	// are warnings the human must see, so they go in the tail, which a cut
+	// never touches; only the lifted Trade-offs text is a cuttable section.
+	var generated strings.Builder
 	if tradeoffs != "" {
-		fmt.Fprintf(&b, "%s\n\n", tradeoffs)
+		sections = append(sections, "### Trade-offs\n\n"+tradeoffs+"\n\n")
 	} else {
-		b.WriteString("> **TRADE-OFFS: not provided** — the brief has no `## Trade-offs` section. A gate:human card should carry a \"Why we want it / What it limits\" analysis.\n\n")
+		generated.WriteString("### Trade-offs\n\n" +
+			"> **TRADE-OFFS: not provided** — the brief has no `## Trade-offs` section. A gate:human card should carry a \"Why we want it / What it limits\" analysis.\n\n")
 	}
 
 	// Prior-state remediation prompt for risk-classed (money-path) briefs.
 	if bf.Gate == "human" || anyRiskYes(bf.Risk) {
-		b.WriteString("### Prior-state remediation\n\n")
-		b.WriteString("**Does this fix leave prior corrupted state that needs remediation?**\n\n")
+		prior := "### Prior-state remediation\n\n" +
+			"**Does this fix leave prior corrupted state that needs remediation?**\n\n"
 		// Check if trade-offs section addresses prior state.
 		if strings.Contains(strings.ToLower(tradeoffs), "prior") ||
 			strings.Contains(strings.ToLower(tradeoffs), "remediation") ||
 			strings.Contains(strings.ToLower(tradeoffs), "corrupt") {
-			b.WriteString("(See Trade-offs section above for the prior-state assessment.)\n\n")
+			prior += "(See Trade-offs section above for the prior-state assessment.)\n\n"
 		} else {
-			b.WriteString("> **PRIOR-STATE: unassessed** — the `## Trade-offs` section does not address whether this fix leaves prior corrupted state. Every money-path gate card must answer this question (yes+what / no+why).\n\n")
+			prior += "> **PRIOR-STATE: unassessed** — the `## Trade-offs` section does not address whether this fix leaves prior corrupted state. Every money-path gate card must answer this question (yes+what / no+why).\n\n"
 		}
+		generated.WriteString(prior)
 	}
 
+	b.Reset()
+	b.WriteString(generated.String())
 	b.WriteString("### Before you close\n\n")
 	b.WriteString("- [ ] Model verify pass is acceptable (Evidence reviewed above)\n")
 	if unrunRowsText(bf.Evidence) != "" {
@@ -1333,7 +1369,7 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	b.WriteString("- [ ] I accept this brief as done (implemented → verified → done)\n\n")
 	b.WriteString("Closing this issue marks the brief `done` (Verified: model verifier; Reviewed: `" +
 		verifyReviewer + "`). Only a human closer is honored.\n")
-	return b.String()
+	return capIssueBody(head, sections, b.String(), briefLinkAtCommit(root, rel))
 }
 
 // verifyIssues computes the newly-eligible verify-gate issues: briefs that are

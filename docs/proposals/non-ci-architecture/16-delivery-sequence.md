@@ -206,7 +206,11 @@ Consume [the verifier migration amendment](../../streams/graph-execution/verifie
 An adopter may move evidence production through its existing qualified owner before R2–R8,
 and evaluate shared assessment in shadow after R1. This grants neither a second standing
 claim authority nor a publisher. Managed completion retains R1–R8 and repository-wide
-handover. The proposed Kubernetes profile is agent-execution/08; its stream remains parked.
+handover. The Kubernetes verifier profile is agent-execution/08. Admission of amendment 27
+and its stream for implementation is proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes effect on the
+maintainer's merge of it; that does not authorize a concrete profile, cluster contact or
+live deployment.
 
 ## Perf-v3 delivery — requested amendment, 19 October 2026
 
@@ -230,3 +234,19 @@ reconcile their future writer/read tests to v4 without discarding landed v3 beha
 or inventing verification. Other JSON families migrate with their owner's next
 contract revision, using reader-first cutovers and published release pins. No
 performance-collection activation or simultaneous fleet upgrade is implied.
+
+## Candidate-plus-priority delivery reuse — requested 23 October 2026
+
+Follow the [efficiency change map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+The existing direct-read route /37 oracle -> desk-tools/39 pure review contract -> /40
+observation bridge -> /43 callers -> /44 cost/retirement remains independently useful.
+graph-execution/27 binds the five roles to those existing evaluators; desk-tools/42 issue
+and /45 verification contracts are real prerequisites, not duplicate work to embed in it.
+The bridge does not wait for the full R6 database/service. Cross-window removal of repeated
+bulk reads follows forge-neutral/37–43 and its qualified service/custody dependencies.
+
+Both drivers must produce equal ordered plans from equal candidate/policy/time/capacity
+inputs, including held/unknown sources, while claims and final checks stay independent.
+Retain existing adopter cutover and drain/reconcile/fence ownership; do not revive withdrawn
+policy/core briefs or infer adoption from approved architecture. The efficiency spec's
+ranked provider-cost model is an estimate to qualify, not a new activation/cost guarantee.

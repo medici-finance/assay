@@ -71,8 +71,8 @@
     {
       "name": "edited-body-history",
       "file": "internal/deskkit/workerattestation.go",
-      "old": "|| !trust.BodyEdited.IsZero()",
-      "new": "|| false"
+      "old": "!trust.BodyEdited.IsZero()",
+      "new": "false"
     }
   ]
 }

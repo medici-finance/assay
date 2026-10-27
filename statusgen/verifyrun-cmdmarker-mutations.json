@@ -182,10 +182,10 @@
       "new": "\tif false {"
     },
     {
-      "name": "closed-brief prose-led collapse dropped",
-      "file": "verifyrows.go",
-      "old": "\t\t\t\t\tif scoped && f.rule == ruleProseLedCommand {",
-      "new": "\t\t\t\t\tif false && scoped && f.rule == ruleProseLedCommand {"
+      "name": "closed-brief prose-led demotion dropped (shared notice classifier never demotes)",
+      "file": "notice_report.go",
+      "old": "\thistorical = included && !held && (",
+      "new": "\thistorical = false && included && !held && ("
     },
     {
       "name": "CR-1808-3: transcribe-verdict re-executes a prose-led check:ci row (prose-led gate dropped)",

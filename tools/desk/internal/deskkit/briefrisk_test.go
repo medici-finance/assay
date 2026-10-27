@@ -54,10 +54,29 @@ func TestBriefFrontmatterRisk(t *testing.T) {
 		},
 		{
 			name:         "regulatory yes per-line",
-			content:      "---\ngate: model\nregulatory: yes\n---\nbody",
+			content:      "---\ngate: model\nrisk:\n  regulatory: yes\n---\nbody",
 			want:         true,
 			wantHasFence: true,
 		},
+		{name: "misplaced risk is unreadable and risk-classed", content: "---\ngate: model\nregulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer under another mapping is unreadable and risk-classed", content: "---\ngate: model\nrisks:\n  regulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer nested under an unrelated key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nmeta:\n  customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer after a document-end marker is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n...\nregulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "human gate after a document-end marker is unreadable and risk-classed", content: "---\neffort: S\n...\ngate: human\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer in a second document is unreadable and risk-classed", content: "---\ngate: model\n--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "second document after a comment is unreadable and risk-classed", content: "---\ngate: model\n\n# note\n--- # second\nrisk: {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "format-character-led risk key after a risk map is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u200bcustomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "second format-character-led risk key after a risk map is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\ufeffcustomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "format-character-led regulatory key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2060regulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "format-character-led risk key under another mapping is unreadable and risk-classed", content: "---\ngate: model\nmeta:\n  \u200bcustomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "format-character-led flow line is unreadable and risk-classed", content: "---\ngate: model\n\ufeff--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "blank-pattern-led risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2800customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "blank-pattern-led risk key under another mapping is unreadable and risk-classed", content: "---\ngate: model\nmeta:\n  \u2800customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "combining-mark-led risk key is unreadable and risk-classed", content: "---\ngate: model\n\u0301regulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "non-ASCII-space-led flow line is unreadable and risk-classed", content: "---\ngate: model\n\u00a0--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "case-fold-variant risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\ncu\u017ftomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer in a free-text value is unreadable and risk-classed", content: "---\ngate: model\nnotes: |\n  customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "unrelated mapping beside a clean risk map stays clean", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nmeta:\n  owner: someone\n---\nbody", want: false, wantHasFence: true},
 		{
 			name:         "no gate no risk",
 			content:      "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\nbody",
@@ -333,4 +352,19 @@ func TestAuthorsRiskFromBody(t *testing.T) {
 			t.Fatalf("a malformed (mixed) trailer set implicating Authors: must be unverifiable-risk; got %+v", br)
 		}
 	})
+}
+
+// TestBriefFrontmatterRiskContinuationLines pins that a policy line the shared
+// parser reads as text inside another value classes the brief risk-bearing and
+// unverifiable, and that an empty frontmatter fence reads as no frontmatter.
+func TestBriefFrontmatterRiskContinuationLines(t *testing.T) {
+	for _, hidden := range continuationLines {
+		content := "---\n" + hidden + "\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\nbody"
+		if classed, _, hasFence := RiskFromBriefContent(content); !classed || hasFence {
+			t.Errorf("continuation line %q read as classed=%v hasFrontmatter=%v", hidden, classed, hasFence)
+		}
+	}
+	if classed, _, hasFence := RiskFromBriefContent("---\n---\nbody"); classed || hasFence {
+		t.Errorf("empty frontmatter read as classed=%v hasFrontmatter=%v", classed, hasFence)
+	}
 }
