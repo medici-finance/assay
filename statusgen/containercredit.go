@@ -425,11 +425,9 @@ func creditRenderedLine(b creditBinding, n int) string {
 // creditBindingProblem applies ReadVerifierAttestation's field checks, with
 // its version 1 and version 2 profile: a version-2 (cross-repository) binding
 // is accepted only when its source repository is in the configured repository
-// set, the check deskkit makes with IsAllowedRepo.
+// set, the sourceAllowed answer deskkit gives BindingProblem from IsAllowedRepo.
+// TestCreditBindingSource pins that refusal with repositories() bypassed.
 func creditBindingProblem(b creditBinding, repo string) string {
-	if b.Version == 2 && !scanEffectiveConfig().allowedRepo(b.SourceRepo) {
-		return fmt.Sprintf("the binding's source repository %s is not in the configured repository set", b.SourceRepo)
-	}
 	return attestation.BindingProblem(b, repo, attestation.GeneralV1V2, scanEffectiveConfig().allowedRepo(b.SourceRepo))
 }
 

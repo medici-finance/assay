@@ -421,22 +421,41 @@ func TestBracketCreditCrossRepo(t *testing.T) {
 	allowed := rosterWith(nil)[scanEnvAllowedRepos]
 	scanWithRoster(t, rosterWith(map[string]string{scanEnvAllowedRepos: allowed + ",example-org/*"}))
 	check(t, "a source repository matched by an owner pattern", unlisted, verifyrunExitPass, creditCredited, "")
+
+	// A pattern entry carrying a policy token is a roster deskkit refuses whole;
+	// statusgen refuses it too, so it grants no source repository and the span
+	// is never credited (F-pattern-entry-parity).
+	for _, bad := range []string{"example-org/*:ci", "example-org/*:private"} {
+		scanWithRoster(t, rosterWith(map[string]string{scanEnvAllowedRepos: allowed + "," + bad}))
+		fx := landed(t, vfMailVerifier, unlisted)
+		if code, out := fx.credit(t, fixtureSource); code == verifyrunExitPass || strings.Contains(out, " credit="+creditCredited+"\n") {
+			t.Errorf("roster entry %q: exit %d output %q, want the span not credited", bad, code, out)
+		}
+	}
 }
 
 // regression: #4626
 //
-// TestAllowedRepoMirror holds allowedRepo to deskkit IsAllowedRepo's answers:
-// an explicit entry or an owner/* pattern, exact-case, and false for anything
-// that is not one owner/name slug or when nothing is configured.
+// TestAllowedRepoMirror holds allowedRepo to deskkit IsAllowedRepo's answers on
+// a roster read by scanParseConfig, the way deskkit reads it: an explicit entry
+// or an owner/* pattern, exact-case, and false for anything that is not one
+// owner/name slug or when nothing is configured. The one deliberate difference
+// is marked: deskkit answers true for the literal "other-org/*" under that
+// pattern, and allowedRepo answers false (stricter, never a grant deskkit lacks).
 func TestAllowedRepoMirror(t *testing.T) {
-	cfg := scanConfig{Repos: map[string]string{"example-org/tracker": "ci:private", "other-org/*": "ci:unknown"}}
+	roster := rosterWith(map[string]string{scanEnvAllowedRepos: "example-org/tracker:ci:private,other-org/*"})
+	scanWithRoster(t, roster)
+	cfg := scanEffectiveConfig()
+	if len(cfg.Problems) != 0 {
+		t.Fatalf("a roster deskkit accepts did not load: %v", cfg.Problems)
+	}
 	for repo, want := range map[string]bool{
 		"example-org/tracker": true,
 		"example-org/agents":  false,
 		"Example-org/tracker": false,
 		"other-org/anything":  true,
 		"Other-org/anything":  false,
-		"other-org/*":         false,
+		"other-org/*":         false, // deskkit: true; deliberately stricter here
 		"other-org/a/b":       false,
 		"other-org":           false,
 		"/tracker":            false,
@@ -448,6 +467,47 @@ func TestAllowedRepoMirror(t *testing.T) {
 	}
 	if (scanConfig{}).allowedRepo("example-org/tracker") {
 		t.Error("an unconfigured set admitted a repository")
+	}
+	// The refusals deskkit makes on a pattern entry collapse statusgen's
+	// configuration too, so no repository is admitted under them. The shared
+	// vector's rejectedRosters holds deskkit to the same rows.
+	for _, bad := range []string{"other-org/*:ci", "other-org/*:no-ci", "other-org/*:public", "ot*er-org/*"} {
+		scanWithRoster(t, rosterWith(map[string]string{scanEnvAllowedRepos: "example-org/tracker:ci:private," + bad}))
+		c := scanEffectiveConfig()
+		if len(c.Problems) == 0 || c.allowedRepo("other-org/anything") || c.allowedRepo("example-org/tracker") {
+			t.Errorf("roster entry %q: problems %v, want a collapsed configuration admitting nothing", bad, c.Problems)
+		}
+	}
+}
+
+// regression: #4626
+//
+// TestCreditBindingSource pins the record layer on its own. With the span-side
+// repositories() check bypassed, creditBindingProblem still refuses the
+// version-2 binding of fixture 61 (source repository not configured) and
+// admits fixture 60's, through BindingProblem's sourceAllowed argument.
+func TestCreditBindingSource(t *testing.T) {
+	scanWithRoster(t, rosterWith(nil))
+	fixtures := loadCreditRecordFixtures(t)
+	for name, wantRefuse := range map[string]bool{"60-v2-admitted": false, "61-v2-source-unconfigured": true} {
+		f, ok := fixtures[name]
+		if !ok {
+			t.Fatalf("no shared credit-record fixture %s", name)
+		}
+		var iss struct {
+			Body string `json:"body"`
+		}
+		if err := json.Unmarshal(f.Issue, &iss); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		_, raw, _ := strings.Cut(iss.Body, "\n\n")
+		var b creditBinding
+		if err := json.Unmarshal([]byte(raw), &b); err != nil || b.Version != 2 {
+			t.Fatalf("%s: not a version-2 binding (%v)", name, err)
+		}
+		if p := creditBindingProblem(b, creditRepo); (p != "") != wantRefuse {
+			t.Errorf("%s: creditBindingProblem = %q, want refused=%t", name, p, wantRefuse)
+		}
 	}
 }
 

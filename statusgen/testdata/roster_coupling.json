@@ -97,7 +97,7 @@
     "ASSAY_BLESS_LOGIN": "ada:1001",
     "ASSAY_TRUSTED_LOGINS": "ada:1001,shared-agent:100002,unpinned-human",
     "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003,worker=example-worker-app:4004",
-    "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/untriggered:no-ci:private,example-org/open:ci:public,example-org/unstated",
+    "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/untriggered:no-ci:private,example-org/open:ci:public,example-org/unstated,pattern-org/*",
     "ASSAY_HUMAN_LOGIN_MAP": "ada-display:ada"
   },
   "cases": [
@@ -300,6 +300,27 @@
       "allowed": false,
       "ciRequired": true,
       "visibility": "unknown"
+    },
+    {
+      "why": "a repo matched only by an owner/* PATTERN entry is allowed, and takes the fail-closed policy: CI REQUIRED, visibility UNKNOWN (a pattern carries admission, never policy)",
+      "repo": "pattern-org/anything",
+      "allowed": true,
+      "ciRequired": true,
+      "visibility": "unknown"
+    },
+    {
+      "why": "pattern matching is exact-case on the owner",
+      "repo": "Pattern-org/anything",
+      "allowed": false,
+      "ciRequired": true,
+      "visibility": "unknown"
+    },
+    {
+      "why": "a pattern admits owner/name only, never a deeper path",
+      "repo": "pattern-org/a/b",
+      "allowed": false,
+      "ciRequired": true,
+      "visibility": "unknown"
     }
   ],
   "roleCases": [
@@ -347,6 +368,33 @@
         "ASSAY_ALLOWED_REPOS": "not-a-slug"
       },
       "problemContains": "owner/name"
+    },
+    {
+      "why": "a PATTERN entry carrying a ci policy token. deskkit refused the whole configuration; statusgen stored it and its source-repository check then admitted every repo of that owner, so the credit check credited a span deskkit refused",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/*:ci"
+      },
+      "problemContains": "may not carry a ci/visibility policy"
+    },
+    {
+      "why": "a PATTERN entry carrying a visibility policy token, refused for the same reason",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ALLOWED_REPOS": "example-org/*:private"
+      },
+      "problemContains": "may not carry a ci/visibility policy"
+    },
+    {
+      "why": "a PATTERN entry whose owner half itself contains '*'",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ALLOWED_REPOS": "ex*mple-org/*"
+      },
+      "problemContains": "may not itself contain '*'"
     },
     {
       "why": "a typo'd key in the ASSAY_ namespace. The surface it meant to configure stays EMPTY while the configuration would otherwise report itself correct",
