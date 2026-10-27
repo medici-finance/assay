@@ -957,7 +957,7 @@ Supplemental reads (hand runs, no credit):
 - F9, container, row 6. TestWouldFire: 1 top-level PASS. TestZeroCI: 16 PASS.
 - F10, container, row 9. The five staged files parse with the expected trigger and concurrency shapes. The evidence-automerge copy is on schedule plus workflow_dispatch, with group evidence-automerge-main and cancel false.
 - F11, container, row 10. Lint exits 0 with LINT: PASS and 0 PROBLEM lines. The NOTICEs name row 11 (consumer-delivery-range), row 3b (prose-led-command), row 6 (gotest-run-vacuous, twice) and the risk-files cross-read. No NOTICE names the activation staging directory.
-- F12, container, row 11. The grep pattern desk-supervision/09 matches 0 lines, because the consumers block prints the full id assay:assay:desk-supervision:09. All four entries in that block read UNCHECKED, "unchanged since the merge-base". This is the same check-definition defect (medici-finance/assay#1922, medici-finance/assay#1915).
+- F12, container, row 11. The grep pattern desk-supervision/09 matches 0 lines, because the consumers block prints the full id assay:assay:desk-supervision:09. All four entries in that block read UNCHECKED, "unchanged since the merge-base". This brief's row-11 id mismatch is tracked at medici-finance/assay#4682. The class tracker medici-finance/assay#1915 is closed, and its per-brief amendments did not include this brief.
 
 Per-row disposition: 1 could-not-check (pre-landing, F1); 2 could-not-check (empty $PR, F2); 3 could-not-check (could-not-run on host, bracket refused; F7 hand run clean); 3b could-not-check (prose-led; F8 hand run clean); 4 could-not-check (vacuous anchor, F4); 5 could-not-check (pre-landing, F5); 6 could-not-check (could-not-run on host; F9 hand run clean); 7 could-not-check (the witness fail is the empty $PR plus pre-landing, not a delivered defect; F3); 8 could-not-check (the witness fail is the expected pre-landing state, F6); 9 could-not-check (could-not-run on host; F10 hand run clean); 10 could-not-check (could-not-run on host; F11 hand run clean); 11 could-not-check (check-definition defect, F12).
 
@@ -973,7 +973,7 @@ RISK-VALUE: DERIVED — EVIDENCE_AUTHOR = assay-verifier-app[bot] @ tools/ci-loa
 
 gate: model; status stays implemented.
 
-**VERIFY: BLOCKED** — 0 MET, 0 FAIL, 12 could-not-check. Rows 1, 2, 4, 5, 7 and 8 wait on the human workflows copy (medici-finance/assay#1185, open). The check:ci rows are could-not-run on the host, and the container bracket close refused on the could-not-run row 3b. The fail-first base was refused because it predates the brief. Rows 2, 7 and 11 carry the open row-definition defects (medici-finance/assay#1922, medici-finance/assay#1915).
+**VERIFY: BLOCKED** — 0 MET, 0 FAIL, 12 could-not-check. Rows 1, 2, 4, 5, 7 and 8 wait on the human workflows copy (medici-finance/assay#1185, open). The check:ci rows are could-not-run on the host, and the container bracket close refused on the could-not-run row 3b. The fail-first base was refused because it predates the brief. Rows 2 and 7 carry the open row-definition defect medici-finance/assay#1922, and row 8's staged copies are stale (medici-finance/assay#1187, open). Row 11's id mismatch is tracked at medici-finance/assay#4682, which also tracks why no outcome record is landed: outcome-record derivation refuses this brief's Context block.
 
 ## Review
 
