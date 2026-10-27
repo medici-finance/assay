@@ -9,7 +9,7 @@ why: >-
   authenticated human act and makes the mapping explainable before admission binds to it.
 wave: 0
 depends: []
-unblocks: ["graph-execution/14"]
+unblocks: ["graph-execution/14", "graph-execution/34"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
