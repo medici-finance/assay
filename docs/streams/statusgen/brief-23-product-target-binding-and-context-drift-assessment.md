@@ -125,6 +125,47 @@ Risk-bearing values. The brief's risk answers are all "no", gate model, not irre
 Verdict accounting: 3 required rows; 3 pass, witnessed in one closed bracket; 0 fail; 0 could-not-run.
 
 **VERIFY: PASS** — 3/3 rows, each named mutation killed (supplemental).
+### Independent verification — 2026-10-27 (run 2, source 47ef38f96, container bracket)
+
+Runner: assay-verifier-app[bot], model claude-opus-5-5, admitted tier strong; independent non-implementer, fresh context. Observed source: merged main 47ef38f961aa1006ff296034d118630efdc177cb, detached home admitted by `deskdispatch --check-verifier` (#4573).
+
+Delivery: the work landed in the merge of #4502 (c2127697bfbee2dad0181347358021ebebf8afd0; first parent 8a22d6b5a16bc3f41e80c4c757376ff195659bb2, branch head 1bbff40ece607785b623b62bd1fe8fe3ea891059), an ancestor of the observed source. Since run 1's source, one later commit touched statusgen Go sources (b03ce635e, issue-scan reporting); this run re-observes the rows at the newer source.
+
+Runner class: local container, `--network none`, default seccomp, image ghcr.io/medici-finance/verify-runner:v1.0.63 by digest sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8 (the v1.0.63 release's verify-runner-image.txt, checksum matched against the release checksums.txt; module cache baked into the image; no extra mount). Every row is check:ci and the darwin host has no `unshare --net`, so rows 1–3 ran inside one closed admission bracket: `statusgen verifyrun --open-bracket` on the host, `--sandbox=container-netns` in the container with the home bind-mounted read-only at /work, `--close-bracket` on the host; `--bracket-digest` reports verdict=match. The Output digest is of each row's stdout (the grep's matched `--- PASS:` line); exit 0 means the named PASS line was present.
+
+Discarded attempt, disclosed: a first container step inside the same bracket mounted the home at its host path; under that mount the container saw an empty directory, so verifyrun refused admission ("the mounted root ... digests to sha256:e3b0c442..., not the sha256:a284f4ec... the host recorded at the open step") and executed no row. The credited run below is the second container step, with the home mounted at /work.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductBindingIndependentTargets$" ./contexthandoff/ > "$check_output" && grep -F -- "--- PASS: TestProductBindingIndependentTargets " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:3fb3530a40dc | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductBindingApprovalCoverage$" ./contexthandoff/ > "$check_output" && grep -F -- "--- PASS: TestProductBindingApprovalCoverage " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:e233a36441a9 | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductBindingCheckpointFlow$" . > "$check_output" && grep -F -- "--- PASS: TestProductBindingCheckpointFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:df398f6028ff | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a284f4ec3df000d33368cb25837ba8237ac42a3d4307c251726ecf208aa795fd
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4573 run=07b29348a09ff04859dfd1d9c40bdabfa712d5866d4d9eb6dc290e2390d8e955 source=47ef38f961aa1006ff296034d118630efdc177cb brief=docs/streams/statusgen/brief-23-product-target-binding-and-context-drift-assessment.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=07b29348a09ff04859dfd1d9c40bdabfa712d5866d4d9eb6dc290e2390d8e955 source=47ef38f961aa1006ff296034d118630efdc177cb tree=sha256:a284f4ec3df000d33368cb25837ba8237ac42a3d4307c251726ecf208aa795fd witness=sha256:6b6b85b844937e5c1d36cbec81791b4542b68822fbc7ece2951673f1f50fc429 opened=2026-10-27T01:27:14Z closed=2026-10-27T01:29:56Z before=receipt after=check-verifier
+
+Supplemental observations — diagnostics only, no acceptance credit for any row. The probes ran in the same image under `--network none`, on scratch copies of the observed source tree (git archive of 47ef38f96) outside the home, each applying one entry of the delivery's own mutation catalogue (statusgen/contexthandoff-mutations.json, exact old/new replacement, old text matched once) and then running that row's exact command.
+
+| Probe | Command or mutation | Observed | Date | Runner |
+|---|---|---|---|---|
+| S1 | rows 1–3 commands on the unmutated scratch copy | each exit 0 with its named PASS line | 2026-10-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M1 | row 1, catalogue entry row23-1-one-revision-field: the current product target takes the architecture snapshot's target revision (one revision field for both) | killed: row 1 command exit 1, `--- FAIL: TestProductBindingIndependentTargets`; "current 1111111 is not the last approved product target of example:repo-a:REQ-nightly-export" | 2026-10-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M2 | row 2, catalogue entry row23-2-absent-binding-aligned: an unbound brief is assessed aligned and covered | killed: row 2 command exit 1, `--- FAIL: TestProductBindingApprovalCoverage`; "aligned is an exact comparison: it needs covered coverage, an outcome, a bound revision and a current revision" | 2026-10-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| M3 | row 3, catalogue entry row23-3-replace-selection: on recheck the original selection is replaced by the newly declared revision | killed: row 3 command exit 1, `--- FAIL: TestProductBindingCheckpointFlow`; "rebound binding declared r2 selected r2, want declared r2 with the original selection r1 retained" | 2026-10-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Fail-first: no row is risk-bearing (the brief's risk answers are all "no", and no row carries a risk-bearing, live, mutating or end-to-end tag), so no fail-first base witness is required; the named mutations above are the rows' discrimination evidence.
+
+Risk-bearing values. Gate model, not irreversible, no risk-classed path touched. Enumeration over the delivery diff's non-test Go source (statusgen/contexthandoff/*.go, statusgen/context.go, statusgen/brieffile.go) found these literals:
+
+- RISK-VALUE: DERIVED — HandoffSchemaV3 = "context-handoff-v3" @ statusgen/contexthandoff/records.go:8 — Task 1 asks for a versioned extension that readers reject rather than silently drop; a new schema identifier beside v1/v2 is that, and the identifier comment states a new version is a new identifier, never a silent shape change.
+- RISK-VALUE: DERIVED — REQ slug bound {8,18} in outcomeRefRe / inRepoReqRe / aliasReqRe @ statusgen/contexthandoff/product.go:87-89 — one leading and one trailing [a-z0-9] plus 8–18 middle characters gives 10–20 characters, exactly the REQ-<slug> grammar spec/registers-v1.md line 120 fixes ("10–20 characters of [a-z0-9-], starting and ending with [a-z0-9]").
+- RISK-VALUE: DERIVED — outcomeRevisionRe = ^[a-z0-9][a-z0-9._-]*$ @ statusgen/brieffile.go:2191 — byte-identical to the outcome-revision grammar spec/brief-v1.md line 77 publishes.
+- Ranked last, no derivation needed: classOrder = {hold 0, reconcile 1, assess 2, preserved 3, ignored 4} @ statusgen/contexthandoff/recheck.go:311 — finding display order only, reversible by an edit.
+
+Verdict accounting: 3 required rows; 3 pass, witnessed in one closed bracket; 0 fail; 0 could-not-run.
+
+**VERIFY: PASS** — 3/3 rows at 47ef38f96, each named mutation killed (supplemental).
 
 ## Review
 
