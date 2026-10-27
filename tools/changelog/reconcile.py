@@ -22,7 +22,7 @@ def git(*args):
 
 
 def normalized(raw):
-    """Erase only well-formed Status cells; preserve every other byte."""
+    """Erase live Status cells; keep withdrawn cells and every other byte."""
     text = raw.decode('utf-8')
     if '\x00' in text or text.count(BEGIN) != 1 or text.count(END) != 1:
         raise ValueError('missing or ambiguous generated table markers')
