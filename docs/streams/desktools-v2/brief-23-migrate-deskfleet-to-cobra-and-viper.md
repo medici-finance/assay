@@ -144,5 +144,11 @@ Verdict accounting: 9 required rows; 9 pass; 0 fail; 0 could-not-run. No risk-be
 
 **VERIFY: PASS** — 9/9 rows; mutation harness 11/11 caught (supplemental).
 
+### 2026-10-27 closure: BLOCKED (check-definition)
+
+The verified closure was refused by the closure lint: Verify row 9 [consumer-delivery-range] names no immutable delivery snapshot (no pinned `--delivery` and first-parent `--base`), so it cannot be the basis of a closure. The row-status flip was reverted to `implemented`. Every other row's witness above stands. The amendment of row 9 is tracked in #4560; it follows the protected-amendment path. The supplemental probe earns no row credit.
+
+**VERIFY: BLOCKED**: row 9, check-definition, #4560.
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
