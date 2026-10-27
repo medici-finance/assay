@@ -738,11 +738,11 @@ func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string,
 // disagree about the same tree.
 func holdPhantomRowsFromGit(streams []*Stream, root string) {
 	if hasNoGitDir(root) {
-		applyPhantomHolds(streams, nil, errNoGitForMerge)
+		applyPhantomHolds(root, streams, nil, errNoGitForMerge)
 		return
 	}
 	merged, err := mergedPRsFromGit(root)
-	applyPhantomHolds(streams, merged, err)
+	applyPhantomHolds(root, streams, merged, err)
 }
 
 // siblingMergeOffNotices is what --lint prints INSTEAD of the check when the
