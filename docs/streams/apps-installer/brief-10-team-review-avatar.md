@@ -227,5 +227,11 @@ RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar
 
 **VERIFY: PASS** — 6/6 rows pass under the verifyrun witness at f2e232039c99; row 6, blocked in the 2026-10-22 section, now passes with 4 corroborated and 0 disproved.
 
+### 2026-10-27 closure: BLOCKED (check-definition)
+
+The verified closure was refused by the closure lint: Verify row 6 [consumer-delivery-range] names no immutable delivery snapshot (no pinned `--delivery` and first-parent `--base`), so it cannot be the basis of a closure. The row-status flip was reverted to `implemented`. Every other row's witness above stands. The amendment of row 6 is tracked in #4560; it follows the protected-amendment path. The supplemental probe earns no row credit.
+
+**VERIFY: BLOCKED**: row 6, check-definition, #4560.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
