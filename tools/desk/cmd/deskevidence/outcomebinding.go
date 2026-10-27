@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -158,18 +159,24 @@ func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evi
 	if err != nil {
 		return err
 	}
-	before, err := deskkit.ResolveDeclaredScope(sourceDecl, source)
+	// Sibling-repository declarations never resolve against this tree; the
+	// set itself must not change between Source and Evidence.
+	sourceLocal, sourceSiblings := deskkit.SplitSiblingDeclarations(sourceDecl)
+	evidenceLocal, evidenceSiblings := deskkit.SplitSiblingDeclarations(evidenceDecl)
+	before, err := deskkit.ResolveDeclaredScope(sourceLocal, source)
 	if err != nil {
 		return err
 	}
-	after, err := deskkit.ResolveDeclaredScope(evidenceDecl, evidence)
+	after, err := deskkit.ResolveDeclaredScope(evidenceLocal, evidence)
 	if err != nil {
 		return err
 	}
 	changed := func() error {
 		return deskkit.Refused("refused: declared deliverables changed shape between admitted Source and Evidence; fresh independent verification on the current target branch is required before recording an outcome")
 	}
-	if !maps.Equal(before.Shapes, after.Shapes) {
+	slices.Sort(sourceSiblings)
+	slices.Sort(evidenceSiblings)
+	if !maps.Equal(before.Shapes, after.Shapes) || !slices.Equal(sourceSiblings, evidenceSiblings) {
 		return changed()
 	}
 	return nil
