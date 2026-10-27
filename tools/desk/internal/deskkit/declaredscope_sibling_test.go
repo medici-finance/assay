@@ -216,3 +216,23 @@ func TestSiblingMixedScopeCheck(t *testing.T) {
 		}
 	}
 }
+
+// The repository-name rule alone keeps ".", "..", ".git" and glob or space
+// names from being a sibling, even where a repo-source: key spells the same
+// name and the rest of the path is canonical.
+// regression: #3483
+func TestSiblingNameIsolated(t *testing.T) {
+	if _, _, ok := SiblingDeclaration("../one/x.go"); !ok {
+		t.Fatal("control: ../one/x.go is not a sibling declaration")
+	}
+	for _, name := range []string{".", "..", ".git", "o*e", "o?e", "o[n]e", "o{n}e"} {
+		decl := "../" + name + "/x.go"
+		if _, _, ok := SiblingDeclaration(decl); ok {
+			t.Errorf("%q accepted as a sibling declaration", decl)
+		}
+		inputs := map[string]string{InputKeyRepoSourcePrefix + "example-org/" + name: siblingTestSource}
+		if err := CheckSiblingCoverage([]string{decl}, inputs); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q bound by a key of the same name: %v", decl, err)
+		}
+	}
+}
