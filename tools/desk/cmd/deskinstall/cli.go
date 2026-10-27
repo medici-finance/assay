@@ -179,8 +179,8 @@ func newInstallCLI(argv []string, stdout, stderr io.Writer) *cobra.Command {
 	set := cli.Declare(root, bindings()...)
 	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
 		// Cobra resolves the word help to its own help command, which has none of the root's
-		// flags: `--check help` reaches here with c that command. Help answers only as the
-		// sole word, so the refused word is "help", never the declared flag.
+		// flags: `--check help` and `help --manifest m` reach here with c that command. A flag
+		// beside the help word is refused, and the refused word is "help", never the flag.
 		if c != c.Root() && c.Name() == "help" {
 			return fmt.Errorf("unknown argument %q", "help")
 		}

@@ -56,6 +56,12 @@
       "new": "if a := \"\"; a != \"\" {"
     },
     {
+      "name": "a flag beside the help word is named as the unknown argument instead of help",
+      "file": "cmd/deskinstall/cli.go",
+      "old": "if c != c.Root() && c.Name() == \"help\" {",
+      "new": "if false && c != c.Root() && c.Name() == \"help\" {"
+    },
+    {
       "name": "bare root exits 0",
       "file": "cmd/deskinstall/cli.go",
       "old": "_ = cmd.Help()\n\t\t\treturn exitErr(deskkit.ExitRefused)",
