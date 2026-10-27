@@ -234,9 +234,14 @@ acceptance changes and historical rows whose intended subject cannot be establis
    this PR will be brief X's delivery, and the binder records that it was. If the preflight
    passes and the binder declines (for example, the approval at the merged head cannot be
    corroborated), no binding is written and the row reads could-not-check. That
-   disagreement is a signal to investigate, not a pass. #4139 can also lint every
-   `--delivery bound` row of a brief the PR delivers, so the authored contract is complete
-   before the merge. This design does not absorb #4213. That protected command correction
+   disagreement is a signal to investigate, not a pass. The existing review desk's
+   ready-to-merge flip is the readiness checkpoint: finish #4139 in that path so it checks
+   the prospective row plan, declared-scope readability and required authority against
+   the actual implementation, including rows relying on historical compatibility. This
+   reuses the review and flip; it adds no separate pre-verification desk or approval.
+   #4139 can lint every `--delivery bound` row of a brief the PR delivers, so the authored
+   contract is complete before merge. The check distinguishes a binding that is expected
+   to exist only after merge from an acceptance definition that can never close. This design does not absorb #4213. That protected command correction
    has merged, its row names explicit pins, and the design leaves it unaffected.
 7. **Before the merge.** `--delivery bound` on an implementation branch finds no binding and
    exits 2. A brief that also needs a pre-merge pass keeps a separate, explicitly
@@ -254,9 +259,15 @@ Nothing is removed or granted acceptance by this record.
 how the existing consumer command obtains its delivery subject in an admitted historical
 run. It is not a blanket waiver, a bulk acceptance approval, or permission for a verifier
 to change a row. The original table remains the authority for Command, Expect, class,
-shell, row identity/order and all obligations. Every original row still requires fresh
-independent evidence under the existing closure rules. No historical PASS is reinterpreted
-or credited under the new policy. No new record type, approval service, queue, scheduler
+shell, row identity/order and all obligations. Every original row still requires current
+admissible independent evidence under the existing closure rules. A row newly relying on
+historical binding needs a fresh witness for that subject; a prior empty-diff consumer
+PASS cannot be reinterpreted as having evaluated it. Unaffected core-test witnesses retain
+their existing applicability: a clerical repair alone does not invalidate their result.
+Reuse requires the existing evaluator to establish the same original obligation, relevant
+source/scope and admitted execution conditions; absent that proof, re-run the affected
+row. This proposal does not waive an existing full-table rerun required by an actual
+command amendment. No new record type, approval service, queue, scheduler
 or parallel delivery store is proposed.
 
 **Eligible class.** Establish eligibility from the immutable original row and original
@@ -342,18 +353,37 @@ ready rows through preflight. A partial rollout grants no historical compatibili
 compatibility as an unowned later phase. Do not mass-edit original Verify commands just
 to adopt the new spelling.
 
-The existing independent correctness review rechecks whether each row will still be
-meaningful after delivery and able to support closure; the existing dispatch preflight
-checks execution readiness. A missing post-merge binding before merge is an expected
-phase prerequisite, never a fabricated pass. No additional review stage is introduced.
+**The review desk's existing flip owns readiness, not acceptance.** Before marking a
+delivery PR ready to merge, independent correctness review revisits the exact Verify
+plan against the implementation and anticipated post-merge subject. The existing
+prospective lifecycle check in #4139 and deskflip carry deterministic readiness checks;
+the reviewer owns semantic adequacy and exclusions. The existing dispatch preflight
+rechecks run-time prerequisites. A binding that comes into existence only after merge
+is an expected phase prerequisite, not a reason to fabricate a pre-merge pass. For an
+Evidence PR, ready review checks the claims actually recorded: a sound BLOCKED record
+may merge while the underlying brief remains implemented.
+
+Classify each refusal by what proof it affects in the existing review/Evidence account.
+A wrong delivery, unobserved consumer, changed assertion or untrusted provenance leaves
+acceptance incomplete. An explicit-flag shape warning when the same independently bound
+range was genuinely checked is policy/compatibility work. A malformed declaration or
+receipt-storage failure must be repaired, but is not an observed failure of already-run
+functional tests; an incomplete scope can still prevent establishing their applicability.
+Record functional passes and the exact remaining acceptance or recording hold separately.
+A review/flip must neither conceal that hold nor turn every bookkeeping failure into a
+claim that the implementation failed. Apply existing authority to any proposed test
+change; fixing prose or recording format is not permission to weaken an obligation.
+No additional review stage is introduced.
 
 **Release acceptance for this migration.** Inside I-1 to I-4, demonstrate the entire path
 for both an apps-installer/10-shaped named row and a desktools-v2/23-shaped unscoped row:
 original acceptance unchanged; historical subject backfilled independently; binding
 retrieved through the same trusted path as new rows; full fresh original-row execution;
 matching provenance in the witness; closure accepted by the existing lint/evaluator; and
-no per-brief command amendment. Then merge a later follow-up and prove the subject does
-not change. Removing the binding, supplying another brief's context, using an unadmitted
+no per-brief command amendment. A subsequent recording-only repair must retain every
+unaffected witness whose existing applicability is established, while an originally
+empty-diff consumer row must obtain new subject-bound evidence. Then merge a later
+follow-up and prove the subject does not change. Removing the binding, supplying another brief's context, using an unadmitted
 ambient context, or contradicting a live marker must hold before credit. A real disproved
 consumer must still fail. An explicit-pin amendment such as #4414 must still require its
 existing approval, and completed historical Evidence must remain byte-identical.
