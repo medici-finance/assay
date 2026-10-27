@@ -84,7 +84,12 @@ func scopeKeyReceipt(t *testing.T, decl, want string) (WakeReceipt, string, *Roo
 // randomBase62 is generated at run time: no token-shaped literal is committed.
 func randomBase62(t *testing.T, n int) string {
 	t.Helper()
-	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	var alphabet []byte
+	for _, r := range [][2]byte{{'0', '9'}, {'A', 'Z'}, {'a', 'z'}} {
+		for c := r[0]; c <= r[1]; c++ {
+			alphabet = append(alphabet, c)
+		}
+	}
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		t.Fatal(err)
