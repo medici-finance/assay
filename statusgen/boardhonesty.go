@@ -276,8 +276,10 @@ func boardHonestyNotices(root string, streams []*Stream, merged []mergedPR, merg
 	finds, notices := phantomFindings(root, streams, merged, mergedErr)
 	for _, f := range finds {
 		reason, fix := f.Reason, phantomRemediation[f.Class]
-		if f.Flip != nil && !f.Flip.Clean() {
-			reason, fix = reason+"; "+f.Flip.Label(), f.Flip.Remediation()
+		if !f.Flip.Clean() {
+			// The hold's problem text often ends in a period of its own; the format
+			// below adds one.
+			reason, fix = strings.TrimRight(reason+"; "+f.Flip.Label(), "."), f.Flip.Remediation()
 		}
 		notices = append(notices, fmt.Sprintf("NON-DISPATCHABLE (%s): %s — %s. This todo row passes the freshness gate but is not "+
 			"dispatchable from here; it inflates the Next-up count. Fix: %s. (board-honesty)",
@@ -305,6 +307,35 @@ type phantomFinding struct {
 	Flip *flipVerdict
 }
 
+// phantomFlipState is the three-state reading of a flipVerdict. Every render of a
+// verdict (the hold label, the NOTICE, the Next-up board) goes through it, so a
+// could-not-check can never be shown as the definite refusal it is not: each
+// state carries its own board heading and its own fix, and a new state cannot
+// be added without defining both.
+type phantomFlipState uint8
+
+const (
+	phantomFlipClean     phantomFlipState = iota // the reconcile would write the row
+	phantomFlipHeld                              // the reconcile refuses: the lint PROBLEM(s) it names
+	phantomFlipUnchecked                         // the hold could not be evaluated: no conclusion drawn
+)
+
+// heading is the board line's name for the state's rows.
+func (s phantomFlipState) heading() string {
+	if s == phantomFlipUnchecked {
+		return "flip hold could-not-check"
+	}
+	return "flip held by the reconcile's lint hold"
+}
+
+// remediation is the "what clears it" for the state's rows.
+func (s phantomFlipState) remediation() string {
+	if s == phantomFlipUnchecked {
+		return phantomFlipUncheckedRemediation
+	}
+	return phantomFlipHeldRemediation
+}
+
 // flipVerdict is what `statusgen reconcile --apply` would do with one delivered
 // row, read from the reconcile's own decision path (planReconcileWrites) rather
 // than re-derived: admitted, held with the lint PROBLEM(s) the move would add, or
@@ -314,25 +345,34 @@ type flipVerdict struct {
 	Unchecked string   // why the hold could not be evaluated; "" when it was
 }
 
+// State is the verdict's three-state reading. A nil verdict (the row was not
+// evaluated) is phantomFlipClean: nothing to say beyond the plain label.
+func (v *flipVerdict) State() phantomFlipState {
+	switch {
+	case v == nil:
+		return phantomFlipClean
+	case v.Unchecked != "":
+		return phantomFlipUnchecked
+	case len(v.Problems) > 0:
+		return phantomFlipHeld
+	}
+	return phantomFlipClean
+}
+
 // Clean reports whether the reconcile would write the row.
-func (v *flipVerdict) Clean() bool { return v.Unchecked == "" && len(v.Problems) == 0 }
+func (v *flipVerdict) Clean() bool { return v.State() == phantomFlipClean }
 
 // Label is the suffix the hold label and the NOTICE carry for a row the
 // reconcile will not write: the same PROBLEM text the reconcile's hold reports.
 func (v *flipVerdict) Label() string {
-	if v.Unchecked != "" {
+	if v.State() == phantomFlipUnchecked {
 		return "flip hold could-not-check: " + v.Unchecked
 	}
 	return "flip held: " + strings.Join(v.Problems, "; ")
 }
 
 // Remediation is the fix for a row the reconcile will not write.
-func (v *flipVerdict) Remediation() string {
-	if v.Unchecked != "" {
-		return phantomFlipUncheckedRemediation
-	}
-	return phantomFlipHeldRemediation
-}
+func (v *flipVerdict) Remediation() string { return v.State().remediation() }
 
 // strongPhantom decides whether a classified row may be HELD from dispatch, or is
 // notice-only. The text classes are HEURISTIC mentions — a brief ABOUT de-housing,
@@ -360,7 +400,7 @@ func strongPhantom(class, id string, delivering map[string]mergedPR, partial boo
 			if pr.Number > 0 {
 				evidence = fmt.Sprintf("merged PR #%d, Brief: trailer", pr.Number)
 			}
-			if flip != nil && !flip.Clean() {
+			if !flip.Clean() {
 				evidence += "; " + flip.Label()
 			}
 			return fmt.Sprintf("%s (%s)", class, evidence)
@@ -382,9 +422,30 @@ func applyPhantomHolds(root string, streams []*Stream, merged []mergedPR, merged
 	for _, f := range finds {
 		if f.Hold != "" {
 			f.Stream.Briefs[f.Index].PhantomHeld = f.Hold
-			f.Stream.Briefs[f.Index].PhantomFlipHeld = f.Flip != nil && !f.Flip.Clean()
+			f.Stream.Briefs[f.Index].PhantomFlip = f.Flip.State()
 		}
 	}
+}
+
+// planFlipWrites is the reconcile's read-only write path the planner asks. It is
+// a variable only so a test can count and shape the evaluations.
+var planFlipWrites = planReconcileWrites
+
+// flipMemo holds the flip verdicts of one statusgen invocation, keyed by root and
+// row. Evaluating the hold costs a whole-board baseline plus a move per row, and
+// run() asks twice (boardHonestyNotices, then applyPhantomHolds) about the same
+// rows of the same tree; a verdict is reused, never recomputed, for the life of
+// the invocation. Nil outside run(): a caller that holds no invocation (a test, a
+// tree it has just edited) always gets a fresh evaluation, so no verdict outlives
+// the run that read the tree.
+var flipMemo map[string]*flipVerdict
+
+// beginFlipMemo opens the invocation's verdict memo and returns its close, which
+// restores whatever scope was open before (run() may nest under another run()).
+func beginFlipMemo() (end func()) {
+	prev := flipMemo
+	flipMemo = map[string]*flipVerdict{}
+	return func() { flipMemo = prev }
 }
 
 // reconcileFlipVerdicts asks the reconcile's OWN decision path what it would do
@@ -400,6 +461,9 @@ func applyPhantomHolds(root string, streams []*Stream, merged []mergedPR, merged
 // moving first can differ at the margin — that is the reconcile's ordering,
 // not a second rule. A row the reconcile has no verdict for (no README row it
 // can rewrite) and an evaluation error are both could-not-check, never clean.
+//
+// Inside an invocation (beginFlipMemo) only the rows not yet judged under root
+// are evaluated, in one batch.
 func reconcileFlipVerdicts(root string, ids map[string]string, prs map[string]int) map[string]*flipVerdict {
 	out := map[string]*flipVerdict{}
 	if len(ids) == 0 {
@@ -410,34 +474,69 @@ func reconcileFlipVerdicts(root string, ids map[string]string, prs map[string]in
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	memoKey := func(k string) string { return root + "\x00" + k }
+	var fresh []string
+	for _, k := range keys {
+		if v, ok := flipMemo[memoKey(k)]; ok {
+			out[ids[k]] = v
+			continue
+		}
+		fresh = append(fresh, k)
+	}
+	for k, v := range evaluateFlipVerdicts(root, fresh, prs) {
+		if flipMemo != nil {
+			flipMemo[memoKey(k)] = v
+		}
+		out[ids[k]] = v
+	}
+	return out
+}
+
+// evaluateFlipVerdicts runs the reconcile's read-only write path once over keys
+// (sorted "<stream dir>/<num>") and reads a verdict for each.
+func evaluateFlipVerdicts(root string, keys []string, prs map[string]int) map[string]*flipVerdict {
+	out := map[string]*flipVerdict{}
+	if len(keys) == 0 {
+		return out
+	}
 	cells := make([]BriefCell, 0, len(keys))
 	for _, k := range keys {
 		cells = append(cells, BriefCell{ID: k, Cell: "implemented", Source: "pr", Witness: fmt.Sprintf("PR #%d", prs[k])})
 	}
-	rows, held, err := planReconcileWrites(root, cells)
+	rows, held, err := planFlipWrites(root, cells)
 	if err != nil {
 		for _, k := range keys {
-			out[ids[k]] = &flipVerdict{Unchecked: "the reconcile's hold evaluation failed (" + err.Error() + ")"}
+			out[k] = &flipVerdict{Unchecked: "the reconcile's hold evaluation failed (" + err.Error() + ")"}
 		}
 		return out
 	}
 	for _, r := range rows {
-		if id, ok := ids[r.ID]; ok {
-			out[id] = &flipVerdict{}
-		}
+		out[r.ID] = &flipVerdict{}
 	}
 	for _, h := range held {
-		if id, ok := ids[h.ID]; ok {
-			out[id] = &flipVerdict{Problems: h.Problems}
-		}
+		out[h.ID] = heldFlipVerdict(h.Problems)
 	}
 	for _, k := range keys {
-		if _, ok := out[ids[k]]; !ok {
-			out[ids[k]] = &flipVerdict{Unchecked: "the reconcile found no todo row for " + k + " under " +
+		if _, ok := out[k]; !ok {
+			out[k] = &flipVerdict{Unchecked: "the reconcile found no todo row for " + k + " under " +
 				filepath.ToSlash(filepath.Join("docs", "streams", strings.SplitN(k, "/", 2)[0], "README.md")) + " to write"}
 		}
 	}
 	return out
+}
+
+// heldFlipVerdict reads one held row's PROBLEM lines. The reconcile reports a
+// write it could not evaluate (the lint's stream model has no such row) in the
+// same list as a refusal, marked with couldNotCheckPrefix; a row held ONLY on such
+// lines is could-not-check here, never a refusal. Any real PROBLEM keeps the
+// row held, with every line named.
+func heldFlipVerdict(problems []string) *flipVerdict {
+	for _, p := range problems {
+		if !isCouldNotCheckProblem(p) {
+			return &flipVerdict{Problems: problems}
+		}
+	}
+	return &flipVerdict{Unchecked: strings.Join(problems, "; ")}
 }
 
 // phantomFindings is the walk boardHonestyNotices always did, returning structured

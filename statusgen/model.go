@@ -239,12 +239,12 @@ type Brief struct {
 	// eligibleBase (nextup.go) in the same shape as HomedIn/MergedInSibling and
 	// NAMED in NextUp.PhantomElsewhere; NEVER a score input.
 	PhantomHeld string
-	// PhantomFlipHeld is set with PhantomHeld when the row is an
-	// already-merged-unflipped hold the reconcile's own lint hold refuses to
-	// write (or could not evaluate) — PhantomHeld then names the PROBLEM. Such a
-	// row is not cleared by reconciling, so the board names it apart (NextUp.
-	// PhantomFlipHeld) with the fix the PROBLEM asks for.
-	PhantomFlipHeld bool
+	// PhantomFlip is set with PhantomHeld for an already-merged-unflipped hold:
+	// phantomFlipHeld when the reconcile's own lint hold refuses to write the row,
+	// phantomFlipUnchecked when it could not evaluate it (PhantomHeld then names which).
+	// Neither is cleared by reconciling, so the board names each apart
+	// (NextUp.PhantomFlip) with its own fix.
+	PhantomFlip phantomFlipState
 	// WithdrawnDate, WithdrawnReason and SupersededBy are the brief-v3
 	// `withdrawn-date:` / `withdrawn-reason:` / `superseded-by:` frontmatter keys,
 	// wired from BriefFile by checkBriefFiles (withdrawn.go). They describe a

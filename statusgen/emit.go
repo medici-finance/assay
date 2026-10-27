@@ -482,11 +482,12 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		var frags, flipFrags []string
+		var frags []string
+		byFlip := map[phantomFlipState][]string{}
 		for _, id := range ids {
 			frag := fmt.Sprintf("%s → %s", id, nu.PhantomElsewhere[id])
-			if nu.PhantomFlipHeld[id] {
-				flipFrags = append(flipFrags, frag)
+			if st := nu.PhantomFlip[id]; st != phantomFlipClean {
+				byFlip[st] = append(byFlip[st], frag)
 				continue
 			}
 			frags = append(frags, frag)
@@ -498,10 +499,12 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 				len(frags), strings.Join(frags, ", "))
 			w("")
 		}
-		if len(flipFrags) > 0 {
-			w("> **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (%d):** %s. "+
-				"Fix: %s.", len(flipFrags), strings.Join(flipFrags, ", "), phantomFlipHeldRemediation)
-			w("")
+		for _, st := range []phantomFlipState{phantomFlipHeld, phantomFlipUnchecked} {
+			if len(byFlip[st]) > 0 {
+				w("> **Already delivered, %s — held out of dispatch (%d):** %s. Fix: %s.",
+					st.heading(), len(byFlip[st]), strings.Join(byFlip[st], ", "), st.remediation())
+				w("")
+			}
 		}
 	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
