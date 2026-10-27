@@ -134,6 +134,14 @@ func TestExpectTransitionExecution(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("closure %d: %s %s", code, out, diag)
 	}
+	streams, _, err := loadStreams(f.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coverage := evaluateCoverage(f.root, streams, coverageOptions{Revision: f.amendment})
+	if !coverage["vf/01"].Released {
+		t.Fatalf("approved Expect coverage: %+v", coverage["vf/01"])
+	}
 }
 
 // regression: #4505. An approval of an Expect cannot hide another changed

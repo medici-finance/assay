@@ -222,7 +222,8 @@ A human recognized by the existing external human-login roster posts an unedited
 comment on a same-repository decision issue. That issue contains
 `<!-- acceptance-transition: docs/streams/example/brief-01-example.md -->`.
 The comment contains exactly the following payload, with actual full Git IDs and
-all changed row IDs in table order:
+every changed Command row and each Expect-only row being approved, in table order.
+An unnamed Expect-only row retains its original assertion:
 
 ```text
 Approve acceptance-transition v1
