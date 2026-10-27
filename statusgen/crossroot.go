@@ -43,14 +43,29 @@ package main
 //     carries under docs/streams/ cannot say which board it means, so it is
 //     credited to none and reported when this board carries the stream.
 //
+//   - PUBLISHED. A delivery names the foreign root's <owner>/<repo> in the
+//     written row, the STATUS.md hold label, reconcile's witness and every
+//     notice, so a root is read only when THIS tree's own
+//     docs/streams/graph-repos.yaml publishes that repo (an entry whose repo is
+//     named and not `unpublished`). That registry is where a tree already says
+//     which sibling repos it is willing to name; a root the tree withholds (or
+//     any root when the registry is absent or unreadable) is never read for a
+//     delivery and is never named or located (no slug, no path) in any output:
+//     one aggregate could-not-check line counts them.
+//
 // THREE-STATE. A configured root that cannot be read (absent, not a git
 // checkout, shallow, git failing) yields one could-not-check line naming it,
 // and no row is held or written on its account. It never fails the board's own
-// read: rows the readable roots witness are still held.
+// read: rows the readable roots witness are still held. An UNREAD root is not
+// an empty one: when the stream's carriers are being counted, a root whose
+// docs/streams cannot be checked counts as a possible carrier, so the trailer
+// is credited to none rather than to a board an unread root might share.
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,36 +106,73 @@ func crossRootDeliveries(root, ownRepo string) ([]mergedPR, []string) {
 		repos = append(repos, repo)
 	}
 	sort.Strings(repos)
+	published, regWhy := publishedRepos(root)
 	var others []string // configured roots other than the board's own, in repo order
+	var named []string  // the subset this tree publishes: the only ones read for a delivery
 	for _, repo := range repos {
 		if !validSiblingRepo(repo) || (ownRepo != "" && strings.EqualFold(repo, ownRepo)) || pathIsRoot(root, roots[repo]) {
 			continue
 		}
 		others = append(others, repo)
+		if published[strings.ToLower(repo)] {
+			named = append(named, repo)
+		}
 	}
-	// carriers lists the other configured roots carrying docs/streams/<stream>.
-	carried := map[string][]string{}
-	carriers := func(stream string) []string {
+	// carriers lists the other configured roots that carry docs/streams/<stream>,
+	// or that cannot be ruled out as carrying it: an unreadable root is not an
+	// empty one. A root this tree does not publish counts toward the carrier set
+	// but is never named — only counted.
+	type carrierSet struct {
+		names []string // published carriers, as "<owner>/<repo>" (+ " (unreadable)")
+		anon  int      // unpublished carriers, never named
+	}
+	carried := map[string]carrierSet{}
+	carriers := func(stream string) carrierSet {
 		if c, ok := carried[stream]; ok {
 			return c
 		}
-		var c []string
+		var c carrierSet
 		for _, repo := range others {
-			if ownsStream(roots[repo], stream) {
-				c = append(c, repo)
+			state := streamPresence(roots[repo], stream)
+			if state == streamAbsent {
+				continue
+			}
+			switch {
+			case !published[strings.ToLower(repo)]:
+				c.anon++
+			case state == streamUnknown:
+				c.names = append(c.names, repo+" (unreadable)")
+			default:
+				c.names = append(c.names, repo)
 			}
 		}
 		carried[stream] = c
 		return c
 	}
+	carrierText := func(c carrierSet) string {
+		parts := append([]string(nil), c.names...)
+		if c.anon > 0 {
+			parts = append(parts, fmt.Sprintf("%d other configured root(s)", c.anon))
+		}
+		return strings.Join(parts, ", ")
+	}
 	var out []mergedPR
 	var notices []string
-	for _, repo := range others {
+	if n := len(others) - len(named); n > 0 {
+		why := "are not published in this tree's docs/streams/graph-repos.yaml"
+		if regWhy != "" {
+			why = "cannot be matched against docs/streams/graph-repos.yaml (" + regWhy + ")"
+		}
+		notices = append(notices, fmt.Sprintf("could-not-check: cross-root delivery witness: %d configured root(s) %s, so none is "+
+			"read, named or located here — a `Brief:` trailer merged there is not seen this run, so no row is held or "+
+			"written on its account.", n, why))
+	}
+	for _, repo := range named {
 		path := roots[repo]
 		cannot := func(why string) {
-			notices = append(notices, fmt.Sprintf("could-not-check: cross-root delivery witness: %s (%s): %s — a "+
+			notices = append(notices, fmt.Sprintf("could-not-check: cross-root delivery witness: %s: %s — a "+
 				"`Brief:` trailer merged there is not seen this run, so no row is held or written on its account.",
-				repo, noticeSafe(path), noticeSafe(why)))
+				repo, noticeSafe(strings.ReplaceAll(why, path, "<root>"))))
 		}
 		if ok, why := checkSiblingCheckout(path); !ok {
 			cannot(why)
@@ -154,7 +206,7 @@ func crossRootDeliveries(root, ownRepo string) ([]mergedPR, []string) {
 			if !ok {
 				continue
 			}
-			if len(carriers(stream)) > 0 {
+			if c := carriers(stream); len(c.names) > 0 || c.anon > 0 {
 				if ownsStream(root, stream) {
 					ambiguous[stream]++
 				}
@@ -169,8 +221,9 @@ func crossRootDeliveries(root, ownRepo string) ([]mergedPR, []string) {
 		sort.Strings(streams)
 		for _, stream := range streams {
 			notices = append(notices, fmt.Sprintf("could-not-check: cross-root delivery witness: %s: %d merged PR(s) carry a "+
-				"`Brief:` trailer for stream %s, which %s also carries — a trailer cannot say which board it means, so none "+
-				"is held or written on its account.", repo, ambiguous[stream], noticeSafe(stream), strings.Join(carriers(stream), ", ")))
+				"`Brief:` trailer for stream %s, which %s also carries or could not be read to rule out — a trailer cannot say "+
+				"which board it means, so none is held or written on its account.", repo, ambiguous[stream], noticeSafe(stream),
+				carrierText(carriers(stream))))
 		}
 	}
 	return out, notices
@@ -230,6 +283,58 @@ func ownsStream(path, stream string) bool {
 	}
 	fi, err := os.Stat(filepath.Join(path, "docs", "streams", stream))
 	return err == nil && fi.IsDir()
+}
+
+// streamPresence is whether a checkout carries docs/streams/<stream>, with the
+// third state kept distinct: streamUnknown is a root that cannot be checked (the
+// path is absent or any Stat error other than "not there"), which a caller
+// counting carriers must treat as a possible carrier, never as an empty one.
+type streamPresenceState int
+
+const (
+	streamAbsent streamPresenceState = iota
+	streamPresent
+	streamUnknown
+)
+
+func streamPresence(path, stream string) streamPresenceState {
+	if stream == "" || strings.ContainsAny(stream, `/\`) || stream == "." || stream == ".." {
+		return streamAbsent
+	}
+	fi, err := os.Stat(filepath.Join(path, "docs", "streams", stream))
+	switch {
+	case err == nil && fi.IsDir():
+		return streamPresent
+	case err == nil:
+		return streamAbsent
+	case errors.Is(err, fs.ErrNotExist):
+		if rootInfo, rerr := os.Stat(path); rerr != nil || !rootInfo.IsDir() {
+			return streamUnknown // the checkout itself is missing: nothing was checked
+		}
+		return streamAbsent
+	}
+	return streamUnknown
+}
+
+// publishedRepos is the set of lower-cased <owner>/<repo> names this tree's own
+// docs/streams/graph-repos.yaml publishes (an entry with a repo and not
+// `unpublished`). why is "" on success, else why the set is empty for want of a
+// registry (absent, or unreadable) — never the file's path.
+func publishedRepos(root string) (published map[string]bool, why string) {
+	published = map[string]bool{}
+	reg, found, err := loadGraphRepos(root)
+	switch {
+	case err != nil:
+		return published, "the registry could not be read"
+	case !found:
+		return published, "this tree has no registry"
+	}
+	for _, e := range reg.Aliases {
+		if !e.Unpublished && e.Repo != "" {
+			published[strings.ToLower(e.Repo)] = true
+		}
+	}
+	return published, ""
 }
 
 // crossRootPRRecords is reconcile's half: the cross-root deliveries as merged

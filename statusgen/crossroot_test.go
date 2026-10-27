@@ -74,6 +74,31 @@ func withCrossRoots(t *testing.T, roots map[string]string) {
 	t.Cleanup(func() { siblingMergeFlagValue = orig })
 }
 
+// publishRoots makes the board at root publish each repo in its
+// docs/streams/graph-repos.yaml (creating the registry when the fixture has
+// none): the only way a configured root is read for a delivery.
+func publishRoots(t *testing.T, board string, repos ...string) {
+	t.Helper()
+	path := filepath.Join(board, "docs", "streams", "graph-repos.yaml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		raw = []byte("schema: graph-repos-v1\ncell: fx\nrepos:\n")
+	}
+	body := string(raw)
+	if !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	for i, r := range repos {
+		body += "  pubroot" + string(rune('a'+i)) + ": {cell: fx, repo: " + r + "}\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // carryStream makes the checkout at dir carry docs/streams/<stream>.
 func carryStream(t *testing.T, dir, stream string) {
 	t.Helper()
@@ -132,6 +157,7 @@ func nextUpRows(t *testing.T, root string) []string {
 func TestCrossRootPlannerHolds(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
+	publishRoots(t, rootA, crossRootRepo, crossRootC)
 	rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBody.\n\nBrief: example-stream/02\n")
 	withCrossRoot(t, rootB)
 
@@ -159,6 +185,7 @@ func TestCrossRootPlannerHolds(t *testing.T) {
 func TestCrossRootMentionIsNoWitness(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
+	publishRoots(t, rootA, crossRootRepo, crossRootC)
 	rootB := newCrossRootB(t, "feat: about example-stream/02 (#7)")
 	withCrossRoot(t, rootB)
 
@@ -177,6 +204,7 @@ func TestCrossRootMentionIsNoWitness(t *testing.T) {
 func TestCrossRootUnreadableRoot(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
+	publishRoots(t, rootA, crossRootRepo, crossRootC)
 	withCrossRoot(t, filepath.Join(t.TempDir(), "absent"))
 
 	stderr := captureStderr(t, func() { _ = run(rootA, "lint", nil, nil, "") })
@@ -196,6 +224,7 @@ func TestCrossRootUnreadableRoot(t *testing.T) {
 func TestCrossRootReconcileWrites(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	rootA := copyDesignGateFixture(t)
+	publishRoots(t, rootA, crossRootRepo)
 	// Root A's forge has no PR for dg/03 at all; its delivery merged in root B.
 	stubPullsServer(t, http.StatusOK, []map[string]any{})
 	rootB := newCrossRootB(t, "feat: implement dg/03 (#7)\n\nBrief: dg/03\n")
@@ -260,8 +289,22 @@ func unmergedRootB(t *testing.T, msg string) string {
 // has no PR, and returns the applied "<id> <witness>" lines and stderr.
 func reconcileDG(t *testing.T) (applied []string, stderr string) {
 	t.Helper()
+	applied, _, stderr = reconcileDGPublishing(t, crossRootRepo, crossRootC)
+	return applied, stderr
+}
+
+// crossRootC is a third configured root's key.
+const crossRootC = "example-org/root-c"
+
+// reconcileDGPublishing is reconcileDG over a board whose registry publishes
+// exactly the given repos. It also returns reconcile's stdout.
+func reconcileDGPublishing(t *testing.T, published ...string) (applied []string, stdout, stderr string) {
+	t.Helper()
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	rootA := copyDesignGateFixture(t)
+	if len(published) > 0 {
+		publishRoots(t, rootA, published...)
+	}
 	stubPullsServer(t, http.StatusOK, []map[string]any{})
 	code, stdout, stderr := runReconcileBoth(t, "--apply", "--root", rootA, "--repo", "example-org/root-a", "--json")
 	if code != reconcileOK {
@@ -274,7 +317,7 @@ func reconcileDG(t *testing.T) (applied []string, stderr string) {
 	for _, a := range res.Applied {
 		applied = append(applied, a.ID+" "+a.Witness)
 	}
-	return applied, stderr
+	return applied, stdout, stderr
 }
 
 // A merge is a commit on the other root's integration branch. A checkout's HEAD
@@ -284,6 +327,7 @@ func TestCrossRootUnmergedHead(t *testing.T) {
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
 		withCrossRoot(t, unmergedRootB(t, "feat: never merged (#7)\n\nBrief: example-stream/02\n"))
 		if !offered(t, rootA, "example-stream/02") {
 			t.Fatal("a commit on an unmerged branch at root B's HEAD held the row")
@@ -303,6 +347,7 @@ func TestCrossRootUnmergedHead(t *testing.T) {
 func TestCrossRootNoIntegrationRef(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
+	publishRoots(t, rootA, crossRootRepo, crossRootC)
 	rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
 	runGit(t, rootB, "update-ref", "-d", "refs/remotes/origin/main")
 	withCrossRoot(t, rootB)
@@ -322,6 +367,7 @@ func TestCrossRootNoIntegrationRef(t *testing.T) {
 func TestCrossRootOriginHeadRef(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
+	publishRoots(t, rootA, crossRootRepo, crossRootC)
 	rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
 	runGit(t, rootB, "update-ref", "refs/remotes/origin/trunk", "refs/remotes/origin/main")
 	runGit(t, rootB, "update-ref", "-d", "refs/remotes/origin/main")
@@ -339,6 +385,7 @@ func TestCrossRootMultiLinkNoWitness(t *testing.T) {
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
 		withCrossRoot(t, newCrossRootB(t, "feat: two (#8)\n\nBrief: example-stream/02\nBrief: example-stream/03\n"))
 		stderr := captureStderr(t, func() { _ = run(rootA, "lint", nil, nil, "") })
 		if !offered(t, rootA, "example-stream/02") {
@@ -361,6 +408,7 @@ func TestCrossRootMultiLinkNoWitness(t *testing.T) {
 	t.Run("repeated trailer is one brief", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
 		withCrossRoot(t, newCrossRootB(t, "feat: one (#8)\n\nBrief: example-stream/02\nBrief: example-stream/02\n"))
 		if offered(t, rootA, "example-stream/02") {
 			t.Fatal("the same brief named twice is still one link and must hold the row")
@@ -373,10 +421,11 @@ func TestCrossRootMultiLinkNoWitness(t *testing.T) {
 // credited to none, and reported.
 // regression: #4614
 func TestCrossRootAmbiguousStream(t *testing.T) {
-	const rootC = "example-org/root-c"
+	const rootC = crossRootC
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
 		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
 		c := t.TempDir()
 		gitInit(t, c, "Root C Bot", "root-c-bot@example.com")
@@ -407,6 +456,7 @@ func TestCrossRootAmbiguousStream(t *testing.T) {
 	t.Run("a root carrying other streams does not make it ambiguous", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
 		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
 		c := t.TempDir()
 		gitInit(t, c, "Root C Bot", "root-c-bot@example.com")
@@ -423,6 +473,7 @@ func TestCrossRootAmbiguousStream(t *testing.T) {
 func TestCrossRootMergerOwns(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
+	publishRoots(t, rootA, crossRootRepo, crossRootC)
 	rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
 	carryStream(t, rootB, "example-stream")
 	withCrossRoot(t, rootB)
@@ -440,6 +491,7 @@ func TestCrossRootOwnRootIsSkipped(t *testing.T) {
 	boardWithMerge := func(t *testing.T) string {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
 		commitEmpty(t, rootA, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
 		runGit(t, rootA, "update-ref", "refs/remotes/origin/main", "HEAD")
 		return rootA
@@ -500,6 +552,7 @@ func TestCrossRootDeclaredPartial(t *testing.T) {
 func TestCrossRootOwnRepoFirst(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	rootA := copyDesignGateFixture(t)
+	publishRoots(t, rootA, crossRootRepo)
 	authoringServer(t, []map[string]any{mergedPull(3, "feat/dg-03", "Brief: dg/03\n")},
 		map[int][]map[string]any{3: deliveryFiles}, nil)
 	withCrossRoot(t, newCrossRootB(t, "feat: also (#700)\n\nBrief: dg/03\n"))
@@ -524,4 +577,153 @@ func TestClassifyPRsOwnRepoFirst(t *testing.T) {
 	if merged == nil || merged.Repo != "" || merged.Number != 3 {
 		t.Fatalf("latest merged = %+v, want the own-repo PR #3", merged)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Review round 2: an unread root is not an empty one, and a root the tree does
+// not publish is never read, named or located.
+// ---------------------------------------------------------------------------
+
+// A configured root that cannot be read might carry the stream, so a trailer
+// for a stream the board owns is credited to none while one is unread — the
+// readable-carrier case's refusal must not depend on whether the carrier could
+// be read.
+// regression: #4614
+func TestCrossRootUnreadableCarrier(t *testing.T) {
+	absentC := filepath.Join(t.TempDir(), "absent")
+	t.Run("planner", func(t *testing.T) {
+		rootA := siblingBriefTree(t, "")
+		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
+		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
+		withCrossRoots(t, map[string]string{crossRootRepo: rootB, crossRootC: absentC})
+		stderr := captureStderr(t, func() { _ = run(rootA, "lint", nil, nil, "") })
+		if !offered(t, rootA, "example-stream/02") {
+			t.Fatal("a trailer was credited while a configured root that might carry the stream could not be read")
+		}
+		if !strings.Contains(stderr, crossRootC+" (unreadable)") || !strings.Contains(stderr, "a trailer cannot say which board it means") {
+			t.Errorf("the unread root must be named as the reason; stderr:\n%s", stderr)
+		}
+	})
+	t.Run("reconcile", func(t *testing.T) {
+		rootB := newCrossRootB(t, "feat: implement dg/03 (#7)\n\nBrief: dg/03\n")
+		withCrossRoots(t, map[string]string{crossRootRepo: rootB, crossRootC: absentC})
+		applied, stderr := reconcileDG(t)
+		if len(applied) != 0 {
+			t.Fatalf("a trailer was written while a root that might carry the stream could not be read: %v", applied)
+		}
+		if !strings.Contains(stderr, crossRootC+" (unreadable)") {
+			t.Errorf("the unread root must be named as the reason; stderr:\n%s", stderr)
+		}
+	})
+	t.Run("a readable root without the stream is still no carrier", func(t *testing.T) {
+		rootA := siblingBriefTree(t, "")
+		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, crossRootRepo, crossRootC)
+		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
+		c := t.TempDir()
+		gitInit(t, c, "Root C Bot", "root-c-bot@example.com")
+		withCrossRoots(t, map[string]string{crossRootRepo: rootB, crossRootC: c})
+		if offered(t, rootA, "example-stream/02") {
+			t.Fatal("a readable root with no docs/streams/<stream> suppressed a real cross-root witness")
+		}
+	})
+}
+
+// A root the board's registry does not publish is never read for a delivery and
+// never named or located in any output the run writes: not the STATUS.md hold,
+// not reconcile's witness, not a notice. The registry is where a tree says
+// which sibling repos it is willing to name.
+// regression: #4614
+func TestCrossRootUnpublishedRoot(t *testing.T) {
+	const slug = crossRootRepo
+	leaks := func(t *testing.T, where, text, path string) {
+		t.Helper()
+		if strings.Contains(text, slug) || strings.Contains(text, filepath.Base(slug)) || (path != "" && strings.Contains(text, path)) {
+			t.Errorf("%s names an unpublished root (%s) or its checkout path:\n%s", where, slug, text)
+		}
+	}
+	t.Run("planner and STATUS.md", func(t *testing.T) {
+		rootA := siblingBriefTree(t, "") // registry publishes example-sibling only
+		gitCommitTree(t, rootA)
+		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
+		withCrossRoot(t, rootB)
+		stderr := captureStderr(t, func() { _ = run(rootA, "lint", nil, nil, "") })
+		if !offered(t, rootA, "example-stream/02") {
+			t.Fatal("an unpublished root's trailer held the row")
+		}
+		if !strings.Contains(stderr, "1 configured root(s) are not published") {
+			t.Errorf("the unread root must be counted as could-not-check; stderr:\n%s", stderr)
+		}
+		leaks(t, "stderr", stderr, rootB)
+		if code := run(rootA, "write", nil, nil, ""); code != 0 {
+			t.Fatalf("write exited %d", code)
+		}
+		status, err := os.ReadFile(filepath.Join(rootA, "STATUS.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaks(t, "STATUS.md", string(status), rootB)
+	})
+	t.Run("a tree with no registry publishes nothing", func(t *testing.T) {
+		rootA := siblingBriefTree(t, "")
+		if err := os.Remove(filepath.Join(rootA, "docs", "streams", "graph-repos.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		gitCommitTree(t, rootA)
+		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
+		withCrossRoot(t, rootB)
+		got, notices := crossRootDeliveries(rootA, "")
+		if len(got) != 0 {
+			t.Fatalf("a root was read although the tree has no registry: %+v", got)
+		}
+		leaks(t, "notices", strings.Join(notices, "\n"), rootB)
+		if len(notices) != 1 || !strings.Contains(notices[0], "this tree has no registry") {
+			t.Errorf("want one aggregate could-not-check naming the missing registry, got %v", notices)
+		}
+	})
+	t.Run("reconcile witness and JSON", func(t *testing.T) {
+		rootB := newCrossRootB(t, "feat: implement dg/03 (#7)\n\nBrief: dg/03\n")
+		withCrossRoot(t, rootB)
+		applied, stdout, stderr := reconcileDGPublishing(t) // registry publishes nothing
+		if len(applied) != 0 {
+			t.Fatalf("an unpublished root's trailer was written: %v", applied)
+		}
+		leaks(t, "reconcile stdout", stdout, rootB)
+		leaks(t, "reconcile stderr", stderr, rootB)
+	})
+	t.Run("an unpublished carrier makes the stream ambiguous without being named", func(t *testing.T) {
+		rootA := siblingBriefTree(t, "")
+		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, slug) // B is published; C is not
+		rootB := newCrossRootB(t, "feat: land the thing (#7)\n\nBrief: example-stream/02\n")
+		c := t.TempDir()
+		gitInit(t, c, "Root C Bot", "root-c-bot@example.com")
+		carryStream(t, c, "example-stream")
+		withCrossRoots(t, map[string]string{slug: rootB, crossRootC: c})
+		stderr := captureStderr(t, func() { _ = run(rootA, "lint", nil, nil, "") })
+		if !offered(t, rootA, "example-stream/02") {
+			t.Fatal("a trailer for a stream an unpublished root carries was credited to this board")
+		}
+		if !strings.Contains(stderr, "1 other configured root(s)") {
+			t.Errorf("the unpublished carrier must be counted; stderr:\n%s", stderr)
+		}
+		if strings.Contains(stderr, crossRootC) || strings.Contains(stderr, c) {
+			t.Errorf("the unpublished carrier was named or located:\n%s", stderr)
+		}
+	})
+	t.Run("a published unreadable root's notice carries no path", func(t *testing.T) {
+		rootA := siblingBriefTree(t, "")
+		gitCommitTree(t, rootA)
+		publishRoots(t, rootA, slug)
+		absent := filepath.Join(t.TempDir(), "absent")
+		withCrossRoot(t, absent)
+		_, notices := crossRootDeliveries(rootA, "")
+		if len(notices) != 1 || !strings.Contains(notices[0], slug) {
+			t.Fatalf("want one could-not-check naming the published root, got %v", notices)
+		}
+		if strings.Contains(notices[0], absent) || strings.Contains(notices[0], filepath.Dir(absent)) {
+			t.Errorf("the notice carries the checkout path:\n%s", notices[0])
+		}
+	})
 }
