@@ -17,6 +17,45 @@ import (
 // Older readers cannot resolve this additive key and report could-not-check.
 const InputKeyScopePrefix = "scope:"
 
+// scopeDigestFormat is exactly what ResolveDeclaredScope writes as a scope: value.
+var scopeDigestFormat = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func scopeDeclIsGlob(decl string) bool { return strings.ContainsAny(decl, "*?[") }
+
+// ScopeInputKey is the input key for a canonical declaration whose literal path was
+// observed as kind. A literal directory ("tree") is keyed with a trailing slash; a
+// literal file, an absent literal and every glob keep scope:<decl>. The slash belongs
+// to the key, never to the declaration, and the digest is the same either way.
+func ScopeInputKey(decl, kind string) string {
+	if !scopeDeclIsGlob(decl) && kind == "tree" {
+		return InputKeyScopePrefix + decl + "/"
+	}
+	return InputKeyScopePrefix + decl
+}
+
+// ParseScopeInputKey returns the canonical declaration a scope: key names, and whether
+// the key was in the directory (trailing slash) form. It strips at most one slash and
+// never normalises: an empty declaration, a double slash, a non-canonical declaration
+// or a slash-form glob (never emitted) is ok=false.
+func ParseScopeInputKey(key string) (decl string, dirForm bool, ok bool) {
+	rest, found := strings.CutPrefix(key, InputKeyScopePrefix)
+	if !found {
+		return "", false, false
+	}
+	decl, dirForm = strings.CutSuffix(rest, "/")
+	if decl == "" || strings.HasSuffix(decl, "/") {
+		return "", false, false
+	}
+	if dirForm && scopeDeclIsGlob(decl) {
+		return "", false, false
+	}
+	canonical, err := expandDeclaration(decl)
+	if err != nil || len(canonical) != 1 || canonical[0] != decl {
+		return "", false, false
+	}
+	return decl, dirForm, true
+}
+
 const maxScopePaths = 4096
 const maxScopeWork = 32768
 
@@ -519,7 +558,8 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 			return result, Refused("refused: Context files: path " + fmt.Sprintf("%q", decl) + " names a sibling repository; it never resolves against this tree")
 		}
 		paths := []string{decl}
-		if strings.ContainsAny(decl, "*?[") {
+		literalKind := ""
+		if scopeDeclIsGlob(decl) {
 			// List only below the literal prefix; match files AND directories,
 			// then expand matched directories recursively, as literal directories do.
 			i := strings.IndexAny(decl, "*?[")
@@ -564,6 +604,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 				return result, Unverifiable("cannot resolve declared input "+p, err)
 			}
 			shape = append(shape, kind+":"+p)
+			literalKind = kind
 			switch kind {
 			case "":
 			case "blob":
@@ -595,7 +636,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 			}
 		}
 		sort.Strings(shape)
-		result.Shapes[InputKeyScopePrefix+decl] = Sha256Hex([]byte(strings.Join(shape, "\x00")))
+		result.Shapes[ScopeInputKey(decl, literalKind)] = Sha256Hex([]byte(strings.Join(shape, "\x00")))
 	}
 	for f := range files {
 		result.Files = append(result.Files, f)
@@ -648,9 +689,24 @@ func (rr *RootRevisionReader) CheckReceiptScope(receipt WakeReceipt) error {
 	if err != nil {
 		return err
 	}
+	// A slash-form key's value sits where the pattern sweep's generic rule no longer
+	// looks, so refuse to read any scope: value that is not the producer's digest.
+	for k, v := range receipt.Inputs {
+		if strings.HasPrefix(k, InputKeyScopePrefix) && !scopeDigestFormat.MatchString(v) {
+			return fmt.Errorf("%s value is not a scope digest", k)
+		}
+	}
+	// Only local declarations carry scope: keys. A ../<sibling>/ declaration is
+	// covered by its repo-source: commit below; ranging over every declaration
+	// here would report each sibling as missing scope and disable sibling briefs.
 	local, siblings := SplitSiblingDeclarations(declarations)
 	for _, decl := range local {
-		if receipt.Inputs[InputKeyScopePrefix+decl] == "" {
+		plain := receipt.Inputs[InputKeyScopePrefix+decl] != ""
+		dir := !scopeDeclIsGlob(decl) && receipt.Inputs[InputKeyScopePrefix+decl+"/"] != ""
+		if plain && dir {
+			return fmt.Errorf("ambiguous scope key for %s: both scope:%s and scope:%s/ are present", decl, decl, decl)
+		}
+		if !plain && !dir {
 			return fmt.Errorf("missing declared scope %s; fresh admission and observation required", decl)
 		}
 	}

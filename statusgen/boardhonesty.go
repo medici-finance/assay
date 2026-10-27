@@ -398,7 +398,7 @@ func strongPhantom(class, id string, delivering map[string]mergedPR, partial boo
 		if pr, ok := delivering[id]; ok && !partial {
 			evidence := "merged PR, Brief: trailer"
 			if pr.Number > 0 {
-				evidence = fmt.Sprintf("merged PR #%d, Brief: trailer", pr.Number)
+				evidence = fmt.Sprintf("merged %s, Brief: trailer", pr.prRef())
 			}
 			if !flip.Clean() {
 				evidence += "; " + flip.Label()
