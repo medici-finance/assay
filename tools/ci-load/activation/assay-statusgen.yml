@@ -97,6 +97,7 @@ jobs:
       - name: statusgen --lint
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
@@ -148,12 +149,14 @@ jobs:
       - name: Regenerate STATUS.md
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
       - name: Commit STATUS.md if it changed
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           set -euo pipefail
