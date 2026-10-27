@@ -213,7 +213,7 @@ func (cc *creditContext) credit(c bracketCheck) creditVerdict {
 	}
 	a := attestationV1Re.FindStringSubmatch(attestation)
 	if a == nil {
-		return creditNot("the span's attestation line is not the version-1 form")
+		return creditNot("the span's attestation line is not the version-1 form; a version-2 (cross-repository) span is not credited by this rule")
 	}
 	var verdicts []creditVerdict
 	for _, step := range []func() creditVerdict{
@@ -393,8 +393,10 @@ func (cc *creditContext) admitRecord(a []string) (creditVerdict, string, string)
 }
 
 // creditBindingProblem applies ReadVerifierAttestation's field checks. Only a
-// version 1 (same-repository) binding is accepted: a container run refuses
-// version 2 receipts, so no version 2 record can back a bracket.
+// version 1 (same-repository) binding is accepted. The bracket admits version
+// 2 (cross-repository) receipts, but crediting one also needs the source
+// repository checked against the configured repository set, which this rule
+// does not read yet, so a version-2 span stays not-credited.
 func creditBindingProblem(b creditBinding, repo string) string {
 	return attestation.BindingProblem(b, repo, attestation.ContainerV1, false)
 }

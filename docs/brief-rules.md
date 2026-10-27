@@ -759,7 +759,16 @@ passing run — which is why they are lint rules and not review vigilance.
       not credit. A
       container-netns run without
       `--admission-receipt` is a usage refusal whatever `DESK_LOOP` says.
-      Known limits: version 2 (cross-repository) receipts are refused; a
+      A version 2 (cross-repository) receipt runs the same bracket with
+      `--root` naming the deliverable home and `--brief` the tracking
+      repository's brief outside it: each step refuses unless both
+      repositories are named and differ, the brief holds the bytes the
+      binding's `BriefSHA256` names, and (open and close) the host check's
+      admitted home is `--root`; the close also requires the host binding to
+      equal the receipt's. Its attestation line names both repositories,
+      inside the digest. The credit rule above stays version-1 only, so a
+      version 2 span is `credit=not-credited`.
+      Known limits: a
       linked worktree's git directory is not mounted in the container, so rows
       that need git history run on the host, and the container takes its
       Runner cell only from the receipt, which is keyless: the close step's
