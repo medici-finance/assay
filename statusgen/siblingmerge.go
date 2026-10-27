@@ -739,7 +739,7 @@ func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string,
 func holdPhantomRowsFromGit(streams []*Stream, root string) {
 	ownRepo, _ := rootRepo(streams)
 	merged, _, err := deliveryHistory(root, ownRepo) // crossroot.go: own root + every configured root
-	applyPhantomHolds(streams, merged, err)
+	applyPhantomHolds(root, streams, merged, err)
 }
 
 // siblingMergeOffNotices is what --lint prints INSTEAD of the check when the
