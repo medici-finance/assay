@@ -114,6 +114,7 @@ func TestCrossRootMentionIsNoWitness(t *testing.T) {
 
 // TestCrossRootUnreadableRoot pins three-state: a configured root that is not a
 // git checkout is could-not-check, and the row is not held on its say-so.
+// regression: #4614
 func TestCrossRootUnreadableRoot(t *testing.T) {
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
@@ -163,6 +164,7 @@ func TestCrossRootReconcileWrites(t *testing.T) {
 // TestDeskRootsCleared pins TestMain's unset: a DESK_ROOTS set by the caller
 // must not reach the tests, or every fixture board would read the operator's
 // real checkouts as cross-root witnesses.
+// regression: #4614
 func TestDeskRootsCleared(t *testing.T) {
 	if os.Getenv("STATUSGEN_DESKROOTS_PROBE") == "1" {
 		if v, ok := os.LookupEnv("DESK_ROOTS"); ok {
