@@ -228,6 +228,14 @@ not derived.
 RISK-VALUE: DERIVED — len(ids) < 12 minimum = 12 @ docs/research/criterion-evidence-freshness/replay.py:473 — Task 2 of this brief requires at least twelve explicit cases and lists exactly twelve required categories; the guard refuses fewer and refuses duplicates, and cases.json declares 14.
 
 **VERIFY: PASS** — 3/3 rows pass on the `statusgen verifyrun` witness at 05dc9fbc88f2; no row rests only on a hand run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 docs/research/criterion-evidence-freshness/replay.py --check` | pass exit=0 | sha256:b688f1510c3a | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) |
+| 2 | `python3 docs/research/criterion-evidence-freshness/replay.py --self-test` | pass exit=0 | sha256:0e10d12bd0ad | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCoverageAcceptanceDigestChanged$' . > "$out" && GOWORK=off go test -count=1 -v -run '^TestCoverageExpectChangedSinceWitnessRan$' . >> "$out" && grep -F -- '--- PASS: TestCoverageAcceptanceDigestChanged ' "$out" && grep -F -- '--- PASS: TestCoverageExpectChangedSinceWitnessRan ' "$out")` | pass exit=0 | sha256:c10dfb9f8ae7 | 2026-10-27 | assay-verifier-app[bot] @ 47ef38f961aa (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4574 run=04153b3d34e372ccacadf2b126a0922a97a699b806c3de242eb4b45e36cfa458 source=47ef38f961aa1006ff296034d118630efdc177cb brief=docs/streams/graph-execution/brief-32-investigate-criterion-level-evidence-freshness.md model=claude-opus-5-5 tier=strong
+
 The table above is the `statusgen verifyrun` execution witness (write mode, statusgen
 v1.0.63), run once from the admitted detached home at source
 47ef38f961aa1006ff296034d118630efdc177cb on a clean tree, offline, go1.27.2 darwin/arm64,
