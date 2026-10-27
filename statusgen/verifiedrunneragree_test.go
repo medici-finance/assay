@@ -111,6 +111,7 @@ func TestRunnersAgree(t *testing.T) {
 	}
 }
 
+// regression: #4132 a same-day conflict is not chronology.
 func TestEvidenceRunnerSameDayIsNotChronology(t *testing.T) {
 	rows := "| # | Date | Runner |\n|---|---|---|\n" +
 		"| 1 | 2026-09-25 | implementer |\n\n" +
@@ -126,6 +127,7 @@ func TestEvidenceRunnerSameDayIsNotChronology(t *testing.T) {
 	}
 }
 
+// regression: #4132 ambiguous rows stay in the denominator.
 func TestAmbiguousRunnersCannotInflateAMajority(t *testing.T) {
 	rows := "| # | Date | Runner |\n|---|---|---|\n" +
 		"| 1 | 2026-09-25 | implementer |\n| 2 | 2026-09-25 | independent-verifier |\n| 3 | 2026-09-25 | independent-verifier |\n\n" +
@@ -149,6 +151,8 @@ func TestSameDayTieChecksAllEntries(t *testing.T) {
 
 // TestEmptyKeyRowInDenominator pins that a complete row whose runner keys
 // to nothing (a parenthetical-only label) is unknown, not omitted.
+//
+// regression: #4132 an unkeyed row stays in the denominator.
 func TestEmptyKeyRowInDenominator(t *testing.T) {
 	rows := "| # | Date | Runner |\n|---|---|---|\n" +
 		"| 1 | 2026-09-25 | (non-implementer) |\n| 2 | 2026-09-25 | opus-verifier |\n"
