@@ -737,12 +737,9 @@ func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string,
 // itself, exactly as run() does (errNoGitForMerge): the queue and the board must not
 // disagree about the same tree.
 func holdPhantomRowsFromGit(streams []*Stream, root string) {
-	if hasNoGitDir(root) {
-		applyPhantomHolds(streams, nil, errNoGitForMerge)
-		return
-	}
-	merged, err := mergedPRsFromGit(root)
-	applyPhantomHolds(streams, merged, err)
+	ownRepo, _ := rootRepo(streams)
+	merged, _, err := deliveryHistory(root, ownRepo) // crossroot.go: own root + every configured root
+	applyPhantomHolds(root, streams, merged, err)
 }
 
 // siblingMergeOffNotices is what --lint prints INSTEAD of the check when the
