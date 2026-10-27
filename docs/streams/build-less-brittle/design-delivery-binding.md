@@ -149,6 +149,90 @@ acceptance changes and historical rows whose intended subject cannot be establis
 
 ## Recommended design
 
+### Part 1: Verification context
+
+This part defines WHICH work and coverage the results apply to. Its canonical inputs are
+already held in brief frontmatter and `## Context`: brief/acceptance identity, declared
+`files:`, `consumers:` and exclusions, the independently bound delivery and its baseline,
+the observed execution source, and the tools/environment/admission required by the rows.
+The delivery subject and the source where a test executes are distinct when the existing
+consumer evaluator reads a historical delivered snapshot. Preserve both subjects rather
+than labelling every result with whichever HEAD is newest.
+
+The context must establish a complete, unambiguous scope and explain each required
+consumer's disposition. A consumer declaration is context; a test of behavior through
+that consumer is a test obligation. Corroborating routes or proving that paths were
+touched does not by itself prove consumer behavior or completeness of the list.
+
+**Owner: the review desk at the existing ready flip.** Before marking an implementation
+PR ready to merge, independent correctness review checks this context against the actual
+head, diff and original obligations. It verifies declared-scope readability, consumers
+and exclusions, source attribution, supported execution conditions, and whether the
+post-merge binding/closure path can discharge the obligations. The existing #4139 work
+and deskflip enforce the deterministic part against that reviewed head; judgment stays
+with the reviewer. A head or material context change invalidates the relevant review
+conclusion and needs the existing re-review. The verifier rechecks applicability at run
+admission; it is not the first owner of finding an unusable context.
+
+A symbolic delivery binding is a legitimate prerequisite that resolves after merge.
+Ready review establishes that its resolver and authority path are supported; it must
+not require the future commit to exist before merge or record a fictional context pass.
+After merge, the binding and observed source must actually resolve before their results
+can support acceptance. No ready flip is itself verification or lifecycle completion.
+
+For already-delivered briefs, the SAME context check is owned by review of the historical
+migration/cutover or context-repair PR at its ready flip. Review the eligible cohort and
+record per-brief readiness or the exact remaining repair in the existing census/records;
+no new per-brief PR is needed merely to rename an unchanged original command. The
+verification desk takes only the context-ready cohort whose reviewed inputs remain
+applicable. A corrected context does not certify tests that have never run.
+
+### Part 2: Tests
+
+This part defines WHAT behavior must be demonstrated: the existing `## Verify` rows,
+their literal commands, expected outcomes, negative cases, consumer-flow obligations,
+row identities, class, shell and original acceptance authority. It remains executable
+by an independent verifier. The test evidence remains the existing execution witnesses
+and Evidence/outcome records; this design introduces no parallel result store.
+
+The reviewer rechecks whether the tests meaningfully cover Part 1 against the delivered
+implementation. The verification desk owns independent execution and result accounting.
+A row passes only when its assertion was genuinely evaluated against the applicable
+subject. An empty-diff exit zero is not consumer coverage. Results from a wrong source,
+untrusted execution or unknown scope cannot establish the intended acceptance.
+
+Context and test results must be accounted separately within the existing review and
+Evidence record. Use the existing verdicts and blockers, with precise prose identifying
+which part prevents acceptance; do not invent another status vocabulary:
+
+| Observed facts | Meaning and next action |
+|---|---|
+| Context established; every required test has an applicable independent pass | Acceptance is supported, subject to existing lifecycle authority |
+| Context established; a required behavioral assertion failed | Record that observed test failure and route implementation rework |
+| Tests executed and passed; context or coverage remains unresolved | Retain the observed passes, identify the missing applicability proof, and hold acceptance; do not call the functional tests failed |
+| Context established; tests passed; only recording/formatting failed | Repair bookkeeping and retain applicable witnesses; the repair alone does not justify rerunning tests or claiming the implementation failed |
+
+**Bookkeeping repair does not invalidate a valid result.** Reuse is conditional on the
+existing evaluator establishing that the original assertion/command, relevant source and
+input scope, and admitted identity/environment remain applicable. A receipt-format,
+prose-wrap, changelog or storage repair that changes none of those must not expire a
+witness merely because the recording commit changed. Preserve the original run identity,
+source, date and output; append the recording correction rather than forging a later run.
+If a repair reveals a genuinely missing consumer, changes scope/behavior or exposes a
+wrong subject, re-evaluate applicability and re-run the affected obligations. Missing
+proof of equivalence is a hold, not a presumption that reuse is safe. An actual protected
+command/acceptance amendment retains its existing authorization and rerun requirements.
+
+These two parts are a separation of responsibility in the existing contract, not two
+new gates or a bulk schema rewrite. Reuse Context/frontmatter for context and the Verify
+table for tests; link to the canonical declarations rather than copying them into another
+section. Historical rows already stored in Verify that establish context retain their
+original IDs, commands and obligations. Present their context result separately without
+moving, deleting or renumbering a protected row. A later template or renderer change
+must preserve those existing readers and records.
+
+### Delivery binding shared by both parts
+
 1. **Binding point: at merge, by main's CI.** On every push to `main`, a main-branch CI job
    builds statusgen from the trusted base's own source, as the board workflow already does,
    and runs a new verb (working name `statusgen delivery-bind`). For each brief whose
@@ -353,32 +437,21 @@ ready rows through preflight. A partial rollout grants no historical compatibili
 compatibility as an unowned later phase. Do not mass-edit original Verify commands just
 to adopt the new spelling.
 
-**The review desk's existing flip owns readiness, not acceptance.** Before marking a
-delivery PR ready to merge, independent correctness review revisits the exact Verify
-plan against the implementation and anticipated post-merge subject. The existing
-prospective lifecycle check in #4139 and deskflip carry deterministic readiness checks;
-the reviewer owns semantic adequacy and exclusions. The existing dispatch preflight
-rechecks run-time prerequisites. A binding that comes into existence only after merge
-is an expected phase prerequisite, not a reason to fabricate a pre-merge pass. For an
-Evidence PR, ready review checks the claims actually recorded: a sound BLOCKED record
-may merge while the underlying brief remains implemented.
-
-Classify each refusal by what proof it affects in the existing review/Evidence account.
-A wrong delivery, unobserved consumer, changed assertion or untrusted provenance leaves
-acceptance incomplete. An explicit-flag shape warning when the same independently bound
-range was genuinely checked is policy/compatibility work. A malformed declaration or
-receipt-storage failure must be repaired, but is not an observed failure of already-run
-functional tests; an incomplete scope can still prevent establishing their applicability.
-Record functional passes and the exact remaining acceptance or recording hold separately.
-A review/flip must neither conceal that hold nor turn every bookkeeping failure into a
-claim that the implementation failed. Apply existing authority to any proposed test
-change; fixing prose or recording format is not permission to weaken an obligation.
-No additional review stage is introduced.
+**Apply the same two-part contract to historical work.** The review desk's ready-flip
+context check above covers the historical cohort; the existing dispatch preflight only
+rechecks that reviewed context is still applicable. Keep valid test witnesses while
+repairing context representation or recording. A historical row that never evaluated its
+intended consumer subject still needs new evidence for that obligation; unaffected valid
+functional results are retained. Already-amended acceptance retains its existing approval.
+For an Evidence PR, ready review checks the claims actually recorded: a sound BLOCKED
+record may merge while the underlying brief remains implemented. Publishing that record
+neither marks its unresolved context ready nor grants acceptance.
 
 **Release acceptance for this migration.** Inside I-1 to I-4, demonstrate the entire path
 for both an apps-installer/10-shaped named row and a desktools-v2/23-shaped unscoped row:
-original acceptance unchanged; historical subject backfilled independently; binding
-retrieved through the same trusted path as new rows; full fresh original-row execution;
+original acceptance unchanged; review-desk context readiness at the existing ready flip;
+historical subject backfilled independently; binding retrieved through the same trusted
+path as new rows; independent original-row execution with applicability accounted;
 matching provenance in the witness; closure accepted by the existing lint/evaluator; and
 no per-brief command amendment. A subsequent recording-only repair must retain every
 unaffected witness whose existing applicability is established, while an originally
@@ -443,7 +516,7 @@ above are settled.
 | I-1 | Record and historically backfill delivery bindings with the existing delivering-PR resolver | `statusgen` (the resolver in `autoflip.go`/`deliveryfiles.go`, new binder verb) | decisions 1, 2 | M | no / no / no / no | A fixture in the desk-tools/38 shape (the squash commit's message carries a trailer naming another brief; the PR body names this brief) is bound to that PR, which pins that the binder attributes by the PR body and never by a commit-message search. A fixture whose PR body names another brief writes no binding, even though the PR touches the declared files: it is walked past, never credited on files overlap alone, and I-1 does not change that attribution rule. A fixture with the forge read unavailable writes no binding, and the verb exits could-not-check. Historical replay binds the original eligible delivery before a later matching follow-up; ambiguity writes no binding |
 | I-2 | Resolve new and eligible unchanged historical rows through one delivery-binding policy in execution, lint and protected closure | `statusgen/consumerdelivery.go`, `statusgen/verifyrows.go`, `statusgen/verifyrun.go`, existing protected-acceptance evaluator | I-1, decisions 1, 3 | M | no / no / no / no | With the binder bypassed, a hand-made fixture tag that names a side-branch commit, a commit touching none of the declared files, or a commit that contradicts the committed marker reads exit 2 COULD-NOT-CHECK. Named and unscoped original historical rows close with unchanged acceptance and fresh bound witnesses; unadmitted ambient context, changed commands and another brief's binding receive no compatibility credit |
 | I-3 | Activate the same protected CI binding writer, historical backfill and trusted binding retrieval | `ci/staged-workflows/`, forge configuration (documented; activation is the maintainer's) | I-1, decision 2 | S | no / no / no / no | With the CI writer bypassed, a binding tag pushed by a non-CI identity is refused by the forge. This is a human-run row: it is could-not-check offline. Also prove local execution uses the protected remote binding object and holds a substituted plausible local tag; a ruleset alone cannot authenticate an arbitrary local ref |
-| I-4 | Complete author/reviewer guidance and the historical cutover census with new-row and historical closure examples | existing author/reviewer kits, `docs/consumer-delivery-checks.md`, existing class census | I-2, I-3 | S | no / no / no / no | A planted bare `--base` row in a new brief is still a `consumer-delivery-range` finding with the kit's guidance in place. Run the end-to-end historical migration examples above; report every candidate as supported, substantive repair, scope repair, ambiguity hold or settled record left unchanged |
+| I-4 | Separate verification context and tests in existing author/reviewer guidance, put context readiness at the review desk ready flip, and complete historical cutover | existing author/reviewer kits, existing #4139/deskflip integration, `docs/consumer-delivery-checks.md`, existing class census | I-2, I-3 | S | no / no / no / no | A planted bare `--base` row in a new brief is still a `consumer-delivery-range` finding with the kit's guidance in place. Run the end-to-end historical migration examples above; report every candidate as supported, substantive repair, scope repair, ambiguity hold or settled record left unchanged. A context defect is caught before ready flip; bookkeeping-only changes retain applicable witnesses and distinct reporting, while changed source/scope causes the affected evidence to be re-evaluated |
 
 **Ordering.** Verify rows 4 and 5 of build-less-brittle/14 pin today's derived-path behaviour.
 That includes the fact that a marker naming a later mainline delivery is accepted, and the
