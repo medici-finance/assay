@@ -399,6 +399,9 @@ func expandDeclaration(decl string) ([]string, error) {
 	}
 	// The sibling form is decided on the declaration as written: a brace or
 	// glob can never produce or choose the ../<sibling>/ prefix.
+	// Defence in depth, not dead code: the per-path SiblingDeclaration and
+	// canonicalRepoPath checks below are the primary guard and refuse the same
+	// shapes; this precheck also refuses before any brace is expanded.
 	sibling := strings.HasPrefix(decl, "../")
 	if sibling {
 		if i := strings.IndexByte(decl[3:], '/'); i < 0 || !siblingName(decl[3:3+i]) {
@@ -435,6 +438,9 @@ func expandDeclaration(decl string) ([]string, error) {
 		check := p
 		if sibling {
 			_, rel, ok := SiblingDeclaration(p)
+			// Defence in depth, not dead code: the precheck above and the
+			// canonicalRepoPath(rel) check below (an empty rel fails it) are
+			// the primary guards; keep this explicit refusal beside them.
 			if !ok {
 				return bad()
 			}
@@ -484,6 +490,9 @@ func SiblingDeclaration(decl string) (sibling, rel string, ok bool) {
 		return "", "", false
 	}
 	sibling, rel, found = strings.Cut(rest, "/")
+	// path.Clean(decl) != decl is defence in depth, not dead code: siblingName
+	// and canonicalRepoPath(rel) are the primary guard against every
+	// noncanonical shape it would also catch.
 	if !found || !siblingName(sibling) || !canonicalRepoPath(rel) || path.Clean(decl) != decl {
 		return "", "", false
 	}

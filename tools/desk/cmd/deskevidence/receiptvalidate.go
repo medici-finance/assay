@@ -128,6 +128,9 @@ func validateReceiptInputsCoverDeliverables(root string, wr deskkit.WakeReceipt)
 				" for " + wr.Brief + " (declared in ## Context files: at " + sha + ")")
 		}
 	}
+	// Defence in depth, not dead code: the writer re-derivation in
+	// deskkit.BuildOutcomeRecord is the primary guard and refuses an unbound
+	// sibling first; this keeps the validator complete on its own.
 	return deskkit.CheckSiblingCoverage(siblings, wr.Inputs)
 }
 

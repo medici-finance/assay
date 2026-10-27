@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +170,49 @@ func TestSiblingCoverageExact(t *testing.T) {
 		err := CheckSiblingCoverage([]string{tc.decl}, tc.inputs)
 		if (err == nil) != tc.ok || (err != nil && ExitCodeOf(err) != ExitRefused) {
 			t.Errorf("%q %v: got %v, want ok=%v", tc.decl, tc.inputs, err, tc.ok)
+		}
+	}
+}
+
+// The completeness check covers local declarations by their scope: keys,
+// in either key form, and sibling ones by their repo-source: commit; neither
+// half stands in for the other.
+// regression: #3483
+func TestSiblingMixedScopeCheck(t *testing.T) {
+	crossRepoRoster(t)
+	tree := scopeKeyFixture()
+	brief := "## Context\nfiles:\n- `tools/pkg/`\n- `../one/x.go`\n"
+	tree.files[wakeTestBriefPath] = brief
+	in := siblingTestInput()
+	in.LandedBrief = []byte(brief)
+	raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), in, tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r WakeReceipt
+	if err := json.Unmarshal(raw, &r); err != nil {
+		t.Fatal(err)
+	}
+	r.Brief = "demo/01"
+	const dirKey, sourceKey = "scope:tools/pkg/", InputKeyRepoSourcePrefix + "example-org/one"
+	if r.Inputs[dirKey] == "" || r.Inputs[sourceKey] != siblingTestSource {
+		t.Fatalf("mixed record lacks a key: %v", r.Inputs)
+	}
+	rr := NewRootRevisionReader(scopeKeyRoot(t, tree.files), in.ToolVersion)
+	if err := rr.CheckReceiptScope(r); err != nil {
+		t.Fatalf("complete mixed receipt refused: %v", err)
+	}
+	legacy := maps.Clone(r.Inputs)
+	legacy["scope:tools/pkg"] = legacy[dirKey]
+	delete(legacy, dirKey)
+	if err := rr.CheckReceiptScope(WakeReceipt{Brief: r.Brief, Inputs: legacy}); err != nil {
+		t.Fatalf("legacy-keyed mixed receipt refused: %v", err)
+	}
+	for _, drop := range []string{dirKey, sourceKey} {
+		cut := maps.Clone(r.Inputs)
+		delete(cut, drop)
+		if err := rr.CheckReceiptScope(WakeReceipt{Brief: r.Brief, Inputs: cut}); err == nil {
+			t.Errorf("receipt without %s passed completeness", drop)
 		}
 	}
 }
