@@ -145,7 +145,10 @@ from the amendment. A fixed D can predate that amendment. Those requirements mus
 explicitly revised: assess execution of approved amended criteria against D, retain
 unchanged applicable rows, and demand fresh results for affected rows. Preserve exact
 human approval of changed commands/criteria and provenance of execution after that
-approval; a source commit alone is no longer a proxy for execution time. Do not activate
+approval; a source commit alone is no longer a proxy for execution time. This proposal
+does not broaden the edits allowed by the command-only transition: Expect, class, shell
+and row order stay protected. A changed requirement outside that route needs separately
+approved contract/delivery work, not a compatibility rewrite. Do not activate
 reuse by bypassing today's audit, forging a descendant source SHA, or changing an Expect.
 
 ## Main health stays with CI and the existing repair flow
