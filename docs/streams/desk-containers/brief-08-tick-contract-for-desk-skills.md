@@ -967,6 +967,13 @@ RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contra
   - row 14 is COULD-NOT-CHECK, because a self-delivered brief has no derivable delivery. The medici-finance/assay#1915 checkpoint routed this brief as a hold, and no open issue has owned it since medici-finance/assay#1915 closed. A blocker filing is pending.
 
 Status stays implemented.
+### Desk correction to the 2026-10-27 re-pass (review round on its Evidence PR) — 2026-10-27
+
+This adds accounting corrections only. No row was re-run.
+
+- **Rows 11 and 12** were not witnessed in the 2026-10-27 re-pass above. Their latest witnesses date from 2026-10-22. Row 11's pass is that older witness of a bare assignment, which is vacuous. Row 12's fail comes from the same older run. The re-pass therefore records both rows as could-not-run, alongside rows 9 and 10. Its superseding outcome record holds rows 11 and 12 and sets rows_passed to 7.
+- **Row 14**'s hold is now owned by medici-finance/assay#4689, which was filed after the re-pass. This replaces the re-pass's line saying "A blocker filing is pending."
+- **Drift statement.** The re-pass said the only deliverable-scope change between e1952464ea12 and b1d3c0a44a01 is in `.claude/guardrails/GUARDRAILS.md`. That is too narrow: the five desk-role SKILL.md bodies and this stream's README also changed in that range. Their `## Tick mode` sections did not change.
 
 ## Review
 
