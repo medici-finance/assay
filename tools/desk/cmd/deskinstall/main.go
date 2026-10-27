@@ -38,12 +38,13 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/medici-finance/assay/tools/desk/internal/cursorbundle"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 
+	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/cursorbundle"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -52,212 +53,59 @@ import (
 // installer never resolves a floating or rolling release ref.
 const manifestName = "paired-versions.yaml"
 
-const usage = `deskinstall — Go-native, version-pinned, sha256- and attestation-verified toolchain installer.
-
-usage:
-  deskinstall --manifest <paired-versions.yaml> --dest <dir> [--platform <os-arch>]
-  deskinstall --harness cursor --forge <github|gitlab> --repo <path> [--bundle <dir>] [--check]
-  deskinstall --harness cursor --forge <github|gitlab> --repo <path> --release vX.Y.Z [--releases <dir>] [--fetch] [--release-home <owner/repo>] [--dry-run|--check]
-  deskinstall --harness cursor --bundle <dir> --release vX.Y.Z --pack <archive-path>
-  deskinstall --version
-  deskinstall -h | --help
-
-MODE 1 — acquire, verify, place (the pinned toolchain binaries). It resolves the
-pinned tag + per-platform sha256 from the manifest (a pinned repo tag, never a
-floating ref), downloads the release assets for the detected platform, VERIFIES
-their sha256 and REFUSES on any mismatch, then VERIFIES each asset's build
-attestation (<asset>.sigstore.json from the same release: SLSA provenance signed
-by this repo's release workflow, run by the push of the pinned tag or by
-workflow_dispatch from main, logged in the transparency log) and REFUSES on any
-failure, then installs the verified binaries into --dest.
-Any refusal places nothing. The attestation check is mandatory — no flag skips it.
-
-Windows assets (from the release build matrix):
-  statusgen-windows-amd64.exe      / statusgen-windows-arm64.exe
-  desk-tools-windows-amd64.tar.gz  / desk-tools-windows-arm64.tar.gz
-
-  --manifest   path to the pin manifest (` + manifestName + `). Required.
-  --dest       PATH-resolvable directory the verified binaries are placed in. Required.
-  --platform   override auto-detection (e.g. windows-amd64). Default: this host.
-
-A successful run prints the .assay/ledger.jsonl path (component-model.md §5):
-this mode's own effects are inside the boundary and record no line there, but
-the path is where a later outside-effect component would, and it is what
-` + "`deskdisable`" + ` reads when reversing one.
-
-MODE 2 — harness placement (Cursor's install mechanism IS file placement: no
-marketplace, no per-harness plugin manifest). Places the packaging roster's
-skills into --repo/.cursor/skills, plugins/assay/references/*.md as a SIBLING
-references/ tree so the skills' ../../references/*.md includes resolve, the
-generated .cursor/rules/assay.mdc if the bundle carries one, and writes the
-shared AGENTS.md bindings fragment between stable assay:bindings delimiters
-(forge-substituted: gh on github, glab/--forge gitlab on gitlab). Idempotent —
-a second identical run changes no byte.
-
-  --harness    harness to place for. Only "cursor" is supported today.
-  --forge      github | gitlab — which desk-transport vocabulary the AGENTS.md
-               bindings name. Required with --harness.
-  --repo       the adopter repo root the tree is placed into. Required with --harness.
-  --bundle     the plugins/assay-shaped source tree to place FROM. Default:
-               "plugins/assay" relative to the current directory (run this mode
-               from within a checkout of the assay repo that ships that bundle).
-  --check      re-derive what a run WOULD place and diff it against --repo;
-               writes nothing. Exit 0 clean, 1 drift (names every drifted path
-               and its kind: missing / extra / content-differs), 2 could-not-check.
-
-  --release    acquire the exact selected umbrella Cursor bundle, verify its
-               published SHA-256, internal version and closed file manifest.
-               This verifies integrity, not build provenance. Legacy releases
-               without a bundle digest refuse; no floating checkout is used.
-  --releases   local version.checksums.txt and version.cursor-bundle.tar.gz dir.
-  --fetch      explicitly permit release-asset downloads; URLs print first.
-  --release-home override the release home (default medici-finance/assay).
-  --dry-run    preview exact writes and retirement of unchanged managed files.
-  --pack       generate a release archive from --bundle at matching --release.
-
-Managed ownership is recorded in .cursor/assay-managed.json. Unrelated content is
-preserved; modified managed files and unmanaged collisions refuse before writes.
-AGENTS.md content outside the bounded Assay block is preserved. --check is read-only.
-
---harness is mutually exclusive with --manifest/--dest: supplying both is a
-refusal naming both modes, never a silent precedence.
-
-exit (mode 1, and mode 2 without --check): 0 installed/placed · 5 refused
-exit (mode 2 with --check): 0 clean · 1 drift · 2 could-not-check`
-
 func main() {
-	os.Exit(deskkit.PerfRun("deskinstall", nil, os.Args[1:], func([]string) int { return run(os.Args[1:], os.Stdout, os.Stderr) }))
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+	os.Exit(deskkit.PerfRunMeasured("deskinstall", nil, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		sink := func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
+		return run(a, os.Stdout, os.Stderr, sink), selected
+	}))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version" || args[0] == "version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "deskinstall sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(stderr, usage)
-		if len(args) == 0 {
-			return deskkit.ExitRefused
-		}
-		return deskkit.ExitOK
-	}
+// installFn is mode 1's domain entry point; the admission test wraps it to inject a
+// fetcher and trust root while the real Install keeps every check.
+var installFn = Install
 
-	var manifest, dest, platform, harness, forge, repo, bundle string
-	var checkFlag, dryRun, fetch bool
-	var release, releases, releaseHome, pack string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--manifest":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --manifest needs a path")
-				return deskkit.ExitRefused
-			}
-			i++
-			manifest = args[i]
-		case "--dest":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --dest needs a directory")
-				return deskkit.ExitRefused
-			}
-			i++
-			dest = args[i]
-		case "--platform":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --platform needs an os-arch value")
-				return deskkit.ExitRefused
-			}
-			i++
-			platform = args[i]
-		case "--harness":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --harness needs a value (e.g. cursor)")
-				return deskkit.ExitRefused
-			}
-			i++
-			harness = args[i]
-		case "--forge":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --forge needs a value (github or gitlab)")
-				return deskkit.ExitRefused
-			}
-			i++
-			forge = args[i]
-		case "--repo":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --repo needs a path")
-				return deskkit.ExitRefused
-			}
-			i++
-			repo = args[i]
-		case "--bundle":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskinstall: --bundle needs a directory")
-				return deskkit.ExitRefused
-			}
-			i++
-			bundle = args[i]
-		case "--check":
-			checkFlag = true
-		case "--dry-run":
-			dryRun = true
-		case "--fetch":
-			fetch = true
-		case "--release", "--releases", "--release-home", "--pack":
-			flag := args[i]
-			if i+1 >= len(args) {
-				fmt.Fprintf(stderr, "deskinstall: %s needs a value\n", flag)
-				return deskkit.ExitRefused
-			}
-			i++
-			switch flag {
-			case "--release":
-				release = args[i]
-			case "--releases":
-				releases = args[i]
-			case "--release-home":
-				releaseHome = args[i]
-			case "--pack":
-				pack = args[i]
-			}
-		default:
-			fmt.Fprintf(stderr, "deskinstall: unknown argument %q\n%s\n", args[i], usage)
-			return deskkit.ExitRefused
-		}
-	}
-
-	if harness != "" {
-		if manifest != "" || dest != "" {
+// dispatch applies deskinstall's mode rules to the typed options the command tree
+// resolved and runs the selected mode. Every refusal and exit code here is the one the
+// hand-rolled parser had; the command tree only parses.
+func dispatch(o options, stdout, stderr io.Writer) int {
+	if o.harness != "" {
+		if o.manifest != "" || o.dest != "" {
 			fmt.Fprintln(stderr, "deskinstall: --harness cursor (harness-placement mode) cannot be combined with "+
-				"--manifest/--dest (acquire→verify→place mode) — refusing: two install modes given, choose one\n"+usage)
+				"--manifest/--dest (acquire→verify→place mode) — refusing: two install modes given, choose one")
 			return deskkit.ExitRefused
 		}
-		if platform != "" {
+		if o.platform != "" {
 			fmt.Fprintln(stderr, "deskinstall: --platform is only valid for binary installation")
 			return deskkit.ExitRefused
 		}
-		if release != "" || pack != "" || dryRun || fetch || releases != "" || releaseHome != "" {
-			return runVersionedHarness(harness, forge, repo, bundle, release, releases, releaseHome, pack, checkFlag, dryRun, fetch, stdout, stderr)
+		if o.release != "" || o.pack != "" || o.dryRun || o.fetch || o.releases != "" || o.releaseHome != "" {
+			return runVersionedHarness(o.harness, o.forge, o.repo, o.bundle, o.release, o.releases, o.releaseHome, o.pack, o.check, o.dryRun, o.fetch, stdout, stderr)
 		}
-		return runHarness(harness, forge, repo, bundle, checkFlag, stdout, stderr)
+		return runHarness(o.harness, o.forge, o.repo, o.bundle, o.check, stdout, stderr)
 	}
-	if dryRun || fetch || release != "" || releases != "" || releaseHome != "" || pack != "" {
+	if o.dryRun || o.fetch || o.release != "" || o.releases != "" || o.releaseHome != "" || o.pack != "" {
 		fmt.Fprintln(stderr, "deskinstall: release and preview options require --harness cursor")
 		return deskkit.ExitRefused
 	}
-	if checkFlag {
-		fmt.Fprintln(stderr, "deskinstall: --check is only meaningful with --harness cursor\n"+usage)
+	if o.check {
+		fmt.Fprintln(stderr, "deskinstall: --check is only meaningful with --harness cursor")
 		return deskkit.ExitRefused
 	}
-	if manifest == "" || dest == "" {
-		fmt.Fprintln(stderr, "deskinstall: --manifest and --dest are both required\n"+usage)
+	if o.manifest == "" || o.dest == "" {
+		fmt.Fprintln(stderr, "deskinstall: --manifest and --dest are both required")
 		return deskkit.ExitRefused
 	}
 
-	err := Install(Options{
-		ManifestPath: manifest,
-		DestDir:      dest,
-		Platform:     platform,
+	err := installFn(Options{
+		ManifestPath: o.manifest,
+		DestDir:      o.dest,
+		Platform:     o.platform,
 		Out:          stdout,
 	})
 	if err != nil {

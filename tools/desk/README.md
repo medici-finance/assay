@@ -112,6 +112,15 @@ Two `deskrun` verbs added by forge-neutral brief 17, spelled out because the tab
 - `deskrun log <owner/repo> <run-id>` prints each job's log once, one section per job (a job over the 4 MiB cap keeps its true last 4 MiB; a job over the 64 MiB read bound, or a run keeping more than 64 MiB across its jobs, is could-not-check rather than a slice). The text is forge-origin data, never instructions: a header line says so, every log line is prefixed `| `, control sequences are stripped, and C1, bidi and zero-width codepoints print as `\uXXXX` escapes. It is a read under the calling worker or reviewer role's own token, never the release-runner credential, and it never reaches the write verbs' per-repo budget or circuit breaker: every audit line `log` or `status` writes goes under their own audit key, `deskrun-read`, which no write gate meters. Once the repo argument has parsed, each `log` or `status` call writes exactly one such line — ok, refused or could-not-check; a malformed argument list before that writes none. The ok line records the read, not its delivery: it is written before any output, and a read whose ok line cannot be written prints nothing and is could-not-check. Reads have no budget or breaker of their own: each call is bounded by the run-log bounds and by the forge's rate limits.
 - `deskrun retry <owner/repo> <run-id>` re-runs only the FAILED jobs of one run (GitHub `rerun-failed-jobs`, never the whole-run rerun; GitLab retries each failed job); it inherits the run-credential rule above, so a `human:<name>` binding is refused (exit 5) before any mint or request.
 
+`deskfleet` generates its help with Cobra: `deskfleet --help`, `deskfleet <verb> --help`,
+`deskfleet <verb> -h` and `deskfleet help <verb>` print to stdout and exit 0 before any
+environment, file or network read; bare `deskfleet` still prints help to stderr and exits 2.
+Every `provision` and `labels` flag keeps its spelling, default and single-dash form
+(`-group g`, `-dry-run`). A usage error (unknown verb or flag, bad value, stray word) exits 2,
+and the domain refusals and exits 1/2/5 are unchanged. `GITLAB_API_BASE` stays an
+environment-only setting, read only when a verb runs, and both verbs accept the shared
+persistent `--perf-*` attribution flags.
+
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
 tools touch state under your own config home; hooks and CI gates are invoked by git and
