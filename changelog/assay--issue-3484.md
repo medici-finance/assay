@@ -1,0 +1,2 @@
+### Fixed
+- The brief-flow acceptance runner's mutation mode now copies every local `replace` target of the statusgen module into each scratch copy, derived from `go mod edit -json` rather than a fixed list, at the path `go.mod` spells (an in-repository symlink alias stays resolvable), so mutants build and are observed red again; a target the copy cannot reproduce (absolute, outside the repository, missing) is refused as could-not-check instead of skipped, and a new `replace-set` mode self-tests that contract (#3484).

@@ -10,10 +10,12 @@ description: >-
 
 # Trace path to live: objective → prerequisite graph → ranked moves
 
-Answer two questions about one objective: what must be `done` before it can go live, and what
+For one objective answer: what must be `done` before it can go live, and what
 can be done now to move it forward. The answer is a page with:
 
-- a month of progress at the top, using plain-language labels;
+- the six-line monthly progress chart first;
+- separate seven-day and four-week movement boards, with evidence-backed focus;
+- outcome context in details;
 - the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.
@@ -54,13 +56,7 @@ every later step wrong. Do not walk an unconfirmed guess.
 Run `statusgen --root <dir> --launch --launch-target <id>` in each materialised root. The
 transitive `depends:` closure, with live status, comes from the root that owns the target.
 
-`target "<id>" not found in any stream` has three known causes. Check them in this order:
-
-1. **The tree is older than the brief.** A local checkout that has not been pulled does not
-   have recently authored briefs. Step 2's fetched tree removes this cause.
-2. **The id form.** Use `<stream>/<NN>` with two digits.
-3. **The brief lives in another root.** `--launch` reads one root only. Try every root, and
-   report "not found" only after all of them have been tried.
+`target "<id>" not found in any stream`: check freshness (step 2 removes a stale tree), then the two-digit id, then every fetched root. `--launch` reads one root; try all before reporting not-found.
 
 ## 4. Stitch the graph across roots
 
@@ -86,6 +82,7 @@ transitive `depends:` closure, with live status, comes from the root that owns t
   it returns. Match a PR to a node by its `Brief: <stream>/<NN>` trailer, by its
   `Cross-repo-brief: <alias>:<stream>/<NN>` trailer (a cross-repo dispatch, whose PR lives in a
   different repo from the brief), or else by the brief id in its title.
+- **Progress evidence and baseline.** Follow [Report presentation](references/report.md); keep supporting evidence separate from canonical lifecycle state.
 - **Claims.** Use the list verb of the repo's dispatch-claim helper. Claim keys have three forms:
   `<repo>--<stream>--<NN>` for a same-repo brief, `<alias>--<stream>--<NN>` for a cross-repo
   brief (keyed under the tracking alias), and `<repo>--issue-<N>` for issue-shaped work. A node
@@ -126,7 +123,7 @@ Rank the moves in this order:
 
 Read [Report presentation](references/report.md) before writing the HTML. It defines the
 plain-language titles, six-line progress chart (three weekly readings plus seven daily),
-remaining-work graph, historical evidence and coverage requirements. Put progress first;
+movement and outcome views, report comparisons, blockers, graph and evidence coverage;
 hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
 Write the self-contained report outside repositories and never commit it.
 
