@@ -346,7 +346,9 @@ func cmdEdit(args []string) (err error) {
 }
 
 // trailerLink renders a body's single link trailer in one comparable form —
-// `Brief: <value>`, `Authors: <value>`, `Cross-repo-brief: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
+// `Brief: <value>`, `Authors: <value>`, `Cross-repo-brief: <value>`, `Issue: #<n>` or the
+// resolving `Fixes: [owner/repo]#<n>` (any of Fixes:/Closes:/Resolves: renders as Fixes:) —
+// and reports whether the body carries one at all.
 //
 // It is deliberately TOTAL where requireTrailer refuses: a body with no trailer, a
 // multiplicity error, or the machine-written scan-carrier marker all come back
@@ -364,7 +366,9 @@ func trailerLink(body []byte) (string, bool) {
 	}
 	switch trs[0].Kind {
 	case deskkit.TrailerIssue:
-		return "Issue: #" + trs[0].Value, true
+		// `Issue: #N` and the resolving `Fixes: #N` render differently, so switching
+		// between them is a link change and is refused like any other.
+		return trs[0].IssueLink(), true
 	case deskkit.TrailerAuthors:
 		return "Authors: " + trs[0].Value, true
 	case deskkit.TrailerCrossRepoBrief:

@@ -283,7 +283,18 @@ func TestTransitionThenBracket(t *testing.T) {
 // run's full sha only when it is an exact >=12-hex prefix that git resolves to
 // exactly that sha; every other token comes back unchanged and refuses.
 func TestTransitionWitnessTree(t *testing.T) {
+	// A time-dependent commit can have an all-digit prefix, for which ToUpper
+	// is an identity operation (#4615). Pin only this fixture's dates and
+	// require a real case change, while retaining the same resolvable commit
+	// for the positive lowercase lookup and uppercase rejection.
+	t.Setenv("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z")
+	t.Setenv("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z")
 	f := transitionFixtureAt(t)
+	upper := strings.ToUpper(f.amendment[:12])
+	if upper == f.amendment[:12] {
+		t.Fatal("uppercase fixture must have a letter-bearing commit prefix")
+	}
+	t.Logf("deterministic commit prefix: %s", f.amendment[:12])
 	absent := strings.Repeat("d", 40)
 	cases := []struct{ name, tree, run, want string }{
 		{"short-token", f.amendment[:12], f.amendment, f.amendment},
@@ -292,7 +303,7 @@ func TestTransitionWitnessTree(t *testing.T) {
 		{"other-commit", f.delivery[:12], f.amendment, f.delivery[:12]},
 		{"not-resolved", absent[:12], absent, absent[:12]},
 		{"dirty", f.amendment[:12] + "+dirty", f.amendment, f.amendment[:12] + "+dirty"},
-		{"upper", strings.ToUpper(f.amendment[:12]), f.amendment, strings.ToUpper(f.amendment[:12])},
+		{"upper", upper, f.amendment, upper},
 		{"short-run", f.amendment[:12], f.amendment[:12], f.amendment[:12]},
 	}
 	for _, c := range cases {

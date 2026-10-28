@@ -222,7 +222,13 @@ the commit author git records, which is author-asserted attribution, not authori
 to the brief can write the verifier's author address. The forge-attributed record in
 condition 2 is the anchor. Only server-side rules on who may push to the brief's branch
 prevent the forgery, and a verifier roster entry with no numeric id leaves condition 1
-could-not-check. Version 2 (cross-repository) receipts are refused in container mode, and a linked
+could-not-check. A version 2 (cross-repository) receipt runs the same bracket with `--root`
+naming the deliverable home and `--brief` naming the tracking repository's brief outside it;
+every step refuses unless both repositories are named and differ and the brief holds the
+bytes the receipt admits. `--credit` credits such a span only when both repositories pass the
+repository checks: the tracking repository, where the record lives, is the brief's own, and the
+source repository (`source-repo=`) is in the configured repository set; otherwise it answers
+`credit=not-credited`. A linked
 worktree's git directory is not mounted in the container, so rows that need git history
 run on the host.
 
