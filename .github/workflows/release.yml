@@ -78,10 +78,10 @@ name: release
 #     the prepared source and Linux binary artifacts, then pushes them before
 #     tagging and publishing their checksummed references with the binaries.
 #     verify-runner is multi-arch (linux/amd64 + linux/arm64, #4323): both
-#     platforms are built and checked on this runner. The release job registers
-#     arm64 emulation with the runner's Docker engine itself, from a
-#     digest-pinned binfmt installer, and proves it works before any image is
-#     built (#4784); the runner host is not assumed to carry it. The runner's
+#     platforms are built and checked natively. A separate arm64 job transfers
+#     its checked image and receipt to the amd64 publisher (#4784), which
+#     verifies the archive and image identity without executing arm64 code.
+#     No job registers emulation or changes the runner's protected mounts. The runner's
 #     reference pins the image index digest. The other eight images stay
 #     linux/amd64.
 #     One release Environment approval covers this entire publication sequence.
@@ -1568,8 +1568,60 @@ jobs:
             release-source.bundle
             release-highlights.md
 
-  release:
+  # Build and execute the full arm64 checks on native hardware. No registry
+  # credentials, kernel registration or publication permissions belong here.
+  runner-arm64:
     needs: [resolve, guard, test, artifacts]
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-build-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-input
+      - name: Build and check native arm64 verify-runner
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}
+          VERIFY_RUNNER_IMAGE: ghcr.io/${{ github.repository_owner }}/verify-runner
+          INPUT: ${{ runner.temp }}/release-input
+          OUTPUT: ${{ runner.temp }}/release-native-arm64
+        run: |
+          set -euo pipefail
+          SOURCE="$(mktemp -d "$RUNNER_TEMP/release-arm64-source.XXXXXX")"
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          trap 'rm -rf "$SOURCE" "$DOCKER_CONFIG"' EXIT
+          cd "$INPUT"
+          sha256sum -c build-inputs.sha256
+          sha256sum -c checksums.txt
+          tar -xzf prepared-source.tar.gz -C "$SOURCE"
+          cd "$SOURCE"
+          python3 - <<'PY_NATIVE'
+          import os
+          from pathlib import Path
+          from tools.release.images import build_native_runner
+          build_native_runner(Path.cwd(), os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
+                              os.environ['VERIFY_RUNNER_IMAGE'], os.environ['INPUT'], os.environ['OUTPUT'])
+          PY_NATIVE
+      - name: Upload checked native arm64 image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-runner-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.tar
+            ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.json
+
+  release:
+    needs: [resolve, guard, test, artifacts, runner-arm64]
     runs-on: medici-builder-public-release
     # One approval covers every publication write: images first, then tag/assets.
     environment: release
@@ -1605,67 +1657,11 @@ jobs:
           if [ -f release-source.bundle ]; then git fetch ./release-source.bundle HEAD; fi
           git checkout --detach "$SOURCE_SHA"
           sha256sum -c checksums.txt
-      # ARM64 EMULATION (#4784). verify-runner's linux/arm64 image builds on this
-      # amd64 runner under QEMU, so the job registers the handler itself: a
-      # replaced runner pod would silently lose host-side setup. It runs in dry
-      # runs too, because a dry run builds both runner platforms.
-      # TRUST: the installer is a --privileged container, with every capability
-      # and host device. The single control against a malicious installer is
-      # the content-addressed digest pin below. Running it here, before the
-      # image step's `docker login`, with no secret in this step's env, an empty
-      # DOCKER_CONFIG, no network and no mounts only limits ACCIDENTAL exposure.
-      # None of it protects the credentials the runner holds for the whole job
-      # (the OIDC request token and URL that `id-token: write` puts in every
-      # step's environment, and the job's GITHUB_TOKEN) from a privileged
-      # container. The registration it makes is kernel-wide on the node: it
-      # persists into later steps (after the login) and into later jobs.
-      # HANDLER: the installer exits 0 even when a registration fails, so its
-      # `installing: arm64 OK` line, not its exit status, is the first gate. It
-      # uninstalls any qemu-aarch64 handler first, so the pinned emulator is the
-      # one in force; an arm64 exec started on this node between the uninstall
-      # and the install fails. The arm64 `uname -m` probe is the second gate.
-      # Admission: the installer's risk summary is recorded on issue #4784.
-      - name: Register and prove arm64 emulation
-        env:
-          # Upstream release deploy/v10.2.3-68 (2026-06-08, QEMU 10.2.3) of
-          # github.com/tonistiigi/binfmt; the digest is that tag's image index on
-          # Docker Hub, the registry this job already pulls its base images from.
-          BINFMT_IMAGE: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
-        run: |
-          set -euo pipefail
-          DOCKER_CONFIG="$(mktemp -d)"
-          export DOCKER_CONFIG
-          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-          # The probe is verify-runner's own digest-pinned base, which the arm64
-          # build pulls anyway, so the proof adds no image of its own.
-          probe="$(sed -n 's/^ARG RUNNER_BASE=//p' images/verify-runner/Dockerfile)"
-          if ! [[ "$probe" =~ ^[a-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::images/verify-runner/Dockerfile has no single digest-pinned RUNNER_BASE to prove arm64 emulation with (read: '${probe}')."
-            exit 1
-          fi
-          status=0
-          installed="$(docker run --privileged --rm --network none "$BINFMT_IMAGE" --uninstall qemu-aarch64 --install arm64 2>&1)" || status=$?
-          printf '%s\n' "$installed"
-          # A read-only registration interface is a runner security boundary,
-          # not a stale handler. Do not try a writable mount or remount here.
-          if grep -Fq '/proc/sys/fs/binfmt_misc/register' <<<"$installed" && grep -Fq 'read-only file system' <<<"$installed"; then
-            echo "::error::The runner registration filesystem is read-only. The runner owner must resolve the security decision: provide an approved emulation path or use native arm64 builds and checks. Do not remount or unmask the registration interface in this workflow. Stopping before any image is built."
-            exit 1
-          fi
-          if [ "$status" -ne 0 ]; then
-            echo "::error::The pinned binfmt installer failed (exit ${status}). Stopping before the arm64 probe or any image build."
-            exit 1
-          fi
-          if ! grep -qx 'installing: arm64 OK' <<<"$installed"; then
-            echo "::error::The pinned binfmt installer did not register its arm64 emulator: no 'installing: arm64 OK' line in its output (exit ${status}). If it reports 'qemu-aarch64 already registered', a stale handler on this node survived the uninstall: unregister it on the runner host (echo -1 > /proc/sys/fs/binfmt_misc/qemu-aarch64) and rerun. Stopping before any image is built."
-            exit 1
-          fi
-          arch="$(docker run --rm --network none --platform linux/arm64 "$probe" uname -m)" || arch=""
-          if [ "$arch" != aarch64 ]; then
-            echo "::error::arm64 emulation is not working on this runner: a linux/arm64 container reported '${arch}', not 'aarch64'. The linux/arm64 verify-runner build would fail with 'exec format error'. If another handler for arm64 binaries is registered on this node (ls /proc/sys/fs/binfmt_misc), unregister it on the runner host and rerun. Stopping before any image is built."
-            exit 1
-          fi
-          echo "arm64 emulation ready: the pinned emulator is registered and a linux/arm64 container reports ${arch}."
+      - name: Download checked native arm64 image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-runner-arm64
+          path: .
       - name: Build, verify and publish the release images
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}

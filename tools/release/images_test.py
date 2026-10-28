@@ -22,6 +22,23 @@ VERSION = 'v1.2.3'
 SOURCE = 'a' * 40
 
 
+NATIVE_CONFIG = b'{"architecture":"arm64","os":"linux"}'
+NATIVE_ID = 'sha256:' + hashlib.sha256(NATIVE_CONFIG).hexdigest()
+
+
+def native_archive(path, ref='ghcr.io/example/verify-runner:v1.2.3-linux-arm64', extra=False):
+    config_name = NATIVE_ID.split(':')[1] + '.json'
+    records = [{'Config': config_name, 'RepoTags': [ref], 'Layers': []}]
+    if extra:
+        records.append(dict(records[0], RepoTags=['ghcr.io/example/other:old']))
+    files = {'manifest.json': json.dumps(records).encode(), config_name: NATIVE_CONFIG}
+    with tarfile.open(path, 'w') as archive:
+        for name, content in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+
+
 def workflow_jobs(text):
     return dict(re.findall(r'(?ms)^  ([a-zA-Z0-9_-]+):\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)',
                            text.split('\njobs:\n', 1)[1]))
@@ -44,7 +61,7 @@ def publication_problems(text):
         problems.append('exactly one release-approved job must own publication')
     match = re.search(r'^    needs: \[(.*?)\]', publisher, re.M)
     needs = {item.strip() for item in match.group(1).split(',')} if match else set()
-    if not {'resolve', 'guard', 'test', 'artifacts'} <= needs:
+    if not {'resolve', 'guard', 'test', 'artifacts', 'runner-arm64'} <= needs:
         problems.append('publication must wait for all preparation gates')
     if 'runs-on: medici-builder-public-release' not in publisher:
         problems.append('publisher needs the dedicated Docker-capable release runner')
@@ -122,16 +139,40 @@ printf 'scan %s\\n' "$1" >> "$CALLS"
                 info.mode = 0o755
                 info.size = len(name)
                 out.addfile(info, io.BytesIO(name.encode()))
+        self.native_archive = self.inputs / 'verify-runner-linux-arm64.tar'
+        native_archive(self.native_archive)
+        self.native_receipt = self.inputs / 'verify-runner-linux-arm64.json'
+        self.native_receipt.write_text(json.dumps({
+            'schema': 'native-runner-v1', 'version': VERSION,
+            'source_revision': SOURCE, 'platform': 'linux/arm64',
+            'ref': 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64',
+            'image_id': NATIVE_ID,
+            'archive_sha256': hashlib.sha256(self.native_archive.read_bytes()).hexdigest(),
+        }))
         bindir = self.root / 'bin'
         bindir.mkdir()
         docker = bindir / 'docker'
         docker.write_text('''#!/usr/bin/env python3
-import hashlib, json, os, sys
+import hashlib, io, json, os, sys, tarfile
 args = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as f: f.write(json.dumps(args)+'\\n')
 mode = os.environ.get('MODE', '')
 def digest(ref): return 'sha256:' + hashlib.sha256(ref.encode()).hexdigest()
 ARCHES = {'linux/amd64': '-linux-amd64', 'linux/arm64': '-linux-arm64'}
+if args[:1] == ['info']:
+    print('linux/amd64' if mode == 'native-wrong-host' else 'linux/aarch64'); sys.exit(0)
+if args[:1] == ['save']:
+    from pathlib import Path
+    config = b'{"architecture":"arm64","os":"linux"}'
+    config_name = hashlib.sha256(config).hexdigest() + '.json'
+    files = {'manifest.json': json.dumps([{'Config': config_name, 'RepoTags': [args[-1]], 'Layers': []}]).encode(), config_name: config}
+    with tarfile.open(args[args.index('--output') + 1], 'w') as archive:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name); info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    sys.exit(0)
+if args[:2] == ['image', 'inspect'] and args[3] == '{{.Id}}':
+    print('sha256:' + ('e'*64 if mode == 'native-id-mismatch' else hashlib.sha256(b'{"architecture":"arm64","os":"linux"}').hexdigest())); sys.exit(0)
 if args[:2] == ['manifest', 'inspect'] and '@' in args[-1]:
     repo, dgst = args[-1].split('@')
     if dgst != 'sha256:' + 'c'*64: print('manifest unknown', file=sys.stderr); sys.exit(1)
@@ -183,6 +224,15 @@ if args[:2] == ['image', 'inspect']:
                               cwd=self.script.parent,
                               env=dict(self.env, MODE=mode), text=True, capture_output=True)
 
+    def invoke_native(self, mode=''):
+        code = ('from pathlib import Path; import sys; from images import build_native_runner; '
+                'build_native_runner(Path(sys.argv[1]), *sys.argv[2:5], '
+                'Path(sys.argv[5]), Path(sys.argv[6]))')
+        return subprocess.run(['python3', '-c', code, str(self.root), VERSION, SOURCE,
+                               'ghcr.io/example/verify-runner', str(self.inputs), str(self.out)],
+                              cwd=self.script.parent, env=dict(self.env, MODE=mode),
+                              text=True, capture_output=True)
+
     def recorded(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
 
@@ -192,10 +242,9 @@ if args[:2] == ['image', 'inspect']:
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         probes = [c for c in calls if c[0] == 'run' and 'python3' in c]
-        # regression: #4323 — the probe runs on every runner platform.
+        # The publisher probes amd64; native arm64 is checked before transfer.
         self.assertEqual([(p[p.index('--platform') + 1], p[p.index('python3') + 1]) for p in probes],
-                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
-                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64')])
         for probe in probes:
             self.assertEqual(probe[-3:], ['-B', '-c',
                              (self.root / 'images/verify-runner/check.py').read_text()])
@@ -230,31 +279,31 @@ if args[:2] == ['image', 'inspect']:
         calls = self.recorded()
         self.assertFalse(any('"push"' in s or '"manifest"' in s for s in calls))
         self.assertEqual(sum(s.startswith('scan ') for s in calls), 6)
-        # Eight amd64 images and two runner platforms report a version; both
-        # runner platforms run the capability probe.
-        self.assertEqual(sum('"run"' in s for s in calls), 12)
+        # The native job checks arm64; this job checks eight amd64 images
+        # and the amd64 runner, plus its capability probe.
+        self.assertEqual(sum('"run"' in s for s in calls), 10)
         self.assertIn('DESK_TOOLS_IMAGE=ghcr.io/example/assay/desk-tools:v1.2.3', '\n'.join(calls))
         self.assertEqual((self.root / '.release-images/harness/statusgen').read_bytes(),
                          (self.inputs / 'statusgen-linux-amd64').read_bytes())
-        for arch in ('amd64', 'arm64'):
-            self.assertEqual((self.root / f'.release-images/verify-runner/statusgen-linux-{arch}').read_bytes(),
-                             (self.inputs / f'statusgen-linux-{arch}').read_bytes())
+        self.assertEqual((self.root / '.release-images/verify-runner/statusgen-linux-amd64').read_bytes(),
+                         (self.inputs / 'statusgen-linux-amd64').read_bytes())
         self.assertFalse((self.root / '.release-images/harness/statusgen-linux-arm64').exists())
 
     # regression: #4323
-    def test_runner_builds_each_platform_and_never_the_bare_tag(self):
+    def test_publisher_builds_only_amd64_and_imports_native_arm64(self):
         result = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
         self.assertEqual([(c[c.index('--platform') + 1], c[c.index('-t') + 1]) for c in builds],
-                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
-                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64')])
         versions = [c for c in calls if c[0] == 'run' and 'statusgen' in c and 'verify-runner' in c[-2]]
         self.assertEqual([(c[c.index('--platform') + 1], c[-2]) for c in versions],
-                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
-                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64')])
         self.assertFalse(any('ghcr.io/example/verify-runner:v1.2.3' in c for c in calls))
+        loads = [c for c in calls if c[:1] == ['load']]
+        self.assertEqual(len(loads), 1)
+        self.assertIn(str(self.native_archive.resolve()), loads[0])
 
     # regression: #4323
     def test_runner_platform_builds_push_a_single_manifest(self):
@@ -262,7 +311,7 @@ if args[:2] == ['image', 'inspect']:
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
-        self.assertEqual(len(builds), 2)
+        self.assertEqual(len(builds), 1)
         for build in builds:
             # An attestation-carrying image pushes as an index, which
             # `docker manifest create` refuses after the tags are spent.
@@ -281,7 +330,7 @@ if args[:2] == ['image', 'inspect']:
     # regression: #4323
     def test_missing_arm64_statusgen_stops_before_any_build(self):
         (self.inputs / 'statusgen-linux-arm64').unlink()
-        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertNotEqual(self.invoke_native().returncode, 0)
         self.assertFalse(any('"build"' in s for s in self.recorded()))
 
     def test_publish_produces_complete_consistent_manifest_after_all_checks(self):
@@ -454,109 +503,124 @@ if args[:2] == ['image', 'inspect']:
                     attested = published['List the release assets to attest'].split('; do', 1)[0]
                     self.assertRegex(attested, r'(?<![\w-])' + asset + r'(?![\w-])')
 
-    # regression: #4784 — the release runner had no arm64 handler, so the
-    # linux/arm64 verify-runner build failed with "exec format error". The job
-    # registers emulation itself, before any credential exists, in dry runs too.
-    def test_arm64_emulation_is_registered_before_credentials_and_images(self):
-        root = HERE.parents[1]
-        step_name = 'Register and prove arm64 emulation'
-        for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
-            with self.subTest(path=path):
-                publisher = workflow_jobs((root / path).read_text())['release']
-                step = workflow_steps(publisher)[step_name]
-                at = publisher.find('      - name: ' + step_name + '\n')
-                self.assertGreater(at, publisher.find('      - name: Restore the prepared source'))
-                self.assertLess(at, publisher.find('      - name: Build, verify and publish the release images\n'))
-                login = publisher.find('| docker login ghcr.io')
-                self.assertGreater(login, 0)
-                self.assertLess(at, login)
-                # Per line (re.M): an `if:` anywhere in the step skips it.
-                self.assertNotRegex(step, r'(?m)^        if:', 'dry runs build arm64 too')
-                # The whole step, run script included: no expression may put a
-                # token or secret into the privileged step.
-                self.assertNotIn('${{', step, 'the privileged step must carry no token or secret')
-                env = step.split('        run: |\n', 1)[0]
-                self.assertRegex(env, r'BINFMT_IMAGE: [a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}\n')
-                self.assertIn('docker run --privileged --rm --network none "$BINFMT_IMAGE"'
-                              ' --uninstall qemu-aarch64 --install arm64 2>&1', step)
-                self.assertIn("grep -qx 'installing: arm64 OK'", step)
+    def test_native_arm64_build_checks_and_saves_without_publication(self):
+        result = self.invoke_native()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        self.assertEqual(calls[0], ['info', '--format', '{{.OSType}}/{{.Architecture}}'])
+        builds = [c for c in calls if c[0] == 'build']
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(builds[0][builds[0].index('--platform') + 1], 'linux/arm64')
+        self.assertIn('--provenance=false', builds[0])
+        self.assertIn('--sbom=false', builds[0])
+        runs = [c for c in calls if c[0] == 'run']
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(c[c.index('--platform') + 1] == 'linux/arm64' for c in runs))
+        self.assertTrue(any('statusgen' in c for c in runs))
+        probe = next(c for c in runs if 'python3' in c)
+        for flag in ('--read-only', '--cap-drop', '--security-opt', '--user', '--pids-limit',
+                     '--memory', '--cpus', '--tmpfs'):
+            self.assertIn(flag, probe)
+        self.assertEqual(probe[probe.index('--network') + 1], 'none')
+        self.assertEqual(probe[probe.index('--cap-drop') + 1], 'ALL')
+        self.assertEqual(probe[probe.index('--security-opt') + 1], 'no-new-privileges')
+        self.assertEqual(probe[probe.index('--user') + 1], '1000:1000')
+        self.assertNotIn('--privileged', probe)
+        self.assertNotIn('--mount', probe)
+        self.assertNotIn('--volume', probe)
+        save = next(i for i, c in enumerate(calls) if c[0] == 'save')
+        self.assertLess(max(calls.index(c) for c in runs), save)
+        self.assertFalse(any(c[0] in ('push', 'manifest', 'login') for c in calls))
+        receipt = json.loads((self.out / 'verify-runner-linux-arm64.json').read_text())
+        expected = json.loads(self.native_receipt.read_text())
+        self.assertEqual(receipt, expected)
+        self.assertEqual((self.out / 'verify-runner-linux-arm64.tar').read_bytes(),
+                         self.native_archive.read_bytes())
 
-    def test_arm64_emulation_step_fails_closed(self):
-        main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
-        step = workflow_steps(workflow_jobs(main)['release'])['Register and prove arm64 emulation']
-        script = '\n'.join(line[10:] for line in step.split('        run: |\n', 1)[1].splitlines())
-        work = self.root / 'emulation'
-        (work / 'images/verify-runner').mkdir(parents=True)
-        (work / 'bin').mkdir()
-        fake = work / 'bin/docker'
-        # Models the pinned installer (cmd/binfmt/main.go at e29e7d72): it logs
-        # one line per uninstall and install to stderr, prints its status JSON
-        # to stdout, and exits 0 even when a registration fails. Only a failed
-        # container start exits non-zero. Also model an interrupted installer
-        # after its success line, to prove that partial output cannot mask a
-        # non-zero exit. The probe answers per FAKE_PROBE_*.
-        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
-                        'case "$*" in *--install*)\n'
-                        '  printf "%s" "$FAKE_LOG" >&2\n'
-                        '  echo \'{"supported":["linux/amd64"],"emulators":[]}\'\n'
-                        '  exit "$FAKE_START";;\nesac\n'
-                        '[ "$FAKE_PROBE_EXIT" = 0 ] || exit "$FAKE_PROBE_EXIT"\n'
-                        'echo "$FAKE_ARCH"\n')
-        fake.chmod(0o755)
-        base = 'golang:1.2.3-bookworm@sha256:' + 'a' * 64
-        fresh = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 OK\n'
-        replaced = 'uninstalling: qemu-aarch64 OK\ninstalling: arm64 OK\n'
-        stale = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 qemu-aarch64 already registered\n'
-        refused = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 EPERM opening /proc/sys/fs/binfmt_misc/register check permissions?\n'
-        # Exact registration failure from release dry run 40777382211. This
-        # tool still exits zero; the filesystem diagnostic must stop the job.
-        read_only = ('uninstalling: qemu-aarch64 not found\n'
-                     'installing: arm64 Cannot open /proc/sys/fs/binfmt_misc/register: '
-                     'open /proc/sys/fs/binfmt_misc/register: read-only file system\n')
-        no_install = 'error: cannot mount binfmt_misc filesystem at /proc/sys/fs/binfmt_misc: operation not permitted\n'
-        not_installed = "no 'installing: arm64 OK' line"
-        not_working = '::error::arm64 emulation is not working'
-        # name: (container start exit, installer log, probe exit, probe arch,
-        #        RUNNER_BASE, expected exit, expected message, probe expected)
-        cases = {
-            'fresh-node': ('0', fresh, '0', 'aarch64', base, 0, 'arm64 emulation ready', True),
-            'replaces-existing-handler': ('0', replaced, '0', 'aarch64', base, 0, 'arm64 emulation ready', True),
-            # The real tool exits 0 here; a working pre-existing handler must
-            # not be accepted in place of the pinned one.
-            'stale-handler-survives': ('0', stale, '0', 'aarch64', base, 1, 'unregister it on the runner host', False),
-            'register-refused': ('0', refused, '0', 'aarch64', base, 1, not_installed, False),
-            'register-read-only': ('0', read_only, '0', 'aarch64', base, 1, 'runner registration filesystem is read-only', False),
-            'read-only-despite-success-line': ('0', read_only + fresh, '0', 'aarch64', base, 1, 'runner registration filesystem is read-only', False),
-            'binfmt-not-mountable': ('0', no_install, '0', 'aarch64', base, 1, not_installed, False),
-            'ok-for-another-arch-only': ('0', 'installing: riscv64 OK\n', '0', 'aarch64', base, 1, not_installed, False),
-            'container-fails-to-start': ('125', '', '0', 'aarch64', base, 1, 'exit 125', False),
-            'success-line-with-nonzero-exit': ('137', fresh, '0', 'aarch64', base, 1, 'exit 137', False),
-            'wrong-arch': ('0', fresh, '0', 'x86_64', base, 1, not_working, True),
-            'probe-fails': ('0', fresh, '125', '', base, 1, not_working, True),
-            'unpinned-base': ('0', fresh, '0', 'aarch64', 'golang:1.2.3-bookworm', 1, 'no single digest-pinned RUNNER_BASE', False),
-        }
-        installer = 'run --privileged --rm --network none binfmt:x@sha256:' + 'b' * 64 + ' --uninstall qemu-aarch64 --install arm64'
-        prober = 'run --rm --network none --platform linux/arm64 ' + base + ' uname -m'
-        for name, (start, log, probe_exit, arch, ref, code, message, probed) in cases.items():
-            with self.subTest(case=name):
-                (work / 'images/verify-runner/Dockerfile').write_text('ARG RUNNER_BASE=' + ref + '\nFROM ${RUNNER_BASE}\n')
-                calls = work / ('calls-' + name)
-                result = subprocess.run(
-                    ['bash', '-c', script], cwd=work, text=True, capture_output=True,
-                    env=dict(os.environ, PATH=str(work / 'bin') + os.pathsep + os.environ['PATH'],
-                             CALLS=str(calls), FAKE_START=start, FAKE_LOG=log, FAKE_PROBE_EXIT=probe_exit,
-                             FAKE_ARCH=arch, BINFMT_IMAGE='binfmt:x@sha256:' + 'b' * 64))
-                self.assertEqual(result.returncode, code, result.stdout + result.stderr)
-                self.assertIn(message, result.stdout)
-                if name.startswith('register-read-only') or name == 'read-only-despite-success-line':
-                    self.assertIn('runner owner', result.stdout)
-                    self.assertIn('security decision', result.stdout)
-                if ref == base:
-                    expected = [installer] + ([prober] if probed else [])
-                    self.assertEqual(calls.read_text().splitlines(), expected)
-                    # The installer's own lines are echoed into the job log.
-                    for line in log.splitlines():
-                        self.assertIn(line, result.stdout)
+    def test_native_arm64_failures_never_export_or_publish(self):
+        for mode in ('native-wrong-host', 'wrong-arch', 'missing-yaml', 'missing-jsonschema'):
+            with self.subTest(mode=mode):
+                self.setUp()
+                result = self.invoke_native(mode)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('save', 'push', 'manifest', 'login') for c in calls))
+                self.assertFalse((self.out / 'verify-runner-linux-arm64.json').exists())
+                if mode == 'native-wrong-host':
+                    self.assertFalse(any(c[0] in ('build', 'run') for c in calls))
+
+    def test_native_receipt_and_archive_must_match_before_import(self):
+        for field in ('schema', 'version', 'source_revision', 'platform', 'ref',
+                      'image_id', 'archive_sha256', 'missing-archive', 'tampered-archive'):
+            with self.subTest(field=field):
+                self.setUp()
+                receipt = json.loads(self.native_receipt.read_text())
+                if field == 'missing-archive':
+                    self.native_archive.unlink()
+                elif field == 'tampered-archive':
+                    self.native_archive.write_bytes(b'changed native bytes')
+                else:
+                    receipt[field] = 'incorrect'
+                    self.native_receipt.write_text(json.dumps(receipt))
+                result = self.invoke(True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
+                self.assertFalse((self.out / 'release-images.json').exists())
+
+    def test_native_archive_cannot_replace_other_image_tags(self):
+        for mode in ('extra-image', 'wrong-tag', 'wrong-config'):
+            with self.subTest(mode=mode):
+                self.setUp()
+                native_archive(self.native_archive,
+                               ref='ghcr.io/example/other:old' if mode == 'wrong-tag' else
+                                   'ghcr.io/example/verify-runner:v1.2.3-linux-arm64',
+                               extra=mode == 'extra-image')
+                if mode == 'wrong-config':
+                    with tarfile.open(self.native_archive, 'a') as archive:
+                        info = tarfile.TarInfo(NATIVE_ID.split(':')[1] + '.json')
+                        content = b'changed config'
+                        info.size = len(content)
+                        archive.addfile(info, io.BytesIO(content))
+                receipt = json.loads(self.native_receipt.read_text())
+                receipt['archive_sha256'] = hashlib.sha256(self.native_archive.read_bytes()).hexdigest()
+                self.native_receipt.write_text(json.dumps(receipt))
+                result = self.invoke(True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
+
+    def test_imported_native_image_identity_must_match_before_publication(self):
+        result = self.invoke(True, 'native-id-mismatch')
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        self.assertTrue(any(c[0] == 'load' for c in calls))
+        self.assertFalse(any(c[0] == 'push' for c in calls))
+        self.assertFalse((self.out / 'release-images.json').exists())
+
+    def test_native_arm64_workflow_precedes_the_approved_publisher(self):
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            with self.subTest(path=path):
+                text = (HERE.parents[1] / path).read_text()
+                jobs = workflow_jobs(text)
+                native = jobs['runner-arm64']
+                self.assertIn('runs-on: ubuntu-24.04-arm', native)
+                self.assertIn('needs: [resolve, guard, test, artifacts]', native)
+                self.assertNotIn('environment: release', native)
+                self.assertNotRegex(native, r'(?m)^      (contents|packages|id-token): write$')
+                step = workflow_steps(native)['Build and check native arm64 verify-runner']
+                self.assertIn('build_native_runner', step)
+                self.assertNotRegex(step, r'(?m)^        if:', 'dry runs must build native arm64 too')
+                for name in ('verify-runner-linux-arm64.tar', 'verify-runner-linux-arm64.json'):
+                    self.assertIn(name, native)
+                self.assertIn('name: release-runner-arm64', native)
+                publisher = jobs['release']
+                self.assertIn('runner-arm64', publisher.split('    runs-on:', 1)[0])
+                self.assertIn('name: release-runner-arm64', publisher)
+                self.assertLess(publisher.index('name: release-runner-arm64'),
+                                publisher.index('name: Build, verify and publish the release images'))
+                self.assertNotIn('BINFMT_IMAGE', text)
+                self.assertNotIn('--privileged', text)
 
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
@@ -567,8 +631,10 @@ if args[:2] == ['image', 'inspect']:
                                            '\npermissions:\n  contents: write\n', 1),
             'missing-approval': main.replace('    environment: release\n', '', 1),
             'second-approval': main + '\n  second:\n    environment: release\n',
-            'missing-tests': main.replace('needs: [resolve, guard, test, artifacts]',
-                                          'needs: [resolve, guard, artifacts]', 1),
+            'missing-tests': main.replace('needs: [resolve, guard, test, artifacts, runner-arm64]',
+                                          'needs: [resolve, guard, artifacts, runner-arm64]', 1),
+            'missing-native-dependency': main.replace('needs: [resolve, guard, test, artifacts, runner-arm64]',
+                                                      'needs: [resolve, guard, test, artifacts]', 1),
             'missing-image-step': main.replace('Build, verify and publish the release images', 'removed', 1),
             'wrong-order': main.replace('Build, verify and publish the release images', 'TEMP', 1)
                               .replace('Create and push the dispatched tag',

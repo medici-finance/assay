@@ -1,5 +1,6 @@
 """Release-owned Linux artifacts and container images. No consumer builds images."""
 import datetime
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -120,37 +121,17 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         run("docker", "build", "--platform", "linux/amd64", "--build-arg",
             f"BASE_IMAGE={refs['desk-base']}", "-t", refs[name],
             "-f", root / f"containers/{name}/Dockerfile", root)
-    # A non-native platform builds under the runner's registered emulation; a
-    # runner without it fails here, before any push. Each platform image must
-    # push as ONE manifest: with the containerd image store a default build
-    # attaches provenance/SBOM attestations and pushes as an index, which
-    # `docker manifest create` refuses after the platform tags are spent.
-    # These are BuildKit flags; every build here already needs BuildKit.
-    for platform, ref in runner_refs.items():
-        run("docker", "build", "--platform", platform,
-            "--provenance=false", "--sbom=false", "-t", ref,
-            "-f", root / "images/verify-runner/Dockerfile", root)
-        got = run("docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}",
-                  ref, capture=True).strip()
-        if got != platform:
-            raise ValueError(f"verify-runner build for {platform} produced {got!r}")
+    # ARM64 is built and checked on a native runner. Import its exact checked
+    # image; this publisher must never register an emulator or execute ARM64.
+    import_native_runner(artifacts, version, source, runner_refs["linux/arm64"])
+    platform = "linux/amd64"
+    ref = runner_refs[platform]
+    build_runner(root, platform, ref)
     checks = [(name, ref, "linux/amd64") for name, ref in refs.items() if name != "verify-runner"]
-    checks += [("verify-runner " + platform, ref, platform) for platform, ref in runner_refs.items()]
+    checks.append(("verify-runner " + platform, ref, platform))
     for name, ref, platform in checks:
-        got = run("docker", "run", "--rm", "--network", "none", "--platform", platform,
-                  "--entrypoint", "statusgen", ref, "--version", capture=True).strip()
-        if got != version:
-            raise ValueError(f"{name} statusgen version {got!r} != {version}")
-    # Probe each runner platform with its own non-root, read-only, no-network
-    # fence. Source stays in the release contract; no mounts, installs or credentials.
-    for platform, ref in runner_refs.items():
-        run("docker", "run", "--rm", "--pull", "never", "--network", "none",
-            "--platform", platform, "--read-only", "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges", "--user", "1000:1000",
-            "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
-            "--entrypoint", "python3", ref, "-B", "-c",
-            (root / "images/verify-runner/check.py").read_text())
+        check_version(name, ref, platform, version)
+    check_runner(root, runner_refs["linux/amd64"], "linux/amd64")
     for name in ("desk-base", *DESKS):
         run("sh", root / "containers/scripts/layer-secret-scan.sh", refs[name])
     if not publish:
@@ -170,6 +151,144 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
     runner = next(image["ref"] for image in images if image["name"] == "verify-runner")
     (out / "verify-runner-image.txt").write_text(runner + "\n")
     print("Published all release images; immutable references are release artifacts.")
+
+
+NATIVE_ARCHIVE = "verify-runner-linux-arm64.tar"
+NATIVE_RECEIPT = "verify-runner-linux-arm64.json"
+
+
+def check_version(name, ref, platform, version):
+    got = run("docker", "run", "--rm", "--network", "none", "--platform", platform,
+              "--entrypoint", "statusgen", ref, "--version", capture=True).strip()
+    if got != version:
+        raise ValueError(f"{name} statusgen version {got!r} != {version}")
+
+
+def build_runner(root, platform, ref):
+    # Each platform must push as ONE manifest, not a provenance/SBOM index.
+    run("docker", "build", "--platform", platform,
+        "--provenance=false", "--sbom=false", "-t", ref,
+        "-f", root / "images/verify-runner/Dockerfile", root)
+    check_runner_platform(ref, platform)
+
+
+def check_runner_platform(ref, platform):
+    got = run("docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}",
+              ref, capture=True).strip()
+    if got != platform:
+        raise ValueError(f"verify-runner build for {platform} produced {got!r}")
+
+
+def check_runner(root, ref, platform):
+    # The same native capability proof on both architectures. No emulator,
+    # mounts, installs, credentials or network are added to this fence.
+    run("docker", "run", "--rm", "--pull", "never", "--network", "none",
+        "--platform", platform, "--read-only", "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges", "--user", "1000:1000",
+        "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+        "--entrypoint", "python3", ref, "-B", "-c",
+        (root / "images/verify-runner/check.py").read_text())
+
+
+def stream_sha256(stream):
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def file_sha256(path):
+    with path.open("rb") as stream:
+        return stream_sha256(stream)
+
+
+def build_native_runner(root, version, source, verify_image, artifacts, out, platform="linux/arm64"):
+    """Build/check ARM64 natively and hand its exact image to the publisher.
+
+    This job has no registry login, push or repository write. The receipt is
+    same-run CI transport evidence, not a public attestation or a runtime pin.
+    """
+    if platform != "linux/arm64":
+        raise ValueError("the native image job builds linux/arm64 only")
+    if not re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
+        raise ValueError("a bare umbrella vMAJOR.MINOR.PATCH is required")
+    if not re.fullmatch(r"[0-9a-f]{40}", source):
+        raise ValueError("source revision must be a full commit SHA")
+    if not re.fullmatch(r"ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*", verify_image):
+        raise ValueError("registry names must be untagged GHCR repository paths")
+    root, artifacts, out = Path(root).resolve(), Path(artifacts).resolve(), Path(out).resolve()
+    plugin = json.loads((root / "plugins/assay/.claude-plugin/plugin.json").read_text())
+    if plugin.get("version") != version.removeprefix("v"):
+        raise ValueError("prepared plugin version disagrees with the release")
+    host = run("docker", "info", "--format", "{{.OSType}}/{{.Architecture}}", capture=True).strip()
+    if host not in ("linux/arm64", "linux/aarch64"):
+        raise ValueError(f"native ARM64 build requires an ARM64 Docker daemon, got {host!r}")
+    out.mkdir(parents=True, exist_ok=True)
+    if any((out / name).exists() for name in (NATIVE_ARCHIVE, NATIVE_RECEIPT)):
+        raise ValueError("refusing to replace native image transport artifacts")
+    stage = root / ".release-images"
+    if stage.exists():
+        raise ValueError(".release-images already exists; use a clean release checkout")
+    bins = stage / "verify-runner"
+    bins.mkdir(parents=True)
+    asset = "statusgen-linux-arm64"
+    shutil.copyfile(artifacts / asset, bins / asset)
+    (bins / asset).chmod(0o755)
+    ref = f"{verify_image}:{version}-linux-arm64"
+    build_runner(root, platform, ref)
+    check_version("verify-runner " + platform, ref, platform, version)
+    check_runner(root, ref, platform)
+    image_id = run("docker", "image", "inspect", "--format", "{{.Id}}", ref, capture=True).strip()
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("native build did not yield one image ID")
+    archive = out / NATIVE_ARCHIVE
+    run("docker", "save", "--output", archive, ref)
+    receipt = {"schema": "native-runner-v1", "version": version,
+               "source_revision": source, "platform": platform, "ref": ref,
+               "image_id": image_id, "archive_sha256": file_sha256(archive)}
+    (out / NATIVE_RECEIPT).write_text(json.dumps(receipt, indent=2) + "\n")
+
+
+def import_native_runner(artifacts, version, source, ref):
+    receipt = json.loads((artifacts / NATIVE_RECEIPT).read_text())
+    expected = {"schema": "native-runner-v1", "version": version,
+                "source_revision": source, "platform": "linux/arm64", "ref": ref}
+    if not isinstance(receipt, dict) or any(receipt.get(k) != v for k, v in expected.items()):
+        raise ValueError("native ARM64 receipt disagrees with this release")
+    image_id = receipt.get("image_id", "")
+    digest = receipt.get("archive_sha256", "")
+    if not isinstance(image_id, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("native ARM64 receipt has no exact image ID")
+    archive = artifacts / NATIVE_ARCHIVE
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or file_sha256(archive) != digest:
+        raise ValueError("native ARM64 image archive checksum mismatch")
+    # Docker load mutates the local image store. Admit exactly the transported
+    # tag/config before loading, so a receipt cannot import unrelated tags.
+    with tarfile.open(archive, "r:*") as saved:
+        manifests = [m for m in saved.getmembers() if m.name == "manifest.json"]
+        if len(manifests) != 1 or not manifests[0].isfile() or manifests[0].size > 1024 * 1024:
+            raise ValueError("native ARM64 archive has no single Docker save manifest")
+        with saved.extractfile(manifests[0]) as stream:
+            manifest = json.load(stream)
+        if (not isinstance(manifest, list) or len(manifest) != 1
+                or not isinstance(manifest[0], dict) or manifest[0].get("RepoTags") != [ref]):
+            raise ValueError("native ARM64 archive must contain only its expected image tag")
+        config = manifest[0].get("Config")
+        if not isinstance(config, str):
+            raise ValueError("native ARM64 archive has no image config")
+        configs = [m for m in saved.getmembers() if m.name == config]
+        if len(configs) != 1 or not configs[0].isfile() or configs[0].size > 16 * 1024 * 1024:
+            raise ValueError("native ARM64 archive has no single image config")
+        with saved.extractfile(configs[0]) as stream:
+            config_id = "sha256:" + stream_sha256(stream)
+        if config_id != image_id:
+            raise ValueError("native ARM64 archive config differs from the checked image")
+    run("docker", "load", "--input", archive)
+    check_runner_platform(ref, "linux/arm64")
+    loaded = run("docker", "image", "inspect", "--format", "{{.Id}}", ref, capture=True).strip()
+    if loaded != image_id:
+        raise ValueError("loaded ARM64 image differs from the native checked image")
 
 
 def push_digest(ref):

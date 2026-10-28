@@ -1,2 +1,2 @@
 ### Fixed
-- Release preflight identifies a read-only arm64 registration interface as a runner security decision instead of suggesting stale-handler cleanup. It also refuses a nonzero installer exit even if the output contains a success line. Both failures stop before the arm64 probe and image builds.
+- Build and check the arm64 verify-runner image on a native ARM64 runner, then transfer its image archive and receipt to the release publisher. The publisher validates the release metadata, archive checksum, tag, platform and image identity before publishing the multi-platform index. Release jobs no longer require kernel emulator registration on protected runners.
