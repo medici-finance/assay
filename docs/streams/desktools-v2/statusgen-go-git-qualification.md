@@ -57,3 +57,27 @@ resolution, configurable short IDs and public NOTICE/error framing additionally 
 retained native/API diagnostic evidence; those private observations are not represented
 as committed tests or as proof of unrelated operations. The rejected RawCommit batch
 port preserved healthy bytes but changed the public failure text, so it remains native.
+
+## Relocated test registrations
+
+The existing test ledger reports 128 departures from
+`tools/desk/internal/gitcore` and `tools/desk/internal/gittest` when compared with
+delivering main. Those old package registrations moved to `gitcore` and
+`gitcore/gittest`; every old package-and-name identity remains registered under
+its corresponding new package. A compiled `go test -list . . ./gittest` confirms
+all 128 names, including the benchmark. `TestMain` is not a ledger test.
+
+The relocation trailers explain the old registrations using the existing
+`Retires-test:` delete form. They do not remove the departure rows or make the
+report clean: the complete nonempty report remains review evidence, including
+the original deletion commit and the later explanatory trailer commit. Two
+packages share `TestGoldenDiffAfterChange`, so each old symbol has its own
+trailer stating the destination; the ledger's bare-name matching can display
+both matching explanations.
+
+This is registration preservation, not a claim that every body is byte-identical
+or that listing executes tests. Of the 128 relocated bodies, 113 are identical;
+15 have visible fixture/error-check or guard-scope edits carried by the lift.
+Their old/new body hashes and diffs are retained for review alongside separate
+behavioral qualification. No named test function was removed from its new owner,
+and no ledger/checker or baseline policy is changed to explain the relocation.
