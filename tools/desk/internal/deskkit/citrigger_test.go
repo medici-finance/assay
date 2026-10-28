@@ -271,6 +271,8 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "desk-containers/31 pins source/schema coverage and actual Go/Python launch hash parity; workflow has no path filter"},
+
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"schemas/perf-v4.json"},
 			runInvokes: []string{`*/perfrec|perfrec) extra="go test ./..." ;;`},
