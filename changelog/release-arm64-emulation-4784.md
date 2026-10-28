@@ -1,0 +1,2 @@
+### Fixed
+- The release job registers arm64 emulation itself, from a digest-pinned `tonistiigi/binfmt` installer, before building images. It replaces any `qemu-aarch64` handler already on the runner node with the pinned one, requires the installer's `installing: arm64 OK` line (the installer exits 0 even when registration fails), and proves a `linux/arm64` container runs. The multi-arch verify-runner build no longer fails with `exec format error` on a runner without emulation.
