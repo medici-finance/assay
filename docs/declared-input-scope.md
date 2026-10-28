@@ -198,3 +198,14 @@ fresh admitted observation. The files fields under Task in desk-tools/31, /33 an
 and composability/04 also refuses explicitly; their earlier partial parses never
 established complete scope. These briefs need declaration repair and fresh admitted
 observation; this inventory grants no historical acceptance credit.
+
+## The `inputs:` field (statusgen/36)
+
+A second, narrower Context field, `inputs:`, declares the literal paths a Verify row's
+Commands read, for the content-bound witness reader. It reuses the `files:` tokenizer's
+shape (inline or `- ` list items, backticks optional, an em dash ends the entries) but reads
+only literal repo-relative files and directories: a glob, brace, `**`, backslash, absolute
+path or `..` makes the declaration unreadable, and an unreadable or absent field means the
+witness scope is the whole tree. It is parsed by `evaluation.ParseInputsDeclaration` and
+bounded by `evaluation.InputsBoundViolations`; `files:` keeps its grammar and readers
+unchanged. See `docs/contracts.md` R-witness-schema.

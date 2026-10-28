@@ -23,11 +23,18 @@ type coverageRepo struct{ root string }
 
 func newCoverageRepo(root string) evaluation.Repo { return coverageRepo{root: root} }
 
+// coverageGitHook, when set (tests only), is told about every git invocation
+// the coverage port builds, so a test can bound them (TestCoverageGitCallsBounded).
+var coverageGitHook func(root string, args []string)
+
 // coverageGit runs git in root with replacement objects ignored. Like every
 // provenance read (historyGitEnv) it runs without the repository-locating
 // environment variables, so the -C directory alone names the repository: the
 // consumer-delivery snapshot enumerates its tree through this adapter.
 func coverageGit(root string, args ...string) *exec.Cmd {
+	if h := coverageGitHook; h != nil {
+		h(root, args)
+	}
 	return historyGitEnv(exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...))
 }
 
