@@ -107,14 +107,20 @@ errors and bounded exhaustion. Native deskboard regressions exercise first-paren
 classification and complete-only interval reuse, including retry after partial data.
 The dedicated mutation spec qualifies with a green baseline, caught positive control,
 18 caught faults, zero survivors and zero unmutatable faults (14 at the first revision;
-the later-page metadata and oversized-page guards added four). The spec is run by hand
-with `go run ./cmd/muhar -spec internal/deskkit/commithistory-mutations.json` from
-`tools/desk`; it is not yet in a CI mutation matrix. All seven shared adapter
+the later-page metadata and oversized-page guards added four). The spec is in the
+muhar matrix of `.github/workflows/truth-suite.yml` (the `mutation-gate` job), which
+requires every mutant in it to be caught; to run it by hand, use
+`go run ./cmd/muhar -spec internal/deskkit/commithistory-mutations.json` from
+`tools/desk`. All seven shared adapter
 and consumer suites pass (deskkit 462.946s, deskboard 41.808s, deskdispatch 169.802s,
 deskevidence 173.221s, deskpost 19.844s, deskflip 2.239s, deskautolane 1.078s). Focused race,
 vet, source lint, mutation-anchor and committed test-ledger checks pass. No original
-test or control is retired. The final fail-fast behavior and all consumer suites were run at the measured
-source below. Earlier measurements, binaries and qualification remain preserved
+test or control is retired. The matched measurements below were taken at the measured
+source `f7224bd1`, which predates the change that keeps page-1 metadata after a later-page
+failure (§Failure shape); at that source a later-page failure was still fail-fast. The
+change leaves the clean-path request counts unchanged, and the board tests pin them. All
+seven suites and the mutation spec were re-run at the final head `126f74f4`.
+Earlier measurements, binaries and qualification remain preserved
 as the initial revision; no prior evidence is relabeled as a repeated run.
 
 Matched measurement uses the actual native adapter, first-parent reader and shared
