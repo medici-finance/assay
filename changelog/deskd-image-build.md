@@ -1,0 +1,2 @@
+### Added
+- `make deskd-build` builds the deskd service binary into `deskd/dist/`, and `make deskd-image` builds a local, digest-pinned, non-root, shell-less deskd image (`images/deskd/Dockerfile`, context `deskd/` only) and runs the layer-secret scan on it. The image is never pushed or pinned; `scripts/build-windows.ps1` mirrors both targets (`deskd-image` refuses on Windows), and a static contract test with one negative fixture per property holds the pins, the credential exclusions and the no-push recipe.
