@@ -31,6 +31,8 @@ spec.loader.exec_module(sbom)
 PLATFORMS = ['darwin-arm64', 'darwin-amd64', 'linux-amd64', 'windows-amd64', 'windows-arm64']
 BINARIES = [f'{tool}-{p}' + ('.exe' if p.startswith('windows-') else '')
             for tool in ('statusgen', 'qualgen') for p in PLATFORMS]
+# statusgen alone also ships for linux-arm64: the arm64 verify-runner image's (#4323).
+BINARIES.append('statusgen-linux-arm64')
 TARBALLS = [f'desk-tools-{p}.tar.gz' for p in PLATFORMS]
 GO_ASSETS = BINARIES + TARBALLS
 REPO, TAG, EPOCH = 'example-org/assay', 'v1.2.3', 1761580800

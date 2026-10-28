@@ -1,6 +1,7 @@
 """Offline release-producer tests; fake Docker, real artifact bytes and manifests."""
 import copy
 import fnmatch
+import hashlib
 import importlib.util
 import io
 import json
@@ -76,7 +77,8 @@ def publication_problems(text):
         'git checkout --detach "$SOURCE_SHA"',
         'from tools.release.images import build_images',
         "build_images(Path.cwd(), os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],",
-        'from tools.release.images_contract import validate',
+        'from tools.release.images_contract import RUNNER_PLATFORM, validate',
+        'runner_platforms=(RUNNER_PLATFORM,)',
         'sha256sum release-images.json verify-runner-image.txt >> checksums.txt',
         'release-images.json verify-runner-image.txt checksums.txt; do',
         "publish=os.environ['DRY_RUN'] != 'true'",
@@ -112,6 +114,7 @@ printf 'scan %s\\n' "$1" >> "$CALLS"
         self.inputs = self.root / 'inputs'
         self.inputs.mkdir()
         (self.inputs / 'statusgen-linux-amd64').write_bytes(b'published statusgen bytes')
+        (self.inputs / 'statusgen-linux-arm64').write_bytes(b'published arm64 statusgen bytes')
         (self.inputs / 'image-bugs-gc-linux-amd64').write_bytes(b'bugs-gc bytes')
         with tarfile.open(self.inputs / 'desk-tools-linux-amd64.tar.gz', 'w:gz') as out:
             for name in ['deskboard', 'cellctl', 'deskpr', 'hooks/pre-push']:
@@ -123,14 +126,35 @@ printf 'scan %s\\n' "$1" >> "$CALLS"
         bindir.mkdir()
         docker = bindir / 'docker'
         docker.write_text('''#!/usr/bin/env python3
-import json, os, sys
+import hashlib, json, os, sys
 args = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as f: f.write(json.dumps(args)+'\\n')
 mode = os.environ.get('MODE', '')
+def digest(ref): return 'sha256:' + hashlib.sha256(ref.encode()).hexdigest()
+ARCHES = {'linux/amd64': '-linux-amd64', 'linux/arm64': '-linux-arm64'}
+if args[:2] == ['manifest', 'inspect'] and '@' in args[-1]:
+    repo, dgst = args[-1].split('@')
+    if dgst != 'sha256:' + 'c'*64: print('manifest unknown', file=sys.stderr); sys.exit(1)
+    entries = [{'digest': digest(repo + ':v1.2.3' + suffix),
+                'platform': {'os': p.split('/')[0], 'architecture': p.split('/')[1]}}
+               for p, suffix in ARCHES.items()]
+    if mode == 'index-extra': entries.append({'digest': digest('x'), 'platform': {'os': 'linux', 'architecture': 's390x'}})
+    if mode == 'index-dup': entries.append(dict(entries[0]))
+    if mode == 'index-wrong-digest': entries[1]['digest'] = digest('unpushed')
+    media = 'application/vnd.oci.image.manifest.v1+json' if mode == 'index-not-list' else 'application/vnd.oci.image.index.v1+json'
+    print(json.dumps({'schemaVersion': 2, 'mediaType': media, 'manifests': entries})); sys.exit(0)
 if args[:2] == ['manifest', 'inspect']:
-    if mode == 'exists': print('{}'); sys.exit(0)
+    if mode == 'exists' or (mode == 'arch-tag-exists' and args[-1].endswith('-linux-arm64')):
+        print('{}'); sys.exit(0)
     print('unauthorized' if mode == 'lookup-fail' else 'manifest unknown', file=sys.stderr)
     sys.exit(1)
+if args[:2] == ['manifest', 'create']: sys.exit(0)
+if args[:2] == ['manifest', 'push']:
+    if mode != 'index-no-digest': print('sha256:' + 'c'*64)
+    sys.exit(0)
+if args[:2] == ['image', 'inspect'] and args[3] == '{{.Os}}/{{.Architecture}}':
+    platform = next(p for p, suffix in ARCHES.items() if args[-1].endswith(suffix))
+    print('linux/amd64' if mode == 'wrong-arch' else platform); sys.exit(0)
 if args[0] == 'run' and 'python3' in args:
     if mode in ('missing-yaml', 'missing-jsonschema'):
         print('ModuleNotFoundError: ' + mode, file=sys.stderr); sys.exit(1)
@@ -142,7 +166,7 @@ if args[:2] == ['image', 'inspect']:
     if mode == 'missing-digest': sys.exit(0)
     repo = args[-1].rsplit(':', 1)[0]
     if mode == 'wrong-digest-repo': repo = 'ghcr.io/unrelated/image'
-    print(repo + '@sha256:' + 'b'*64)
+    print(repo + '@' + digest(args[-1]))
 ''')
         docker.chmod(0o755)
         self.out = self.root / 'output'
@@ -168,22 +192,25 @@ if args[:2] == ['image', 'inspect']:
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         probes = [c for c in calls if c[0] == 'run' and 'python3' in c]
-        self.assertEqual(len(probes), 1)
-        probe = probes[0]
-        self.assertEqual(probe[-3:], ['-B', '-c',
-                         (self.root / 'images/verify-runner/check.py').read_text()])
-        for flag, value in [('--pull', 'never'), ('--network', 'none'),
-                            ('--user', '1000:1000'), ('--cap-drop', 'ALL'),
-                            ('--security-opt', 'no-new-privileges'),
-                            ('--pids-limit', '64'), ('--memory', '256m'),
-                            ('--cpus', '1'),
-                            ('--tmpfs', '/tmp:rw,noexec,nosuid,size=16m')]:
-            self.assertEqual(probe[probe.index(flag) + 1], value)
-        self.assertIn('--read-only', probe)
-        self.assertNotIn('--volume', probe)
-        self.assertNotIn('--mount', probe)
-        self.assertNotIn('seccomp=unconfined', probe)
-        self.assertLess(calls.index(probe), next(i for i, c in enumerate(calls) if c[0] == 'push'))
+        # regression: #4323 — the probe runs on every runner platform.
+        self.assertEqual([(p[p.index('--platform') + 1], p[p.index('python3') + 1]) for p in probes],
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
+                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+        for probe in probes:
+            self.assertEqual(probe[-3:], ['-B', '-c',
+                             (self.root / 'images/verify-runner/check.py').read_text()])
+            for flag, value in [('--pull', 'never'), ('--network', 'none'),
+                                ('--user', '1000:1000'), ('--cap-drop', 'ALL'),
+                                ('--security-opt', 'no-new-privileges'),
+                                ('--pids-limit', '64'), ('--memory', '256m'),
+                                ('--cpus', '1'),
+                                ('--tmpfs', '/tmp:rw,noexec,nosuid,size=16m')]:
+                self.assertEqual(probe[probe.index(flag) + 1], value)
+            self.assertIn('--read-only', probe)
+            self.assertNotIn('--volume', probe)
+            self.assertNotIn('--mount', probe)
+            self.assertNotIn('seccomp=unconfined', probe)
+            self.assertLess(calls.index(probe), next(i for i, c in enumerate(calls) if c[0] == 'push'))
 
     # regression: #3469
     def test_missing_python_stops(self):
@@ -203,24 +230,116 @@ if args[:2] == ['image', 'inspect']:
         calls = self.recorded()
         self.assertFalse(any('"push"' in s or '"manifest"' in s for s in calls))
         self.assertEqual(sum(s.startswith('scan ') for s in calls), 6)
-        self.assertEqual(sum('"run"' in s for s in calls), 10)
+        # Eight amd64 images and two runner platforms report a version; both
+        # runner platforms run the capability probe.
+        self.assertEqual(sum('"run"' in s for s in calls), 12)
         self.assertIn('DESK_TOOLS_IMAGE=ghcr.io/example/assay/desk-tools:v1.2.3', '\n'.join(calls))
         self.assertEqual((self.root / '.release-images/harness/statusgen').read_bytes(),
                          (self.inputs / 'statusgen-linux-amd64').read_bytes())
+        for arch in ('amd64', 'arm64'):
+            self.assertEqual((self.root / f'.release-images/verify-runner/statusgen-linux-{arch}').read_bytes(),
+                             (self.inputs / f'statusgen-linux-{arch}').read_bytes())
+        self.assertFalse((self.root / '.release-images/harness/statusgen-linux-arm64').exists())
+
+    # regression: #4323
+    def test_runner_builds_each_platform_and_never_the_bare_tag(self):
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
+        self.assertEqual([(c[c.index('--platform') + 1], c[c.index('-t') + 1]) for c in builds],
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
+                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+        versions = [c for c in calls if c[0] == 'run' and 'statusgen' in c and 'verify-runner' in c[-2]]
+        self.assertEqual([(c[c.index('--platform') + 1], c[-2]) for c in versions],
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
+                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+        self.assertFalse(any('ghcr.io/example/verify-runner:v1.2.3' in c for c in calls))
+
+    # regression: #4323
+    def test_runner_platform_builds_push_a_single_manifest(self):
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
+        self.assertEqual(len(builds), 2)
+        for build in builds:
+            # An attestation-carrying image pushes as an index, which
+            # `docker manifest create` refuses after the tags are spent.
+            self.assertIn('--provenance=false', build)
+            self.assertIn('--sbom=false', build)
+
+    # regression: #4323
+    def test_runner_platforms_match_the_contract(self):
+        spec = importlib.util.spec_from_file_location('images', HERE / 'images.py')
+        images = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(images)
+        self.assertEqual(images.RUNNER_PLATFORMS, contract.RUNNER_PLATFORMS)
+        self.assertEqual(images.RUNNER_PLATFORM, contract.RUNNER_PLATFORM)
+        self.assertEqual(contract.RUNNER_PLATFORM, 'linux/amd64,linux/arm64')
+
+    # regression: #4323
+    def test_missing_arm64_statusgen_stops_before_any_build(self):
+        (self.inputs / 'statusgen-linux-arm64').unlink()
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertFalse(any('"build"' in s for s in self.recorded()))
 
     def test_publish_produces_complete_consistent_manifest_after_all_checks(self):
         result = self.invoke(True)
         self.assertEqual(result.returncode, 0, result.stderr)
         manifest = json.loads((self.out / 'release-images.json').read_text())
+        strict = (contract.RUNNER_PLATFORM,)
         refs = contract.validate(manifest, VERSION, SOURCE,
-                                 (self.out / 'verify-runner-image.txt').read_text(), 'example/assay')
+                                 (self.out / 'verify-runner-image.txt').read_text(), 'example/assay',
+                                 runner_platforms=strict)
         self.assertEqual(len(refs), 9)
+        # regression: #4323 — the runner reference pins the index digest the
+        # registry returned, and its record names both platforms.
+        runner = next(i for i in manifest['images'] if i['name'] == 'verify-runner')
+        self.assertEqual(runner, {'name': 'verify-runner', 'platform': 'linux/amd64,linux/arm64',
+                                  'ref': 'ghcr.io/example/verify-runner:v1.2.3@sha256:' + 'c' * 64})
+        self.assertEqual({i['platform'] for i in manifest['images'] if i['name'] != 'verify-runner'},
+                         {'linux/amd64'})
         calls = self.recorded()
-        pushes = [i for i, s in enumerate(calls) if '"push"' in s]
-        self.assertEqual(len(pushes), 9)
+        parsed = [json.loads(s) if s.startswith('[') else [] for s in calls]
+        pushes = [i for i, c in enumerate(parsed) if c[:1] == ['push']]
+        self.assertEqual(len(pushes), 10)
+        self.assertEqual([parsed[i][1] for i in pushes][-2:],
+                         ['ghcr.io/example/verify-runner:v1.2.3-linux-amd64',
+                          'ghcr.io/example/verify-runner:v1.2.3-linux-arm64'])
+        create = next(i for i, c in enumerate(parsed) if c[:2] == ['manifest', 'create'])
+        self.assertEqual(parsed[create][2:], [
+            'ghcr.io/example/verify-runner:v1.2.3',
+            'ghcr.io/example/verify-runner@' + 'sha256:' + hashlib.sha256(
+                b'ghcr.io/example/verify-runner:v1.2.3-linux-amd64').hexdigest(),
+            'ghcr.io/example/verify-runner@' + 'sha256:' + hashlib.sha256(
+                b'ghcr.io/example/verify-runner:v1.2.3-linux-arm64').hexdigest()])
+        self.assertLess(max(pushes), create)
+        index_push = next(i for i, c in enumerate(parsed) if c[:2] == ['manifest', 'push'])
+        read_back = next(i for i, c in enumerate(parsed) if c[:2] == ['manifest', 'inspect'] and '@' in c[-1])
+        self.assertLess(create, index_push)
+        self.assertLess(index_push, read_back)
         self.assertLess(max(i for i, s in enumerate(calls) if s.startswith('scan ')), min(pushes))
         self.assertLess(max(i for i, s in enumerate(calls) if '"run"' in s), min(pushes))
-        for mutate in ['missing', 'duplicate', 'tag', 'digest', 'source', 'runner']:
+        # Absence is established for the bare tag and both platform tags.
+        absent = {c[-1] for c in parsed if c[:2] == ['manifest', 'inspect'] and '@' not in c[-1]}
+        self.assertLessEqual({'ghcr.io/example/verify-runner:v1.2.3',
+                              'ghcr.io/example/verify-runner:v1.2.3-linux-amd64',
+                              'ghcr.io/example/verify-runner:v1.2.3-linux-arm64'}, absent)
+        self.assertEqual(len(absent), 11)
+        # An amd64-only runner record is a legacy consumer record: the default
+        # contract still admits it, the producer's strict call does not.
+        legacy = copy.deepcopy(manifest)
+        next(i for i in legacy['images'] if i['name'] == 'verify-runner')['platform'] = 'linux/amd64'
+        runner_txt = (self.out / 'verify-runner-image.txt').read_text()
+        contract.validate(legacy, VERSION, SOURCE, runner_txt, 'example/assay')
+        with self.assertRaises(ValueError):
+            contract.validate(legacy, VERSION, SOURCE, runner_txt, 'example/assay', runner_platforms=strict)
+        with self.assertRaises(ValueError):
+            contract.validate(manifest, VERSION, SOURCE, runner_txt, 'example/assay',
+                              runner_platforms=contract.RUNNER_PLATFORM)
+        for mutate in ['missing', 'duplicate', 'tag', 'digest', 'source', 'runner',
+                       'runner-platform', 'desk-multiarch']:
             with self.subTest(mutate=mutate):
                 broken = copy.deepcopy(manifest)
                 runner = (self.out / 'verify-runner-image.txt').read_text()
@@ -230,12 +349,16 @@ if args[:2] == ['image', 'inspect']:
                 if mutate == 'digest': broken['images'][0]['ref'] = broken['images'][0]['ref'].split('@')[0]
                 if mutate == 'source': broken['source_revision'] = 'c' * 40
                 if mutate == 'runner': runner = runner.rstrip('\n')
+                if mutate == 'runner-platform': broken['images'][-1]['platform'] = 'linux/arm64'
+                if mutate == 'desk-multiarch': broken['images'][0]['platform'] = contract.RUNNER_PLATFORM
                 with self.assertRaises(ValueError):
-                    contract.validate(broken, VERSION, SOURCE, runner, 'example/assay')
+                    contract.validate(broken, VERSION, SOURCE, runner, 'example/assay', runner_platforms=strict)
 
     def test_refusals_never_publish_metadata(self):
         for mode in ['exists', 'lookup-fail', 'stale', 'scan-fail', 'push-fail',
-                     'missing-digest', 'wrong-digest-repo']:
+                     'missing-digest', 'wrong-digest-repo', 'arch-tag-exists', 'wrong-arch',
+                     'index-no-digest', 'index-extra', 'index-dup', 'index-wrong-digest',
+                     'index-not-list']:
             with self.subTest(mode=mode):
                 stage = self.root / '.release-images'
                 if stage.exists(): shutil.rmtree(stage)
@@ -243,7 +366,7 @@ if args[:2] == ['image', 'inspect']:
                 result = self.invoke(True, mode)
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertFalse((self.out / 'release-images.json').exists())
-                if mode in ['exists', 'lookup-fail', 'stale', 'scan-fail']:
+                if mode in ['exists', 'lookup-fail', 'stale', 'scan-fail', 'arch-tag-exists', 'wrong-arch']:
                     self.assertFalse(any('"push"' in s for s in self.recorded()))
 
     def test_release_has_one_approval_before_all_publication(self):
@@ -268,6 +391,8 @@ if args[:2] == ['image', 'inspect']:
         root = HERE.parents[1]
         platforms = ['darwin-arm64', 'darwin-amd64', 'linux-amd64',
                      'windows-amd64', 'windows-arm64']
+        # linux-arm64 carries only the runner image's statusgen (#4323).
+        partial = {'linux-arm64': ['statusgen-linux-arm64']}
         common = ['cursor-bundle.tar.gz', 'checksums.txt', 'sbom.spdx.json',
                   'tool-validation-v1.2.3.json', 'tool-validation-v1.2.3.md',
                   'image-bugs-gc-linux-amd64', 'prepared-source.tar.gz',
@@ -277,7 +402,7 @@ if args[:2] == ['image', 'inspect']:
             uploads = re.findall(
                 r'(?ms)^      - name: Upload prepared release artifacts[^\n]*\n'
                 r'(.*?)(?=^      - |\Z)', jobs['artifacts'])
-            self.assertEqual(len(uploads), 6)
+            self.assertEqual(len(uploads), 7)
             for with_bundle in [False, True]:
                 with self.subTest(path=path, with_bundle=with_bundle):
                     expected = {'release-build-common': common +
@@ -288,6 +413,8 @@ if args[:2] == ['image', 'inspect']:
                             'statusgen-' + platform + suffix,
                             'qualgen-' + platform + suffix,
                             'desk-tools-' + platform + '.tar.gz']
+                    for platform, names in partial.items():
+                        expected['release-build-' + platform] = names
                     files = [name for names in expected.values() for name in names]
                     selected = []
                     for upload in uploads:
@@ -306,6 +433,26 @@ if args[:2] == ['image', 'inspect']:
             self.assertIn('merge-multiple: true', release)
             self.assertIn('sha256sum -c build-inputs.sha256', release)
             self.assertIn('sha256sum -c checksums.txt', release)
+
+    # regression: #4323 — the arm64 statusgen the runner image carries is a
+    # published release asset: built, described, checksummed and attested.
+    def test_runner_statusgen_assets_flow_through_the_release(self):
+        root = HERE.parents[1]
+        for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
+            jobs = workflow_jobs((root / path).read_text())
+            steps = workflow_steps(jobs['artifacts'])
+            published = workflow_steps(jobs['release'])
+            for asset in ['statusgen-linux-amd64', 'statusgen-linux-arm64']:
+                goarch = asset.rsplit('-', 1)[1]
+                with self.subTest(path=path, asset=asset):
+                    self.assertRegex(steps['Build binaries'],
+                                     r'GOOS=linux +GOARCH=' + goarch + r' go build [^\n]*-o \.\./' + asset + r' ')
+                    sbom = steps['Generate the SBOM'].split('<<', 1)[0]
+                    self.assertRegex(sbom, r'(?<![\w-])' + asset + r'(?![\w-])')
+                    checksums = steps['Generate checksums'].split('> checksums.txt', 1)[0]
+                    self.assertRegex(checksums, r'(?m)^ +' + asset + r' \\$')
+                    attested = published['List the release assets to attest'].split('; do', 1)[0]
+                    self.assertRegex(attested, r'(?<![\w-])' + asset + r'(?![\w-])')
 
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
@@ -326,7 +473,8 @@ if args[:2] == ['image', 'inspect']:
             'ignored-image-failure': main.replace('Build, verify and publish the release images\n',
                                                   'Build, verify and publish the release images\n        continue-on-error: true\n', 1),
             'unguarded-writer': main + '\n  other:\n    permissions:\n      packages: write\n',
-            'missing-ref-check': main.replace('from tools.release.images_contract import validate', 'removed', 1),
+            'missing-ref-check': main.replace('from tools.release.images_contract import RUNNER_PLATFORM, validate', 'removed', 1),
+            'lenient-runner-platform': main.replace('runner_platforms=(RUNNER_PLATFORM,)', '', 1),
             'missing-checksum': main.replace('sha256sum release-images.json verify-runner-image.txt >> checksums.txt', 'removed', 1),
             'dry-run-tag': main.replace("if: github.event_name == 'workflow_dispatch' && !inputs.dry_run", 'if: true', 1),
             'dry-run-release': main.replace("- name: Create GitHub release and upload assets\n        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
