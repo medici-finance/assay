@@ -2368,6 +2368,25 @@
       "state": "pending"
     },
     {
+      "executable": "fetch-baseline.sh",
+      "path": "statusgen/fetch-baseline.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by ci.yml and release.yml",
+      "consumers": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "statusgen/witnessv2_skew_test.go"
+      ],
+      "parser": "bash positional arguments; --from-source mode word",
+      "complexity": "simple",
+      "basis": "109 lines at ec9f8f04e6fe",
+      "owner": "statusgen/36",
+      "state": "exempt",
+      "reason": "CI and release-gate helper that provides the v1.0.52 statusgen baseline (checksum-verified download, or a source build at the pinned commit) as SG_OLD_BIN for the statusgen/36 witness skew tests (#4459); never installed as an operator CLI; retires with those skew tests"
+    },
+    {
       "executable": "aggregate.py",
       "path": "tools/changelog/aggregate.py",
       "kind": "script",
