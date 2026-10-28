@@ -82,7 +82,7 @@ design-fit:
   owner: existing cellctl operator lifecycle; Kubernetes owns workload reconciliation and existing desks own task policy
   contract: none — add one explicitly selected compatibility profile to the existing operator boundary, retaining cell-op-v1
   retires: []
-  weight: verbs +1 attach-only operator command; counter flags +4 typed reads of existing up bindings, no new ordinary lifecycle flags; configuration keys +1; bounded refusal cases +6 (target, identity, custody, lineage, quiescence, stop-unknown)
+  weight: verbs +1 attach-only operator command; counter flags +5 typed reads of existing up bindings, no new ordinary lifecycle flags; configuration keys +1; bounded refusal cases +6 (target, identity, custody, lineage, quiescence, stop-unknown)
   why-add: Existing k8s-kind routing starts a local harness and cannot address Pod streams. An opt-in backend and attach-only command avoid repointing legacy registrations or constructing the future general runtime. Manual attach was considered, but cannot make cellctl start/status/stop address the same execution.
 
 ## Read first
