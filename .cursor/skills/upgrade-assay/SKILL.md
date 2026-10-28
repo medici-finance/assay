@@ -106,7 +106,7 @@ applied. Run it, read it back to them, and apply only on their explicit confirma
 5. **Land the re-pin.** This verb rewrites the working tree and deliberately never pushes or opens
    a PR, so landing the diff is yours. A re-pin delivers no brief, so its PR body carries the
    `Issue: #<N>` link trailer — file a short tracking issue for the bump and name it — not a
-   `Brief:` line. (Both `Issue: #<N>` and its resolving form `Fixes: #<N>` satisfy `deskpr` / `pr-review-desk`; use `Fixes:` only when merging should close the tracking issue, and never for an issue carrying `needs-decision` or `human-decided`. A bump with no brief is exactly
+   `Brief:` line. (Both `Issue: #<N>` and its resolving form `Fixes: #<N>` satisfy `deskpr` / `pr-review-desk`; use `Fixes:` only when merging should close the tracking issue, and never for an issue carrying `needs-decision` or `human-decided`, or any decision-gate issue. A bump with no brief is exactly
    the `Issue:` case. This repo's own front-door re-pin, PR #496, is the precedent.)
 
 ## Refusals are first-class outcomes, each with a distinct exit code
