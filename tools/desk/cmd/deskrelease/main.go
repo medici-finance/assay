@@ -64,10 +64,11 @@
 //
 // Guarantees it holds:
 //
-//   - the kill switch runs before anything that ACTS — before the argv parse, the
-//     identity mint, and any network call. Precisely: the three non-acting words
-//     `version` / `--version` / `help` are dispatched ahead of Guard() and print without
-//     consulting it; every path that could touch the remote runs after it;
+//   - the kill switch runs before anything that ACTS — before the cut argv parse, the
+//     identity mint, and any network call. Precisely: the non-acting requests (`version`,
+//     `--version`, `-v`, `help`, `-h`, `--help`, and `cut -h` / `cut --help` with no other
+//     word) are answered by the command tree ahead of Guard() and print without consulting
+//     it; every path that could touch the remote runs after it;
 //   - the tag is validated against ^(desk-tools|statusgen)/v\d+\.\d+\.\d+$ AND
 //     screened for refspec metacharacters, each with its own refusal reason;
 //   - ANY unrecognised flag or extra operand is REFUSED, never ignored — a silently
@@ -102,67 +103,173 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// helpLong is the root help's prose (desktools-v2/46: the command tree generates the rest).
+const helpLong = `deskrelease — cut a release tag as the desk App, via the GitHub git-data API
+
+usage:
+  deskrelease cut <tag> [--dry-run]
+  deskrelease version
+
+<tag> must match ^(assay|desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$ — e.g. desk-tools/v0.1.3.
+The assay namespace is the UMBRELLA line (e.g. assay/v0.9.0); the other two
+are per-artifact lines. This list is the set this tool CUTS, not the set this repo releases:
+daily-harvest/vX.Y.Z tags exist and are cut by their own release path, not by deskrelease.
+The tag is created at the CURRENT remote origin/main HEAD, re-read at act time; there is
+no --sha and no --repo. An existing tag is REFUSED, never moved (fix forward with the
+next patch version). Any extra operand or unknown flag is REFUSED, never ignored.
+
+There is no delete, force, move, or override verb, and no git push is ever executed.
+
+exit codes: 0 ok/noop · 2 usage · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable`
+
+// cutHelp is `deskrelease cut --help`.
+const cutHelp = `deskrelease cut — create refs/tags/<tag> at the current remote origin/main HEAD, as the desk App.
+
+usage:
+  deskrelease cut <tag> [--dry-run]
+
+<tag> is (desk-tools|statusgen|assay)/vMAJOR.MINOR.PATCH — argv only, never stdin or the
+environment. --dry-run validates and resolves everything but writes nothing. Any other word
+— an extra operand, an unknown flag, a help word after the tag — is REFUSED (exit 5) and
+audited, never ignored.
+
+exit codes: 0 ok/noop · 2 usage · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable`
+
 func main() {
-	os.Exit(deskkit.PerfRun("deskrelease", nil, os.Args[1:], func([]string) int {
-		// The roster class is an EXPLICIT declaration, never the zero value by accident
-		// (a correctness review found: SetToolClass had no caller anywhere,
-		// so "ClassWrite is the safe default" was true only by luck). This tool ACTS on
-		// the roster, so it is ciEligible=false: it reads the config-home file and never
-		// the environment, in CI as well as locally.
-		deskkit.SetToolClass(deskkit.ClassForTool(false))
-		// P3: echo the effective roster once per run. Every tool that reads a configured
-		// control surface echoes it — a value that lives in settings rather than in a diff
-		// is only visible at RUN time, and a NARROWING must be as visible as a widening.
-		deskkit.EchoEffectiveConfig(os.Stderr)
-		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
-		}
-		return run(os.Args[1:])
+	os.Exit(deskkit.PerfRun("deskrelease", nil, os.Args[1:], func(a []string) int {
+		return execute(a, os.Stdout, os.Stderr, startup)
 	}))
 }
 
+// startup is the process startup a cut runs before anything else; help and version never
+// reach it. false means the verb is not activated (exit 6).
+func startup(errw io.Writer) bool {
+	// The roster class is an EXPLICIT declaration, never the zero value by accident
+	// (a correctness review found: SetToolClass had no caller anywhere,
+	// so "ClassWrite is the safe default" was true only by luck). This tool ACTS on
+	// the roster, so it is ciEligible=false: it reads the config-home file and never
+	// the environment, in CI as well as locally.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	// P3: echo the effective roster once per run. Every tool that reads a configured
+	// control surface echoes it — a value that lives in settings rather than in a diff
+	// is only visible at RUN time, and a NARROWING must be as visible as a widening.
+	deskkit.EchoEffectiveConfig(errw)
+	return deskkit.CheckVerbActivation(errw)
+}
+
+// run is one invocation on the package streams, without the process startup — the shape the
+// package's tests drive.
 func run(argv []string) int {
-	// Resolve the release home before anything reads it. Unset leaves the shipped
-	// default in place, so this is a no-op for an adopter who configures nothing.
-	applyConfiguredReleaseRepo()
+	return execute(argv, stdout, stderr, nil)
+}
 
-	deskkit.WarnIfUnpinned(stderr)
+// cutFn is the cut handler the command tree calls with the full argv (`cut` first); the
+// contract tests replace it to observe what reaches it.
+var cutFn = cmdCut
 
-	if len(argv) == 0 {
-		usage()
-		return 2
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
 	}
+	return exitErr(code)
+}
 
-	switch argv[0] {
-	case "version", "--version", "-v":
-		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "deskrelease sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
-		return 0
-	case "help", "-h", "--help":
-		usage()
-		return 0
-	}
+// versionLine is what version, --version and -v print.
+func versionLine() string {
+	s, b := deskkit.Version()
+	return fmt.Sprintf("deskrelease sourceSHA=%s builtAt=%s releaseTag=%s", s, b, deskkit.ReleaseTagOrDev())
+}
 
-	// Kill switch FIRST — before parsing args or touching the network. A disabled
-	// suite exits 3 after Guard audits result=disabled.
-	if err := deskkit.Guard(); err != nil {
-		fmt.Fprintln(stderr, "deskrelease: "+err.Error())
-		return deskkit.ExitCodeOf(err)
-	}
+// isHelpWord reports whether a is a help request.
+func isHelpWord(a string) bool { return a == "-h" || a == "--help" }
 
-	switch argv[0] {
-	case "cut":
-		return cmdCut(argv)
-	default:
-		fmt.Fprintln(stderr, "deskrelease: unknown subcommand "+argv[0])
-		usage()
-		return 2
+// execute runs one invocation against a fresh command tree. pre is the process startup; it
+// runs only on a cut, after the command line parses, and never for help or version.
+//
+// The tree declares NO setting: no flag beyond help and version, no environment variable, no
+// configuration key. `cut` takes its argv raw (DisableFlagParsing) so that parseCutArgs stays
+// its ONE parser — the argv strictness this tool exists for (an unknown flag or extra operand
+// is refused with 5 and audited, never ignored) is not handed to a general-purpose parser.
+func execute(argv []string, out, errw io.Writer, pre func(io.Writer) bool) int {
+	prevOut, prevErr := stdout, stderr
+	stdout, stderr = out, errw
+	defer func() { stdout, stderr = prevOut, prevErr }()
+
+	build := func() *cobra.Command { return newTree(out, errw, pre) }
+	return cli.Run(build, argv, cli.Options{
+		IO:              cli.IO{Out: out, Err: errw},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A word the tree does not know (an unknown verb or root flag) is a usage error (2),
+		// as before; cut's own refusals stay 5 through parseCutArgs.
+		UsageExit: 2,
+	})
+}
+
+// newTree builds deskrelease's command tree on the given streams; pre is as for execute.
+func newTree(out, errw io.Writer, pre func(io.Writer) bool) *cobra.Command {
+	root := cli.NewRoot("deskrelease", "cut a release tag as the desk App, via the GitHub git-data API")
+	root.Long = helpLong
+	// -v printed the version before the migration; it still does.
+	root.Flags().BoolP("version", "v", false, "print the version and exit")
+	// A bare deskrelease prints its usage to stderr and exits 2, as before.
+	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		cmd.SetOut(errw)
+		_ = cmd.Help()
+		return exitErr(2)
 	}
+	cut := &cobra.Command{
+		Use:   "cut <tag> [--dry-run]",
+		Short: "create refs/tags/<tag> at the current remote origin/main HEAD",
+		Long:  cutHelp,
+		// parseCutArgs is cut's one parser; see execute's doc comment.
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, rest []string) error {
+			// A help word ALONE is a request for help: nothing is named, so nothing can
+			// act. After a tag it is an operand like any other and parseCutArgs refuses it.
+			if len(rest) == 1 && isHelpWord(rest[0]) {
+				return cmd.Help()
+			}
+			if pre != nil && !pre(errw) {
+				return exitErr(deskkit.ExitUnverifiable)
+			}
+			// Resolve the release home before anything reads it. Unset leaves the shipped
+			// default in place, so this is a no-op for an adopter who configures nothing.
+			applyConfiguredReleaseRepo()
+			deskkit.WarnIfUnpinned(errw)
+			// Kill switch FIRST among the acts — before parsing the cut argv or touching
+			// the network. A disabled suite exits 3 after Guard audits result=disabled.
+			if err := deskkit.Guard(); err != nil {
+				fmt.Fprintln(errw, "deskrelease: "+err.Error())
+				return exitErr(deskkit.ExitCodeOf(err))
+			}
+			return codeErr(cutFn(append([]string{"cut"}, rest...)))
+		},
+	}
+	root.AddCommand(cut)
+	// `deskrelease version` printed the build stamp before the migration; it still does.
+	root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			fmt.Fprintln(out, versionLine())
+			return nil
+		}})
+	return root
 }
 
 // cmdCut runs the one mutating verb through the outward-write flow.
@@ -184,25 +291,4 @@ func cmdCut(argv []string) int {
 	return runOutward(argv, func(entries []deskkit.Entry) writeResult {
 		return planCut(rest)
 	})
-}
-
-func usage() {
-	fmt.Fprint(stderr, `deskrelease — cut a release tag as the desk App, via the GitHub git-data API
-
-usage:
-  deskrelease cut <tag> [--dry-run]
-  deskrelease version
-
-<tag> must match ^(assay|desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$ — e.g. desk-tools/v0.1.3.
-The assay namespace is the UMBRELLA line (e.g. assay/v0.9.0); the other two
-are per-artifact lines. This list is the set this tool CUTS, not the set this repo releases:
-daily-harvest/vX.Y.Z tags exist and are cut by their own release path, not by deskrelease.
-The tag is created at the CURRENT remote origin/main HEAD, re-read at act time; there is
-no --sha and no --repo. An existing tag is REFUSED, never moved (fix forward with the
-next patch version). Any extra operand or unknown flag is REFUSED, never ignored.
-
-There is no delete, force, move, or override verb, and no git push is ever executed.
-
-exit codes: 0 ok/noop · 2 usage · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable
-`)
 }
