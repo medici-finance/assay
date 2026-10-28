@@ -8,8 +8,9 @@ import (
 	"time"
 )
 
-// The retained verifier record must remain consumable by the normal completion
-// planner. This exercises a disposable offline stream, never the real board.
+// The tool-published canonical republication must remain consumable by the normal
+// completion planner while the original legacy record is retained. This uses a
+// disposable offline stream, never the real board.
 // regression: #3298
 func TestCellopCompletionRecord(t *testing.T) {
 	const name = "brief-15-cell-op-machine-seam.md"
@@ -47,11 +48,11 @@ track: platform
 		t.Fatalf("completion reader refused retained verifier record: %v", err)
 	}
 	// Preserve the original receipt/source binding and cite the original
-	// publication next to the transcribed principal, rather than a new run.
+	// publication as the source for a canonical republication, not a new run.
 	for _, want := range []string{
 		"Verification-Attestation: medici-finance/assay#3185 ",
 		"source=00d2bb7f165194c0e4c9ef41e5db0cc6d018567d ",
-		"The `(on-behalf-of human:ian)` annotation is transcribed from the original verifier-authored Evidence publication [PR #3188](https://github.com/medici-finance/assay/pull/3188)",
+		"https://github.com/medici-finance/assay/pull/3188",
 	} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("retained record lost original provenance: %s", want)
