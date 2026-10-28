@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL — drop the client's refuse-if-unminted check (an empty token falls through to go-gh's ambient resolution)",
     "file": "internal/deskkit/forge_github.go",
-    "old": "\tif g.Token == \"\" {\n\t\treturn nil, Unverifiable(",
-    "new": "\tif false && g.Token == \"\" {\n\t\treturn nil, Unverifiable("
+    "old": "\tif g.Token == \"\" {\n\t\treturn nil, missingForgeToken(",
+    "new": "\tif false && g.Token == \"\" {\n\t\treturn nil, missingForgeToken("
   },
   "mutations": [
     {
@@ -16,8 +16,8 @@
     {
       "name": "resolver hands the client the environment's GH_TOKEN instead of the mint",
       "file": "internal/deskkit/forgeresolve.go",
-      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, role), res, nil",
-      "new": "\t\treturn OutboundChecked(&GitHubForge{Token: os.Getenv(\"GH_TOKEN\"), BaseURL: base, Client: githubSeamClient()}, role), res, nil"
+      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient(), Observer: observer}, role), res, nil",
+      "new": "\t\treturn OutboundChecked(&GitHubForge{Token: os.Getenv(\"GH_TOKEN\"), BaseURL: base, Client: githubSeamClient(), Observer: observer}, role), res, nil"
     },
     {
       "name": "GitHub custody mints for the account GH_REPO names, not the repo being read (#628 shape)",

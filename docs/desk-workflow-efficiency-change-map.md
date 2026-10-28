@@ -29,7 +29,7 @@ consumer/Verify updates; the accompanying brief diffs now propose those Task/Ver
 | performance-collection/01, event/spool/local report, todo/L | Amend contract through its owner | Select bounded phase, coverage and request-cost distinctions; preserve profiles/consent, seven-day initial local window and optional-sink isolation. Split extra implementation if needed. No new spool/schema owner in desk-tools. |
 | performance-collection/02, producer adapters, todo/L | Amend producer obligations; split implementation if needed | Carry selected phase and parent/child attribution, source versions, kit/caller mapping and honest unavailable/inclusive-CPU coverage. Operational dispatch/audit identities remain private; only the selected aliased profile can correlate them. |
 | performance-collection/07, on-demand reports, todo/L | Fold diagnostic report requirements | Add phase/endpoint and complete-cycle views to the tool panel using source-qualified data. Preserve its existing three-report bundle, pooled distributions and offline/no-provider-read contract. No second reporting CLI/skill or analytics database. |
-| performance-collection/03–06 and /08–09 | Retain independent scope | Database, ingestion, upload, daily reporting and automated repair are not prerequisites for local instrumentation or the read-path efficiency lane. Do not promote or activate this parked stream by implication. |
+| performance-collection/03–06 and /08–09 | Retain independent scope | Database, ingestion, upload, daily reporting and automated repair are not prerequisites for local instrumentation or the read-path efficiency lane. Do not promote or activate the performance-collection stream by implication; its activation rides its own recorded ruling. |
 | forge-neutral/36, narrow reader SDK, implemented | Reuse boundary | Current first shared read is open issues. A public review-observation API needs a separately scoped extraction; existing `internal` command packages are not external APIs. |
 | forge-neutral/37–38, mirror/events, todo | Fold eventual bulk-reader consumer requirements | Scope, coverage, freshness, coalesced refresh and event/poll repair remain here. Migrate actual consumers through qualified versions; early direct-read optimization stays independent. No private or command-specific mirror. |
 | forge-neutral/39–40, typed serving/custody, todo | Fold future queue/context serving contracts | Service requests and client adapters expose the same contracts; credentials and role effects remain separately contained. Not needed merely to share code in the desk module. |
@@ -115,7 +115,7 @@ Evidence is reopened. The numbering below is in the existing desk-tools stream.
 | forge-neutral/44 | Complete review-preparation cohort in existing Git trial; A4, A8 |
 | forge-neutral/45 | Actual served review/issue consumer journeys plus installed-version/fault qualification; A1–A5, A9 |
 
-Richer measurement remains owned by the parked performance-collection stream. Its
+Richer measurement remains owned by the performance-collection stream. Its
 implementation/consent, DB/API and report availability are not prerequisites for local
 cost qualification or early direct-reader shipping. No new collection policy is enabled.
 The served path follows its existing runtime dependencies: /39 now requires the qualified
@@ -143,3 +143,40 @@ review contract (/39 in desk-tools); /45 requires compatible callers and cost qu
 
 Refresh these PR states and their source heads at implementation. No external task was
 messaged and no active PR contract was silently changed by this authoring change.
+
+## Perf-v3 consumer amendment — 19 October 2026
+
+[Contract](performance-attribution-spec.md): perfrec /63–65 now owns the new local v3
+instrument, typed CLI/env/launcher context and own-request timing/GraphQL points. Collection
+retains aliased import, its event/spool/transport owner and its own admission state. Earlier statements
+that richer measurement belongs only in collection apply to that transport contract, not to
+this explicitly versioned local instrument. /62 and statusgen/26 adopt v3; collection/01–09
+preserve identity/coverage/units into reports, without raw local locators in exports.
+The source/consumer routing table in the contract classifies the remaining performance briefs;
+completed implementations and their Evidence are not reopened.
+
+## Candidate-plus-priority ownership reconciliation — 23 October 2026
+
+Requested amendment at App-fetched main `9c4307a19`; source audit release v1.0.57.
+The [planner contract and ranked call model](desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+extend existing delivery. No new stream/brief identity, second policy register or scheduler.
+
+| Existing work | Reuse / bounded amendment | Consumer and retirement proof |
+|---|---|---|
+| desk-tools/39–40 | Complete review candidate observation + explicit policy/time/capacity pure plan; keep role evaluators canonical | Same plan value feeds prose, reactor and summary; do not make operation-key sort the slot priority. |
+| desk-tools/42 | Issue projection input and enrichment/batching qualification | Work-ready, intake and inbox retain distinct complete populations; no global scan per root. Already shipped narrowing is baseline, not new savings. |
+| desk-tools/43–44 | Actual caller migration and full-workflow parity/cost qualification, spec A11–A12 | Retire duplicate calls before code/commands; preserve producer/skill/schema compatibility, liveness and admission. |
+| desk-tools/45,47,51 | Verification base classification, interrupted Evidence repair and skill lane integration | One complete multi-root candidate view, including owned Evidence repair; shared-blocker cache is per pass and final held-head checks remain. |
+| graph-execution/27 | Five-role composition in the already-declared tools/desk-local deskclient adapter | Both prose and discrete clients consume the same role-qualified planner; Loop/reactor, claims, supervisor and bounded judgments keep their owners. |
+| desktools-v2/09 and /20–21 | Reuse verified typed access-pattern queries; coordinate CLI adapters | Raw provider queries stay below Forge; parser migration does not create a ranker or take over policy. Preserve completed Evidence. |
+| forge-neutral/37–43 | One ingestion owner, typed serving, exact-source reuse and invalidation | Share across windows only after scope/freshness qualification; include policy/time/capacity dependencies without fetching GH for a pure priority change. No fallback poller per caller. |
+| Adopter desk-simplification and drain migration | Amend existing role cutover/parity and cleanup responsibilities locally | Do not recreate withdrawn core/policy plans, copy private plans into public Assay, or activate a parked program. |
+
+The first independently useful head remains /37's oracle plus /39's shared pure contract,
+then /40 and /43, qualified by /44. /27 composes the existing review/issue and verification
+APIs. /45 supplies the canonical verification queue; /43 and /51 supply the actual review
+and verifier prose adapters required by all-five-role parity. All three are reciprocal
+prerequisites of /27: composition consumes their implementations instead of duplicating them.
+This includes /51’s existing human gate; no earlier pure-contract acceptance waits on /27. R6 service dependencies remain on their own path;
+read-only improvement does not wait on a credential/writer cutover. Active /42 work retains
+its assigned revision until its owner acknowledges the bounded input/acceptance amendment.

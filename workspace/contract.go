@@ -23,13 +23,15 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
-// Schema is the one schema version this package reads and writes. A document naming any other
-// version, or none, is refused with ReasonUnknownSchema before any other check runs.
+// Schema is the one schema version this package reads and writes. After wire integrity is
+// checked, a document naming any other version, or none, is refused with ReasonUnknownSchema
+// before semantic checks run.
 const Schema = "cell-workspace/v1"
 
 // Operation names what a request asks for. Version 1 defines allocation; the other lifecycle
@@ -368,7 +370,7 @@ const (
 	absPathPattern = `^(/|[A-Za-z]:[\\/])((` + pathSegment + `|\.)([\\/](` + pathSegment + `|\.?))*)?$`
 )
 
-// checkSchema is the one version gate every decoder and validator runs first: a document of
+// checkSchema is the version gate every validator and wire-valid decoder runs first: a document of
 // any other version, or of none, is refused as unknown, never read as this one.
 func checkSchema(s string) error {
 	if s != Schema {
@@ -871,12 +873,54 @@ func DecodeResult(data []byte) (Result, error) {
 	return s, s.Validate()
 }
 
-// decode reads one document under the strict rules: the schema is checked first, so a newer
-// version is refused as unknown rather than as malformed; then no repeated key at any depth, no
+// checkWire prevents encoding/json's documented replacement of invalid UTF-8 and
+// unpaired UTF-16 escapes with U+FFFD. json.Valid checks syntax without decoding
+// string tokens; this pass then checks the original bytes, including object keys.
+// All three public decoders pass here before even the schema is decoded.
+func checkWire(data []byte) error {
+	if !utf8.Valid(data) || !json.Valid(data) {
+		return refuse(ReasonMalformed, "", "want a UTF-8 JSON document")
+	}
+	for i := 0; i < len(data); i++ {
+		if data[i] != '\\' {
+			continue
+		}
+		// Valid JSON guarantees a complete escape here. Consume escaped backslashes
+		// as a pair, so the literal text \\ud800 is never treated as a surrogate.
+		if data[i+1] != 'u' {
+			i++
+			continue
+		}
+		code, err := strconv.ParseUint(string(data[i+2:i+6]), 16, 16)
+		if err != nil {
+			return refuse(ReasonMalformed, "", "invalid Unicode escape")
+		}
+		i += 5
+		if code < 0xd800 || code > 0xdfff {
+			continue
+		}
+		if code > 0xdbff || i+6 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' {
+			return refuse(ReasonMalformed, "", "unpaired Unicode surrogate")
+		}
+		low, err := strconv.ParseUint(string(data[i+3:i+7]), 16, 16)
+		if err != nil || low < 0xdc00 || low > 0xdfff {
+			return refuse(ReasonMalformed, "", "unpaired Unicode surrogate")
+		}
+		i += 6
+	}
+	return nil
+}
+
+// decode reads one document under the strict rules: after wire integrity, the schema is checked
+// first, so a newer version is refused as unknown rather than as malformed; then no repeated
+// key at any depth, no
 // key outside the defined fields, no key differing from a field name only in case, no null or
 // empty optional field, numbers in canonical form, and nothing after the value. The last group is
 // one check: the document must equal its own re-encoding.
 func decode(data []byte, v any) error {
+	if err := checkWire(data); err != nil {
+		return err
+	}
 	var head map[string]json.RawMessage
 	if err := json.Unmarshal(data, &head); err != nil {
 		return refuse(ReasonMalformed, "", "not a JSON object")

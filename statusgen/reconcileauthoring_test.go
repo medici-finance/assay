@@ -153,9 +153,9 @@ func TestAuthoringUnreadIsUnknown(t *testing.T) {
 	}
 }
 
-// Only rows --apply can move are classified: a done row's PR costs no file read.
+// Every derived row is classified, including completed rows used by the drift reader.
 // regression: #1502
-func TestAuthoringScopeIsMovable(t *testing.T) {
+func TestAuthoringAllDerivedStates(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	root := writeBoard(t, map[string]string{"apstream": applyFixtureHeader +
 		"| 01 | [first](brief-01-first.md) | 0 | M | done | 2026-01-02 v | 2026-01-03 r |\n" +
@@ -163,14 +163,14 @@ func TestAuthoringScopeIsMovable(t *testing.T) {
 	read := authoringServer(t, []map[string]any{
 		mergedPull(1, "feat/a", "Brief: apstream/01\n"),
 		mergedPull(2, "feat/b", "Brief: apstream/02\n"),
-	}, map[int][]map[string]any{2: deliveryFiles}, nil)
+	}, map[int][]map[string]any{1: deliveryFiles, 2: deliveryFiles}, nil)
 
-	code, stdout := runReconcileCaptured(t, "--apply", "--root", root, "--repo", "o/r", "--json")
+	code, stdout := runReconcileCaptured(t, "--root", root, "--repo", "o/r", "--json")
 	if code != reconcileOK {
 		t.Fatalf("exit %d:\n%s", code, stdout)
 	}
-	if len(*read) != 1 || (*read)[0] != 2 {
-		t.Fatalf("file lists read for PRs %v, want only [2] (the todo row's)", *read)
+	if len(*read) != 2 {
+		t.Fatalf("file lists read for PRs %v, want both completed and todo rows", *read)
 	}
 }
 

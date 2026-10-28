@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/perfrec"
 	"os"
 	"os/exec"
 	"runtime"
@@ -10,6 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
@@ -234,12 +238,49 @@ func deskdHandStart(sh paneShell, cell string) string {
 	return "CELL_ATTENDED=1 cellctl deskd " + cell
 }
 
-func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
+// upControl carries what the adapter around cmdUp decided: the invocation, whether the machine form
+// was asked for, and the stored plan to apply.
+type upControl struct {
+	cmd     *cobra.Command
+	json    bool
+	applyID string
+	stdout  *os.File // the real stdout while --json has human output on stderr
+}
+
+// toStderr moves every human line of a --json run to stderr, so stdout carries the one document.
+func (ctl *upControl) toStderr() {
+	if ctl.json && ctl.stdout == nil {
+		ctl.stdout = os.Stdout
+		os.Stdout = os.Stderr
+	}
+}
+
+// restore gives stdout back before the document is written.
+func (ctl *upControl) restore() {
+	if ctl.stdout != nil {
+		os.Stdout = ctl.stdout
+		ctl.stdout = nil
+	}
+}
+
+// emit writes the one cell-op-result document of a --json run that launched nothing (a dry run,
+// or a cell with nothing to open) and exits; without --json it does nothing.
+func (ctl *upControl) emit(c *Cell, started time.Time, rows []upRow) {
+	if !ctl.json || ctl.applyID != "" {
+		return
+	}
+	ctl.restore()
+	r := upResult(c.Name, started, rows)
+	emitResult(ctl.cmd, r)
+	exitWith(r.ExitCode())
+}
+
+func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	if c.Kind == "container" || c.Kind == "scrubbed" {
 		// Container and scrubbed cells run exactly one desk, and `up` hands it the typed desk
 		// options. The host-cockpit flags have no meaning there, and desk has always refused them
 		// by name — keep that refusal where it was, now stated for the flags up declares.
-		for _, hostOnly := range []string{"no-the-desk", "with-the-desk", "no-attach", "automate"} {
+		for _, hostOnly := range []string{"no-the-desk", "with-the-desk", "no-attach", "automate", "role", "plan", "apply", "json", "lease-wait"} {
 			if v.Source(hostOnly) == cli.Flag {
 				die("desk: unknown flag --%s", hostOnly)
 			}
@@ -268,7 +309,15 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		return
 	}
 
-	noTheDesk, attach, persist := v.Bool("no-the-desk"), !v.Bool("no-attach"), v.Bool("set")
+	ctl.toStderr()
+	defer ctl.restore()
+	started0 := time.Now()
+	c.launchStarted = perfrec.ProcessEntry().At()
+	noTheDesk, attach, persist := v.Bool("no-the-desk"), !v.Bool("no-attach") && !ctl.json && ctl.applyID == "", v.Bool("set")
+	wait := v.Duration("lease-wait")
+	if wait <= 0 {
+		die("up: --lease-wait must be a positive duration")
+	}
 	cockpitFlag, automate := v.String("cockpit"), v.String("automate")
 	var o upOverrides
 	// Only what was GIVEN by flag is threaded onto each role window's own `desk` command line;
@@ -307,10 +356,16 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 	}
 	fmt.Printf("[cockpit] %s (%s)\n", res.Cockpit, res.Why)
 	o.Cockpit = res.Cockpit
+	if automate != "" && ctl.applyID != "" {
+		die("up: --apply cannot be combined with --automate (scheduled automations open no window and hold no lease, so there is nothing to apply)")
+	}
 	if automate != "" && res.Cockpit != "orca" {
 		die("up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is %s", res.Cockpit)
 	}
-	roles := c.upRoles(noTheDesk)
+	roles := c.upTargets(v.Strings("role"), noTheDesk)
+	if ctl.applyID != "" && persist {
+		die("up: --apply changes state and cannot persist overrides (--set)")
+	}
 
 	if effectiveHarness == "cursor" {
 		provider := o.Provider
@@ -418,29 +473,47 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		}
 	}
 
-	// The reconcile preflight (#2880): every role's and the comms service's stale state is
-	// inventoried by pid and start time BEFORE anything launches, and on a terminal cleared on one
-	// confirmation; otherwise the refusal carries the whole inventory and the exact commands.
+	// The reconcile classification (#2880) is read, never acted on, by a plain `up`: each role is
+	// probed up / stale / absent from the same evidence the preflight uses, and stale state is
+	// cleared only by an applied plan (`up --plan`, then `up --apply <plan-id>` on a terminal).
+	var commsCfg *deskCommsConfig
 	if c.Kind == "house" {
-		commsCfg, cfgErr := c.loadDeskComms()
+		var cfgErr error
+		commsCfg, cfgErr = c.loadDeskComms()
 		if cfgErr != nil {
 			commsCfg = nil // commsPreflight below refuses the configuration in its own words
 		}
-		c.reconcilePreflight("up", roles, commsCfg, c.Env.Get("DRY_RUN") == "1", "")
 	}
-	o.Comms, err = c.commsPreflight()
-	if err != nil {
-		die("up comms: %v; no windows launched", err)
+	// probe is the one place roles are classified; a non-house cell has no role lease to read.
+	probe := func(rs []string) ([]upProbe, *reconcileEntry) {
+		if c.Kind != "house" {
+			out := make([]upProbe, len(rs))
+			for i, r := range rs {
+				out[i] = upProbe{Role: r, Kind: probeAbsent}
+			}
+			return out, nil
+		}
+		ps, plan := c.probeUpRoles(rs, commsCfg)
+		return ps, commsStale(plan)
+	}
+	if ctl.applyID == "" {
+		// An applied plan may be what clears the comms state, so its preflight runs after the apply.
+		c.commsPreflightStale(commsCfg, c.Env.Get("DRY_RUN") == "1")
+		o.Comms, err = c.commsPreflight()
+		if err != nil {
+			die("up comms: %v; no windows launched", err)
+		}
 	}
 	firstName, firstCmd := c.firstWindow(paneShellFor(runtime.GOOS, res.Cockpit))
 	if firstName == "" && len(roles) == 0 && automate == "" && !o.Comms {
 		// Nothing to open is not an error (the operator asked for --no-the-desk on a cell whose only
 		// role is the-desk), but it is never silent, and no empty session is created for it.
 		fmt.Fprintf(os.Stderr, "[cell] %s: nothing to open — no deskd window (DESKD is not 1), no comms window, and no role window (ROLES is empty after --no-the-desk)\n", c.Name)
+		ctl.emit(c, started0, nil)
 		return
 	}
 
-	if c.Env.Get("DRY_RUN") == "1" {
+	if c.Env.Get("DRY_RUN") == "1" && ctl.applyID == "" {
 		kindShown := c.Kind
 		if c.KindOverride != "" {
 			kindShown += " (override)"
@@ -466,55 +539,159 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		if firstName != "" {
 			fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
 		}
-		for _, r := range roles {
-			if automate != "" {
+		if automate != "" {
+			var rows []upRow
+			for _, r := range roles {
+				rows = append(rows, upRow{Role: r, State: upStateWouldStart, Detail: "orca automation on " + automate})
 				fmt.Printf("[dry-run] %s: orca automations create --name %s-%s --repo path:%s --trigger '%s' --precheck '%s check %s' --provider claude --prompt /assay:%s\n",
 					r, c.Name, r, c.Repo, automate, selfPath(), c.Name, r)
-			} else {
-				fmt.Printf("[dry-run] %s: %s\n", r, c.paneRoleCmd(r, cfg, o))
 			}
+			ctl.emit(c, started0, rows)
+			return
 		}
+		// Each role's disposition comes from the probes a real run acts on. An absent role keeps
+		// its line: the command its window would run.
+		probes, _ := probe(roles)
+		var rows []upRow
+		for _, p := range probes {
+			cmd := c.paneRoleCmd(p.Role, cfg, o)
+			fmt.Println(c.upDryRunLine(p, cmd))
+			rows = append(rows, upDryRunRow(c, p))
+		}
+		ctl.emit(c, started0, rows)
 		return
 	}
 	if persist {
 		applyEnvKVs(c.Env, c.Dir+"/cell.env", false, persistKVs)
 	}
-	if o.Comms && res.Cockpit != "tmux" {
-		if err := c.startComms(res.Cockpit); err != nil {
-			die("up comms: %v", err)
-		}
-	}
-	switch res.Cockpit {
-	case "tmux":
-		c.upTmux(cfg, roles, attach, firstName, firstCmd, o)
-	case "herdr":
-		c.upHerdr(cfg, roles, firstName, firstCmd, o)
-	case "orca":
-		c.upOrca(cfg, roles, automate, firstCmd, o)
-	}
-}
-
-// upTmux is the always-works arm.
-func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstCmd string, o upOverrides) {
-	if !onPath("tmux") {
-		die("tmux not installed")
-	}
-	if exec.Command("tmux", "has-session", "-t", c.Session).Run() == nil {
+	if automate != "" {
+		// Scheduled automations open no window and hold no lease: nothing to converge.
 		if o.Comms {
-			if err := c.startComms("tmux"); err != nil {
+			if err := c.startComms(res.Cockpit); err != nil {
 				die("up comms: %v", err)
 			}
 		}
-		fmt.Printf("[cell] %s already running — attaching\n", c.Session)
-		if attach {
-			runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
-		}
+		c.upOrca(cfg, roles, nil, nil, wait, automate, firstCmd, o, nil)
 		return
 	}
-	// The order is fixed — the deskd window, then comms, then the roles — and whichever window
-	// comes first creates the session. A cell with no deskd gets no placeholder pane to hold the
-	// session open: comms creates it when configured (openCommsSurface), else the first role window.
-	if firstName != "" {
+	started := time.Now()
+	// launch converges the targeted roles once: classify, then open the missing windows one at a
+	// time. reconciled names the roles an applied plan just cleared.
+	launch := func(reconciled map[string]bool) []upRow {
+		rs := append([]string(nil), roles...)
+		for _, r := range knownRolesOrdered(reconciled) {
+			if !valueIn(r, rs) && r != "comms" {
+				rs = append(rs, r)
+			}
+		}
+		c.commsPreflightStale(commsCfg, false)
+		probes, _ := probe(rs)
+		for _, p := range probes {
+			if p.Kind == probeAbsent {
+				if _, err := c.prepareLaunch(); err != nil {
+					die("up preparation: %v; no windows launched", err)
+				}
+				break
+			}
+		}
+		if o.Comms && res.Cockpit != "tmux" {
+			if err := c.startComms(res.Cockpit); err != nil {
+				die("up comms: %v", err)
+			}
+		}
+		report := func(rows []upRow) { printUpTable(os.Stdout, rows) }
+		switch res.Cockpit {
+		case "tmux":
+			return c.upTmux(cfg, probes, reconciled, wait, attach, firstName, firstCmd, o, report)
+		case "herdr":
+			return c.upHerdr(cfg, probes, reconciled, wait, firstName, firstCmd, o, report)
+		default:
+			return c.upOrca(cfg, roles, probes, reconciled, wait, "", firstCmd, o, report)
+		}
+	}
+	if ctl.applyID != "" {
+		// Under DRY_RUN an apply still takes the terminal and the typed confirm, but the reconcile
+		// effect clears nothing and no window is launched.
+		dry := c.Env.Get("DRY_RUN") == "1"
+		verb := upVerb(commsCfg, dry)
+		verb.After = func(c *Cell, r *cellop.Result) {
+			defer ctl.restore()
+			if r.Outcome != cellop.OK || dry {
+				return
+			}
+			var perr error
+			if o.Comms, perr = c.commsPreflight(); perr != nil {
+				die("up comms: %v; no windows launched", perr)
+			}
+			withRoles(r, launch(reconciledRoles(*r)))
+		}
+		cellopApply(ctl.cmd, c, verb, ctl.applyID)
+		return
+	}
+	rows := launch(nil)
+	if ctl.json {
+		ctl.restore()
+		r := upResult(c.Name, started, rows)
+		emitResult(ctl.cmd, r)
+		exitWith(r.ExitCode())
+	}
+	if !upRowsOK(rows) {
+		exitWith(1)
+	}
+}
+
+// commsPreflightStale refuses a launch over stale comms state. Plain `up` never clears it, on a
+// terminal or off one: the inventory and the exact commands are printed (the reconcile preflight's
+// own output) and `up --plan` is named as the way to clear it with a typed confirm. A dry run
+// prints the inventory and changes nothing.
+func (c *Cell) commsPreflightStale(comms *deskCommsConfig, dryRun bool) {
+	if c.Kind != "house" || comms == nil {
+		return
+	}
+	if err := c.reconcile(nil, comms, reconcileIO{DryRun: dryRun, Out: os.Stdout}); err != nil {
+		fmt.Printf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal\n", c.Name, c.Name)
+		die("up: %v", err)
+	}
+}
+
+// knownRolesOrdered lists the keys of set in the cell-role order.
+func knownRolesOrdered(set map[string]bool) []string {
+	var out []string
+	for _, r := range knownRoles {
+		if set[r] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// roleGate is what a launch waits on before the next window opens: on a house cell the role's
+// lease record (the launch took the lease and passed the scratch sweep, or failed); on a cell with
+// no role lease, the fixed stagger the windows have always had, since each one fetches the shared
+// .git and starting them at once puts every window into the fetch lock's retry loop together.
+func (c *Cell) roleGate(wait time.Duration) func(string, time.Time) (string, error) {
+	if c.Kind == "house" {
+		return func(role string, since time.Time) (string, error) { return c.awaitRoleLease(role, wait, since) }
+	}
+	return func(string, time.Time) (string, error) { time.Sleep(upStagger); return "", nil }
+}
+
+// upStagger paces the windows of a cell that has no role lease to wait on.
+var upStagger = 2 * time.Second
+
+// upTmux is the always-works arm. A session that already exists is not re-created: only the windows
+// of roles that are not running are added to it.
+func (c *Cell) upTmux(cfg string, probes []upProbe, reconciled map[string]bool, wait time.Duration, attach bool, firstName, firstCmd string, o upOverrides, report func([]upRow)) []upRow {
+	if !onPath("tmux") {
+		die("tmux not installed")
+	}
+	exists := exec.Command("tmux", "has-session", "-t", c.Session).Run() == nil
+	if exists {
+		fmt.Printf("[cell] %s already running — adding the windows of roles that are not up\n", c.Session)
+	} else if firstName != "" {
+		// The order is fixed — the deskd window, then comms, then the roles — and whichever window
+		// comes first creates the session. A cell with no deskd gets no placeholder pane to hold the
+		// session open: comms creates it when configured (openCommsSurface), else the first role window.
 		_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
 			firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
 	}
@@ -523,7 +700,7 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 			die("up comms: %v", err)
 		}
 	}
-	for _, role := range roles {
+	open := func(role string) error {
 		name := strings.TrimSuffix(role, "-desk")
 		switch role {
 		case "pr-review-desk":
@@ -535,18 +712,30 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		if exec.Command("tmux", "has-session", "-t", c.Session).Run() != nil {
 			verb = []string{"new-session", "-d", "-s", c.Session}
 		}
-		_ = exec.Command("tmux", append(verb, "-n", name, "-c", c.Dir,
-			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL")...).Run()
-		// Stagger the windows: each one fetches the shared .git, and starting them at once puts
-		// every window into the fetch lock's retry loop at the same moment.
-		time.Sleep(2 * time.Second)
+		out, err := exec.Command("tmux", append(verb, "-n", name, "-c", c.Dir,
+			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL")...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("tmux %s: %s", verb[0], orDefault(firstOutLine(string(out)), err.Error()))
+		}
+		return nil
 	}
+	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), open)
 	_ = exec.Command("tmux", "select-window", "-t", c.Session+":the-desk").Run()
-	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", roles), cfg)
+	report(rows)
+	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", upRoleNames(probes)), cfg)
 	fmt.Printf("[cell] attach: tmux attach -t %s   ·   down: cellctl down %s\n", c.Session, c.Name)
 	if attach {
 		runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
 	}
+	return rows
+}
+
+func upRoleNames(probes []upProbe) []string {
+	out := make([]string, len(probes))
+	for i, p := range probes {
+		out[i] = p.Role
+	}
+	return out
 }
 
 // upHerdr opens one LABELLED tab per window running the role's full command line — the same
@@ -556,7 +745,7 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 // directly to the KIND's canonical executable, so it cannot host cellctl's composite command
 // (fetch the shared repo, cut/fast-forward the worktree, generate shims, cd, THEN exec the
 // harness). `herdr pane run <PANE_ID> <COMMAND>` is what actually hosts it.
-func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o upOverrides) {
+func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool, wait time.Duration, firstName, firstCmd string, o upOverrides, report func([]upRow)) []upRow {
 	if !helpHas("create", "herdr", "tab") {
 		die("herdr is the resolved cockpit but this build's 'herdr tab --help' advertises no 'create' — nothing can host a role window; re-run with --cockpit tmux")
 	}
@@ -574,10 +763,9 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 	if firstName != "" {
 		c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
 	}
-	for _, role := range roles {
-		c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
-		time.Sleep(2 * time.Second)
-	}
+	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), func(role string) error {
+		return c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
+	})
 	// The freshly-created workspace's own default tab is never wanted — dropped now that the
 	// workspace holds the cell's own labelled tabs too. Closing it any earlier (before the
 	// workspace holds a second tab) closes the whole workspace with it.
@@ -586,11 +774,13 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 			die("Herdr default tab: %v", err)
 		}
 	}
-	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, c.Name+"-", roles), cfg)
+	report(rows)
+	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, c.Name+"-", upRoleNames(probes)), cfg)
 	fmt.Printf("[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down %s\n", c.Name)
+	return rows
 }
 
-func (c *Cell) herdrWindow(label, cmd, wsID string) {
+func (c *Cell) herdrWindow(label, cmd, wsID string) error {
 	args := []string{"tab", "create", "--label", label}
 	if wsID != "" {
 		args = []string{"tab", "create", "--workspace", wsID, "--label", label}
@@ -610,11 +800,13 @@ func (c *Cell) herdrWindow(label, cmd, wsID string) {
 	}
 	if paneID == "" {
 		fmt.Fprintf(os.Stderr, "NOTICE: 'herdr tab create --label %s' did not return a pane id — start it by hand: %s\n", label, cmd)
-		return
+		return fmt.Errorf("herdr tab create --label %s returned no pane id", label)
 	}
 	if exec.Command("herdr", "pane", "run", paneID, cmd).Run() != nil {
 		fmt.Fprintf(os.Stderr, "NOTICE: 'herdr pane run' failed for %s (pane %s) — start it by hand: %s\n", label, paneID, cmd)
+		return fmt.Errorf("herdr pane run failed for %s", label)
 	}
+	return nil
 }
 
 // upOrca has two shapes. Live: one terminal per role under the cell's checkout, running the same
@@ -625,10 +817,10 @@ func (c *Cell) herdrWindow(label, cmd, wsID string) {
 // Orca's CLI moves fast and its create-a-terminal surface is not the same on every build, so the
 // verb and its flags are PROBED from --help and an absent one is reported with the exact command
 // to run by hand — never guessed at.
-func (c *Cell) upOrca(cfg string, roles []string, automate, firstCmd string, o upOverrides) {
+func (c *Cell) upOrca(cfg string, roles []string, probes []upProbe, reconciled map[string]bool, wait time.Duration, automate, firstCmd string, o upOverrides, report func([]upRow)) []upRow {
 	if automate != "" {
 		c.orcaAutomate(roles, automate)
-		return
+		return nil
 	}
 	verb, ok := orcaTerminalVerb()
 	if !ok {
@@ -658,7 +850,7 @@ func (c *Cell) upOrca(cfg string, roles []string, automate, firstCmd string, o u
 	if !hasWT && !hasCwd {
 		fmt.Fprintf(os.Stderr, "NOTICE: 'orca terminal %s' advertises no working-directory flag — the terminals open wherever orca puts them; the command itself is absolute either way\n", verb)
 	}
-	for _, role := range roles {
+	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), func(role string) error {
 		args := []string{"terminal", verb}
 		switch {
 		case hasWT:
@@ -670,16 +862,19 @@ func (c *Cell) upOrca(cfg string, roles []string, automate, firstCmd string, o u
 			args = append(args, nameflag, c.Name+"-"+role)
 		}
 		args = append(args, cmdflag, c.paneRoleCmd(role, cfg, o))
-		if exec.Command("orca", args...).Run() != nil {
+		if err := exec.Command("orca", args...).Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "NOTICE: 'orca %s' failed — run it by hand: %s\n", strings.Join(args, " "), c.paneRoleCmd(role, cfg, o))
+			return fmt.Errorf("orca terminal %s failed: %v", verb, err)
 		}
-		time.Sleep(2 * time.Second)
-	}
+		return nil
+	})
+	report(rows)
 	fmt.Printf("[cell] %s up in orca: one terminal per role (%s), config=%s\n", c.Name, strings.Join(roles, " "), cfg)
 	if firstCmd != "" {
 		fmt.Printf("[cell] the first window's command is not opened in orca — run it yourself if you want it: %s\n", firstCmd)
 	}
 	fmt.Printf("[cell] down: cellctl down %s\n", c.Name)
+	return rows
 }
 
 // upWindowList is the summary line's window list: "<prefix><first> +<roles>" when there is a

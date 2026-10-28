@@ -1,0 +1,17 @@
+{
+  "test": "go test ./internal/gitmaintenance -run ^TestPackDirectoryBudget$ -count=1 -timeout 30s",
+  "control": {
+    "name": "invert repository byte-immutability assertion",
+    "file": "internal/gitmaintenance/packentries_test.go",
+    "old": "if !reflect.DeepEqual(before, diskImage(t, repo)) {",
+    "new": "if reflect.DeepEqual(before, diskImage(t, repo)) {"
+  },
+  "mutations": [
+    {
+      "name": "restore unbounded pack directory enumeration",
+      "file": "internal/gitmaintenance/inventory.go",
+      "old": "func readPackEntries(ctx context.Context, common string) ([]os.DirEntry, error) {",
+      "new": "func readPackEntries(ctx context.Context, common string) ([]os.DirEntry, error) {\n\treturn os.ReadDir(filepath.Join(common, \"objects\", \"pack\"))"
+    }
+  ]
+}

@@ -104,6 +104,12 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	// A child re-exec of this binary runs the REAL main against its own HOME and argv
+	// (helpecho_test.go), before any fixture roster or test flag is installed.
+	if os.Getenv(helpMainEnv) == "1" {
+		main()
+		return
+	}
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())

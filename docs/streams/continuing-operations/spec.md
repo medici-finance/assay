@@ -424,3 +424,37 @@ desk scorecards, diagnosis, experiment/follow-up validation and native evidence 
 It does not create a second subject/observation store, queue, identity or adoption authority.
 The public plan owns its bounded implementation; each adopter owns actual cases, permissions,
 budgets and trial decisions. Existing broader continuing-operations scope remains intact.
+
+### Perf-v3 observation compatibility — requested amendment, 19 October 2026
+
+[Attributed local performance](../../performance-attribution-spec.md) supplies optional
+qualified work/agent/role correlation and own-request timing/GraphQL point observations.
+Metric definitions and causal interpretation remain here; aliases and import remain with
+performance-collection. Preserve instrument/profile/coverage cohorts, measured/estimated/
+unknown units and parent/child exclusions. A missing dimension is not a zero-cost operation,
+and observed attribution alone cannot authorize work or demonstrate improved outcomes.
+
+## Proposed performance and architecture practices — 15 October 2026
+
+[The review-profile specification](../review-profiles/spec.md) supplies two versioned
+assessment perspectives over this proposal's enduring subjects, measurement definitions
+and independent assessments. Architecture asks whether a change or accumulated state
+moves toward the applicable future architecture; performance asks whether equivalent
+results can be achieved with less work/contention or a better algorithm. A design
+opportunity and a measured improvement are distinct assessment bases.
+
+PR/CI evaluates the changed design and controlled evidence. Proposed daily performance
+assessment ranks actual frequency × cost and cost per verified brief; owner-selected
+weekly/monthly architecture review examines accumulated drift, owners, coupling and
+expired transitional paths. Declare windows, evidence scope/freshness, budgets, thresholds
+and owner before execution. Local manual assessment and imported evidence remain the
+first useful slice; a new controller, performance database or managed-cell rollout is
+not required. These are proposed practices, not activated cadences.
+
+O08 carries these questions into authoring/review; O10 hosts manual assessment; O11
+continues to own any later cadence adapter. An independently confirmed finding may
+become a deduplicated intake issue and, only through the performance-collection/09 proposal
+path, a separately admitted, budgeted repair draft PR; this profile opens no repair PR itself.
+Existing claim/effect identity, current-candidate review, independent verification and
+post-exposure assessment apply. Neither a profile nor its report can merge/deploy,
+promote its own gate, rewrite the architecture target or reset exhausted budgets.

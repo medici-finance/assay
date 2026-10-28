@@ -3,15 +3,15 @@
   "control": {
     "name": "CONTROL — make the per-platform pin fallback unreachable (the defect, restated as a mutation)",
     "file": "internal/deskkit/desktoolspin.go",
-    "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
-    "new": "\tfor _, name := range []string{DeskToolsArtifact} {"
+    "old": "\tfor _, name := range []string{deskToolsName, DeskToolsPlatformArtifact(platform)} {",
+    "new": "\tfor _, name := range []string{deskToolsName} {"
   },
   "mutations": [
     {
       "name": "let the per-platform line WIN over a bare line that is present (an existing consumer's verdict changes under it)",
       "file": "internal/deskkit/desktoolspin.go",
-      "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
-      "new": "\tfor _, name := range []string{DeskToolsPlatformArtifact(platform), DeskToolsArtifact} {"
+      "old": "\tfor _, name := range []string{deskToolsName, DeskToolsPlatformArtifact(platform)} {",
+      "new": "\tfor _, name := range []string{DeskToolsPlatformArtifact(platform), deskToolsName} {"
     },
     {
       "name": "ask for the artifact PREFIX instead of the exact per-platform name (collapses the two pin lines into one match)",
@@ -202,8 +202,8 @@
     {
       "name": "dt27 row 6 — let the verify depth resolve its own roots again (a second resolution, pin walk and version probe per throughput run)",
       "file": "cmd/deskboard/throughput.go",
-      "old": "\t} else if nv, err := awaitingFromRoots(hdr, \"awaiting\", rs); err != nil {\n",
-      "new": "\t} else if rs2, rerr2 := resolveRootsOnce(); rerr2 != nil {\n\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, \"depth: \"+rerr2.Error())\n\t} else if nv, err := awaitingFromRoots(hdr, \"awaiting\", rs2); err != nil {\n"
+      "old": "\t} else if nv, err := awaitingQueue(hdr, \"awaiting\", rs, true); err != nil {\n",
+      "new": "\t} else if rs2, rerr2 := resolveRootsOnce(); rerr2 != nil {\n\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, \"depth: \"+rerr2.Error())\n\t} else if nv, err := awaitingQueue(hdr, \"awaiting\", rs2, true); err != nil {\n"
     },
     {
       "name": "dt27 row 7 — count a blind stage as READ (stagesRead overstates coverage on every partial-failure path)",

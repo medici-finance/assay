@@ -135,13 +135,10 @@ the transport stays 18's job (35's for the three ruling and transcribe sites), a
 5. route the cross-repository reads that land in `partial` to custody or could-not-check.
 
 files:
-- `tools/desk/cmd/deskread/main.go`: the flag, the tool-class selection, the CI-transport kind
-  allowlist, the identity record in the envelope, the usage text.
+- `tools/desk/cmd/deskread/main.go`: the flag, the tool-class selection, the CI-transport kind allowlist, the identity record in the envelope, the usage text.
 - `tools/desk/cmd/deskread/ci.go`: CI admission, repository binding and the dedicated token read.
-- `tools/desk/cmd/deskread/forge.go`: the transport switch between the custody path (default,
-  unchanged) and the CI path.
-- `tools/desk/internal/deskkit/forgeresolve.go`: the second constructor, `ReadOnlyForgeForCIToken`
-  (name is a suggestion), beside `ResolveForge`, and its API-base test seam.
+- `tools/desk/cmd/deskread/forge.go`: the transport switch between the custody path (default, unchanged) and the CI path.
+- `tools/desk/internal/deskkit/forgeresolve.go`: the second constructor, `ReadOnlyForgeForCIToken` (name is a suggestion), beside `ResolveForge`, and its API-base test seam.
 - `tools/desk/internal/deskkit/readonlyforge.go`: the default-deny decorator.
 - `tools/desk/internal/deskkit/remoterepo.go`: `ValidRepoSlug`, shared by the CI admission checks.
 - Tests beside each: `tools/desk/cmd/deskread/ci_test.go`,

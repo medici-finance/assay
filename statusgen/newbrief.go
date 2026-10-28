@@ -52,6 +52,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"gopkg.in/yaml.v3"
 )
 
@@ -425,7 +426,7 @@ func runNewBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // riskKeyOrder is the canonical order of the four risk questions, so prompts and
 // the emitted risk block are deterministic.
-var riskKeyOrder = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
+var riskKeyOrder = briefdoc.RiskKeys()
 
 // newBriefRiskAnswers resolves the four risk answers. Non-interactive: each must be
 // "yes" or "no" — an empty (unanswered) one is a REFUSAL, because a defaulted
@@ -623,7 +624,9 @@ func newBriefStreamSchema(streamDir string) string {
 		if err != nil || !ok {
 			continue
 		}
-		if bf.Schema == briefSchemaV2 {
+		if isBriefV2Family(bf.Schema) {
+			// A brief-v3 sibling is a brief-v2 stream too: brief-v3 exists only to
+			// carry a withdrawal, so a NEW brief is still authored as brief-v2.
 			return briefSchemaV2
 		}
 	}

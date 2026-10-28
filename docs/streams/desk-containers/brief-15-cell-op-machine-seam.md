@@ -14,7 +14,7 @@ why: >-
   deferred until it does.
 wave: 7
 depends: []
-unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24"]
+unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/28", "cell-api/01", "desk-containers/31"]
 effort: M
 gate: human
 design: DR-cell-op-contract
@@ -22,7 +22,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 decision-trigger: creation
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §Public Assay includes the control plane and cockpit — 'Use one versioned HTTP/JSON contract for UI and remote clients … CLI and MCP are adapters over those capabilities … Keep the existing human-action absences on agent-facing surfaces'"
@@ -46,7 +46,7 @@ consumers:
   - "tools/desk/internal/cellop (result and plan types, plan store, atomic consume, confirm-time re-measure harness): fixed-here"
   - "tools/desk/cmd/cellctl (CLI adapter mechanics: `--json`, `--plan`, interactive `--apply`; the build-tagged fixture verb; each verb brief then adopts the contract with its own rows, 17–24): fixed-here"
   - "the future approval design (operator key, registry, enrollment, signed payload) and its five gating properties: out-of-scope (owned by R7/R3; recorded in docs/proposals/non-ci-architecture/21-cell-operator-surface.md §Approvals: deferred)"
-  - "the R7 Cell API (serves the same result and plan documents; read/plan-only, no apply): out-of-scope (stream `cell-api`, parked; requirements in docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
+  - "the R7 Cell API (serves the same result and plan documents; read/plan-only, no apply): out-of-scope (stream `cell-api`, active for implementation; requirements in docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
   - "the console cockpit (renders results and plans; does not apply): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
 ---
 
@@ -131,7 +131,7 @@ Default if no answer: none — blocks until answered.
 | 10 | check +flow | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1 -v` | `--- PASS` — through the binary built with the fixture verb, on a pseudo-terminal: `--plan --json`, then `--apply` typing the confirm code, then a second apply refused `already-consumed` |
 | 11 | check | `go -C tools/desk run ./cmd/cellctl/ cellop-fixture 2>&1 \| grep -c 'unknown command "cellop-fixture"'` | 1 — a default build compiles and reports the fixture verb as unknown (a compile failure prints no such line and fails this row) |
 | 12 | check | `statusgen --root . --lint` | exit 0 |
-| 12a | check | `statusgen --root . --consumers --brief desk-containers/15` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 12a | check | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-containers/15 --delivery 6cb553e1a1778c9de1ca22370388fd3a05112718 --base 92d3d10f1f3a614755f7acdbc42db05cf79728f9 > "$o" && cat "$o" && grep -Fxq 'summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

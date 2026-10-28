@@ -74,18 +74,10 @@ ops each still lacks — a branch→change lookup, PR body/title fields, an issu
 label-list op — then re-seats the three verbs**, and only then retires their permit rows.
 
 files:
-- `tools/desk/cmd/deskpr/exec.go`, `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskpr/edit.go`
-  — draft-change creation, the existing-PR-for-branch check, the mergeable read, and `deskpr edit`'s
-  body replace.
-- `tools/desk/cmd/deskfile/exec.go`, `tools/desk/cmd/deskfile/deskfile.go`,
-  `tools/desk/cmd/deskfile/matcher.go` — the dedupe search, the label-existence probe, the create,
-  the attach comment, and the interim `requireSupportedForge` / `ForgeKindFor` gate from `#691`.
-- `tools/desk/cmd/deskclose/exec.go`, `tools/desk/cmd/deskclose/authority.go`,
-  `tools/desk/cmd/deskclose/github.go`, `tools/desk/cmd/deskclose/superseded.go` — the authority
-  reads, the close, the supersession comment scan, the supersession label ensure, and the
-  `viewer{login}` whoami.
-- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forgeresolve.go` — the
-  frozen seam (four ops added) and `ForgeFor` + `SetGitHubCustodyMinter`.
+- `tools/desk/cmd/deskpr/exec.go`, `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskpr/edit.go` — draft-change creation, the existing-PR-for-branch check, the mergeable read, and `deskpr edit`'s body replace.
+- `tools/desk/cmd/deskfile/exec.go`, `tools/desk/cmd/deskfile/deskfile.go`, `tools/desk/cmd/deskfile/matcher.go` — the dedupe search, the label-existence probe, the create, the attach comment, and the interim `requireSupportedForge` / `ForgeKindFor` gate from `#691`.
+- `tools/desk/cmd/deskclose/exec.go`, `tools/desk/cmd/deskclose/authority.go`, `tools/desk/cmd/deskclose/github.go`, `tools/desk/cmd/deskclose/superseded.go` — the authority reads, the close, the supersession comment scan, the supersession label ensure, and the `viewer{login}` whoami.
+- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forgeresolve.go` — the frozen seam (four ops added) and `ForgeFor` + `SetGitHubCustodyMinter`.
 - `tools/desk/internal/forgeban/allowlist.go` — three permit rows removed, ceiling lowered by 3.
 - `docs/streams/forge-gitlab/inventory.md` — the frozen op table, rows 33–36 appended.
 

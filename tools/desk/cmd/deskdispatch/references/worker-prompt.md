@@ -286,10 +286,13 @@ it is the same code either way, and the round trip is better spent on the wordin
 ## 11. Changelog fragment — part of the deliverable where the repo enforces one
 
 > If the target repo carries `changelog/README.md`, your PR is INCOMPLETE until it adds a
-> `changelog/<slug>.md` fragment — `<slug>` is your branch name — holding at least one
-> `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`, or
-> `### Changed` heading). Never edit a top-level `CHANGELOG.md`; the aggregate is assembled
-> from the per-PR fragments at release time.
+> `changelog/<slug>.md` fragment — `<slug>` is your branch name with every `/` replaced by
+> `-` (or the issue or brief slug), so `feat/foo` becomes `changelog/feat-foo.md` — holding
+> at least one `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`,
+> or `### Changed` heading). The fragment MUST be a single flat file directly under
+> `changelog/`, never in a subdirectory: a nested path such as `changelog/feat/foo.md` is
+> never aggregated. Never edit a top-level `CHANGELOG.md`; the aggregate is assembled from
+> the per-PR fragments at release time.
 
 Detect it, do not remember it: `test -f changelog/README.md` in the checked-out tree tells
 you whether this repo enforces a fragment. Most repos do not, and there this clause is inert.
@@ -480,3 +483,15 @@ for: whatever you must see settled before you hand back, you must still see sett
   say how long you waited and what was still pending — never a pass (common clause C4).
 - Where your harness offers a durable monitor or a background wait that wakes you on the
   change, arm that instead of blocking.
+
+## Architecture pickup
+
+Before implementation effects, on resume and after a material scope/target change,
+follow `references/implementation-pickup.md` of the installed Assay plugin (in the Assay
+source tree: `plugins/assay/references/implementation-pickup.md`). If neither is
+available, this section is the whole procedure; do not skip it.
+Read the current project instructions, selected approved target/transition, semantic
+contracts and engineering guidelines. Record source revisions, coverage and a reasoned
+continue/adapt/hold disposition in your plan or PR. Preserve scope and active-work
+acknowledgment; an unapproved proposal alone never blocks authorized work. Use the
+manual bootstrap when the shared context operation is not shipped or supported.

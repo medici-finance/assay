@@ -297,8 +297,16 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			if !s.LastTouch.IsZero() {
 				touched = s.LastTouch.Format("2006-01-02")
 			}
+			// Withdrawn briefs are retired and out of the denominator; their own
+			// count rides in Notes, ONLY when one exists (byte-identical otherwise).
+			if wc := withdrawnCount(s); wc > 0 {
+				if note != "" {
+					note += " · "
+				}
+				note += fmt.Sprintf("%d withdrawn", wc)
+			}
 			w("| [%s](docs/streams/%s/README.md) | %s | %s | %d/%d | %s | %s |",
-				s.Name, s.Name, s.Priority, s.Status, doneCount(s), len(s.Briefs), touched, note)
+				s.Name, s.Name, s.Priority, s.Status, doneCount(s), liveBriefCount(s), touched, note)
 		}
 	}
 
@@ -335,7 +343,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 				touched = s.LastTouch.Format("2006-01-02")
 			}
 			w("| [%s](docs/streams/%s/README.md) | %s | %d/%d | %s |",
-				s.Name, s.Name, s.Priority, doneCount(s), len(s.Briefs), touched)
+				s.Name, s.Name, s.Priority, doneCount(s), liveBriefCount(s), touched)
 		}
 	}
 
@@ -461,6 +469,43 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			"reconcile the row, or record/complete a `delivery:` claim, to release it back onto this board.",
 			len(nu.MergedElsewhere), strings.Join(frags, ", "))
 		w("")
+	}
+	// Held by a strong board-honesty finding (boardhonesty.go): already delivered
+	// by a merged `Brief:`-trailer PR, or a re-homed pointer row. NAMED so the
+	// hold is visible; the row stays on the board until it is reconciled.
+	// A delivered row the reconcile's own lint hold refuses to write is named
+	// apart: "reconcile" cannot clear it, so its line carries the hold's PROBLEM
+	// and the record that clears it instead.
+	if len(nu.PhantomElsewhere) > 0 {
+		ids := make([]string, 0, len(nu.PhantomElsewhere))
+		for id := range nu.PhantomElsewhere {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		var frags []string
+		byFlip := map[phantomFlipState][]string{}
+		for _, id := range ids {
+			frag := fmt.Sprintf("%s → %s", id, nu.PhantomElsewhere[id])
+			if st := nu.PhantomFlip[id]; st != phantomFlipClean {
+				byFlip[st] = append(byFlip[st], frag)
+				continue
+			}
+			frags = append(frags, frag)
+		}
+		if len(frags) > 0 {
+			w("> **Already delivered or re-homed — held out of dispatch (%d):** %s. Each is a board-honesty "+
+				"finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose "+
+				"brief file is gone); reconcile or retire the row to clear it.",
+				len(frags), strings.Join(frags, ", "))
+			w("")
+		}
+		for _, st := range []phantomFlipState{phantomFlipHeld, phantomFlipUnchecked} {
+			if len(byFlip[st]) > 0 {
+				w("> **Already delivered, %s — held out of dispatch (%d):** %s. Fix: %s.",
+					st.heading(), len(byFlip[st]), strings.Join(byFlip[st], ", "), st.remediation())
+				w("")
+			}
+		}
 	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
 	// what the caps show, say so explicitly — never silently truncate. The
@@ -639,7 +684,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	for _, s := range streams {
 		var open []Brief
 		for _, br := range s.Briefs {
-			if br.Status != "done" {
+			if br.Status != "done" && !isWithdrawn(br.Status) {
 				open = append(open, br)
 			}
 		}
@@ -686,6 +731,44 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		}
 	}
 
+	// Withdrawn briefs (off-path): retired or merged into a successor. Rendered
+	// ONLY when one exists, so a board with none is byte-identical.
+	withdrawnTotal := 0
+	for _, s := range streams {
+		withdrawnTotal += withdrawnCount(s)
+	}
+	if withdrawnTotal > 0 {
+		w("")
+		w("## Withdrawn briefs")
+		w("")
+		w("_Terminal: retired by a later decision or merged into a successor. Not counted in any done ratio, never dispatched._")
+		for _, s := range streams {
+			var wd []Brief
+			for _, br := range s.Briefs {
+				if isWithdrawn(br.Status) {
+					wd = append(wd, br)
+				}
+			}
+			if len(wd) == 0 {
+				continue
+			}
+			w("")
+			w("### %s (%d withdrawn)", s.Name, len(wd))
+			w("")
+			for _, br := range wd {
+				succ := "no successor"
+				if len(br.SupersededBy) > 0 {
+					succ = "superseded by " + strings.Join(br.SupersededBy, ", ")
+				}
+				date := ""
+				if br.WithdrawnDate != "" {
+					date = " " + br.WithdrawnDate
+				}
+				w("- %s %s — withdrawn%s — %s", br.Num, br.Title, date, succ)
+			}
+		}
+	}
+
 	active, paused, parked, done, total := 0, 0, 0, 0, 0
 	for _, s := range streams {
 		switch s.Status {
@@ -697,7 +780,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			parked++
 		}
 		done += doneCount(s)
-		total += len(s.Briefs)
+		total += liveBriefCount(s)
 	}
 	w("")
 	w("## Totals")
@@ -708,6 +791,10 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	if parked > 0 {
 		parkedClause = fmt.Sprintf(", **%d** parked", parked)
 	}
-	w("**%d** streams (**%d** active, **%d** paused%s) · **%d/%d** briefs done · completed initiatives: see `docs/archive/`", len(streams), active, paused, parkedClause, done, total)
+	withdrawnClause := ""
+	if withdrawnTotal > 0 {
+		withdrawnClause = fmt.Sprintf(" · **%d** withdrawn", withdrawnTotal)
+	}
+	w("**%d** streams (**%d** active, **%d** paused%s) · **%d/%d** briefs done%s · completed initiatives: see `docs/archive/`", len(streams), active, paused, parkedClause, done, total, withdrawnClause)
 	return b.String()
 }

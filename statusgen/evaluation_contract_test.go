@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -194,7 +195,7 @@ func mustJSON(t *testing.T, v any) string {
 func buildStatusgenBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "statusgen")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 	return bin
@@ -446,7 +447,7 @@ func goListDeps(t *testing.T, dir, pattern string, env ...string) map[string]lis
 	cmd.Env = append(os.Environ(), append([]string{"GOWORK=off", "GOFLAGS=-mod=mod"}, env...)...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := goquiet.Cmd(cmd).Output()
 	if err != nil {
 		t.Fatalf("go list -deps %s in %s: %v\n%s", pattern, dir, err, stderr.String())
 	}
@@ -875,7 +876,7 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 		}
 	}
 	// The in-repository sibling modules the manifest requires (forgeread, and
-	// perfrec — the shared perf-v1 writer, #3101), served at the version the
+	// perfrec — the shared perf writer, #3101), served at the version the
 	// manifest names, as a release of each would be.
 	const siblingVersion = "v0.0.0-00010101000000-000000000000"
 	for _, sibling := range []string{"forgeread", "perfrec"} {
@@ -930,7 +931,7 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 		cmd.Env = env(dir, source)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		err := cmd.Run()
+		err := goquiet.Cmd(cmd).Run()
 		if err != nil {
 			return stdout.String() + stderr.String(), err
 		}

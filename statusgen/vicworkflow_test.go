@@ -147,7 +147,7 @@ func TestFailClosedStepToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer errf.Close()
-	code := runInContainer(filepath.Join(root, "b.md"), root, "", false, false, false, "", os.Stdout, errf)
+	code := runInContainer(filepath.Join(root, "b.md"), root, "", false, false, false, "", "", os.Stdout, errf)
 	out, _ := os.ReadFile(errf.Name())
 	if code != verifyrunExitCouldNot || !strings.Contains(string(out), token) {
 		t.Fatalf("launcher refusal must exit %d and print %q; got exit %d, stderr:\n%s", verifyrunExitCouldNot, token, code, out)

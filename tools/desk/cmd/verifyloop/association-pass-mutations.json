@@ -1,0 +1,96 @@
+{
+  "test": "go test ./cmd/verifyloop -run '^Test(AssociationPass|AssociationFixture|BlockerObservation|PlanningRevision|Plan_AllRejected|VerifyPerformanceBlockerFanIn)' -count=1 -timeout 120s",
+  "mutations": [
+    {
+      "name": "fresh-dispatch",
+      "file": "cmd/verifyloop/association.go",
+      "old": "if it.Payload[\"source_repo\"] == \"\" {",
+      "new": "if true {"
+    },
+    {
+      "name": "pass-main-gate",
+      "file": "internal/deskkit/verifierassociation.go",
+      "old": "if e == nil && main.String() != head {",
+      "new": "if false && e == nil && main.String() != head {"
+    },
+    {
+      "name": "declaration-revision-key",
+      "file": "internal/deskkit/verifierassociation.go",
+      "old": "verifierDeclarationKey{revision, filepath.ToSlash(brief)}",
+      "new": "verifierDeclarationKey{\"constant\", filepath.ToSlash(brief)}"
+    },
+    {
+      "name": "registry-reuse",
+      "file": "internal/deskkit/verifierassociation.go",
+      "old": "if cached, ok := r.registries[revision]; ok {",
+      "new": "if cached, ok := r.registries[revision]; false && ok {"
+    },
+    {
+      "name": "root-key",
+      "file": "internal/deskkit/verifierassociation.go",
+      "old": "key, err := filepath.Abs(root)",
+      "new": "key, err := filepath.Abs(\".\")"
+    },
+    {
+      "name": "exact-revision",
+      "file": "internal/deskkit/verifierassociation.go",
+      "old": "if !verifierAssociationSHA.MatchString(revision) {",
+      "new": "if false && !verifierAssociationSHA.MatchString(revision) {"
+    },
+    {
+      "name": "scan-pass-reuse",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "associateVerifierItemIn(item, root, pass)",
+      "new": "associateVerifierItemIn(item, root, deskkit.NewVerifierAssociationPass(nil))"
+    },
+    {
+      "name": "blocker-reuse",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "observed, ok := s.blockers[key]\n\tif !ok {",
+      "new": "observed, ok := s.blockers[key]\n\tif true || !ok {"
+    },
+    {
+      "name": "blocker-scope-key",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "blockerObservationKey{repo: repo.Slug(), kind: kind, number: ref.Number}",
+      "new": "blockerObservationKey{repo: \"\", kind: deskkit.TargetIssue, number: ref.Number}"
+    },
+    {
+      "name": "blocker-pass-refresh",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "s.blockers, s.pending = nil, nil",
+      "new": "s.pending = nil"
+    },
+    {
+      "name": "rejected-root-scan",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "if !o.multi || len(v.Roots) > 0 {",
+      "new": "if true {"
+    },
+    {
+      "name": "wake-input-reuse",
+      "file": "cmd/verifyloop/observations.go",
+      "old": "if seen, ok := r.revisions[input]; ok {",
+      "new": "if seen, ok := r.revisions[input]; false && ok {"
+    },
+    {
+      "name": "scoped-origin",
+      "file": "internal/deskkit/verifierassociation.go",
+      "old": "r.repo, err = verifierOrigin(root)",
+      "new": "rawRemote, e := r.git.RemoteURL(\"origin\")\n if e != nil { err = e } else { r.repo, err = RemoteRepoSlug(rawRemote) }"
+    },
+    {
+      "name": "fixture-git-env",
+      "file": "cmd/verifyloop/association_test.go",
+      "old": "cmd.Env = regression.FixtureEnv(\"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t), \"GIT_CONFIG_NOSYSTEM=1\", \"GIT_CONFIG_GLOBAL=\"+os.DevNull)",
+      "new": "cmd.Env = append(os.Environ(), \"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t))\n\t_ = regression.FixtureEnv"
+    }
+  ],
+  "root": ".",
+  "control": {
+    "name": "CONTROL: omit dispatch association recheck",
+    "file": "cmd/verifyloop/association.go",
+    "old": "if it.Payload[\"source_repo\"] == \"\" {",
+    "new": "if true {"
+  }
+}

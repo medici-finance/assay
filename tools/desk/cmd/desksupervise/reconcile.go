@@ -336,6 +336,6 @@ func liveShowClaimReader(root, repo string) func(key string) (loopengine.ClaimRe
 		if serr != nil {
 			return loopengine.ClaimRecord{}, fmt.Errorf("%s show %s: %s: %w", dispatchClaimScriptRel, key, strings.TrimSpace(out), serr)
 		}
-		return loopengine.ClaimRecord{Key: key, Holder: claimShowField(claimOwnerFieldRe, out)}, nil
+		return loopengine.ClaimRecord{Key: key, Holder: claimShowField(claimOwnerFieldRe, withoutAliasLines(out))}, nil
 	}
 }

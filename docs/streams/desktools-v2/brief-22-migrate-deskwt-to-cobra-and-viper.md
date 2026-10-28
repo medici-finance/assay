@@ -53,8 +53,7 @@ files:
 - `tools/desk/internal/clicontract/testdata/mutations/desktools-v2-22.json` (planned) — muhar mutation spec for the owned commands.
 - `docs/streams/desktools-v2/cli-migration.json` — owned rows flip to migrated.
 - `changelog/cli-worktree.md` (planned).
-- `docs/deskwt-cli-compat.md` (planned) — source-pinned command/configuration inventory,
-  approved observable changes, and lifecycle follow-up boundaries.
+- `docs/deskwt-cli-compat.md` (planned) — source-pinned command/configuration inventory, approved observable changes, and lifecycle follow-up boundaries.
 
 facts:
 - deskwt verbs mutate local worktrees; help and parse failures must reach zero worktree operations.
@@ -147,6 +146,61 @@ Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's s
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLIHelpOffline$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLIConfigFlow$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILegacyForms$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-22.json` | pass exit=0 | sha256:daf2d86c6d28 | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskwt/...` | pass exit=0 | sha256:2bfa7461a264 | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskwt` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/22 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:982667f1232f | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:ad506b2a5d75 | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:6baddbb920ee | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(f=$(mktemp) && trap 'rm -f "$f"' 0 && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILifecycleParity$' > "$f" 2>&1 && grep -F -e '--- PASS: TestCLILifecycleParity ' "$f")` | pass exit=0 | sha256:242de75da2c6 | 2026-10-26 | assay-verifier-app[bot] @ 15e8729fb955 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4488 run=8a95d41df5af2e23dcac885d4b6c8881b800b61c398b9067b4305379d08bd2da source=15e8729fb955468d32de92f6b899b69189c13c38 brief=docs/streams/desktools-v2/brief-22-migrate-deskwt-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Verifier notes (2026-10-26, dispatched non-implementer verifier, merged main 15e8729fb955, delivered by #4460). All ten rows are class check (none is check:ci), so the whole table ran on the host in one statusgen verifyrun; no container bracket applies.
+
+- Row 4: the harness printed "Harness healthy: baseline GREEN, positive control CAUGHT." and its last line "Totals: 9 caught, 0 NOT CAUGHT, 0 could-not-mutate."; the spec carries 9 mutations, so N matches. Read from a same-commit re-run of the identical command whose output was kept outside the home (supplemental reading of the line, no extra acceptance credit).
+- Row 9: "summary: 0 corroborated, 0 disproved, 9 unchecked, 0 brief(s) claiming nothing"; the 9 unchecked entries are this brief's own consumers, none disproved (same supplemental re-run).
+- Review-gate spot check (no acceptance credit): no flag.NewFlagSet or fs.Parse remains in the non-test sources of tools/desk/cmd/deskwt.
+
+Risk-bearing values. Frontmatter risk is present and every field is "no" (not irreversible). Enumeration over the delivered diff of #4460 (cli.go bindings and handler bounds): lock-ttl default "0", singleton-ttl default defaultSingletonTTL, maintain min-interval 6h and timeout 30s with bounds 1h / 1s / 5m, maintain objects min-interval gitmaintenance.DefaultInterval (24h) and timeout gitmaintenance.DefaultTimeout (2m), usage exit cli.ExitUsage = 2, GoFlagCompat true. Ranked by irreversibility, lock-ttl is first: a non-zero default would let prune treat a live lock as stale and remove a worktree with unpublished work. The duration defaults and bounds are reversible operational knobs.
+
+RISK-VALUE: DERIVED — lock-ttl default = "0" @ tools/desk/cmd/deskwt/cli.go:110 — the brief forbids reinterpreting --lock-ttl during the parser port; the pre-migration parser declared the same "0" (age test disabled) in prune.go at 0d9cb252^, so the migrated default preserves the baseline exactly.
+RISK-VALUE: DERIVED — maintain min-interval = 6*time.Hour, timeout = 30*time.Second @ tools/desk/cmd/deskwt/cli.go:125-126 — identical to the pre-migration FlagSet defaults in maintenance.go at 0d9cb252^, and the 1h / 1s / 5m bounds still hold in the unchanged handler (maintenance.go:175).
+
+**VERIFY: PASS** — 10/10 rows pass exit=0 at 15e8729fb955; first verification of this brief.
+Re-verification, 2026-10-27, dispatched non-implementer verifier, merged main e25479a69d69 (delivery: #4460, squash commit 0d9cb252285a; base 378520e58386). All ten rows are class check with no risk-bearing, live, mutating or end-to-end tag and every frontmatter risk field is "no", so no fail-first witness applies; none is check:ci, so the table ran on the host in one statusgen verifyrun.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLIHelpOffline$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLIConfigFlow$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILegacyForms$' > "$f" 2>&1 && test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-22.json` | pass exit=0 | sha256:9eb470457951 | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskwt/...` | pass exit=0 | sha256:fef4604ce833 | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskwt` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/22 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:90fd91e070aa | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:3c2e2723489a | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:da69cda1291f | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(f=$(mktemp) && trap 'rm -f "$f"' 0 && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILifecycleParity$' > "$f" 2>&1 && grep -F -e '--- PASS: TestCLILifecycleParity ' "$f")` | pass exit=0 | sha256:790fa634c311 | 2026-10-27 | assay-verifier-app[bot] @ e25479a69d69 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4591 run=d3cceee63c89ca10b9ec0effc255e44596715bf1a532cdac917e23deef5a27a1 source=e25479a69d69ad678c15253309fcac6b7b0c86b0 brief=docs/streams/desktools-v2/brief-22-migrate-deskwt-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Verifier notes (supplemental same-commit re-runs with output kept outside the home; no extra acceptance credit):
+
+- Row 4: the harness printed "Harness healthy: baseline GREEN, positive control CAUGHT." and its last line "Totals: 9 caught, 0 NOT CAUGHT, 0 could-not-mutate."; the spec carries 9 mutations, so N matches.
+- Row 9: "consumers: no brief files in the diff against e25479a69d69ad678c15253309fcac6b7b0c86b0 — nothing to corroborate", exit 0; no declared consumer routing disproved.
+- Review-gate spot check: no flag.NewFlagSet or fs.Parse remains in the non-test sources of tools/desk/cmd/deskwt.
+
+Risk-bearing values. Frontmatter risk is present and every field is "no" (not irreversible). Enumeration over the delivered diff of #4460 (cli.go bindings and the handler bounds they feed): lock-ttl default "0" (cli.go:110), singleton-ttl default defaultSingletonTTL = 10 * time.Minute (prunesingleton.go:57), maintain min-interval 6*time.Hour and timeout 30*time.Second (cli.go:125-126) with bounds 1h / 1s / 5m (maintenance.go:175), maintain objects min-interval gitmaintenance.DefaultInterval = 24 * time.Hour and timeout gitmaintenance.DefaultTimeout = 2 * time.Minute (cli.go:133-134; values at internal/gitmaintenance/maintenance.go:23-24), usage exit cli.ExitUsage = 2 (internal/cli/cli.go:20), GoFlagCompat true (cli.go:333). Ranked by irreversibility, lock-ttl is first: a non-zero default would let prune treat a live lock as stale and remove a worktree holding unpublished work. The duration defaults and bounds are reversible operational knobs.
+
+RISK-VALUE: DERIVED — lock-ttl default = "0" @ tools/desk/cmd/deskwt/cli.go:110 — the brief forbids reinterpreting --lock-ttl during the parser port; the pre-migration parser declared the same "0" (age test disabled) at prune.go:236 in 378520e58386, so the migrated default preserves the baseline exactly.
+RISK-VALUE: DERIVED — maintain min-interval = 6*time.Hour, timeout = 30*time.Second @ tools/desk/cmd/deskwt/cli.go:125-126 — identical to the pre-migration FlagSet defaults at maintenance.go:179-180 in 378520e58386, and the 1h / 1s / 5m bounds still hold in the unchanged handler (maintenance.go:175).
+
+**VERIFY: PASS** — 10/10 rows pass exit=0 at e25479a69d69; re-verification at current main.
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

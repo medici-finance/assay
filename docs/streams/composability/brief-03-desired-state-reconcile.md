@@ -9,7 +9,7 @@ why: >-
   version. Cycles and ordering mistakes become lint failures before anything runs.
 wave: 2
 depends: ["composability/00", "composability/02"]
-unblocks: ["composability/05"]
+unblocks: ["composability/05", "cell-api/07"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -40,17 +40,11 @@ files:
 - **create** the schema and a reference `.assay/config.yaml` (planned) (`schema: assay-config-v1`,
   `umbrella`, `entries[]` with `id`, `component`, `version`, `config`, `intercept`, `disabled`)
   — documented in `component-model.md` §7, checked by `deskmanifest lint`.
-- **edit** `tools/desk/cmd/deskmigrate/` — becomes the reconcile engine driver: `deskmigrate plan`
-  (diff record vs ledger + tree, print operations) and `deskmigrate apply` (run them). Existing
-  migrations run as pre-reconcile steps keyed on the `umbrella` change.
-- **edit** `tools/desk/cmd/deskversion/` — read `umbrella` from the record; fall back to
-  `.assay-versions` when no record exists (pre-record adopters).
-- **edit** `plugins/assay/skills/upgrade-assay/SKILL.md` — an upgrade is: bump `umbrella` and
-  the entry versions it pins, `deskmigrate plan`, show release notes, `deskmigrate apply`.
-- **edit** `plugins/assay/skills/install/SKILL.md` — install is: write the record from the
-  chosen scenario, then `deskmigrate apply`; the primitive order is derived from manifests.
-- **edit** `docs/distribution.md` — the record is the source of truth; `.assay-versions` is a
-  derived view.
+- **edit** `tools/desk/cmd/deskmigrate/` — becomes the reconcile engine driver: `deskmigrate plan` (diff record vs ledger + tree, print operations) and `deskmigrate apply` (run them). Existing migrations run as pre-reconcile steps keyed on the `umbrella` change.
+- **edit** `tools/desk/cmd/deskversion/` — read `umbrella` from the record; fall back to `.assay-versions` when no record exists (pre-record adopters).
+- **edit** `plugins/assay/skills/upgrade-assay/SKILL.md` — an upgrade is: bump `umbrella` and the entry versions it pins, `deskmigrate plan`, show release notes, `deskmigrate apply`.
+- **edit** `plugins/assay/skills/install/SKILL.md` — install is: write the record from the chosen scenario, then `deskmigrate apply`; the primitive order is derived from manifests.
+- **edit** `docs/distribution.md` — the record is the source of truth; `.assay-versions` is a derived view.
 
 facts:
 - **Per-field dispatch** (`component-model.md` §7): `component`/`version` → reverse old, apply
@@ -70,6 +64,7 @@ facts:
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Do not `git push`, trigger workflows, or run mutating infrastructure commands unless
   explicitly instructed. The deliverable is a draft PR opened by the desk verbs.
 - Stop at `implemented`. Do not set `verified` or `done`.

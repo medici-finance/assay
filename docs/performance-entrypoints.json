@@ -1,0 +1,1257 @@
+{
+  "schema": "performance-entrypoints/v1",
+  "source": "cli-migration/v1 maintained rows (excluded/retired omitted)",
+  "scope": "local source integration inventory; never a deployed-coverage claim",
+  "entrypoints": [
+    {
+      "executable": "mutate",
+      "path": "loopadmin/mutate",
+      "module": "loopadmin",
+      "parser_owner": "desktools-v2/48",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/48",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "qualgen",
+      "path": "qualgen",
+      "module": "qualgen",
+      "parser_owner": "desktools-v2/19",
+      "parser_state": "migrated",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/19",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "statusgen",
+      "path": "statusgen",
+      "module": "statusgen",
+      "parser_owner": "desktools-v2/18",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "statusgen/26",
+      "gap": "Adopt public perfrec context directly; desk internals cannot be imported."
+    },
+    {
+      "executable": "bugs-gc",
+      "path": "tools/bugs-gc",
+      "module": "tools/bugs-gc",
+      "parser_owner": "desktools-v2/48",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/48",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "claimguard",
+      "path": "tools/claimguard",
+      "module": "tools/claimguard",
+      "parser_owner": "desktools-v2/32",
+      "parser_state": "exempt",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/32",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "cellctl",
+      "path": "tools/desk/cmd/cellctl",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/16",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "clusterguard",
+      "path": "tools/desk/cmd/clusterguard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/32",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/32",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "commsgw",
+      "path": "tools/desk/cmd/commsgw",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/42",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/42",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "commsloop",
+      "path": "tools/desk/cmd/commsloop",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/42",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/42",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskack",
+      "path": "tools/desk/cmd/deskack",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/38",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/38",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskadvisory",
+      "path": "tools/desk/cmd/deskadvisory",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/39",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/39",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskapps",
+      "path": "tools/desk/cmd/deskapps",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/25",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/25",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskaudit",
+      "path": "tools/desk/cmd/deskaudit",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/47",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/47",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskautolane",
+      "path": "tools/desk/cmd/deskautolane",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/36",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/36",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskavatar",
+      "path": "tools/desk/cmd/deskavatar",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/39",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/39",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskboard",
+      "path": "tools/desk/cmd/deskboard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/20",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskboot",
+      "path": "tools/desk/cmd/deskboot",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/33",
+      "parser_state": "exempt",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskcalibrate",
+      "path": "tools/desk/cmd/deskcalibrate",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/44",
+      "parser_state": "migrated",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/44",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskclaim",
+      "path": "tools/desk/cmd/deskclaim",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/33",
+      "parser_state": "exempt",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskclaim-ref",
+      "path": "tools/desk/cmd/deskclaim-ref",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/33",
+      "parser_state": "exempt",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskclose",
+      "path": "tools/desk/cmd/deskclose",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/26",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/26",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskcomms",
+      "path": "tools/desk/cmd/deskcomms",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/42",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/42",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskdigest",
+      "path": "tools/desk/cmd/deskdigest",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/43",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/43",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskdisable",
+      "path": "tools/desk/cmd/deskdisable",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/47",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/47",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskdispatch",
+      "path": "tools/desk/cmd/deskdispatch",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/21",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskdisposition",
+      "path": "tools/desk/cmd/deskdisposition",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/39",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/39",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskevidence",
+      "path": "tools/desk/cmd/deskevidence",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/37",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/37",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskfile",
+      "path": "tools/desk/cmd/deskfile",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/39",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/39",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskfleet",
+      "path": "tools/desk/cmd/deskfleet",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/23",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskflip",
+      "path": "tools/desk/cmd/deskflip",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/37",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/37",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskgit",
+      "path": "tools/desk/cmd/deskgit",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/34",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/34",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskgitlab",
+      "path": "tools/desk/cmd/deskgitlab",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/30",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskinbox",
+      "path": "tools/desk/cmd/deskinbox",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/45",
+      "parser_state": "migrated",
+      "context": "shared-binding-consumer",
+      "owner": "desk-tools/42",
+      "gap": "Producer callback integration is carried by the concurrently authored consumer; qualification belongs to that change."
+    },
+    {
+      "executable": "deskinstall",
+      "path": "tools/desk/cmd/deskinstall",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/35",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/35",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "desklabel",
+      "path": "tools/desk/cmd/desklabel",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/38",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/38",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskmanifest",
+      "path": "tools/desk/cmd/deskmanifest",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/46",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/46",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskmerge",
+      "path": "tools/desk/cmd/deskmerge",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/36",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/36",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskmigrate",
+      "path": "tools/desk/cmd/deskmigrate",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/47",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/47",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskmonitor",
+      "path": "tools/desk/cmd/deskmonitor",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/41",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/41",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskpathguard",
+      "path": "tools/desk/cmd/deskpathguard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/31",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/31",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskperf",
+      "path": "tools/desk/cmd/deskperf",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/56",
+      "parser_state": "pending",
+      "context": "reader-only",
+      "owner": "desktools-v2/63"
+    },
+    {
+      "executable": "deskpins",
+      "path": "tools/desk/cmd/deskpins",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/46",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/46",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskpost",
+      "path": "tools/desk/cmd/deskpost",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/27",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/27",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskpr",
+      "path": "tools/desk/cmd/deskpr",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/38",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/38",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskpreflight",
+      "path": "tools/desk/cmd/deskpreflight",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/34",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/34",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskprovenance",
+      "path": "tools/desk/cmd/deskprovenance",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/46",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/46",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskpushguard",
+      "path": "tools/desk/cmd/deskpushguard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/31",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/31",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskread",
+      "path": "tools/desk/cmd/deskread",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/45",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskrebaseline",
+      "path": "tools/desk/cmd/deskrebaseline",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/46",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/46",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskreconcile",
+      "path": "tools/desk/cmd/deskreconcile",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/44",
+      "parser_state": "migrated",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/44",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskrelease",
+      "path": "tools/desk/cmd/deskrelease",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/46",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/46",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskreply",
+      "path": "tools/desk/cmd/deskreply",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/38",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/38",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskrestamp",
+      "path": "tools/desk/cmd/deskrestamp",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/39",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/39",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskroster",
+      "path": "tools/desk/cmd/deskroster",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/28",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/28",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskrun",
+      "path": "tools/desk/cmd/deskrun",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/34",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/34",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskscanbody",
+      "path": "tools/desk/cmd/deskscanbody",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/32",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/32",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskscanuntrusted",
+      "path": "tools/desk/cmd/deskscanuntrusted",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/32",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/32",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "desksourceguard",
+      "path": "tools/desk/cmd/desksourceguard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/31",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/31",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "desksupervise",
+      "path": "tools/desk/cmd/desksupervise",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/24",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/24",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "desktick",
+      "path": "tools/desk/cmd/desktick",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/43",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/43",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "desktoken",
+      "path": "tools/desk/cmd/desktoken",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/33",
+      "parser_state": "exempt",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "deskverdict",
+      "path": "tools/desk/cmd/deskverdict",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/36",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/36",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskversion",
+      "path": "tools/desk/cmd/deskversion",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/47",
+      "parser_state": "pending",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/47",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "deskwt",
+      "path": "tools/desk/cmd/deskwt",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/22",
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
+    },
+    {
+      "executable": "fanoutloop",
+      "path": "tools/desk/cmd/fanoutloop",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/43",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/43",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "issueboard",
+      "path": "tools/desk/cmd/issueboard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/45",
+      "parser_state": "migrated",
+      "context": "shared-binding-consumer",
+      "owner": "desk-tools/42",
+      "gap": "Producer callback integration is carried by the concurrently authored consumer; qualification belongs to that change."
+    },
+    {
+      "executable": "muhar",
+      "path": "tools/desk/cmd/muhar",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/44",
+      "parser_state": "migrated",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/44",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "muhar-action.sh",
+      "path": "actions/muhar/muhar-action.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/44",
+      "parser_state": "migrated",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/44",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "opmetrics",
+      "path": "tools/desk/cmd/opmetrics",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/44",
+      "parser_state": "migrated",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/44",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "repohardenguard",
+      "path": "tools/desk/cmd/repohardenguard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/32",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/32",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "reviewloop",
+      "path": "tools/desk/cmd/reviewloop",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/40",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/40",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "scanloop",
+      "path": "tools/desk/cmd/scanloop",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/41",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/41",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "untrustcorpus",
+      "path": "tools/desk/cmd/untrustcorpus",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/34",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/34",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "upgrade-assay",
+      "path": "tools/desk/cmd/upgrade-assay",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/34",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/34",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "verifyloop",
+      "path": "tools/desk/cmd/verifyloop",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/40",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/40",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "writeguard",
+      "path": "tools/desk/cmd/writeguard",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/31",
+      "parser_state": "exempt",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/31",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
+      "executable": "freshness",
+      "path": "tools/freshness",
+      "module": "tools/freshness",
+      "parser_owner": "desktools-v2/48",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/48",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "harnessgen",
+      "path": "tools/harnessgen",
+      "module": "tools/harnessgen",
+      "parser_owner": "desktools-v2/49",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/49",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "harnesslint",
+      "path": "tools/harnesslint",
+      "module": "tools/harnesslint",
+      "parser_owner": "desktools-v2/49",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/49",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "intake-eval",
+      "path": "tools/intake-eval",
+      "module": "tools/intake-eval",
+      "parser_owner": "desktools-v2/57",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/57",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "loopresolve",
+      "path": "tools/loopresolve",
+      "module": "tools/loopresolve",
+      "parser_owner": "desktools-v2/48",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/48",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "metrics-harvest",
+      "path": "tools/metrics-harvest",
+      "module": "tools/metrics-harvest",
+      "parser_owner": "desktools-v2/51",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/51",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "pairedversions",
+      "path": "tools/pairedversions",
+      "module": "tools/pairedversions",
+      "parser_owner": "desktools-v2/49",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/49",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "plugindrift",
+      "path": "tools/plugindrift",
+      "module": "tools/plugindrift",
+      "parser_owner": "desktools-v2/50",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/50",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "skillbench",
+      "path": "tools/skillbench",
+      "module": "tools/skillbench",
+      "parser_owner": "desktools-v2/50",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/50",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "skillslint",
+      "path": "tools/skillslint",
+      "module": "tools/skillslint",
+      "parser_owner": "desktools-v2/50",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/50",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "toolvalidation",
+      "path": "tools/toolvalidation",
+      "module": "tools/toolvalidation",
+      "parser_owner": "desktools-v2/49",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/49",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "winparity",
+      "path": "tools/winparity",
+      "module": "tools/winparity",
+      "parser_owner": "desktools-v2/48",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/48",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "entrypoint.sh",
+      "path": "containers/entrypoint.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/54",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/54",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "layer-secret-scan.sh",
+      "path": "containers/scripts/layer-secret-scan.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/54",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/54",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "git-floor-check.sh",
+      "path": "containers/scripts/git-floor-check.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/50",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/50",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "inject-board-state.sh",
+      "path": "plugins/assay/hooks/inject-board-state.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/51",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/51",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "inject-resident-rules.sh",
+      "path": "plugins/assay/hooks/inject-resident-rules.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/51",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/51",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "assay-inbox.sh",
+      "path": "plugins/assay/scripts/assay-inbox.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/29",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/29",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "assay-install.sh",
+      "path": "plugins/assay/scripts/assay-install.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/35",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/35",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "check-paired-versions.sh",
+      "path": "plugins/assay/scripts/check-paired-versions.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/49",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/49",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "inbound-monitor.sh",
+      "path": "plugins/assay/scripts/inbound-monitor.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/41",
+      "parser_state": "exempt",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/41",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "pdfingest.sh",
+      "path": "plugins/assay/scripts/pdfingest.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/51",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/51",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "pr-monitor.sh",
+      "path": "plugins/assay/scripts/pr-monitor.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/41",
+      "parser_state": "exempt",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/41",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "stamp-plugin-version.sh",
+      "path": "plugins/assay/scripts/stamp-plugin-version.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/51",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/51",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "tick-summary.sh",
+      "path": "plugins/assay/scripts/tick-summary.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/43",
+      "parser_state": "exempt",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/43",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "bootstrap-windows.ps1",
+      "path": "scripts/bootstrap-windows.ps1",
+      "module": "pwsh",
+      "parser_owner": "desktools-v2/35",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/35",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "build-windows.ps1",
+      "path": "scripts/build-windows.ps1",
+      "module": "pwsh",
+      "parser_owner": "desktools-v2/35",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/35",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "windows-bootstrap-hashcheck-smoke.ps1",
+      "path": "scripts/windows-bootstrap-hashcheck-smoke.ps1",
+      "module": "pwsh",
+      "parser_owner": "desktools-v2/35",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/35",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "lintbench.sh",
+      "path": "statusgen/bench/lintbench.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/53",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/53",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "aggregate.py",
+      "path": "tools/changelog/aggregate.py",
+      "module": "python3",
+      "parser_owner": "desktools-v2/52",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/52",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "check.sh",
+      "path": "tools/changelog/check.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/52",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/52",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "credit-identity.sh",
+      "path": "tools/changelog/credit-identity.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/52",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/52",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "pathsemantics.py",
+      "path": "tools/ci-load/pathsemantics.py",
+      "module": "python3",
+      "parser_owner": "desktools-v2/53",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/53",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "create-fleet-gitlab.sh",
+      "path": "tools/create-fleet-gitlab.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/30",
+      "parser_state": "migrated",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/30",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "pre-push",
+      "path": "tools/desk/hooks/pre-push",
+      "module": "bash",
+      "parser_owner": "desktools-v2/31",
+      "parser_state": "exempt",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/31",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "check-floor.sh",
+      "path": "tools/desk/internal/regression/check-floor.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/53",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/53",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "floor-go.sh",
+      "path": "tools/desk/internal/regression/floor-go.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/53",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/53",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "count-git-exec.sh",
+      "path": "tools/desk/scripts/count-git-exec.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/53",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/53",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "forge-ban.sh",
+      "path": "tools/desk/scripts/forge-ban.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/54",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/54",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "automerge-refusal.sh",
+      "path": "tools/evidence-automerge/automerge-refusal.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/54",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/54",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "lint-human-decision-defaults.sh",
+      "path": "tools/lint-human-decision-defaults.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/52",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/52",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "check-spec-header-version.sh",
+      "path": "tools/release/check-spec-header-version.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/52",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/52",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "stamp-spec-header-version.sh",
+      "path": "tools/release/stamp-spec-header-version.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/47",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/47",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "renew-fleet-gitlab-tokens.sh",
+      "path": "tools/renew-fleet-gitlab-tokens.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/54",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/54",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "run.py",
+      "path": "actions/go-analysis/run.py",
+      "module": "python3",
+      "parser_owner": "desktools-v2/55",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/55",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "go-analysis.sh",
+      "path": "scripts/go-analysis.sh",
+      "module": "bash",
+      "parser_owner": "desktools-v2/55",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/55",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    },
+    {
+      "executable": "runner.py",
+      "path": "tools/go-analysis/runner.py",
+      "module": "python3",
+      "parser_owner": "desktools-v2/55",
+      "parser_state": "pending",
+      "context": "standalone-gap",
+      "owner": "desktools-v2/55",
+      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
+    }
+  ],
+  "runtime": [
+    {
+      "path": "loopadmin/runner/client.go",
+      "owner": "desktools-v2/64",
+      "context": "typed local adapter context; private in-memory native mapping retained at most seven UTC days; no request/protocol field added"
+    },
+    {
+      "path": "tools/desk/internal/deskkit/runtool.go",
+      "owner": "desktools-v2/64",
+      "context": "explicit ToolCall.Context propagates context; callers not carrying it remain unknown parent boundaries"
+    },
+    {
+      "path": "tools/desk/cmd/cellctl/launch.go",
+      "owner": "desktools-v2/64",
+      "context": "host and scrubbed explicit desk launches mint fresh identity; no native resume API exposed"
+    },
+    {
+      "path": "tools/desk/cmd/cellctl/up.go",
+      "owner": "desktools-v2/16",
+      "context": "implicit convergence children do not yet carry parsed performance overrides; explicit desk launch qualified here"
+    },
+    {
+      "path": "tools/desk/cmd/cellctl/container_native.go",
+      "owner": "desktools-v2/16",
+      "context": "container adapters carry telemetry setting but not qualified v3 context; coverage unavailable"
+    },
+    {
+      "path": "forgeread",
+      "owner": "forge-neutral/39\u201341",
+      "context": "no admitted service diagnostic protocol in this revision; no headers, endpoint discovery or service propagation added"
+    }
+  ]
+}

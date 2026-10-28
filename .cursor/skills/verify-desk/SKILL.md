@@ -46,6 +46,8 @@ direction — and stop only for this desk's one-way set, the two flips it does N
 `irreversible: yes` flip and the CI-owned `gate: model` verified→done flip). Those are async — land
 the Evidence, surface the wait, take the next brief. An escalation is a filed artifact you keep moving
 past, and it goes to **human:<name>**, never to a bigger model.
+A verdict judges the deliverable, never the hardening of the environment it ran in
+(§A verdict judges the deliverable, not the environment).
 
 ## HARD GATE — never claim "idle / caught up" without a fresh sweep
 
@@ -162,12 +164,127 @@ and stamp but no Evidence already landed. The record admits
 Evidence only for its own brief: that brief, its stream-index row, or an outcome record
 keyed to it. Landing Evidence for any other brief refuses, even with a valid record.
 
+A runner inside a `--network none` container cannot reach the forge, so it never runs
+the check itself. The host brackets the container run instead, within one dispatch and
+with no edit to the home between the steps:
+
+1. Host open: `statusgen verifyrun --open-bracket --root <home> --brief <path> --out
+   <receipt>`, with `<receipt>` outside the home. It runs the check, digests the home's
+   tree and writes the receipt. A refused check writes nothing.
+2. Container run: `statusgen verifyrun --sandbox=container-netns --brief <path>
+   --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness
+   <file>`, with the receipt mounted read-only and `<file>` a new file outside the home.
+   It refuses before any row unless the mounted root digests to the receipt's tree, and
+   refuses after the rows if they changed it, writing no attestation or `Tree-Digest`.
+   Without a receipt it refuses outright.
+3. Host close: `statusgen verifyrun --close-bracket --root <home> --brief <path>
+   --admission-receipt <receipt> --witness <file>`. It re-runs the check and appends one
+   `Admission-Bracket:` line only when the check re-admits the run the witness names and
+   the home still digests to both the receipt's tree and the witness's `Tree-Digest`, read
+   only from the span ending where the line goes (a span with a second `Tree-Digest`,
+   `Container-Image` or attestation line is refused). Its
+   `witness=` value is the digest `statusgen verifyrun --bracket-digest --witness <file>`
+   prints for that bracket (`verdict=match` once closed), which the landing's on-behalf-of
+   stamp does not change.
+
+Land the closed witness file's bytes, bracket line included, as the Evidence block. A
+container row without its `Admission-Bracket` line is unattested and is not a Linux
+witness. On the landed file, `statusgen verifyrun --bracket-digest --witness <brief>` must
+report `verdict=match` and `span-lines=tree-digest:1,container-image:1,attestation:1` on that
+bracket's own `bracket=` line, and the bracket's `opened` must precede `closed`.
+
+`verdict=match` shows only that the bracket is consistent with its span, not who wrote it:
+the digest is keyless and computed from the file's own bytes. A row is credited only when
+all of these conditions hold:
+
+1. The bracket line and every span line were landed by the verifier's landing step
+   (`deskevidence`). Per line, `git blame --line-porcelain` gives an `author-mail` that is the
+   roster verifier's noreply address with its pinned numeric id, never judged by the display
+   name. A roster human does not qualify.
+2. The span's attestation matches the verifier's attestation record for that run. The whole
+   `Verification-Attestation:` line (run, source, brief, model and tier) equals the line
+   rendered from the record its `<repo>#<issue>` names. That record passes every rule
+   `ReadVerifierAttestation` applies: titled exactly `[verification-attestation] <run>`,
+   authored by the roster's dispatcher identity (distinct from the verifier), closed, never
+   edited, and carrying the dispatcher's model stamp for that model and tier. A record by any
+   other author, the verifier included, is not credit.
+3. That attestation names the brief that contains it and the source under verification.
+
+A bracket and span written outside the landing step, a bracketed block copied from another
+brief or an earlier source, or an attestation that does not match its record is not credit,
+even when the digest matches. Check all three with `statusgen verifyrun --bracket-digest
+--witness <brief> --credit --source <40 hex>` on the landed brief: each bracket's line ends
+`credit=credited`, `credit=not-credited` or `credit=could-not-check`, with the reason on
+standard error. Credit a row only on `credit=credited`, never on `verdict=match` alone. The
+record must be in the brief's own repository and authored by the dispatcher; a login-only
+verifier match, a shallow clone, a missing roster or an unreadable record is
+`credit=could-not-check`, which is not credit. Condition 1 reads
+the commit author git records, which is author-asserted attribution, not authorization: whoever can commit
+to the brief can write the verifier's author address. The forge-attributed record in
+condition 2 is the anchor. Only server-side rules on who may push to the brief's branch
+prevent the forgery, and a verifier roster entry with no numeric id leaves condition 1
+could-not-check. A version 2 (cross-repository) receipt runs the same bracket with `--root`
+naming the deliverable home and `--brief` naming the tracking repository's brief outside it;
+every step refuses unless both repositories are named and differ and the brief holds the
+bytes the receipt admits. `--credit` credits such a span only when both repositories pass the
+repository checks: the tracking repository, where the record lives, is the brief's own, and the
+source repository (`source-repo=`) is in the configured repository set; otherwise it answers
+`credit=not-credited`. A linked
+worktree's git directory is not mounted in the container, so rows that need git history
+run on the host.
+
+When a Verify table mixes container-witnessable rows with host-only rows, assemble its
+Evidence with `statusgen verifyrun --rows <id>[,<id>...]`, which runs and records only the
+named rows under the standard witness header and prints every other row as `row <id>: not
+selected`. Run the container bracket above with `--rows` naming the container-witnessable
+rows, then a host `statusgen verifyrun --rows` naming the host-only rows. The two selections
+are **disjoint** and together cover the whole table. Either landing order works; land both
+tables in the same run before its verdict line. Before that verdict, `statusgen verifyrun
+--check <brief>` must accept the whole table: every owed row is satisfied and supplemental
+rows remain explicitly uncredited. `--bracket-digest` must report `verdict=match` for the
+container bracket. Never hand-paste or fence a witness table. `--rows`
+narrows a run, never an audit: `--check` covers the whole table, the last witness for a row
+wins, and the credit rule above is unchanged. A bad selector (an unknown, empty, repeated or
+shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
+before any row runs.
+
+With `--acceptance-record`, execute the protected host rows in **one** host invocation on a
+clean committed source, before inserting uncommitted Evidence. Include every supplemental
+row so the producer records `author-added; no acceptance credit`. Select these host rows
+with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+Then bracket the disjoint container-witnessable rows on that same source and land the
+closed witness through the sanctioned Evidence path. The selections together cover the
+whole protected table, and the assembled run carries exactly one `Verification-Table:`
+descriptor. A second protected host invocation duplicates that descriptor or moves its
+source and cannot close. Container execution may precede the host invocation if its
+witness remains outside the home and the home stays clean; inserting it first makes the
+protected host execution refuse. Never rewrite witness cells or receipt fields to make
+sources agree. The container executes the current table, so a row whose current definition
+differs from its owed original definition still needs the existing protected acceptance
+route; mixed assembly does not exempt that obligation. The whole-table audit and bracket
+credit checks above remain mandatory.
+
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator
 desk, which runs `deskdispatch --attest-verifier --root <home>`. This creates no replacement
 claim, worktree or worker. Recover the same record, reacquire the original claim, then
 check admission before launching. If an uncertain create cannot be found, hold recovery;
 never create a new run to evade the missing receipt. Do not change identity to recover it.
+
+## Qualifying a repaired verifier installation
+
+A source test proves the source under test, not the installed runner. When a tool or this
+procedure needs repair, keep this order: implementation PR merged → containing tool/plugin
+release published → consumer pin updated → installed tools, plugin and runner image confirmed
+against that pin → fresh independent qualification with new dispatch/admission → dependent
+brief verification. Record the actual versions and image identity used, not merely the desired
+pin. A pending release, stale installation or unavailable image is a BLOCKED qualification.
+Do not edit installed plugin caches or substitute a locally built binary in an admitted run.
+Historical Evidence and receipts remain immutable; neither a source-only regression test nor
+an old qualification becomes evidence for the new installation. After qualification succeeds,
+re-dispatch dependent briefs from current main with their own new admission and exact rows.
+These steps confer no merge, release, installation or lifecycle authority beyond each role's
+existing grants.
 
 ## The loop
 
@@ -224,7 +341,7 @@ never create a new run to evade the missing receipt. Do not change identity to r
    printable; anything less and the desk is mid-drain, not standing down.
 
 **Wake receipts — a failed/blocked brief is not re-run just to reproduce its failure**
-(`verify-wake-v1`; `docs/streams/desk-supervision/verify-wake-v1.md`). When a verifier run ends
+(`verify-wake-v1`; [canonical receipt contract](https://github.com/medici-finance/assay/blob/main/docs/verify-wake.md)). When a verifier run ends
 `verify-fail`/`blocked`, its landed outcome sidecar row carries a WAKE RECEIPT: the inputs it
 observed, the blocker class, and the checkable condition that must change before re-running is
 worth a slot. `verifyloop plan` reads it and buckets the brief accordingly — **consume the
@@ -235,7 +352,8 @@ plan's decision, do not second-guess it**:
   dispatchable: **do not re-dispatch it**, and do not treat it as done — the failure stands, held
   until its wake condition is met. Route the next action to the named actor if it is not already
   moving (an `implementation`/`check-definition` blocker is worker work; `human-action` is a
-  human gate; `environment` is an operator/prerequisite condition).
+  human gate; `environment` is an operator/prerequisite condition: a missing prerequisite a row
+  needs, never the hardening level of a runner that works, §A verdict judges the deliverable).
 - **`could-not-check`** on a wake reason — a declared input could not be read. Never rounded up to
   unchanged, never a pass; hold and surface it exactly as any other could-not-check.
 - A **legacy or incomplete** receipt (pre-v1 rows, or a receipt missing its schema/blocker/wake
@@ -247,40 +365,64 @@ plan's decision, do not second-guess it**:
   `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
   implemented→verified→done path a NON-implementer runs on merged main.
 
-**Writing a receipt: three fields reviewers keep bouncing.** Each of these has blocked Evidence
-PRs one at a time (#882 records the pattern). Get them right before the row lands:
+**Writing a receipt: derive scope, then validate the bindings.** Use the supported writer path
+before the outcome lands:
 
-- **`inputs` declares the deliverables, not just the brief.** Add one `file:<repo-relative-path>`
-  key for every path in the brief's `## Context` `files:` list that exists at the receipt's `sha`,
-  with at least one file under each listed directory, next to the brief itself and `tool`. A
-  receipt that declares only the brief and the tool never wakes when the deliverable is fixed,
-  which is the one change it exists to notice.
+- **Prefer the writer's automatic receipt derivation.** For a non-pass outcome, supply the
+  observed outcome, row counts/results, real `blocker_kind` / `blocker_ref`, run join keys,
+  timestamps and full Evidence commit `sha` to `deskevidence --outcome-record`, without a
+  hand-authored `wake_schema` or `inputs` map. The supported derivation fills the receipt ID,
+  schema, input revisions, tool version and `relevant-input-changed` predicate; it does not
+  invent the blocker or acceptance evidence. A supplied complete receipt (for example, for
+  another supported wake predicate) still passes the supplied-receipt checks; an incomplete supplied
+  `verify-wake-v1` receipt is refused, not completed by guessing.
+- **`inputs` covers the whole declared scope.** The writer derives every selected existing
+  file from the Context declarations at the admitted Source, plus the brief and tool. It also
+  derives `scope:` digests for declared path kinds, literal absence and sorted directory/glob
+  membership. One file per directory is not coverage. Use the shared
+  `docs/declared-input-scope.md` contract; never manually forge a map, drop an unsupported
+  declaration, or copy current target-branch hashes to make a receipt land. An unsupported or
+  unreadable declaration is incomplete evidence, distinct from a successfully observed
+  absent path or empty membership. Derivation refusal leaves the outcome unlanded.
 - **`blocker_ref` is a real issue or PR reference**: `#N`, or `<owner>/<repo>#N` for a sibling
   repo. When no tracking issue exists yet, file the bug first and cite its number. Never write a
   placeholder ("to file") or a sentence in this field; the blocker's description belongs in `note`.
 - **The brief's `file:` revision is the brief AS IT LANDS.** That is the SHA-256 of the brief on
   your Evidence branch after your Evidence rows are appended, not the pre-Evidence copy at the
-  receipt's `sha`. The wake reader hashes the file in the merged tree, which includes your append,
+  admitted Source revision. The outcome's `sha` names the successful Evidence commit; the
+  brief input hashes its landed bytes. The wake reader hashes the file in the merged tree,
+  which includes your append,
   so a hash of the pre-Evidence brief makes the receipt fire the moment it lands. Write the outcome
   row last, after every edit to the brief on that branch. A later merge of main into the branch is
   not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
   lands, which is correct, because the brief changed after the verify run.
 
-Since #882, `deskevidence --outcome-record` REFUSES (exit 5, naming the field) a receipt that
-breaks any of these three rules — writer-side enforcement of what was, until then, a review-time
-catch. The three rules above are unchanged; get them right at write time and the writer's own
-gate never fires.
+`deskevidence --outcome-record` checks completeness, receipt validity and Evidence binding
+before landing derived or supplied receipts. Observation-input re-derivation applies to
+`relevant-input-changed` receipts; it is not a check of every wake predicate. A refusal names the violated field or binding; report it rather than weakening admission
+or shrinking the declared inputs. Automatic derivation is not permission to skip that result.
 
-A `verify-fail` or `blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5)
-one without it, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
+After automatic derivation (or when a complete receipt is supplied), a `verify-fail` or
+`blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5) a still
+incomplete record, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
 `wake_predicate`, then the predicate's own input). Every record that claims
 `wake_schema: "verify-wake-v1"` also carries the run's join keys: `prs` (the merged changes that
 delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` with
 `prs_unknown_reason: "no-pr-delivery"` when nothing was delivered), `verifier_tier` (`any` or
 `strong`, equal to your admitted tier; never a model name), `started` and `finished` (RFC3339 UTC,
-`started <= finished <= ts`), plus the existing `rows_passed` / `rows_total`. Optionally add
-`row_results` (`{row, result}` for ALL rows; `pass` / `fail` / `could-not-run` / `deferred`) and
-`dispatch_ref` (`<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 hex>`, copied from your dispatch; it stays
+`started <= finished <= ts`), plus the existing `rows_passed` / `rows_total`.
+When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results.
+This includes non-contiguous numeric and suffixed inventories. Each exact result is
+`{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`); when `rows` is empty
+or omitted, `row_results` remains optional.
+`rows` names only exact identities still held by the receipt, never every covered row;
+coverage belongs in `row_results` / `rows_total`. A `verified` record omits `rows`.
+For draft payloads using covered rows, follow the producer migration in
+[the outcome-row producer migration](https://github.com/medici-finance/assay/blob/main/docs/verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows): preserve the original payload and
+witnesses, derive held identities only from that run's real results, and retain
+incomplete evidence unlanded if it cannot establish them. Never rewrite historical
+Evidence or guess PASS identities from counts. All native landing controls still apply.
+Optionally add `dispatch_ref` (`<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 hex>`, copied from your dispatch; it stays
 self-reported). The writer reads each `prs` entry back from the forge (exists, merged, merge commit,
 reachable as `verify-wake-v1.md` specifies: a same-repo GitHub change in the record's `sha` history, a
 change in another repository in that repository's default branch, a GitLab change merged into its
@@ -325,11 +467,21 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   `deskpr`, replies via `deskreply` — never a raw forge call.
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
-  unrun with its reason — never silently skipped, never assumed-pass.
+  unrun with its reason — never silently skipped, never assumed-pass. Every submitted execution
+  row has separate `Date` and `Runner` cells, including BLOCKED/unrun rows and supplemental
+  host observations. For unrun rows they identify observation of the blocker, not execution.
+  A dated heading or commit author is insufficient. Recover missing attribution from retained
+  run records or rerun; never infer it. Preflight every submission with `deskevidence … --dry-run`
+  before publishing its Evidence PR; repair any refusal without advancing the brief.
+- **The emitted verifier kit owns command preflight, row coverage and verdict spelling.**
+  Its sections 2 and 5 carry the execution procedure; dispatch it verbatim. This desk checks
+  the returned accounting and routes the outcome as described below.
 - **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
   verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
   command, exit code, an output hash, the date and the runner identity; that witness table is what
   turns an Evidence row from prose into something a reviewer can re-run and compare.
+  In a `--network none` container, run it only inside the admission bracket (§Pre-work
+  admission); the closed witness file, `Admission-Bracket` line included, is what lands.
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Fail-first: a risk-bearing row must red on the base.** When the table has a risk-bearing row
@@ -435,6 +587,11 @@ or output. A value copied from the work under test verifies only that the work a
   single-point-of-failure note names: the reviewer's `deskpathguard check` is the one control
   until the paths land in branch protection, and this re-derivation catches an edit the check
   missed because it reads git history, not a label.
+  The desk treats zero re-derived rows, a missing original row, or a filtered run with no
+  required-row coverage as incomplete evidence regardless of exit status; it cannot land a
+  passing verdict on that accounting.
+  Before recording closure, follow `docs/protected-paths.md` § "Recording closure after
+  re-derivation" for the immutable table marker and explicit uncredited supplemental rows.
 
 ## Risk-bearing value — desk-side routing
 
@@ -459,6 +616,46 @@ status flip**:
   the F-28 failure shape wearing the fix's clothes.**
 - `DERIVED` / `N/A` → record in Evidence and proceed; no issue.
 
+## A verdict judges the deliverable, not the environment
+
+Whether a brief's Verify rows pass is a question about the deliverable. Whether the runner or
+container this desk uses is hardened enough is a question about the project's infrastructure: a real
+one, tracked on its own, and **never a hold on a verdict**. Authority: the driver's standing ruling
+(2026-10-19), which applies to future cases too.
+
+- **Close on substance.** A `gate: model` brief with no `risk: yes`, held only because of where it
+  could run, closes `verified` when every Verify row passes with 0 fail on a working runner. The
+  execution witness is a mechanical re-run: no re-review and no new hold. The witness names the
+  runner class it actually used, never one it did not.
+- **The environment is part of the claim only when a row says so.** A row whose own assertion is
+  about the environment (it refuses network egress, it runs with no network) must run where that
+  assertion can be exercised. That is substance, not posture; a row that could not run there is
+  recorded unrun, as any other unrun row. Network is otherwise allowed where a row needs it.
+- **Still held, and asked as a one-line yes/no, "does it work?":** a row that fails or never ran,
+  `gate: human`, any `risk: yes`, a tool refusal. This rule loosens none of them, nor the
+  admission, two-stamp, irreversible-brief and risk-bearing-value rules above and below, nor the
+  limits on live-cluster, production and billed endpoints (cluster rows and live probe rows, below).
+- **A blocked outcome names a missing row, capability, definition or provenance.** The hardening
+  level of a runner that works is none of those: it is filed with the infrastructure work it
+  belongs to and records no blocker, wake receipt or hold on the brief.
+
+## Classify the observed result before landing
+
+Keep the verdict, Evidence prose, row accounting and outcome record consistent:
+
+| Observed obligations | Verdict and outcome | Next action |
+|---|---|---|
+| An acceptance obligation was actually checked and failed, including an observed non-discriminating risk-bearing row | Strict `**VERIFY: FAIL**`; `verify-fail` | Name the failed obligation and primary output; retain any other unrun rows separately |
+| No obligation failed, but required evidence is unavailable or incomplete | Exact `**VERIFY: BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
+| Every required obligation has current admissible evidence and closure gates allow advancement | Strict `**VERIFY: PASS**`; `verified` only after the closure lands | Follow the landing and closure checks below |
+
+For BLOCKED, retain command → could-not-run → reason for each uncovered obligation, file the
+blocker and land the available Evidence without a lifecycle flip. Use the same admitted
+Evidence-first outcome path below with `outcome: blocked` and a complete wake receipt. If the
+Evidence landing itself refuses, retain the diagnostic and file the landing blocker; publish
+no outcome in its place. A nonzero process exit alone does not decide which obligation failed,
+and an exit 0 alone establishes neither row coverage nor qualification.
+
 ## On VERIFY: FAIL — a Change Failure, filed not buried
 
 **First, is it a STALE row rather than a Change Failure?** A large share of FAILs are the same
@@ -474,10 +671,12 @@ sets and the PR shape.
 
 Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
-IS the report. **In addition** write one outcome record with `deskevidence --outcome-record` (since
-#882: one NEW file per outcome under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
+IS the report. **In addition** write one outcome record and land it with `deskevidence --outcome-record` (since
+#882: one NEW file per outcome, landed under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
-computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
+computable from prose). Write the record to the dispatcher-named outcome path from your prompt —
+never invent one, and never write it inside the home, where it is an untracked file that refuses
+admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcome-record`. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
 refresh only the brief in the verifier home from the target branch
@@ -501,6 +700,10 @@ current target branch rather than the README being refreshed. Evidence-only land
 verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
 recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
 edit of one already landed.
+
+Core outcome fields below are schematic, not a complete writer input: add the real blocker
+and run join keys described above for automatic non-pass derivation. Use `blocked` instead of
+`verify-fail` when no acceptance obligation failed.
 
 ```
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<full-evidence-commit-sha>"}
@@ -542,6 +745,13 @@ where admission is checked. The admitted forms are:
 - Outcome record: `--outcome-record <absolute file outside the home>`.
 Release the home only after the last landing for its run.
 
+**Leave Runner cells unannotated; `deskevidence` owns the on-behalf-of principal.** Never type an
+`on-behalf-of` annotation into a Runner cell; pre-check with `deskevidence … --dry-run` instead.
+The tool stamps the roster's principal into every App-run row the landing adds. It restamps a
+planted or non-principal annotation, and refuses (nothing written) a row naming a different roster
+human. The dry-run runs every refusing gate on the stamped content and prints each stamped row. Do not
+pre-check by linting the home, where App rows read as unstamped PROBLEMs that the landing itself fixes.
+
 **A sanctioned channel is not a way around a blocked write.** `deskevidence` is where the real guards
 live and fire — `VERIFIER_MAIN_OK`, the repo allowlist, the BodyCheck secret/impersonation scan, the
 outward-write rate limit, the post-commit attribution check (author = the App's bot USER id), the
@@ -570,8 +780,10 @@ brief at `verified` with a refused close.
 **Land as each verdict arrives.** A PASS in hand and not on main within one landing cycle is a defect:
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this
-desk posts goes out under the role App via the desk verbs (`deskpost` / `deskpr` / `deskreply` /
+desk posts goes out under the role App via the desk verbs (`deskpr` / `deskreply` /
 `deskfile --raised-by verifier`), minted with `desktoken verifier` — never a bare forge call.
+For comments, use `deskfile attach` on issues or `deskreply` on this desk's own PRs;
+`deskpost comment` is reserved for `pr-review-desk`.
 **Standing-doctrine pointer (2026-08-17):** the verdict-transcription lane (`docs/streams/verdict-lane/`,
 ruling R-6) would replace this path with signed verdict issues and a main-side sole writer; until R-6 is
 SIGNED and the lane armed (cutover = verdict-lane/06), this section stands unchanged.
@@ -1004,7 +1216,11 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+relay onto the tracker, nor does a durable escalation ride the lane alone. A filing that an open
+PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
+`deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
+count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
@@ -1030,3 +1246,25 @@ boot, before the first sweep.
 **The fixed-cadence sweep is CREATED by Boot step 5 — `capability:cadence-tick`, armed before the
 first sweep — not assumed**: a window with no armed tick has no wake signal, and this contract is
 then unmet from boot, whatever the transcript's first round looks like.
+
+
+## Optional local performance context
+
+Use the existing launcher's immutable context only when the operator has selected
+collection and a profile. Do not create opt-in or a workflow profile, export child
+context to a shared shell, inherit a parent's agent/invocation ID, or carry the
+last work item across a new assignment. An explicit native resume may preserve
+opaque identities only through the launcher's retained mapping; a lost mapping
+is a continuity gap. Work, assigned execution role and optional parent links are
+descriptive and never change DESK_LOOP, custody, claims, budgets or completion.
+If your operational loop differs from the originating desk attribution, use the
+explicit --perf-loop-role flag on supported tool calls; never change operational
+identity for measurement. Keep local workflow references and handoffs private.
+See [desk-shell mechanics](../../references/desk-shell.md#optional-local-performance-context)
+and the [Assay source entrypoint inventory](https://github.com/medici-finance/assay/blob/main/docs/performance-entrypoints.json) for supported boundaries; an
+unsupported boundary stays unknown.
+
+Apply validated handoff entries to each tool call with per-command `env KEY=value
+... tool ...` arguments or that tool's supported `--perf-*` flags. Quote values;
+never evaluate the handoff as shell code or export it into a persistent shell.
+Use `--perf-loop-role` for descriptive desk attribution; never alter `DESK_LOOP`.

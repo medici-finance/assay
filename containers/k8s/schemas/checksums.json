@@ -1,0 +1,6 @@
+{
+  "namespace-v1.json": "324fae677b98d1a6d54340db0c334d053e8ffbafceb3f73326e41de2610d5843",
+  "networkpolicy-networking-v1.json": "f6324cc464f62228b0418f438d167208e4f86c7e3677ba30f608e79a8b26ba79",
+  "serviceaccount-v1.json": "8193d6c3561475c6d3d5c44e1faedb1df53905373d904bc17015694326d659cf",
+  "statefulset-apps-v1.json": "e095a9d88776fbb2e9c9312baac322c992a9f5188f81ae690bb7dc00fc3915fa"
+}

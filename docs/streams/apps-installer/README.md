@@ -67,7 +67,7 @@ per Secret or per user). The tiers change **who does the work**, never the metho
 | 07 | [Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented](brief-07-install-skill-runbook-cutover.md) | 4 | M | todo | — | — |
 | 08 | [Solo identity mode — spec and decision for running the desk verbs on the operator's own token](brief-08-solo-identity-spec.md) | 0 | S | implemented | — | — |
 | 09 | [Team tier gains `<prefix>-review` — a third App holds the reviewer role, so the act bot's PRs get a formal approval](brief-09-team-tier-review-app.md) | 2 | M | todo | — | — |
-| 10 | [`deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act](brief-10-team-review-avatar.md) | 0 | S | todo | — | — |
+| 10 | [`deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act](brief-10-team-review-avatar.md) | 0 | S | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 Ruling for 08 is already recorded on #467 (2026-09-05): adopt Solo as specified, and the install

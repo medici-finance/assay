@@ -1,6 +1,6 @@
 ---
 brief: "assay:assay:desktools-v2:56"
-title: "Migrate deskperf to Cobra and Viper"
+title: "Migrate deskperf and qualify deskusage on the shared CLI"
 why: >-
   deskperf, the read verb over the opt-in local perf history, shipped with desk-tools/23
   outside the Cobra and Viper migration. The routing registry must own every executable
@@ -9,16 +9,18 @@ why: >-
 wave: 3
 depends: ["desktools-v2/16"]
 unblocks: ["desktools-v2/17"]
-effort: "S"
+effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 4
 id: "0c579884-688c-46f0-90ae-5960c789df38"
 authored: "2026-10-14 by desk-tools/23 (routing the entrypoint that PR added)"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
   - "docs/streams/desktools-v2/cli-contract.md"
@@ -31,17 +33,20 @@ exec-tier-why: >-
   cannot show that.
 domain: "complicated"
 consumers:
+  - "tools/desk/cmd/deskusage: follow-up desktools-v2/56 (shared CLI contract tests; record semantics remain desk-supervision/34)"
   - "tools/desk/cmd/deskperf: follow-up desktools-v2/56 (command tree, declared configuration, contract tests)"
   - "tools/desk/README.md: follow-up desktools-v2/56 (legacy invocation forms kept; quoted help reconciled)"
   - "docs/telemetry.md: follow-up desktools-v2/56 (legacy invocation forms kept; quoted help reconciled)"
   - "docs/streams/desktools-v2/cli-migration.json: follow-up desktools-v2/56 (owned row flips to migrated)"
 ---
 
-# Brief 56 — Migrate deskperf to Cobra and Viper
+# Brief 56 — Migrate deskperf and qualify deskusage on the shared CLI
 
 ## Context
 
 files:
+- `tools/desk/cmd/deskusage` — already on the shared Cobra adapter; desk-supervision/34 owns counts, store and dispatch-join semantics. This brief owns generic CLI qualification only.
+- `tools/desk/cmd/deskusage/cli_test.go` (planned) — TestCLIHelpOffline, TestCLIConfigFlow, TestCLILegacyForms and TestCLIHelpDoesNotDiscoverManifests.
 - `tools/desk/cmd/deskperf` — `deskperf`; module tools/desk; parser: Go flag, one FlagSet per verb with manual verb dispatch; 339 LOC, ~2 verbs (`report`, `boot`), ~8 flags at 2ebdde50982a; release: desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS.
 - `tools/desk/cmd/deskperf/cli_test.go` (planned) — TestCLIHelpOffline, TestCLIConfigFlow, TestCLILegacyForms.
 - `tools/desk/internal/clicontract/testdata/mutations/desktools-v2-56.json` (planned) — muhar mutation spec for the owned command.
@@ -72,24 +77,28 @@ deliverables, not claims that they already exist.
 
 ## Task
 
-1. Build a Cobra command tree for `deskperf`: root, `report`, `boot`, and the version forms. Cobra/pflag does the parsing, argument validation and help. Remove the old parser once equivalent coverage exists; never run two parsers.
+1. Qualify both owned commands; `deskusage` is already on Cobra and retains its record/summary semantics and privacy boundaries from desk-supervision/34. Build a Cobra command tree for `deskperf`: root, `report`, `boot`, and the version forms. Cobra/pflag does the parsing, argument validation and help. Remove the old parser once equivalent coverage exists; never run two parsers.
 2. Root and nested `-h`, `--help`, `help <verb>` and version exit 0 before any config read, guard check or perf-file read, even with absent or malformed configuration. Disable Cobra's completion command unless deliberately added with tests and docs.
 3. Write the golden precedence matrix BEFORE porting: for every setting, flag, environment, config file and default, with explicit-empty versus unset. Bind only declared keys through a fresh Viper instance per invocation; no AutomaticEnv, config search, remote config or global Viper.
 4. Inventory every legacy form `tools/desk/README.md` and `docs/telemetry.md` use and keep it: `--f=v`, `--f v`, single-dash forms, and global-flag placement. Unknown flags and bad values fail before any effect, with the exit code the contract states. Paths behave natively on Windows and POSIX.
-5. Declare TestCLIHelpOffline, TestCLIConfigFlow and TestCLILegacyForms in the migrated package, using the fixture cases listed in cli-contract.md. Flip this brief's registry row to migrated only after they pass, then reconcile any consumer doc that quotes old help text.
+5. Declare TestCLIHelpOffline, TestCLIConfigFlow and TestCLILegacyForms in both owned packages, using the fixture cases listed in cli-contract.md. Flip this brief's registry row to migrated only after they pass, then reconcile any consumer doc that quotes old help text.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +dereference | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskperf -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | exit 0; TestCLIHelpOffline PASS; root and nested help and version under absent and malformed config with zero effects and zero config reads |
-| 2 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskperf -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | exit 0; TestCLIConfigFlow PASS; each precedence-matrix row and explicit-empty versus unset case reaches the typed handler with the expected value |
-| 3 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskperf -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | exit 0; TestCLILegacyForms PASS; every documented legacy form, Windows and POSIX path cases and unknown-flag exits behave as documented |
+| 1 | check +dereference | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskperf ./cmd/deskusage -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 2` | exit 0; both packages emit the named TestCLIHelpOffline PASS; root and nested help and version under absent and malformed config with zero effects and zero config reads |
+| 2 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskperf ./cmd/deskusage -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 2` | exit 0; both packages emit the named TestCLIConfigFlow PASS; each precedence-matrix row and explicit-empty versus unset case reaches the typed handler with the expected value |
+| 3 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskperf ./cmd/deskusage -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 2` | exit 0; both packages emit the named TestCLILegacyForms PASS; every documented legacy form, Windows and POSIX path cases and unknown-flag exits behave as documented |
 | 4 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-56.json` | exit 0 and the last line reads `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count; the harness proves the baseline green and its positive control caught, then plants: help running after a config read, an undeclared config key binding, one legacy flag form dropped, the day-window refusal removed; each reddens the owner tests |
-| 5 | check | `cd tools/desk && go test -count=1 ./cmd/deskperf/...` | exit 0; every pre-existing test in the owned package still passes |
-| 6 | check | `cd tools/desk && GOOS=windows go vet ./cmd/deskperf` | exit 0; the owned package compiles for Windows (native Windows behaviour runs on the CI lane, not here) |
+| 5 | check | `cd tools/desk && go test -count=1 ./cmd/deskperf/... ./cmd/deskusage/...` | exit 0; every pre-existing test in both owned packages still passes |
+| 6 | check | `cd tools/desk && GOOS=windows go vet ./cmd/deskperf ./cmd/deskusage` | exit 0; both owned packages compile for Windows (native Windows behaviour runs on the CI lane, not here) |
 | 7 | check +dereference | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/56 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS; every row this brief owns is migrated, the registry validates and the contract tests pass in the migrated package |
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 10 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskperf/ ./cmd/deskusage/ > "$out" && test "$(grep -c -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")" -eq 2)` | exit 0; named PASS; compiled help/version with malformed config and a large manifest fixture performs zero operational config/discovery/custody reads; moving discovery before help fails |
 
 ## Pre-mortem
 
@@ -98,6 +107,43 @@ Viper's generic precedence replaces a per-key rule or loses an explicit empty: r
 A documented invocation stops parsing: row 3 replays each consumer's forms.
 The owner tests pass on the happy path but miss a broken guard: the mutation row plants each break and requires it to redden.
 The day-window refusal moves into the parser and disappears from the handler: row 4 plants its removal from the handler.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep this brief's parser ownership and existing compatibility rows. The shared credential
+implementation belongs to /58–59, runtime manifest discovery to /60 and timing semantics to
+/61–62. Help/version acceptance includes every pre-handler entrypoint step: no config echo,
+activation discovery, file/index read, credential lookup or child process may occur first.
+Count those effects in the compiled command test, not only inside the handler. If the shared
+performance recorder is armed, a local best-effort performance record remains subject to its
+existing explicit consent; help must not read operational configuration to classify itself.
+Retain the one measurement finalizer when moving to Cobra. Do not reset the timer after
+parsing, add a second writer or reintroduce a minter callout in an adapter.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) defines future shared performance flags/envs and selected profiles.
+/63 owns schema/resolution; /64 owns common adapter/launcher integration and inventory;
+/65 owns forge observations. Preserve this brief's existing migration/qualification scope,
+help/version, exit and parser rules. Do not implement a competing v2-only collector or copy
+work identity into old schemas. Adopt /64's common binding when present; otherwise record
+the explicit integration gap for /64, retaining prior behavior until that owner lands.
+Final suite conformance /17 must exercise the common precedence/profile fixtures and show
+that attribution cannot change operational identity or fail a valid operation.
+
+## Counts-only usage CLI routing — 22 October 2026
+
+Pickup checked open PRs on the public repository; no open change owned this brief.
+The registry adds `deskusage` as **pending** generic CLI qualification, alongside
+`deskperf`, within the two-simple-command scope. The usage command already uses the
+shared Cobra adapter; that import does not establish this brief's CLI contract suite.
+The preceding Verify selectors now require named results from both command packages.
+Extend the existing owner mutation spec to exercise both commands, including the usage
+store/guard remaining untouched for help and version. Do not replace the usage record,
+privacy or dispatch-join owner, or add another parser. Shared performance integration and
+perf-v3 amendments above remain in force. Neither registry row becomes migrated until
+this brief's generic owner tests pass for that command.
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

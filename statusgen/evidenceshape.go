@@ -36,9 +36,11 @@ package main
 //
 // Anything the forge did not report is NOT Evidence-only: a path with no patch
 // (GitHub omits one for a binary or very large diff), a README or brief whose
-// head content was not read, a patch that does not parse. Such a PR stays an
-// ordinary candidate, judged on its own App approval. The rule fails toward
-// asking for an approval, never toward skipping one.
+// head content was not read, a patch that does not parse. In autoflip such a PR
+// stays an ordinary candidate, judged on its own App approval: missing data
+// never skips an approval. Reconcile instead requires the missing shape before
+// admitting an implementation witness (briefevidence.go); it reports unknown
+// and holds writes when that required read cannot be completed.
 //
 // The classifier takes no identity. TestEvidenceShapeNeverReadsIdentity holds
 // it, and candidateGate, to that: neither may consult who authored a PR. The

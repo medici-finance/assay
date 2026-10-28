@@ -33,8 +33,7 @@ id: 9a19f81d-f0c4-414c-a6e3-2c14d402cc4c
 ## Context
 
 files:
-- **create** `plugins/assay/.codex-plugin/plugin.json` — GENERATED (path contingent on
-  01's measured schema + 03's ruling; superpowers' shape is the working hypothesis)
+- **create** `plugins/assay/.codex-plugin/plugin.json` — GENERATED (path contingent on 01's measured schema + 03's ruling; superpowers' shape is the working hypothesis)
 - **amend** `tools/harnessgen` — new verb `codex` (+ `--check`), coverage rule
 - **amend** `plugins/assay/skills/adopt/SKILL.md` — Codex install scenario
 - **amend** the tools CI workflow — extend the regenerate-and-diff check to the new verb

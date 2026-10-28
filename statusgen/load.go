@@ -111,6 +111,7 @@ func isSelfDeclaredRegisterREADME(path string) bool {
 // parseFindings reads findings from the docs/streams/findings/ per-entry
 // directory. Returns nil, nil when the directory does not exist (empty register).
 func parseFindings(path string) ([]Finding, error) {
+	defer perfEnter("parse")()
 	// Accept both old file-path form (backward compat during migration) and
 	// the new directory form. When the path ends in ".md", read the old
 	// single-file register. Otherwise treat it as the repo root and read
@@ -203,6 +204,7 @@ func parseFindingsLegacy(path string) ([]Finding, error) {
 }
 
 func loadStreams(root string) ([]*Stream, []Finding, error) {
+	defer perfEnter("discover")()
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
 	if err != nil {
@@ -283,6 +285,7 @@ func loadStreams(root string) ([]*Stream, []Finding, error) {
 // into that one stream degrades to the pre-existing `unknown stream` PROBLEM
 // (still surfaced, never rounded to a pass), which is the safe direction.
 func loadArchivedStreams(root string) ([]*Stream, error) {
+	defer perfEnter("discover")()
 	archiveDir := filepath.Join(root, "docs", "archive")
 	entries, err := os.ReadDir(archiveDir)
 	if err != nil {

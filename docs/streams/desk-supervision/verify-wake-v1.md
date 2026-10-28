@@ -26,7 +26,8 @@ named by `RecordName(content)`; before that, one appended line in the shared
 retired — see desk-supervision/24's Task step 8). Either shape's content is exactly the legacy row
 (`ts`, `brief`, `outcome`, `sha`) plus these additive keys, so:
 
-- an older reader that knows only those four keeps working, ignoring the additive fields;
+- an older reader ignores unknown additive JSON fields, but cannot resolve new `scope:` input
+  keys; those receipts report could-not-check rather than unchanged;
 - a legacy record (no `wake_schema`) parses as an **incomplete** receipt and stays visibly
   unclassified — never a fabricated hold;
 - the receipt is REQUIRED on every new `verify-fail` / `blocked` record (the writer refuses one
@@ -44,7 +45,7 @@ retired — see desk-supervision/24's Task step 8). Either shape's content is ex
 | `repo`, `brief` | owner/repo and `<stream>/<NN>` the receipt is for |
 | `verifier` | the TRUSTED-WRITER identity (the engine's RunnerID / signed verdict principal), never a free-text assertion |
 | `outcome` | observed outcome (`verify-fail` / `blocked` / …) |
-| `rows` | the Verify-row numbers this receipt holds (empty = the whole brief) |
+| `rows` | exact Verify-row identities held by this receipt (empty = the whole brief); positive integers retain their JSON number form, suffixed IDs use strings such as `"6a"`; `6` and `6a` never alias |
 | `inputs` | declared input scope: `input-key -> revision`. For a brief file's own `file:<path>` key this is the revision AS IT LANDS — the copy on the target branch at write time, which already carries this landing's own Evidence append (the writer reads it from the forge and refuses a mismatch; #882 Task step 3(c)) — never the pre-Evidence copy hashed at wake-evaluation time. For every other declared deliverable, the revision observed at receipt time |
 | `tool_version` | applicable tool version at receipt time |
 | `blocker_kind` | one of the closed set below |
@@ -57,14 +58,35 @@ retired — see desk-supervision/24's Task step 8). Either shape's content is ex
 | `verifier_tier` | `any` or `strong` — the tier the run was admitted at; never a vendor or model name. Must equal the admitted binding's tier when it carries one |
 | `started`, `finished` | RFC3339 UTC; `started <= finished <= ts` |
 | `rows_passed`, `rows_total` | how many Verify rows passed, out of how many the brief has |
-| `row_results` | optional list of `{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`) covering ALL `rows_total` rows; its length equals `rows_total` and its `pass` count equals `rows_passed` |
+| `row_results` | optional in the wire schema; [new producers](../../verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows) require it whenever `rows` is non-empty. List of `{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`) covering ALL `rows_total` rows; its length equals `rows_total` and its `pass` count equals `rows_passed` |
 | `dispatch_ref` | optional `<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 lowercase hex>` (prefix 1-226 printable ASCII bytes, no `@`). **Self-reported and stays so** — the writer checks the shape, never that the dispatch happened |
 | `dispatch_ref_sha256` | written by the writer only, on a private register, in place of `dispatch_ref`; never valid input |
 
 Input revisions cover the **Verify definition**, the **relevant deliverable/dependency
 revisions**, and the **applicable tool version**. Keys are opaque to the evaluator; the
-already-authorized reader interprets them (the offline reader understands `tool` and
-`file:<repo-relative-path>`).
+already-authorized reader interprets them. The offline reader understands `tool`,
+`file:<repo-relative-path>`, and `scope:<canonical-declaration>[/]`; the trailing `/`
+is written exactly when the declaration is a literal observed as a directory, and
+readers accept a directory key in either form (see the
+[declaration contract](../../declared-input-scope.md)). Each scope digest
+records the admitted declaration's path kinds and sorted membership, including a
+literal planned path's absence. Directory/glob member additions or removals and
+planned-file creation can therefore wake work without a pre-existing content key.
+File keys still hash the original admitted observation Source; the brief's key
+still hashes landed Evidence, and the supplied tool-version contract is retained.
+
+The [declaration contract](../../declared-input-scope.md) is shared by derivation,
+all-file coverage, Source-to-Evidence shape checks and the root reader. A new
+declaration, kind or membership between Source and Evidence requires fresh admission
+and observation. No target-branch repair replaces the original observed bytes.
+Historical receipts stay immutable. If today's declarations need scope keys a
+historical receipt lacks, the root reader reports could-not-check and requires a
+fresh admission/observation; it cannot assert an unchanged hold. An independently
+observed input change still fires even when another scope could not be checked.
+Older readers encountering the new scope keys report could-not-check on unknown
+keys, and a reader older than the slash form reports could-not-check on a
+`scope:<decl>/` key, never unchanged. Custom readers must opt into the optional scope-completeness interface to
+provide this authoring-aware check; opaque reader semantics otherwise stay intact.
 
 ### Blocker kinds (closed set) → next actor
 
@@ -154,9 +176,37 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
   the classifier is stateless).
 - An **unrelated** commit does not wake work when the declared inputs are known unchanged; an
   **incomplete input scope cannot establish unchangedness**, so it refuses to claim a hold.
-- A **partial** hold lets a newly-runnable row dispatch while the held rows are recorded as
-  explicitly unrun — and **no partial result closes the whole brief** (Land flips only on a
-  whole-brief PASS).
+- A **partial** hold dispatches only non-held rows whose PASS is not already
+  observed on the unchanged receipt. A complete `row_results` inventory must name
+  every current Verify identity exactly once, match `rows_total`/`rows_passed`,
+  and never claim a held row also passed. Missing, foreign, duplicate or
+  contradictory coverage is visibly **could-not-check**, never a manufactured
+  hold. Prior observations are neither new Evidence nor a whole-brief PASS.
+  Two unchanged selections, including after a restart, remain WAIT when every
+  non-held row already passed. Changed inputs, a closed blocker and a reasoned
+  explicit recheck still wake the work through the existing first-match rules.
+- Old count-only receipts can establish this completion only for the original
+  contiguous numeric inventory, exact total and `rows_passed == non-held rows`.
+  Counts never assign PASS to individual rows. Suffixed or non-contiguous
+  inventories require exact `row_results`; they are not rounded to numeric rows.
+  The numeric constructor remains source-compatible, and the scheduling reader
+  and writer preserve numeric and suffixed IDs through append-only receipts.
+  Older binaries that cannot decode suffixed IDs need the upgraded reader; no
+  compatibility downgrade may strip suffixes. This scheduling addition does not
+  change the separate integer-only signed `verdict-v1` execution schema.
+  Its historical `Atoi` numeric execution lexemes remain supported separately.
+  Every nonempty noncanonical cell in the scheduling inventory is retained and makes
+  partial reuse could-not-check; it is never omitted to manufacture full coverage.
+  A malformed latest wake-v1 receipt stays visibly could-not-check for its brief;
+  it cannot disappear into an unclassified run or an older hold. The writer also
+  refuses noncanonical casing of row-list keys, exact held/PASS overlap, and counts
+  exceeding the non-held inventory. When an inventory is reported, held IDs must
+  appear in the exact `row_results`, or lie within the count-only numeric range
+  `1..rows_total`. Legacy receipts without either inventory remain readable.
+  An earlier source or clock uncertainty retains
+  its original reason. Rows deferred by the current offline envelope stay explicitly
+  unrun and are excluded from newly runnable identities; exclusion never marks them PASS.
+
 - A duplicate `receipt_id` (the latest record per brief wins — the newest `ts`, never file or
   line position) does not create another event.
 
@@ -167,7 +217,10 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
 - **Legacy rows** (pre-v1) stay valid and are read exactly as before; they classify as
   `unclassified` (one pass), which reproduces today's behaviour — the first complete receipt a
   run produces begins the wake scheduling.
-- **Rollback** is the previous released binary/skill pin: the additive fields are ignored by the
-  older reader, and receipts are never erased to make a rollback look clean.
+- **Rollback** is the previous released binary/skill pin. Older readers ignore unknown
+  additive JSON fields, but receipts containing `scope:` input keys report could-not-check
+  because the older reader cannot resolve those keys; the same holds for a directory key
+  in the `scope:<decl>/` form read by a reader older than that form. Receipts are never erased or
+  relabelled to make a rollback look clean.
 - **Explicit recheck** is the operator's escape hatch: an `explicit-recheck-with-reason` receipt
   wakes the work regardless of the other predicates, with the reason recorded.

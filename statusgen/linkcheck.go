@@ -461,6 +461,7 @@ type consumedFragmentIndex struct {
 	root    string
 	built   bool
 	ok      bool            // false ⇒ could-not-check (git history unreadable)
+	shallow bool            // the could-not-check is a SHALLOW clone, not a missing repo (#3364)
 	tracked map[string]bool // root-relative slash paths ever tracked under changelog/
 }
 
@@ -474,7 +475,11 @@ func (ix *consumedFragmentIndex) build() {
 	// silently wrong answer (#999). Detect it the same way evidenceactor.go does
 	// and treat it exactly like the git-log-errored case: could-not-check, never
 	// a false "this fragment was never tracked".
-	if shallow, err := exec.Command("git", "-C", ix.root, "rev-parse", "--is-shallow-repository").Output(); err != nil || strings.TrimSpace(string(shallow)) != "false" {
+	shallow, err := exec.Command("git", "-C", ix.root, "rev-parse", "--is-shallow-repository").Output()
+	if err != nil || strings.TrimSpace(string(shallow)) != "false" {
+		// Name the shallow case in the message: its remedy is the CI job's
+		// checkout depth, not the brief (#3364).
+		ix.shallow = err == nil && strings.TrimSpace(string(shallow)) == "true"
 		return // ok stays false — could-not-check: shallow or undetermined
 	}
 	out, err := exec.Command("git", "-C", ix.root, "log", "--pretty=format:", "--name-only", "--", changelogDir+"/").Output()
@@ -633,6 +638,8 @@ func linkProblems(root string, files []string) []string {
 				switch {
 				case consumedFrag:
 					exists = true
+				case !checked && fragments.shallow:
+					unknownFragment = " — NOTE: this checkout is a SHALLOW clone, so the consumed-release-fragment exemption (#722) could NOT be evaluated for this path; that is could-not-check, not a verdict — run on full history (actions/checkout fetch-depth: 0, or GIT_DEPTH \"0\" on GitLab) before treating the path as an authoring defect"
 				case !checked:
 					unknownFragment = " — NOTE: this repo's git history was unreadable, so the consumed-release-fragment exemption (#722) could NOT be evaluated for this path; that is could-not-check, not a verdict"
 				}
@@ -714,7 +721,7 @@ func (idx *sourceIndex) resolves(token string) bool {
 // identifierDereferenceFatal severity phasing. Returns (problems, notices); which
 // one a hit lands in is gated by identifierDereferenceFatal.
 func identifierDereferenceCheck(root string, files []string) (problems, notices []string) {
-	const tag = "[id-dereference]"
+	const tag = "[" + ruleIDDereference + "]"
 	emit := func(msg string) {
 		if identifierDereferenceFatal {
 			problems = append(problems, tag+" "+msg)

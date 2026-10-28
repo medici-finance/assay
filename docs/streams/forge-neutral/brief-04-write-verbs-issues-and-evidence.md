@@ -42,7 +42,7 @@ consumers:
   - "tools/desk/cmd/deskfile: follow-up forge-neutral/13 (the same rescope follow-on as deskpr — the amendment's `04b`, authored as brief 13)"
   - "tools/desk/cmd/deskclose: follow-up forge-neutral/13 (the same rescope follow-on as deskpr — the amendment's `04b`, authored as brief 13)"
   - "plugins/assay/skills/verify-desk/SKILL.md: follow-up forge-neutral/10 (the Evidence-landing lane gains a hop on a forge with no direct-default-branch push; the conformance round trip is where the loop shape is proved before the skill text is changed)"
-version: 2
+version: 3
 id: 929d765d-2ce6-4907-90c6-52e613f197cb
 ---
 
@@ -92,8 +92,7 @@ files:
 - `tools/desk/cmd/deskfile/exec.go`, `tools/desk/cmd/deskfile/deskfile.go` — issue filing.
 - `tools/desk/cmd/deskclose/exec.go`, `tools/desk/cmd/deskclose/github.go`,
   `tools/desk/cmd/deskclose/authority.go` — issue/change closing and the authority read.
-- `tools/desk/cmd/deskevidence/github.go`, `tools/desk/cmd/deskevidence/deskevidence.go` —
-  the App mint and the Evidence write.
+- `tools/desk/cmd/deskevidence/github.go`, `tools/desk/cmd/deskevidence/deskevidence.go` — the App mint and the Evidence write.
 - `tools/desk/internal/forgeban/allowlist.go` — three permit rows removed, ceiling lowered.
 
 single-point-of-failure: for the three ambient-credential verbs the single control is WHICH
@@ -173,7 +172,7 @@ facts:
 | 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskevidence/... -count=1` | exit 0 — the migrated suite is green |
 | 3 | *(amended, #509)* — no EXISTING assertion in a migrated test suite is weakened or deleted except gh-argv / hand-rolled-transport assertions replaced by their forge-op equivalents (the /03 precedent); new test files are expected. `deskevidence`'s install-id/JWT tests are gone WITH the code they pinned — the custody question they were about is now the resolver's (`tools/desk/internal/deskkit/forgeresolve_test.go`). | reviewer reads the diff |
-| 4 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows `= 16` — **untouched** (the migration removes no permit row) |
+| 4 | `git diff --quiet e032f6f0a^1 e032f6f0a -- tools/desk/internal/forgeban/allowlist.go && git show e032f6f0a:tools/desk/internal/forgeban/allowlist.go \| grep -c '^const allowedInvocationCeiling = 16$'` | `1` (exit 0) — **untouched**: this brief's merge commit changes nothing in `allowlist.go` (the migration removes no permit row), and the ceiling stood at `16` at that merge. Pinned to the merge commit so a later, separately-reviewed ceiling change cannot read as this brief's |
 | 5 | `cd tools/desk && go test ./internal/forgeban/... -count=1` | exit 0 — the ratchet passes at 16 |
 | 6 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout\|TestForgeNoPassthrough' -count=1` | exit 0 — the seam grows two ops and stays closed (no generic/endpoint method, no extra exported backend method) |
 | 7 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestForgeGithubGolden\|TestForgeGitlabGolden\|TestForgeGitlabCoverage' -count=1` | exit 0 — `read_file` / `write_file*` golden cases pin both backends' wire, and coverage reconciles the seam against the inventory |

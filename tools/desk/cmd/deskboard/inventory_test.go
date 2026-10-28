@@ -50,15 +50,15 @@ import (
 // ---------------------------------------------------------------------------
 
 // actionConstsFromSource returns every ACTION verb string the classifier defines, read
-// from board.go's `act*` const block. Parsed rather than hand-listed for the reason the
+// from reviewflow/classify.go's `Act*` const block. Parsed rather than hand-listed for the reason the
 // whole cluster exists: a hand-kept second copy of a list drifts, and the drift is
 // invisible — a new action would simply never be asserted about.
 func actionConstsFromSource(t *testing.T) map[string]string {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "board.go", nil, 0)
+	f, err := parser.ParseFile(fset, "../../internal/reviewflow/classify.go", nil, 0)
 	if err != nil {
-		t.Fatalf("parsing board.go: %v", err)
+		t.Fatalf("parsing classify.go: %v", err)
 	}
 	out := map[string]string{}
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -67,7 +67,7 @@ func actionConstsFromSource(t *testing.T) map[string]string {
 			return true
 		}
 		name := vs.Names[0].Name
-		if !strings.HasPrefix(name, "act") {
+		if !strings.HasPrefix(name, "Act") {
 			return true
 		}
 		lit, ok := vs.Values[0].(*ast.BasicLit)
@@ -82,7 +82,7 @@ func actionConstsFromSource(t *testing.T) map[string]string {
 		return true
 	})
 	if len(out) == 0 {
-		t.Fatal("no act* constants found in board.go — the inventory would assert nothing " +
+		t.Fatal("no Act* constants found in reviewflow/classify.go — the inventory would assert nothing " +
 			"(this is the vacuous-pass the test exists to prevent)")
 	}
 	return out
@@ -613,15 +613,15 @@ func TestReduceReviews_AbsentShasAreNeverAtHead(t *testing.T) {
 // more. Unreachability is only worth asserting about an arm that still fails loud, so the
 // arm's identity is pinned at the source level, where a swapped return is visible.
 func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
-	src, err := os.ReadFile("board.go")
+	src, err := os.ReadFile("../../internal/reviewflow/classify.go")
 	if err != nil {
-		t.Fatalf("reading board.go: %v", err)
+		t.Fatalf("reading classify.go: %v", err)
 	}
 	body := string(src)
-	const arm = "\tcase in.approvedAtHead:\n"
+	const arm = "\tcase in.ApprovedAtHead:\n"
 	i := strings.Index(body, arm)
 	if i < 0 {
-		t.Fatal("the `case in.approvedAtHead:` guard arm is GONE from classify — #400 R2's fail-loud " +
+		t.Fatal("the `case in.ApprovedAtHead:` guard arm is GONE from classify — #400 R2's fail-loud " +
 			"backstop is what makes the unreachability claim meaningful; removing it makes a later " +
 			"routing change silent again")
 	}
@@ -634,16 +634,16 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 		t.Fatal("could not find the end of the guard arm in classify")
 	}
 	armSrc := rest[:end]
-	if !strings.Contains(armSrc, "guardArmMarker") {
+	if !strings.Contains(armSrc, "GuardArmMarker") {
 		t.Errorf("the guard arm no longer returns guardArmMarker — the tripwire that asserts it is "+
 			"unreachable keys on that constant, so an arm that says anything else is a tripwire that "+
 			"deleted itself (N6). Arm source:\n%s", armSrc)
 	}
-	if !strings.Contains(armSrc, "actCheck") {
+	if !strings.Contains(armSrc, "ActCheck") {
 		t.Errorf("the guard arm must return actCheck — a reachable-but-unexplained row is an "+
 			"instruction to inspect, never a verdict. Arm source:\n%s", armSrc)
 	}
-	for _, forbidden := range []string{"actFlip", "actMergeNow", "CI green"} {
+	for _, forbidden := range []string{"ActFlip", "ActMergeNow", "CI green"} {
 		if strings.Contains(armSrc, forbidden) {
 			t.Errorf("the guard arm mentions %q — it exists to say the board has NO verdict for the row; "+
 				"a friendly verdict here is the #400 R2 defect restored. Arm source:\n%s", forbidden, armSrc)
@@ -652,9 +652,20 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 	// And the phrase is the guard arm's alone: written out a second time anywhere in the
 	// package, the inventory's "nothing reached the guard arm" check could fire on an
 	// innocent row, or (worse) be satisfied by a note the guard arm no longer emits.
-	srcs, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatalf("globbing package sources: %v", err)
+	// The scan covers BOTH homes: the command package (where the classifier used to live and
+	// where a copied phrase would still feed the inventory's notes) and the extracted
+	// reviewflow package, which owns the single const declaration.
+	const owner = "../../internal/reviewflow/classify.go"
+	var srcs []string
+	for _, pattern := range []string{"*.go", "../../internal/reviewflow/*.go"} {
+		m, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("globbing package sources %s: %v", pattern, err)
+		}
+		if len(m) == 0 {
+			t.Fatalf("glob %s matched no files — the scan would pass vacuously", pattern)
+		}
+		srcs = append(srcs, m...)
 	}
 	for _, f := range srcs {
 		if strings.HasSuffix(f, "_test.go") {
@@ -665,7 +676,7 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 			t.Fatalf("reading %s: %v", f, err)
 		}
 		want := 0
-		if f == "board.go" {
+		if f == owner {
 			want = 1 // the const declaration; the arm references the identifier
 		}
 		if n := strings.Count(string(b), guardArmMarker); n != want {
@@ -820,7 +831,7 @@ func TestClassify_ActionInventory(t *testing.T) {
 	}
 	for action, desc := range produced {
 		if !known[action] {
-			t.Errorf("classify produced ACTION %q, which is not one of board.go's act* constants (from %s)", action, desc)
+			t.Errorf("classify produced ACTION %q, which is not one of reviewflow/classify.go's Act* constants (from %s)", action, desc)
 		}
 	}
 
@@ -868,15 +879,16 @@ const (
 // added to main.go and classified nowhere is the exact "classified nowhere" hole this
 // guard exists to catch.
 var verbScopeClass = map[string]scopeClass{
-	"prs":         sweepsRepos,
-	"actions":     sweepsRepos,
-	"queue":       sweepsRepos,
-	"health":      sweepsRepos,
-	"scope":       sweepsRepos,
-	"policydrift": sweepsRepos,
-	"awaiting":    sweepsRoots,
-	"nextup":      sweepsRoots,
-	"stalled":     sweepsRepos,
+	"review-queue": sweepsRepos,
+	"prs":          sweepsRepos,
+	"actions":      sweepsRepos,
+	"queue":        sweepsRepos,
+	"health":       sweepsRepos,
+	"scope":        sweepsRepos,
+	"policydrift":  sweepsRepos,
+	"awaiting":     sweepsRoots,
+	"nextup":       sweepsRoots,
+	"stalled":      sweepsRepos,
 	// throughput spans BOTH coverage axes: it sweeps the repo set for its review depth and
 	// the configured ROOTS for its dispatch/verify depths. It is declared repo-sweeping
 	// because that is the obligation with teeth — `scope` must be present and must agree
@@ -1004,6 +1016,9 @@ func TestDispatch_VerbInventory(t *testing.T) {
 				`[{"number":1,"title":"t","body":"","isDraft":true,"author":{"login":"shared-agent"},"createdAt":"`+
 					time.Now().UTC().Format(time.RFC3339)+`","labels":[],"headRefOid":"abc123",`+
 					`"headRefName":"b","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
+			if v == "review-queue" {
+				t.Setenv("DESKBOARD_GH_PRLIST_JSON", "[]")
+			}
 			if class == sweepsRoots {
 				twoRoots(t)
 			}
@@ -1030,6 +1045,16 @@ func TestDispatch_VerbInventory(t *testing.T) {
 				t.Fatalf("%v: %v\n%s", argv, err, out.String())
 			}
 			scope, hasScope := m["scope"].(map[string]any)
+			if v == "review-queue" {
+				inputs := m["inputs"].(map[string]any)
+				requested := inputs["requested"].([]any)
+				admitted := inputs["admitted"].([]any)
+				population := inputs["population"].([]any)
+				if len(requested) != len(deskkit.AllowedRepos()) || len(admitted) != len(requested) || len(population) != len(requested) {
+					t.Fatal("observation scope incomplete", inputs)
+				}
+				scope, hasScope = map[string]any{"count": float64(len(admitted))}, true
+			}
 
 			switch class {
 			case sweepsRepos:

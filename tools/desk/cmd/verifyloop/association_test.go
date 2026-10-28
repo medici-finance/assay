@@ -10,19 +10,25 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 
-func associationGit(t *testing.T, root string, args ...string) string {
+// associationGit runs fixture Git with every inherited GIT_* variable removed, so a
+// caller's GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE cannot redirect fixture writes.
+// TestAssociationFixtureIsolation pins it.
+func associationGit(t testing.TB, root string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = regression.FixtureEnv("GIT_TEMPLATE_DIR="+gitquiet.TemplateDir(t), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v %s", args, err, out)
 	}
 	return strings.TrimSpace(string(out))
 }
-func associationRepo(t *testing.T, repo string, files map[string]string) string {
+func associationRepo(t testing.TB, repo string, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	associationGit(t, root, "init")
@@ -66,6 +72,34 @@ func associationFixture(t *testing.T) (loopengine.Item, string, string) {
 		t.Fatal(err)
 	}
 	return got, source, tracking
+}
+
+// A hook may export GIT_DIR and related variables while running this suite.
+// Association fixture setup (init, config, remote, staging, commit, ref update,
+// detach) must write only its own temporary repository. This covers the fixture
+// helper only; production association code is exercised by the suites that call it.
+// regression: #3750
+func TestAssociationFixtureIsolation(t *testing.T) {
+	victim := regression.HostileGitDir(t)
+	before := regression.SnapshotTree(t, victim)
+	// Checked at cleanup too, so a setup step that fails after writing to the
+	// caller repository still reports what it changed.
+	t.Cleanup(func() {
+		if changes := before.Changes(regression.SnapshotTree(t, victim)); changes != "" {
+			t.Errorf("association fixture modified caller repository:\n%s", changes)
+		}
+	})
+	fixture := associationRepo(t, "example-org/tracker", map[string]string{"nested/fixture.txt": "fixture\n"})
+	head := associationGit(t, fixture, "rev-parse", "HEAD")
+	if got := associationGit(t, fixture, "config", "--get", "remote.origin.url"); got != "https://github.com/example-org/tracker.git" {
+		t.Fatalf("fixture origin = %q", got)
+	}
+	if got := associationGit(t, fixture, "rev-parse", "refs/remotes/origin/main"); got != head {
+		t.Fatalf("fixture origin/main = %q, want %q", got, head)
+	}
+	if got := associationGit(t, fixture, "show", "HEAD:nested/fixture.txt"); got != "fixture" {
+		t.Fatalf("fixture commit content = %q", got)
+	}
 }
 
 // regression: #2485
@@ -203,7 +237,7 @@ func TestCrossRepoPromptCutsEvidence(t *testing.T) {
 }
 
 // associationRoster plants the fixture roster for a direct association call.
-func associationRoster(t *testing.T) {
+func associationRoster(t testing.TB) {
 	t.Helper()
 	for _, line := range strings.Split(fixtureRoster, "\n") {
 		if k, v, ok := strings.Cut(line, "="); ok {

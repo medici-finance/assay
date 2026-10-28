@@ -17,8 +17,8 @@ import (
 // make no network call (docs/statusgen-lint-reach.md). Removing `gh` from PATH does NOT prove
 // that: a call site that looks `gh` up, fails, and degrades to a could-not-check passes such a
 // test while still being a forge read in every environment that has `gh` — which is exactly
-// how dead-claim decay's `gh api graphql` branch read, and the `git ls-remote --heads origin` claim read in
-// front of it, ran on every plain --lint while the old version of this test stayed green (it
+// how dead-claim decay's branch read (then `gh api graphql`, now an in-process GraphQL request), and
+// the `git ls-remote --heads origin` claim read in front of it, ran on every plain --lint while the old version of this test stayed green (it
 // asserted the failed lookup's NOTICE as its proof). Here every forge or network tool on PATH
 // is PRESENT — a logging shim that records its argv and then fails — so a process that starts
 // and then fails is caught at the start, not excused by the failure:
@@ -156,7 +156,7 @@ func gitSubcommand(args []string) (sub, next string) {
 // lintReachFixture is testdata/goodrepo as a real git repo whose origin is a local bare repo
 // carrying one claim-shaped branch — so the claim read returns a non-empty list and dead-claim
 // decay is genuinely reached whenever claims are read at all. Without the branch, decay
-// short-circuits on an empty list and its `gh api graphql` branch read would never be attempted.
+// short-circuits on an empty list and its GraphQL branch read would never be attempted.
 func lintReachFixture(t *testing.T) string {
 	t.Helper()
 	bareDir := t.TempDir()
@@ -176,6 +176,10 @@ func lintReachFixture(t *testing.T) string {
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
 	}
+	// An active drive with a spliced region, rendered with the branch's claim on alpha/02:
+	// without one, the drive-snapshot lint is inert and this guard cannot see its claim read
+	// (#3323). Callers pin the clock to driveTestNow so the drive is in its window.
+	writeAlphaPlan(t, root, alphaDriveRegion(t, root, map[string]bool{"alpha/02": true}))
 	gitInit(t, root, "Test Author", "test@example.com")
 	runGit(t, root, "add", "-A")
 	runGit(t, root, "commit", "-m", "initial")
@@ -183,20 +187,54 @@ func lintReachFixture(t *testing.T) string {
 	return root
 }
 
+// alphaDriveManifest is an active drive over goodrepo's stream alpha. Its todo brief
+// alpha/02 renders under In-flight when claimed and under Frontier next when not, so
+// the drive-snapshot region depends on the claim set.
+const alphaDriveManifest = "declared-by: fixture\n" + liveWindow +
+	"intensity: focus\nstate: active\nwhy: reach fixture\nitems:\n  - stream: alpha\n"
+
+// alphaDriveRegion writes the alpha drive's manifest under root and returns its
+// snapshot section rendered with the given claim set. It reads no claims itself.
+func alphaDriveRegion(t *testing.T, root string, claimed map[string]bool) string {
+	t.Helper()
+	writeDrive(t, root, "d1", alphaDriveManifest)
+	streams, _, err := loadHydratedStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	section, ok := driveSnapshotRender(loadDrives(root, streams, driveTestNow), streams, claimed, "d1", "", driveTestNow)
+	if !ok {
+		t.Fatal("fixture drive d1 must render")
+	}
+	return section
+}
+
+// writeAlphaPlan writes the alpha drive's plan file with region spliced between the markers.
+func writeAlphaPlan(t *testing.T, root, region string) {
+	t.Helper()
+	writePlanMD(t, root, "d1", "# Drive d1\n\n"+driveSnapshotBeginPrefix+"d1 @deadbee 2026-08-15"+
+		driveSnapshotMarkerSuffix+"\n"+region+driveSnapshotEndMarker+"\n")
+}
+
 func TestLintOfflineMakesNoNetworkCall(t *testing.T) {
+	pinNow(t, driveTestNow)
 	root := lintReachFixture(t) // built before any guard: fixture setup is not the run under test
 
 	// The positive control, first: with forge reads opted in, the SAME fixture's claim read and
-	// decay must be RECORDED by the guard — the remote read, and a `gh` that starts and then
-	// fails (the shim exits 1). An instrument that cannot see them proves nothing by silence.
+	// decay must be RECORDED by the guard — the remote read, and the decay's GraphQL request
+	// (refused by the guard's transport). A token and a repository are supplied so the decay
+	// gets as far as the request. An instrument that cannot see them proves nothing by silence.
 	var networkedCode int
 	t.Run("control", func(t *testing.T) {
 		g := installNetGuard(t, true)
+		t.Setenv("GH_TOKEN", "control-token")
+		t.Setenv("GITHUB_REPOSITORY", "acme/widgets")
+		t.Setenv("GITHUB_GRAPHQL_URL", "")
 		forgeReadsOptedIn = true
 		t.Cleanup(func() { forgeReadsOptedIn = false })
 		_ = captureStderr(t, func() { networkedCode = run(root, "lint", nil, nil, "") })
 		joined := strings.Join(g.violations(t), "\n")
-		for _, want := range []string{"ls-remote", "gh api graphql"} {
+		for _, want := range []string{"ls-remote", "POST https://api.github.com/graphql"} {
 			if !strings.Contains(joined, want) {
 				t.Errorf("guard did not record %q with forge reads opted in — it cannot see what this "+
 					"row says is absent; recorded:\n%s", want, joined)
@@ -257,5 +295,162 @@ func TestOfflineLintRequireClaims(t *testing.T) {
 	forgeReadsOptedIn = true
 	if code := run(root, "lint", nil, nil, ""); code != 0 {
 		t.Fatalf("--lint --forge --require-claims with a readable origin exited %d, want 0", code)
+	}
+}
+
+// TestRegenStartsNoForgeProcess is the class guard for #3372: the board regen
+// (`statusgen --root .`, mode "write") runs on a runner that carries git and the
+// statusgen binary and nothing else, so a read on that path that starts `gh` (or
+// any other forge tool) cannot run there — and fails open, so the board quietly
+// loses whatever the read was for. Every forge tool is on PATH as a recording
+// shim; the regen must start none of them. The positive control is in the same
+// run: the decay's GraphQL request must be recorded by the guard's transport, so
+// the claim path was really reached.
+//
+// regression: #3372
+func TestRegenStartsNoForgeProcess(t *testing.T) {
+	pinNow(t, driveTestNow)
+	root := lintReachFixture(t)
+	g := installNetGuard(t, true)
+	t.Setenv("GH_TOKEN", "regen-token")
+	t.Setenv("GITHUB_REPOSITORY", "acme/widgets")
+	t.Setenv("GITHUB_GRAPHQL_URL", "")
+	stderr := captureStderr(t, func() { _ = run(root, "write", nil, nil, "") })
+	var procs []string
+	for _, line := range g.calls(t) {
+		if f := strings.Fields(line); len(f) > 0 && f[0] != "git" {
+			procs = append(procs, line)
+		}
+	}
+	if len(procs) > 0 {
+		t.Fatalf("the board regen started a forge process the regen runner does not have:\n  %s\nstderr:\n%s",
+			strings.Join(procs, "\n  "), stderr)
+	}
+	g.mu.Lock()
+	reached := strings.Contains(strings.Join(g.http, "\n"), "POST https://api.github.com/graphql")
+	g.mu.Unlock()
+	if !reached {
+		t.Fatalf("control: the regen made no decay GraphQL request, so the claim path was not exercised; stderr:\n%s", stderr)
+	}
+}
+
+// TestDriveLintOfflineNoClaims pins the drive-snapshot half of the reach contract: a plain
+// --lint over a drive region reads no claims (no remote branch list, no dead-claim decay),
+// and a region whose In-flight list only a claim can explain reads could-not-check — never
+// a drift PROBLEM decided on claims nobody read. A region an unread claim could make stale
+// reads could-not-check too — never a clean pass. A hand edit no claim set can explain is
+// still drift offline, and with --forge the live claim read decides as before.
+//
+// regression: #3323
+func TestDriveLintOfflineNoClaims(t *testing.T) {
+	pinNow(t, driveTestNow)
+	root := goodRepoRoot(t)
+	claimedRegion := alphaDriveRegion(t, root, map[string]bool{"alpha/02": true})
+	freeRegion := alphaDriveRegion(t, root, nil)
+	if normalizeDriveSnapshot(claimedRegion) == normalizeDriveSnapshot(freeRegion) {
+		t.Fatal("fixture: the claim on alpha/02 must change the region, or nothing here depends on claims")
+	}
+
+	reads, decays := 0, 0
+	prevList, prevDecay := listRemoteBranches, listMergedClosedBranches
+	listRemoteBranches = func(string) ([]string, error) { reads++; return []string{"fix/alpha-02-inflight"}, nil }
+	listMergedClosedBranches = func(string) (map[string]bool, error) { decays++; return nil, nil }
+	t.Cleanup(func() {
+		listRemoteBranches, listMergedClosedBranches = prevList, prevDecay
+		forgeReadsOptedIn = false
+	})
+	lint := func(forge bool, region string) (int, string) {
+		t.Helper()
+		writeAlphaPlan(t, root, region)
+		forgeReadsOptedIn = forge
+		reads, decays = 0, 0
+		var code int
+		stderr := captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
+		return code, stderr
+	}
+	const drift = "PROBLEM: drive-region-drift: docs/roadmap/drives/d1.md"
+	const regionNotice = "NOTICE: drive-region-drift: docs/roadmap/drives/d1.md"
+
+	// Offline, a region spliced while alpha/02 was claimed: no claim read, no drift
+	// PROBLEM, and a could-not-check naming the claim the comparison had to assume.
+	code, stderr := lint(false, claimedRegion)
+	if reads != 0 || decays != 0 {
+		t.Fatalf("plain --lint read claims for the drive region: %d branch reads, %d decay reads", reads, decays)
+	}
+	if code != 0 || strings.Contains(stderr, drift) {
+		t.Fatalf("offline --lint decided drift on claims it did not read (exit %d):\n%s", code, stderr)
+	}
+	if !strings.Contains(stderr, regionNotice) || !strings.Contains(stderr, "alpha/02 is claimed") ||
+		!strings.Contains(stderr, "could-not-check") {
+		t.Fatalf("offline --lint must report the claim-dependent region as could-not-check naming alpha/02:\n%s", stderr)
+	}
+
+	// Offline, a region matching the unclaimed render: no drift PROBLEM, but never a clean
+	// pass either. A live claim on the todo brief alpha/02 would move it to In-flight and
+	// make this region stale, and this run did not read the claim set, so it is
+	// could-not-check naming alpha/02 as assumed unclaimed. --forge decides it (below).
+	code, stderr = lint(false, freeRegion)
+	if code != 0 || strings.Contains(stderr, drift) || reads != 0 {
+		t.Fatalf("offline --lint decided drift on claims it did not read (exit %d, reads %d):\n%s", code, reads, stderr)
+	}
+	if !strings.Contains(stderr, regionNotice) || !strings.Contains(stderr, "alpha/02 is not claimed") ||
+		!strings.Contains(stderr, "could-not-check") {
+		t.Fatalf("offline --lint must not pass a region an unread claim could make stale; want a could-not-check naming alpha/02:\n%s", stderr)
+	}
+
+	// Offline strength: a hand edit no claim set explains is still drift.
+	if code, stderr := lint(false, claimedRegion+"hand edit\n"); code == 0 || !strings.Contains(stderr, drift) || reads != 0 {
+		t.Fatalf("a hand-edited region must stay a drift PROBLEM offline (exit %d, reads %d):\n%s", code, reads, stderr)
+	}
+
+	// Control, --forge: the claim set is read, and it decides. The claimed region is clean
+	// with no could-not-check; the unclaimed one is drift, because alpha/02 is in flight.
+	if code, stderr := lint(true, claimedRegion); code != 0 || strings.Contains(stderr, "drive-region-drift") || reads == 0 {
+		t.Fatalf("--lint --forge must read claims and find the claimed region clean (exit %d, reads %d):\n%s", code, reads, stderr)
+	}
+	if code, stderr := lint(true, freeRegion); code == 0 || !strings.Contains(stderr, drift) {
+		t.Fatalf("--lint --forge must find the unclaimed region drifted from the live claim (exit %d):\n%s", code, stderr)
+	}
+}
+
+// TestDriveLintOfflineOwnInFlight pins the other half of the offline drive-region check:
+// a region no claim could change is checked clean. Here alpha/02 is in flight on the
+// board's own status (in-progress), so it is listed under In-flight with or without a
+// claim: it is never named as an assumed claim, and with no todo brief left in the drive
+// there is nothing an unread claim could move. The offline verdict is clean, with no
+// region notice.
+//
+// regression: #3323
+func TestDriveLintOfflineOwnInFlight(t *testing.T) {
+	pinNow(t, driveTestNow)
+	root := goodRepoRoot(t)
+	readme := filepath.Join(root, "docs", "streams", "alpha", "README.md")
+	b, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const todoRow = "| 02 | [Second](brief-02.md) | 1 | todo |"
+	if !strings.Contains(string(b), todoRow) {
+		t.Fatal("fixture: alpha/02's todo row not found")
+	}
+	inProgress := strings.Replace(string(b), todoRow, "| 02 | [Second](brief-02.md) | 1 | in-progress |", 1)
+	if err := os.WriteFile(readme, []byte(inProgress), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	region := alphaDriveRegion(t, root, nil)
+	if !strings.Contains(region, "- alpha/02") {
+		t.Fatalf("fixture: an in-progress alpha/02 must be listed under In-flight:\n%s", region)
+	}
+	writeAlphaPlan(t, root, region)
+
+	prevList, prevDecay := listRemoteBranches, listMergedClosedBranches
+	listRemoteBranches = func(string) ([]string, error) { t.Error("plain --lint listed remote branches"); return nil, nil }
+	listMergedClosedBranches = func(string) (map[string]bool, error) { t.Error("plain --lint decayed claims"); return nil, nil }
+	t.Cleanup(func() { listRemoteBranches, listMergedClosedBranches = prevList, prevDecay })
+	forgeReadsOptedIn = false
+
+	stderr := captureStderr(t, func() { run(root, "lint", nil, nil, "") })
+	if strings.Contains(stderr, "drive-region-drift") {
+		t.Fatalf("a region no claim could change must be clean offline, with no region notice:\n%s", stderr)
 	}
 }

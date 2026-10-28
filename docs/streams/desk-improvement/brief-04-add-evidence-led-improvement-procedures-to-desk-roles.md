@@ -65,7 +65,9 @@ Options:
 1. **Ship the reviewed opt-in procedure** — roles can use the documented measurement/diagnosis/experiment/follow-up path; existing acceptance and human adoption remain binding.
 2. **Keep templates only** — defer shipped role wiring until missing evidence or procedure questions are resolved.
 
-Default if no answer: none — affected activation remains held; neutral offline preparation can continue.
+Default if no answer: none — blocks until answered.
+
+Affected activation remains held; neutral offline preparation can continue.
 
 ## Ground rules
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"gopkg.in/yaml.v3"
 )
 
@@ -292,6 +293,7 @@ func renderPlaceholder(repo string, issue int, gate string, labels []string) str
 	}
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "See issue #%d — the issue body is the spec.\n", issue)
+	b.WriteString("\nIntake: classification-needed until an accountable handoff companion is recorded.\n")
 	return b.String()
 }
 
@@ -431,6 +433,13 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 		return isHeld
 	}
 	existing := existingPlaceholderIssues(streams)
+	rootPlaceholders := map[string][]Placeholder{}
+	for _, s := range streams {
+		for _, ph := range s.Placeholders {
+			key := ph.Repo + "#" + strconv.Itoa(ph.Issue)
+			rootPlaceholders[key] = append(rootPlaceholders[key], ph)
+		}
+	}
 	// (D3): archived placeholders (already moved into
 	// `<stream>/done/`) count as EXISTING — a reopened issue reactivates its
 	// archived placeholder (below), it must never get a second one created at the
@@ -465,6 +474,7 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 		// reactivate one whose issue lost it while staying open.
 		openSet := map[int]bool{}
 		openExcluded := map[int]bool{}
+		openAddressed := map[int]bool{}
 		// openIssue keeps each open issue itself, so a reactivate re-derives the
 		// placeholder's gate and labels from LIVE state (reactivatePlan).
 		openIssue := map[int]ghIssue{}
@@ -474,10 +484,30 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 			labels := labelNames(iss.Labels)
 			excluded := hasExcludedLabel(labels)
 			openExcluded[iss.Number] = excluded
-			if excluded {
+			candidate := issueflow.CandidateForLabels(issueflow.Candidate{Excluded: excluded}, labels)
+			openAddressed[iss.Number] = candidate.Addressed || candidate.AddressUnknown
+			if candidate.AddressUnknown {
+				notices = append(notices, fmt.Sprintf("scan-issues: %s#%d held: unknown addressee; no ordinary scan action", repo, iss.Number))
+			} else if candidate.Addressed {
+				notices = append(notices, fmt.Sprintf("scan-issues: %s#%d held in %s inbox; no ordinary scan action", repo, iss.Number, candidate.Role))
+			}
+			if !issueflow.Select(issueflow.Scanner, candidate, "") {
 				continue
 			}
-			if existing[repo+"#"+strconv.Itoa(iss.Number)] {
+			key := repo + "#" + strconv.Itoa(iss.Number)
+			if existing[key] {
+				if derivePlaceholderGate(labels, iss.Title) == "human" {
+					for _, ph := range rootPlaceholders[key] {
+						if ph.Status == "done" || ph.Gate != "model" {
+							continue
+						}
+						rel, err := filepath.Rel(root, ph.Path)
+						if err != nil {
+							rel = ph.Path
+						}
+						notices = append(notices, fmt.Sprintf("scan-issues: %s#%d derives gate: human but placeholder %s reads gate: model — the scan does not change it; set gate: human in the file by hand", repo, iss.Number, filepath.ToSlash(rel)))
+					}
+				}
 				continue
 			}
 			// Trust gate (trustgate.go):
@@ -547,6 +577,10 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				}
 				rel = filepath.ToSlash(rel)
 				dest := archivedPath(ph.Path)
+				if ph.Status != "done" && ph.HandoffAssessment.State != "observed" && (!openSet[ph.Issue] || openExcluded[ph.Issue]) {
+					notices = append(notices, fmt.Sprintf("scan-issues: %s#%d retained: classification-needed; closure or labels do not discharge intake", repo, ph.Issue))
+					continue
+				}
 				if !openSet[ph.Issue] {
 					// Issue is NOT open → closed.
 					if ph.Status != "done" {
@@ -565,7 +599,6 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 					}
 					continue
 				}
-				// Issue is still open.
 				if openExcluded[ph.Issue] {
 					// Open but has GAINED an excluded label — retire it the same
 					// way as a close-out, but with a distinct resolved marker
@@ -579,6 +612,17 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 					} else {
 						// Already done + still excluded, but sitting at the ROOT
 						// → sweep it into done/ too (frontmatter unchanged).
+						closeOuts = append(closeOuts, closeOutPlan{
+							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+							Action: "sweep", Dest: dest,
+						})
+					}
+					continue
+				}
+				// Addressing prevents reactivation, but never overrides an excluded
+				// label above or leaves a completed placeholder at the stream root.
+				if openAddressed[ph.Issue] {
+					if ph.Status == "done" {
 						closeOuts = append(closeOuts, closeOutPlan{
 							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
 							Action: "sweep", Dest: dest,
@@ -611,7 +655,7 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				if err != nil || !ok || ph.Repo != repo {
 					continue
 				}
-				if !openSet[ph.Issue] || openExcluded[ph.Issue] {
+				if !openSet[ph.Issue] || openExcluded[ph.Issue] || openAddressed[ph.Issue] {
 					continue
 				}
 				if held(repo, ph.Issue, "reactivated") {
@@ -914,6 +958,11 @@ func applyCloseOut(c closeOutPlan) error {
 				continue
 			}
 			if inFrontmatter {
+				key, _, _ := strings.Cut(trimmed, ":")
+				key = strings.Trim(strings.TrimSpace(key), "\"'")
+				if reactivate && (key == "handoff" || key == "handoff-opened") {
+					continue
+				} // a new source event needs a new judgment
 				if strings.HasPrefix(trimmed, "status:") {
 					hasStatus = true
 					switch c.Action {
@@ -1050,6 +1099,43 @@ func writeCloseOut(c closeOutPlan, body []byte) error {
 	if dest != c.Path {
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return fmt.Errorf("%s: %w", c.Rel, err)
+		}
+	}
+	if dest != c.Path && strings.Contains(string(body), "\nhandoff:") {
+		ph, ok, err := parsePlaceholderFile(c.Path)
+		if err != nil {
+			return err
+		}
+		if ok && ph.Handoff != "" {
+			if filepath.Base(ph.Handoff) != ph.Handoff || !strings.HasSuffix(ph.Handoff, ".json") {
+				return fmt.Errorf("invalid handoff companion filename")
+			}
+			src, err := os.OpenRoot(filepath.Dir(c.Path))
+			if err != nil {
+				return err
+			}
+			defer src.Close()
+			raw, err := src.ReadFile(ph.Handoff)
+			if err != nil {
+				return err
+			}
+			dst, err := os.OpenRoot(filepath.Dir(dest))
+			if err != nil {
+				return err
+			}
+			defer dst.Close()
+			previous, err := dst.ReadFile(ph.Handoff)
+			if err == nil && string(previous) != string(raw) {
+				return fmt.Errorf("handoff archive collision; preserve both source records")
+			}
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if os.IsNotExist(err) {
+				if err := dst.WriteFile(ph.Handoff, raw, 0600); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if err := os.WriteFile(dest, body, 0o644); err != nil {

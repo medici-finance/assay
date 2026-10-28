@@ -10,6 +10,7 @@ unblocks:
 - graph-execution/23
 - graph-execution/21
 - graph-execution/26
+- agent-execution/01
 effort: M
 gate: model
 risk:
@@ -44,6 +45,48 @@ files: `loopadmin/runner/` (planned), `loopadmin/testdata/runner/` (planned), `s
 facts: The loopadmin Go module is planned here and must build without the workflow module, the instance store (19) or a pattern instance. At main 307fe1699 a harness process runner (`tools/desk/internal/cellprocess`), a per-role cadence lease (`tools/desk/internal/cellcadence`) and cellctl's Claude/Codex/Cursor launch path already exist; this contract is the caller/adapter API over them, not a second launcher: 26 moves the process runner into loopadmin, 22 wraps cellctl's resolved argv, and 27 transfers enrolled roles from cellctl's launch path. `tools/desk/internal/loopengine` owns in-session desk queue behavior; graph consumers retain canonical instance/admission/recovery ownership. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
 single-point-of-failure: the generation fence in the runner contract's result acceptance — behind it, each caller's own authority check (claim generation at the desk, admission at the controller), which rejects a fenced result that a faulty adapter still reports as success.
+
+## Verification environment — local Linux containers (2026-10-18)
+
+A local Docker Linux engine is now available on the macOS verification host. The
+2026-10-15 Evidence block's "no running daemon" condition is historical, not a
+current prerequisite for this brief. A remote Linux host or completion of the
+verify-runner release-image automation is not required to attempt the existing
+Linux witness locally.
+
+Run the five existing Verify commands and the `statusgen verifyrun` witness in a
+local Linux container with `--network none`. Use the supported
+`--sandbox container-netns` mode for an already isolated container namespace;
+Docker network isolation alone does not make a bare macOS witness valid. Check
+that the container has only loopback before running the witness. Do not weaken
+network isolation to download missing dependencies: prepare the approved image,
+Linux toolchain, source at the exact candidate revision and dependency cache
+before the network-off run. Keep credentials, host configuration and the Docker
+socket outside the container; use a disposable source copy and capture evidence
+outside the source under verification.
+
+Record the immutable image identity, architecture, Go/statusgen versions, source
+revision, network mode, row exits and witness output. A 2026-10-18 local preflight
+confirmed a Linux Docker daemon and a cached Linux/amd64 verification image
+reporting Go 1.27.2 and statusgen v1.0.46. This establishes local availability,
+not image-release qualification or a new verification result for this brief.
+The independent verifier must check the selected image/toolchain against the
+current verification requirements and produce the actual witness; missing tools,
+dependencies or namespace isolation remain could-not-check with their precise
+cause. Preserve prior Evidence and the five Verify rows. This amendment neither
+closes a fleet-wide environment issue nor advances implemented to verified/done.
+
+This is a verification-environment update within the existing
+[library-first ownership map](../../library-first.md) and
+[future runtime architecture](../../proposals/non-ci-architecture/11-target-architecture.md).
+Docker supplies disposable execution isolation; it does not become a second runner
+protocol, queue, scheduler, evidence store or acceptance authority. Reuse the existing
+`statusgen verifyrun` witness and this brief's conformance kit. Supervisor /26 and
+adapter /22 retain process-launch ownership, and /27 retains standing-desk adoption;
+this local verification path neither implements nor activates those consumers. Future
+runner integration must consume the same contract and evidence, not recreate this
+verification workflow. Image release/pinning automation remains its existing owner's
+work and can proceed independently of this local witness attempt.
 
 ## Read first
 
@@ -217,6 +260,46 @@ Risk-bearing value: the fail-safe trigger did not fire. The frontmatter risk blo
 
 **VERIFY: BLOCKED** — all 5 Verify rows exit 0 with their named PASS on merged main 0cb90058470f (darwin, as written), and each row's map mutation plus an independent one turns its test red; the statusgen execution witness could-not-run on this darwin host and no Linux witness was available, so the environment hold medici-finance/assay#1800 stays open and status stays implemented.
 
+### 2026-10-19 Linux network-off execution witness at 3d29dd923ab7 (container-netns, 5/5 pass)
+
+Subject: merged main 3d29dd923ab71561ad9a0fc7eec3965367587f76, a detached home cut from origin/main. Admission: deskdispatch --check-verifier exited 0 before the witness ran and again after it. Runner: a local docker container, image assay-verify:go1.27 (image id sha256:955fd6c46c93, linux/arm64, built FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e; go1.27.2, git 2.47.3), started with --network none and the engine's default seccomp profile; a probe of the same image under --network none listed only the lo interface. The tree was a throwaway clone of the home at this head with modules pre-fetched before the network-off run (GOPROXY=off, GOTOOLCHAIN=local); statusgen and the desk tools were built from that tree inside the container, and statusgen verifyrun --sandbox container-netns --brief ran non-dry and exited 0, writing the table below. This run follows the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Since the 2026-10-14 subject 0cb90058470f, the only change under loopadmin, the runner spec and schema, and the staged loopadmin workflow is the Go toolchain directive (go 1.25.0 to go 1.27.0 in the loopadmin go.mod, GO_VERSION 1.25.0 to 1.27.2 in the staged workflow), a reversible knob; the risk block is present with every field 'no', so the fail-safe risk-value trigger did not fire and the 2026-10-14 enumeration stands. Container inputs, by name: the network-off run mounted only the throwaway clone of the attested tree (read-write, as the working directory), the Go module cache and the Go build cache (read-write), and the desk roster configuration file (read-only); the clone carried a local git user.name and user.email setting, and the environment passed in was GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-count=1 and KUBECONFIG=/dev/null. The earlier module pre-fetch was a separate networked run that mounted only the clone and the module cache. No credential, token, SSH key, kubeconfig, forge configuration or Docker socket was mounted or passed into either run.
+
+Verification-Attestation: medici-finance/assay#3555 run=1fb61b2f5760b856bf6c167fc45a01731c4f78f95f8a5005cf0969cc6e61f74b source=3d29dd923ab71561ad9a0fc7eec3965367587f76 brief=docs/streams/graph-execution/brief-20-runner-contract.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceUnknownLaunch$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceUnknownLaunch " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 3d29dd923ab7 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceLateResultDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceLateResultDenied " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 3d29dd923ab7 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceCredentialAndUsage$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceCredentialAndUsage " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 3d29dd923ab7 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerBothModesWithoutGraph$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerBothModesWithoutGraph " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 3d29dd923ab7 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerCallerRecheck$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerCallerRecheck " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 3d29dd923ab7 (on-behalf-of human:ian) (forge-identity) |
+
+The substance is the 2026-10-14 by-hand Evidence block above at merged main 0cb90058470f: all 5 Verify rows exit 0 with their named PASS and every map and independent mutation killed, held only on the execution environment.
+
+**VERIFY: PASS** — all 5 Verify rows pass with 0 fail in the statusgen verifyrun witness on a Linux network-off container (sandbox=container-netns) at merged main 3d29dd923ab7, which closes the environment-only hold on the 2026-10-14 by-hand result.
+
+### 2026-10-20 receipt-bearing re-pass — Linux network-off execution witness at b73d90d774fc (container-netns, 5/5 pass)
+
+Subject: merged main b73d90d774fca8aec8974ef410da63ebcb10eece, a detached home cut from origin/main. This pass re-runs the witness at a current head so that a verify-outcome receipt can be derived from it; the latest prior Evidence on main is the 2026-10-19 execution-witness block above at 3d29dd923ab7, landed by medici-finance/assay#3579. Admission: deskdispatch --check-verifier exited 0 before the witness ran and again after it. Runner: a local docker container, image assay-verify:go1.27 (image id sha256:955fd6c46c93, linux/arm64, built FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e; go1.27.2, git 2.47), started with --network none and the engine's default seccomp profile. The tree was a throwaway clone of the home at this head with modules pre-fetched before the network-off run (GOPROXY=off, GOTOOLCHAIN=local); statusgen and the desk tools were built from that tree inside the container, and statusgen verifyrun --sandbox container-netns --brief ran non-dry and exited 0, writing the table below. This run follows the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Between 3d29dd923ab7 and this head, nothing changed under loopadmin, the runner spec and schema, or the staged loopadmin workflow (git diff over those paths is empty), so the risk block (present, every field 'no') and the 2026-10-14 risk-value enumeration stand. Each row's output hash is the empty-input sha256, as expected: every row command redirects its go test output to a temp file and greps it quietly.
+
+Verification-Attestation: medici-finance/assay#3605 run=139baab1c8ae750cbe8aba2fdb29b3982fa5427b9682068172a23d7df1faac7b source=b73d90d774fca8aec8974ef410da63ebcb10eece brief=docs/streams/graph-execution/brief-20-runner-contract.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceUnknownLaunch$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceUnknownLaunch " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceLateResultDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceLateResultDenied " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceCredentialAndUsage$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceCredentialAndUsage " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerBothModesWithoutGraph$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerBothModesWithoutGraph " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerCallerRecheck$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerCallerRecheck " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+
+The substance is the 2026-10-14 by-hand Evidence block above at merged main 0cb90058470f: all 5 Verify rows exit 0 with their named PASS and every map and independent mutation killed, held then only on the execution environment.
+
+**VERIFY: PASS** — all 5 Verify rows pass with 0 fail in the statusgen verifyrun witness on a Linux network-off container (sandbox=container-netns) at merged main b73d90d774fc, with the deliverable paths unchanged since the 2026-10-19 witness.
+
 ## Review
 
 Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/01. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.

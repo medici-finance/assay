@@ -78,9 +78,7 @@ files:
 - **delete** `tools/create-fleet-gitlab.sh`, `tools/create-fleet-gitlab_test.sh`,
   `tools/renew-fleet-gitlab-tokens.sh`, `tools/renew-fleet-gitlab-tokens_test.sh`,
   `tools/fleet-gitlab-roles.sh`.
-- **edit** `tools/desk/cmd/deskfleet/tables_parity_test.go` (planned) — created by windows-port/08 — (remove the bash-comparing tests and
-  their skip helper), and `tools/desk/internal/deskkit/forge_gitlab.go` (the `--tier ultimate`
-  message, per the ruling).
+- **edit** `tools/desk/cmd/deskfleet/tables_parity_test.go` (planned) — created by windows-port/08 — (remove the bash-comparing tests and their skip helper), and `tools/desk/internal/deskkit/forge_gitlab.go` (the `--tier ultimate` message, per the ruling).
 - **edit** `docs/adopting-assay-gitlab.md`, `docs/adopting-assay.md`,
   `plugins/assay/skills/adopt/SKILL.md`, `plugins/assay/skills/install/SKILL.md`, and any other
   file the sweep in row 6 finds at pickup.

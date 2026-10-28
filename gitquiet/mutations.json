@@ -1,0 +1,29 @@
+{
+  "test": "go test . -count=1 -timeout 120s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|HostileGitConfig)$'",
+  "control": {
+    "name": "CONTROL — the template carries no settings: every fixture repository forks automatic maintenance again (the #1608 race)",
+    "file": "gitquiet.go",
+    "old": "\t{\"maintenance.auto\", \"false\"},\n\t{\"gc.auto\", \"0\"},\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "the template is written but GIT_TEMPLATE_DIR is never pointed at it — git init/clone fall back to the default template",
+      "file": "gitquiet.go",
+      "old": "os.Setenv(\"GIT_TEMPLATE_DIR\", dir)",
+      "new": "os.Setenv(\"GITQUIET_UNUSED\", dir)"
+    },
+    {
+      "name": "the template config is rendered empty — repositories get no settings",
+      "file": "gitquiet.go",
+      "old": "\treturn b.String()\n",
+      "new": "\treturn \"\"\n"
+    },
+    {
+      "name": "TemplateDir returns an empty directory — a fixture passing it explicitly gets no settings",
+      "file": "gitquiet.go",
+      "old": "\tif err := writeTemplate(dir); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treturn dir\n",
+      "new": "\treturn dir\n"
+    }
+  ]
+}

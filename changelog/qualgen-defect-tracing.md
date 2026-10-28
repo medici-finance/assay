@@ -1,3 +1,0 @@
-- `qualgen mine --fix-source` now identifies fixes from an explicit offline issue/PR snapshot, runs B-SZZ and persists defect traces with source provenance and coverage. `--defect-labels` configures the label set.
-- `qualgen report` renders actual defect traces and derived metrics; PR/file advice consumes the current completed defect snapshot. Repeat runs retain history without duplicating identical facts, and stale or unavailable evidence is visible.
-- Run the M2 flow and legacy CLI compatibility tests in PR CI; demonstrate the pipeline-skip mutation against that exact selected command.

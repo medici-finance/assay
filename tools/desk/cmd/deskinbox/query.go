@@ -20,6 +20,8 @@ package main
 // deliberate, bounded divergence.
 
 import (
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,15 +46,7 @@ type item struct {
 // rankOf returns the lowest index into `labels` any of names carries, or 99 when none
 // match — the oracle's `$rankorder | index($n) | min // 99`.
 func rankOf(names []string) int {
-	best := 99
-	for _, n := range names {
-		for i, l := range labels {
-			if n == l && i < best {
-				best = i
-			}
-		}
-	}
-	return best
+	return issueflow.InboxRank(names)
 }
 
 // hasEscalationLabel reports whether names carries at least one of `labels`.
@@ -73,12 +67,12 @@ type queryFailure struct {
 // first within the same rank) — the oracle's ONE ordering every renderer reads from
 // (assay-inbox.sh:364-386). A repo whose read failed is counted in `failures` and excluded
 // from the queue, never silently treated as empty.
-func fetchQueue(repos []string) (sorted []item, failures []queryFailure) {
+func fetchQueue(repos []string, observers ...deskkit.RequestObserver) (sorted []item, failures []queryFailure) {
 	for _, repo := range repos {
 		if strings.TrimSpace(repo) == "" {
 			continue
 		}
-		f, fr, ferr := forgeFor(repo)
+		f, fr, ferr := forgeFor(repo, observers...)
 		if ferr != nil {
 			failures = append(failures, queryFailure{Repo: repo, Err: ferr})
 			continue

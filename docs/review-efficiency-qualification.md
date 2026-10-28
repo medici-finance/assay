@@ -112,6 +112,20 @@ new numerical SLO is defined. A claimed improvement must preserve semantic outpu
 scope, failure behavior and coverage, and discuss each measured component and any
 tradeoff separately. An unknown component prevents a claim about that component.
 
+The serialized report is checked per invocation for explicit null descendant and
+inclusive CPU, and per HTTP attempt for explicit null quota points and retry lineage.
+This includes every cohort, including failed runs and cohorts without a Git reviewer.
+Missing fields are rejected as well as fabricated values. Controls corrupt the first
+and last serialized occurrence of each unknown field; an unrelated null cannot mask it.
+
+Re-run the source mutations from `tools/desk` with
+`GOWORK=off GOPROXY=off GOSUMDB=off muhar -j 1 -spec internal/reviewtest/testdata/cost-mutations.json`.
+They independently corrupt the production-command probe and Git-reviewer invocation,
+inclusive CPU and HTTP attribution, or remove explicit unknown fields during serialization.
+The harness control disables the report assertion and must be caught by its controls.
+These are author qualification checks; independent acceptance still uses the brief's
+original Verify rows and a separately admitted execution environment.
+
 No production caches, token memoization, audit-tail behavior, read pools or
 conditional-read implementations change here. Their production effect is not
 qualified by typed fakes. Existing caps, breakers, trust and audit controls remain

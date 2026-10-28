@@ -36,6 +36,12 @@ func plantedPrimitive(role, owner string) string {
 	return path
 }
 
+// The in-process provider mint beneath the seam, reached directly (desktools-v2/58).
+func plantedProviderCall(role, owner string) string {
+	path, _, _ := providerMint(role, owner)
+	return path
+}
+
 // The seam itself, called.
 func plantedSeamCall(role, owner string) string {
 	path, _, _ := tokenMinter(role, owner)

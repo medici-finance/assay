@@ -38,8 +38,7 @@ id: 2a213e5a-0741-4ef0-b89b-eab26b33ede6
 
 ## Context
 files:
-- `docs/streams/forge-gitlab/pilot-report.md` (planned) — the walked parity table with
-  per-control evidence (settings screenshots/API reads, MR/approval/board artifacts).
+- `docs/streams/forge-gitlab/pilot-report.md` (planned) — the walked parity table with per-control evidence (settings screenshots/API reads, MR/approval/board artifacts).
 - `docs/streams/forge-gitlab/README.md` — status updates.
 
 single-point-of-failure: the pilot group's fidelity to the runbook is the one control —

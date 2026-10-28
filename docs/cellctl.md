@@ -309,6 +309,10 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ## Scrubbed cells — `--kind scrubbed`
 
+Cell-owned Kimi/provider credentials and an optional Herdr display are described in
+[cellctl-scrubbed-providers.md](cellctl-scrubbed-providers.md). These opt-in paths retain
+the private session and composed environment described below.
+
 A house cell keeps the operator's real `HOME` on purpose (*Why the session keeps the real `HOME`*
 above) — the desks ARE the operator's desks. A **scrubbed** cell is the opposite case: a harness
 that must run on THIS laptop but must NOT inherit anything of the launching shell — no real
@@ -370,8 +374,13 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
 
+A configured cell-owned provider adds its endpoint, token and model aliases to the final
+harness environment only, after the secret-free launch plan. Herdr/provider launches
+set `ASSAY_COCKPIT=tmux` for child worktree handling. These additions never import host
+credentials; see the linked provisioning and lifecycle contract above.
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are mutually exclusive — only the active harness's variable
-is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
+is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no inherited `ANTHROPIC_*`, no `AWS_*`, and no
 wholesale parent `PATH` — the harness's own directory is the ONE parent-derived `PATH` element,
 resolved once (`command -v`) before the launch switches to `env -i`, and named rather than
 inherited wholesale.
@@ -614,22 +623,45 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 **The whole cockpit:**
 
 ```bash
-cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+cellctl up <cell> [--role <name>]... [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+                  [--lease-wait <duration>] [--plan | --apply <plan-id>] [--json] \
                   [--automate '<cron>'] [--model <m>] [--provider <name>] [--harness <claude|codex>] \
                   [CLAUDE_CONFIG_DIR]
 ```
 
-One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
-otherwise standing it — see *How far the attended affirmation carries* above), in whichever
-**cockpit** resolves for this run — see *Cockpits* below. A cell with no deskd (a house cell
-without `DESKD=1`) has no `deskd` window and no placeholder in its place: `up` opens only the role
-windows (plus the comms window when comms is configured), the comms window or else the first role
-window creates the tmux session, and the one-line "no deskd" note is printed once on `up`'s stderr.
-When there is nothing at all to open (no deskd, no comms, and no role after `--no-the-desk`), `up`
-says so on stderr, creates no session, and exits 0. On the default tmux cockpit that is a
-session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
-`tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
-arrive at the fetch lock together.
+`up` **converges** the cell: it brings every targeted role to running and leaves a running role
+alone, so it is safe to run again on a half-up cell. Targets are the roles in `ROLES` (plus
+`the-desk` unless `--no-the-desk`), or exactly the roles named by `--role <name>` (repeatable;
+`--no-the-desk` and `--with-the-desk` stay as aliases). Each target is classified from its cadence
+lease (`run/cadence/<role>/owner.lock`):
+
+| Disposition | Meaning | What `up` does |
+|---|---|---|
+| up | the lease is held by a live process | row `already-up`; never relaunched, its window never touched |
+| stale | a running checkpoint with no live holder | row `failed`, naming `up --plan`; plain `up` never reconciles it |
+| absent | no lease holder, no checkpoint | its window is opened |
+
+Windows are opened **one at a time**: role N+1 opens only after role N has taken its lease and
+passed the scratch sweep, or has failed. `--lease-wait` (default 2m) bounds how long `up` waits
+for one role; a window that never takes its lease is a `failed` row. On an existing cockpit
+session `up` adds only the missing windows. A cell with a `deskd` window or a configured comms
+window starts those first, as before.
+
+It ends with one table, one row per targeted role: `up`, `already-up`, `reconciled+up`, `scheduled` or `failed`
+(with the first line of the error, verbatim). `scheduled` is a cadenced role that took its lease and is
+resting until its next pass is due (its last pass was under one interval ago): it has no role child yet,
+and the detail names the next due time. The exit code is 0 when every role is `up`, `already-up`,
+`reconciled+up` or `scheduled`, otherwise 1. `--json` prints the `cell-op-result` document
+([the machine seam](cellctl-machine-seam.md)) with one entry per role and nothing else on stdout.
+
+**Stale roles.** A hand-closed window leaves a checkpoint behind; `up` does not clear it for you.
+`cellctl up <cell> --plan` writes ONE plan that clears every stale role among the targeted roles (`--role` limits them; otherwise the cell's `ROLES`) and stale comms state (it works off a
+terminal and changes nothing else; with nothing stale it writes no plan). `cellctl up <cell>
+--apply <plan-id>` works on a terminal only: it shows the plan, takes the typed confirm,
+re-measures each role, clears the stale state and then launches the targets, reporting the cleared
+roles as `reconciled+up`. A role that came alive between plan and apply is refused `plan-stale`
+(exit 5), naming the role, and nothing is launched. Stale comms state is refused the same way,
+with the reconcile inventory and a pointer to `up --plan`.
 
 `--model <m>` applies the per-run override (see *Pinned models* below) to **every** role window this
 run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
@@ -639,12 +671,11 @@ actually boots resolves the same override the plan named. `--provider <name>` th
 role window the same way, for the same reason — see *Providers* below.
 
 `cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
-the per-role commands and launches nothing. On a house cell, `up` first runs a **reconcile
-preflight**. Stale role and comms checkpoints left by hand-closed or crashed windows, and
-orphaned processes carrying the cell's marker, are inventoried by pid and start time. On a
-terminal you are asked once before they are cleared. Otherwise the refusal prints the whole
-inventory and the exact recovery commands. A dry run prints the inventory and plan and changes
-nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
+each role's disposition (an absent role shows the command its window would run) and launches
+nothing. On a house cell, stale comms checkpoints and orphaned processes carrying the cell's
+marker are inventoried by pid and start time; `up` refuses them with the whole inventory and the
+exact recovery commands (`up --plan`, then `up --apply`). A dry run prints the inventory and plan
+and changes nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
 [Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
 role's own `cellctl desk <cell> <role>` invocation; `[dry-run] harness=<h> — applied to every role
@@ -747,8 +778,10 @@ cockpit in its environment as `ASSAY_COCKPIT`:
 - The cell's value always wins over an `ASSAY_COCKPIT` the launching shell happened to carry.
 - `cellctl check <cell>` prints the value and the arm it selects on the line after the cockpit row:
   `ok    ASSAY_COCKPIT=tmux exported into every role window (worker-desk worktree arm: plain git worktree add, no cockpit CLI needed)`.
-- A scrubbed cell composes its own environment and opens no cockpit, so its windows carry none. Nor
-  does an `--automate` run (below), which the cockpit launches, not `cellctl`.
+- A scrubbed cell retains private tmux as process owner; an explicit Herdr setting
+  displays that session. Its child worktree handler uses tmux (plain git), as described
+  in the scrubbed provider/display contract.
+- An `--automate` run (below) carries no cockpit value; the cockpit launches it.
 
 With no cell at all, nothing exports `ASSAY_COCKPIT`, and the worker-desk step keeps its own
 presence-on-PATH order. That skill also accepts `supacode` and `plain` as values an operator may
@@ -1498,8 +1531,10 @@ processes are not configuration.
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
+| `ASSAY_PERF_PROFILE`, `ASSAY_PERF_SESSION_ID`, `ASSAY_PERF_AGENT_ID`, `ASSAY_PERF_PARENT_AGENT_ID`, `ASSAY_PERF_PARENT_INVOCATION_ID`, `ASSAY_PERF_ROLE`, `ASSAY_PERF_WORK`, `DESK_LOOP` | descriptive context for one invocation, validated from the launching environment; never persistent cell or machine defaults |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
-| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
+| `DESK_TOOLS_HOTFIX` | locates the hotfix overlay directory for one run of `cellctl hotfix`, shim generation and `deskboot`; the directory must be root-owned wherever it is, so no file names it |
+| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `SUDO_USER`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
 | `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLOP_FIXTURE_TRACE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,

@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func fixture(t *testing.T) Policy {
@@ -384,6 +386,54 @@ func TestCacheConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// goEnv is the one way a test here gives cmd/go a scratch HOME. With telemetry
+// on, every go command starts a detached telemetry child that it never waits
+// for; the child writes under HOME's config directory and can outlive the
+// build, recreating that tree while t.TempDir's cleanup removes it, which
+// fails the test with "directory not empty" (#3707). So goEnv turns telemetry
+// off for the HOME before the caller's first build, and registers noSidecar,
+// which runs before the HOME is removed.
+func goEnv(t *testing.T, goBin string, p Policy) (env []string, home string) {
+	t.Helper()
+	home = t.TempDir()
+	// No downloads, no toolchain acquisition, no standard library imports.
+	env = append(p.Env(), "HOME="+home, "PATH="+os.Getenv("PATH"), "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "CGO_ENABLED=0")
+	off := exec.Command(goBin, "telemetry", "off")
+	off.Dir = home
+	off.Env = env
+	if out, err := off.CombinedOutput(); err != nil {
+		t.Fatalf("go telemetry off: %s %v", out, err)
+	}
+	t.Cleanup(func() { noSidecar(t, home) })
+	return env, home
+}
+
+// noSidecar fails t when a go command wrote anything under home but the
+// telemetry mode setting: a counter file or an upload token there means a go
+// command ran with telemetry on, and so started the child goEnv prevents.
+func noSidecar(t *testing.T, home string) {
+	t.Helper()
+	var wrote []string
+	err := filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if d.Name() != "mode" || filepath.Base(filepath.Dir(path)) != "telemetry" {
+			rel, _ := filepath.Rel(home, path)
+			wrote = append(wrote, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	if len(wrote) > 0 {
+		t.Errorf("a go command ran with telemetry on in a scratch HOME, so it started a telemetry child it does not wait for; it wrote %q", wrote)
+	}
+}
+
+// regression: #3707
 func TestCacheBuildReuse(t *testing.T) {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
@@ -399,9 +449,7 @@ func TestCacheBuildReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
-		home := t.TempDir()
-		// No downloads, no toolchain acquisition, no standard library imports.
-		env := append(p.Env(), "HOME="+home, "PATH="+os.Getenv("PATH"), "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "CGO_ENABLED=0")
+		env, home := goEnv(t, goBin, p)
 		l, err := Acquire(env)
 		if err != nil {
 			t.Fatal(err)
@@ -411,6 +459,15 @@ func TestCacheBuildReuse(t *testing.T) {
 		cmd.Env = env
 		out, buildErr := cmd.CombinedOutput()
 		finishErr := l.Finish(true)
+		if i == 0 {
+			// First build creates the cache's top-level shards. Explicit
+			// maintenance refreshes accounting outside enrollment, retaining
+			// the existing timestamp slack instead of waiving its guard.
+			time.Sleep(AdmitMtimeSlack)
+			if _, err := Check(p, false); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if buildErr != nil || finishErr != nil {
 			t.Fatalf("build: %s %v %v", out, buildErr, finishErr)
 		}

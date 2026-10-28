@@ -194,7 +194,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 12 | [`statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON](brief-12-statusgen-brief-subcommand.md) | 1 | M | done | 2026-09-16 verify-desk (desk-tools/12 dispatched verifier; 9/9 rows PASS, corrects a prior over-broad row-8 HELD; risk-value DERIVED on exit-code contract) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1237 @ 27030b470e5c4381915c3a25da4f9602c6ab771c) |
 | 13 | [`pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree](brief-13-paced-pr-monitor.md) | 1 | M | done | 2026-09-15 sonnet-5-verifier (8/8 rows PASS incl. a negative-control call-count assertion; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1118 @ d7af8a7ba30d4aa86e3d1b64d956b22396fd6cf8) |
 | 14 | [bodycheck — three measured false-positive classes into the negative corpus, plus `--explain`](brief-14-bodycheck-negative-classes-and-explain.md) | 1 | M | done | 2026-09-07 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #609 @ f82d0db3ffafb37fb16d262a52b5f2988981869d) |
-| 15 | [`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home](brief-15-deskdispatch-dryrun-worktree.md) | 1 | S | implemented | — | — |
+| 15 | [`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home](brief-15-deskdispatch-dryrun-worktree.md) | 1 | S | verified | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | 16 | [`deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block](brief-16-deskevidence-block-equivalence-noop.md) | 1 | S | done | 2026-09-15 sonnet-5-verifier (7/7 rows PASS incl. a negative-control equivalence test; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #736 @ 95a31a5698e3943ae16efb01cb642d08d573da57) |
 | 17 | [One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on](brief-17-one-trust-bar-public-authors.md) | 1 | M | implemented | — | — |
 | 18 | [Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check](brief-18-allowed-public-repos-write-gate.md) | 1 | M | implemented | — | — |
@@ -202,11 +202,11 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 20 | [Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is](brief-20-cross-repo-remote-verify.md) | 1 | S | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #556 @ b3294437716536ad815cf13b2b80490e7bf4a4df) |
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | done | 2026-09-16 verify-desk (desk-tools/22 dispatched verifier; 13/13 rows PASS; risk-values DERIVED x2, NAMED-NOT-DERIVED x2 filed assay#1242) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1243 @ d156ff7d8e6cff02d849b652a9bb5075fd964cdf) |
-| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | implemented | — | — |
+| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 24 | [Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb](brief-24-audit-ledger-tail-read-and-rotation.md) | 2 | M | done | 2026-09-17 sonnet-5-verifier (14/14 rows PASS incl. SPOF equivalence + 10/10 mutation-caught; found+filed unrelated statusgen consumers bug assay#1296; risk-values DERIVED) | 2026-09-18 assay-reviewer-app[bot] (approved PR #1297 @ 08829451c27fb6a8f943349b8e9b78e8965e1541) |
 | 25 | [One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id](brief-25-token-memo-and-cache-before-install-id.md) | 2 | M | done | 2026-09-18 sonnet-5-verifier (desk-tools/25 dispatched verifier; 18/19 rows checked-clean direct, 1 pre-existing unrelated drift filed separately; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1315 @ 7d1c1e09e432ce88ced8b65151708d06702c1e8f) |
 | 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
-| 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | in-progress | — | — |
+| 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | implemented | — | — |
 | 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
 | 29 | [`verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs](brief-29-verifyloop-unsigned-compose.md) | 1 | L | implemented | — | — |
 | 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
@@ -215,12 +215,12 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
-| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | todo | — | — |
-| 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | todo | — | — |
+| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | implemented | — | — |
+| 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
 | 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | todo | — | — |
 | 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | todo | — | — |
 | 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | todo | — | — |
-| 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | todo | — | — |
+| 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | in-progress | — | — |
 | 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
 | 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
 | 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | todo | — | — |
@@ -231,6 +231,13 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
+| 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
+| 55 | [Adopt parity-checked prune mutation selection](brief-55-adopt-parity-checked-prune-mutation-selection.md) | 1 | M | todo | — | — |
+| 56 | [Make mutation reports resumable and measurable](brief-56-make-mutation-reports-resumable-and-measurable.md) | 1 | M | todo | — | — |
+| 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | todo | — | — |
+| 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
+| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | todo | — | — |
+| 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -256,7 +263,7 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -305,7 +312,7 @@ whole mirror, a persistent cache, or the future runtime first does not resolve t
 - Wave 5: 44 after 41+42+43.
 
 The richer phase schema, adapters and tool panel amend performance-collection/01, /02,
-/07 (stream remains parked). Future serving amends forge-neutral/37–45; only its /39
+/07. Future serving amends forge-neutral/37–45; only its /39
 public contract mapping waits for desk-tools/39 and /45 qualification for desk-tools/43–44.
 The early lane has no reverse service/DB dependency. Active parser ports #3248/#3302,
 proposed supervision #3325 and generic improvement #3305 are pickup checkpoints, not
@@ -418,3 +425,41 @@ Old dispatch and stranded-card counts are historical measurements, not current
 acceptance evidence. Tests must demonstrate named PASS output so a zero-test match
 cannot satisfy a Verify row. Authoring supplies these contracts; implementers and
 independent verifiers supply their execution evidence later.
+
+## Review-desk rename — 2026-10-18
+
+Brief 53 renames the `pr-review-desk` role to `review-desk`, the same way the two earlier
+role renames went: register the successor first, and keep the old name as an accepted alias
+forever. The alias covers stop flags, `DESK_LOOP`, cellctl role arguments, the comms lane
+list, spec role sets, worktrees and claims. The issue label values (`to:reviewer`,
+`raised-by:reviewer`) do not change. Readers additionally accept the loop spellings. For at
+least one release, a thin deprecated `pr-review-desk` skill redirects to `review-desk`, and a
+skillslint gate fails on any new bare use of the old name. The matching change to the
+maintainers' house layer is a separate brief there.
+
+## Candidate-plus-priority planner reuse — requested 23 October 2026
+
+See the [single contract and ranked provider-cost model](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+and [owner map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+Extend existing /39–40 pure observation/planning, /43 caller and /44 parity/cost work;
+/42 retains issue projection ownership and /45,/51 retain verification queue/skill ownership.
+No new brief IDs or generated status changes. Both prose and discrete clients consume the
+same role-qualified plan; graph-execution/27 composes all five existing role evaluators.
+
+Critical path stays /37 -> /39 -> /40 -> /43 -> /44 for the review bridge. All-five-role
+runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapters
+from /43 and /51, including /51’s existing human gate. Those edges are reciprocal; R6
+cross-window reuse follows its own route.
+Completed Evidence remains intact. A modified active assignment is rebound only through its
+owner checkpoint; authoring this amendment does not replace its current contract.
+
+## Operate is human, and the gate ladder — 27 October 2026
+
+Brief 60 is the public half of a downstream house's plan item. Its house-side check (a site-copy
+rule that refuses a page claiming a gate relaxation no ladder rung backs) has already landed
+downstream. What remains lives here: a short normative subsection in `spec/lifecycle-v1.md`
+§9 stating what an agent fleet may own and what stays human, a gate ladder with every
+threshold recorded as `not set`, and a review finding class, "claims a relaxation", that blocks
+a change asserting a widening the ladder does not back. The rung row is a fixed contract
+because downstream tools parse it. It is `gate: human` with a creation-time decision, and
+nothing in it changes any gate's behaviour.

@@ -37,8 +37,8 @@ func fixtureLines(t *testing.T) ([]string, []testledger.Retirement) {
 	if err != nil {
 		t.Fatalf("Tests(testdata/head): %v", err)
 	}
-	if len(base) != 6 || len(head) != 5 {
-		t.Fatalf("fixture test counts: base %d (want 6: TestMain, Testhelper and the decoy excluded), head %d (want 5)", len(base), len(head))
+	if len(base) != 6 || len(head) != 8 {
+		t.Fatalf("fixture test counts: base %d (want 6: TestMain, Testhelper and the decoy excluded), head %d (want 8)", len(base), len(head))
 	}
 	log, err := os.ReadFile("testdata/log.txt")
 	if err != nil {
@@ -53,7 +53,8 @@ func fixtureLines(t *testing.T) ([]string, []testledger.Retirement) {
 		return rs
 	}
 	at := func(testledger.TestFunc) string { return "fixture" }
-	return testledger.Lines(testledger.Diff(base, head), retired, at, rows), retired
+	lines := testledger.Lines(testledger.Diff(base, head), retired, at, rows)
+	return append(lines, testledger.Untriaged(head, headFS)...), retired
 }
 
 // TestLedgerFixture asserts the exact report over testdata/{base,head}: head deletes one
@@ -61,9 +62,14 @@ func fixtureLines(t *testing.T) ([]string, []testledger.Retirement) {
 // trailer, so reported as trailed with the trailer's commit and reason, never hidden), renames
 // one with an identical body and one with the same tag and a changed body, keeps two and adds
 // one. TestMain, a lower-case Testhelper and a TestDecoy in a non-test .go file all leave too,
-// and none of them may appear.
+// and none of them may appear. Head also adds three tests in pkg/charz: one characterization
+// test its oracle triages, one its oracle names only outside the triage table (reported
+// untriaged), and one whose `characterization:` line is prose, not a tag (never reported).
 func TestLedgerFixture(t *testing.T) {
 	lines, retired := fixtureLines(t)
+	for _, l := range lines {
+		t.Log(l)
+	}
 	want := []string{
 		"retired-untrailed: pkg/parse.TestAlpha [regression F-fixture-alpha] deleted in fixture",
 		`retired-trailed: pkg/parse.TestBeta deleted in fixture; Retires-test in 111111111111: "the length check moved into TestEpsilon's table"`,
@@ -72,6 +78,7 @@ func TestLedgerFixture(t *testing.T) {
 		"verify-rows-naming: TestAlpha → docs/streams/fixture/brief-01-parse.md:1",
 		"verify-rows-naming: TestBeta → docs/streams/fixture/brief-01-parse.md:5",
 		"verify-rows-naming: TestGamma → docs/streams/fixture/brief-01-parse.md:2",
+		"characterization-untriaged: pkg/charz.TestFixtureUntriaged (docs/investigations/2026-01-20-pkg-charz-oracle.md has no row for it)",
 	}
 	if got, w := strings.Join(lines, "\n"), strings.Join(want, "\n"); got != w {
 		t.Errorf("report:\n%s\nwant:\n%s", got, w)
@@ -480,7 +487,8 @@ func TestRangeProbes(t *testing.T) {
 
 // TestReportTestLedger is the report: it logs every departure between -base and -head (an
 // untrailed one for the reviewer to judge, a trailed one with its trailer's commit and reason,
-// a tag dropped in place), or `clean` when nothing departed. It never fails on what it finds —
+// a tag dropped in place) and every head characterization test its oracle has no triage row
+// for, or `clean` when there is neither. It never fails on what it finds —
 // a reported line is for the reviewer to judge (review kit §4) — and it skips with
 // `could-not-check (<reason>)` when a side cannot be read, so an unreadable range never passes
 // as clean. Without -base and -head it skips.
@@ -630,6 +638,7 @@ func report(base, head string) (lines, notes []string, err error) {
 		return rs
 	}
 	lines = testledger.Lines(testledger.Diff(baseTests, headTests), retired, at, rows)
+	lines = append(lines, testledger.Untriaged(headTests, headFS)...)
 	if rowErr != nil {
 		notes = append(notes, fmt.Sprintf("note: Verify rows partly unread: %v", rowErr))
 	}
@@ -661,8 +670,9 @@ func tree(root, arg string) (fs.FS, string, error) {
 	return fsys, rev, nil
 }
 
-// archive reads the files the report needs (every *_test.go, every docs/streams brief) out of
-// `git archive` in-process; nothing is written to disk.
+// archive reads the files the report needs (every *_test.go, every Markdown file: the briefs
+// and any oracle a characterization tag names) out of `git archive` in-process; nothing is
+// written to disk.
 func archive(root, rev string) (fs.FS, error) {
 	cmd := exec.Command("git", "archive", "--format=tar", rev)
 	cmd.Dir = root
@@ -689,7 +699,7 @@ func archive(root, rev string) (fs.FS, error) {
 		if h.Typeflag != tar.TypeReg || !fs.ValidPath(name) {
 			continue
 		}
-		if !strings.HasSuffix(name, "_test.go") && !(strings.HasPrefix(name, "docs/streams/") && strings.HasSuffix(name, ".md")) {
+		if !strings.HasSuffix(name, "_test.go") && !strings.HasSuffix(name, ".md") {
 			continue
 		}
 		b, err := io.ReadAll(tr)

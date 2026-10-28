@@ -2,7 +2,7 @@
 brief: assay:assay:performance-collection:06
 title: "Collection replay, retention, recovery and release qualification"
 why: "Passing logger, database and HTTP tests separately does not prove a usable history. A complete-path replay and recovery exercise must demonstrate truthful totals, bounded loss and independent cell operation before optional remote collection is offered."
-wave: 3
+wave: 5
 depends: ["performance-collection/02", "performance-collection/04", "performance-collection/05"]
 unblocks: []
 effort: M
@@ -12,10 +12,11 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 4
 id: 27aaa5a2-0575-4067-8be6-40d929e2dff9
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -78,7 +79,9 @@ Options:
 1. **Accept the bounded implementation** — accept only the demonstrated field, failure and isolation contract; keep live activation separately controlled.
 2. **Hold for correction** — name the unsupported claim or boundary and revise the implementation before acceptance.
 
-Default if no answer: none — acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
 
 ## Ground rules
 
@@ -146,6 +149,31 @@ Remove dedup, erase a loss marker, reinterpret decision wait as effort or make c
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Add the complete local producer → perf-v3 writer → selected aliased importer → spool →
+served ingestion/storage → replay/report qualification. Use synthetic two-work/two-agent data,
+retry/resume, duplicate/conflict, measured-zero/missing points and instrumented/uninstrumented
+children. Assert raw locators stop at import, unknown coverage survives restore and parent
+inclusive timing is not counted twice. Existing failure/loss/rollback and human gates remain;
+no fixture run activates collection. Extend the existing complete-path Verify row accordingly.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Preserve the query/cache boundary contract from docs/performance-attribution-spec.md:
+client logical service calls and transport attempts, handler timing/cache/coalescing outcomes,
+and actual direct/passthrough/refresh/poll/repair provider sends/cost remain different kinds.
+Import correlation only under the selected aliased workflow policy; never forward raw local
+locators or infer missing server coverage as zero. Shared refresh/background cost remains
+shared/unallocated and one provider observation cannot be copied to all waiting work items.
+Do not sum client wait, handler/provider spans or concurrent process CPU as elapsed savings.
+Extend the existing local/served/replay/report Verify flow for this owner with the shared
+50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
+data. Wrongly combining the two sides of one service call or multiplying upstream points
+must fail the independent expected result; existing selectors and all Evidence remain intact.
 
 ## Evidence
 

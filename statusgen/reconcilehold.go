@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -153,6 +154,7 @@ var statusKeyedLintRules = []statusKeyedLintRule{
 	{"deployTransitionProblems", func(e *lintEnv) []string { return deployTransitionProblems(e.root, e.streams) }, deployIncremental},
 	{"attributionProblems", func(e *lintEnv) []string { p, _ := attributionProblems(e.streams); return p }, attributionIncremental},
 	{"verifyRowClassProblems", func(e *lintEnv) []string { return verifyRowClassProblems(e.streams) }, streamLocal},
+	{"protectedClosureProblems", func(e *lintEnv) []string { return protectedClosureProblems(e.streams) }, streamLocal},
 	{"danglingSatisfiesProblems", func(e *lintEnv) []string { return danglingSatisfiesProblems(e.root, e.streams) }, statusInvariant},
 	// Reads the tree itself (it re-renders each drive-snapshot region from disk),
 	// which is why a move is evaluated with the README already written.
@@ -162,7 +164,7 @@ var statusKeyedLintRules = []statusKeyedLintRule{
 	// would carry a gate: human brief to implemented or later without a recorded
 	// ruling is HELD, not kept to red its own PR.
 	{"decisionGateHoldProblems", func(e *lintEnv) []string { p, _ := decisionGateHoldProblems(e.root); return p }, decisionGateIncremental},
-	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nowFunc()); return p }, driveIncremental},
+	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nil, nil, nowFunc()); return p }, driveIncremental},
 }
 
 // statusKeyedNotRows names run() callees the registry completeness test sees
@@ -348,6 +350,16 @@ type heldRow struct {
 	Problems []string `json:"problems"`
 }
 
+// couldNotCheckPrefix opens every held-row PROBLEM line that records a write the
+// hold could not evaluate, as opposed to a refusal the lint named.
+const couldNotCheckPrefix = "could-not-check: "
+
+// isCouldNotCheckProblem reports whether a heldRow PROBLEM line is a
+// could-not-check rather than a lint refusal: the one test every reader of
+// heldRow.Problems uses, so a producer's wording can change without a reader
+// mistaking its could-not-check for a hold.
+func isCouldNotCheckProblem(p string) bool { return strings.HasPrefix(p, couldNotCheckPrefix) }
+
 func couldNotCheckRow(id string) string {
-	return fmt.Sprintf("could-not-check: %s has a README row but no row in the lint's stream model, so the write cannot be evaluated against the lint", id)
+	return fmt.Sprintf(couldNotCheckPrefix+"%s has a README row but no row in the lint's stream model, so the write cannot be evaluated against the lint", id)
 }

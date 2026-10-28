@@ -2,7 +2,7 @@ package main
 
 // The adopter DANGEROUS-COMMAND callout.
 //
-// WHAT IT IS FOR. The compiled indicators in guard.go recognise write-shaped
+// WHAT IT IS FOR. The compiled indicators in deskcore/writepolicy recognise write-shaped
 // constructs that are dangerous in ANY tree — redirection, tee, the file-mutation
 // family, sed -i, mutating git subcommands. They are generic by construction, and
 // they ship. What they cannot recognise is a command that is dangerous only because
@@ -23,7 +23,7 @@ package main
 //
 // THE TWO RULES, and where each is enforced:
 //
-//	ONLY-WIDENS   Enforced STRUCTURALLY, in CheckBash: the compiled indicators are
+//	ONLY-WIDENS   Enforced STRUCTURALLY, in writepolicy: the compiled indicators are
 //	              consulted FIRST and return their block before this code runs at
 //	              all. There is no output a callout can produce that reaches a
 //	              compiled verdict, so "allow" is not a word this protocol has to

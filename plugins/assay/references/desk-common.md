@@ -99,6 +99,62 @@ Reduce duplicate supervision, not review scope: retain the required source/diff 
 omission follow-up, tests, model admission, independent verdicts and consequential
 freshness checks. Use the harness binding for concrete wait and dispatch mechanisms.
 
+## Review observation handoff
+
+This procedure migrates readers; it grants no executor or publication authority.
+See `docs/review-efficiency-compatibility.md` in the source distribution for the
+producer/plugin/schema matrix and retirement inventory. Qualified producer baseline:
+released desk-tools v1.0.59 (`review-queue`, offline selection, advisory preparation).
+Use matching source-qualified caller adapters; installed-cell adoption is separate.
+
+The launcher supplies current approved `SelectionPolicy` JSON through
+`PR_MONITOR_REVIEW_POLICY` and nonnegative available proposal capacity through
+`PR_MONITOR_REVIEW_CAPACITY`. The policy has explicit Owner, Revision,
+Evaluator `review-selection-v1`, Unmapped behavior and Priorities (an explicit
+empty list is allowed; absent is unknown). Do not substitute the observation’s
+embedded policy digest for approval of the priority list.
+
+Select classified mode by setting `PR_MONITOR_REVIEW_OBSERVATION` to a unique,
+private caller-minted output path and run the existing `pr-monitor.sh` on the full
+configured repo set. That script collects `deskboard review-queue` once, passes
+requested scope, current time and a five-minute freshness cutoff to
+`reviewloop plan --snapshot FILE --selection JSON --now RFC3339`, and emits the
+complete private plan at `FILE.plan`, emitting `REVIEW-PLAN` and
+`REVIEW-OBSERVATION` artifact paths rather than full populations on each wake. The script never launches
+reviewers. Its event baseline comes from the same population. Keep its due cadence
+wake and stop/health checks even when the PR event dimensions did not change.
+
+Treat only a successful current cycle as reusable. On a selected-mode failure,
+exit 2 and `MONITOR-DEGRADED` hold the whole cycle and invalidate the output;
+prior event baselines remain. A quarantine or failed repo is never removed from
+scope. On a public repo, even one outside/unblessed PR holds the entire classified
+cycle; continue through the supported legacy recipe on a later cycle until that
+quarantine is resolved, or retain the visible hold. This is an operational limitation
+of the complete observation, not permission to bypass public-author admission.
+If the hold cannot invalidate a prior artifact it says so on a further
+`MONITOR-DEGRADED` line; that file is never this cycle's output. Repair/retry, or deliberately choose the supported prior recipe on a later
+cycle; never auto-fallback within the failed cycle. Rerun pure selection for a
+capacity or priority change using that same supported invocation while applicability
+holds; execute candidates in returned policy order. Keep the observation for
+`deskdispatch ... --kit review --observation FILE`; fresh effect checks still run.
+
+With matching current scope/policy and a five-minute cutoff, coordinator and inbox
+may consume `deskboard throughput --review-observation FILE`. Review depth is
+validated from the same complete population and reports its collection cutoff.
+Scope/policy/schema/time mismatch blinds review depth without a second review scan;
+other pipeline stages remain independently readable. Inbox forwards the selected
+`PR_MONITOR_REVIEW_OBSERVATION` to that reader. This adapter requires the source
+change shipping with this recipe; v1.0.59 alone does not contain this new flag.
+
+The prior supported recipe remains: run the unselected event monitor, retain the
+independent classified `deskboard actions --delta --quiet` cadence, and plan with
+`reviewloop plan --actions ACTIONS --prs PRS` using unique scratch files from
+`deskboard actions --out ACTIONS` and `deskboard prs --out PRS`. Legacy dispatch
+omits `--observation`, and legacy throughput omits `--review-observation`. Run only
+one recipe’s effects. Before rollback, retain outstanding findings/handles, invalidate
+new-mode artifacts and reconcile completed effects; a mode switch does not cancel a
+claim or turn an unknown queue into idle.
+
 ## Worktree hygiene
 
 Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval

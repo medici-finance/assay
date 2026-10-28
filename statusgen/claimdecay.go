@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -28,8 +27,10 @@ import (
 // from the FORGE — and which forge that is decides the reader:
 //
 //   - GitHub (and an unclassifiable remote, where GitHub is the historical
-//     fallback): one `gh api graphql` read over the branches (ghBranchPRQuery) — `gh`, the same dependency the `--issues` metrics path
-//     already shells out to (ghIssueMetricLister).
+//     fallback): one GraphQL read over the branches (ghBranchPRQuery), made in
+//     process over net/http with GH_TOKEN / GITHUB_TOKEN (claimdecay_github.go).
+//     It used to shell out to `gh api graphql`, and the board regen's runner has
+//     no `gh`, so decay never ran there.
 //   - GitLab: the project's merge requests over REST v4 (claimdecay_gitlab.go).
 //     `gh` does not exist there and a GitLab project has no pull requests to
 //     list, so routing the read by forge is the only way the pass can run at all
@@ -39,7 +40,7 @@ import (
 // Both readers are injected as package vars so the whole decay is exercised
 // offline in tests.
 //
-// When neither reader can look — no `gh`, no token, an API error — the pass is
+// When neither reader can look — no token, an API error — the pass is
 // LOUD and says so in its own words: `could-not-check: claims not decayed`, with
 // the reason, carried out of the decay as a string so `--lint` and the emitted
 // board can wear it too. A stderr-only NOTICE while the artifact still reads
@@ -59,13 +60,13 @@ import (
 // For each branch it asks for the newest ghPRWindow pull requests whose head IS
 // that branch, newest first, with the fields sameRepoPR needs (isCrossRepository, headRepository,
 // headRepositoryOwner) and the PR's head commit (headRefOid), which branchIsDead
-// compares to the branch's current tip. gh fills {owner} and {repo} from the
-// repository at root, as the earlier `gh pr list` reader resolved it from its working directory.
+// compares to the branch's current tip. $owner and $name come from the
+// repository at root (githubDecayRepo).
 //
 // The per-branch window is ghPRWindow and is NOT unbounded: a branch whose window
 // comes back full with no open pull request in it may have an open one behind the
 // window, so branchIsDead refuses to call it dead (see ghPRWindow). The query does
-// not page the inner connection: `gh api --paginate` drives its one outer cursor
+// not page the inner connection: githubBranchPRPages drives its one outer cursor
 // from the pageInfo in the response, and this read keeps that the only pageInfo.
 const ghBranchPRQuery = `query($owner:String!,$name:String!,$endCursor:String){
   repository(owner:$owner,name:$name){
@@ -86,26 +87,15 @@ const ghBranchPRQuery = `query($owner:String!,$name:String!,$endCursor:String){
 // the strength of a listing that may be missing its open pull request.
 const ghPRWindow = 10
 
-// ghBranchPRJSON runs the branch read for the repo rooted at root and returns the
-// raw `--paginate --slurp` output (a JSON array of pages). A package-level var so
-// tests substitute recorded output and the parse is exercised with no `gh` and no
-// network. A `gh` failure is returned as an error, never as an empty listing an
-// empty listing would read as "no dead branches".
-var ghBranchPRJSON = func(root string) ([]byte, error) {
-	cmd := exec.Command("gh", "api", "graphql", "--paginate", "--slurp",
-		"-F", "owner={owner}", "-F", "name={repo}",
-		"-f", "query="+ghBranchPRQuery)
-	cmd.Dir = root
-	out, err := cmd.Output()
-	if err != nil {
-		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			detail = strings.TrimSpace(string(ee.Stderr))
-		}
-		return nil, fmt.Errorf("gh api graphql (branch pull requests): %v %s", err, detail)
-	}
-	return out, nil
-}
+// ghBranchPRJSON runs the branch read for the repo rooted at root and returns
+// the raw pages as one JSON array. The production read is in process, over
+// net/http (githubBranchPRPages, claimdecay_github.go): the board regen runs on
+// a runner with no `gh`, and the `gh api graphql` shell-out this replaced left
+// decay unable to run there at all. A package-level var so tests substitute
+// recorded output and the parse is exercised with no network. A failed read is
+// returned as an error, never as an empty listing that would read as "no dead
+// branches".
+var ghBranchPRJSON = githubBranchPRPages
 
 // ghBranchPage is one page of the branch read.
 type ghBranchPage struct {
@@ -138,9 +128,9 @@ type ghBranch struct {
 // they are what tells a pull request opened from THIS repository from one opened
 // from a fork. Only the former's headRefName names a branch of this repository,
 // so only the former may ever contribute a corpse. They are pointers so that a
-// field `gh` did not answer (an older `gh`, a head repository that no longer
-// exists) is distinguishable from one it answered false or empty — sameRepoPR is
-// the predicate; its doc carries the reasoning and the fail direction.
+// field the API did not answer (a head repository that no longer exists) is
+// distinguishable from one it answered false or empty — sameRepoPR is the
+// predicate; its doc carries the reasoning and the fail direction.
 type ghPR struct {
 	Number            int    `json:"number"`
 	HeadRefName       string `json:"headRefName"`
@@ -245,7 +235,7 @@ func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
 //     request ever used it, the over-decay direction that lets two workers take
 //     one brief.
 //
-// A branch whose tip or head commit cannot be read is not concluded dead. A `gh`
+// A branch whose tip or head commit cannot be read is not concluded dead. A read
 // failure, or a GraphQL error on any page, is returned as an error;
 // decayDeadClaims degrades to "decay nothing" so the board is never WORSE than
 // the pre-decay superset.
@@ -255,7 +245,7 @@ func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
 // and reported, once; so are branches whose window was full.
 //
 // A package-level var so tests substitute a fake lister without a network call,
-// exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
+// exactly as listRemoteBranches / defaultIssueMetricLister are stubbed.
 var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 	out, err := ghBranchPRJSON(root)
 	if err != nil {
@@ -356,16 +346,17 @@ func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int, truncated
 // decayReader picks the change-state reader for the forge behind root's `origin`
 // remote, and names it for the could-not-check message.
 //
-// forgeUnknown (a self-hosted host naming neither forge, or no remote at all)
-// keeps the historical `gh` attempt: "could not tell" is not "confirmed not
-// GitHub", and a GitHub Enterprise host that names neither word still answers
-// `gh`. Its failure then reports as an ordinary could-not-check with the reason,
-// which is the honest answer for a forge we could not identify.
+// forgeUnknown (a self-hosted host naming neither forge, an SSH host alias, or no
+// remote at all) keeps the historical GitHub attempt: "could not tell" is not
+// "confirmed not GitHub". A GitHub Enterprise host that names neither word is
+// reached by setting GITHUB_GRAPHQL_URL. A failure reports as an ordinary
+// could-not-check with the reason, which is the honest answer for a forge we
+// could not identify.
 func decayReader(root string) (read func(string) (map[string]bool, error), what string) {
 	if detectForge(root) == forgeGitLab {
 		return listMergedClosedBranchesGitLab, "merge-request state over the GitLab REST v4 API"
 	}
-	return listMergedClosedBranches, "branch pull-request state through `gh api graphql`"
+	return listMergedClosedBranches, "branch pull-request state through the GitHub GraphQL API"
 }
 
 // decayDeadClaims removes, from an open-branch list, the branches whose PR or

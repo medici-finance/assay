@@ -92,10 +92,7 @@ var (
 	decHeadingLineRe    = regexp.MustCompile(`^[ \t]*#{1,6}[ \t]`)
 	decOptionLineRe     = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?[A-Da-d1-4][.)][ \t]`)
 	decOptionCaptureRe  = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?([A-Da-d1-4])[.)][ \t]*(.+)$`)
-	decRecommendWordRe  = regexp.MustCompile(`(?i)recommend`)
-	// Only the leading letter of "Recommended" case-varies, exactly as the oracle's ERE.
-	decTrailingRecRe = regexp.MustCompile(`[ \t]*[—-]?[ \t]*\(?[Rr]ecommended\)?[ \t]*$`)
-	decLeadingRecRe  = regexp.MustCompile(`^\(?[Rr]ecommended\)?[ \t,:;—-]*`)
+	decRecTokenRe       = regexp.MustCompile(`(?i)\(recommended\)`)
 )
 
 // DecisionOptions is one ask's parsed Options section, in SOURCE order (the order and the
@@ -127,15 +124,37 @@ func (o DecisionOptions) Walk() []int {
 
 // ParseDecisionOptions parses the Options section of an ask (an issue body or a relay
 // comment): the lines between the first `# Options` heading (any level) and the next
-// heading, the first four lettered list lines, the first one mentioning "recommend" as
-// the recommended option, each text de-markdowned, control-stripped and freed of its
-// "(recommended)" marker.
+// heading, the first four lettered list lines, and a recommendation only when exactly one
+// standalone `(recommended)` marker (decMarkerSpans) appears across those options, every
+// marker cut from the text. HTML comments are invisible.
 func ParseDecisionOptions(body string) DecisionOptions {
 	var bl []string
+	inComment := false
 	for _, l := range decLines(body) {
-		if !decHTMLCommentRe.MatchString(l) {
-			bl = append(bl, l)
+		for {
+			if inComment {
+				end := strings.Index(l, "-->")
+				if end < 0 {
+					l = ""
+					break
+				}
+				l = l[end+3:]
+				inComment = false
+				continue
+			}
+			start := strings.Index(l, "<!--")
+			if start < 0 {
+				break
+			}
+			end := strings.Index(l[start+4:], "-->")
+			if end < 0 {
+				l = l[:start]
+				inComment = true
+				break
+			}
+			l = l[:start] + l[start+4+end+3:]
 		}
+		bl = append(bl, l)
 	}
 	type rawOpt struct{ let, txt string }
 	var raw []rawOpt
@@ -156,29 +175,78 @@ func ParseDecisionOptions(body string) DecisionOptions {
 			break
 		}
 	}
-	rec := -1
+	rec, marks := -1, 0
 	for i, o := range raw {
-		if decRecommendWordRe.MatchString(o.txt) {
+		if n := len(decMarkerSpans(decStrip(decClean(decDemd(o.txt))))); n > 0 {
 			rec = i
-			break
+			marks += n
 		}
+	}
+	if marks != 1 {
+		rec = -1
 	}
 	out := DecisionOptions{Recommended: -1}
 	for i, o := range raw {
 		v := decStrip(decClean(decDemd(o.txt)))
-		v = decTrailingRecRe.ReplaceAllString(v, "")
-		v = decLeadingRecRe.ReplaceAllString(v, "")
-		v = decStrip(v)
+		v = decStrip(decCutMarkers(v))
 		if v == "" {
 			continue // dropped, as the oracle drops it; a dropped mark is no mark
 		}
-		if i == rec {
+		if i == rec && rec >= 0 {
 			out.Recommended = len(out.Texts)
 		}
 		out.Letters = append(out.Letters, o.let)
 		out.Texts = append(out.Texts, v)
 	}
 	return out
+}
+
+// decMarkerSpans is the oracle's `recmark` grammar (assay-inbox.sh): the byte span of every
+// standalone `(recommended)` token (any case) in s. The token must open the text or follow
+// one space or tab, and must end the text or be followed by a space, a tab or one of
+// `.,;:!?`. That following character is never part of the span, so adjacent markers each
+// count. The span takes the one space or tab before the token, plus a `—`/`–`/`-`
+// separator directly before that when whitespace precedes the separator, so cutting it
+// leaves "Keep — (recommended)." as "Keep.". The whitespace is ASCII on both sides: a
+// non-breaking space is not a boundary.
+func decMarkerSpans(s string) [][2]int {
+	var spans [][2]int
+	for _, m := range decRecTokenRe.FindAllStringIndex(s, -1) {
+		start, end := m[0], m[1]
+		if end < len(s) && !strings.ContainsRune(" \t.,;:!?", rune(s[end])) {
+			continue
+		}
+		if start > 0 {
+			if c := s[start-1]; c != ' ' && c != '\t' {
+				continue
+			}
+			start--
+			for _, dash := range []string{"—", "–", "-"} {
+				if !strings.HasSuffix(s[:start], dash) {
+					continue
+				}
+				ws := strings.TrimRight(s[:start-len(dash)], " \t")
+				if len(ws) < start-len(dash) {
+					start = len(ws)
+				}
+				break
+			}
+		}
+		spans = append(spans, [2]int{start, end})
+	}
+	return spans
+}
+
+// decCutMarkers removes every span decMarkerSpans finds — the oracle's `cleanoption` gsub.
+func decCutMarkers(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, sp := range decMarkerSpans(s) {
+		b.WriteString(s[last:sp[0]])
+		last = sp[1]
+	}
+	b.WriteString(s[last:])
+	return b.String()
 }
 
 // The oracle's string defs, private copies of cmd/deskinbox's (that package is a command).
@@ -852,7 +920,7 @@ func AppendDecisionRecord(line []byte) error {
 }
 
 // decisionToolSHA is the build's source SHA — the value every audit Entry carries
-// ("unpinned" for an unstamped build).
+// ("unpinned" for a build with neither a link-time stamp nor VCS information).
 func decisionToolSHA() string {
 	s, _ := Version()
 	return s

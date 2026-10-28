@@ -105,15 +105,10 @@ files at `efbdb51da`, the brief's version-1 implementation) with the new tests i
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/claimstore.go` (planned), `claimstore_test.go` (planned),
-  `claimstore_conformance_test.go` (planned) — the interface, the resolver, the shared
-  conformance table.
-- `tools/desk/internal/deskkit/rosterconfig.go` — `ASSAY_CLAIM_STORE`, `ASSAY_CLAIM_DIR`,
-  `ASSAY_CLAIM_SINGLE_HOST`, strictly parsed.
-- `tools/desk/cmd/deskclaim-ref/claim.go`, `gogit.go`, `main.go` — the forge store becomes one
-  implementation of the deskkit interface.
-- `tools/desk/cmd/deskdispatch/dispatch.go` — step 1 asks the resolver; the role credential is
-  minted only when the resolved store needs one.
+- `tools/desk/internal/deskkit/claimstore.go` (planned), `claimstore_test.go` (planned), `claimstore_conformance_test.go` (planned) — the interface, the resolver, the shared conformance table.
+- `tools/desk/internal/deskkit/rosterconfig.go` — `ASSAY_CLAIM_STORE`, `ASSAY_CLAIM_DIR`, `ASSAY_CLAIM_SINGLE_HOST`, strictly parsed.
+- `tools/desk/cmd/deskclaim-ref/claim.go`, `gogit.go`, `main.go` — the forge store becomes one implementation of the deskkit interface.
+- `tools/desk/cmd/deskdispatch/dispatch.go` — step 1 asks the resolver; the role credential is minted only when the resolved store needs one.
 - `tools/desk/internal/deskkit/mutations.json` — one entry.
 - `tools/desk/README.md`; `changelog/<branch-slug>.md` (planned)
 

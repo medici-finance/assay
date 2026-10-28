@@ -431,6 +431,38 @@ func TestOutboundConformance(t *testing.T) {
 	}
 }
 
+// regression: #3283
+// TestPushHunkDestLine checks the push parser's aligned surface across
+// separated hunks, context and a deletion, including the same scanner refusal controls.
+func TestPushHunkDestLine(t *testing.T) {
+	setup(t)
+	SetOutboundContext(OutboundContext{})
+	fingerprint := "0123456789ABCDEF0123" + "456789ABCDEF01234567"
+	diff := "diff --git a/docs/streams/x/brief.md b/docs/streams/x/brief.md\n" +
+		"index 1111111..2222222 100644\n--- a/docs/streams/x/brief.md\n+++ b/docs/streams/x/brief.md\n" +
+		"@@ -1,5 +1,5 @@\n one\n two\n-three\n+three changed\n four\n five\n" +
+		"@@ -10,3 +10,4 @@\n ten\n eleven\n+key is " + fingerprint + "\n twelve\n"
+	files := AddedLinesByFile(diff)
+	if len(files) != 1 || files[0].Path != "docs/streams/x/brief.md" {
+		t.Fatalf("parsed additions = %#v", files)
+	}
+	lines := strings.Split(files[0].Text, "\n")
+	if len(lines) < 12 || lines[2] != "three changed" || lines[11] != "key is "+fingerprint {
+		t.Fatalf("added surface did not retain destination line placeholders: %q", files[0].Text)
+	}
+	err := OutboundCheck(OutboundWrite{Role: "worker", Repo: obPublic, Kind: OutboundKindFile,
+		Fields: []OutboundField{{Name: "docs/streams/x/brief.md", Text: files[0].Text}}})
+	if err == nil || !IsRefused(err) {
+		t.Fatalf("want secret-scan refusal, got %v", err)
+	}
+	if want := "docs/streams/x/brief.md:12"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("refusal does not name destination line %s: %v", want, err)
+	}
+	if strings.Contains(err.Error(), fingerprint) {
+		t.Fatalf("refusal leaked the offending span: %v", err)
+	}
+}
+
 // obAuditRows reads the audit rows written under dir. A missing file is no rows.
 func obAuditRows(t *testing.T, dir string) []map[string]any {
 	t.Helper()
@@ -461,6 +493,9 @@ var obHex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // obAssertOverrideRow pins the override row's shape: the rule id and a digest, never the text.
 func obAssertOverrideRow(t *testing.T, row map[string]any, rule, span string) {
 	t.Helper()
+	if res, _ := row["result"].(string); res != ResultLocal {
+		t.Fatalf("outbound override row result = %q, want %q (a local receipt, not a charged write)", res, ResultLocal)
+	}
 	detail, _ := row["detail"].(string)
 	if !strings.Contains(detail, "rule="+rule) {
 		t.Fatalf("audit row does not name the rule %s: %q", rule, detail)
@@ -536,6 +571,7 @@ var obClass = map[string]string{
 	"CloseIssue": "notext", "CloseIssueTyped": "notext", "ReopenIssue": "notext",
 	"MarkReadyForReview": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
 	"OpenMergeHold": "notext", "RunWorkflow": "notext", "ApproveGate": "notext",
+	"RetryRun": "notext",
 
 	"GetPullRequest": "read", "GetIssue": "read", "GetIssueTyped": "read",
 	"OpenChangeForBranch": "read", "SearchIssues": "read", "ListLabels": "read",
@@ -548,7 +584,7 @@ var obClass = map[string]string{
 	"GetCommit": "read", "ListFileCommits": "read", "ListCommitChanges": "read",
 	"CompareRefs": "read", "SearchOpenChanges": "read", "ListWorkflowFiles": "read",
 	"ChangeDiff": "read", "RefExists": "read", "MatchingRefs": "read",
-	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read",
+	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read", "RunLog": "read",
 	"PushTransportHint": "read",
 	"ListIssues":        "read", "IssueStateEvents": "read", "ListChangeCommits": "read",
 	"RepoDefaultBranch": "read", "IssueLabelHistory": "read",

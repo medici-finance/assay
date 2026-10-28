@@ -134,6 +134,7 @@ func runNextUp(root string) int {
 	// (see the package comment above) and never prints board-shaped NOTICE text;
 	// only the MUTATION this call performs is wanted here.
 	_, _ = runSiblingMergeIfOptedIn(streams, root) // opt-in only: --sibling-merge or ASSAY_SIBLING_MERGE=1
+	holdPhantomRowsFromGit(streams, root)          // strong board-honesty findings (boardhonesty.go)
 	nu := nextUp(streams, ClaimView{Claimed: claimed, Source: claimSource}, briefTouch)
 
 	// The root's declared repo, carried on the view AND every row so a cross-repo
@@ -141,6 +142,7 @@ func runNextUp(root string) int {
 	// from whichever root it happened to invoke. A malformed/conflicting declaration
 	// is a hard PROBLEM in --lint; here it just yields "" and the field is omitted.
 	repo, _ := rootRepo(streams)
+	defer perfEnter("render")()
 	view := buildDispatchView(nu, streams, repo, claimSource)
 	out, err := json.Marshal(view)
 	if err != nil {

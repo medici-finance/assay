@@ -70,8 +70,8 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -80,13 +80,21 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 type spec struct {
-	Root      string     `json:"root"`
-	Test      string     `json:"test"`
-	Control   Mutation   `json:"control"`
-	Mutations []Mutation `json:"mutations"`
+	Root      string      `json:"root"`
+	Test      string      `json:"test"`
+	Build     string      `json:"build,omitempty"`
+	Timeout   TimeoutSpec `json:"timeout,omitempty"`
+	Control   Mutation    `json:"control"`
+	Mutations []Mutation  `json:"mutations"`
 	// Select configures -select; it has no effect without the flag.
 	Select *selectSpec `json:"select,omitempty"`
 	// Schemata opts this spec into mutant schemata (#2635). Off unless set:
@@ -207,57 +215,131 @@ func envWithout(env []string, names ...string) []string {
 // rate limit do not apply. This is the same documented exemption class as
 // writeguard; halting local mutation testing serves no safety purpose.
 func main() {
-	specPath := flag.String("spec", "", "path to the mutation spec JSON")
-	jobs := flag.Int("j", 1, "mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory)")
-	shard := flag.String("shard", "", `run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.`)
-	useSelect := flag.Bool("select", false, "run each mutation against only the tests that execute the mutated function (plus the spec's select.always list); opt-in")
-	flag.Parse()
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
 
-	if *specPath == "" {
-		fmt.Fprintln(os.Stderr, "muhar: -spec is required")
-		os.Exit(1)
-	}
+// helpLong is the root help's prose; the usage line and the flags are generated from the
+// command tree (desktools-v2/44).
+const helpLong = `muhar — mutation-testing harness with a proven-landed guarantee.
 
-	raw, err := os.ReadFile(*specPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "muhar: read spec: %v\n", err)
-		os.Exit(1)
-	}
-	var s spec
-	if err := json.Unmarshal(raw, &s); err != nil {
-		fmt.Fprintf(os.Stderr, "muhar: parse spec: %v\n", err)
-		os.Exit(1)
-	}
-	if s.Test == "" {
-		fmt.Fprintln(os.Stderr, "muhar: spec.test (the suite command) is required")
-		os.Exit(1)
-	}
-	if s.Control.Name == "" || s.Control.Old == "" {
-		fmt.Fprintln(os.Stderr, "muhar: spec.control is required (a mutation the suite MUST catch) — a harness with no failing control is a green light with no bulb (#34)")
-		os.Exit(1)
-	}
+It proves the suite green on pristine source, proves the spec's positive control is
+caught, then plants each mutation and reports whether the suite caught it.
 
+Exit codes: 0 run healthy (see the per-mutation verdicts on stdout) · 2 HARNESS BROKEN
+(baseline red or control not caught; also a command line muhar cannot parse) · 1 usage,
+spec or IO error.`
+
+// options is the parsed command line the sweep runs with.
+type options struct {
+	spec      string
+	jobs      int
+	shard     string
+	useSelect bool
+}
+
+// sweepFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var sweepFn = sweep
+
+// onResolve, when set, sees every invocation's resolved settings (the contract tests' window on
+// which source won).
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("muhar sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting muhar declares: flags and defaults only. muhar has no
+// configuration file and reads no environment variable for them.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "spec", Kind: cli.String, Flag: "spec",
+			Usage: "`path` to the mutation spec JSON (required)"},
+		{Key: "j", Kind: cli.Int, Flag: "j", Short: "j", Default: 1,
+			Usage: "mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory)"},
+		{Key: "shard", Kind: cli.String, Flag: "shard",
+			Usage: `run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.`},
+		{Key: "select", Kind: cli.Bool, Flag: "select", Default: false,
+			Usage: "run each mutation against only the tests that execute the mutated function (plus the spec's select.always list); opt-in"},
+	}
+}
+
+// run parses args against a fresh command tree and runs the sweep. Callers write the Go-flag
+// spellings (-spec F -j 0 -shard i/n), so GoFlagCompat keeps them; a command line muhar
+// cannot parse exits 2, as the flag package's ExitOnError did.
+func run(args []string, stdout, stderr io.Writer) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("muhar", "mutation-testing harness with a proven-landed guarantee")
+		root.Long = helpLong
+		set := cli.Declare(root, bindings()...)
+		// Words after the flags were ignored by the flag package, and still are, except a
+		// `help` word: the adapter always routes that to its help command, so `-spec F help`
+		// is now a parse refusal (exit 2) rather than a sweep.
+		root.Args = cobra.ArbitraryArgs
+		root.RunE = func(*cobra.Command, []string) error {
+			v, err := set.Resolve(cli.Inputs{})
+			if err != nil {
+				fmt.Fprintln(stderr, "muhar:", err)
+				return exitErr(1)
+			}
+			if onResolve != nil {
+				onResolve(v)
+			}
+			o := options{spec: v.String("spec"), jobs: v.Int("j"), shard: v.String("shard"), useSelect: v.Bool("select")}
+			if code := sweepFn(o, stdout, stderr); code != 0 {
+				return exitErr(code)
+			}
+			return nil
+		}
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		GoFlagCompat:    true,
+	})
+}
+
+// sweep is the run itself: read and check the spec, then baseline, control and mutations.
+func sweep(o options, stdout, stderr io.Writer) int {
+	if o.spec == "" {
+		fmt.Fprintln(stderr, "muhar: -spec is required")
+		return 1
+	}
+	s, code := loadSpec(o.spec, stderr)
+	if code != 0 {
+		return code
+	}
 	// Sharding narrows the mutation list — and ONLY the mutation list. The
 	// baseline and the positive control are untouched, so every shard still
 	// proves the instrument before reporting a single verdict. Echo the
 	// selection to stderr: a shard's report is a partial sweep by design, and
 	// the echo is what keeps it from being read as a complete one.
-	if *shard != "" {
-		i, n, err := parseShard(*shard)
+	if o.shard != "" {
+		i, n, err := parseShard(o.shard)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "muhar: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(stderr, "muhar: %v\n", err)
+			return 1
 		}
 		total := len(s.Mutations)
 		s.Mutations = shardSelect(s.Mutations, i, n)
-		fmt.Fprintf(os.Stderr, "muhar: shard %d/%d — running %d of %d mutations (indices ≡ %d mod %d); the other shards own the rest\n",
+		fmt.Fprintf(stderr, "muhar: shard %d/%d — running %d of %d mutations (indices ≡ %d mod %d); the other shards own the rest\n",
 			i, n, len(s.Mutations), total, i, n)
 	}
 
-	n := resolveJobs(*jobs, runtime.NumCPU())
+	n := resolveJobs(o.jobs, runtime.NumCPU())
 	if n < 1 {
-		fmt.Fprintln(os.Stderr, "muhar: -j must be >= 0")
-		os.Exit(1)
+		fmt.Fprintln(stderr, "muhar: -j must be >= 0")
+		return 1
 	}
 
 	// Quarantine the Go build cache for this run. Every mutant is a unique
@@ -267,64 +349,61 @@ func main() {
 	// compile-time constant, not a knob). One throwaway cache for the WHOLE
 	// run — mutants of one package share most build artifacts, so per-run
 	// keeps the intra-run speedup — removed when the run ends, whatever the
-	// exit path. os.Exit skips defers, so the Broken exit below removes it
-	// explicitly; the defer covers a normal return.
+	// exit path: the defer covers every return, and the interrupt handler below,
+	// which ends the process with os.Exit (skipping defers), removes it itself.
 	gocache, err := os.MkdirTemp("", "assay-mutant-gocache-*")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "muhar: create per-run GOCACHE: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "muhar: create per-run GOCACHE: %v\n", err)
+		return 1
 	}
 	defer func() { _ = os.RemoveAll(gocache) }()
-	// An interrupt mid-run must not strand the cache either.
+	// An interrupt mid-run must not strand the cache either. Every suite and
+	// build runs in its own process group, which a terminal Ctrl-C does not
+	// reach, so kill those groups first: an interrupted run leaves no suite
+	// running behind it.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
 	go func() {
 		<-sig
+		liveGroups.killAll()
 		_ = os.RemoveAll(gocache)
 		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
-		os.Exit(130)
+		os.Exit(130)            // the interrupt ends the process; nothing returns to the caller
 	}()
 
+	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
 		Root:      s.Root,
 		Control:   s.Control,
 		Mutations: s.Mutations,
 		Jobs:      n,
-		Test: func(root string) bool {
-			// s.Test is an operator-authored suite command from the spec file
-			// (e.g. "go test ./... && ./verify.sh") — it legitimately needs a
-			// shell for pipes/&&, and the spec author already controls the box
-			// this runs on. It is configuration, not end-user input, so `sh -c`
-			// is the intended execution path, not an injection surface.
-			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
-
-			if root != "" {
-				cmd.Dir = root
-			}
-			cmd.Env = envWithGOCACHE(os.Environ(), gocache)
-			cmd.Stdout = os.Stderr // suite chatter goes to stderr; report to stdout
-			cmd.Stderr = os.Stderr
-			// Non-zero exit == suite failed == mutation caught.
-			return cmd.Run() != nil
+		Timeout:   s.Timeout,
+		RunTest: func(root string, timeout time.Duration) CommandResult {
+			return runShell(root, s.Test, runEnv, timeout)
+		},
+		Build: func(root string, m Mutation, timeout time.Duration) CommandResult {
+			return buildMutation(root, m, s.Build, s.Test, runEnv, timeout)
 		},
 	}
-	if *useSelect {
+	if o.useSelect {
 		cmd, err := parseGoTest(s.Test)
 		if err != nil {
-			_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
-			fmt.Fprintf(os.Stderr, "muhar: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(stderr, "muhar: %v\n", err)
+			return 1
 		}
 		env := envWithGOCACHE(os.Environ(), gocache)
-		h.Selector = newCoverSelector(s, cmd, n, env, os.Stderr, func(root string, args []string) bool {
+		h.Selector = newCoverSelector(s, cmd, n, env, stderr, func(root string, args []string) bool {
 			c := exec.Command("go", args...)
 			if root != "" {
 				c.Dir = root
 			}
 			c.Env = env
-			c.Stdout = os.Stderr
-			c.Stderr = os.Stderr
-			return c.Run() != nil // non-zero exit == narrowed suite failed == caught
+			c.Stdout = stderr
+			c.Stderr = stderr
+			return c.Run() != nil // non-zero exit during the pristine selection proof
+		}, func(root string, args []string, timeout time.Duration) CommandResult {
+			return runGoArgs(root, withTimeout(args, timeout), env, timeout)
 		})
 	}
 	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
@@ -333,22 +412,20 @@ func main() {
 	// RED is taken from it (see schemata.go); every other verdict still comes
 	// from the classic run.
 	if s.Schemata && !schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
-		fmt.Fprintln(os.Stderr, "muhar: schemata: the spec asks for it, but needs a go test -count=1 suite, no -overlay of its own and a TMPDIR without spaces; every mutation rebuilds the suite")
+		fmt.Fprintln(stderr, "muhar: schemata: the spec asks for it, but needs a go test -count=1 suite, no -overlay of its own and a TMPDIR without spaces; every mutation rebuilds the suite")
 	}
 	if s.Schemata && schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
-		h.Log = os.Stderr
+		h.Log = stderr
 		h.SchemaTest = func(root, overlay, selector string) bool {
-			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
-			if root != "" {
-				cmd.Dir = root
-			}
+			out := h.SchemaRun(root, overlay, selector, h.MutationTimeout)
+			return out.Failed || out.TimedOut || out.Err != nil
+		}
+		h.SchemaRun = func(root, overlay, selector string, timeout time.Duration) CommandResult {
 			env := envWithGOCACHE(os.Environ(), gocache)
-			cmd.Env = append(envWithout(env, "GOFLAGS", schemaEnv),
+			env = append(envWithout(env, "GOFLAGS", schemaEnv),
 				"GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay),
 				schemaEnv+"="+selector)
-			cmd.Stdout = os.Stderr
-			cmd.Stderr = os.Stderr
-			return cmd.Run() != nil
+			return runShell(root, s.Test, env, timeout)
 		}
 		h.SchemaBuild = func(root, overlay string, dirs []string) (string, bool) {
 			// -e: report every compile error, so one probe finds every mutant
@@ -382,22 +459,48 @@ func main() {
 		if srcRoot == "" {
 			wd, err := os.Getwd()
 			if err != nil {
-				_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
-				fmt.Fprintf(os.Stderr, "muhar: cwd: %v\n", err)
-				os.Exit(1)
+				fmt.Fprintf(stderr, "muhar: cwd: %v\n", err)
+				return 1
 			}
 			srcRoot = wd
 		}
 		// Each copy keeps its go.mod's relative replace targets resolvable
 		// (#2550): see copyModuleTree.
 		h.Workspace = newWorkspace(srcRoot)
-		fmt.Fprintf(os.Stderr, "muhar: %d mutations in flight, one isolated copy of %s per worker\n", n, srcRoot)
+		fmt.Fprintf(stderr, "muhar: %d mutations in flight, one isolated copy of %s per worker\n", n, srcRoot)
 	}
 
 	rep := h.Run()
-	fmt.Print(rep.Summary())
-	_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
+	fmt.Fprint(stdout, rep.Summary())
 	if rep.Broken {
-		os.Exit(2)
+		return 2
 	}
+	return 0
+}
+
+// loadSpec reads and checks the mutation spec: the only configuration muhar reads.
+func loadSpec(path string, stderr io.Writer) (spec, int) {
+	var s spec
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "muhar: read spec: %v\n", err)
+		return s, 1
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		fmt.Fprintf(stderr, "muhar: parse spec: %v\n", err)
+		return s, 1
+	}
+	if s.Test == "" {
+		fmt.Fprintln(stderr, "muhar: spec.test (the suite command) is required")
+		return s, 1
+	}
+	if _, err := s.Timeout.policy(); err != nil {
+		fmt.Fprintf(stderr, "muhar: %v\n", err)
+		return s, 1
+	}
+	if s.Control.Name == "" || s.Control.Old == "" {
+		fmt.Fprintln(stderr, "muhar: spec.control is required (a mutation the suite MUST catch) — a harness with no failing control is a green light with no bulb (#34)")
+		return s, 1
+	}
+	return s, 0
 }

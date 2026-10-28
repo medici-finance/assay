@@ -64,14 +64,9 @@ is a human-gated *authoring* act that adds a new trigger file — different act,
 control, both intact.
 
 files:
-- `.github/workflows/` — the scheduled watchdog trigger (planned). If open PR #1228's
-  workflow-only-PR contract (a single PR touching ONLY `.github/workflows/**` plus its own
-  changelog fragment) lands first, this trigger file travels as its own PR, separate from the
-  `tools/autotriage/` logic below — cheap to split now, a blocked implementer later if not
-  noted.
+- `.github/workflows/` — the scheduled watchdog trigger (planned). If open PR #1228's workflow-only-PR contract (a single PR touching ONLY `.github/workflows/**` plus its own changelog fragment) lands first, this trigger file travels as its own PR, separate from the `tools/autotriage/` logic below — cheap to split now, a blocked implementer later if not noted.
 - `tools/autotriage/` — the watchdog logic reading gate state + brief 02/03 action records.
-- `tools/autotriage/testdata/` — fixtures: a red gate with no responder record; a red gate
-  with a responder record; a red gate of an unclassifiable check.
+- `tools/autotriage/testdata/` — fixtures: a red gate with no responder record; a red gate with a responder record; a red gate of an unclassifiable check.
 
 facts:
 - Trigger: a bounded schedule (poll) over the current gate state. For each red whole-tree

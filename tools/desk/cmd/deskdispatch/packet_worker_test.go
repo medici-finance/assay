@@ -227,6 +227,7 @@ func wpWantNone(t *testing.T, what, text string, banned ...string) {
 // TestWorkerImplementPacketContents: an implementing run's packet holds what the run reads
 // before its first edit — its facts, the brief as its OWN worktree has it, each dependency's
 // board status, the repository's instruction files and the files the brief names.
+// regression: medici-finance/assay#3755
 func TestWorkerImplementPacketContents(t *testing.T) {
 	root, home := wpRoot(t), wpWorktree(t)
 	useWorkerHead(t, wpBase+"\n", nil)
@@ -242,9 +243,11 @@ func TestWorkerImplementPacketContents(t *testing.T) {
 	}
 	wpWantAll(t, "the header", p.Text, "# Dispatch packet — worker — alpha--03", "- **Head commit:** `"+wpBase+"`")
 
+	// The worktree is a temp-directory path, so under a long TMPDIR it runs past the packet's
+	// 240-character value cap: want it as the code-span renderer writes it, cut stated.
 	wpWantAll(t, "Run", packetSection(t, p.Text, "Run"),
 		"**Kind of run:** implementing", "**Item:** `alpha--03`", "**Repository:** `example-org/tracker`",
-		"**Worktree:** `"+home+"`", "**Branch:** `feat/alpha-03`", "**Base commit:** `"+wpBase+"`",
+		"**Worktree:** "+packet.Code(home), "**Branch:** `feat/alpha-03`", "**Base commit:** `"+wpBase+"`",
 		"**Claim:** `alpha--03` — taken by this dispatch", "claim store: `refs`")
 
 	brief := packetSection(t, p.Text, "Brief")

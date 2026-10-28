@@ -15,9 +15,9 @@ import (
 // is a derivation of it, and this test is the diff (derive-or-diff). It lives in the same
 // Go module, so the tools/** path filter already triggers it — no cross-module registry
 // row is needed.
-const deskboardBoardGo = "../deskboard/board.go"
+const deskboardBoardGo = "../../internal/reviewflow/classify.go"
 
-var actionConstRe = regexp.MustCompile(`(?m)^\s*act[A-Za-z]+\s*=\s*"([A-Z][A-Z0-9-]*)"`)
+var actionConstRe = regexp.MustCompile(`(?m)^\s*Act[A-Za-z]+\s*=\s*"([A-Z][A-Z0-9-]*)"`)
 
 // deskboardActions parses the act* constant block out of deskboard's source. Parsing the
 // SOURCE rather than restating the list is the point: a hand-kept second list is exactly
@@ -138,7 +138,7 @@ func TestOnlyDispatchIsActionable(t *testing.T) {
 func TestWaitingStatesAreVisibleNotDropped(t *testing.T) {
 	b := healthyBoard(t, row(t, "BLOCKED", 1), row(t, "WAIT-CI", 2), row(t, "READY", 3), row(t, "MERGE-CURR", 4), row(t, "CI-RED", 5))
 	var sb strings.Builder
-	b.RenderRows(&sb)
+	renderRows(b, &sb)
 	for _, want := range []string{"BLOCKED", "WAIT-CI", "READY", "MERGE-CURR", "CI-RED"} {
 		if !strings.Contains(sb.String(), want) {
 			t.Fatalf("row %s was dropped from the reactor's output — a waiting state must stay visible", want)
@@ -178,7 +178,7 @@ func TestSuspectApprovalSurfacesAndNeverFlips(t *testing.T) {
 	// And it must survive rendering: a row nobody sees is the same defect as no row.
 	b := healthyBoard(t, row(t, "SUSPECT-APPROVAL", 1))
 	var sb strings.Builder
-	b.RenderRows(&sb)
+	renderRows(b, &sb)
 	if !strings.Contains(sb.String(), "SUSPECT-APPROVAL") {
 		t.Fatal("SUSPECT-APPROVAL was dropped from the reactor's output — the one row that must not vanish")
 	}

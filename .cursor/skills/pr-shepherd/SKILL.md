@@ -148,8 +148,11 @@ identically → it is yours. A proven flake still blocks the desk's flip; it onl
 **The commonest self-serve red is the `changelog` check**, and it is the one red that does NOT
 reproduce locally — it reads the DIFF against the PR base, not your working tree, so a green local
 build tells you nothing about it. It PASSES when the branch adds or updates a `changelog/<slug>.md`
-fragment (`<slug>` = the branch name) carrying at least one bullet, OR when the PR wears the
-`changelog:skip` label; it FAILS when neither is true. The fix is ONE commit adding
+fragment carrying at least one bullet, OR when the PR wears the
+`changelog:skip` label; it FAILS when neither is true. `<slug>` = the branch name with every `/`
+replaced by `-` (or the issue or brief slug), so `feat/foo` becomes `changelog/feat-foo.md`. The
+fragment MUST be a single flat file directly under `changelog/`, never in a subdirectory: a nested
+path such as `changelog/feat/foo.md` is never aggregated. The fix is ONE commit adding
 `changelog/<slug>.md` — never an edit to a top-level `CHANGELOG.md`, and never self-applying
 `changelog:skip` (that label is the desk's or a human's, not yours). A branch you have RESUMED owes
 this file whether or not the check has run against it yet.
@@ -177,6 +180,29 @@ ruling recorded on the PR or issue authorizes the removal — a dispatcher's bri
 model instruction, never that ruling — and once recorded, executing it is routine and the commit
 cites the ruling. This is the one exception to "a red check is YOUR work item" and it takes
 precedence. Every other finding on the PR stays yours to work meanwhile.
+
+## Withdrawn-brief reconciliation — before ordinary CI repair
+
+For every entry path, read the owning brief's current lifecycle before restoring old
+schema/status values or repairing CI. If it is withdrawn (or `deskboard stalled` reports
+`reconcile`), first read its date/reason, successors and any revision-bound
+`withdrawal-context`. Re-read the PR head and current claim; an active owner is not
+cancelled by a changed board row.
+
+Record the implementation/evidence checkpoint and surviving obligations. Identify the
+active claim's owner from the current claim record; if there is no active claim, use
+the PR's recorded author as the work owner. Choose an explicit treatment with that
+owner: retain useful work under the current plan, retarget
+or re-scope the PR through an approved amendment, finish independent verification of
+what actually landed, or propose disposition through the existing independent
+confirmation gates. Preserve the original brief/tombstone, Evidence, stamps and receipts;
+old acceptance evidence does not verify a newly scoped successor. Do not repair a stale
+PR by reviving its retired plan, redirecting dependencies automatically, weakening a
+gate, or treating withdrawal alone as permission to close it. If ownership cannot be
+established, or a scope/authority choice exceeds the current approval, file or attach a
+`needs-decision` stating the affected PR/brief, checkpoint, treatment needed and
+recommended default; the driver decides. Keep the PR and claim intact pending that
+ruling. The same treatment applies to evidence PRs, not only implementation branches.
 
 ## 4. Reviewer findings — fix, or dispute with evidence; all of them
 
@@ -311,7 +337,11 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+relay onto the tracker, nor does a durable escalation ride the lane alone. A filing that an open
+PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
+`deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
+count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
@@ -341,3 +371,25 @@ never authorizes the pre-cutover fallback or a change to the recorded cutover st
    its work already landed by another route — rather than defective. Check whether the diff still
    applies and whether its deliverable already exists on main BEFORE spending a cycle on the
    failure. A superseded PR is reported for closure by its owner, not repaired.
+
+
+## Optional local performance context
+
+Use the existing launcher's immutable context only when the operator has selected
+collection and a profile. Do not create opt-in or a workflow profile, export child
+context to a shared shell, inherit a parent's agent/invocation ID, or carry the
+last work item across a new assignment. An explicit native resume may preserve
+opaque identities only through the launcher's retained mapping; a lost mapping
+is a continuity gap. Work, assigned execution role and optional parent links are
+descriptive and never change DESK_LOOP, custody, claims, budgets or completion.
+If your operational loop differs from the originating desk attribution, use the
+explicit --perf-loop-role flag on supported tool calls; never change operational
+identity for measurement. Keep local workflow references and handoffs private.
+See [desk-shell mechanics](../../references/desk-shell.md#optional-local-performance-context)
+and the [Assay source entrypoint inventory](https://github.com/medici-finance/assay/blob/main/docs/performance-entrypoints.json) for supported boundaries; an
+unsupported boundary stays unknown.
+
+Apply validated handoff entries to each tool call with per-command `env KEY=value
+... tool ...` arguments or that tool's supported `--perf-*` flags. Quote values;
+never evaluate the handoff as shell code or export it into a persistent shell.
+Use `--perf-loop-role` for descriptive desk attribution; never alter `DESK_LOOP`.

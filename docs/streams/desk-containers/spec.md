@@ -185,3 +185,19 @@ Seven briefs in four waves; see [README.md](README.md) for the status table, dep
 waves, and critical path. The pacing item is the **human security review of the
 credential contract (brief 02)** — every image and launch surface builds against that
 contract, and it is deliberately human-gated because it handles App-signing custody.
+
+## Kubernetes-first direction — 20 October 2026
+
+[The public Kubernetes amendment](../../proposals/non-ci-architecture/28-interactive-kubernetes-desks.md)
+supersedes the desktop-first/required-Windows sequencing above for the requested cohort.
+Each desk gets its own interactive Pod; cellctl may run in a separate Linux operator Pod.
+The desktop Docker and native Windows paths remain optional compatibility work, not the
+critical path. Existing images and Evidence are preserved. The PEM-bearing legacy profile
+is labelled transitional; the managed profile consumes existing runner/executor custody.
+Current scope and verification changes are applied to /06, /07 and /08's Kubernetes
+execution consumer (agent-execution/08); new owners are agent-execution/09 and /28–29.
+When this section was written the execution stream was parked, and this section did not
+change that. Stream admission is carried only by
+[amendment 27](../../proposals/non-ci-architecture/27-agent-execution-environments.md)'s
+status line, effective on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349).

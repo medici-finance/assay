@@ -206,6 +206,13 @@ unported:
       coaching note outside any repository. It carries no upstream source
       block, so there is no drift baseline to hold — declared here so coverage
       accounts for it rather than reporting it unaccounted.
+  - path: skills/trace-path-to-live/SKILL.md
+    reason: >-
+      Authored in this repo as the objective-to-prerequisite-graph skill — it
+      orchestrates the existing statusgen and deskboard readers across every
+      stream root and renders one page outside any repository. It carries no
+      upstream source block, so there is no drift baseline to hold — declared
+      here so coverage accounts for it rather than reporting it unaccounted.
   - path: skills/upgrade-assay/SKILL.md
     reason: >-
       Authored/homed in this repository as the umbrella-version upgrade verb; it

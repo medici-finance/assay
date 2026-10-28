@@ -53,11 +53,8 @@ version: 1
 ## Context
 
 files:
-- `docs/contributor-trust.md` (planned) — the agent-contributor position: disclosure is requested, the
-  tier attaches to the operating human, and the enumerated grounds on which a maintainer may
-  record a downgrade.
-- `CONTRIBUTING.md` — one contributor-facing paragraph: what the disclosure field is for, and
-  that answering it honestly costs nothing.
+- `docs/contributor-trust.md` (planned) — the agent-contributor position: disclosure is requested, the tier attaches to the operating human, and the enumerated grounds on which a maintainer may record a downgrade.
+- `CONTRIBUTING.md` — one contributor-facing paragraph: what the disclosure field is for, and that answering it honestly costs nothing.
 - `.github/PULL_REQUEST_TEMPLATE.md` (planned) — the disclosure field's help text gains its purpose.
 - `changelog/contributor-trust-agents.md` (new).
 

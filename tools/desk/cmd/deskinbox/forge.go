@@ -42,7 +42,7 @@ func init() {
 
 // forgeFor resolves the forge serving repo, and the coordinate. A package var so a test can
 // inject a recorded backend without a network or a minted credential.
-var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+var forgeFor = func(repo string, observers ...deskkit.RequestObserver) (deskkit.Forge, deskkit.ForgeRepo, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
 		return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable("bad repo "+repo, nil)
@@ -53,7 +53,7 @@ var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return nil, fr, deskkit.Unverifiable("cannot resolve the deskinbox App role to read "+repo+
 			" — the read path authenticates as a minted App token, never an ambient gh identity", err)
 	}
-	f, ferr := deskkit.ForgeFor(fr, role)
+	f, ferr := deskkit.ForgeFor(fr, role, observers...)
 	if ferr != nil {
 		return nil, fr, ferr
 	}

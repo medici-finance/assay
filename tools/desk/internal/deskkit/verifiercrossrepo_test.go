@@ -204,28 +204,30 @@ func TestVerifierCrossRepoTampering(t *testing.T) {
 }
 
 // regression: #2485
+// regression: #2798 — the synthetic receipt's brief key/path follow the writer contract.
 func TestCrossRepoWakeManifest(t *testing.T) {
 	crossRepoRoster(t)
 	source := crossRepoGitFixture(t, "example-org/one", "source.txt", "source\n")
-	tracking := crossRepoGitFixture(t, "example-org/tracking", "brief.md", "# Plan\n")
+	const brief = "docs/streams/sample/brief-01-plan.md"
+	tracking := crossRepoGitFixture(t, "example-org/tracking", brief, "# Plan\n")
 	sha, _ := verifierGit(source, "rev-parse", "HEAD")
 	t.Setenv(RootsEnv, "example-org/one="+source)
 	reader := NewRootRevisionReader(tracking, "test-tool")
-	originalBrief, err := os.ReadFile(filepath.Join(tracking, "brief.md"))
+	originalBrief, err := os.ReadFile(filepath.Join(tracking, brief))
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := map[string]string{InputKeyRepoSourcePrefix + "example-org/one": sha, "file:brief.md": Sha256Hex(originalBrief), "tool": "test-tool"}
+	input := map[string]string{InputKeyRepoSourcePrefix + "example-org/one": sha, "file:" + brief: Sha256Hex(originalBrief), "tool": "test-tool"}
 	r := NewWakeReceipt("fixture", "example-org/tracking", "sample/01", "verifier", "verify-fail", sha, nil, input, "test-tool", "implementation", "#1", WakeRelevantInputChanged, "", "", "2026-10-13T20:00:00Z")
 	// Use the input reader directly: a blocker forge has no role in source identity.
 	if state, why := Unchanged(r, reader); state != InputsUnchanged {
 		t.Fatalf("unchanged: %v %s", state, why)
 	}
-	os.WriteFile(filepath.Join(tracking, "brief.md"), []byte("# Changed plan\n"), 0600)
+	os.WriteFile(filepath.Join(tracking, brief), []byte("# Changed plan\n"), 0600)
 	if state, _ := Unchanged(r, reader); state != InputsChanged {
 		t.Fatal("tracking change did not wake")
 	}
-	os.WriteFile(filepath.Join(tracking, "brief.md"), originalBrief, 0600)
+	os.WriteFile(filepath.Join(tracking, brief), originalBrief, 0600)
 	os.WriteFile(filepath.Join(source, "source.txt"), []byte("dirty\n"), 0600)
 	if state, _ := Unchanged(r, reader); state != InputsCouldNotCheck {
 		t.Fatal("dirty source claimed unchanged")

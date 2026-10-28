@@ -3,8 +3,8 @@ brief: assay:assay:forge-neutral:40
 title: "Authenticated forge serving and role executor custody"
 why: "A shared cache increases the number of callers that can reach private forge data and write paths. Caller authentication, source admission and a separate role executor must be enforced at actual served boundaries so a cached answer or agent-supplied role cannot become authority."
 wave: 6
-depends: ["forge-neutral/39", "graph-execution/16"]
-unblocks: ["forge-neutral/41", "forge-neutral/42"]
+depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59"]
+unblocks: ["forge-neutral/41", "forge-neutral/42", "cell-api/03"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -13,10 +13,12 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 4
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
@@ -28,6 +30,7 @@ exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
 consumers:
+  - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
   - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
   - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
@@ -86,12 +89,15 @@ Options:
 1. **Accept the demonstrated bounded design** — accept only the proven scope and failure behavior; keep live credential provisioning and activation as separate operator acts.
 2. **Hold for correction** — identify the unproven boundary or budget and revise before acceptance.
 
-Default if no answer: none — acceptance remains pending. This implementation-evidence decision
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Isolate changes; never push main, merge, ready-flip, release, dispatch workflows or contact live infrastructure.
 - Use synthetic data, disposable processes/repositories and explicit local database fixtures; no production tokens or data.
 - Preserve role, candidate, unknown-outcome, required audit/budget and canonical acceptance meanings.
@@ -151,6 +157,10 @@ boundary and independent expectation, not another implementation of the same che
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/40` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServingCustody$' ./internal/forgeservice/... > "$o" && grep -F -- '--- PASS: TestReviewServingCustody ' "$o")` | exit 0; named PASS. Permitted review-context/queue path succeeds while changed admission/expiry refuses even for reused bytes/counts; saved context cannot authorize a role write or bypass the executor recheck. |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestExecutorProviderReuseAndRoleSeparation$' ./internal/forgeservice/... > "$out" && grep -F -- '--- PASS: TestExecutorProviderReuseAndRoleSeparation ' "$out")` | exit 0; named PASS; served repeated requests use the real internal provider with zero minter children, expire correctly and refuse cross-role/executor access; token broker or exec-per-request plants fail |
+
 ## Pre-mortem and detection
 
 For each critical Verify case, retain the valid control and a deliberately wrong subject
@@ -160,6 +170,44 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Consume the canonical internal credential provider from desktools-v2/58 and its keyed
+in-flight/expiry handling from /59 inside each already-isolated role executor. Those are
+typed prerequisites, not a reason to pool role keys in the query process. A long-lived
+executor must not exec desktoken per operation or start another credential cache. Carry its
+explicit resolved custody scope and refresh/configuration generation; recheck operation
+authority independently before each effect. Credential reuse is an efficiency aid, never
+proof an executor capability remains authorized. The read service and clients receive no
+publisher token and cannot request arbitrary roles or token values.
+
+Retain the exact separate process/revocation boundary of this brief. Extracting code inside
+one role environment does not remove that boundary or amend statusgen's online read contract.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Instrument per-handler service latency and directly observed phases separately from executor-to-provider requests. Keep per-request immutable context and actual authenticated server role distinct from descriptive caller role. Do not attribute concurrent process-wide CPU to each handler. Denial/expiry/cache-hit paths retain result/coverage and make no extra provider calls for diagnostics.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

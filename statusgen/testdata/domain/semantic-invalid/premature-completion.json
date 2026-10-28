@@ -1,0 +1,70 @@
+{
+  "schema": "verification-domain-v1",
+  "requires": [
+    "domain@1"
+  ],
+  "work": {
+    "brief": "example:widgets:build:07",
+    "instance": "inst-example-07",
+    "node": "inst-example-07.verify",
+    "attempt": "inst-example-07.verify.a1"
+  },
+  "candidate": {
+    "repository": "example-org/widgets",
+    "base-commit": "1111111111111111111111111111111111111111",
+    "base-tree": "2222222222222222222222222222222222222222",
+    "commit": "3333333333333333333333333333333333333333",
+    "tree": "4444444444444444444444444444444444444444",
+    "manifest-digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "acceptance": {
+    "version": 1,
+    "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "candidate": {
+      "repository": "example-org/widgets",
+      "base-commit": "1111111111111111111111111111111111111111",
+      "base-tree": "2222222222222222222222222222222222222222",
+      "commit": "3333333333333333333333333333333333333333",
+      "tree": "4444444444444444444444444444444444444444",
+      "manifest-digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "required-facts": [
+      "eligibility",
+      "coverage"
+    ]
+  },
+  "facts": {
+    "observed-at": "2026-10-20T12:00:00Z",
+    "entries": [
+      {
+        "id": "eligibility",
+        "state": "present"
+      },
+      {
+        "id": "coverage",
+        "state": "present"
+      }
+    ]
+  },
+  "generation": {
+    "requested": 1,
+    "recorded": 1
+  },
+  "progress": {
+    "stage": "complete",
+    "components": {
+      "bind": "complete",
+      "admit": "complete",
+      "execute": "complete",
+      "assess": "running",
+      "decide": "pending",
+      "publish": "pending"
+    },
+    "execution": "succeeded",
+    "acceptance": "unaccepted",
+    "publication": "not-requested",
+    "retirement": "not-requested",
+    "observed-at": "2026-10-20T12:00:00Z",
+    "holds": []
+  }
+}

@@ -35,8 +35,7 @@ id: e90319ae-edc8-4dc2-8127-f9e609c4704c
 
 ## Context
 files:
-- `docs/streams/forge-neutral/reviewer-write-boundary.md` — §3.1 gains two inventory tables; §3.3 rows S2 and S4 move from could-not-check to
-  a dated result.
+- `docs/streams/forge-neutral/reviewer-write-boundary.md` — §3.1 gains two inventory tables; §3.3 rows S2 and S4 move from could-not-check to a dated result.
 - `changelog/<branch-slug>.md` (planned) — the per-PR fragment.
 
 This brief writes no tool code. It is documentation backed by reads on **fixtures** the
@@ -100,8 +99,24 @@ facts:
 | 1 | check | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | `2` — both work-list rows are still present |
 | 2 | check +dereference | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0 and no line printed — each row quotes a probe count or a determination result, or says COULD-NOT-CHECK |
 | 3 | gate:model +dereference | Re-run the local-disk control of Task 3 from the recorded command text | exactly one of N succeeded; a different count is checked-failed on this brief |
-| 4 | check | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory |
-| 5 | check | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself |
+| 4 | check | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' -e 'forgeForReviewer' -e 'stampRoleForKit' -e 'SessionTokenRole' -e 'TokenRoleForLoop' -e 'mintedRole' -e 'RequireRole(' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory |
+| 5 | check | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' -e 'DispatchClaimActiveRefsPrefix' -e 'ReadReviewClaims' -e 'ReviewClaimFamil' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself |
+
+**Rows 4 and 5 widened (2026-10-18, #1606).** Both greps gained patterns; neither Expect
+changed, and every pattern the rows searched before is still searched. The old patterns had gone
+blind to sites they exist to catch. Row 5 did not search the `DispatchClaimActiveRefsPrefix`
+constant (`refs/dispatch/`) that code now uses to name the namespace claims are acquired in. It
+therefore missed `releaseReviewClaim` in `tools/desk/cmd/deskpost/finish.go`, which deletes the review claim ref
+as the reviewer, and `tools/desk/cmd/desksupervise/live.go` and `tools/desk/cmd/desksupervise/actions.go`,
+which list and release claims. It
+also missed the review-claim family readers (`ReadReviewClaims`). Row 4 did not search deskpost's
+`forgeForReviewer` wrapper, so it missed that same release, or deskdispatch's `stampRoleForKit`,
+which resolves the reviewer for the review kit. Row 4 also did not search the minted-role
+spellings (`SessionTokenRole`, `TokenRoleForLoop`, `mintedRole`, `RequireRole(`), although Task 1
+covers every verb that can act as the reviewer and most do so through the session's role. It
+therefore missed the two verbs that push branches as the reviewer, `tools/desk/cmd/deskgit/deskgit.go`
+and `tools/desk/cmd/deskpr/push.go` (finding medici-finance/assay#3419). The spec's §3.1a/§3.1b were
+re-read at `a724e99d` and `8d368648` against the widened lists.
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |
@@ -440,6 +455,80 @@ Execution witness for this run (statusgen verifyrun v1.0.42, non-dry, 2026-10-15
 | 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:c319a5877dc9 | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (forge-identity) |
 Verification-Attestation: medici-finance/assay#3034 run=5c1b334b8826c487b37440b216d6835d7e65acd1391fbf104b906f0d0e4c9411 source=bbf8e351624538c2a03159cd5a58116fb97fc293 brief=docs/streams/forge-neutral/brief-20-claim-store-measurements.md model=claude-opus-5-5 tier=any
 
+
+### Non-implementer verifier re-run — VERIFY: FAIL — 2026-10-21 assay-verifier-app[bot]
+
+Runner is not the implementer. Documents-only brief, run non-hermetically on darwin (go1.27.2 darwin/arm64) at merged main 844b7807847c25e5c96979e10dd85fccb08dcbf1, offline (KUBECONFIG=/dev/null, GOPROXY=off), admitted by the dispatcher's pre-work check (binding below). This is the first run against the widened row 4 and row 5 greps (2026-10-18). Rows 4 and 5 have prose Expect cells, so each was decided by a mechanical membership check of the printed file list against the spec's section 3.1a / 3.1b text (lines 84-153 and 154-202 at this commit), not by exit status. The spec file hashes sha256 fcf1328a801d…. File paths below are relative to tools/desk.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | `2`, both work-list rows still present | PASS: exit 0; printed `2` | 2026-10-21 | assay-verifier-app[bot] @ 844b7807847c25e5c96979e10dd85fccb08dcbf1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0 and no line printed | PASS: exit 0; no line printed. The S2 row carries "1 of 16 succeeded" and COULD-NOT-CHECK for the network filesystem; the S4 row carries "determined" | 2026-10-21 | assay-verifier-app[bot] @ 844b7807847c25e5c96979e10dd85fccb08dcbf1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/... -run '^TestAcquireConcurrentExactlyOneWinner$' -count=1 -v` | exactly one of N succeeded | PASS: exit 0; `--- PASS: TestAcquireConcurrentExactlyOneWinner (0.16s)`, deskkit package ok. 16 racers (claim_test.go:22) and the `wins != 1` assertion (claim_test.go:53) held, so exactly 1 of 16 succeeded. The Verify cell is prose; this is the command recorded in the spec's S2 row, run as recorded | 2026-10-21 | assay-verifier-app[bot] @ 844b7807847c25e5c96979e10dd85fccb08dcbf1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' -e 'forgeForReviewer' -e 'stampRoleForKit' -e 'SessionTokenRole' -e 'TokenRoleForLoop' -e 'mintedRole' -e 'RequireRole(' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory | PASS: exit 0; 58 files (output sha256:b6c32cab3368), all 58 found in section 3.1a | 2026-10-21 | assay-verifier-app[bot] @ 844b7807847c25e5c96979e10dd85fccb08dcbf1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' -e 'DispatchClaimActiveRefsPrefix' -e 'ReadReviewClaims' -e 'ReviewClaimFamil' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself | FAIL: exit 0; 21 files (output sha256:25b148b9a1bf); 19 found in section 3.1b, 1 is the claim tool itself (cmd/deskclaim-ref/alias.go, under the cmd/deskclaim-ref directory 3.1b names as the claim tool), and 1 is absent: internal/gitmaintenance/inventory.go. Expected condition not met | 2026-10-21 | assay-verifier-app[bot] @ 844b7807847c25e5c96979e10dd85fccb08dcbf1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Held rows and notes:
+
+- Row 5 (FAIL). internal/gitmaintenance/inventory.go:77 lists the local repository's refs and keeps every name under refs/dispatch/ or refs/heads/dispatch/ as DispatchRefs. cmd/deskwt/objectmaintenance.go:120-121 prints each one as "claim held: <ref> (claim protocol owns release)". This is a real local-git claim read outside the claim tool; on an empty namespace it lists nothing and prints no claim lines. The file arrived on 2026-10-19 (medici-finance/assay#2525, commit 6c79ace7be7e), one day after the 2026-10-18 re-read of section 3.1b at a724e99d and 8d368648. So this is inventory drift again, not a wrong widening: the widened grep caught a new reader, as designed. The same class is tracked by medici-finance/assay#1606, which is still OPEN (read from the forge 2026-10-21).
+- Row 4 (PASS). The widening resolved the 2026-10-15 drift. packet_review.go and reviewroundread.go now appear in section 3.1a, and so do the push verbs deskgit/deskgit.go and deskpr/push.go.
+- Row 2 was run verbatim, writing its row file to the shared tmp dir, and that file was removed afterwards.
+
+Risk-bearing values. Enumeration covered this brief's Deliverables and diff (documents only: spec sections 3.1a, 3.1b and 3.3, the Verify row widening, and Evidence), plus the shipped primitive the measured control exercises. It found two literals, both unchanged since 2026-09-24:
+
+RISK-VALUE: DERIVED — wins != 1 (winners = 1) @ tools/desk/internal/deskkit/claim_test.go:53 — the shipped primitive creates the claim with os.O_CREATE|os.O_EXCL (tools/desk/internal/deskkit/claim.go:273) under one directory lock. That admits exactly one creator, and every other racer gets EEXIST. So exactly one of N succeeds by construction, whatever N is, which is the brief's "exactly one is the only passing count".
+
+Ranked last, no verdict line: racers = 16 @ tools/desk/internal/deskkit/claim_test.go:22. It is a reversible test knob that sets only how hard the concurrency exercise pushes.
+
+**VERIFY: FAIL** — row 5 (section 3.1b omits internal/gitmaintenance/inventory.go, a local-git claim reader added 2026-10-19 by medici-finance/assay#2525; check-definition/inventory staleness, medici-finance/assay#1606 open); rows 1–4 PASS; 4/5 pass, 0 could-not-check, 1 fail; status stays implemented.
+
+Verification-Attestation: medici-finance/assay#3897 run=04c98ba6c3a26002441f5ac9760ea8847664c94eab0eed9c6b05b7e6dcf2d062 source=844b7807847c25e5c96979e10dd85fccb08dcbf1 brief=docs/streams/forge-neutral/brief-20-claim-store-measurements.md model=claude-opus-5-5 tier=strong
+
+### Non-implementer verifier re-run — VERIFY: FAIL — 2026-10-23 assay-verifier-app[bot]
+
+Supersedes the 2026-10-21 hand-run block on this PR as the execution record for this brief; that block stays as written. It had no statusgen verifyrun witness, and this run carries one at a newer merged main.
+
+Runner is not the implementer. Documents-only brief, run non-hermetically on darwin (go1.27.2 darwin/arm64) at merged main 4b7568de01248b514f48493efea7734ce0149823, offline (`KUBECONFIG=/dev/null`, `GOPROXY=off`). The dispatcher's pre-work check admitted the run before any row ran, and the same check passed again after the witness was written (binding below). The installed statusgen verifyrun v1.0.56 ran first, non-dry, on the clean admitted tree. Its table is reproduced below exactly as it was appended. The hand rows followed. The Go test ran under a throwaway HOME, with the real build and module caches and TMPDIR in the verifier's scratch area (local APFS, the same volume class as the recorded control). Rows 4 and 5 have prose Expect cells. The witness "pass" on those rows records exit status only. Each row was decided by a mechanical membership check of the printed file list against the spec's section 3.1a (lines 84-153) or 3.1b (lines 154-202). The spec file hashes sha256 fcf1328a801d…, and its last change is 37fea52f4 (2026-10-18). File paths below are relative to tools/desk.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | Verify row 1 as written: grep -c for the S2 and S4 row prefixes in the spec | `2`, both work-list rows still present | PASS: exit 0; printed `2` | 2026-10-23 | assay-verifier-app[bot] (claude-opus-5-5, hand, darwin) @ 4b7568de01248b514f48493efea7734ce0149823 (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written (row file written to the verifier's scratch area instead of the shared tmp dir; same greps) | exit 0 and no line printed | PASS: exit 0; no line printed. The S2 row carries "1 of 16 succeeded" and COULD-NOT-CHECK; the S4 row carries "determined" | 2026-10-23 | assay-verifier-app[bot] (claude-opus-5-5, hand, darwin) @ 4b7568de01248b514f48493efea7734ce0149823 (on-behalf-of human:ian) |
+| 3 | The local-disk control recorded in the spec's S2 row, verbatim from tools/desk: go test ./internal/deskkit/... with -run on the exactly-one-winner race test, -count=1 -v | exactly one of N succeeded | PASS: exit 0; `--- PASS: TestAcquireConcurrentExactlyOneWinner (0.73s)`, deskkit package ok. 16 racers (claim_test.go:22) and the test's `wins != 1` assertion (claim_test.go:53) held, so exactly 1 of 16 succeeded. The Verify cell is prose, so the recorded command was run directly | 2026-10-23 | assay-verifier-app[bot] (claude-opus-5-5, hand, darwin) @ 4b7568de01248b514f48493efea7734ce0149823 (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written: widened grep -rln for the reviewer-role and minted-role spellings over cmd and internal, minus tests, sorted | every file listed appears in the reviewer write inventory | FAIL: exit 0; 60 files (output sha256:8ee7093858f1, the same as the witness). 58 were found in section 3.1a. Two are absent: deskfile/bound.go and deskrun/verbs.go. Expected condition not met | 2026-10-23 | assay-verifier-app[bot] (claude-opus-5-5, hand, darwin) @ 4b7568de01248b514f48493efea7734ce0149823 (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written: widened grep -rln for the claim-namespace spellings over cmd and internal, minus tests, sorted | every file listed appears in the claim reader inventory or is the claim tool itself | FAIL: exit 0; 21 files (output sha256:25b148b9a1bf, the same as the witness). 20 are in section 3.1b or the claim tool (deskclaim-ref/alias.go is the claim tool, which 3.1b names). One is absent: gitmaintenance/inventory.go. Expected condition not met | 2026-10-23 | assay-verifier-app[bot] (claude-opus-5-5, hand, darwin) @ 4b7568de01248b514f48493efea7734ce0149823 (on-behalf-of human:ian) |
+
+Held rows and notes:
+
+- Row 4 (FAIL). This row passed at the 2026-10-21 run's tree, 844b7807847c. Both new files reached main after the section 3.1a re-read in 37fea52f4 (2026-10-18):
+  - deskrun/verbs.go:296 is `sessionRoleFn = deskkit.SessionTokenRole`. It landed with medici-finance/assay#2382, merged 2026-10-21. `deskrun log` serves the worker and the reviewer (logRoles, :293), and it is a run-log READ under the calling role's own token. `deskrun retry` writes under the release-runner credential, not the session role (:232).
+  - deskfile/bound.go:118 is `deskkit.SessionTokenRole("deskfile")`. It landed with medici-finance/assay#4074, merged 2026-10-22. It only resolves the role that a bound filing is counted against. The filing itself is deskfile's issue write, which section 3.1a already lists (deskfile/github.go).
+  - Neither file adds a repository write, so section 3.1a's conclusion, "repository write: the dispatch claim only", still holds. The inventory is out of date.
+- Row 5 (FAIL, unchanged since the 2026-10-21 run). gitmaintenance/inventory.go:77 collects local refs under refs/dispatch/ and refs/heads/dispatch/ into DispatchRefs. deskwt/objectmaintenance.go:121 then prints each one as "claim held". That makes the file a genuine claim reader that section 3.1b does not list. It landed with medici-finance/assay#2525, after the 2026-10-18 re-read.
+- Both failures are check-definition staleness: a live grep against an inventory pinned to an older read. Both are tracked by #1606, which is still OPEN (read from the forge 2026-10-23). It has carried row 4 drift since its 2026-10-11 comment, and inventory.go since 2026-10-21. No new issue was needed. The two new row 4 files should be attached there.
+- Row 3 (PASS when run directly). The witness records it as could-not-run, exit 127, because its Verify cell is prose. This is the same on every run.
+- Row 2 as written writes its row file to the shared tmp dir. The witness run below ran it verbatim.
+- Hashes. The hand outputs for rows 4 and 5 hash the same as the witness (8ee7093858f1, 25b148b9a1bf), so this run has no sort-locale split between the two records.
+- Attempts disclosed. Row 3 was first run by hand with an extra `-timeout 60s`, and that run also passed (0.77s). It is not credited. The credited row 3 is the verbatim re-run above. The admission check ran twice, before the rows and after the witness was written, and both passed. verifyrun ran once.
+
+Risk-bearing values. The enumeration covered this brief's Deliverables and diff (documents only: spec sections 3.1a, 3.1b and 3.3, plus Evidence) and the shipped primitive that the measured control exercises. It found two literals, both unchanged since 2026-09-24:
+
+RISK-VALUE: DERIVED — wins != 1 (winners = 1) @ tools/desk/internal/deskkit/claim_test.go:53 — the shipped primitive creates the claim with O_CREATE|O_EXCL (tools/desk/internal/deskkit/claim.go:273) under one directory lock, which admits exactly one creator; every other racer gets EEXIST. Exactly one of N succeeds by construction, whatever N is: the "exactly one is the only passing count" the brief pins.
+
+Ranked last, no verdict line: racers = 16 @ tools/desk/internal/deskkit/claim_test.go:22. This is a reversible test knob. It sets only how hard the concurrency exercise pushes.
+
+**VERIFY: FAIL** — rows 4 and 5. Both are check-definition staleness: section 3.1a omits deskrun/verbs.go and deskfile/bound.go, which landed after the 2026-10-18 re-read and add no repository write, and section 3.1b omits the claim reader gitmaintenance/inventory.go. #1606 is open. Rows 1–3 PASS. Status stays implemented.
+
+Execution witness for this run (statusgen verifyrun v1.0.56, non-dry, 2026-10-23T04:20:49Z, on the clean admitted tree before any hand row; exit 2, from the row 3 prose cell only):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | pass exit=0 | sha256:53c234e5e847 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `Re-run the local-disk control of Task 3 from the recorded command text` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:26b6e0457462 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' -e 'forgeForReviewer' -e 'stampRoleForKit' -e 'SessionTokenRole' -e 'TokenRoleForLoop' -e 'mintedRole' -e 'RequireRole(' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:8ee7093858f1 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' -e 'DispatchClaimActiveRefsPrefix' -e 'ReadReviewClaims' -e 'ReviewClaimFamil' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:25b148b9a1bf | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4190 run=4fb926cebafece6555b99b2503e31a927b5bd0a115d2dbd766136959f360f8f7 source=4b7568de01248b514f48493efea7734ce0149823 brief=docs/streams/forge-neutral/brief-20-claim-store-measurements.md model=claude-opus-5-5 tier=strong
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records

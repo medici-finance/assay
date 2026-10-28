@@ -15,6 +15,8 @@ package main
 // re-implements the small `## Verify` row-parse it needs, keyed on the `#` column, same as
 // statusgen's parseVerifyItems.
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"bytes"
 	"flag"
 	"fmt"
@@ -29,7 +31,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-var verifySepRowRe = regexp.MustCompile(`^[\s:|-]+$`)
+var verifySepCellRe = regexp.MustCompile(`^:?-+:?$`)
 
 // verifyRow is one data row of a `## Verify` table.
 type verifyRow struct {
@@ -48,48 +50,62 @@ type rederivedRow struct {
 
 // extractVerifySection returns the text of md's `## Verify` section (from just below the
 // heading through the next level-2 heading or EOF), "" if the heading is absent.
-func extractVerifySection(md string) string {
-	lines := strings.Split(md, "\n")
-	start := -1
-	for i, l := range lines {
-		if strings.EqualFold(strings.TrimSpace(l), "## Verify") {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	end := len(lines)
-	for i := start; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
-			end = i
-			break
-		}
-	}
-	return strings.Join(lines[start:end], "\n")
-}
+// Prefix grammar mirrors statusgen/verifyissues.go extractSectionByPrefix.
+// Keep the historical case-insensitive exact spelling supported as well.
+func extractVerifySection(md string) string { return briefdoc.Section(md, "Verify", true) }
 
-// parseVerifyTable parses the data rows of a `## Verify` section, keyed on the `#` column.
-// A table with no `#` column falls back to ordinal numbering, matching statusgen's own
-// parseVerifyItems fallback.
-func parseVerifyTable(section string) []verifyRow {
+// isVerifyHeading is shared with the diff detector: descriptive Verify headings
+// must protect the same rows that re-derivation reads.
+func isVerifyHeading(line string) bool { return briefdoc.IsVerify(line) }
+
+// parseVerifyTable reads complete, structurally valid tables. Unlike statusgen's
+// best-effort lint readers, re-derivation cannot silently omit unreadable rows.
+// Auxiliary tables (neither Command nor Expect in the header) are skipped as
+// whole blocks only if no later cell names Command or Expect: the executor can
+// adopt such a later row as its header, so ambiguity must fail closed. Multiple
+// Verify tables merge only with unique IDs across them.
+// An absent # column uses per-table ordinal IDs; explicit IDs must be nonempty.
+func parseVerifyTable(section string) ([]verifyRow, error) {
 	var rows []verifyRow
+	seen := map[string]bool{}
+	var header []string
 	cmdIdx, expIdx, numIdx, classIdx := -1, -1, -1, -1
-	haveHeader := false
-	ordinal := 0
-	for _, raw := range strings.Split(section, "\n") {
+	needSeparator := false
+	skipTable := false
+	tableRows := 0
+	for n, raw := range strings.Split(section, "\n") {
 		line := strings.TrimSpace(raw)
-		if !strings.HasPrefix(line, "|") {
-			continue
+		fail := func(why string) ([]verifyRow, error) {
+			return nil, fmt.Errorf("Verify section line %d: %s", n+1, why)
 		}
-		if verifySepRowRe.MatchString(strings.Trim(line, "|")) {
+		if !strings.HasPrefix(line, "|") {
+			if header != nil && (needSeparator || tableRows == 0) {
+				return fail("table has no data rows or separator")
+			}
+			header = nil
+			skipTable = false
 			continue
 		}
 		cells := splitRowCells(line)
-		if !haveHeader {
+		if skipTable {
+			for _, cell := range cells {
+				if strings.EqualFold(cell, "Command") || strings.EqualFold(cell, "Expect") {
+					return fail("auxiliary table contains a possible Verify header")
+				}
+			}
+			continue
+		}
+		if header == nil {
+			cmdIdx, expIdx, numIdx, classIdx = -1, -1, -1, -1
+			columns := map[string]bool{}
+			duplicate := false
 			for j, c := range cells {
-				switch strings.ToLower(strings.TrimSpace(c)) {
+				name := strings.ToLower(c)
+				if columns[name] {
+					duplicate = true
+				}
+				columns[name] = true
+				switch name {
 				case "#":
 					numIdx = j
 				case "class":
@@ -100,58 +116,108 @@ func parseVerifyTable(section string) []verifyRow {
 					expIdx = j
 				}
 			}
-			haveHeader = true
+			if cmdIdx < 0 && expIdx < 0 {
+				skipTable = true
+				continue
+			}
+			if duplicate {
+				return fail("duplicate header column")
+			}
+			if cmdIdx < 0 || expIdx < 0 {
+				return fail("table requires Command and Expect columns")
+			}
+			header, needSeparator, tableRows = cells, true, 0
 			continue
 		}
-		ordinal++
-		id := strconv.Itoa(ordinal)
-		if numIdx >= 0 && numIdx < len(cells) {
-			if v := strings.TrimSpace(cells[numIdx]); v != "" {
-				id = v
+		if len(cells) != len(header) {
+			return fail("row width differs from header (escape cell pipes as \\|)")
+		}
+		if needSeparator {
+			for _, c := range cells {
+				if !verifySepCellRe.MatchString(c) {
+					return fail("missing or malformed table separator")
+				}
+			}
+			needSeparator = false
+			continue
+		}
+		if cells[cmdIdx] == "" || cells[expIdx] == "" {
+			return fail("Command and Expect must be nonempty")
+		}
+		id := strconv.Itoa(tableRows + 1)
+		if numIdx >= 0 {
+			id = cells[numIdx]
+			if id == "" {
+				return fail("empty row ID")
 			}
 		}
-		row := verifyRow{Num: id}
-		if classIdx >= 0 && classIdx < len(cells) {
-			row.Class = strings.TrimSpace(cells[classIdx])
+		if seen[id] {
+			return fail("duplicate row ID " + id)
 		}
-		if cmdIdx >= 0 && cmdIdx < len(cells) {
-			row.Command = strings.TrimSpace(cells[cmdIdx])
-		}
-		if expIdx >= 0 && expIdx < len(cells) {
-			row.Expect = strings.TrimSpace(cells[expIdx])
+		seen[id] = true
+		row := verifyRow{Num: id, Command: cells[cmdIdx], Expect: cells[expIdx]}
+		if classIdx >= 0 {
+			row.Class = cells[classIdx]
 		}
 		rows = append(rows, row)
+		tableRows++
 	}
-	return rows
+	if len(rows) == 0 || (header != nil && (needSeparator || tableRows == 0)) {
+		return nil, fmt.Errorf("Verify table missing or empty")
+	}
+	return rows, nil
 }
 
-// splitRowCells splits a markdown table row on `|`, dropping the leading/trailing empty
-// cells a `| a | b |`-shaped line produces. It does not need splitRowEscaped's `\|`
-// awareness (statusgen/verifyrows.go): the two columns this parse reads (Command, Expect)
-// are read as opaque text either way, never re-split downstream.
+// splitRowCells mirrors statusgen's splitRowEscaped, preserving raw cell text
+// (including backslashes and code spans). Re-derivation reports, never executes.
+// The existing shared executor splitter is being introduced separately in #3160;
+// until it lands there is no importable table splitter in this module.
 func splitRowCells(line string) []string {
-	line = strings.TrimSpace(line)
-	line = strings.TrimPrefix(line, "|")
-	line = strings.TrimSuffix(line, "|")
-	parts := strings.Split(line, "|")
-	out := make([]string, len(parts))
-	for i, p := range parts {
-		out[i] = strings.TrimSpace(p)
+	s := strings.TrimSpace(line)
+	var cells []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && s[i+1] == '|' {
+			i++
+			continue
+		}
+		if s[i] == '|' {
+			cells = append(cells, strings.TrimSpace(s[start:i]))
+			start = i + 1
+		}
 	}
-	return out
+	cells = append(cells, strings.TrimSpace(s[start:]))
+	if len(cells) > 0 && cells[0] == "" {
+		cells = cells[1:]
+	}
+	if len(cells) > 0 && cells[len(cells)-1] == "" {
+		cells = cells[:len(cells)-1]
+	}
+	return cells
 }
 
 // RederiveTable is the pure diff (Verify row 7): every row present at HEAD whose `#` also
 // appears at BASE carries the BASE row's command/expect (an edit to an EXISTING row's
 // command at HEAD is bypassed, never trusted); a row whose `#` has no match at BASE is
 // author-added.
-func RederiveTable(baseMD, headMD string) []rederivedRow {
-	base := parseVerifyTable(extractVerifySection(baseMD))
+func RederiveTable(baseMD, headMD string) ([]rederivedRow, error) {
+	var base []verifyRow
+	var err error
+	// Empty baseMD is reserved for a path proven absent in the base tree.
+	if baseMD != "" {
+		base, err = parseVerifyTable(extractVerifySection(baseMD))
+		if err != nil {
+			return nil, fmt.Errorf("base: %w", err)
+		}
+	}
 	baseByNum := make(map[string]verifyRow, len(base))
 	for _, r := range base {
 		baseByNum[r.Num] = r
 	}
-	head := parseVerifyTable(extractVerifySection(headMD))
+	head, err := parseVerifyTable(extractVerifySection(headMD))
+	if err != nil {
+		return nil, fmt.Errorf("candidate: %w", err)
+	}
 	out := make([]rederivedRow, 0, len(head))
 	for _, r := range head {
 		if b, ok := baseByNum[r.Num]; ok {
@@ -160,7 +226,7 @@ func RederiveTable(baseMD, headMD string) []rederivedRow {
 			out = append(out, rederivedRow{Num: r.Num, AuthorAdded: true})
 		}
 	}
-	return out
+	return out, nil
 }
 
 // --- CLI wiring -------------------------------------------------------------------------
@@ -216,6 +282,10 @@ func cmdRederive(args []string, out io.Writer) error {
 		return err
 	}
 
+	prefix, err := runGitFn(req.root, "rev-parse", "--show-prefix")
+	if err != nil || strings.TrimSpace(prefix) != "" {
+		return deskkit.Unverifiable("could-not-check: --root must be the Git checkout root", err)
+	}
 	mb, err := runGitFn(req.root, "merge-base", "HEAD", req.mainRef)
 	if err != nil || strings.TrimSpace(mb) == "" {
 		return deskkit.Unverifiable(fmt.Sprintf(
@@ -226,7 +296,12 @@ func cmdRederive(args []string, out io.Writer) error {
 
 	baseMD, baseErr := runGitFn(req.root, "show", base+":"+req.brief)
 	if baseErr != nil {
-		baseMD = "" // the brief did not exist at base: every row at HEAD is author-added
+		// A failed show is not proof that a brief is new: inspect the tree.
+		entry, treeErr := runGitFn(req.root, "--literal-pathspecs", "ls-tree", "--full-tree", "--name-only", base, "--", req.brief)
+		if treeErr != nil || strings.TrimSpace(entry) != "" {
+			return deskkit.Unverifiable("could-not-check: cannot read brief at base", baseErr)
+		}
+		baseMD = "" // proven absent: every candidate row is author-added
 	}
 
 	headBytes, herr := os.ReadFile(filepath.Join(req.root, filepath.FromSlash(req.brief)))
@@ -234,7 +309,13 @@ func cmdRederive(args []string, out io.Writer) error {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: cannot read %s at HEAD", req.brief), herr)
 	}
 
-	rows := RederiveTable(baseMD, string(headBytes))
+	if baseErr == nil && baseMD == "" {
+		return deskkit.Unverifiable("could-not-check: base Verify table missing or empty", nil)
+	}
+	rows, err := RederiveTable(baseMD, string(headBytes))
+	if err != nil {
+		return deskkit.Unverifiable("could-not-check: cannot rederive Verify table", err)
+	}
 	authorAdded := 0
 	for _, r := range rows {
 		if r.AuthorAdded {

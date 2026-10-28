@@ -1,0 +1,20 @@
+{
+ "root": ".",
+ "test": "go test ./cmd/verifyloop ./internal/deskkit -run '^Test(PendingBatch|VerifierBatch|PendingReuse|PendingFileReuse)' -count=1 -timeout 120s",
+ "control": {"name":"fresh-pr-head","file":"cmd/verifyloop/pending.go","old":"after, e := f.GetPullRequest(repo, change.Number)","new":"after, e := pr, error(nil)"},
+ "mutations": [
+  {"name":"fresh-pr-head","file":"cmd/verifyloop/pending.go","old":"after, e := f.GetPullRequest(repo, change.Number)","new":"after, e := pr, error(nil)"},
+  {"name":"consequential-current-issue","file":"internal/deskkit/verifierbatch.go","old":"stage, issue = 2, f.observation.current","new":"stage, issue = 0, f.observation.first"},
+  {"name":"alias-errors-are-uncertainty","file":"internal/deskkit/verifierbatch.go","old":"case failures[n] != nil:","new":"case false:"},
+  {"name":"incomplete-comment-history","file":"internal/deskkit/verifierbatch.go","old":"return &trust, err","new":"trust.Complete = true; return &trust, err"},
+  {"name":"label-stage-order","file":"internal/deskkit/verifierbatch.go","old":"verifierIssueBatchQuery, verifierHistoryBatchQuery, verifierIssueBatchQuery, verifierLabelsBatchQuery","new":"verifierIssueBatchQuery, verifierHistoryBatchQuery, verifierLabelsBatchQuery, verifierIssueBatchQuery"},
+  {"name":"credential-repository-scope","file":"internal/deskkit/verifierbatch.go","old":"g.onlyRepo != \"\" && !strings.EqualFold(repo.Slug(), g.onlyRepo)","new":"false"},
+  {"name":"prepared-error-cache","file":"cmd/verifyloop/pending.go","old":"pendingAttestation{receipt: result.Receipt, err: result.Err}","new":"pendingAttestation{receipt: result.Receipt}"},
+  {"name":"planning-pass-refresh","file":"cmd/verifyloop/blockerread.go","old":"s.blockers, s.pending = nil, nil","new":"s.blockers = nil"},
+  {"name":"immutable-regular-file","file":"cmd/verifyloop/pending.go","old":"!got.Exists || got.Kind != deskkit.FileKindRegular","new":"!got.Exists"},
+  {"name":"adapter-third-read","file":"internal/deskkit/verifierbatch.go","old":" || f.reads >= 2","new":""},
+  {"name":"invalid-repository-slug","file":"internal/deskkit/verifierbatch.go","old":"!ValidRepoSlug(repo.Slug())","new":"false"},
+  {"name":"candidate-receipt-repository","file":"cmd/verifyloop/pending.go","old":"ref.Repo() != repo || ","new":""},
+  {"name":"candidate-receipt-kind","file":"cmd/verifyloop/pending.go","old":"ref.Kind == \"change\" || ","new":""}
+ ]
+}

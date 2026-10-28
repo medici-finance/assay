@@ -114,8 +114,10 @@ type rateReading struct {
 
 // sweepCost is Header.cost on `actions`: what this sweep spent against the forge.
 //
-// Charged is Requests minus NotModified — the calls the quota was billed for (GraphQL
-// calls bill the graphql resource, REST calls the core one; ByClass separates them).
+// Charged is the legacy Requests-minus-NotModified request-count proxy. It is
+// neither measured GraphQL points nor an observed quota delta. Actual per-request
+// cost belongs to the optional perf-v3 provider observations, with separate units
+// and explicit coverage. Keep this operational count and floor/cache behavior.
 // Skipped counts per-PR typed reads that were not sent at all because the PR's head, last
 // update and check state matched the previous sweep (prfacts.go). Refused counts requests
 // the floor stopped before they were sent. RateLimit is the lowest remaining quota each

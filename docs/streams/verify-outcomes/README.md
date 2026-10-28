@@ -29,8 +29,9 @@ docs/streams/verify-outcomes/<stream>/<NN>-<YYYYMMDDTHHMMSSZ>-<digest12>.json
 Each file's content is exactly one JSON object, unchanged schema from the row this register
 replaces (`ts`, `brief`, `outcome`, `sha`) plus additive keys. The verify-wake-v1 receipt is
 required on every new `verify-fail` / `blocked` record, and a record claiming verify-wake-v1 also
-carries the join keys (`prs`, `verifier_tier`, `started`, `finished`; optional `row_results`,
-`dispatch_ref`). Earlier records are not backfilled. Field definitions, dereference and
+carries the join keys (`prs`, `verifier_tier`, `started`, `finished`; optional `dispatch_ref`).
+`row_results` is optional in the wire schema; [new producers](../../verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows)
+require it whenever `rows` is non-empty. Earlier records are not backfilled. Field definitions, dereference and
 redaction rules: `docs/streams/desk-supervision/verify-wake-v1.md`.
 Records are **immutable**: a correction is a NEW record (a fresh `ts`/digest), never an edit of
 an existing one.

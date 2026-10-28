@@ -3,8 +3,8 @@ brief: assay:assay:forge-neutral:45
 title: "Forge service fault simulation and scoped cutover qualification"
 why: "The service crosses caller, executor, provider, database and cache boundaries. A complete disposable journey with lost replies, revocation and reconstruction is needed before routing real desk writes through it or retiring any direct publisher."
 wave: 9
-depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44", "desk-tools/43", "desk-tools/44"]
-unblocks: []
+depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44", "desk-tools/43", "desk-tools/44", "desktools-v2/62"]
+unblocks: ["cell-api/07"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -13,10 +13,13 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 4
 id: 5306ce94-4e21-44af-82e4-d552eaca0ff5
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "assay:assay:desktools-v2:65 — reusable own-provider observation seam"
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
@@ -28,6 +31,7 @@ exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
 consumers:
+  - "tools/desk/testdata/perfworkload/: follow-up forge-neutral/45 (reuse /62 fixture and instrument semantics at served boundary)"
   - "tools/desk/internal/forgeservice/integration/: follow-up forge-neutral/45"
   - "workflow/store/forgejourney_test.go: follow-up forge-neutral/45"
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up forge-neutral/45"
@@ -84,7 +88,9 @@ Options:
 1. **Accept the demonstrated bounded design** — accept only the proven scope and failure behavior; keep live credential provisioning and activation as separate operator acts.
 2. **Hold for correction** — identify the unproven boundary or budget and revise before acceptance.
 
-Default if no answer: none — acceptance remains pending. This implementation-evidence decision
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
 
@@ -151,6 +157,10 @@ boundary and independent expectation, not another implementation of the same che
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/45` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedReviewJourney$' ./internal/forgeservice/integration/... > "$o" && grep -F -- '--- PASS: TestServedReviewJourney ' "$o")` | exit 0; named PASS. Production supported clients traverse served queue/plan/context and role issue projections; scope loss/stale head/schema mismatch cannot idle or bypass effects, and duplicate enumeration is counted. |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedPerformanceWorkloadAttribution$' ./internal/forgeservice/integration/... > "$out" && grep -F -- '--- PASS: TestServedPerformanceWorkloadAttribution ' "$out")` | exit 0; named PASS; matched CLI/service bursts retain decisions and authority, share scoped inventory and report versioned coverage without double-counting; stale fast answers and hidden minter children fail; same-scope coalesced waiters must not receive another caller's diagnostic link or work label in responses or metrics |
+
 ## Pre-mortem and detection
 
 For each critical Verify case, retain the valid control and a deliberately wrong subject
@@ -160,6 +170,46 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Reuse desktools-v2/62's reference workload and /61's instrument meanings in the actual
+served qualification journey. Compare repeated CLI reads with the authorized service/mirror
+using identical scripted repositories and delays. Report cold/warm p50/p90/p95/p99, sample
+counts, CPU, provider calls, bytes, child starts, discovery/parse work, credential lookup/mint
+and coalesced waiter outcomes. State available versus unsupported measurements explicitly;
+inclusive parent/child/phase durations are not additive elapsed savings. The credential and
+startup local lane ships independently; this qualification supplies the later service result.
+
+Prove a 50-identical-read burst performs one scoped scripted source inventory, and that
+permission loss, expiry, provider outage and cache corruption preserve authorization and
+coverage without a client-driven poll storm. Use the actual role executors with the provider
+from /58–59; a query-side universal token or fallback minter process is a failing control.
+Select workload budgets before running the experiment. Keep the current operator activation,
+database recovery and credential-inventory gates; no performance result grants cutover.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Extend the existing named served workload Verify row with 50 same-scope queries, one three-page coalesced walk, subsequent warm hit, forced passthrough with retry, denied request, background poll and missing server diagnostics. Assert exact client logical count/transport attempts, handler count, three actual page sends and shared points charged once; no double process CPU or client+handler elapsed totals. Test propagation disabled at either profile/protocol boundary and concurrent work isolation through real client/server/executor/report seams. Give same-scope coalesced waiters distinct diagnostic links and work labels; assert responses and metrics expose none of another caller's context, with a planted context-copy defect rejected by the fixture.
+
+Extend TestServedPerformanceWorkloadAttribution and the existing corresponding Verify flow with these negative cases; require its exact PASS line.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

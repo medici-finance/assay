@@ -1,9 +1,9 @@
 package deskkit
 
-// perfshared_test.go — the perf-v1 writer exists ONCE, in the shared perfrec module, and every
-// recording tool calls it. #3101: statusgen records the same local perf-v1 line as the desk
-// tools, and a second copy of the writer (day-file layout, retention, install id, schema) is
-// exactly the drift this guards against.
+// perfshared_test.go — the perf writer (perf-v1 and perf-v2) exists ONCE, in the shared perfrec module, and every
+// recording tool calls it. #3101: statusgen records the same local perf line as the desk
+// tools (perf-v2 since its stage phases were added), and a second copy of the writer
+// (day-file layout, retention, install id, schema) is exactly the drift this guards against.
 
 import (
 	"go/ast"
@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -27,7 +28,8 @@ import (
 var dayFilePattern = regexp.MustCompile(`\\d\{4\}-\\d\{2\}-\\d\{2\}\)?\\\.jsonl`)
 
 // secondWriters returns the non-test Go files under root, outside the perfrec directory, that
-// carry a perf-v1 writer's fingerprint in a string literal or call: the schema tag; a day-file
+// carry a perf writer's fingerprint in a string literal or call: a perf-v1 literal or the bare
+// perf-v2 tag; a day-file
 // pattern (a date regexp naming .jsonl); the install-id file name together with the
 // 32-hex id pattern; or a getrusage CPU read. Comments are not literals, so prose may still
 // name them.
@@ -60,7 +62,9 @@ func secondWriters(t *testing.T, root string) []string {
 					break
 				}
 				v := x.Value
-				schema = schema || strings.Contains(v, "perf-v1")
+				// perf-v1 as before (any literal naming it); perf-v2 as the bare tag, since
+				// deskperf's report legitimately labels its perf-v2 group in prose.
+				schema = schema || strings.Contains(v, "perf-v1") || v == strconv.Quote(perfrec.SchemaV2) || v == "`"+perfrec.SchemaV2+"`"
 				dayFile = dayFile || dayFilePattern.MatchString(v)
 				idName = idName || strings.Contains(v, "install-id")
 				idPattern = idPattern || strings.Contains(v, "[0-9a-f]{32}")
@@ -76,7 +80,7 @@ func secondWriters(t *testing.T, root string) []string {
 			on   bool
 			name string
 		}{
-			{schema, "perf-v1 schema literal"}, {dayFile, "day-file pattern"},
+			{schema, "perf schema literal"}, {dayFile, "day-file pattern"},
 			{idName && idPattern, "install-id file + id pattern"}, {rusage, "syscall.Getrusage"},
 		} {
 			if c.on {
@@ -121,9 +125,16 @@ func TestOnePerfWriterInTheRepo(t *testing.T) {
 	if got := secondWriters(t, plant); len(got) != 1 {
 		t.Fatalf("the scan missed a planted second writer: %v", got)
 	}
+	plantV2 := t.TempDir()
+	if err := os.WriteFile(filepath.Join(plantV2, "copy.go"), []byte("package x\n\nconst schema = \"perf-v2\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := secondWriters(t, plantV2); len(got) != 1 {
+		t.Fatalf("the scan missed a planted perf-v2 schema tag: %v", got)
+	}
 
 	if hits := secondWriters(t, repoRootFromHere(t)); len(hits) != 0 {
-		t.Fatalf("a second perf-v1 writer exists outside the shared perfrec module:\n  %s\n"+
+		t.Fatalf("a second perf writer exists outside the shared perfrec module:\n  %s\n"+
 			"move it into perfrec and call that (#3101)", strings.Join(hits, "\n  "))
 	}
 }
@@ -297,7 +308,7 @@ func perfrecClosure(t *testing.T, dir, goos string) []string {
 	cmd := exec.Command("go", "list", "-deps", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOOS="+goos)
-	out, err := cmd.Output()
+	out, err := goquiet.Cmd(cmd).Output()
 	if err != nil {
 		t.Fatalf("go list -deps (GOOS=%s) in %s: %v", goos, dir, err)
 	}
@@ -321,7 +332,17 @@ func TestPerfrecClosureCarriesNothingOnline(t *testing.T) {
 	src := filepath.Join(repoRootFromHere(t), "perfrec")
 
 	plant := t.TempDir()
-	for _, f := range []string{"go.mod", "perfrec.go", "cpu_unix.go", "cpu_windows.go"} {
+	srcs, err := filepath.Glob(filepath.Join(src, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"go.mod"}
+	for _, p := range srcs {
+		if !strings.HasSuffix(p, "_test.go") {
+			files = append(files, filepath.Base(p))
+		}
+	}
+	for _, f := range files {
 		b, err := os.ReadFile(filepath.Join(src, f))
 		if err != nil {
 			t.Fatal(err)

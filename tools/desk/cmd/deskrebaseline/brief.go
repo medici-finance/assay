@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,14 +22,21 @@ import (
 // verifyRow is one parsed `## Verify` row: its number, Class, Command and Expect cells.
 // Columns are located by header NAME, never position, mirroring the runner's parser
 // (cmd/verifyloop/verifyrows.go) and the statusgen table reader.
+//
+// Command is the command the probe runs: lifted by verifycmd.Lift, then with its GFM-escaped
+// pipes (`\|`) un-escaped. Expect is the cell for display and rewrite (one wrapping code span
+// unwrapped); ExpectCell is the raw cell the Expect judge reads, as statusgen reads it (#1953).
 type verifyRow struct {
-	Num     int
-	Class   string
-	Command string
-	Expect  string
-	// CommentLed is verifycmd.CommentLed of the raw cell: why the row's command is
-	// only a shell comment, or "". gatherRowFacts never probes such a row (#2684).
-	CommentLed string
+	Num        int
+	Class      string
+	Command    string
+	Expect     string
+	ExpectCell string
+	// Refused is verifycmd.Refused of the raw cell: why the row's command must not
+	// run (a shell comment, a no-op, a prose mention, a blank lift), or "".
+	// gatherRowFacts never probes such a row, neither as rename proof nor as
+	// behaviour (#2684, #3147).
+	Refused string
 }
 
 // loadedBrief is a brief resolved to a file, with its risk declaration and Verify rows.
@@ -171,7 +180,7 @@ func parseVerifyRows(content string) []verifyRow {
 			if sepRe.MatchString(row) {
 				continue
 			}
-			cells := splitRow(row)
+			cells := verifycmd.SplitRow(row)
 			cell := func(j int) string {
 				if j >= 0 && j < len(cells) {
 					return strings.TrimSpace(cells[j])
@@ -188,20 +197,24 @@ func parseVerifyRows(content string) []verifyRow {
 					class = c
 				}
 			}
-			expect := ""
+			expect, expectCell := "", ""
 			if hasExpect {
-				expect = stripInlineCode(cell(expectCol))
+				expectCell = cell(expectCol)
+				expect = stripInlineCode(expectCell)
 			}
 			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
-			// otherwise unwraps a fully-backticked cell exactly as before.
-			// verifycmd.CommentLed judges the RAW cell, not the lift: a cell whose
-			// first span is a comment can lift (whole) as a runnable no-op (#2684 S1).
+			// otherwise lifts the first code span, exactly as statusgen does (#3147).
+			// The split kept `\|` inside the cell, so the lifted command is
+			// un-escaped before anything runs it (#1953). verifycmd.Refused judges
+			// the RAW cell: what statusgen refuses as a comment, a no-op, a prose
+			// mention or a blank lift is never probed.
 			rows = append(rows, verifyRow{
 				Num:        num,
 				Class:      class,
-				Command:    verifycmd.Lift(cell(cmdCol)),
+				Command:    verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol))),
 				Expect:     expect,
-				CommentLed: verifycmd.CommentLed(cell(cmdCol)),
+				ExpectCell: expectCell,
+				Refused:    verifycmd.Refused(cell(cmdCol)),
 			})
 		}
 		return rows
@@ -215,68 +228,28 @@ func parseVerifyRows(content string) []verifyRow {
 // twin of extractSection: applyRebaseline needs the section's bounds in the FULL line slice so
 // its in-place rewrite lands on the right line, not a copy of just the section.
 func verifySectionBounds(lines []string) (lo, hi int) {
-	lo = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Verify" {
-			lo = i + 1
-			break
-		}
-	}
-	if lo < 0 {
+	lo, hi, ok := briefdoc.SectionBounds(lines, "Verify", true)
+	if !ok {
 		return -1, -1
-	}
-	hi = len(lines)
-	for i := lo; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
-			hi = i
-			break
-		}
 	}
 	return lo, hi
 }
 
 // extractSection returns the body between an exact `## <heading>` line and the next `## `.
 func extractSection(content, heading string) string {
-	lines := strings.Split(content, "\n")
-	start := -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == heading {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	var out []string
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
-			break
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
+	return briefdoc.Section(content, strings.TrimPrefix(heading, "## "), heading == "## Verify")
 }
 
 // headerIndex maps lower-cased header cell names to their column positions.
 func headerIndex(headerLine string) map[string]int {
 	idx := map[string]int{}
-	for j, c := range splitRow(headerLine) {
+	for j, c := range verifycmd.SplitRow(headerLine) {
 		name := strings.ToLower(strings.TrimSpace(c))
 		if name != "" {
 			idx[name] = j
 		}
 	}
 	return idx
-}
-
-// splitRow splits a pipe-table row into its cells, dropping the empty leading/trailing cells
-// the outer pipes produce.
-func splitRow(row string) []string {
-	row = strings.TrimSpace(row)
-	row = strings.TrimPrefix(row, "|")
-	row = strings.TrimSuffix(row, "|")
-	return strings.Split(row, "|")
 }
 
 // stripInlineCode unwraps a single `…` inline-code span from a cell.

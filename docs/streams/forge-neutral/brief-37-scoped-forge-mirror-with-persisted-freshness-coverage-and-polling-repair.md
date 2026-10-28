@@ -4,7 +4,7 @@ title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
 depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09"]
-unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43"]
+unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -12,10 +12,13 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 3
+version: 6
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R6 (pagination, lost/reordered events, permission loss and partial scans preserve uncertainty; a client outage cannot cause a poll storm)
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md — "Reuse and expand the existing forge-mirror work" (pipeline, one ingestion owner per scope, overlap windows, stale-not-deleted, centralised refresh)
@@ -149,7 +152,9 @@ Options:
    footprint is smaller, and the earlier observations are gone if access returns. The mirror then
    re-reads from scratch.
 
-Default if no answer: none. The mirror stays unactivated and the brief stays held until answered.
+Default if no answer: none — blocks until answered.
+
+The mirror stays unactivated and the brief stays held until answered.
 
 ## Ground rules
 
@@ -174,6 +179,18 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
 - If graph-execution/19's R2 amendment has not landed, or its store has no migration and test
   harness for an added table, stop and report NEEDS_CONTEXT. Do not build a second store.
 - Stop at `implemented`; an independent verifier owns verified and done.
+
+## Candidate and priority amendment — 2026-10-23
+
+Serve the existing planner's complete scoped candidate observations through this mirror
+owner, as specified in efficiency spec §2.1 and A11–A12. One ingestion/refresh owner supplies
+all compatible role clients; policy/time/capacity-only reselection does not enumerate GH.
+Keep full initial/periodic inventory, event/poll repair, removals, permission and freshness
+coverage. No outage fallback poller per caller and no zero-cost producer assumption.
+Retain all held/unknown and priority-unmapped source records; projections do not become
+policy or dispatch authority. Reuse the existing reviewcoverage_test fixture surface to
+measure repeated consumers and changed facts. The direct-reader bridge remains independent;
+existing completed batching/conditional requests are baseline, not this brief's new saving.
 
 ## Task
 
@@ -300,6 +317,11 @@ provider transports only.
 | 19 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorCoverageFactMapping$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorCoverageFactMapping " "$result")` | exit 0; named PASS. Every mirror coverage state maps to exactly one graph-execution/28 fact-completeness value, and only `complete` inside the freshness window maps to present: `never-read`, `partial`, each `unavailable` reason class and a stale `complete` never do. The mapping lives in `workflow/store/`, not in `forgeread`. **Mutation**: map `partial` to present, and the test fails |
 | 20 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorReviewCoverage$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorReviewCoverage ' "$o")` | exit 0; named PASS. Admitted review/issue populations preserve exact head and partial/denied/page coverage; removing a required input cannot return complete-empty or leak another admission. |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
+| 22 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorPlannerReuse$' ./... > "$o" && grep -F -- '--- PASS: TestMirrorPlannerReuse ' "$o")` | exit 0; named PASS. compatible prose/discrete consumers query the same mirror cutoff without new provider reads; one changed item refreshes affected scope, and partial/removal/access/expiry failures cannot yield complete idle. Competing caller pollers or hidden producer attempts fail; final refresh requests remain explicit. |
+
 ## Pre-mortem
 
 An unfinished walk reads as the whole population (rows 2, 8). A failed scan deletes or hides rows
@@ -316,6 +338,44 @@ dependency on statusgen and a module cycle forms (row 17). A mirror file reads c
 secret through a direct `os` or `syscall` import under a name the ambient-token rule does not know (row 18; cgo is outside that check). Partial
 coverage maps to a present fact (row 19). Retention of private content after access loss remains the
 human decision above; row 16 pins whichever option is chosen.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep the mirror as the single online refresh/coalescing owner; do not start another
+poller or ingest cache from a desk command. Extend the existing refresh tests with a
+50-caller same-admission burst and two simultaneously different admissions. Exactly one
+scripted paginated inventory should serve equivalent concurrent refresh demand; different
+provider/host/repository/permission or admission/access epochs cannot share authorization.
+Requests on permission loss, stale data or provider failure retain coverage/backoff rather
+than triggering one full scan per caller. Count provider calls, coalesced waiters, bytes and
+cache outcomes at the trusted composition boundary; no credential or recorder dependency
+is imported into forgeread's offline root. The 50-caller case is synthetic request-count
+acceptance, not a production latency threshold. Existing /09 review snapshots and conditional
+board reads are baseline features, not newly credited savings.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Mirror refresh, pagination, background polling and repair retain their own bounded origin and shared refresh identity. A coalesced source walk counts each actual page/retry once and is not multiplied by waiter count. Missing upstream instrumentation is unknown; zero is measured only under full seam coverage.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

@@ -159,9 +159,7 @@ func reclaimStaleBranch(dir, br, base string) (string, error) {
 		return "", herr
 	}
 	if wt, held := holders[ref]; held {
-		return "", deskkit.Refused("refused: branch " + br + " already exists and is CHECKED OUT in the worktree " +
-			wt + " — that worktree owns it, so it is not a leftover. Finish and remove that worktree " +
-			"(`deskwt remove " + wt + "`), or dispatch this item under a different --branch.")
+		return "", deskkit.Refused(heldBranchRefusal(br, wt))
 	}
 
 	cmp := resolveComparisonRef(dir, ref, base)
@@ -198,6 +196,14 @@ func reclaimStaleBranch(dir, br, base string) (string, error) {
 		note += "; it is recreated at " + base
 	}
 	return note, nil
+}
+
+// heldBranchRefusal is the one wording of "another worktree owns this branch", shared by
+// the collision check and add's --adopt-run arm (which appends why it did not adopt).
+func heldBranchRefusal(br, wt string) string {
+	return "refused: branch " + br + " already exists and is CHECKED OUT in the worktree " +
+		wt + " — that worktree owns it, so it is not a leftover. Finish and remove that worktree " +
+		"(`deskwt remove " + wt + "`), or dispatch this item under a different --branch."
 }
 
 // shortSHA abbreviates a full object id for a human-readable audit line, leaving anything

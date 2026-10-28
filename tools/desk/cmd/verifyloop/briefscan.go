@@ -13,6 +13,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // briefRow is one parsed stream-README table row plus its resolved brief file.
@@ -33,7 +34,7 @@ type briefRow struct {
 	// wake receipt that holds only SOME rows be compared against the whole set: rows not held by
 	// an unchanged receipt are still runnable, so the brief dispatches for them while the held
 	// rows stay held. Empty when the Verify table is absent or unparseable.
-	verifyRows []int
+	verifyRows []deskkit.VerifyRowID
 }
 
 // briefFrontmatter is the subset of brief-v1 frontmatter the verify adapter needs. It is
@@ -41,6 +42,7 @@ type briefRow struct {
 // self-contained (the deliberate "desk mirrors statusgen, does not import it" pattern —
 // statusgen is package main and unimportable anyway).
 type briefFrontmatter struct {
+	ParseError  string
 	Gate        string
 	Risk        loopengine.RiskFlags
 	Effort      string
@@ -93,9 +95,13 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 // is stable. A root whose streams cannot be read is an error naming the root, never a silent
 // omission: the whole point of the multi-root plan is that a repo's queue cannot vanish.
 func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
+	return scanAwaitingRootsPass(roots, targetSHA, reader, issues, now, deskkit.NewVerifierAssociationPass(nil))
+}
+
+func scanAwaitingRootsPass(roots []deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time, pass *deskkit.VerifierAssociationPass) ([]loopengine.Item, error) {
 	var all []loopengine.Item
 	for _, r := range roots {
-		items, err := scanAwaitingIn(r, "", targetSHA, reader, issues, now)
+		items, err := scanAwaitingPass(r, "", targetSHA, reader, issues, now, pass)
 		if err != nil {
 			return nil, fmt.Errorf("root %s (%s): %w", r.Repo, r.Path, err)
 		}
@@ -124,6 +130,10 @@ func itemWorkClass(it loopengine.Item) int {
 // the repository a bare #N blocker_ref resolves in when the record names none and r.Repo is
 // empty. It never prefixes IDs — only r.Repo does.
 func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
+	return scanAwaitingPass(r, homeRepo, targetSHA, reader, issues, now, deskkit.NewVerifierAssociationPass(nil))
+}
+
+func scanAwaitingPass(r deskkit.RootConfig, homeRepo, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time, pass *deskkit.VerifierAssociationPass) ([]loopengine.Item, error) {
 	root := r.Path
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
@@ -134,7 +144,7 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 	// clock — both injectable in tests. The default is the OFFLINE, probe-free reader over this
 	// root's tree (content hashes + the tool version; it never observes an external action).
 	if reader == nil {
-		reader = deskkit.NewRootRevisionReader(root, deskkit.ReleaseTagOrDev())
+		reader = &planningRevisionReader{RootRevisionReader: deskkit.NewRootRevisionReader(root, deskkit.ReleaseTagOrDev()), revisions: map[string]planningRevision{}}
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -203,6 +213,9 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 				" carries a ts more than the clock-skew tolerance ahead of now — could-not-check, never let win (#1803 SR-1803-2)"
 		}
 		if oc, ok := outcomes[br.Stream+"/"+br.Num]; ok {
+			if oc.wakeError != "" && payload["could_not_check"] == "" {
+				payload["could_not_check"] = oc.wakeError
+			}
 			payload["sidecar_outcome"] = oc.Outcome
 			payload["sidecar_ts"] = oc.TS
 			payload["sidecar_sha"] = oc.SHA
@@ -240,7 +253,7 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 		// Preserve the original unresolved/unreadable reason; there is no brief
 		// association to derive until that earlier could-not-check is resolved.
 		if payload["could_not_check"] == "" {
-			if associated, err := associateVerifierItem(item, root); err != nil {
+			if associated, err := associateVerifierItemIn(item, root, pass); err != nil {
 				payload["could_not_check"] = "verifier association: " + err.Error()
 			} else {
 				item = associated
@@ -253,10 +266,11 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 
 // outcomeRow is the subset of a verify-outcome record the stuck-flip bucket keys on.
 type outcomeRow struct {
-	TS      string `json:"ts"`
-	Brief   string `json:"brief"`
-	Outcome string `json:"outcome"`
-	SHA     string `json:"sha"`
+	wakeError string // internal decode uncertainty; never sourced from a JSON field
+	TS        string `json:"ts"`
+	Brief     string `json:"brief"`
+	Outcome   string `json:"outcome"`
+	SHA       string `json:"sha"`
 }
 
 // readVerifyOutcomeRecords is verifyloop's ONE reader of verify-outcome records
@@ -287,6 +301,15 @@ func readVerifyOutcomeRecords(root string) (outcomes map[string]outcomeRow, rece
 		}
 		if wrec, ok := deskkit.ParseWakeReceipt(rec.Raw); ok {
 			receipts[brief] = wrec
+		} else {
+			var header struct {
+				Schema string `json:"wake_schema"`
+			}
+			if json.Unmarshal(rec.Raw, &header) == nil && header.Schema == deskkit.SchemaWakeV1 {
+				row := outcomes[brief]
+				row.wakeError = "latest wake receipt for " + brief + " could not decode — could-not-check, never fall back to an older receipt"
+				outcomes[brief] = row
+			}
 		}
 	}
 	return outcomes, receipts, future, nil
@@ -372,9 +395,8 @@ func headerIndex(line string) map[string]int {
 	return idx
 }
 
-func splitRow(line string) []string {
-	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
-}
+// splitRow is verifycmd.SplitRow: an escaped `\|` stays inside its cell (#1953).
+func splitRow(line string) []string { return verifycmd.SplitRow(line) }
 
 func normalizeMark(s string) string {
 	switch strings.TrimSpace(s) {
@@ -392,7 +414,7 @@ func normalizeMark(s string) string {
 // row as could-not-check, never dispatchable. Before this the zero value flowed straight into
 // classification: gate "" and every risk flag false read as a risk-clear model-gated brief, so
 // an unresolvable row was routed to DISPATCH with its human gate erased.
-func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool, couldNotCheck string, verifyRows []int) {
+func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFrontmatter, evidenceEmpty bool, couldNotCheck string, verifyRows []deskkit.VerifyRowID) {
 	pattern := filepath.Join(streamsDir, dir, "brief-"+num+"-*.md")
 	matches, _ := filepath.Glob(pattern)
 	if len(matches) == 0 {
@@ -405,10 +427,13 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 	}
 	rel := relTo(root, path)
 	fm = parseFrontmatter(string(raw))
+	if fm.ParseError != "" {
+		return rel, fm, true, "brief frontmatter unreadable: " + fm.ParseError, nil
+	}
 	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
-	for _, vr := range parseVerifyRows(string(raw)) {
-		verifyRows = append(verifyRows, vr.Num)
+	for _, vr := range parseVerifyRowsIn(extractVerify(string(raw))) {
+		verifyRows = append(verifyRows, vr.ID)
 	}
 	return rel, fm, evidenceEmpty, "", verifyRows
 }
@@ -425,13 +450,13 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 //   - complete, inputs could-not-check → wake_state=could-not-check (held, surfaced).
 //   - complete, inputs unchanged, blocker closed → fire, "blocker closed: <ref>".
 //   - complete, inputs unchanged, blocker open → hold (a WAIT row naming the ref and the next
-//     actor). If the receipt holds only some Verify rows, the rest are still runnable: fire with
+//     actor). If the receipt holds only some Verify rows, only unobserved non-held rows remain runnable: fire with
 //     wake_held_rows naming the held rows to record as explicitly unrun (mirrors deferred_rows).
 //   - complete, inputs unchanged, blocker could-not-check → wake_state=could-not-check.
 //
 // Receipts on the two older predicates (referenced-action-done, deadline-reached) keep the
 // verify-wake-v1 evaluator they were written for.
-func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reader deskkit.WakeInputs,
+func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []deskkit.VerifyRowID, reader deskkit.WakeInputs,
 	issues deskkit.IssueStateSource, defaultRepo string, now time.Time) {
 	fire := func(reason string) {
 		payload["wake_state"] = "fire"
@@ -477,27 +502,52 @@ func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verif
 }
 
 // holdOrPartial writes a hold, or — when the receipt holds only some of the brief's Verify rows —
-// a fire for the runnable remainder with the held rows named.
-func holdOrPartial(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reason string) {
-	held := heldRowSet(rec.Rows)
-	remaining := runnableRemainder(verifyRows, held)
+// a fire for rows whose PASS has not already been observed at unchanged inputs.
+// Inconsistent coverage remains could-not-check, never a completion claim.
+func holdOrPartial(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []deskkit.VerifyRowID, reason string) {
+	remaining, err := pendingWakeRows(rec, verifyRows)
+	if err != nil {
+		payload["wake_state"] = "could-not-check"
+		payload["wake_reason"] = reason + " — row coverage could-not-check: " + err.Error()
+		return
+	}
+	// Derive prior PASS before excluding deferred rows: deferred is never PASS.
+	excluded := heldRowSet(rec.Rows)
+	for _, id := range remaining {
+		excluded[id] = true
+	}
+	passed := runnableRemainder(verifyRows, excluded)
+	deferred := map[deskkit.VerifyRowID]bool{}
+	// deferred_rows is generated locally by deriveContentSignals, not authored
+	// frontmatter. Match its exact identity prefix; never alias 6 and 6a.
+	for _, note := range strings.Split(payload["deferred_rows"], ";") {
+		id, _, ok := strings.Cut(strings.TrimSpace(note), ":")
+		if ok {
+			deferred[deskkit.VerifyRowID(id)] = true
+		}
+	}
+	remaining = runnableRemainder(remaining, deferred)
 	if len(rec.Rows) > 0 && len(remaining) > 0 {
+		payload["wake_runnable_rows"] = joinRowIDs(remaining)
+		if len(passed) > 0 {
+			payload["wake_passed_rows"] = joinRowIDs(passed)
+		}
 		payload["wake_state"] = "fire"
-		payload["wake_held_rows"] = joinInts(rec.Rows)
-		payload["wake_reason"] = reason + " — holding rows " + joinInts(rec.Rows) +
-			"; dispatching runnable row(s) " + joinInts(remaining)
+		payload["wake_held_rows"] = joinRowIDs(rec.Rows)
+		payload["wake_reason"] = reason + " — holding rows " + joinRowIDs(rec.Rows) +
+			"; dispatching runnable row(s) " + joinRowIDs(remaining)
 		return
 	}
 	payload["wake_state"] = "hold"
 	payload["wake_reason"] = reason
 	if len(rec.Rows) > 0 {
-		payload["wake_held_rows"] = joinInts(rec.Rows)
+		payload["wake_held_rows"] = joinRowIDs(rec.Rows)
 	}
 }
 
 // deriveLegacyWake is the verify-wake-v1 evaluator for referenced-action-done and
 // deadline-reached receipts, unchanged.
-func deriveLegacyWake(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reader deskkit.WakeInputs, now time.Time) {
+func deriveLegacyWake(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []deskkit.VerifyRowID, reader deskkit.WakeInputs, now time.Time) {
 	dec := rec.EvaluateWake(reader, now)
 	switch dec.State {
 	case deskkit.WakeCouldNotCheck:
@@ -509,12 +559,27 @@ func deriveLegacyWake(payload map[string]string, rec deskkit.WakeReceipt, verify
 		payload["wake_state"] = "fire"
 		payload["wake_reason"] = dec.Reason
 	case deskkit.WakeHold:
+		// Older predicates establish blocker/deadline state, not input equivalence.
+		// A prior PASS can suppress work only after the same unchanged-input proof.
+		if len(rec.Rows) > 0 && (rec.RowsPassed > 0 || len(rec.RowResults) > 0) {
+			state, why := deskkit.Unchanged(rec, reader)
+			switch state {
+			case deskkit.InputsChanged:
+				payload["wake_state"] = "fire"
+				payload["wake_reason"] = "inputs changed: " + strings.TrimPrefix(why, "changed ")
+				return
+			case deskkit.InputsCouldNotCheck:
+				payload["wake_state"] = "could-not-check"
+				payload["wake_reason"] = "prior row results need unchanged inputs: " + why
+				return
+			}
+		}
 		holdOrPartial(payload, rec, verifyRows, dec.Reason)
 	}
 }
 
-func heldRowSet(rows []int) map[int]bool {
-	s := map[int]bool{}
+func heldRowSet(rows []deskkit.VerifyRowID) map[deskkit.VerifyRowID]bool {
+	s := map[deskkit.VerifyRowID]bool{}
 	for _, r := range rows {
 		s[r] = true
 	}
@@ -523,14 +588,90 @@ func heldRowSet(rows []int) map[int]bool {
 
 // runnableRemainder is the brief's Verify rows that the receipt does NOT hold — the rows still
 // runnable this pass. Empty when every row is held (or the row set is unknown).
-func runnableRemainder(all []int, held map[int]bool) []int {
-	var out []int
+func runnableRemainder(all []deskkit.VerifyRowID, held map[deskkit.VerifyRowID]bool) []deskkit.VerifyRowID {
+	var out []deskkit.VerifyRowID
 	for _, r := range all {
 		if !held[r] {
 			out = append(out, r)
 		}
 	}
 	return out
+}
+
+func joinRowIDs(ids []deskkit.VerifyRowID) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = string(id)
+	}
+	return strings.Join(parts, ",")
+}
+
+// pendingWakeRows reuses observations only after the wake evaluator established
+// unchanged inputs and an unresolved blocker. No provider reads or persistent cache.
+func pendingWakeRows(rec deskkit.WakeReceipt, all []deskkit.VerifyRowID) ([]deskkit.VerifyRowID, error) {
+	// An empty held set names the whole brief, as in existing wake-v1 receipts.
+	if len(rec.Rows) == 0 {
+		return nil, nil
+	}
+	held := heldRowSet(rec.Rows)
+	known := map[deskkit.VerifyRowID]bool{}
+	for _, id := range all {
+		if _, ok := deskkit.ParseVerifyRowID(string(id)); !ok || known[id] {
+			return nil, fmt.Errorf("invalid or duplicate Verify row %q", id)
+		}
+		known[id] = true
+	}
+	if len(known) == 0 {
+		return nil, fmt.Errorf("Verify row identities unavailable")
+	}
+	for _, id := range rec.Rows {
+		if !known[id] {
+			return nil, fmt.Errorf("held row %q is not in the current Verify table", id)
+		}
+	}
+	if len(held) != len(rec.Rows) {
+		return nil, fmt.Errorf("duplicate held row")
+	}
+	remaining := runnableRemainder(all, held)
+	if len(rec.RowResults) > 0 {
+		if rec.RowsTotal != len(all) || len(rec.RowResults) != len(all) {
+			return nil, fmt.Errorf("row_results does not cover the current Verify table")
+		}
+		seen := map[deskkit.VerifyRowID]bool{}
+		passed := map[deskkit.VerifyRowID]bool{}
+		for _, rr := range rec.RowResults {
+			if !known[rr.Row] || seen[rr.Row] || !deskkit.ValidRowResult(rr.Result) {
+				return nil, fmt.Errorf("unknown, duplicate or invalid result row %q", rr.Row)
+			}
+			seen[rr.Row] = true
+			if rr.Result == deskkit.RowPass {
+				if held[rr.Row] {
+					return nil, fmt.Errorf("held row %q also claims PASS", rr.Row)
+				}
+				passed[rr.Row] = true
+			}
+		}
+		if len(passed) != rec.RowsPassed {
+			return nil, fmt.Errorf("row_results PASS count disagrees with rows_passed")
+		}
+		return runnableRemainder(remaining, passed), nil
+	}
+	// Older numeric-only receipts carry counts but no per-row pass observations.
+	// They prove completion only when ALL non-held rows passed, with exact totals.
+	if rec.RowsTotal > 0 || rec.RowsPassed > 0 {
+		if rec.RowsTotal != len(all) || rec.RowsPassed < 0 || rec.RowsPassed > len(remaining) {
+			return nil, fmt.Errorf("receipt counts disagree with the current Verify table")
+		}
+		for i, id := range all {
+			if string(id) != strconv.Itoa(i+1) {
+				return nil, fmt.Errorf("non-contiguous or suffixed rows require exact row_results")
+			}
+		}
+		if rec.RowsPassed == len(remaining) {
+			return nil, nil
+		}
+	}
+	return remaining, nil
 }
 
 func joinInts(xs []int) string {
@@ -566,7 +707,10 @@ func relTo(root, path string) string {
 // names an online lane / a window is bucketed as a whole. A Verify section with no parseable
 // Command column derives nothing (there is no command cell to read) and stays dispatchable.
 func deriveContentSignals(fm *briefFrontmatter, verifyText string) {
-	rows := parseVerifyRowsIn(verifyText)
+	deriveContentSignalsRows(fm, parseVerifyRowsIn(verifyText))
+}
+
+func deriveContentSignalsRows(fm *briefFrontmatter, rows []verifyRow) {
 	if len(rows) == 0 {
 		return
 	}
@@ -574,19 +718,21 @@ func deriveContentSignals(fm *briefFrontmatter, verifyText string) {
 	runnable := 0
 	lane, blocked := "", ""
 	for _, r := range rows {
-		rl := deriveOnlineLane(r.Command)
-		rb := deriveBlockedUntil(r.Command)
+		// The whole cell, not the lift: the lane and window phrases are prose
+		// around the command, which the first-span lift drops (#3147).
+		rl := deriveOnlineLane(r.Cell)
+		rb := deriveBlockedUntil(r.Cell)
 		if rl == "" && rb == "" {
 			runnable++
 			continue
 		}
 		if rl != "" {
-			notes = append(notes, fmt.Sprintf("%d: online lane (%s)", r.Num, rl))
+			notes = append(notes, fmt.Sprintf("%s: online lane (%s)", r.ID, rl))
 			if lane == "" {
 				lane = rl
 			}
 		} else {
-			notes = append(notes, fmt.Sprintf("%d: longitudinal window", r.Num))
+			notes = append(notes, fmt.Sprintf("%s: longitudinal window", r.ID))
 		}
 		if rb != "" && blocked == "" {
 			blocked = rb

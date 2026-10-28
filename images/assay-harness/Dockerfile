@@ -36,7 +36,7 @@
 # pinned by DIGEST (a tag is mutable at a registry). assay's sibling
 # `images/ci-tools/Dockerfile` pins by tag, not digest, so these are STANDALONE
 # digest pins with no sibling to keep them in lockstep; bump them deliberately
-# (they are the linux/amd64 golang:1.27.2-bookworm and debian:bookworm-slim
+# (they are the linux/amd64 golang:1.27.3-bookworm and debian:bookworm-slim
 # artifacts as of this image's addition). See the PR body's base-digest note.
 #
 # TARGET PLATFORM is linux/amd64 (the ARC runner convention).
@@ -47,11 +47,11 @@
 # --platform=$BUILDPLATFORM keeps the Go toolchain on the builder's arch and
 # cross-compiles to linux/amd64 rather than running under qemu emulation.
 ARG BINARY_STAGE=gobuild
-FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS gobuild
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS gobuild
 
 # GOWORK=off is load-bearing: the repo root carries no go.work, and statusgen/
 # and tools/desk are self-contained modules (only external dep is
-# gopkg.in/yaml.v3; the only `replace`s are the stdlib-only sibling forgeread and perfrec modules), so each builds from its own dir with
+# gopkg.in/yaml.v3; the only `replace`s are the stdlib-only sibling forgeread, comms, perfrec and gitquiet modules), so each builds from its own dir with
 # GOWORK off. GOARCH is fixed to amd64 to match the runtime stage's platform.
 ENV GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
@@ -81,6 +81,12 @@ COPY comms/ /src/comms/
 # perfrec — the stdlib-only shared perf-v1 writer statusgen and tools/desk each resolve through a
 # `replace` to a sibling directory; same sibling layout as forgeread.
 COPY perfrec/ /src/perfrec/
+
+# gitquiet — the stdlib-only quiet-Git test template statusgen and tools/desk each resolve through a
+# `replace` to a sibling directory (their test builds import it); same sibling layout as forgeread.
+# `go mod download` reads each replaced module's go.mod, so the directory must exist in this stage.
+COPY gitquiet/ /src/gitquiet/
+COPY deskcore /src/deskcore/
 
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen

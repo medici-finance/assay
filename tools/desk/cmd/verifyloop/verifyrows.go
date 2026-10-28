@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
@@ -17,11 +18,17 @@ import (
 // (the verify.d convention).
 type verifyRow struct {
 	Num     int
+	ID      deskkit.VerifyRowID
 	Class   string // check | check:ci | gate:model | gate:human
 	Command string
-	// CommentLed is verifycmd.CommentLed of the raw cell: why the row's command is
-	// only a shell comment, or "". runBriefRows never executes such a row (#2684).
-	CommentLed string
+	// Cell is the raw trimmed Command cell. Command is only its lift (the marked
+	// command, else the first code span); a reader matching prose in the row, not
+	// the command, reads Cell.
+	Cell string
+	// Refused is verifycmd.Refused of the raw cell: why the row's command must not
+	// run (a shell comment, a no-op, a prose mention, a blank lift), or "".
+	// runBriefRows never executes such a row (#2684, #3147).
+	Refused string
 }
 
 // runnerExecuted reports whether this class is one the deterministic runner executes.
@@ -35,16 +42,24 @@ func (r verifyRow) runnerExecuted() bool {
 // located by header NAME (#, class, command), never position — mirroring row-classes.md and
 // the statusgen parser — so inserting a Class column disturbs nothing. A table with no
 // `Class` column is legacy: every row defaults to `check`. Rows whose `#` cell is not an
-// integer (a separator, a stray line) are skipped.
+// integer are outside verdict-v1; the scheduling reader retains exact suffixed IDs.
 func parseVerifyRows(briefContent string) []verifyRow {
-	return parseVerifyRowsIn(extractSection(briefContent, "## Verify"))
+	// Preserve the exact historical Atoi execution contract, independently of the
+	// stricter canonical identities required before scheduling can reuse observations.
+	return parseVerifyRowsMode(extractSection(briefContent, "## Verify"), false)
 }
 
 // parseVerifyRowsIn parses the rows of an already-extracted Verify SECTION body. It is the
 // shared half of parseVerifyRows (exact `## Verify` heading, the runner's contract) and the
 // per-row content derivation in briefscan.go, which reads the qualifier-aware extractVerify
 // section — so both read the Command cell by the same header-named rule.
+// ID retains an exact positive number plus optional ASCII letter suffix; Num is
+// populated only for the separate integer-only verdict-v1 execution contract.
 func parseVerifyRowsIn(section string) []verifyRow {
+	return parseVerifyRowsMode(section, true)
+}
+
+func parseVerifyRowsMode(section string, scheduling bool) []verifyRow {
 	if section == "" {
 		return nil
 	}
@@ -68,16 +83,30 @@ func parseVerifyRowsIn(section string) []verifyRow {
 			if sepRe.MatchString(row) {
 				continue
 			}
-			cells := splitRow(row)
+			cells := verifycmd.SplitRow(row)
 			cell := func(j int) string {
 				if j >= 0 && j < len(cells) {
 					return strings.TrimSpace(cells[j])
 				}
 				return ""
 			}
-			num, err := strconv.Atoi(cell(numCol))
-			if err != nil {
-				continue
+			rawID := cell(numCol)
+			id, exact := deskkit.ParseVerifyRowID(rawID)
+			num, numErr := strconv.Atoi(rawID)
+			if scheduling {
+				if !exact && rawID == "" {
+					continue
+				}
+				// Keep every nonempty noncanonical cell in the inventory. Reuse must surface
+				// them as could-not-check, never silently omit an original row.
+				if !exact {
+					id = deskkit.VerifyRowID(rawID)
+				}
+			} else {
+				if numErr != nil {
+					continue
+				}
+				id = deskkit.VerifyRowID(rawID)
 			}
 			class := "check"
 			if hasClass {
@@ -86,14 +115,18 @@ func parseVerifyRowsIn(section string) []verifyRow {
 				}
 			}
 			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
-			// otherwise unwraps a fully-backticked cell exactly as before.
-			// verifycmd.CommentLed judges the RAW cell, not the lift: a cell whose
-			// first span is a comment can lift (whole) as a runnable no-op (#2684 S1).
+			// otherwise lifts the first code span, exactly as statusgen does (#3147).
+			// The split kept `\|` in the cell; the runner executes the un-escaped
+			// pipeline (#1953). verifycmd.Refused judges the RAW cell: what statusgen
+			// refuses as a comment, a no-op, a prose mention or a blank lift never
+			// runs here.
 			rows = append(rows, verifyRow{
-				Num:        num,
-				Class:      class,
-				Command:    verifycmd.Lift(cell(cmdCol)),
-				CommentLed: verifycmd.CommentLed(cell(cmdCol)),
+				Num:     num,
+				ID:      id,
+				Class:   class,
+				Command: verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol))),
+				Cell:    cell(cmdCol),
+				Refused: verifycmd.Refused(cell(cmdCol)),
 			})
 		}
 		return rows

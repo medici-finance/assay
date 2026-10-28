@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"sort"
 	"strings"
 	"time"
@@ -177,6 +178,16 @@ type NextUp struct {
 	// carrying the same finding is NEVER held and so never appears
 	// here — see Brief.MergedInSibling, set only for a held TODO row.
 	MergedElsewhere map[string]string
+	// PhantomElsewhere maps the id of every TODO brief held OUT of Next-up by a
+	// strong board-honesty finding (Brief.PhantomHeld: delivered by a merged
+	// `Brief:`-trailer PR, or a re-homed pointer row) to "<class> (<evidence>)".
+	// NAMED, never silently dropped — the HomedElsewhere shape.
+	PhantomElsewhere map[string]string
+	// PhantomFlip gives the flip state (Brief.PhantomFlip) of the PhantomElsewhere
+	// ids whose flip the reconcile's lint hold refuses or could not evaluate:
+	// reconciling cannot clear them, so the board names each state apart with
+	// its own fix. A plain reconcile-able id is absent.
+	PhantomFlip map[string]phantomFlipState
 	// --- Drive fields (methodology-metrics/45). All zero when no drive is active,
 	// keeping a no-manifest board byte-identical to the pre-drives generator. ---
 	//
@@ -564,6 +575,11 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 	if b.MergedInSibling != "" {
 		return false
 	}
+	// Board-honesty strong findings (boardhonesty.go applyPhantomHolds): the SAME
+	// classifier that surfaces the NON-DISPATCHABLE notice, not a second list.
+	if b.PhantomHeld != "" {
+		return false
+	}
 	if claimed[s.Name+"/"+b.Num] {
 		return false
 	}
@@ -575,7 +591,7 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 		// wave/dep gated. Claim-awareness (checked above) still
 		// excludes one whose issue has an open branch.
 		if b.Schema == "placeholder-v1" {
-			if b.Blocked != "" {
+			if b.Blocked != "" || !issueflow.RepairDispositionSettled(b.IntakeAssessment) {
 				return false // blocked awaiting issue response
 			}
 			return true
@@ -591,7 +607,7 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 		// keeps the whole-wave rule. claim-aware filtering removes in-flight on
 		// open branches/PRs; this changes todo eligibility gating only — zero
 		// score-input changes (F-09/I-13 boundary).
-		if b.Schema == "brief-v1" || b.Schema == "brief-v2" {
+		if b.Schema == "brief-v1" || isBriefV2Family(b.Schema) {
 			if ev, ok := elig[s.Name+"/"+b.Num]; ok {
 				return ev.Verdict != VerdictHeld
 			}
@@ -610,7 +626,8 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 		// Legacy wave rule: every lower-wave brief in the same stream
 		// must be done or verified.
 		for _, o := range s.Briefs {
-			if o.Wave < b.Wave && o.Status != "done" && o.Status != "verified" {
+			// A withdrawn lower-wave brief is closed to dispatch and never holds the wave.
+			if o.Wave < b.Wave && o.Status != "done" && o.Status != "verified" && !isWithdrawn(o.Status) {
 				return false
 			}
 		}
@@ -936,6 +953,18 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 						nu.MergedElsewhere = map[string]string{}
 					}
 					nu.MergedElsewhere[s.Name+"/"+b.Num] = b.MergedInSibling
+				}
+				if b.PhantomHeld != "" && s.Status == "active" {
+					if nu.PhantomElsewhere == nil {
+						nu.PhantomElsewhere = map[string]string{}
+					}
+					nu.PhantomElsewhere[s.Name+"/"+b.Num] = b.PhantomHeld
+					if b.PhantomFlip != phantomFlipClean {
+						if nu.PhantomFlip == nil {
+							nu.PhantomFlip = map[string]phantomFlipState{}
+						}
+						nu.PhantomFlip[s.Name+"/"+b.Num] = b.PhantomFlip
+					}
 				}
 				continue
 			}

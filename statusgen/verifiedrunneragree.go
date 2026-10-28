@@ -146,6 +146,19 @@ func evidenceRunnerTally(evidence string) (dominantRaw string, dominantCount, to
 	return raw[bestKey], counts[bestKey], total, true
 }
 
+// acceptedRunHint names the Verified cell the ACCEPTED run record derives — the same
+// reader the flip uses (flipLatestPass), so the notice and the flip can never name
+// different actors. Empty when no strict PASS run is recorded (older records stay
+// historical; the notice then reads as it always did). Read-only: the recorded
+// Evidence and the old cell are never rewritten.
+func acceptedRunHint(evidence string) string {
+	p, err := flipLatestPass(evidence)
+	if err != nil || p.StampErr != nil || p.Stamp == "" {
+		return ""
+	}
+	return fmt.Sprintf(" The accepted run record derives the cell as %q.", p.Stamp)
+}
+
 // verifiedRunnerDisagreementNotices is the `--lint` arm: one NOTICE per
 // `verified`/`done` brief-v1 brief whose Verified cell credits a runner other than
 // the actor who ran a strict MAJORITY of its Evidence rows. Offline, tree-only,
@@ -198,8 +211,8 @@ func verifiedRunnerDisagreementNotices(streams []*Stream) []string {
 					"(the cell names one actor; the rows record another, e.g. after a shepherd re-ran the "+
 					"table to fix review findings). A re-run is legitimate, but its attribution must travel "+
 					"with it: update the Verified cell to name the actor who actually (re-)ran the rows so the "+
-					"cell matches the Evidence (F-verify-self-attest family).",
-				s.Name, num, cellRunner, dominantRaw, dcount, total))
+					"cell matches the Evidence (F-verify-self-attest family).%s",
+				s.Name, num, cellRunner, dominantRaw, dcount, total, acceptedRunHint(bf.Evidence)))
 		}
 	}
 	sort.Strings(notices)

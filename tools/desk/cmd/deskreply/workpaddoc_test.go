@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -125,7 +126,7 @@ func TestSourceWorkpadRender(t *testing.T) {
 	cmd.Dir = filepath.Join("..", "..")
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off")
 	cmd.Stdin = strings.NewReader(`{"Stamp":"example@abc1234","Plan":"- one","Acceptance":"- two","Validation":"not run","Notes":"none"}`)
-	out, err := cmd.CombinedOutput()
+	out, err := goquiet.Cmd(cmd).CombinedOutput()
 	if err != nil {
 		t.Fatalf("documented source renderer: %v: %s", err, out)
 	}
@@ -136,7 +137,7 @@ func TestSourceWorkpadRender(t *testing.T) {
 	bad := exec.Command("go", "run", "./examples/workpad-render")
 	bad.Dir, bad.Env = cmd.Dir, cmd.Env
 	bad.Stdin = strings.NewReader(`{"Acceptance criteria":"- two"}`)
-	if out, err := bad.CombinedOutput(); err == nil {
+	if out, err := goquiet.Cmd(bad).CombinedOutput(); err == nil {
 		t.Fatalf("unknown JSON key accepted: %s", out)
 	}
 }

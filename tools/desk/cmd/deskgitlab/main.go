@@ -23,6 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -66,8 +67,16 @@ settings step does not abort the ones after it — every step runs and the
 failures are listed in the summary); 2 for a usage error, before any effect.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskgitlab", []string{"create"}, os.Args[1:], func([]string) int {
-		return execute(os.Args[1:], os.Stdout, os.Stderr)
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+	os.Exit(deskkit.PerfRunMeasured("deskgitlab", []string{"create"}, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		sink := func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
+		code := execute(a, os.Stdout, os.Stderr, sink)
+		return code, selected
 	}))
 }
 
@@ -140,7 +149,11 @@ func bindings() []cli.Binding {
 }
 
 // execute runs one invocation against a fresh command tree.
-func execute(args []string, stdout, stderr io.Writer) int {
+func execute(args []string, stdout, stderr io.Writer, sinks ...func(perfrec.Context)) int {
+	var sink func(perfrec.Context)
+	if len(sinks) > 0 {
+		sink = sinks[0]
+	}
 	build := func() *cobra.Command {
 		root := cli.NewRoot("deskgitlab", "Assay GitLab fleet provisioning")
 		root.Long = rootLong
@@ -158,6 +171,7 @@ func execute(args []string, stdout, stderr io.Writer) int {
 		return root
 	}
 	return cli.Run(build, args, cli.Options{
+		Performance:     sink,
 		IO:              cli.IO{Out: stdout, Err: stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",

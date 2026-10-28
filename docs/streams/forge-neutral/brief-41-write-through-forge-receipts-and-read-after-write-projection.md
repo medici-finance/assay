@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 4
 id: 1fc36b0b-e3d0-4497-8863-0a039180a0f3
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
@@ -85,7 +86,9 @@ Options:
 1. **Accept the demonstrated bounded design** — accept only the proven scope and failure behavior; keep live credential provisioning and activation as separate operator acts.
 2. **Hold for correction** — identify the unproven boundary or budget and revise before acceptance.
 
-Default if no answer: none — acceptance remains pending. This implementation-evidence decision
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
 
@@ -159,6 +162,29 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Passthrough/write-through records actual executor provider attempts, retries and point cost at the provider leaf. Service client/handler timing is a separate view. A replayed receipt may be a service hit with zero observed provider sends, while unknown publication remains unknown. Diagnostics never change effect identity, replay policy, receipt authority or permit another write.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

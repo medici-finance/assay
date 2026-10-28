@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/runs/501/logs"
+    },
+    {
+      "method": "GET",
+      "path": "/_run_archive/501.zip"
+    }
+  ],
+  "result": [
+    {
+      "Name": "build",
+      "Text": "ready\nFAIL: TestThing\n"
+    }
+  ]
+}

@@ -240,10 +240,11 @@ func TestProseLedCommandLintReachesLintOutput(t *testing.T) {
 	if !hit {
 		t.Errorf("a prose-led row in an open brief must surface as a per-row [%s] NOTICE, got %v", proseLedRule, unfailableRowNotices([]*Stream{open}))
 	}
-	// A CLOSED brief is not rewritten, so its rows collapse into ONE summary
-	// line (the gotest-run-vacuous precedent) — counted, never silently dropped.
+	// A CLOSED brief is not rewritten, but its row is still recorded: one per-row
+	// line, no private aggregate (statusgen/28 — the shared reporter owns the
+	// historical totals).
 	closed := &Stream{Name: "demo", Root: root, Dir: dir, Briefs: []Brief{{Num: "01", Status: "done"}}}
-	var summary, perRow int
+	var perRow int
 	for _, n := range unfailableRowNotices([]*Stream{closed}) {
 		if !strings.Contains(n, "["+proseLedRule+"]") {
 			continue
@@ -251,12 +252,12 @@ func TestProseLedCommandLintReachesLintOutput(t *testing.T) {
 		if strings.Contains(n, "Verify row 1") {
 			perRow++
 		}
-		if strings.Contains(n, "1 Verify row(s) in 1 closed brief(s)") {
-			summary++
+		if strings.Contains(n, "closed brief(s)") {
+			t.Errorf("a closed brief's prose-led row must not collapse into a private aggregate, got %q", n)
 		}
 	}
-	if summary != 1 || perRow != 0 {
-		t.Errorf("a closed brief's prose-led rows must collapse into one summary [%s] NOTICE (summary=%d perRow=%d), got %v", proseLedRule, summary, perRow, unfailableRowNotices([]*Stream{closed}))
+	if perRow != 1 {
+		t.Errorf("a closed brief's prose-led row must keep its per-row [%s] NOTICE (perRow=%d), got %v", proseLedRule, perRow, unfailableRowNotices([]*Stream{closed}))
 	}
 }
 
@@ -391,6 +392,7 @@ var liftPrimitiveAllowList = map[string]map[string]string{
 	},
 	"renderedCodeSpans": {
 		"markedCommands":             "the honoured-marker scan verifyCommand consults",
+		"transitionContext":          "judges unique visible span and unchanged context; the executable Command remains verifyCommand output",
 		"markerOverridesCommandSpan": "the lint's check that a marker replaces a command-shaped first span",
 	},
 }

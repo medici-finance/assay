@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
 // cmdPlan is the reactor's whole shipped surface: read the sweep(s), classify every row,
@@ -22,6 +23,8 @@ import (
 func cmdPlan(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	snapshotPath := fs.String("snapshot", "", "path to complete review-observation-v1 JSON")
+	selection := fs.String("selection", "", "JSON invocation with explicit policy, scope, freshness cutoff and capacity")
 	actionsPath := fs.String("actions", "", "path to `deskboard actions` JSON (or - for stdin) — REQUIRED")
 	prsPath := fs.String("prs", "", "path to `deskboard prs` JSON — supplies the head SHAs the actions verb omits")
 	recordsPath := fs.String("records", "", "path to a review-thread records JSON — derives the persistent finding ledger and the per-class round count for one PR")
@@ -35,10 +38,6 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("reviewloop plan: bad flags: " + err.Error())
 	}
-	if strings.TrimSpace(*actionsPath) == "" {
-		return deskkit.Refused("reviewloop plan: --actions is required. This tool refuses to run against no board at all: " +
-			"a reactor with no sweep is BLIND, and blind is not idle (#79).")
-	}
 
 	now := time.Now().UTC()
 	if strings.TrimSpace(*nowStr) != "" {
@@ -47,6 +46,20 @@ func cmdPlan(args []string, stdout io.Writer) error {
 			return deskkit.Refused("reviewloop plan: --now is not RFC3339: " + err.Error())
 		}
 		now = t
+	}
+
+	if *snapshotPath != "" {
+		if *actionsPath != "" || *prsPath != "" || *recordsPath != "" || strings.TrimSpace(*nowStr) == "" {
+			return deskkit.Refused("reviewloop plan: --snapshot requires explicit --now and excludes legacy inputs")
+		}
+		return planSnapshot(*snapshotPath, *selection, now, stdout)
+	}
+	if *selection != "" {
+		return deskkit.Refused("reviewloop plan: --selection requires --snapshot")
+	}
+	if strings.TrimSpace(*actionsPath) == "" {
+		return deskkit.Refused("reviewloop plan: --actions is required. This tool refuses to run against no board at all: " +
+			"a reactor with no sweep is BLIND, and blind is not idle (#79).")
 	}
 
 	actionsJSON, err := readInput(*actionsPath)
@@ -74,9 +87,10 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	}
 
 	fmt.Fprintf(stdout, "\nROWS (every row, including the waiting states — a row is never dropped for having no verb):\n")
-	board.RenderRows(stdout)
+	renderRows(board, stdout)
 
-	counts := board.CountByDisposition()
+	planned := reviewflow.PlanBoard(board, now)
+	counts := planned.Depths
 	fmt.Fprintf(stdout, "\ndispositions: %d DISPATCH · %d FLIP-VERB · %d SURFACE · %d WAIT · %d NO-OP\n",
 		counts[DispositionDispatch], counts[DispositionFlip], counts[DispositionSurface],
 		counts[DispositionWait], counts[DispositionNoOp])
@@ -87,7 +101,7 @@ func cmdPlan(args []string, stdout io.Writer) error {
 			len(u), strings.Join(u, ", "))
 	}
 
-	verbs := Coalesce([]*Board{board})
+	verbs := planned.Verbs
 	fmt.Fprintf(stdout, "\nOUTWARD VERBS, coalesced on (repo, pr, head, verb):\n")
 	if len(verbs) == 0 {
 		fmt.Fprintf(stdout, "  (none — no row on this board carries an outward verb)\n")
@@ -121,7 +135,7 @@ func cmdPlan(args []string, stdout io.Writer) error {
 		RenderFindings(stdout, rep, ledger)
 	}
 
-	verdict := Idle(board, now)
+	verdict := planned.Idle
 	fmt.Fprintf(stdout, "\nIDLE GATE (#79, in code — a model cannot declare all-clear): %s\n", verdict)
 	for _, r := range verdict.BlindReasons {
 		fmt.Fprintf(stdout, "  blind: %s\n", r)

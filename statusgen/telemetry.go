@@ -75,6 +75,7 @@ var telemetryKnownStatuses = map[string]bool{
 	"verified":    true,
 	"done":        true,
 	"blocked":     true,
+	"withdrawn":   true,
 }
 
 // normalizeStatus collapses a brief/transition status to the fixed vocabulary.
@@ -254,6 +255,7 @@ func sendTelemetry(p TelemetryPayload) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	perfCountHTTP()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

@@ -182,3 +182,27 @@ Continuing-operations owns assessment meaning; existing desks own investigation,
 review and verification. A merged repair remains awaiting measured outcome, and missing
 coverage cannot justify a repair. No second scheduler, runtime DB, forge writer or policy
 self-modification is introduced. Existing default gates and qualified legacy paths remain.
+
+## Portable execution follow-through — 16 October 2026
+
+The [execution-environment amendment](27-agent-execution-environments.md) extends this same
+public runtime. Agent-execution/01–02 supply capability/profile and preparation contracts;
+/03 consumes the existing local supervisor/adapter; /04 tests the existing controller/effect
+path under restore; /05 supplies a truthful lifecycle snapshot to current status clients;
+/06 independently investigates AX offline. R2 PostgreSQL and R4 effect identity/reconciliation
+remain authoritative. No AX task state, runner receipt or filesystem restoration grants
+work acceptance or renews authority. Existing R3/R4, celld and R7 activation obligations remain.
+
+Harness² follow-through adds agent-execution/07, an independent offline refinement-protocol experiment. Proposed harness bundles stay untrusted, immutable per invocation and subject to existing review/adoption; operator policy, enforced controls and acceptance cannot be optimized by the candidate. This changes no runtime owner.
+
+## Attributed performance adapter obligation — requested amendment, 19 October 2026
+
+Future runner/supervisor/forge-service adapters preserve the
+[perf-v3 lifecycle and request contract](../../performance-attribution-spec.md): the launcher
+owns logical session/agent identity and assigned role; each process owns fresh invocation
+identity, own CPU and actual requests. Parent links do not authorize work and inclusive
+parent timings never add to child/provider time as elapsed time. Preserve unknown coverage
+at unmanaged boundaries. Use explicit profiles and typed context; optional sink failure
+cannot change required process receipts, custody, budget accounting or recovery. Collection
+import aliases local qualified work before its separate storage/export. The /63–65 library
+and adapters precede optional remote collection, not operational runtime availability.

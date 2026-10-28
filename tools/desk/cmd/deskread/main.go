@@ -75,6 +75,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/medici-finance/assay/forgeread"
+	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -146,6 +147,7 @@ output: a versioned JSON envelope on stdout
 
   {"schema": 1, "kind": "trust",
    "items":   [{"repo": "o/n", "number": 7, "trust": {"bodyEditedAt": "…", "complete": true,
+               "bodyHistoryKnown": true,
                "events": [{"authorLogin": …, "authorId": …, "createdAt": …, "editedAt": …}]}}],
    "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
 
@@ -192,8 +194,16 @@ identity: two transports, named in the envelope's "identity" object and on one s
 `
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskread", nil, os.Args[1:], func([]string) int {
-		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+	os.Exit(deskkit.PerfRunMeasured("deskread", nil, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		sink := func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
+		code := execute(a, os.Stdout, os.Stderr, startup, sink)
+		return code, selected
 	}))
 }
 
@@ -280,7 +290,11 @@ func bindings() []cli.Binding {
 
 // execute runs one invocation against a fresh command tree. pre is the process startup (nil in
 // the in-package tests, as run never did it).
-func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer, bool) int) int {
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer, bool) int, sinks ...func(perfrec.Context)) int {
+	var sink func(perfrec.Context)
+	if len(sinks) > 0 {
+		sink = sinks[0]
+	}
 	build := func() *cobra.Command {
 		root := cli.NewRoot("deskread <kind> [flags]", "read-only forge reads on the seam, as JSON")
 		root.Long = helpLong
@@ -316,6 +330,7 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer, bool) 
 		return root
 	}
 	return cli.Run(build, args, cli.Options{
+		Performance:     sink,
 		IO:              cli.IO{Out: stdout, Err: stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
@@ -866,10 +881,16 @@ type PartialItem struct {
 // TrustJSON is deskkit.TrustPayload rendered for the wire. Times are RFC3339 with sub-second
 // precision kept (the blessing rule voids a blessing on a same-instant tie, so rounding here
 // could turn a void into a pass); a zero time renders as "".
+//
+// BodyHistoryKnown is TrustPayload.BodyHistoryKnown as the forge gave it: whether the forge
+// reported body-edit history at all. An absent bodyEditedAt cannot otherwise be told apart
+// from an unreported one, so a reader that needs "never edited" requires this true
+// (desktools-v2/71). It is additive and always rendered.
 type TrustJSON struct {
-	BodyEditedAt string      `json:"bodyEditedAt,omitempty"`
-	Complete     bool        `json:"complete"`
-	Events       []EventJSON `json:"events"`
+	BodyEditedAt     string      `json:"bodyEditedAt,omitempty"`
+	Complete         bool        `json:"complete"`
+	BodyHistoryKnown bool        `json:"bodyHistoryKnown"`
+	Events           []EventJSON `json:"events"`
 }
 
 // EventJSON is one deskkit.ContentEvent. AuthorLogin is the rendered form the trust set expects
@@ -1069,7 +1090,7 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 		if tp == nil {
 			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge returned no trust payload for %s#%d", tgt.Repo, tgt.Number), nil)
 		}
-		tj := &TrustJSON{BodyEditedAt: wireTime(tp.BodyEdited), Complete: tp.Complete, Events: []EventJSON{}}
+		tj := &TrustJSON{BodyEditedAt: wireTime(tp.BodyEdited), Complete: tp.Complete, BodyHistoryKnown: tp.BodyHistoryKnown, Events: []EventJSON{}}
 		for _, e := range tp.Events {
 			tj.Events = append(tj.Events, EventJSON{
 				AuthorLogin: e.Author, AuthorID: e.AuthorID,

@@ -15,6 +15,14 @@ offline and frozen packages; every online forge read stays on the read verb, `de
 internal, and no credential moves into a process that has none today. The 2026-09-14 direction
 in Principle 2 is amended in that part only; the rest of the approved text stands.
 
+**Amendment, 2026-10-25 (ruled on #2395, recorded in
+[`DR-forge-library`](../decisions/DR-forge-library.md), superseding `DR-forge-neutral-36`):**
+one shared forge library for reads and writes, built by this stream. `deskread` and the write
+verbs become thin command-line wrappers around it, statusgen links it for its forge calls, the
+library owns the per-role-and-repository credential, gh/glab launches are held to at most 7 by a
+down-only ratchet and git uses go-git. It amends §2 Principle 2, commitments 1 and 3 and §9's
+module-boundary sentence; see the Principle 2 amendment of that date.
+
 ## 1. The problem — the forge abstraction leaks
 
 The desk tools were written ad-hoc, one verb at a time, while the desk flows were still
@@ -142,6 +150,37 @@ proposal: nothing here makes `deskkit` importable.
 One correction is independent of the ruling: `desktools-v2/08`'s final zero follows both
 `forge-neutral/18` and `/35`, because /18 deliberately leaves the control-feeding reads to /35.
 
+#### Amendment, 2026-10-25 — one shared forge library for reads and writes (`DR-forge-library`)
+
+The driver's ruling on #2395, recorded in [`DR-forge-library`](../decisions/DR-forge-library.md),
+supersedes the 2026-10-08 amendment above (kept as history):
+
+- **One library, thin wrappers.** This stream builds one shared forge library for reads and
+  writes (`desktools-v2/75`). `deskread` and the write verbs (`deskpost`, `deskpr`, `deskreply`,
+  `deskfile`, `deskevidence`, `deskrun` and the rest) become thin command-line wrappers around
+  it. Callers see enumerated typed operations, never raw URLs, requests or queries
+  (Principle 3 unchanged).
+- **statusgen links it.** statusgen's forge calls go through the library instead of running a
+  desk-tools command (`desktools-v2/77`). The verb boundary of 2026-09-14 is retired for
+  statusgen's forge access; `deskkit` itself stays internal, which is why the library is placed
+  outside `tools/desk/internal/` (proposed root module `forgeclient/`, decided at /75's gate).
+- **The library owns the credential.** One client per role and repository, the token in a
+  private field no caller can read, never an ambient fallback. DR-desktools-v2-03,
+  DR-forge-neutral-34, DR-forge-neutral-14, DR-forge-neutral-17 and DR-forge-gitlab-11 move into
+  it unchanged. Custody-first (Principle 1) now binds at the library's constructor.
+- **Launch ratchets.** gh/glab: at most 7 launch sites across desk-tools and statusgen, down-only
+  (`desktools-v2/75` adds the ratchet at its pickup count; `desktools-v2/77` lowers it to the
+  clean count, at most 7, and asserts it once statusgen's gh launches count 0). git: go-git, a git launch only where go-git cannot do the operation, on
+  its own down-only ratchet (`desktools-v2/76`).
+- `forge-neutral/18` and `/35` still move statusgen's reads onto its injected reader seam; the
+  seam's transport changes under /77. `desktools-v2/08` still holds statusgen's gh count (the
+  counter's class a) at zero. statusgen's other counted forge facts are not /08's: the GraphQL
+  blocks (class c) retire with forge-neutral/18's reads, and the `origin`-based forge
+  classification (class b) and API host literals (class d) with /77, whose row 9 asserts the
+  whole `statusgen sites:` total at `0`. Its Task 7 then widens /08's class a gate to that whole
+  total, so a site re-added later fails CI (row 11). /77 depends on /08 (wave 8), so the class a
+  gate and the `statusgen/**` path entry always land first and /08 never narrows /77's gate.
+
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 
 The v2 Forge library exposes typed **access-pattern** operations — e.g. *review-queue
@@ -181,14 +220,17 @@ Architectural commitments (including the additive CLI contract of §9):
 1. **ONE seam, and only the two backends may speak GitHub/GitLab.** Every transport, identity
    handoff, query construction, remote name, and subprocess name passes through
    `deskkit.Forge`. (Principle 3's "no raw query crosses the interface" is the query half of
-   this.)
+   this.) *(2026-10-25, `DR-forge-library`: the seam becomes the shared forge library that
+   `desktools-v2/75` builds; the backends move behind it and the rule is otherwise unchanged.)*
 2. **A ban-lint that makes the reach-past a red build, not a code-review catch** — and that
    covers statusgen, which is not under `forgeban` today.
 3. **The cross-module boundary is a VERB, not a package.** A second module reaches the seam
    by running `deskread` and parsing its versioned envelope (Principle 2); `deskkit` stays
    internal. v2 enforces that boundary, it does not replace it. (The 2026-10-08 amendment in
-   Principle 2, `DR-forge-neutral-36`, lets statusgen link a narrow module's offline and frozen
-   packages; every online forge read still crosses the verb.)
+   Principle 2, `DR-forge-neutral-36`, let statusgen link a narrow module's offline and frozen
+   packages. *Superseded 2026-10-25 by `DR-forge-library`: the cross-module boundary is the
+   shared forge library, a narrow typed package with its own credential, which statusgen
+   links; `deskkit` stays internal.*)
 4. **Custody-first native clients** (Principle 1): explicit minted-token, key-presence
    boundary, refuse-ambient — on the desk read path and on statusgen.
 5. **Incremental, tool-by-tool migration, with the old path REMOVED as each lands.**
@@ -403,8 +445,9 @@ have a bounded Go-port owner. A small tool is not an exception.
   result. The contract explicitly covers `--flag=value`, `--flag value`, `--`, repeated flags,
   dash-leading values, required arguments, unknown flags and persistent flags.
 - No new runtime policy engine or mandatory config file is introduced. Each independent
-  module keeps its boundary; statusgen still uses deskread for forge access, never imports
-  internal deskkit for CLI reuse. Unrequested completion commands are disabled by default.
+  module keeps its boundary; statusgen never imports internal deskkit for CLI reuse. (Its forge
+  access moves from `deskread` to the shared forge library under `desktools-v2/77`,
+  `DR-forge-library`; the CLI migration does not depend on that.) Unrequested completion commands are disabled by default.
 
 ### Configuration contract
 
@@ -424,6 +467,14 @@ have a bounded Go-port owner. A small tool is not an exception.
   need documented round-trip/atomic behavior and explicit compatibility evidence.
 
 ### Rollout and acceptance
+
+**Amendment, 2026-10-18.** Ratification of the target architecture at revision 23f655f5d: https://github.com/medici-finance/assay/issues/2500#issuecomment-6137853872
+The new-tool rule has no ruling of its own: it applies that ratification and the request in medici-finance/assay#2111.
+Under the target architecture, Cobra/Viper is a
+requirement for every **new** command and verb adapter and for every surviving CLI, not a
+port of every existing verb: ports of verbs whose domain retires are withdrawn and their
+entrypoints are `exempt` until retired. Normative text: [cli-contract.md §7](cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18).
+The paragraphs below stand for the surviving tools.
 
 `desktools-v2/15` supplies the foundation, a source-derived complete inventory, and **authors
 bounded implementation briefs for every remaining tool in that same deliverable**. Each row
@@ -449,3 +500,66 @@ malformed configuration on help, per-platform source semantics, stable non-help 
 independent domain admission and multiple invocations in one process. Negative controls
 must fail on an omitted tool, ignored Viper binding, effectful help, reintroduced custom
 parser or widened configuration source. A staged CI patch is not a live completion gate.
+
+## 10. Attributed performance — requested amendment, 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) extends the future tool suite
+with qualified local brief/issue attribution, logical session and unique agent/invocation IDs,
+originating desk role and actual assigned role. Desks/launchers set explicit environment
+context; real CLI adapters accept validated overrides. Each subprocess records its own work
+and carries causal links. Measure actual forge attempts, request duration and attributable
+GraphQL points, preserving unknown/estimated coverage and preventing parent/child duplication.
+
+This is new versioned local workflow disclosure with an explicit additional profile. Preserve
+perf-v1/perf-v2, their defaults and tests; no existing opt-in authorizes new work linkage or
+remote transmission. perfrec stays the credential-free library and one local writer; future
+perfdata import owns aliased collection/export, storage and transport. No database/API is a
+prerequisite for local v3. Required audit, quota enforcement and custody are unaffected.
+
+Deliver through new /63 (schema/resolver/readers), /64 (launch and CLI/env context), /65
+(provider timing/cost), then unfinished /62 and statusgen/26. CLI migrations/new tools adopt
+this shared seam through cli-contract.md rather than duplicating parsers or stopping at v2
+collection. Preserve completed /61's implementation/Evidence; collection's admission state is unchanged. The
+new implementation briefs carry their own disclosure gates; this authoring revision does
+not claim those gates passed or activate deployment.
+
+### Query/cache service observations
+
+The [same v3 contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+also covers service/client latency and per-handler cache/coalescing work, separately from
+actual provider sends, timing and cost. Shared refreshes count actual pages once; direct,
+service-passthrough, refresh, poll and repair origins remain visible. /63 freezes bounded
+kinds/reducer fixtures; /65 supplies provider observations and existing forge-neutral/37–45
+owns service implementation/qualification. Local v3 requires no unshipped service or database.
+No implicit diagnostic propagation, raw work locator forwarding or per-handler process-CPU
+attribution is permitted; missing service coverage is unknown.
+
+## 11. Shared write-policy extraction — 18 October 2026
+
+[Write policy](../../write-policy.md) is a proposed additive extraction into the
+existing deskcore module. /66 owns the evaluator, writeguard adapter and actual-consumer
+census; writeguard keeps its current CLI parser (the /31 port is withdrawn).
+Other guards keep their semantic owners. Managed consumers require allocation-bound
+inputs and separate sandbox/packaging qualification. Before pickup apply brief-v1
+§4.1.1 and current engineering guidelines; this amendment does not activate a hook.
+
+Target-consumer clarification, 19 October 2026: graph-execution/22 directly consumes
+/66 for the local harness boundary and independent sandbox proof. desktools-v2/31's
+parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
+medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
+parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.
+
+## Candidate-plus-priority integration — requested 23 October 2026
+
+Reuse [the efficiency contract](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+and its [owner reconciliation](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+v2 supplies admitted typed access-pattern reads and custody, not a second queue policy or
+scheduler. /09's completed ReviewQueueSnapshot is reused unchanged until a measured missing
+input warrants a bounded backend extension. /20–21 coordinate CLI compatibility with
+existing desk-tools/39–43; parser work must not recreate classification or priority joins.
+
+Prose and discrete clients pass the same qualified observations to the existing pure role
+planner with explicit policy/time/capacity. Provider query count, points, pages and retained
+freshness are measured under the ranked model; claims/effects stay with their role executor.
+The public direct-reader bridge remains independent of R6. Do not modify completed /09
+Evidence, add an authenticated read to an offline library or revive withdrawn core plans.

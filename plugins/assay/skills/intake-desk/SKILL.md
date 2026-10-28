@@ -163,7 +163,7 @@ not own.
 ## The board
 
 `issueboard` — read-only, one ACTION per open issue plus the intake lane's untriaged entries,
-age-flagged (`issueboard issues` / `issueboard intake` narrow to one lane). Its scan scope is the
+age-flagged (`issueboard issues --projection intake` / `issueboard intake` narrow to one lane). Its scan scope is the
 roster's, resolved at runtime; an unset/empty scan-repo roster value or a repo the token cannot read
 fails the WHOLE board with exit 6, so the board is never silently partial and an empty sweep is never
 reported as a clean board. A `needs-decision` or `question` issue ages against `--sla-days` (default
@@ -174,8 +174,16 @@ never be able to sink an ESCALATE row beneath a fresher high-impact one. An open
 `to:<role>` (filed by `deskfile new --to <role>`) is a desk-inbox item: it renders `ADDRESSED→<role>`
 in its own priority band, is held OUT of the un-briefed (CREATE-PLACEHOLDER) work — it is that desk's
 item, not free work — and, aged past `--sla-days` with no comment from that role's App, ESCALATES so
-an unread inbox surfaces without the addressee's cooperation. `issueboard issues --to <role>` narrows
+an unread inbox surfaces without the addressee's cooperation. `issueboard issues --projection inbox --to <role>` narrows
 to one desk's inbox.
+
+Use the projected forms only with an `issueboard --version` producer advertising
+`issue-projection-v1`. Older pinned producers retain `issueboard issues` and
+`issueboard issues --to <role>`; select that compatibility path before discovery,
+never as a retry after an incomplete projected read. The intake projection preserves
+the whole issue population, escalation/closure and quarantine; the inbox projection
+covers only the named addressee. Local raw intake remains `issueboard intake`.
+See [producer/plugin compatibility and rollback](https://github.com/medici-finance/assay/blob/main/docs/issue-projections.md).
 
 ## Scored triage — the impact/risk/effort triple at exit
 
@@ -196,6 +204,11 @@ surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then
   set after the placeholder exists does not change its gate. When you score an item `risk:high` and
   its placeholder already reads `gate: model`, label the issue `help wanted` and comment, naming the
   placeholder file, that human:<name> must set `gate: human` in it by hand.
+  `statusgen --scan-issues` prints one `NOTICE` for each such item on every pass, with or
+  without `--dry-run`, naming the issue and the placeholder file, until the file reads
+  `gate: human`: that line is the mechanical signal that this edit is still owed. The desk's
+  scan drain does not show it; read it by running `statusgen --root . --scan-issues --dry-run`,
+  which writes nothing.
 - **Every exit, forward-only.** All five tracked exits (and the intake lane's four) take a
   triple; scoring is forward-only — the corpus accretes from now, existing items are not
   back-labelled, so an unscored older item is expected, never a defect.
@@ -261,6 +274,40 @@ one is refused (exit 5) and the first recorded exit stands. **On a refusal or a 
 a different `--opened` to get past it; file an issue against the desk tooling naming the item and
 the message. A drain pass that exits 5 or 6 naming intake-exit records has still landed and audited
 every exit — only the named records are missing; file the same issue.
+
+**Accountable handoff (version-negotiated).** A mechanical exit, scan PR, label,
+routing comment or closed issue is not accepted successor work. With readers
+supporting `intake-handoff-v1`, record the source event, deciding role, evidence
+and disposition using `scanloop land ... --handoff <json-file> --handoff-reader
+intake-handoff-v1`; retain the original exit and append a new judgment revision.
+Publish the companion beside the existing placeholder/register record with its
+`handoff:` pointer and `handoff-opened:` source time through the normal reviewed
+change. The local history alone is not an assignment authority. The register's
+`statusgen --intake-handoffs` view reports the same meaning without changing
+`--intake-exits`.
+
+Scoping queues a linked author-spec/author-brief task for a strong author. A
+sufficiently scoped repair may use the existing issue; delivered source goes to
+installation/qualification. An external prerequisite names the role, exact action
+and wake condition. Reuse existing owner work, including when a source issue is
+closed as a duplicate. Read back the successor through its owner before treating
+the handoff as discharged; a stopped scan carrier leaves successor-owed work.
+Legacy or unreadable companions remain classification-needed. Do not promote
+raw placeholders or open a new issue merely to acknowledge an observation.
+The drain replays durable observations after restart and still applies current
+trust; use the displayed judgment to reconcile existing work, not to repeat it.
+Replay of an issue stops only when its latest event has a recorded companion
+assessed `observed` or `external-wait`, or an exit you recorded by judgment as
+`rejected-watching` with that event's `--opened`. A mechanical exit never stops it. Read the result back in
+the next pass report: an issue still owed prints an `intake:` line under
+`EMITTED` with its assessment, and a settled one no longer queues.
+`statusgen --intake-handoffs` reads only the committed intake register, never an
+issue's local companion, so it cannot confirm an issue. A newer source event on
+the issue presents it again. A `RETIRED` line records a terminal
+`gone` or `quarantined` disposition for one event. A `DEFERRED` line names
+retained events held past this pass's replay bound. Neither line is an empty queue.
+Before committing a companion to a public repository, scrub its free-text
+`evidence`, `required_action` and `wake_condition` fields; they publish as written.
 
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues. Until R-7 signs and
@@ -516,9 +563,11 @@ Stated once for every desk; this skill adds only what is its own above.
   precise, *wrong* line numbers. State the SHA a sibling-repo detail was cross-checked against, or
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
-- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
-  `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
-  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. A shared
+- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
+  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
+  use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
+  is reserved for `pr-review-desk`. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means
   the wrong installation, never "App not installed". **Fallback:** the App genuinely not installed on
   a target repo (`desktoken coverage <role> --repo <owner>/<repo>` exits 5; a missing human `gh`
@@ -599,7 +648,11 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+relay onto the tracker, nor does a durable escalation ride the lane alone. A filing that an open
+PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
+`deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
+count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
@@ -630,3 +683,25 @@ is not enough: an issue with that title from anyone else is ordinary intake. The
 If inspecting raw forge results, keep these records out of intake and work scans; use a
 direct issue read only to audit or recover the exact dispatch. Closing a record attests
 the pre-work stamp, never that the brief was verified or the work was done.
+
+
+## Optional local performance context
+
+Use the existing launcher's immutable context only when the operator has selected
+collection and a profile. Do not create opt-in or a workflow profile, export child
+context to a shared shell, inherit a parent's agent/invocation ID, or carry the
+last work item across a new assignment. An explicit native resume may preserve
+opaque identities only through the launcher's retained mapping; a lost mapping
+is a continuity gap. Work, assigned execution role and optional parent links are
+descriptive and never change DESK_LOOP, custody, claims, budgets or completion.
+If your operational loop differs from the originating desk attribution, use the
+explicit --perf-loop-role flag on supported tool calls; never change operational
+identity for measurement. Keep local workflow references and handoffs private.
+See [desk-shell mechanics](../../references/desk-shell.md#optional-local-performance-context)
+and the [Assay source entrypoint inventory](https://github.com/medici-finance/assay/blob/main/docs/performance-entrypoints.json) for supported boundaries; an
+unsupported boundary stays unknown.
+
+Apply validated handoff entries to each tool call with per-command `env KEY=value
+... tool ...` arguments or that tool's supported `--perf-*` flags. Quote values;
+never evaluate the handoff as shell code or export it into a persistent shell.
+Use `--perf-loop-role` for descriptive desk attribution; never alter `DESK_LOOP`.

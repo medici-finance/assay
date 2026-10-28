@@ -91,6 +91,14 @@ tear a cell's session down
   --keep-deskd                        leave the cell's deskd running
 ```
 
+## `cellctl hotfix install|status|clear`
+
+install, inspect or clear a local desk-tools hotfix (install and clear need sudo)
+
+```
+  (no flags)
+```
+
 ## `cellctl ls`
 
 list the cells under the registry
@@ -212,19 +220,24 @@ report a cell's session state
 
 ## `cellctl up <cell> [CLAUDE_CONFIG_DIR]`
 
-open one window per role in the resolved cockpit
+converge the cell: open a window for every role that is not already up
 
 ```
+  --apply                    string   apply a stored reconcile plan on this terminal, then launch the targeted roles
   --automate                 string   orca only: schedule one automation per role (a 5-field cron string or a preset)
   --cadence                  string   role cadence: a duration, or off
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
-  --dry-run                           print the reconcile inventory and plan, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)
+  --dry-run                           print each role's disposition, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)
   --harness                  string   harness for this run (claude|codex|cursor)
+  --json                              print the result as cell-op-v1 JSON, one entry per role, and nothing else on stdout
   --kind                     string   cell kind for this run (k8s|house|container|scrubbed)
+  --lease-wait               duration how long to wait for each launched role to take its lease and pass the scratch sweep
   --model                    string   model for THIS run only, passed through verbatim to the harness
   --no-attach                         do not attach to the session after opening it
   --no-the-desk                       do not open the the-desk window
+  --plan                              write one plan that reconciles every stale targeted role (and stale comms state) and change nothing else
   --provider                 string   provider for this run (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)
+  --role                     stringArray converge only this role; repeatable
   --set                               persist every override given into cell.env
   --tick-budget              string   per-pass tick budget (a duration)
   --with-the-desk                     open the the-desk window (the default; accepted for compatibility)
@@ -242,6 +255,14 @@ print the release tag this copy ships at
 
 ```
   --cells-root               string   absolute path of the cell registry to use for this run (overrides CELLS_ROOT)
+  --perf-agent-id            string   optional local performance context (never operational authority)
+  --perf-loop-role           string   optional local performance context (never operational authority)
+  --perf-parent-agent-id     string   optional local performance context (never operational authority)
+  --perf-parent-invocation-id string   optional local performance context (never operational authority)
+  --perf-profile             string   optional local performance context (never operational authority)
+  --perf-role                string   optional local performance context (never operational authority)
+  --perf-session-id          string   optional local performance context (never operational authority)
+  --perf-work                stringArray local performance work reference (bounded JSON object; repeats replace inherited work)
 ```
 
 ## Internal entrypoints
@@ -253,3 +274,4 @@ argv verbatim (no flag parsing by the command layer) and are not part of the ope
 - `comms-reader`
 - `container-run`
 - `model-policy`
+- `scrubbed-run`

@@ -496,6 +496,22 @@ func dockerfileFloorProblem(dockerfile string) string {
 	if gitbuild == lastFrom {
 		return "gitbuild is the final stage"
 	}
+	args, problem := gitbuildStageProblem(ins, gitbuild)
+	if problem != "" {
+		return problem
+	}
+	if p := knownPairProblem(args); p != "" {
+		return p
+	}
+	return finalStageFloorProblem(ins, lastFrom)
+}
+
+// gitbuildStageProblem returns the ARGs the gitbuild stage (the FROM at index
+// gitbuild in ins) declares, and why its single sha256 RUN does not download the
+// tarball, check its sha256 and unpack it, in that order, fail-closed and over
+// https only; "" when it does. It does not judge WHICH version and hash are
+// pinned (knownPairProblem does), so a caller can compare two Dockerfiles' pairs.
+func gitbuildStageProblem(ins []dfInstr, gitbuild int) (map[string]string, string) {
 	args := map[string]string{}
 	verified := ""
 	for i := gitbuild + 1; i < len(ins) && ins[i].op != "FROM"; i++ {
@@ -523,7 +539,7 @@ func dockerfileFloorProblem(dockerfile string) string {
 		}
 		switch {
 		case verified != "":
-			return "the gitbuild stage has more than one sha256 RUN"
+			return args, "the gitbuild stage has more than one sha256 RUN"
 		case sha < 0:
 			verified = "the gitbuild RUN has no bare `echo \"${GIT_TARBALL_SHA256}  /tmp/git.txz\" | sha256sum -c -` command"
 		case curl < 0 || tar < 0 || !(curl < sha && sha < tar):
@@ -539,14 +555,27 @@ func dockerfileFloorProblem(dockerfile string) string {
 		}
 	}
 	if verified == "" {
-		return "the gitbuild stage never checks the tarball's sha256"
+		return args, "the gitbuild stage never checks the tarball's sha256"
 	}
 	if verified != "ok" {
-		return verified
+		return args, verified
 	}
+	return args, ""
+}
+
+// knownPairProblem returns why args do not pin a reviewed (version, sha256)
+// pair from knownGitTarballs; "" when they do.
+func knownPairProblem(args map[string]string) string {
 	if want, ok := knownGitTarballs[args["GIT_VERSION"]]; !ok || args["GIT_TARBALL_SHA256"] != want {
 		return "the gitbuild ARGs pin GIT_VERSION=" + args["GIT_VERSION"] + " GIT_TARBALL_SHA256=" + args["GIT_TARBALL_SHA256"] + ", which is not a reviewed pair in knownGitTarballs"
 	}
+	return ""
+}
+
+// finalStageFloorProblem is the final-stage half of dockerfileFloorProblem: git
+// comes from gitbuild, never apt, and the floor check runs fail-closed as the
+// last layer-writing step.
+func finalStageFloorProblem(ins []dfInstr, lastFrom int) string {
 	gitIn, copyCheck, runCheck, lastLayer := -1, -1, -1, -1
 	for i := lastFrom + 1; i < len(ins); i++ {
 		in := ins[i]

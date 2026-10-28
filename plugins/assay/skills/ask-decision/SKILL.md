@@ -51,6 +51,12 @@ in `../../references/<harness>.md`; substitute it before running):
 bash <bundle>/scripts/assay-inbox.sh --walk --item 1 owner/repo [owner/repo ...]
 ```
 
+The shell discovery default (`ASSAY_INBOX_READER=auto`) requires the session's nonempty
+`DESK_LOOP`; it refuses with exit 6 before reading when absent. For an operator's ambient
+terminal, explicitly apply `ASSAY_INBOX_READER=legacy` to the command. Do not manufacture
+a desk identity. This applies to `--walk` and decision `--html`; flow-only modes do no
+issue discovery and need neither identity nor reader selection.
+
 The Go `deskinbox walk` (no `bash`/`jq` dependency, works on Windows — windows-port/13) has
 the same ordering and the same five-part format but **does not classify yet**: it presents
 every item, and numbers `--item K` over the whole queue, where the oracle numbers genuine

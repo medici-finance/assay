@@ -4,13 +4,13 @@ title: Narrow issue discovery projections before enrichment
 why: "Worker discovery pays broad issue enrichment cost while worker-ready, intake and inbox populations require different coverage and decisions."
 wave: 3
 depends: ["desk-tools/38"]
-unblocks: ["desk-tools/44"]
+unblocks: ["desk-tools/44", "graph-execution/27"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - docs/desk-workflow-efficiency-spec.md
@@ -23,11 +23,15 @@ exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behav
 domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
+design: DR-issue-projections
 consumers:
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desk-tools/42"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up desk-tools/42"
-  - "plugins/assay/scripts/assay-inbox.sh: follow-up desk-tools/42"
-  - "tools/desk/cmd/deskboard/: follow-up desk-tools/42"
+  - "tools/desk/internal/deskclient/: follow-up graph-execution/27"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here"
+  - "plugins/assay/skills/worker-desk/references/dispatch-runbook.md: fixed-here"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here"
+  - "plugins/assay/scripts/assay-inbox.sh: fixed-here"
+  - "tools/desk/cmd/deskinbox/: fixed-here"
+  - "tools/desk/cmd/deskboard/: out-of-scope (independent board populations; intake-depth note already names the local intake reader)"
 ---
 
 # Brief 42 — Narrow issue discovery projections before enrichment
@@ -101,7 +105,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIssueProjectionFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestIssueProjectionFlow ' "$o")` | exit 0; named PASS. Actual worker/intake/inbox paths select distinct typed projections before history enrichment; oracle outputs match old semantics and unnecessary histories are not requested. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIssueProjectionFaults$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestIssueProjectionFaults ' "$o")` | exit 0; named PASS. Author/edit trust, identity, comments, overflow, permission failures, escalation and positive closure mutations fail; empty work-ready cannot prove intake/inbox idle. Adjacent full board output stays compatible. |
-| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/42` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/42 --delivery a92fea2720a5d2fab84bc5a47c827413adaf762b --base 2f44050f8a706d0865e1a95ca3cd8709abe1bd2f` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 
 ## Pre-mortem and detection
 
@@ -120,3 +124,37 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
 adds implementation acceptance rather than reopening that decision. Existing adopter
 writer/custody/equivalence and collection consent gates remain separate.
+
+## Implementation acceptance hold
+
+The actual deskinbox consumer preserves the inbox script's positive ruling screen,
+cards and flow. The merged [perf-v3 integration](https://github.com/medici-finance/assay/pull/3584)
+now connects both readers to the canonical schema/context/provider seam from
+desktools-v2/63–65. The [qualification report](../../issue-projection-qualification.md)
+records the actual selected-profile writer/reader/reducer qualification; this is
+source qualification, not an independent verification claim.
+
+Shared delivery/acceptance and the independent desk-tools/38 verification prerequisite
+remain completion holds. The later [reader-reuse follow-up](https://github.com/medici-finance/assay/pull/3931)
+also leaves its requested perf-v4 before/after measurement pending the canonical codec
+and producer, as documented in [issue projections](../../issue-projections.md). Its resolver
+counts do not satisfy that measurement. None of these source qualifications activates
+any deployment, writer, credential, pin, release or collection policy.
+
+## Standing-desk consumer routing — 2026-10-18
+
+graph-execution/27 consumes this brief's planned pure policy/projection API from a
+tools/desk-local binding. It does not import cmd/main across modules, duplicate the
+classifier, change this brief's acceptance or add a process supervisor here. Preserve
+the current oracle, authority boundary and planned library home. This is a forward
+consumer, not a dependency on future workflow/controller delivery.
+
+## Prospective planner consumer checkpoint — 23 October 2026
+
+The efficiency spec §2.1/A11–A12 nominates the existing issueflow projection as a
+candidate input to graph-execution/27's shared role planner. Preserve the currently
+assigned Task/Verify/revision until its owner acknowledges any material amendment.
+At pickup, retain all work-ready/intake/inbox populations and projection-before-enrichment;
+qualify per-operation batching only through this owner and existing forge-neutral/37–38.
+No hidden global scan per root, parallel issue classifier or status/acceptance claim is added.
+This checkpoint records requested integration, not new execution Evidence or activation.

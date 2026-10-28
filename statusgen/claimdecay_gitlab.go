@@ -4,8 +4,8 @@ package main
 //
 // The decay needs ONE fact per claiming branch: is the change that branch belongs
 // to still in flight, or has it already merged/closed? On GitHub that fact comes
-// from `gh api graphql` over the branches (claimdecay.go). On GitLab there is no `gh`, and installing
-// one would not help — a GitLab project has no pull requests to list. This file
+// from a GraphQL query over the branches (claimdecay.go). On GitLab there is no such API, and
+// installing `gh` would not help — a GitLab project has no pull requests to list. This file
 // is the equivalent read against GitLab's REST v4 merge-request endpoint.
 //
 // Why a statusgen-LOCAL reader rather than the desk's forge seam: statusgen is its
@@ -297,6 +297,7 @@ func (a gitlabAPI) getMRPage(endpoint string) ([]gitlabMR, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set(a.header, a.token)
+	perfCountHTTP()
 	resp, err := gitlabHTTPDoer.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GitLab API transport error: %v", err)

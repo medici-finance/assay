@@ -29,8 +29,7 @@ id: 59f032dd-24bb-42f6-93f6-5e736c848eea
 
 files:
 - `containers/compose.yaml` (new) — the five desk services.
-- `containers/desk.env.example` (new) — placeholder env-file (variable NAMES with
-  dummy values only, per `containers/secrets.md` (planned)).
+- `containers/desk.env.example` (new) — placeholder env-file (variable NAMES with dummy values only, per `containers/secrets.md` (planned)).
 - `docs/docker.md` — add the compose section.
 
 facts:

@@ -43,6 +43,13 @@ func (d dryRunDurable) FileBug(it loopengine.Item, detail string) (string, error
 	return "dry-run://bug/" + it.ID, nil
 }
 
+// FileBugFor prints the identity the real filer would pass to `deskfile new` (--filing-brief and
+// --filing-case with --raised-by verifier); like FileBug it files nothing.
+func (d dryRunDurable) FileBugFor(it loopengine.Item, detail string, id FilingIdentity) (string, error) {
+	fmt.Fprintf(d.out, "[dry-run] file `bug` issue for %s (filing identity %s %s): %s\n", it.ID, id.Brief, id.Case, detail)
+	return "dry-run://bug/" + it.ID, nil
+}
+
 // gitDurable is the REAL durable sink used only at cutover. It carries the push-race retry
 // loop (commit -> pull --rebase -> push) in code. `run` is the injectable command runner for
 // the LOCAL steps (add, commit, the race's pull --rebase — go-git has no rebase, so that

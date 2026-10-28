@@ -45,8 +45,7 @@ id: d1d1d3a0-00c4-4ee3-ad70-1e56e965d986
 ## Context
 files:
 - `docs/streams/apps-installer/solo-identity.md` (new) — the spec.
-- `docs/streams/apps-installer/README.md` — status row and the note that the implementation
-  brief is authored after the ruling.
+- `docs/streams/apps-installer/README.md` — status row and the note that the implementation brief is authored after the ruling.
 
 single-point-of-failure: in Solo the ONE identity is the operator's, so the separation the tools
 otherwise provide by bot login does not exist. The spec must name what replaces it — GitHub's own
@@ -112,6 +111,44 @@ not a differently-versioned installed binary):
 | 4 | `grep -cE -e 'COMMENT' -e 'own pull request' …` | ≥ 2 | 8 |
 | 5 | `grep -cE -e 'ruleset' …` | ≥ 1 | 8 |
 | 6 | `statusgen --root . --lint` | exit 0 | exit 0 (LINT: PASS) |
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/streams/apps-installer/solo-identity.md && grep -cE -e '^## Human decision' docs/streams/apps-installer/solo-identity.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -cE -e 'desktoken' -e 'deskpost' -e 'deskpr' -e 'deskfile' -e 'deskevidence' -e 'deskflip' docs/streams/apps-installer/solo-identity.md` | pass exit=0 sandbox=container-netns | sha256:25d4f2a86deb | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -cE -e 'could-not-check' docs/streams/apps-installer/solo-identity.md` | pass exit=0 sandbox=container-netns | sha256:2e6d31a5983a | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'COMMENT' -e 'own pull request' docs/streams/apps-installer/solo-identity.md` | pass exit=0 sandbox=container-netns | sha256:aa67a169b0bb | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -cE -e 'ruleset' docs/streams/apps-installer/solo-identity.md` | pass exit=0 sandbox=container-netns | sha256:aa67a169b0bb | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --lint` | pass exit=0 sandbox=container-netns | sha256:b92b2bb0a3ec | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+
+Post-merge verify pass, 2026-10-20, by a dispatched non-implementer verifier at merged main
+a477d1dce0c1fcd124f29ab9b6fc04557992d2eb. The witness table above is a mechanical `statusgen
+verifyrun` re-run of all 6 Verify rows on a local docker container runner (image
+assay-verify:go1.27, built FROM golang:1.27.2-trixie, git 2.47), started with `--network none`,
+sandbox=container-netns, default seccomp, with statusgen built from this tree; verifyrun rc 0 and
+`verifyrun --check` reported 6 pass, 0 fail, 0 could-not-run of 6. This runner is used under the
+driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private
+house tracker). The same rows were also run by hand at the same commit: rows 1-5 printed counts 1,
+11, 9, 8 and 8 (Expect 1, at least 6, at least 1, at least 2, at least 1), and those counts hash to
+the witness Output digests above; row 6 exited 0 with LINT: PASS and no PROBLEM line. The per-verb
+table in the spec's section 3 carries one row for each of the six write verbs that row 2 names.
+The earlier Evidence on main is the implementer's 2026-09-07 branch-tree run (all six rows
+observed passing, no verify verdict recorded); since then the brief changed only by the brief-v2
+schema migration and the sweep that added the "Default if no answer" line to its Human decision
+section, and the spec itself has not changed since 2026-09-07.
+
+Risk-bearing values: the fail-safe trigger does not fire (risk answers all present and all "no",
+not irreversible, docs-only diff under the apps-installer stream). Enumeration over the spec found
+no numeric constant; it proposes three authority bindings for a future implementation brief, all
+in the spec's section 2: ASSAY_SOLO_LOGIN = the operator login (line 38), ASSAY_TRUSTED_BOT_SLUGS =
+empty (line 50), ASSAY_BLESS_LOGIN = the operator login (line 52). Ranked by what breaks if wrong,
+the bot-slug binding is first, because a non-empty value would admit a bot login as trusted.
+
+RISK-VALUE: DERIVED — ASSAY_TRUSTED_BOT_SLUGS = (empty) @ docs/streams/apps-installer/solo-identity.md:50 — Solo creates no role App, so no bot identity exists that a key backs; any slug listed would extend trust to a login nobody in the mode controls, so the only safe value is the empty set, which is what the standing ruling on medici-finance/assay#467 adopted. No code enforces it yet; the human gate on this brief confirms it.
+
+Verification-Attestation: medici-finance/assay#3689 run=72340f5bf8d543150993a1fda5413b484efd227c13886b660d3b7ce844537a24 source=a477d1dce0c1fcd124f29ab9b6fc04557992d2eb brief=docs/streams/apps-installer/brief-08-solo-identity-spec.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: PASS** — all 6 Verify rows pass at merged main a477d1dce0c1 (witness and by hand, 0 fail); first stamp, gate:human sign-off pending.
 
 ## Human decision
 

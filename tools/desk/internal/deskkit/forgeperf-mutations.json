@@ -1,0 +1,90 @@
+{
+  "test": "go test ./internal/deskkit ./cmd/desktoken ./cmd/deskboard -count=1 -timeout 120s -run '^(TestPerfV3ForgeAttemptTimingFlow|TestPerfV3ForgeObservationParity|TestPerfV3GraphQLCostCoverage|TestAuthInvocationRecord|TestPerfLeafV3Report|TestPerfCostOperationShape|TestPerfTrustMetadataErrorFailsClosed)$'",
+  "control": {
+    "name": "CONTROL \u2014 drop every explicitly admitted request observer",
+    "file": "internal/deskkit/forgeobserve.go",
+    "old": "return RequestObserver{Sink: sink, Origin: origin}",
+    "new": "return RequestObserver{}"
+  },
+  "mutations": [
+    {
+      "name": "leaf observation removed",
+      "file": "internal/deskkit/forgetransport.go",
+      "old": "return observeRoundTrip(c.next, req)",
+      "new": "return c.next.RoundTrip(req)",
+      "test": "TestPerfV3ForgeAttemptTimingFlow"
+    },
+    {
+      "name": "timer ends at headers",
+      "file": "internal/deskkit/forgeobserve.go",
+      "old": "b.body = resp.Body",
+      "new": "b.body = resp.Body; b.finish(nil)",
+      "test": "TestPerfV3ForgeObservationParity"
+    },
+    {
+      "name": "nested leaf counted twice",
+      "file": "internal/deskkit/forgetransport.go",
+      "old": "case countingTransport, countedTransport:",
+      "new": "case countedTransport:",
+      "test": "TestPerfV3ForgeAttemptTimingFlow"
+    },
+    {
+      "name": "unobserved cost becomes zero",
+      "file": "internal/deskkit/forgepoints.go",
+      "old": "p := perfrec.Points{Coverage: perfrec.CoverageUnknown, Unit: unit}",
+      "new": "zero:=int64(0);return perfrec.Points{Coverage:perfrec.CoverageMeasured,Unit:unit,Value:&zero};p := perfrec.Points{Coverage: perfrec.CoverageUnknown, Unit: unit}",
+      "test": "TestPerfV3GraphQLCostCoverage"
+    },
+    {
+      "name": "authentication observer omitted",
+      "file": "cmd/desktoken/observation.go",
+      "old": "return deskkit.ObserveAuthClient(httpClient, observer)",
+      "new": "return httpClient",
+      "test": "TestAuthInvocationRecord",
+      "package": "./cmd/desktoken"
+    },
+    {
+      "name": "board adapter counted above cache and refusal",
+      "file": "internal/deskkit/forgetransport.go",
+      "old": "case countingTransport, countedTransport:",
+      "new": "case countingTransport:",
+      "test": "TestPerfLeafV3Report",
+      "package": "./cmd/deskboard"
+    },
+    {
+      "name": "GitHub JSON-wrapper metadata capture removed",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "ctx = context.WithValue(ctx, pointCaptureKey{}, capture)",
+      "new": "ctx = context.Background()",
+      "test": "TestPerfV3GraphQLCostCoverage"
+    },
+    {
+      "name": "GitLab trust metadata errors ignored alongside non-null business data",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif qerr != nil {\n\t\treturn nil, g.mapErr(http.MethodPost, gitlab.GraphQLAPIEndpoint, gitlabUnwrapGraphQLErr(qerr))\n\t}\n\tif len(env.Errors) > 0 {\n\t\tmsgs := make([]string, 0, len(env.Errors))\n\t\tfor _, e := range env.Errors {\n\t\t\tmsgs = append(msgs, e.Message)\n\t\t}\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: %s for %s#%d \u2014 the GitLab GraphQL trust query returned errors: %s\",\n\t\t\top, repo.Slug(), number, strings.Join(msgs, \"; \")), nil)\n\t}",
+      "new": "\tif false && qerr != nil {\n\t\treturn nil, g.mapErr(http.MethodPost, gitlab.GraphQLAPIEndpoint, gitlabUnwrapGraphQLErr(qerr))\n\t}\n\tif false && len(env.Errors) > 0 {\n\t\tmsgs := make([]string, 0, len(env.Errors))\n\t\tfor _, e := range env.Errors {\n\t\t\tmsgs = append(msgs, e.Message)\n\t\t}\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: %s for %s#%d \u2014 the GitLab GraphQL trust query returned errors: %s\",\n\t\t\top, repo.Slug(), number, strings.Join(msgs, \"; \")), nil)\n\t}",
+      "test": "TestPerfTrustMetadataErrorFailsClosed"
+    },
+    {
+      "name": "GitHub trust metadata error ignored",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "tp, err := trustFromEnvelope(env, pr)\n\tif err != nil {\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"cannot read trust events for %s#%d\", repo.Slug(), number), err)\n\t}",
+      "new": "tp, err := trustFromEnvelope(env, pr)\n\tif false && err != nil {\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"cannot read trust events for %s#%d\", repo.Slug(), number), err)\n\t}",
+      "test": "TestPerfTrustMetadataErrorFailsClosed"
+    },
+    {
+      "name": "admitted metadata operation gains a trailing definition",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "const gitlabTrustQuery = `query($path:ID!,$iid:String!){project(fullPath:$path){%s(iid:$iid){comments:notes(filter:ONLY_COMMENTS,first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{id username bot}}} activity:notes(filter:ONLY_ACTIVITY,last:100){pageInfo{hasPreviousPage} nodes{body createdAt}}}}}`",
+      "new": "const gitlabTrustQuery = `query($path:ID!,$iid:String!){project(fullPath:$path){%s(iid:$iid){comments:notes(filter:ONLY_COMMENTS,first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{id username bot}}} activity:notes(filter:ONLY_ACTIVITY,last:100){pageInfo{hasPreviousPage} nodes{body createdAt}}}}} fragment extra on Query { __typename }`",
+      "test": "TestPerfCostOperationShape"
+    },
+    {
+      "name": "GitHub decoded envelope errors ignored alongside valid item",
+      "file": "internal/deskkit/trustfetch.go",
+      "old": "if len(env.Errors) > 0 {",
+      "new": "if false && len(env.Errors) > 0 {",
+      "test": "TestPerfTrustMetadataErrorFailsClosed"
+    }
+  ]
+}

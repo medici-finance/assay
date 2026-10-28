@@ -9,6 +9,9 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Moving the contract changes which messages a public module accepts and which policy still refuses them. A human confirms the compatibility report before any trust-adjacent code moves."
+design: DR-comms-core-extract
+decision-issue: 4397
+ruling: "https://github.com/medici-finance/assay/issues/4397#issuecomment-6399352645"
 issues: []
 schema: brief-v2
 outcome: none
@@ -77,7 +80,10 @@ Options:
 1. **Approve the bounded extraction (recommended)** — accept the reviewed report with the existing authority and disclosure controls preserved.
 2. **Narrow or revise** — remove incompatible changes and resubmit the report.
 
-Default if no answer: none — implementation approval remains pending.
+Default if no answer: none — blocks until answered.
+
+Ruled 2026-10-25: option 1, on decision issue #4397 (the `ruling:` frontmatter link). The
+design record is [DR-comms-core-extract](../decisions/DR-comms-core-extract.md).
 
 ## Ground rules
 

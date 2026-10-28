@@ -2,7 +2,7 @@
 stream: performance-collection
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
 track: platform
 issues: []
@@ -12,12 +12,21 @@ spec: docs/streams/performance-collection/README.md
 
 # Optional performance collection
 
-**Status:** draft — collection and reporting amendment, updated 15 October 2026.
+**Status:** approved — the driver's full-scope approval ruling of 21 October 2026: https://github.com/medici-finance/assay/pull/3381#issuecomment-6322683460
+
+**Routes-to:** docs/streams/performance-collection/
+
 Collection can start locally before any database, API or managed cell exists. This stream
 owns delivery of optional collection/storage plumbing; it does not replace the semantic
 owners of work, runner accounting, measurement definitions or continuing outcomes.
-The stream is parked pending review and capacity admission. Authored is not implemented;
-no collection, deployment or new permission is activated by this document.
+The driver asked on 18 October 2026 for this stream to be unparked, and the approval ruling
+above admits the whole stream. Every brief is dispatchable once its `depends:` are met, the
+remote-path briefs /03, /04, /05 and /06 included; no brief is held for a later ruling.
+The `depends:` of /03 and /05 name only /01; those of /02 also name desktools-v2/63, /64 and /65.
+The delivery priority is the local-first path /01 → /02 → /07 → /08. The remote path keeps its
+separate scope and gates. Brief dependencies, verification and human gates stay in force. All
+existing todo states stay todo. Activation does not enable collection, transmission, deployment
+or a new permission.
 
 ## Direction and source boundary
 
@@ -85,7 +94,7 @@ The new deployment process is justified by ingestion credential and database cus
 
 ## Consent and information classes
 
-Preserve `telemetry-v1` and `perf-v1` unchanged, including their switches and payload promises.
+Preserve `telemetry-v1`, `perf-v1` and `perf-v2` unchanged, including their switches and payload promises.
 The collector does not silently activate statusgen's empty compiled endpoint.
 New records use `performance-event-v1`, with explicit profile and collection-policy revision:
 
@@ -212,27 +221,30 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Local performance event contract, spool and offline report](brief-01-local-performance-event-contract-spool-and-offline-report.md) | 0 | L | todo | — | — |
-| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 1 | L | todo | — | — |
+| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 4 | L | todo | — | — |
 | 03 | [Separate TimescaleDB performance database and storage adapter](brief-03-separate-timescaledb-performance-database-and-storage-adapter.md) | 1 | L | todo | — | — |
 | 04 | [Authenticated performance ingestion API](brief-04-authenticated-performance-ingestion-api.md) | 2 | L | todo | — | — |
 | 05 | [Explicit resumable upload from the local spool](brief-05-explicit-resumable-upload-from-the-local-spool.md) | 1 | M | todo | — | — |
-| 06 | [Collection replay, retention, recovery and release qualification](brief-06-collection-replay-retention-recovery-and-release-qualification.md) | 3 | M | todo | — | — |
-| 07 | [On-demand three-report bundle and thin skill](brief-07-on-demand-operating-reports.md) | 2 | L | todo | — | — |
-| 08 | [Daily report generation and report-pack qualification](brief-08-daily-report-generation.md) | 3 | M | todo | — | — |
+| 06 | [Collection replay, retention, recovery and release qualification](brief-06-collection-replay-retention-recovery-and-release-qualification.md) | 5 | M | todo | — | — |
+| 07 | [On-demand three-report bundle and thin skill](brief-07-on-demand-operating-reports.md) | 5 | L | todo | — | — |
+| 08 | [Daily report generation and report-pack qualification](brief-08-daily-report-generation.md) | 6 | M | todo | — | — |
 | 09 | [Bounded performance issue and repair-PR loop](brief-09-bounded-performance-repair-loop.md) | 7 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path and dependency waves
 
-The first useful path is `01 local collection contract → 02 real source adapters →
+The first useful path is `01 local collection contract + desktools-v2/63–65 instrument/propagation/cost contracts → 02 real source adapters →
 07 on-demand reports → 08 daily generation`. Collection is delivered and its coverage
 checked before report integration. No database, hosted API, general journey schema or
 full managed runtime is a prerequisite for local reporting.
 
 - Wave 0: 01 — local contract, bounded spool, coverage and offline reader.
-- Wave 1: 02 — source adapters; 03 — separate database; 05 — explicit uploader.
-- Wave 2: 07 — on-demand three-report bundle; 04 — authenticated ingestion.
-- Wave 3: 08 — daily generation through the same report entrypoint; 06 — remote-path qualification.
+- Wave 1: implemented desktools-v2/61; 03 — separate database; 05 — explicit uploader.
+- Wave 2: desktools-v2/63 — v3 local contract; 04 — authenticated ingestion.
+- Wave 3: desktools-v2/64 and /65 — propagation and cost observers.
+- Wave 4: 02 — version-selected real source adapters after /01 and /63–65.
+- Wave 5: 07 — on-demand three-report bundle; 06 — remote-path qualification.
+- Wave 6: 08 — daily generation through the same report entrypoint.
 - Wave 7: 09 — bounded issue/repair proposal loop, held by its typed graph-execution
   prerequisites (graph-execution/14 and /26 are wave 6, /16 wave 5). Those external
   prerequisites can dominate delivery time.
@@ -241,7 +253,7 @@ The remote path remains `01 → 03 → 04 → 06`, with 02 and 05 also required 
 Remote qualification does not hold local 07/08 hostage. The real local head is qualifying
 source coverage/retention, not deploying PostgreSQL. Existing perf-v1 import can start
 now, but absent historical CPU/call samples cannot be backfilled from delivery activity.
-Stream admission and acceptance remain separate from authoring these todo briefs.
+Stream admission covers the whole stream; implementation acceptance and runtime/collection activation remain separate.
 
 ## Three operating reports — requested 15 October 2026
 
@@ -327,4 +339,56 @@ proposals are separate rollout modes; activation requires the applicable recorde
 
 ## Workflow-efficiency contract amendment — 17 October 2026
 
-The stream stays parked. /01, /02 and /07 receive bounded phase/correlation, producer and tool-panel acceptance from the approved workflow-efficiency spec. There is no new spool, profile activation or DB/API requirement for early local qualification. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+The stream was parked when this amendment was authored.
+It is active under the full-scope approval ruling of 21 October 2026: https://github.com/medici-finance/assay/pull/3381#issuecomment-6322683460
+/01, /02 and /07 receive bounded phase/correlation, producer and tool-panel acceptance from the approved workflow-efficiency spec. There is no new spool, profile activation or DB/API requirement for early local qualification. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+
+## Local instrument reuse — 2026-10-16
+
+Fresh main already supplies perfrec and statusgen's local adapter. Desktools-v2/61 owns
+their compatible boundary/schema evolution; /62 and statusgen/26 own producer phases.
+Brief 01 preserves separate correlated collection semantics. Brief 02 consumes the
+versioned fixture contract from /61 and therefore moves to wave 2; /06 remains wave 3.
+The dependency is one-way: immediate local measurements and credential improvements do
+not wait for this stream, a collector or a database. Import old/new timing bases and
+availability explicitly; do not fabricate comparable zeroes or additive nested time.
+
+## Perf-v3 source and reporting amendment — 19 October 2026
+
+[The attributed local contract](../../performance-attribution-spec.md) supersedes v2-only
+future instrument intent. Main 2e02111ed has perf-v2 (/61 implemented); no v3/perfdata is
+claimed. The preceding dated reuse schedule is historical. This amendment does not change the stream's admission state.
+
+/01 freezes collection meanings independently; /02 imports all three local instrument versions
+after /63–65, using the existing source/epoch alias mapper. Local identifiable workflow v3 is
+not an upload payload: qualified work/native harness locators cannot enter this spool,
+preview or network. Agent/session/invocation/parent relationships, desk versus execution role,
+request-duration distributions and measured/estimated/unknown point coverage survive the
+bounded aliased contract through /03–06 storage/delivery and /07–09 reporting/assessment.
+No historical work/agent/cost inference, recursive child charging or default-profile widening.
+
+Current local reporting path: `/01 + /63 → /64 and /65 → /02 → /07 → /08`.
+Waves 0,2,3,4,5,6 reflect that path; /09 remains wave 7 due to independent runtime inputs.
+Separate DB/API work /03–05 still starts from /01 and does not block local v3 or reports.
+
+### Query/cache versus provider reporting
+
+Client service operations/attempts, server handler/cache/coalescing observations and actual
+upstream direct/passthrough/refresh/poll/repair cost retain separate kinds and coverage under
+the [v3 contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries).
+Shared upstream work is counted once, and missing server data is not a cache hit or zero
+provider cost. /01–02 and /06–08 carry the same synthetic layered journey through local import,
+retention/replay and on-demand/daily reports; no source-specific replacement collector.
+
+## Proposed review-profile consumer — 15 October 2026
+
+[Review profiles](../review-profiles/spec.md) add bounded assessment/cost consumers;
+they do not change the collection or consent contract above. Adapter brief 02 must
+preserve profile/run/attempt references, model/prompt/router/workload versions, observed
+CPU versus unavailable CPU, token categories, forge/GH calls, packet/benchmark overhead,
+failed/retry work and source coverage. No raw prompt, source packet or finding payload
+is added to the optional transport. Workflow correlation still needs explicit consent.
+Required CI benchmark evidence and budget accounting remain canonical elsewhere and
+continue with collection off. Local imported-output calibration does not wait for this
+collector. Continuing-operations owns interpretations; review-profiles owns assessment
+validation, not metric formulas or an independent run ledger.

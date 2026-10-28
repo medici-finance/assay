@@ -1,0 +1,1643 @@
+{
+  "source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+  "board_base": "0d6a1bb5bc835c2fe80d0b23da53faba23964abf",
+  "board_head": "a1d5037539688ef46cf2dbc8be380a40ecfa1d35",
+  "board_diff": "diff --git a/docs/streams/apps-installer/README.md b/docs/streams/apps-installer/README.md\nindex ffff9ac47..862f2be54 100644\n--- a/docs/streams/apps-installer/README.md\n+++ b/docs/streams/apps-installer/README.md\n@@ -70 +70 @@ per Secret or per user). The tiers change **who does the work**, never the metho\n-| 10 | [`deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act](brief-10-team-review-avatar.md) | 0 | S | todo | — | — |\n+| 10 | [`deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act](brief-10-team-review-avatar.md) | 0 | S | implemented | — | — |\ndiff --git a/docs/streams/brief-quality/README.md b/docs/streams/brief-quality/README.md\nindex 0e16a1f06..773625787 100644\n--- a/docs/streams/brief-quality/README.md\n+++ b/docs/streams/brief-quality/README.md\n@@ -22 +22 @@ issues: []\n-| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | todo | — | — |\n+| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | implemented | — | — |\ndiff --git a/docs/streams/contributor-trust/README.md b/docs/streams/contributor-trust/README.md\nindex c36621ec4..a977a2a7e 100644\n--- a/docs/streams/contributor-trust/README.md\n+++ b/docs/streams/contributor-trust/README.md\n@@ -101 +101 @@ precisely the case where prior good behaviour predicts nothing.\n-| 09 | [External-contributor credit in release notes — the aggregator names the author a fork change came from](brief-09-external-contributor-credit.md) | 1 | S | todo | — | — |\n+| 09 | [External-contributor credit in release notes — the aggregator names the author a fork change came from](brief-09-external-contributor-credit.md) | 1 | S | implemented | — | — |\ndiff --git a/docs/streams/desk-containers/README.md b/docs/streams/desk-containers/README.md\nindex 232bacd87..7aba8f569 100644\n--- a/docs/streams/desk-containers/README.md\n+++ b/docs/streams/desk-containers/README.md\n@@ -38 +38 @@ component list, build/run topology, and open questions.\n-| 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | todo | — | — |\n+| 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | implemented | — | — |\ndiff --git a/docs/streams/desk-tools/README.md b/docs/streams/desk-tools/README.md\nindex 303fec9d4..f8f1bc72c 100644\n--- a/docs/streams/desk-tools/README.md\n+++ b/docs/streams/desk-tools/README.md\n@@ -209 +209 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo\n-| 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | in-progress | — | — |\n+| 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | implemented | — | — |\n@@ -218 +218 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo\n-| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | todo | — | — |\n+| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | implemented | — | — |\ndiff --git a/docs/streams/graph-execution/README.md b/docs/streams/graph-execution/README.md\nindex cca225a85..dff68c309 100644\n--- a/docs/streams/graph-execution/README.md\n+++ b/docs/streams/graph-execution/README.md\n@@ -111 +111 @@ or removing any human gate (spec §5 states the divergence).\n-| 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | todo | — | — |\n+| 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | implemented | — | — |\n@@ -115 +115 @@ or removing any human gate (spec §5 states the divergence).\n-| 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | todo | — | — |\n+| 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | implemented | — | — |\ndiff --git a/docs/streams/measured-status/README.md b/docs/streams/measured-status/README.md\nindex 350cc4c5e..6620f4129 100644\n--- a/docs/streams/measured-status/README.md\n+++ b/docs/streams/measured-status/README.md\n@@ -81 +81 @@ scope (they are not derive-not-assert / independence-enforcement changes).\n-| 01 | [Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test](brief-01-exit-code-derivation.md) | 0 | S | todo | — | — |\n+| 01 | [Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test](brief-01-exit-code-derivation.md) | 0 | S | implemented | — | — |\ndiff --git a/docs/streams/statusgen/README.md b/docs/streams/statusgen/README.md\nindex f0e358b71..04e701626 100644\n--- a/docs/streams/statusgen/README.md\n+++ b/docs/streams/statusgen/README.md\n@@ -62 +62 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa\n-| 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 4 | M | in-progress | — | — |\n+| 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 4 | M | implemented | — | — |\n",
+  "board_diff_sha256": "8453bff1238efd69459e23dc423c862bd256eeeb3b86389e9cfa57c6181ec162",
+  "board_body_sha256": "c905abf72e656ab20cfd283a851d139ce9b7c77416fba4d134ee3246eb417ad2",
+  "board_body_pairs": [
+    {
+      "brief_excerpt": "assay:assay:apps-installer:10",
+      "witness_excerpt": "[PR #3171 (merged f52610f)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:brief-quality:01",
+      "witness_excerpt": "[PR #1719 (merged 212ea3e)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:contributor-trust:09",
+      "witness_excerpt": "[PR #980 (merged 95898d1)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:desk-containers:06",
+      "witness_excerpt": "[PR #3729 (merged 099de97)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:desk-tools:27",
+      "witness_excerpt": "[PR #1196 (merged a4700d2)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:desk-tools:37",
+      "witness_excerpt": "[PR #3331 (merged e282010)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:graph-execution:28",
+      "witness_excerpt": "[PR #3728 (merged 3ced448)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:graph-execution:32",
+      "witness_excerpt": "[PR #3307 (merged 83c6988)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:measured-status:01",
+      "witness_excerpt": "[PR #1726 (merged 26bf76f)]"
+    },
+    {
+      "brief_excerpt": "assay:assay:statusgen:26",
+      "witness_excerpt": "[PR #3759 (merged 4482989)]"
+    }
+  ],
+  "reviews": [
+    {
+      "url": "https://github.com/medici-finance/assay/pull/3200#pullrequestreview-5592762972",
+      "head": "a1d5037539688ef46cf2dbc8be380a40ecfa1d35",
+      "body_sha256": "6544a0754f72411fc5000908578664301777b9b058ecd257d3a77368d2e902ab",
+      "table": "| apps-installer/10 | #3171 | Team review tile and pre-output proof in avatar generation, committed goldens and docs |\n| brief-quality/01 | #1719 | Design contract `docs/streams/brief-quality/spec.md` and scoped follow-on briefs; design delivery does not claim their implementation |\n| contributor-trust/09 | #980 | Fragment-to-PR resolution in the changelog aggregator and its release-workflow consumer |\n| desk-containers/06 | #3729 | Five role StatefulSets, secret mounting, network policy, compatibility overlay and offline checker; no live deployment claimed |\n| desk-tools/27 | #1196 | Remaining offline-check delivery plus the existing pool/root, flip, pin and help owners |\n| desk-tools/37 | #3331 | Literal semantic oracle, matched cohorts and production test adapters; baseline scope limitations retained |\n| graph-execution/28 | #3728 | Domain schema, normative contract, normalized records and assessment calling existing evaluators; implemented only |\n| graph-execution/32 | #3307 | Fourteen-case corpus, replay, saved observations and bounded decision report; no production mechanism claimed |\n| measured-status/01 | #1726 | Canonical exit-code derivation, mapping and named regression |\n| statusgen/26 | #3759 | Shared recorder slice exists; remaining required delivery is absent as above |\n"
+    },
+    {
+      "url": "https://github.com/medici-finance/assay/pull/3200#pullrequestreview-5592834194",
+      "head": "a1d5037539688ef46cf2dbc8be380a40ecfa1d35",
+      "body_sha256": "c84a70d05ed516c0705de85832b3ffd1d99c6d25b66f88450f0a17c240fe1c2d",
+      "table": "| apps-installer/10 | #3171 | Three avatar tiles, generator, goldens and documentation exist. |\n| brief-quality/01 | #1719 | Scoped metric specification and dependent brief decomposition exist; this does not activate later scoring policy. |\n| contributor-trust/09 | #980 | Credits resolver and aggregate/release wiring exist. |\n| desk-containers/06 | #3729 | Scoped manifests, offline checker, fixtures and documentation exist; this does not certify managed runtime or live infrastructure. |\n| desk-tools/27 | #1196 | Pooled readers, shared checks, command checks, offline refusal hints and help handling exist; old Evidence-only #2295 is not the current witness. |\n| desk-tools/37 | #3331 | Scoped local review oracle, cohorts, fake provider and qualification controls exist; later counter work is separately scoped. |\n| graph-execution/28 | #3728 | Record/assessment contracts, package, schema, fixtures and guides exist; implemented does not mean verified. |\n| graph-execution/32 | #3307 | Scoped research comparison and saved replay artifacts exist; no production gate activation is claimed. |\n| measured-status/01 | #1726 | Exit-code derivation and its production-table check exist. |\n| statusgen/26 | #3759 | Partial delivery; blocking finding above. |\n"
+    }
+  ],
+  "dispositions": [
+    {
+      "brief": "apps-installer/10",
+      "number": 3171,
+      "covers": "full",
+      "brief_path": "docs/streams/apps-installer/brief-10-team-review-avatar.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "760e5af3d376b3ed0795893f5d415e3b08874f591205a97f4f43d200d90b8fa2",
+      "obligations": "## Task\n1. Add a third team tile, `App: org + \"-review\"`, in the adopter's hue, with the reviewer's\n   family glyph (GlyphDisc). Choose body/frame/glyph colours so the set passes the proof against\n   both read and act; if no colouring with GlyphDisc passes, use GlyphRing, and say which in the\n   commit message.\n2. The read and act tiles stay byte-identical (same org → same bytes as before this change).\n   Capture their SVG goldens from origin/main BEFORE editing generate.go.\n3. Update `TestGenerateTeamNamesAndCount` to three tiles. Regenerate `team-20px.png` with the\n   package's golden-update path and attach the before/after strip images to the PR description, so\n   the reviewer judges the new golden by eye rather than trusting the regeneration.\n4. Update the help text, deskavatar.md and design.md §5 to describe three team tiles.\n\n",
+      "obligations_sha256": "4f1a3765cf8c8c3a3e9e946e3d97d61495e075d6f143d3484825bd980337f9d0"
+    },
+    {
+      "brief": "brief-quality/01",
+      "number": 1719,
+      "covers": "full",
+      "brief_path": "docs/streams/brief-quality/brief-01-design-contract.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "b6cdb4e8ead0d5b8d955548d0304e7647eb14ae3e59a7b9c2d446b6b4aebf7c8",
+      "obligations": "## Task\n1. Define the six anchored dimensions, independent review contract and separate outcome record.\n2. Specify data ownership, reuse boundaries, three-state metrics, migration and open rulings.\n3. Author dependent briefs and demonstrate the dependency graph is acyclic.\n\n",
+      "obligations_sha256": "41f7453af17b0e86768d488f692dc4157e43711d8c52962bc6895ea4cb1cc121"
+    },
+    {
+      "brief": "contributor-trust/09",
+      "number": 980,
+      "covers": "full",
+      "brief_path": "docs/streams/contributor-trust/brief-09-external-contributor-credit.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "04aaa6d3fa9d6889966dc279b010c8ff9673fb2cedb1dffa464f11b7a228462f",
+      "obligations": "## Task\n\n1. `aggregate.py credits <fragment-dir>`: for each fragment, resolve the adding commit, its\n   merge commit and the pull-request number from the merge-commit subject; emit a map, with an\n   explicit unresolved marker per fragment rather than an omission, so a reader can tell \"no\n   pull request found\" from \"not looked at\".\n2. `--credits <file>` on `highlights` and `roll`: append the configured suffix to each bullet\n   of a credited fragment. Unknown or unresolved entries append nothing.\n3. `release.yml`: resolve the map (git half, then the forge half with the identity predicate\n   and the opt-out marker), pass it to both the aggregate step and the write step, deepen the\n   release job's checkout enough for the git half to reach the fragment's adding commit, and\n   add `pull-requests: read` to the changelog jobs so the forge half can read a pull request's\n   author and body. Read-only: add no `pull-requests: write`, and change no existing\n   permission. Log a named could-not-check line per unresolved fragment.\n4. `aggregate_test.sh`: the three cases in the Verify table, written to run against\n   `AGG_IMPL=testdata/old-aggregate.py` as the committed fail-first evidence.\n5. The sentence in the proxy recipe (the aggregator credits an external author automatically,\n   so a proxy fragment need not carry a hand-written credit), the opt-out marker's\n   documentation, and the credits-map shape in the tools README. Plus the changelog fragment.\n\n",
+      "obligations_sha256": "b815a2818cf9c00efce6422021765486a7633c61b427946de0bf60bf27cdb7d0"
+    },
+    {
+      "brief": "desk-containers/06",
+      "number": 3729,
+      "covers": "full",
+      "brief_path": "docs/streams/desk-containers/brief-06-k8s-manifests.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "7daf223852965dcd64df86b99d4f38e07acaae56d819da348e81e98f65e795d4",
+      "obligations": "## Task\n\n1. Package namespace and one StatefulSet/PVC per configured current desk, stdin/tty true,\n   pinned digest, declared resources, non-root, no privilege escalation, dropped capabilities\n   and explicit service-account token automount disabled for agent workloads. Require\n   default-deny ingress and no Service/Ingress exposing desk terminals. Compatibility\n   egress is explicitly allowed only to its qualified forge/model endpoints and DNS;\n   managed /09 owns its stricter API/metadata/CNPG/direct-forge denial. Preserve role\n   names/image compatibility and independently retained work volumes. No hostPath, privileged\n   container, Docker socket or hidden dependency on a desktop multiplexer.\n2. Document the **compatibility** profile's runtime Secret references and model configuration\n   under the existing human-gated /02 contract. Secret examples contain placeholders only and\n   are excluded from Kustomize resources; a build produces no credential Secret. Explicitly\n   disclose that App-PEM-bearing legacy images do not satisfy the managed target's isolation.\n   /09 and /28 own managed boot/overlay changes; do not pretend a manifest removes that custody.\n   Keep each independent role's App-PEM and model credential Secret references distinct;\n   the checker rejects a shared credential Secret between role workloads. Compatibility\n   terminal access and container session logs are transitive key custody and cannot use\n   the /28 managed operator. Document equivalent custody restrictions for `pods/log`,\n   node log files/shipping and downstream log readers; shared logging cannot widen access.\n3. Supply offline render/schema and structured checks plus hostile manifest fixtures. Reject\n   one workload hosting all roles, absent/duplicate role, missing PVC/tty, mutable image,\n   privileged/host mounts, agent service-account credential or example Secret in the build.\n   Checks must fail on each planted defect and make zero API/discovery requests. Extend\n   the same checker with `--source-secrets` to scan every committed manifest/example,\n   including unrendered Secret examples, using the existing pinned credential scanner.\n   Keep a synthetic positive control that is excluded from rendering yet still rejected.\n   Reject terminal Service/Ingress exposure, absent ingress deny and shared per-role\n   credential Secret references. The repository-wide credential scan remains independent.\n4. Update docs/docker.md with the operator-installed apply/attach workflow, explicit Pod and\n   container selection, storage/Secret/profile limits and disconnect behavior. Distinguish\n   attaching a retained session from creating a process. Link the future in-cluster operator\n   /28; no Windows, compose, CronJob or workflow-controller prerequisite for this package.\n\n## Definition of Done\n\nThe package and docs implement the declared compatibility scope, all offline rows are\nindependently witnessed and managed isolation remains explicitly unqualified until /09,/28,/29.\nHuman acceptance of /02 is not replaced by this model-gated packaging review.\n\n",
+      "obligations_sha256": "d4527f8c5f8cdf636a136b071d39daf7348d214311f2efabd1b8632fc0a8580d"
+    },
+    {
+      "brief": "desk-tools/27",
+      "number": 1196,
+      "covers": "full",
+      "brief_path": "docs/streams/desk-tools/brief-27-deskboard-concurrency-and-refusal-ergonomics.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "aab0257f0ef39cf1fc0cfc0212729592aca40871ab663f0464b071c47b13352f",
+      "obligations": "## Definition of done\n\n- `prs`, `stalled` and the drift probe run under `sweepRepos` at `sweepConcurrency`, and each\n  verb's stdout and `--json` are byte-identical to the serial version on an all-succeed fixture.\n- A repo that fails still fails the whole run for `prs` and `stalled`, non-zero, with that repo\n  named in the message; the drift probe still never fails a run.\n- `dispatch` and `awaiting` resolve roots once each through `resolveRootsOnce` and read their\n  roots under `runPerRoot`; `throughput` resolves roots exactly once for the whole run.\n- A stage `throughput` could not read is reported blind with a reason and excluded from\n  bottleneck selection; no stage is ever rendered as a zero it did not measure.\n- A pin file carrying only `desk-tools-<GOOS>-<GOARCH>` yields an in-sync (or a drift) verdict\n  naming that artifact, not could-not-check; a file carrying both still uses the bare line.\n- A `deskflip` run refused on a CONFLICTING PR performs exactly ONE forge read — the PR document\n  — and names `condition mergeable`; a run refused on a red check performs three (the PR\n  document, the reviews list, the rollup) and names `condition checks-green`; and a run that\n  reaches both rollup consumers performs the rollup read exactly once across them.\n- Every measured top body/schema refusal class in `deskpost`, `deskpr` and `deskreply` carries\n  the offline-check hint; `deskpr --check` runs every local gate, opens no connection, and exits\n  0 only when they all pass.\n- `deskpr create --help` (and the equivalent in the other five retrofitted verbs) prints usage,\n  exits 0, and appends no audit row.\n- Measured wall-clock for `prs`, `stalled`, `actions` and `throughput` on the same repo set\n  before and after, cited from the run's own output.\n- `cd tools/desk && go build ./... && go vet ./...` clean, `gofmt -l` clean on every touched\n  file, and `statusgen --root .. --lint` reports `LINT: PASS`.\n- The brief's board row is `implemented` and the changelog fragment is present.\n\n",
+      "obligations_sha256": "1b5306b33550e764cac11b4fee7a73d906e85b2fc288bafc58854520b48e7fb6"
+    },
+    {
+      "brief": "desk-tools/37",
+      "number": 3331,
+      "covers": "full",
+      "brief_path": "docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "ece4cb7f0b4a85faa235843acc73dca7b9a34205ba2e338f1f1bcdd5932199bb",
+      "obligations": "## Task\n\n1. Capture independent expected observations/actions from existing deskboard classification and\n   reviewloop planning, including body-only edits, check/review applicability, overflow, access\n   failure, superseded heads, duplicate lanes, WAIT/SURFACE/NO-OP, freshness and final idle gates.\n   Describe which historical defects are corrected intent, rather than freezing them as truth.\n   Exercise production adapters; a self-comparison of two copies is insufficient.\n2. Build a local fake-provider/disposable-Git workload runner over existing public command\n   entrypoints. Record revision/tool/plugin versions, fixture hash, host/method, seeds, cache state,\n   scope/size, concurrency and result. Keep current token memoization, audit tail, pools and\n   conditional reads in both arms. No real credentials or live provider data are required.\n3. Declare the cost vector and permitted tradeoffs before comparisons: own vs descendant CPU,\n   inclusive coverage, overlapping wall intervals, actual endpoint attempts/retries/304s, and actual\n   vs estimated/unknown provider points. Record tool invocations and complete dispatcher-plus-agent\n   work, never sum parent summaries and child events twice. No money conversion or invented\n   numerical SLO.\n4. Freeze a tool-only arm with supervision held constant. Add separate caller-only and combined arms\n   when #3325 is qualified; plugin/launcher adoption and dispatch-context policy are explicit\n   factors. Do not claim reduced context tokens equal CPU/provider savings. Keep this a bounded\n   technical fixture, not the reusable scorecard/experiment system proposed in #3305.\n5. Update affected command/operator contracts and the declared changelog; regenerate applicable\n   documentation with the existing statusgen README generator. No generated global board is branch-\n   committed. All planned tests must be wired to actual production paths, not a parallel test\n   implementation.\n\n",
+      "obligations_sha256": "799afcf30398ae3ec3ad68118cc2e2433b7cff8486cd5cac59798853a3e1f569"
+    },
+    {
+      "brief": "graph-execution/28",
+      "number": 3728,
+      "covers": "full",
+      "brief_path": "docs/streams/graph-execution/brief-28-verifier-domain-contracts.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "afce2e474638e956efd33e8896f6621f2ba5d20216bc3fa82319c651029951c9",
+      "obligations": "## Task\n\n1. Write `spec/verification-domain-v1.md` (planned) and `schemas/verification-domain-v1.json` defining\n   these records: qualified work identity (the four-segment `<cell>:<repo>:<stream>:<NN>` brief\n   ID, with elided references expanded against the declaring brief, plus the\n   graph-execution/09 instance/attempt IDs; a file path is never an identity); candidate\n   (repository, base and candidate commit and tree, artifact manifest digest); acceptance\n   binding (acceptance version and digest bound to exactly one candidate); fact set with an\n   explicit completeness state per required fact (present, missing, could-not-check);\n   reevaluation generation; and distinct execution, acceptance and retirement states.\n2. Implement `statusgen/domain` (planned) as a pure package: constructors and validators for the records,\n   canonical serialization, and an `Assess` function that maps a candidate, acceptance binding and\n   fact set onto the existing `evaluation.EvaluateCoverage` / `evaluation.EvaluateEligibility`\n   inputs and returns a typed result naming the evaluator `Identity` used. A missing or\n   could-not-check required fact holds; it is never rounded to pass.\n3. Add positive and negative fixtures under `statusgen/testdata/domain/` (planned): renamed path keeps\n   identity, missing fact holds, acceptance bound to candidate A applied to candidate B is\n   refused, execution success without acceptance stays unaccepted, stale reevaluation generation\n   is refused. Validate every fixture against the JSON schema in a test.\n4. Add the S-verification-domain row to `docs/contracts.md`, the lifecycle note to\n   `docs/lifecycle.md` and the changelog fragment.\n\n",
+      "obligations_sha256": "20bb856efbb36d63d338777bfdfeb529df65916d7a622668c977b9123fb85578"
+    },
+    {
+      "brief": "graph-execution/32",
+      "number": 3307,
+      "covers": "full",
+      "brief_path": "docs/streams/graph-execution/brief-32-investigate-criterion-level-evidence-freshness.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "f02ba3e5798594a2c05dbb4cbd31a4592f8d4b4a7249ee1df7e0b572c3f17c65",
+      "obligations": "## Task\n\n1. Trace the actual ask → acceptance criterion → brief → Verify row → execution witness\n   path at an immutable Assay revision. State which links are authored, checked, executed\n   or absent, with source locations and exact commands. Compare the documented contracts\n   with observed behaviour; unavailable evidence is could-not-check. Inspect existing\n   tests and report which already cover each suspected failure mechanism.\n2. Freeze `cases.json` before comparing alternatives. Include at least twelve explicit\n   cases: criterion tightening; a new criterion; wording-only edit; criterion reorder;\n   split/merge with duplicate text; retirement; inherited-constraint change; changed\n   Command; changed Expect; a weakened test retaining its name; an unrelated edit; and\n   an unavailable governing source. Give each an independent expected disposition and\n   rationale before obtaining results. State whether it requires fresh semantic review,\n   fresh execution, both, neither, or an explicit unknown. IDs here identify study cases,\n   not a proposed production criterion scheme.\n3. Deliver a standard-library Python replay driver that builds/invokes the real existing\n   Assay instruments against those synthetic repositories, records exact commands,\n   revisions, exit codes, results and tool versions, and compares saved results with a\n   fresh replay. Keep build work offline and caches/temp files outside tracked content.\n   No fabricated witness counts as executed evidence: distinguish parser fixtures from\n   actual command runs. Observe baseline behaviour first. Where a gap remains, compare\n   a bounded experimental mapping using existing requirement references/Verify-row IDs\n   with the baseline; keep the experimental prediction separate from observed baseline\n   results and do not wire it into the product. Reuse existing fixtures/APIs where possible.\n4. Write the decision report: prefer no-change or clearer review guidance if adequate;\n   otherwise compare conservative requirement-version binding with criterion-level\n   identity/mapping. Address semantic versus cosmetic edits, reorder/duplicates,\n   split/retirement, inherited obligations, mapping review and weakened tests. Identify\n   invalidation scope, unknown-source handling, backward compatibility, author/reviewer\n   effort and conflicts with /28–31. A hash alone cannot decide semantic equivalence.\n   Recommend the smallest justified extension to existing owners, or explicitly no\n   extension. Reconcile any difference between a satisfied register entry and actual\n   current acceptance; do not silently redefine satisfaction or demote historical records.\n5. Keep the source inventory, case rationale, raw replay results, decision and limits\n   together in the research README. Record exact commands to reproduce with no Loft\n   dependency. If follow-on work is justified, scope it and its authorization questions;\n   do not implement or create a new gate, register or status system. Add the changelog.\n\n## Definition of Done\n\nThe independent reviewer can reproduce the cases and distinguish current behaviour,\nexperimental prediction, semantic judgment and unknowns. Every claimed uncovered mechanism\nhas a source-backed reproducer; a no-gap result is valid. The report names costs and the\nowning extension point without enacting its recommendation. No existing record is rewritten\nto make evidence fit a new requirement. No docs-site generation applies to these research-only\nartifacts; executable results and report stay together.\n\n",
+      "obligations_sha256": "eb3220a9534305b924aebaadf575e58af25e9516f5288dd5e389f536c76fd6e5"
+    },
+    {
+      "brief": "measured-status/01",
+      "number": 1726,
+      "covers": "full",
+      "brief_path": "docs/streams/measured-status/brief-01-exit-code-derivation.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "2b329127467344b4d4d73ce091fac68ed5844e7518a233e2a0416073579b849a",
+      "obligations": "## Task\n1. Add a `// Derivation:` doc block to `exitcodes.go` stating the convention the table\n   follows: codes start at `3` to leave `0` for success and `1`/`2` for the shell's own\n   general-error / misuse codes, and each subsequent code is one refusal *class* the caller\n   must branch on differently (disabled vs rate-limited vs constraint-refused vs\n   unverifiable), not one per message. Name why a single `ExitRefused` (not a code per refusal\n   reason) is correct: the caller's action is identical for every compiled-in refusal.\n2. Add a test `TestExitCodeTableMatchesDerivation` (planned) that asserts each constant equals\n   the value the stated convention predicts (0 for OK; the four refusal classes are 3..6\n   contiguous; 1 and 2 are never used) and fails if any value drifts.\n3. Do not change any constant's value; if the convention and a value genuinely disagree, stop\n   and report NEEDS_CONTEXT rather than editing either to force agreement.\n4. **Fail-first (rule 9).** Add one entry to `tools/desk/internal/deskkit/mutations.json`\n   that flips the new convention (e.g. reorders two adjacent refusal-class values so the\n   stated convention and the table disagree), and extend that spec's `\"test\"` field to\n   include `TestExitCodeTableMatchesDerivation` (planned) — the field is a fixed allow-list `-run`\n   pattern consumed by `muhar`, and a new test the pattern does not name is invisible to it,\n   so the mutant cannot be caught until the field is widened. Confirm the corpus's own guard\n   catches it — run `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json`\n   and check the new mutation reports CAUGHT (mutant applied) and the suite is GREEN again once\n   reverted.\n   Record the red-then-green run under `## Evidence`.\n\n",
+      "obligations_sha256": "b42f2df1f4b1864fb48deb580783c92db76ebf992497cd4f27a245032211f353"
+    },
+    {
+      "brief": "statusgen/26",
+      "number": 3759,
+      "covers": "partial",
+      "brief_path": "docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md",
+      "brief_source": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+      "brief_sha256": "3ec0f166846085d402f9b820fc858144ac2a40505002fe4e95b00fbf39da3aa5",
+      "obligations": "## Task\n\n1. Adopt the perf-v3 shared recorder API and explicitly selected profile at the current exitProcess boundary, preserving all exits, opt-out behavior and legacy mode mapping. Account for package-init versus Go-entrypoint timing explicitly; do not change historical perf-v1 semantics.\n2. Add phases through existing owners for discovery/load, parse, eligibility/coverage evaluation and rendering. Observe actual deskread child starts/elapsed time without opening a forge client in statusgen; the child owns provider/credential counters. Do not sum child and parent inclusive time as elapsed savings.\n3. Inventory repeated reads/parses within one invocation in lint, regen, gate-scores and next-up. Reuse the same validated source snapshot/results where those owners already support it; keep the parser/evaluation implementations canonical. A changed membership or file revision between declared snapshots must trigger fresh input, never a stale empty result. Report no-op reuse when the reference workload shows none.\n4. Add credential-free synthetic small/large stream workloads for all four offline modes plus a fake deskread process. Record cold/warm p50/p95, CPU, file reads/parses and child counts with sample and source revisions. Compare output/exit/coverage byte-for-byte against the fresh reference evaluator; numerical targets require a declared workload.\n5. Prove statusgen keeps zero imports of tools/desk/custody, no new network endpoint and no telemetry files when off. Document how deskperf reads statusgen records and how future context resolver 20 consumes explicit immutable snapshots without weakening independent membership enumeration. Keep module resolution working with GOWORK=off.\n\n",
+      "obligations_sha256": "ca0d6d287bbfa315ac0ebb3aa661551d3c11ec99c62e6a461916ee67a26222df"
+    }
+  ],
+  "records": [
+    {
+      "pull": {
+        "number": 3171,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-16T13:28:49Z",
+        "merge_commit_sha": "f52610f4e036de6b8e01e16c6f7aadde168b5b25",
+        "head": {
+          "sha": "0e6a2c528c4bafc4c6d3347b057ed23e258b9205",
+          "ref": "feat/assay--apps-installer--10"
+        },
+        "body": "Brief: apps-installer/10\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3171",
+      "body_sha256": "43dbfca7a0e9e9fd2a4ac6cfa44f99254b098642f5d8a81bbfb343a45fc4a140",
+      "body_lines": [
+        8
+      ],
+      "files": [
+        {
+          "filename": "changelog/feat-assay--apps-installer--10.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/desk-tools/deskavatar.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/apps-installer/brief-10-team-review-avatar.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/apps-installer/design.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskavatar/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskavatar/main_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/avatar/avatar_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/avatar/generate.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/avatar/team_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/avatar/testdata/golden/team-20px.png",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/avatar/testdata/golden/team-example-act.svg",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/avatar/testdata/golden/team-example-read.svg",
+          "status": "added"
+        }
+      ],
+      "merge_paths": [
+        "changelog/feat-assay--apps-installer--10.md",
+        "docs/desk-tools/deskavatar.md",
+        "docs/streams/apps-installer/brief-10-team-review-avatar.md",
+        "docs/streams/apps-installer/design.md",
+        "tools/desk/cmd/deskavatar/main.go",
+        "tools/desk/cmd/deskavatar/main_test.go",
+        "tools/desk/internal/avatar/avatar_test.go",
+        "tools/desk/internal/avatar/generate.go",
+        "tools/desk/internal/avatar/team_test.go",
+        "tools/desk/internal/avatar/testdata/golden/team-20px.png",
+        "tools/desk/internal/avatar/testdata/golden/team-example-act.svg",
+        "tools/desk/internal/avatar/testdata/golden/team-example-read.svg"
+      ],
+      "merge_paths_sha256": "3cc3f432e415ab27513a5eb8bfa7ace0ad28295d53430173547b35cf08523c96",
+      "scope_excerpt": "`deskavatar --tier team` now writes a third tile, `<org>-review`, for the reviewer App that apps-installer/09 added to the team tier. Without it, review approvals would show GitHub's default avatar.\n\n- **Review tile:** the adopter's hue on a muted body (accent mixed 55% toward the dark tile colour), accent frame, and the family reviewer's glyph: a light solid disc (`GlyphDisc`). The disc passes the 20 px proof against read and act for all 360 hues (smallest mean ΔE 6.4, largest silhouette IoU 0.44, so the disc's silhouette is what separates it). The `GlyphRing` fallback the brief allows was not needed.\n- **Read and act are byte-identical to before.** Their SVGs for org `example` are pinned as goldens captured from the pre-change build (`testdata/golden/team-example-{read,act}.svg`).\n- `TestGenerateTeamNamesAndCount` and the cmd tests now expect 3 tiles. The 20 px team strip golden is regenerated. The help text, `docs/desk-tools/deskavatar.md` and design.md §5 describe the three-tile set.\n- The brief's four `consumers:` entries change from `follow-up apps-installer/10` to `fixed-here`, so Verify row 6 can corroborate them (see Desk-decided for the row 4 Class change this required).\n\nBrief: apps-installer/10\n\n## Before / after: 20 px team strip\n\n| before (base `c3db7cc`, read + act) | after (head `0e6a2c5`, read + act + review) |\n|---|---|\n| <img src=\"https://raw.githubusercontent.com/medici-finance/assay/c3db7cca008e9dc17b3d0e7462c4a366706f699a/tools/desk/internal/avatar/testdata/golden/team-20px.png\" width=\"160\" alt=\"team strip before: two tiles\"> | <img src=\"https://raw.githubusercontent.com/medici-finance/assay/0e6a2c528c4bafc4c6d3347b057ed23e258b9205/tools/desk/internal/avatar/testdata/golden/team-20px.png\" width=\"240\" alt=\"team strip after: three tiles\"> |\n\nThese are the real 20 px goldens, enlarged 8x by the browser. At this size the read tile shows mostly as its purple frame; that rendering predates this change and is not altered here.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 1719,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-01T02:05:36Z",
+        "merge_commit_sha": "212ea3edeaff0b45f450ce0d87d6be24cd1ae358",
+        "head": {
+          "sha": "6b84aa90e09a47373fcf1e0048d366a3b50c6b44",
+          "ref": "codex/brief-quality-spec"
+        },
+        "body": "Brief: brief-quality/01\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/1719",
+      "body_sha256": "8d0d8486d9c74d64e035ecff23b621096b59639354319a93c8f1aae4d2c242ba",
+      "body_lines": [
+        9
+      ],
+      "files": [
+        {
+          "filename": "changelog/brief-quality-design.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/README.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-01-design-contract.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-02-policy-rulings.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-03-assessment-schema.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-04-desk-procedures.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-05-event-contract.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-06-acceptance-admission.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-07-outcome-adapters.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-08-quality-analysis.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/brief-09-pilot-rollout.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/brief-quality/spec.md",
+          "status": "added"
+        }
+      ],
+      "merge_paths": [
+        "changelog/brief-quality-design.md",
+        "docs/streams/brief-quality/README.md",
+        "docs/streams/brief-quality/brief-01-design-contract.md",
+        "docs/streams/brief-quality/brief-02-policy-rulings.md",
+        "docs/streams/brief-quality/brief-03-assessment-schema.md",
+        "docs/streams/brief-quality/brief-04-desk-procedures.md",
+        "docs/streams/brief-quality/brief-05-event-contract.md",
+        "docs/streams/brief-quality/brief-06-acceptance-admission.md",
+        "docs/streams/brief-quality/brief-07-outcome-adapters.md",
+        "docs/streams/brief-quality/brief-08-quality-analysis.md",
+        "docs/streams/brief-quality/brief-09-pilot-rollout.md",
+        "docs/streams/brief-quality/spec.md"
+      ],
+      "merge_paths_sha256": "fd7ad4e6c732c8800d5d776d077a896b8fb67217ff585ec69a3a8c031faac632",
+      "scope_excerpt": "Brief authoring currently collapses several task characteristics into execution tier and does not retain a comparable original/approved/completed assessment. This design separates six dimensions, proposes independent acceptance review before dispatch, and specifies an offline outcome-analysis extension using existing qualgen and statusgen seams.\n\nThe parked stream contains nine dependency-linked briefs. This PR supplies the design deliverable for 01 and authors 02–09. D2–D5 remain proposed: review ownership, pilot scope, model diversity and data/budget policy require human rulings. Merging the design does not enable admission gates or telemetry collection.\n\nValidation: current-source statusgen lint passes; inverse dependency edges and strict waves checked; public leak sweep passes; document review corrected the active-versus-draft stream mismatch. No implementation tests or independent post-merge verification claimed. A later implementation must prove the behavioral cases in the Verify tables, including stale approval, self-review, missing cost, amendments and abandoned work.\n\nSecurity-Review: pending independent review; no credentials, raw sessions, operator configuration or live-system probes included.\n\nBrief: brief-quality/01\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 980,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-13T02:17:14Z",
+        "merge_commit_sha": "95898d14d90c8760cd0534de28486fa61d94a23c",
+        "head": {
+          "sha": "0189a05dba0f1375dc830fba3325a884c045c6f3",
+          "ref": "fix/changelog-credits-resolution"
+        },
+        "body": "Brief: contributor-trust/09\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/980",
+      "body_sha256": "b0ebd432495849ca3ab946398a1b5ba4d9a2c12230eae2d0d3ade896a7c30af5",
+      "body_lines": [
+        88
+      ],
+      "files": [
+        {
+          "filename": "changelog/changelog-credits-resolution.md",
+          "status": "added"
+        },
+        {
+          "filename": "tools/changelog/README.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/changelog/aggregate.py",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/changelog/aggregate_test.sh",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/changelog/testdata/make-credits-fixture.sh",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/changelog-credits-resolution.md",
+        "tools/changelog/README.md",
+        "tools/changelog/aggregate.py",
+        "tools/changelog/aggregate_test.sh",
+        "tools/changelog/testdata/make-credits-fixture.sh"
+      ],
+      "merge_paths_sha256": "a4ade86b3479f56ad0429c47e07f8399e7138687ddbb3b5d1b5f862184f9472d",
+      "scope_excerpt": "## Why\n\nThe v1.0.7 branch dry-run (run 34729832126, `release` job, step \"CHANGELOG\ndiscipline — resolve external-contributor credits\") resolved the WRONG pull\nrequest for essentially every fragment: unrelated fragments collapsed onto the\nsame few recent merge numbers. `changelog/cellctl-cockpit-select.md` resolved to\n#913, but its adding commit is `c2ee74ef feat(cellctl): … (#917)` — a squash\nmerge sitting directly on main.\n\nThe cause is the resolution ORDER in `aggregate.py`'s `credits` subcommand. It\nread the ancestry-path merges FIRST and took the oldest one unconditionally:\n\n- a SQUASH landing has no merge that brought it in, so the resolver credited it\n  to whatever unrelated pull request merged above it;\n- a fragment that never landed on a pull request at all did the same, instead of\n  printing `unresolved`;\n- \"oldest merge on the ancestry path\" is not \"the merge that brought this commit\n  in\" — an unrelated merge above the adding commit sits on that path too.\n\n## What\n\n`_resolve_fragment_pr` now resolves in the order a landing actually happens:\n\n1. the adding commit — the OLDEST, so an added/deleted/re-added path still names\n   the landing it arrived on;\n2. that commit's OWN subject when it carries the number (trailing `(#N)` for a\n   squash, `Merge pull request #N` for a merge landed directly) — done;\n3. otherwise the FIRST merge on the `--first-parent --ancestry-path` line to\n   `HEAD` whose SECOND parent actually contains the adding commit\n   (`git merge-base --is-ancestor <adding> <merge>^2`);\n4. otherwise `unresolved`.\n\nStep 2 before step 3, and the second-parent containment test in step 3, are both\nload-bearing and both are covered by fail-first cases. A new `_git_ok` helper\nruns the containment predicate — `_git` deliberately hides the exit status, so\nit cannot answer a yes/no question.\n\n`testdata/make-credits-fixture.sh` gains the defect's shape: a squash-landed\nfragment carrying `(#5151)` followed by an unrelated `Merge pull request #9999`\nthat forks from before it. `aggregate_test.sh` gains C6 (squash landing credits\nits own number, never the later merge) and C7 (the later merge launders no\ncredit onto `never-merged.md`, and the true merge landing still resolves).\n`tools/changelog/README.md`'s resolution paragraph is rewritten to the new\norder. Behaviour is unchanged for every already-passing case.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3729,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T16:30:39Z",
+        "merge_commit_sha": "099de97604b0075229ff96b697534ccee07f0477",
+        "head": {
+          "sha": "18e8f61ccd30c0352053b56808ef98db35de1e44",
+          "ref": "codex/k8s-interactive-manifests"
+        },
+        "body": "Brief: desk-containers/06\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3729",
+      "body_sha256": "bf6702413af077687fbc4e650248508deb74f38c27f238f0e41fcfd0b89d0f94",
+      "body_lines": [
+        53
+      ],
+      "files": [
+        {
+          "filename": "changelog/k8s-interactive-manifests.md",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/.gitignore",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/README.md",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/intake-desk.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/kustomization.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/namespace.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/network.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/pr-review-desk.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/the-desk.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/verify-desk.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/base/worker-desk.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/check.py",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/check.sh",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/kustomization.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/overlays/compatibility-example/endpoints.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/overlays/compatibility-example/kustomization.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/LICENSE",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/README.md",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/checksums.json",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/namespace-v1.json",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/networkpolicy-networking-v1.json",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/serviceaccount-v1.json",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/schemas/statefulset-apps-v1.json",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/secrets.example.yaml",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/testdata/mutations.py",
+          "status": "added"
+        },
+        {
+          "filename": "containers/k8s/yaml-json.go",
+          "status": "added"
+        },
+        {
+          "filename": "docs/docker.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/proposals/non-ci-architecture/20-amendment-manifest.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/proposals/non-ci-architecture/28-interactive-kubernetes-desks.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-06-k8s-manifests.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/desk-containers/brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/desktools-v2/cli-migration.json",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/k8s-interactive-manifests.md",
+        "containers/k8s/.gitignore",
+        "containers/k8s/README.md",
+        "containers/k8s/base/intake-desk.yaml",
+        "containers/k8s/base/kustomization.yaml",
+        "containers/k8s/base/namespace.yaml",
+        "containers/k8s/base/network.yaml",
+        "containers/k8s/base/pr-review-desk.yaml",
+        "containers/k8s/base/the-desk.yaml",
+        "containers/k8s/base/verify-desk.yaml",
+        "containers/k8s/base/worker-desk.yaml",
+        "containers/k8s/check.py",
+        "containers/k8s/check.sh",
+        "containers/k8s/kustomization.yaml",
+        "containers/k8s/overlays/compatibility-example/endpoints.yaml",
+        "containers/k8s/overlays/compatibility-example/kustomization.yaml",
+        "containers/k8s/schemas/LICENSE",
+        "containers/k8s/schemas/README.md",
+        "containers/k8s/schemas/checksums.json",
+        "containers/k8s/schemas/namespace-v1.json",
+        "containers/k8s/schemas/networkpolicy-networking-v1.json",
+        "containers/k8s/schemas/serviceaccount-v1.json",
+        "containers/k8s/schemas/statefulset-apps-v1.json",
+        "containers/k8s/secrets.example.yaml",
+        "containers/k8s/testdata/mutations.py",
+        "containers/k8s/yaml-json.go",
+        "docs/docker.md",
+        "docs/proposals/non-ci-architecture/20-amendment-manifest.md",
+        "docs/proposals/non-ci-architecture/28-interactive-kubernetes-desks.md",
+        "docs/streams/desk-containers/brief-06-k8s-manifests.md",
+        "docs/streams/desk-containers/brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md",
+        "docs/streams/desktools-v2/cli-migration.json"
+      ],
+      "merge_paths_sha256": "93a80ff61e40b197b516e111f0068135fb62e3a18e9963a0f62a6cc5af5dcbf4",
+      "scope_excerpt": "## What this changes\n\nPackages the five existing desk images as separately interactive Kubernetes StatefulSets, each with a retained work PVC and distinct runtime App-PEM/model Secret references. Excluded Secret examples are empty, named, non-deployable skeletons with required key names in comments only. The compatibility base pins published image digests, runs non-root with token automount disabled, denies ingress and external egress, and exposes no terminal Service/Ingress. A separate example overlay shows storage and qualified-endpoint configuration using documentation placeholders.\n\nThis preserves the legacy credential contract and its human acceptance gate. Terminal access and session transcripts in container/node/downstream logs remain transitive key custody; managed boot, operator isolation and live qualification remain with agent-execution/09 and desk-containers/28–29. The base deliberately needs adopter Secrets, storage and a qualified forge/model egress allowlist before use.\n\n## Claims and how you verified them\n\n- `sh containers/k8s/check.sh --base --self-test`: nine resources validate against the pinned local Kubernetes schemas; five role workloads/PVC templates pass structured assertions; all 51 hostile cases are rejected.\n- `sh containers/k8s/check.sh --source-secrets --self-test`: all 25 package source files are scanned, including unrendered examples; the real pinned scanner rejects both plain and base64 synthetic credentials in an independently staged, excluded example.\n- The opt-in compatibility example renders and all ten resources pass the same cached schema validator. Its addresses and storage class are placeholders, not qualified deployment values.\n- `sh containers/scripts/layer-secret-scan.test.sh`: exit 0 on disposable local Docker fixtures, including red baked-secret controls, clean controls, fail-closed cases and label-exemption checks.\n- Actual published artifacts: all five manifest digests resolve the default `desk` account to UID/GID 999; Node and Python user lookups pass at default and explicit 999:999, and Node rejects 1000:1000 with ENOENT in all five. Each run used `--pull never --network none --read-only`, no credentials or host mounts, and an overridden entrypoint. The committed image-update verification procedure passes for all five digests, including workspace write and entrypoint execute access.\n- `go test -count=1 -timeout 90s -run '^(TestCLIInventory|TestCLIResearchReplay|TestCLIRoutingMutations)$' ./internal/clicontract` in `tools/desk`: PASS after reproducing all three missing-route failures. Exact test-class routes name desk-containers/06 and classify only the source verification launcher, assertions and YAML adapter; no runtime CLI exemption or CI assertion change.\n- `statusgen --root . --lint`: PASS with existing repository notices. `git diff --check`: clean. Full pre-push content sweep: exit 0.\n- Offline tools: Kustomize v5.8.3, kubeconform v0.8.0, gitleaks 8.30.1. No validation command contacts a cluster, performs API discovery or downloads schemas. The checker refuses unsupported renderer inputs before rendering and uses only checksummed local schemas.\n\nThe merged-delivery consumer row requires the eventual immutable delivery SHA and its actual first parent. It remains for the independent post-merge verifier; no consumer counts or runtime qualification are claimed here. Independent Evidence and generated board views are untouched.\n\n## Defect class\n\nSEC-3729-B1: compatibility custody includes interactive output wherever it is retained, not only terminal attachment. Operator docs, package docs, the architecture amendment and brief obligations now cover pods/log, node files and collectors, downstream stores/backups and their readers. The future /29 human-gated witness must reject broader readers or shared logging that widens custody. This prose/qualification obligation does not claim live enforcement or add a runtime authority.\n\nF-k8s-uid-mismatch: a positive numeric UID is insufficient when the image's named account and toolchain require passwd resolution. All five workloads and the existing offline invariant now use the actual pinned image's 999:999 account, with matching fsGroup. Every role has planted UID/GID/fsGroup mismatches. Image upgrades must recheck the actual artifact account; matching source alone is insufficient.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 1196,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-17T01:29:46Z",
+        "merge_commit_sha": "a4700d2bb73a9c048c69eb6be0b2e95c5b1703e2",
+        "head": {
+          "sha": "7784244024e80edde8f7b1b2e8efa5d4bfdb8038",
+          "ref": "feat/desk-tools-27"
+        },
+        "body": "Brief: desk-tools/27\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/1196",
+      "body_sha256": "e7e6e67089afa7e8c327f83277400a16d783dc89fc797dc53ebd01cf197434ed",
+      "body_lines": [
+        1
+      ],
+      "files": [
+        {
+          "filename": "changelog/feat-desk-tools-27.md",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/README.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/deskpr.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/edit.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/offlinehint_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskreply/deskreply.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskreply/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskreply/offlinehint_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskreply/workpad_test.go",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/feat-desk-tools-27.md",
+        "tools/desk/README.md",
+        "tools/desk/cmd/deskpr/deskpr.go",
+        "tools/desk/cmd/deskpr/edit.go",
+        "tools/desk/cmd/deskpr/main.go",
+        "tools/desk/cmd/deskpr/offlinehint_test.go",
+        "tools/desk/cmd/deskreply/deskreply.go",
+        "tools/desk/cmd/deskreply/main.go",
+        "tools/desk/cmd/deskreply/offlinehint_test.go",
+        "tools/desk/cmd/deskreply/workpad_test.go"
+      ],
+      "merge_paths_sha256": "ec0e7def1a8905a89ba27b0c0cfbe4e9bb77bc3611f6fd46880aa70ab6a2dfdf",
+      "scope_excerpt": "Brief: desk-tools/27\n\n## What this finishes\n\nMost of brief 27 (`deskboard`'s pooled repo loops, `throughput`'s single root\nresolution, `deskflip`'s cost-ordered gate) already landed. That PR's own commit\nmessage says why the board row stayed `in-progress`: two of the brief's seven\ndeliverables were not included — `deskpr --check` does not exist yet, so\n`deskpr`'s and `deskreply`'s schema refusals had no offline check to name.\n`deskpost`'s two largest measured classes already did.\n\nThis PR finishes those two deliverables and flips the board row to\n`implemented`.\n\n## Changes\n\n- **`deskpr create/update/edit --check`.** Runs every LOCAL gate the write path\n  runs — flag validity, branch state, the `Brief:`/`Issue:` trailer, the secret\n  scan, the public-repo self-containment scan, the push-transport gate — and\n  stops before minting a token or opening any connection. Exit 0 only when\n  every local gate passed; a failing gate returns its own refusal with its own\n  exit code, so `--check` is a gate run early, never a preview that can\n  disagree with the real write path.\n\n  `update` and `edit` run the subset of those gates that do not depend on the\n  *existing* PR's forge-held body/number (the trailer check for `update`, and\n  trailer-immutability plus the self-containment scan's bare-`#N` hint for\n  `edit`, all read the live PR from the forge) — the rest is reported as **not\n  checked**, by name, rather than silently skipped or rounded up to a pass.\n\n- **`deskreply --dry-run` widened to the plain reply path.** It used to refuse\n  outright without `--workpad`, leaving the plain path with no rehearsal at\n  all. It now runs every check a real reply runs — including the forge reads\n  (own-PR / open / head-branch verification) — and stops immediately before\n  the one posting call, exit 0, writing nothing. This is a *rehearsal*, not an\n  offline check (unlike `deskpr --check`): it still reaches the forge for the\n  reads a real reply performs.\n\n- **Offline-check hints on the measured top refusal classes.** `deskpr`'s\n  missing-trailer and missing-`--title` refusals, and `deskreply`'s\n  missing-workpad-marker refusal, now name the offline rehearsal that would\n  have caught them for free — the same treatment `deskpost`'s refusals already\n  had.\n\n- Board row flipped `in-progress` → `implemented`; a changelog fragment; a\n  README section documenting the new flags and why `--check` is offline while\n  `--dry-run` is a rehearsal.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3331,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-17T23:28:04Z",
+        "merge_commit_sha": "e28201023c74b5f407ae98f9833ee4f79999f1db",
+        "head": {
+          "sha": "2f4aa073176da03d448accedd7cc40479f39d7ef",
+          "ref": "codex/desk-tools-37-review-oracle"
+        },
+        "body": "Brief: desk-tools/37\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3331",
+      "body_sha256": "6e2171a924b7b756a29ba1dc3a94cfc32dc49757cb335ca30c8195763efc37bf",
+      "body_lines": [
+        9
+      ],
+      "files": [
+        {
+          "filename": "changelog/desk-tools-37.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/review-efficiency-qualification.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/qualification_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskdispatch/qualification_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/issueboard/qualification_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/reviewloop/qualification_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/citrigger_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/reviewtest/http.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/reviewtest/probe.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/reviewtest/qualification_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/reviewtest/testdata/cohorts.json",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/reviewtest/testdata/oracle.json",
+          "status": "added"
+        }
+      ],
+      "merge_paths": [
+        "changelog/desk-tools-37.md",
+        "docs/review-efficiency-qualification.md",
+        "docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md",
+        "tools/desk/cmd/deskboard/qualification_test.go",
+        "tools/desk/cmd/deskdispatch/qualification_test.go",
+        "tools/desk/cmd/issueboard/qualification_test.go",
+        "tools/desk/cmd/reviewloop/qualification_test.go",
+        "tools/desk/internal/deskkit/citrigger_test.go",
+        "tools/desk/internal/reviewtest/http.go",
+        "tools/desk/internal/reviewtest/probe.go",
+        "tools/desk/internal/reviewtest/qualification_test.go",
+        "tools/desk/internal/reviewtest/testdata/cohorts.json",
+        "tools/desk/internal/reviewtest/testdata/oracle.json"
+      ],
+      "merge_paths_sha256": "9116eb6d2e2e8fd8b1c7253ca14bec40746f6ab23caf8a843e9f41141a0f14d6",
+      "scope_excerpt": "Review collection can only be optimized safely against a fixed behavior contract and matched workload. This adds desk-tools/37's local oracle and tool-only cost cohorts, using test-binary bridges into the existing board, planner, pre-claim dispatch and issue command paths.\n\n- Literal expectations cover exact heads, sorted rows, WAIT/SURFACE/NO-OP, depth, lane independence, holds, incomplete reads and freshness. Existing command regressions cover body-only edits and check/review applicability. Captured planner stdout and dispatch round text are checked independently of internal observations. Wrong-head, missing-WAIT, ordering, depth, proposal and idle mutations must fail; Go overlays that remove production planner rows or change dispatch scope text must also be rejected.\n- Six deterministic cohorts connect board output to planning, dispatch every review candidate and include a fixed local Git reviewer. Manifests record source/binary/fixture identity, cache/concurrency, process CPU and wall intervals, invocation results and actual HTTP issue-enumeration attempts.\n- Coverage remains explicit: descendant/model/launcher CPU and billable quota points are unknown; typed provider fakes leave whole-workflow HTTP coverage partial. These are baselines for desk-tools/38, not production savings claims.\n\nValidation: named `TestWorkflowOracle` and `TestCostCohort` passes; all four affected command suites; affected-package `go vet`; shared Git quiet-runner invariant; CI reader registry; statusgen lint and all four consumer routes corroborated. Existing caps, breakers and runtime behavior are unchanged.\n\nBrief: desk-tools/37\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3728,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T17:16:08Z",
+        "merge_commit_sha": "3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf",
+        "head": {
+          "sha": "0a2eced52a298ad074141d3af93c7f72d6f35843",
+          "ref": "codex/k8s-verifier-domain-contracts"
+        },
+        "body": "Brief: graph-execution/28\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3728",
+      "body_sha256": "07dcff78f858aae4708be9bfa9cd33a3335a1205cee197b2fcf2357aa5e2107c",
+      "body_lines": [
+        56
+      ],
+      "files": [
+        {
+          "filename": "changelog/k8s-verifier-domain-contracts.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/contracts.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/lifecycle.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/desktools-v2/cli-migration.json",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/streams/graph-execution/brief-28-verifier-domain-contracts.md",
+          "status": "modified"
+        },
+        {
+          "filename": "schemas/verification-domain-v1.json",
+          "status": "added"
+        },
+        {
+          "filename": "spec/verification-domain-v1.md",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/contexthandoff/jsonschema_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/domain/assess.go",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/domain/domain_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/domain/mutate.py",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/domain/records.go",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/internal/testschema/schema.go",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/historical/stale-generation.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/invalid/missing-time.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/invalid/path-identity.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/invalid/short-object.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/invalid/unknown-field.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/invalid/unknown-state.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/invalid/zero-generation.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/semantic-invalid/candidate-mismatch.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/semantic-invalid/node-mismatch.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/semantic-invalid/omitted-requirement.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/semantic-invalid/premature-completion.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/semantic-invalid/unknown-capability.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/valid/accepted-unpublished.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/valid/candidate-a.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/valid/execution-only.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/valid/fact-could-not-check.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/valid/fact-missing.json",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/testdata/domain/valid/retirement-held.json",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskwt/maintenancecustody_unix_test.go",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/k8s-verifier-domain-contracts.md",
+        "docs/contracts.md",
+        "docs/lifecycle.md",
+        "docs/streams/desktools-v2/cli-migration.json",
+        "docs/streams/graph-execution/brief-28-verifier-domain-contracts.md",
+        "schemas/verification-domain-v1.json",
+        "spec/verification-domain-v1.md",
+        "statusgen/contexthandoff/jsonschema_test.go",
+        "statusgen/domain/assess.go",
+        "statusgen/domain/domain_test.go",
+        "statusgen/domain/mutate.py",
+        "statusgen/domain/records.go",
+        "statusgen/internal/testschema/schema.go",
+        "statusgen/testdata/domain/historical/stale-generation.json",
+        "statusgen/testdata/domain/invalid/missing-time.json",
+        "statusgen/testdata/domain/invalid/path-identity.json",
+        "statusgen/testdata/domain/invalid/short-object.json",
+        "statusgen/testdata/domain/invalid/unknown-field.json",
+        "statusgen/testdata/domain/invalid/unknown-state.json",
+        "statusgen/testdata/domain/invalid/zero-generation.json",
+        "statusgen/testdata/domain/semantic-invalid/candidate-mismatch.json",
+        "statusgen/testdata/domain/semantic-invalid/node-mismatch.json",
+        "statusgen/testdata/domain/semantic-invalid/omitted-requirement.json",
+        "statusgen/testdata/domain/semantic-invalid/premature-completion.json",
+        "statusgen/testdata/domain/semantic-invalid/unknown-capability.json",
+        "statusgen/testdata/domain/valid/accepted-unpublished.json",
+        "statusgen/testdata/domain/valid/candidate-a.json",
+        "statusgen/testdata/domain/valid/execution-only.json",
+        "statusgen/testdata/domain/valid/fact-could-not-check.json",
+        "statusgen/testdata/domain/valid/fact-missing.json",
+        "statusgen/testdata/domain/valid/retirement-held.json",
+        "tools/desk/cmd/deskwt/maintenancecustody_unix_test.go"
+      ],
+      "merge_paths_sha256": "4cadb75af2a58c7ce1bfa758da504f76cfd559f9891553cafe6d6b8ef4e0a5af",
+      "scope_excerpt": "## What this changes\n\nAdds the shared verification-domain v1 contract for qualified work, frozen candidates, candidate-bound acceptance definitions, required-fact completeness and reevaluation generations. The pure assessment adapter calls the existing eligibility and evidence-coverage functions and reports their evaluator identity. Execution, acceptance, publication and retirement remain separate observations.\n\nThe schema, specification, synthetic fixtures, lifecycle note and semantic-owner row ship together. The offline mutation runner has an exact test-class CLI inventory route owned by graph-execution/28. Brief Context and consumers name the actual changed paths, including the shared schema test helper and this PR's CI fixture repair. The future consumer Verify row requires the actual landed delivery and its actual first parent. No board status or Evidence cells were edited; lifecycle derives from the Brief-trailer PR after merge.\n\nThis follow-up also repairs the crash-test readiness-file publication described in [medici-finance/assay#3736](https://github.com/medici-finance/assay/issues/3736). The child writes its complete PID with mode 0600 to a temporary sibling in the same directory, then renames it to the path the parent observes. The original crash test's parse, nonzero-PID, surviving-child, custody-marker and subsequent-mutation refusal assertions are byte-identical. Maintenance production code and domain/evaluator semantics are unchanged by this repair.\n\n## Claims and how you verified them\n\n- The original domain implementation passed its named positive/negative cases, schema fixtures, real evaluator seam and 11 bounded mutation controls. `go test -timeout 45s -count=1 ./domain ./contexthandoff` and `go vet ./domain ./contexthandoff ./internal/testschema` passed from `statusgen`. Those source files remain unchanged by the fixture follow-up; no new run of those unchanged tests is claimed here.\n- The new PID boundary test and original crash test pass: `cd tools/desk && go test ./cmd/deskwt -run '^(TestLegacyPIDPublication|TestLegacyCoordinatorCrash)$' -count=1 -timeout 45s -v`.\n- The relevant deskwt suite passes: `cd tools/desk && go test ./cmd/deskwt -run '^(TestLegacy|TestMaintenance)' -count=1 -timeout 90s -v` (21.1s). This includes crash custody, timeout cleanup, unknown custody, transport refusal and hook-policy checks. The first sandbox run could not bind the suite's local httptest listener; the unchanged command passed with local-loopback permission. Module downloads remained disabled and no live infrastructure or provider was contacted.\n- After normally merging main at `0580e0a02df8dce18bd2d65359225e49d525bcd6`, the three CLI inventory/replay/routing tests pass, including all planted routing refusals. The registry retains the now-merged manifest PR's exact rows and this PR's exact mutation-runner route.\n- Documentation lint and diff checks pass. The full tracked tree and outward text passed local pre-publication scans, with manual review against CONTRIBUTING's prohibited-content list.\n\n## Defect class\n\nThe CI fixture used final-path existence as a readiness signal while `os.WriteFile` could still be between create/truncate and payload write. The deskwt test search for PID writes, reads and PID environment bindings found this one producer/reader pair. Its single publication helper now withholds the final path until the write has completed. The helper and its writer-boundary injection live entirely in the Unix test file; this adds no production seam, reader retry or security exception.\n\nThe earlier metadata defect falsely claimed an unchanged CLI test reader was fixed-here. The repaired claim names the changed registry, describes the reader separately, and enumerates the other delivered paths. The consumer validator and CLI discovery guard were not weakened.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3307,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-18T18:03:53Z",
+        "merge_commit_sha": "83c6988d097d654c45bd660b4ee36480a175d8bb",
+        "head": {
+          "sha": "a5141734f5a9368852055558c77128e8cc96f153",
+          "ref": "feat/graph-execution-32"
+        },
+        "body": "Brief: graph-execution/32\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3307",
+      "body_sha256": "74e58136c0d8265241b4704aa08792fd2dd92d1ce27252b42149c5eeb42a2e4c",
+      "body_lines": [
+        66
+      ],
+      "files": [
+        {
+          "filename": "changelog/criterion-evidence-freshness-study.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/research/criterion-evidence-freshness/README.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/research/criterion-evidence-freshness/cases.json",
+          "status": "added"
+        },
+        {
+          "filename": "docs/research/criterion-evidence-freshness/replay.py",
+          "status": "added"
+        },
+        {
+          "filename": "docs/research/criterion-evidence-freshness/results.json",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/desktools-v2/cli-migration.json",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/clicontract/inventory_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/citrigger_test.go",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/criterion-evidence-freshness-study.md",
+        "docs/research/criterion-evidence-freshness/README.md",
+        "docs/research/criterion-evidence-freshness/cases.json",
+        "docs/research/criterion-evidence-freshness/replay.py",
+        "docs/research/criterion-evidence-freshness/results.json",
+        "docs/streams/desktools-v2/cli-migration.json",
+        "tools/desk/internal/clicontract/inventory_test.go",
+        "tools/desk/internal/deskkit/citrigger_test.go"
+      ],
+      "merge_paths_sha256": "c68f8911d562bc2e4f878ae8bb237508bb4cdf25840c6ce2f7e7cdfa00ae5226",
+      "scope_excerpt": "## What this changes\n\nDelivers graph-execution/32: fourteen frozen semantic cases, a standard-library Python replay driver, saved observations and a source-backed decision report. Expectations were committed at 3770e9386 before measurement. The driver builds pinned source 2f56cf289 offline and invokes real verifyrun, coverage and requirements-rollup in synthetic Git repositories.\n\nNine subjects retain release and five hold. In this particular input layout, undeclared requirement tightening/addition and an inherited input under docs/streams can retain release while a separate numeric probe fails. Existing Command/Expect guards, changed-test freshness and explicitly declared governing inputs hold their controls. The authored-state rollup reports satisfied under its documented contract; it explicitly disclaims measurement.\n\nThe recommendation is guidance through existing requirement/coverage owners. The conservative source-version comparison is labelled prediction: it also flags cosmetic edits and cannot decide semantic equivalence or test adequacy. No production mechanism, schema, gate, lifecycle, pin or live skill changes.\n\n## Integration correction — C1\n\nCorrectness review 5561277121 at 43123b40e records `Verdict: request-changes`; security review 5561276151 at that same prior head records `Security-Review: pass`. C1 is fixed-awaiting-review, not worker-resolved.\n\nHead a5141734f is a normal two-parent merge of reviewed head 43123b40e and main 06587d38f. Removing only this PR's exact replay exclusion from the decoded registry reproduces complete incoming main exactly, including the role-claims route and migrated deskboard metadata. The complete incoming cross-module roster is likewise preserved with only the additional research read declaration. All four research artifacts are byte-identical to 43123b40e. No new research replay was performed for this integration-only correction.\n\nCurrent-head CI and independent re-review remain required. Previous-head green CI and review receipts do not validate this combined tree.\n\n## Validation at a5141734f\n\n- Inventory, routing mutations and exact research replay regression passed in 14.434s with a 90-second bound. The existing 21 mutations and the two neighboring-script plants plus shipped-launcher plant remain checked.\n- S2/corpus suite passed in 9.613s with a 60-second bound, including its matcher-positive and planted-path sensitivity controls.\n- Differential document lint against 06587d38f reports zero introduced problems; whitespace and the test-departure ledger are clean.\n- The two legacy cross-module structural checks skip because their tools.yml fixture is absent from the published tree: could-not-check, not a pass. Direct inspection confirms ci.yml has unfiltered push/pull_request triggers, runs the full desk suite, and invokes the role-claims cross-module check.\n- Parsed the complete saved observations and ran the committed validator across all 42 structured JSON capture commitments. This validates saved-data consistency, not fresh execution.\n- The pre-push legacy configured-vocabulary scan covered 6,120 tracked files: all 99 entries clean, zero failed/unchecked/unreadable/unsearchable/non-regular inputs. This is neither a repository-history nor a Gitleaks/TruffleHog certificate. Manual review covered the correction, commit text and public bodies for secrets, personal data and private locators.\n- Tool notices could not determine bare issue-reference provenance. The retained references were manually checked in context against the public source history; the notice is not treated as an automated pass.\n\n## Historical study receipts\n\nOriginal worker validation reported all three brief Verify rows passing, including replay, self-test and the two exact existing acceptance-definition controls with 45-second bounds. Its historical replay reported 42/42 identical byte commitments. Both independent reviews at 43123b40e later reproduced all fourteen cases with normalized semantic agreement and 17/42 identical byte commitments. Those are distinct runs. The present integration correction claims neither result as its own fresh replay.\n\nSuccessful JSON stdout is stored as decoded structure with encoding/layout, original byte size/hash and retained capture provenance. Numeric probes remain separate from Verify witnesses and adequate semantic coverage; unavailable governing input remains unknown. The empty fixture HOME's absent-roster diagnostic grants no admission authority. Byte commitments establish serialization consistency, not malicious-execution authentication.\n\n## CLI routing and corpus repair\n\nThe research replay has one exact source-only test route, owned by its brief and invoked by that brief and the research README. It is never installed or released. Neighboring scripts remain unrouted and a shipped-launcher plant invalidates the exclusion. No directory/glob exemption, parser migration, workflow or scanner change was added.\n\nThe routing test derives its owning brief from the registry reason through existing owner syntax and LoadBrief. The shipping source contains no literal research-stream locator. Record/check/self-test and report consumers use the same structured observations; no product reader contract changed.\n\n## Defect class\n\nThe study investigates mistaking authored satisfaction and reusable witnesses for current criterion coverage. It claims no production defect closure. C1 is an integration conflict at a shared registry insertion point; its correction preserves the complete main tree metadata plus this PR's exact additions.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 1726,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-27T20:40:13Z",
+        "merge_commit_sha": "26bf76fc31618e542867b7c9758de74285899d46",
+        "head": {
+          "sha": "d2f16f5bf528ba2945a32119c827f6e7514ba2e5",
+          "ref": "feat/measured-status-01"
+        },
+        "body": "Brief: measured-status/01\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/1726",
+      "body_sha256": "38b9a6e170ae1fc3068f37d3c8cbef3a02d16fe2eb918a23da2452f58821712e",
+      "body_lines": [
+        45
+      ],
+      "files": [
+        {
+          "filename": "changelog/feat-measured-status-01.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/measured-status/brief-01-exit-code-derivation.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/exitcodes.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/exitcodes_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/mutations.json",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/feat-measured-status-01.md",
+        "docs/streams/measured-status/brief-01-exit-code-derivation.md",
+        "tools/desk/internal/deskkit/exitcodes.go",
+        "tools/desk/internal/deskkit/exitcodes_test.go",
+        "tools/desk/internal/deskkit/mutations.json"
+      ],
+      "merge_paths_sha256": "c09fb37e18a5cda9c0e03903d081a2d7ed3099a4c0b31494915a9299985cf239",
+      "scope_excerpt": "## What\n\nThe desk tools' error contract is five exit codes — `0/3/4/5/6` (`ExitOK`, `ExitDisabled`, `ExitRateLimited`, `ExitRefused`, `ExitUnverifiable`) — that callers, scripts and CI branch on, with no derivation on record for why those values (and not a code per refusal class, or the skipped `1`/`2`). This PR records the convention and pins it with a test. **No constant's value changes.**\n\n- `tools/desk/internal/deskkit/exitcodes.go` gains a `Derivation:` doc block: `0` is success; `1`/`2` stay the shell's own general-error / builtin-misuse codes, so a tool-reported refusal can never be mistaken for a shell-reported crash or usage error; from `3` the table is one code per refusal *class* the caller must handle differently — disabled (stop; kill switch armed), rate-limited (wait `RetryAfter`, retry the same call), constraint-refused (fix the input; retrying unchanged never succeeds), unverifiable (fail closed) — contiguous `3..6`. A single `ExitRefused` rather than one code per refusal reason is deliberate: the caller's action is identical for every compiled-in refusal, so finer codes would add branches no caller could take differently.\n- `tools/desk/internal/deskkit/exitcodes_test.go` gains `TestExitCodeTableMatchesDerivation`, asserting each constant equals the value the stated convention predicts (`0` for OK; the four refusal classes `3..6` contiguous and distinct; `1`/`2` never used) and failing on any drift.\n- `tools/desk/internal/deskkit/mutations.json` gains a mutant that swaps a refusal-class code onto its neighbour (`ExitRateLimited = 4` → `= 5`), and the spec's fixed `-run` allow-list is widened to name the new test — without that widening the mutant is invisible to `muhar`.\n- Changelog fragment `changelog/feat-measured-status-01.md`.\n\nCloses #1216.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3759,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T20:13:29Z",
+        "merge_commit_sha": "44829891e8f74b1520b64f4180910d96e17be96a",
+        "head": {
+          "sha": "0e9a52ccf0b0935c1fab2019b5a9939cae23564c",
+          "ref": "wd1020/statusgen-26-v3"
+        },
+        "body": "Sub-split (a) of the statusgen/26 brief: `statusgen` adopts the shared perf-v3 recorder, on top of the perf-v2 record that medici-finance/assay#3745 landed on main.\n- **Board row stays `in-progress`.** Row 26 in `docs/streams/statusgen/README.md` is `in-progress`, not `implemented`, because parts (b) and (c) below remain on the statusgen/26 brief. An earlier commit on this branch set `implemented`; a later commit sets it back.\nThis PR is sub-split **(a)**: v3 adoption, flag binding, the deskread parent link, the Task 2 phases, and Verify rows 1 and 3 (Tasks 1-2). The following remain on the statusgen/26 brief and are **not** in this PR, which is why the board row stays `in-progress`:\n| 4 | `statusgen --root . --consumers --brief statusgen/26` | Re-run at this head against a squash-simulated delivery of the branch on current main (`--delivery`/`--base`): exit 0, 6 corroborated, 0 disproved, 2 unchecked (the two out-of-scope entries, `tools/desk/cmd/deskread` and `qualgen/`, are the reviewer's call). |\nEach new test carries `// regression: statusgen/26`. Two mutation checks were also run:\nBrief: statusgen/26\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3759",
+      "body_sha256": "fcca01923e1e6cfbfc7d2a4587c9a168270786900b39e0d452ad37ac4a866c56",
+      "body_lines": [
+        3,
+        16,
+        20,
+        58,
+        75,
+        106
+      ],
+      "files": [
+        {
+          "filename": "changelog/statusgen-26-v3.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/statusgen/README.md",
+          "status": "modified"
+        },
+        {
+          "filename": "docs/telemetry.md",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/brieffile.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/dispatchqueue.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/forgeread.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/load.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/parse.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/perfrecord.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/perfrecord_test.go",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/statusgen-26-v3.md",
+        "docs/streams/statusgen/README.md",
+        "docs/telemetry.md",
+        "statusgen/brieffile.go",
+        "statusgen/dispatchqueue.go",
+        "statusgen/forgeread.go",
+        "statusgen/load.go",
+        "statusgen/main.go",
+        "statusgen/parse.go",
+        "statusgen/perfrecord.go",
+        "statusgen/perfrecord_test.go"
+      ],
+      "merge_paths_sha256": "72749e122b5c09399987f00e9e676b6223534c7cdd18ff54dfd15b0bf01bdf4c",
+      "scope_excerpt": "## Summary\n\nSub-split (a) of the statusgen/26 brief: `statusgen` adopts the shared perf-v3 recorder, on top of the perf-v2 record that medici-finance/assay#3745 landed on main.\n\n- **Selected profile → perf-v3.** With `ASSAY_TELEMETRY=1` and a `tool` or `workflow` profile selected (`ASSAY_PERF_PROFILE` or `--perf-profile`), each process writes one perf-v3 process-summary record through `perfrec` (the same writer, day files, retention and install id as the desk tools).\n- **No profile → perf-v2, unchanged.** With the switch on and no profile (unset, `off`, or invalid), statusgen writes main's perf-v2 record exactly as before: its stage roster, its `http` counter and its boundary do not move. Switch off creates nothing.\n- **Two sessions, never mixed.** The perf-v2 session is begun at package initialisation, before any flag is parsed; when a profile is selected only its record is dropped. The perf-v3 session (`perfV3Session`, roster `perfV3Phases`) is begun once the context resolves. Both start at the shared process-init mark and end at the exit wrapper.\n- **perf-v3 phase roster** `discover`, `parse`, `evaluate`, `render`, `write`, `deskread`. Phases are exclusive (entering a nested phase pauses its parent), so `phaseOverlap` is always false and `n` counts segments. `evaluate` is the residue between a clean flag parse and exit. Seams: stream/archive discovery in `load.go`; README/brief/findings parsing in `parse.go`, `brieffile.go` and `load.go`; output emit and the gate-scores/next-up JSON in `main.go` and `dispatchqueue.go`; the STATUS write; and both deskread child starts in `forgeread.go`. In `main.go` the render seam carries both the v2 stage call and the v3 phase call.\n- **Flag binding.** The eight `--perf-*` flags are registered on statusgen's own flag set (statusgen may not import the desk adapter) and fed to `perfrec.ResolveContext` exactly as the flag parser accepted them. A flag overrides its environment variable, an empty flag clears it, and malformed values become `invalid` coverage that never changes output or exit.\n- **deskread parent link.** Both deskread child starts time the child's wait as the `deskread` phase. When recording, they hand the child this run's context as `--perf-*` flags on its own argv, after the read kind. `perfrec.ContextEnv` (fed no inherited environment) decides what is forwarded:\n  - workflow: session, agent, role and work, with this invocation as `parentInvocationId`;\n  - tool: the profile alone;\n  - no profile: `--perf-profile=off`.\n- **Version gate.** The flags are passed only when the resolved `deskread` lists every one of them in its `--help`. The probe runs once per process, with an empty environment, a 15s bound and a `WaitDelay`, and it runs before the `deskread` phase opens, so the phase times only the child. An older `deskread`, which would refuse an unknown flag, gets none, so output and exit never change. The parent records no request observation (`requestCoverage: missing`); the child owns its provider requests.\n- `docs/telemetry.md`: statusgen perf-v3 section (profile selection; perf-v2 kept when no profile; phase roster and segment semantics; shared boundary; the deskread link, its version gate and its coverage gap; a note that the context on the child's argv is visible to local users who can list processes and holds only validated, non-credential values; how `deskperf report` reads these records; and the resolver-20 note).\n- **Board row stays `in-progress`.** Row 26 in `docs/streams/statusgen/README.md` is `in-progress`, not `implemented`, because parts (b) and (c) below remain on the statusgen/26 brief. An earlier commit on this branch set `implemented`; a later commit sets it back.\n\n## Sub-split statement\n\nThis PR is sub-split **(a)**: v3 adoption, flag binding, the deskread parent link, the Task 2 phases, and Verify rows 1 and 3 (Tasks 1-2). The following remain on the statusgen/26 brief and are **not** in this PR, which is why the board row stays `in-progress`:\n\n- **(b)** Task 3, the snapshot-reuse inventory, and Verify row 2 (the invocation snapshot reuse parity test, which does not exist yet). Starting point: `parseBriefFile` already memoizes on (path, content hash).\n- **(c)** Task 4, the synthetic workloads and bench (`statusgen/bench/perfworkload.sh` and `statusgen/testdata/perfworkload/`).\n\nNo child briefs are authored here.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3745,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T19:30:04Z",
+        "merge_commit_sha": "4cd89433272a47d0ba99f9f01f4c559885871fb8",
+        "head": {
+          "sha": "1f55174b0686d04a20768ba681ae5a73ca6ad382",
+          "ref": "wd1020/statusgen-telemetry"
+        },
+        "body": "This is an interim step toward brief statusgen/26 (`docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md`), which contracts the same measurements on the perf-v3 shared recorder. That brief stays todo, and its perf-v3 contract supersedes this PR; see the Desk-decided section below.\n- **F1 (brief statusgen/26):** the \"no brief\" sentence is gone. This PR is declared as an interim perf-v2 step toward that brief in the Desk-decided section. The trailer stays on the forge-call accounting issue below.\nBrief statusgen/26 (board row todo) lists `statusgen/perfrecord.go`, `statusgen/main.go` and `docs/telemetry.md` as its consumers, each marked as follow-up. This PR changes those files to the perf-v2 interim; statusgen/26 remains the item that moves them to perf-v3.\nIssue: #3109\n1. decision: ship statusgen's perf record as perf-v2 now, as a declared interim step toward brief statusgen/26 (docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md), which stays todo; that brief's perf-v3 contract supersedes this PR\n   alternative: hold this change and implement statusgen/26 directly on the perf-v3 shared recorder, as the brief contracts\n   cost: one more schema migration of the statusgen writer (perf-v2 to perf-v3) when statusgen/26 is implemented; the phase roster and the http counter carry over\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3745",
+      "body_sha256": "576b87e830c10e3561775e8b7418cb6456d47a9e244f8792fe366f0b0e175d3b",
+      "body_lines": [
+        3,
+        80,
+        99,
+        101,
+        107,
+        108,
+        109
+      ],
+      "files": [
+        {
+          "filename": "changelog/deskperf-forge-report.md",
+          "status": "modified"
+        },
+        {
+          "filename": "changelog/statusgen-telemetry.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/telemetry.md",
+          "status": "modified"
+        },
+        {
+          "filename": "perfrec/README.md",
+          "status": "modified"
+        },
+        {
+          "filename": "perfrec/schema.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/claimdecay_github.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/claimdecay_gitlab.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/corroborate.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/evaluation_contract_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/ghfetch.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/perfhttp_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/perfphases_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "statusgen/perfrecord.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/perfrecord_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "statusgen/telemetry.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/README.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/perfshared_test.go",
+          "status": "modified"
+        }
+      ],
+      "merge_paths": [
+        "changelog/deskperf-forge-report.md",
+        "changelog/statusgen-telemetry.md",
+        "docs/telemetry.md",
+        "perfrec/README.md",
+        "perfrec/schema.go",
+        "statusgen/claimdecay_github.go",
+        "statusgen/claimdecay_gitlab.go",
+        "statusgen/corroborate.go",
+        "statusgen/evaluation_contract_test.go",
+        "statusgen/ghfetch.go",
+        "statusgen/main.go",
+        "statusgen/perfhttp_test.go",
+        "statusgen/perfphases_test.go",
+        "statusgen/perfrecord.go",
+        "statusgen/perfrecord_test.go",
+        "statusgen/telemetry.go",
+        "tools/desk/README.md",
+        "tools/desk/internal/deskkit/perfshared_test.go"
+      ],
+      "merge_paths_sha256": "c12401834af7935599c6ad34e4085b29a5fd7f5559baa89dd10568c7a48f32d7",
+      "scope_excerpt": "statusgen's local perf record (`ASSAY_TELEMETRY=1`) is now **perf-v2**, the same session format the desk tools write. Before this change it was perf-v1: a wall time and nothing else. `deskperf report --tool statusgen` could say a run was slow, but not why.\n\nThis is an interim step toward brief statusgen/26 (`docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md`), which contracts the same measurements on the perf-v3 shared recorder. That brief stays todo, and its perf-v3 contract supersedes this PR; see the Desk-decided section below.\n\n## What changes\n\n- **Phases.** `run()` is split into fixed, non-overlapping stages: `parse`, `lint`, `briefs`, `ordering`, `evidence`, `links`, `claims`, `view`, `render`, `write`, `corroborate`.\n  - The record lists them in **roster order**, which is not always the order a run enters them: the view build is entered before the claim read and resumed after it, but `claims` is listed before `view`.\n  - A stage entered more than once collects into one entry, and its `n` counts the entries. That covers one `run()` per root, the source lint resumed around its named sub-stages, and the view build on both sides of the claim read.\n  - `briefs`, `ordering` and `evidence` are split out of `lint` because each took more than ~5% of a full `--lint` of this repository. Every other check stays inside `lint`. `evidence` runs only on a root with a `.git`.\n  - `--corroborate` is timed as its own stage.\n- **`http` counter.** Every direct HTTP attempt at statusgen's forge seams is counted at the call, immediately before the client's `Do`. A retry, a 304 and a transport failure each count once. A redirect the client follows inside one `Do` is part of that attempt and is not counted again. The seams are:\n  - the GitHub REST client\n  - the claim-decay GraphQL post\n  - the GitLab MR page read\n  - the telemetry sender (its endpoint is empty in shipped builds)\n\n  Because it is counted at the call, the counter is MEASURED even when it is 0.\n- **Unavailable counters.** `subprocess` and the other counters are listed as unavailable. statusgen's many `gh`/`git` child processes have no shared seam to count.\n- **sourceSHA.** It is read in exactly one helper, `perfSourceStamp()`. Today that returns the build version, so a release tag records `unpinned` (the shared writer keeps only a commit-shaped stamp).\n- **Docs.** `docs/telemetry.md` and `perfrec/README.md` say statusgen writes perf-v2, list its phases, and say that phases are in roster order and do not sum to `wallMs`. Every remaining statement in the tree that said statusgen writes perf-v1 is corrected: the statusgen section of `docs/telemetry.md` (now: one perf-v2 record, `http` measured, `subprocess` unavailable), `tools/desk/README.md`, the `perfrec/schema.go` package comment, and three test comments. The deskperf forge-calls text that arrived from main says a `statusgen` record's 0 means \"not counted\"; it is scoped to perf-v1 records from older builds in `tools/desk/README.md`, the forge rules in `docs/telemetry.md` and the `changelog/deskperf-forge-report.md` fragment, since current statusgen's perf-v2 `http` counter is read as measured. The only exceptions are history (`CHANGELOG.md`), dated observations and briefs, and four CI workflow comments listed under Open risks.\n\n**Unchanged:** output, exit codes and forge traffic, with the switch on or off. Measuring adds no forge call, no output and no exit path. With the switch off the session is nil and every phase call is a no-op.\n\nMeasured on this repository at the previous head (`--lint`, ~11.5s wall):\n\n| Phase | Time |\n|---|---|\n| `briefs` | 4.0s |\n| `lint` | 2.7s |\n| `ordering` | 1.85s |\n| `evidence` | 1.27s |\n| `links` | 1.06s |\n| `view` | 0.46s |\n| `render` | 0.19s |\n| `parse` | 13ms |\n\n`--check` adds `claims` (~0.75s) and `write` (~1ms). The phases do **not** sum to the wall time: process start before the first stage and the exit after the last stage fall inside `wallMs` but outside every phase. On the test fixture, a `--lint` record had 35ms of phases against 41ms of wall time, and a `--check` record 46ms against 52ms.\n\n## Merge order\n\nMerge the sibling change that stamps release binaries with their source commit **first**. That change is not open as a PR yet; its number will be added here when it is. After it lands, reconcile by changing one line, the body of `perfSourceStamp()`, so it returns the new stamp. The new hostile-stamp test (below) pins that line end to end. Merging this PR on its own is safe: sourceSHA just stays `unpinned` for release builds, as it is today.\n\n",
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 1062,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-09-14T22:58:55Z",
+        "merge_commit_sha": "ea99e24abe001f24b9b3c7ffe6dc4934a0c088ba",
+        "head": {
+          "sha": "0fb9118ffe6924cd7d74f4ceeb60dc4d931c0db5",
+          "ref": "perf-desk-tools--27-impl-09141700"
+        },
+        "body": "Brief: desk-tools/27\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/1062",
+      "body_sha256": "c4d15c0dc5022d2c5b92664024f9da91757dafa92b9f3ab54d1935d57a620f9a",
+      "body_lines": [
+        137
+      ],
+      "files": [
+        {
+          "filename": "changelog/perf-desk-tools--27-impl-09141700.md",
+          "status": "added"
+        },
+        {
+          "filename": "docs/streams/desk-tools/README.md",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/board.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/cluster_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/concurrency_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/dispatch.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/mutations.json",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/nextup.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/roots.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/staleplatform_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/stalled.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskboard/throughput.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskfile/deskfile.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskfile/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskflip/deskflip_test.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskflip/flip.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskflip/mutations.json",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskflip/sharedrollup_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpost/internal/bodycheck/bodycheck.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpost/internal/bodycheck/offlinehint_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpost/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/deskpr.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/edit.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/helpaudit_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/cmd/deskpr/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskreply/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/desktoken/desktoken.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskwt/deskwt.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskwt/main.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/cmd/deskwt/roleinit.go",
+          "status": "modified"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/helprequest.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/helprequest_test.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/offlinecheck.go",
+          "status": "added"
+        },
+        {
+          "filename": "tools/desk/internal/deskkit/offlinecheck_test.go",
+          "status": "added"
+        }
+      ],
+      "merge_paths": [
+        "changelog/perf-desk-tools--27-impl-09141700.md",
+        "docs/streams/desk-tools/README.md",
+        "tools/desk/cmd/deskboard/board.go",
+        "tools/desk/cmd/deskboard/cluster_test.go",
+        "tools/desk/cmd/deskboard/concurrency_test.go",
+        "tools/desk/cmd/deskboard/dispatch.go",
+        "tools/desk/cmd/deskboard/main.go",
+        "tools/desk/cmd/deskboard/mutations.json",
+        "tools/desk/cmd/deskboard/nextup.go",
+        "tools/desk/cmd/deskboard/roots.go",
+        "tools/desk/cmd/deskboard/staleplatform_test.go",
+        "tools/desk/cmd/deskboard/stalled.go",
+        "tools/desk/cmd/deskboard/throughput.go",
+        "tools/desk/cmd/deskfile/deskfile.go",
+        "tools/desk/cmd/deskfile/main.go",
+        "tools/desk/cmd/deskflip/deskflip_test.go",
+        "tools/desk/cmd/deskflip/flip.go",
+        "tools/desk/cmd/deskflip/mutations.json",
+        "tools/desk/cmd/deskflip/sharedrollup_test.go",
+        "tools/desk/cmd/deskpost/internal/bodycheck/bodycheck.go",
+        "tools/desk/cmd/deskpost/internal/bodycheck/offlinehint_test.go",
+        "tools/desk/cmd/deskpost/main.go",
+        "tools/desk/cmd/deskpr/deskpr.go",
+        "tools/desk/cmd/deskpr/edit.go",
+        "tools/desk/cmd/deskpr/helpaudit_test.go",
+        "tools/desk/cmd/deskpr/main.go",
+        "tools/desk/cmd/deskreply/main.go",
+        "tools/desk/cmd/desktoken/desktoken.go",
+        "tools/desk/cmd/deskwt/deskwt.go",
+        "tools/desk/cmd/deskwt/main.go",
+        "tools/desk/cmd/deskwt/roleinit.go",
+        "tools/desk/internal/deskkit/helprequest.go",
+        "tools/desk/internal/deskkit/helprequest_test.go",
+        "tools/desk/internal/deskkit/offlinecheck.go",
+        "tools/desk/internal/deskkit/offlinecheck_test.go"
+      ],
+      "merge_paths_sha256": "138bc812f3d635de47a2cbd535ae3295a656ba59b5503bcd1a8911b78ed09be5",
+      "scope_excerpt": "Implements brief 27. Stacked on the brief's own PR (merged in, so this branch carries the\nboard row it has to flip); the brief's diff is the first commit here and is reviewed there.\n\n## Measured, back to back, same host and roster, structurally identical output\n\nEach pair below is the `origin/main` binary and this branch's binary run one after the other\nin the same window, against the same ten-repo roster and four stream roots. The output of\nevery pair was compared field by field: identical except the clock-derived fields (`asOf`,\n`openAge`, `daysStalled`), which move between two runs seconds apart.\n\n| verb | before | after | |\n|---|---|---|---|\n| `stalled` | 84.82 s | 12.63 s | 6.7× |\n| `prs` | 19.82 s | 6.63 s | 3.0× |\n| `throughput` | 47.65 s | 29.10 s | 1.6× |\n| `actions` | 33.59 s | 24.04 s | 1.4× |\n\n`actions` moves least because its PR sweep was already pooled; what changed there is the\npolicy-drift probe, which rode inside it as a ten-deep serial chain of forge reads next to an\nidle pool. It is also the verb that matters most: 8,328 of 9,614 recorded `deskboard`\ninvocations on this host, 86.6%.\n\n## What is in the diff\n\n1. **The last three serial repo loops onto the pool `actions` and `health` already use.**\n   `prs` and the drift probe per repo; `stalled` per repo AND, inside each repo's worker, per\n   PR — the same nesting `actions` has run since it was pooled, so the bound on concurrent\n   forge reads is the one the suite already operates at, not a new one. Fail-closed is\n   preserved everywhere it existed and deliberately NOT introduced where it did not: the drift\n   probe still never kills the board, and its call site says so.\n2. **One root resolution, and the roots read concurrently.** `dispatch` and `awaiting` each\n   carried an identical five-step preamble and then walked their roots serially; a\n   `throughput` run therefore did all of it twice. Both now go through `resolveRootsOnce` and\n   `runPerRoot` (bound 4, deliberately its own number — this is a local subprocess per root,\n   not a forge read, so it must not be re-tuned by a change made for a forge reason).\n3. **`throughput` derives its depths from that one resolution** plus one `actions` sweep.\n   Blind stays blind, and the one new way to break it is closed and tested: a failed shared\n   resolution blinds BOTH stages it fed, each naming it, so no reader is left thinking one\n   stage's depth is real because the other's was.\n4. **The drift self-check resolves the per-platform pin name.** A consumer pinning\n   `desk-tools-<os>-<arch>` — the line the published pin contract tells them to pin — got a\n   permanent could-not-check reported as STALE. Fixed with a second EXACT lookup, never a\n   looser match: the trailing-space prefix rule is a control and is untouched, and the bare\n   line still wins when both are present.\n5. **`deskflip` cheapest gate first, and the rollup read once.** See the correction below for\n   what the ordering actually became and why. The check rollup at head was fetched twice in\n   one run by two conditions; it is now fetched once, with each condition still reporting a\n   failure under its own name.\n6. **Two of `deskpost`'s refusals name the offline check.** Its two largest classes (1,065 of\n   1,611 refusals measured over 32 days) are body-schema refusals its own `--dry-run` would\n   have caught, and neither mentioned it.\n7. **A subcommand `--help` is no longer a refusal with an audit row.** 1,043 recorded rows\n   were exactly that. Two tiers: an exact single-token match before the kill-switch gate, and\n   `flag.ErrHelp` recognition at the parse. Retrofitted into the six verbs that actually\n   produced rows.\n\n## Correction to the brief, applied to the brief (worker-kit clause 7)\n\nThe cost-ordering the dispatch note asked for puts `checks-green` fourth. Implementing it\nreddens two tests in `tools/desk/cmd/deskflip/checkonlycr_test.go` whose comments record the\nopposite rule with its reasoning: when a standing CHANGES_REQUESTED claims the check-only\nexemption, the exemption must decide BEFORE `checks-green`, or an operator rejected for a\nreason that was never about CI is sent to the CI gate to look for it. One of the two also\nchanges exit code (a still-running cited run becomes a pending rollup, 6, instead of a\nrejected exemption claim, 5).\n\nNeither outcome flips a PR that should not flip, so this is a diagnostic regression rather\nthan a safety one — but it is a deliberately recorded decision and a performance brief does\nnot get to overturn it quietly. So the ordering taken is the one that does not collide with\nit: `mergeable` up from seventh to fourth (it costs NO forge read — it reads a field the PR\ndocument read already populated), `model-floor` down from fourth to seventh (it buys a\npaginated label-event timeline). `reviewer-approved` keeps its place ahead of `checks-green`,\nand since both now read one memoized rollup the cost argument for swapping them has largely\nevaporated anyway. Whether the exemption's precedence should be revisited is left open and\nnamed in the brief rather than resolved here.\n\nTwo other figures were corrected in the brief against the source rather than repeated:\n`mergeable` is not re-read (it comes from the PR payload, which made it a BETTER reordering\nwin than the note described), and `checks-green` is 54.9% of condition-named refusals, not\n~70%.\n\n## What this refusal ordering now costs\n\nA `mergeable` refusal: ONE forge read, the PR document, down from four — asserted by counting\nthe stub's requests, not by trusting the order. A `checks-green` refusal: three, down from\nfour; the one dropped is the paginated timeline.\n\n\n## Board row: `in-progress`, not `implemented`\n\nTwo of the brief's seven deliverables are not here. `deskpr --check` does not exist, so\n`deskpr`'s and `deskreply`'s schema refusals have no offline check to name yet — pointing them\nat a flag that is not there would be worse than saying nothing. `deskpost`'s two largest\nclasses do carry the hint. Everything else in the DoD is met and measured, and the remaining\nwork is one bounded flag plus its two call sites.\n\n",
+      "matcher_input": false
+    },
+    {
+      "pull": {
+        "number": 3803,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T23:57:35Z",
+        "merge_commit_sha": "79bd5739260edcefc5ea6dc3039fed0754803550",
+        "head": {
+          "sha": "fc7b2c01588dbd857215c85efdb93bfd934453f0",
+          "ref": "codex/statusgen-partial-witness-design"
+        },
+        "body": "Authors derived-board/11 for a source-bound partial-delivery repair under [issue #2703](https://github.com/medici-finance/assay/issues/2703). The brief plans the supported partial declaration for PR #3759 and a bounded production-owner regression. Its actual delivery is sub-split (a); statusgen/26 Tasks 3/4 and Verify 2 remain owed there.\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3803",
+      "body_sha256": "b6ab883873430564aefbebae79243e04ae5b6c4036a92e73526fbf20c24c2bfd",
+      "body_lines": [
+        3
+      ],
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3794,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-20T23:16:21Z",
+        "merge_commit_sha": "da85bf699cd6e5c361c5c1c8c00c33f7765442fc",
+        "head": {
+          "sha": "fdc231b22d8c78a1e14c273cd504ec2162596be5",
+          "ref": "codex/k8s-partial-witness-design"
+        },
+        "body": "A declaration list and a regression repeating it cannot establish complete candidate membership. This brief binds independently collected membership to evidence and existing admission. S-delivery still has no declared canonical owner. It covers derived-board/07 only. The new statusgen/26/#3759 counterexample is explicitly held on #2703, outside this proof's repair scope; its unfinished tasks are not waived. The broader 34 corrected-witness candidates, 87 machine-classified cases and other history remain individually unproven. The board review's independent reconcile timeout remains could-not-check.\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3794",
+      "body_sha256": "55c796c3e6921c26515c9c29b5860dad009fc74acdd83649b04b6be26f350ec0",
+      "body_lines": [
+        38
+      ],
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3457,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-19T14:21:23Z",
+        "merge_commit_sha": "9d957b22ded1f14bc78e2549a804e4f493b25131",
+        "head": {
+          "sha": "4152d94d5841b197c49e2afeb0325b252bee8df3",
+          "ref": "verify-desk/desktools-v2-61-evidence-20261019"
+        },
+        "body": "- Row 5 is still self-routed for 5 of its 8 CORROBORATED entries (`follow-up desktools-v2/61`, this brief), so those pass by construction. Only the entries routed to desktools-v2/62, statusgen/26 and performance-collection/02 are back-reference corroboration. The row's Expect says this and asserts only the three counts, so it passes on its own terms.\nBrief: desktools-v2/61\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3457",
+      "body_sha256": "6c5123f4cba7b263b42f23eb3f8ea1ea7e6c8426ef78ca1a83eb3a6bb3e3b77c",
+      "body_lines": [
+        10,
+        17
+      ],
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3449,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-19T13:41:00Z",
+        "merge_commit_sha": "daa487841d74260c3022508c8f24a5366932f43e",
+        "head": {
+          "sha": "ff4d988fc53e78bd9c223fe04bd9471edec3ffa9",
+          "ref": "docs/desktools-v2-61-verify-row-5-base"
+        },
+        "body": "- **Expect:** exit 0 and that exact summary. It says outright that exit 0 alone does not show corroboration. Out-of-scope sufficiency remains review (the one UNCHECKED entry, the out-of-scope qualgen and standalone tools entry, is kept as a reviewer obligation), and no unavailable check is recorded as a pass (statusgen's exit 2, could-not-check, becomes a non-zero exit of the command, never a pass). It also states what the 8 corroborated entries actually show. Every entry is routed follow-up or out-of-scope, so statusgen settles them from the stream tables, not from the diff, and the counts do not depend on the pinned range (which the lint requires). Only 3 of the 8 are back-reference corroboration (the entries routed to desktools-v2/62, statusgen/26 and performance-collection/02). The other 5 are routed `follow-up desktools-v2/61`, the brief itself, so the back-reference check reads the brief's own file and passes by self-reference: they carry no corroboration, and the row gives no evidence about those delivered paths. The verifier records 3 back-reference corroborations and 5 self-routed passes. The Expect also says what the 8 / 0 / 1 pin covers: only the three summary counts. A change in the per-entry lines that keeps those counts still passes, so the verifier reads the printed entries, not just the summary.\nBrief: desktools-v2/61\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3449",
+      "body_sha256": "fcd1c3b7fe3204807098b5b4a0ddb58d2bed71a2d468d4333fe7b688af9352fc",
+      "body_lines": [
+        10,
+        43
+      ],
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3435,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-19T13:39:13Z",
+        "merge_commit_sha": "bf8ee556afcb570fc573fdf984415a3616507ac9",
+        "head": {
+          "sha": "6cb40ce69b7a87ebc24cb47766953de12baca3ae",
+          "ref": "codex/lint-debt-plan-statusgen-35"
+        },
+        "body": "Main landed a different statusgen/26 (phase measurements through the shared performance recorder). Following the integration order the approving review recorded, this branch merges main (two-parent merge, no rebase) and moves the lint-debt family from /26–/33 to /27–/33 and /35: filenames, brief keys, headings, depends/unblocks edges, consumer routing lines, README rows and wave prose. Each brief keeps its stable id. The final drain brief skips /34 and lands at /35 because open PR medici-finance/assay#3375 already authors a different statusgen/34; no other open PR claims /27–/33 or /35. Main's /26 row and its \"Performance reuse\" section are kept exactly as landed. The renumber changes only numbers in this PR's own files; no wording, gate, risk answer, Verify command or Expect changed.\nReplaces medici-finance/assay#3337, which is closed in favour of this PR. That PR's `Authors:` link trailer named statusgen/26–/33 and cannot be edited after opening; after main landed a different statusgen/26 the briefs were renumbered to statusgen/27–/33 and statusgen/35. Same head content as medici-finance/assay#3337 at 6cb40ce69. The desk decision is recorded at https://github.com/medici-finance/assay/pull/3337#issuecomment-6258923888.\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3435",
+      "body_sha256": "8005c91f262a24247a22374bd2e40ce8a0b5b41f8841189b614dbe3492747a41",
+      "body_lines": [
+        7,
+        25
+      ],
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3431,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-19T03:34:41Z",
+        "merge_commit_sha": "2013b8dc612842467d08330e298b5401ce855e5f",
+        "head": {
+          "sha": "9b9c4b14e6d83e207a26acf35fac65de95f08817",
+          "ref": "feat/assay--desktools-v2--61"
+        },
+        "body": "- `statusgen` still writes `perf-v1` through `perfrec.New`. Adopting `perf-v2` there is statusgen/26's follow-up. The deskboard, deskdispatch and desktoken counter seams are desktools-v2/62's.\nBrief: desktools-v2/61\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3431",
+      "body_sha256": "ddae687f7d579a80162f36f4284cba5903ea89937624cf7a08e4a0f4a976b9bc",
+      "body_lines": [
+        82,
+        84
+      ],
+      "matcher_input": true
+    },
+    {
+      "pull": {
+        "number": 3190,
+        "state": "closed",
+        "draft": false,
+        "merged_at": "2026-10-18T18:03:41Z",
+        "merge_commit_sha": "379310083ad58b10fcc41bed2e537925823bfbc7",
+        "head": {
+          "sha": "b3258547af526356e4d4a1cbe359604230d3f85b",
+          "ref": "codex/performance-briefs-20261016"
+        },
+        "body": "Authors: desktools-v2/58, desktools-v2/59, desktools-v2/60, desktools-v2/61, desktools-v2/62, statusgen/26\n"
+      },
+      "url": "https://github.com/medici-finance/assay/pull/3190",
+      "body_sha256": "3cc60df425f154f6e6bd122301a6b2e1ab3712b123b0834e80330b7d4716c668",
+      "body_lines": [
+        39
+      ],
+      "matcher_input": true
+    }
+  ],
+  "collection": {
+    "as_of": "2026-10-21T00:08:42.285146+00:00",
+    "count": 2020,
+    "complete": true,
+    "unread": [],
+    "cutoff": 3805,
+    "raw_sha256": "e4011e3b251c9011f2ccb8ec0f9c74de7b0545840b82c2c5ec2c714811d8929f",
+    "trailer": [
+      3759
+    ],
+    "potential": [
+      3803,
+      3794,
+      3759,
+      3745,
+      3457,
+      3449,
+      3435,
+      3431,
+      3190
+    ]
+  },
+  "evidence_counterexample": {
+    "pull": {
+      "number": 2295,
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-10-08T14:11:24Z",
+      "merge_commit_sha": "9137784d16be9facb542ffe0a40476d57bc165e9",
+      "body": "Brief: desk-tools/27\n",
+      "head": {
+        "ref": "verify-desk/desk-tools-27-evidence-20261006",
+        "sha": "6b56c902624bb237fdd656a5858622cf67ce62dd"
+      }
+    },
+    "url": "https://github.com/medici-finance/assay/pull/2295"
+  },
+  "delivery_repair": {
+    "base": "5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7",
+    "delivery": "92315c7fa0f0b1e9a5e66a3c6dfdabc8a1d0cde7",
+    "before": "---\nbrief: assay:assay:statusgen:26\ntitle: \"Extend statusgen phase measurements through the shared performance recorder\"\nwhy: \"Statusgen already shares the local recorder but aggregate duration cannot explain discovery, parsing, evaluation, rendering or deskread overhead. Reusing the improved contract makes its costs comparable and identifies safe parse reuse without importing credential or desk internals.\"\nwave: 4\ndepends: [\"desktools-v2/63\", \"desktools-v2/64\"]\nunblocks: []\neffort: M\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v2\noutcome: none\nversion: 2\nid: 34374f41-67cd-492a-9bb3-5d3353cf0559\nauthored: 2026-10-16 by performance brief authoring\nsources:\n  - \"docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed\"\n  - \"assay:assay:desktools-v2:62 — matched desk workload; this brief supplies the statusgen consumer using the same recorder\"\n  - docs/streams/desktools-v2/README.md — Performance delivery priority, 2026-10-16\n  - docs/library-first.md\n  - docs/streams/desk-tools/brief-25-token-memo-and-cache-before-install-id.md\n  - docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md\n  - freshness-checked 2026-10-16 @ eba941721 (origin/main); installed reference e70f08e4\nexec-tier: strong\nexec-tier-why: Cross-consumer compatibility, concurrency and unavailable-state behavior require negative-path and flow proofs.\ndomain: complicated\nconsumers:\n  - \"statusgen/perfrecord.go, main.go, load.go, parse.go and forgeread.go: follow-up statusgen/26\"\n  - \"statusgen/go.mod and go.sum: follow-up statusgen/26\"\n  - \"perfrec/: follow-up desktools-v2/61 (one shared recorder implementation)\"\n  - \"tools/desk/cmd/deskperf/: follow-up statusgen/26 (read actual statusgen records)\"\n  - \"tools/desk/cmd/deskread: out-of-scope (existing online credential boundary is retained; child benefits from desktools-v2/58 and /59)\"\n  - \"statusgen/contexthandoff/: follow-up statusgen/20 (reuse only explicit source-bound immutable input snapshots)\"\n  - \"qualgen/: out-of-scope (documented consumer candidate; no measured hotpath or new wrapper claimed)\"\n  - \"docs/telemetry.md: follow-up statusgen/26\"\n---\n\n# Brief 26 — Extend statusgen phase measurements through the shared performance recorder\n\n## Context\n\nfiles:\n- `statusgen/perfrecord.go`\n- `statusgen/perfrecord_test.go`\n- `statusgen/main.go`\n- `statusgen/load.go`\n- `statusgen/parse.go`\n- `statusgen/forgeread.go`\n- `statusgen/go.mod`\n- `statusgen/go.sum`\n- `statusgen/bench/perfworkload.sh` (planned)\n- `statusgen/testdata/perfworkload/` (planned)\n- `docs/telemetry.md`\n- `changelog/statusgen-performance-phases.md` (planned)\n\nfacts (source and date in frontmatter):\n- At fresh main eba941721, statusgen/perfrecord.go already calls perfrec.New/Append and CPUMillis; every main exit passes exitProcess. Preserve that coverage and its off-by-default local-only contract.\n- docs/library-first.md allows only offline/frozen in-process fact readers; statusgen may not import tools/desk, deskkit, authenticated forgeread adapters or a credential provider.\n- Existing telemetry.go has separate counts-only network consent. Local phase measurements do not widen that payload, enable an endpoint or add upload.\n- Statusgen has distinct lint, regen, gate-scores, next-up and forge-read modes. A new file/consumer outside a previous read set invalidates completeness; HEAD equality alone does not make a dirty working-tree parse immutable.\n\nlayering: one canonical library owner; command/config/effect adapters preserve their existing authority.\n\nsingle-point-of-failure: an incorrectly reused or incompletely observed input could appear current; independent fresh-reference comparisons and direct lower-boundary negative controls below expose it.\n\ndesign-fit:\n  owner: perfrec and existing domain producers\n  contract: versioned local performance record\n  retires: [incompatible timing boundaries and unclassified measured paths]\n  weight: verbs +0; flags +0; no new service, credential holder or online endpoint\n  why-add: Reuse the existing semantic owner and retire duplicated work; proposed measurements are local, optional and bounded.\n\n## Read first\n\nRead the existing implementations listed in Context, the source-pinned performance priority\nsection of the desktools-v2 README, and docs/library-first.md. Refresh current claims and the\nsource revision before implementation; dated measurements do not certify current deployment.\n\n## Ground rules\n\nFeature branch and draft PR only; no merge, release, workflow dispatch or live infrastructure\ncontact. Use isolated temporary homes, fake providers and synthetic repositories. Preserve\nexisting custody, stop, trust, audit, budget and unavailable-state semantics. Optional\nmeasurement cannot change the operation result. Stop at implemented; independent verification\nowns Evidence. All new paths and named tests below are implementation deliverables.\n\n## Interface contract\n\nUse perf-v3 from /63 and the shared context contract from /64 directly, with statusgen-owned fixed mode/phase rosters and the same\nwall/CPU baseline semantics. Observe source discovery, read/parse, evaluation, rendering and\nexisting deskread child time. Online work remains behind the existing verb with no credentials\nin statusgen. Input reuse is limited to an invocation-local explicit snapshot and versioned\nparser/evaluator result; no persistent semantic cache or second parser is introduced here.\nIf a required source is unavailable, preserve the existing incomplete/held result.\n\n## Task\n\n1. Adopt the perf-v3 shared recorder API and explicitly selected profile at the current exitProcess boundary, preserving all exits, opt-out behavior and legacy mode mapping. Account for package-init versus Go-entrypoint timing explicitly; do not change historical perf-v1 semantics.\n2. Add phases through existing owners for discovery/load, parse, eligibility/coverage evaluation and rendering. Observe actual deskread child starts/elapsed time without opening a forge client in statusgen; the child owns provider/credential counters. Do not sum child and parent inclusive time as elapsed savings.\n3. Inventory repeated reads/parses within one invocation in lint, regen, gate-scores and next-up. Reuse the same validated source snapshot/results where those owners already support it; keep the parser/evaluation implementations canonical. A changed membership or file revision between declared snapshots must trigger fresh input, never a stale empty result. Report no-op reuse when the reference workload shows none.\n4. Add credential-free synthetic small/large stream workloads for all four offline modes plus a fake deskread process. Record cold/warm p50/p95, CPU, file reads/parses and child counts with sample and source revisions. Compare output/exit/coverage byte-for-byte against the fresh reference evaluator; numerical targets require a declared workload.\n5. Prove statusgen keeps zero imports of tools/desk/custody, no new network endpoint and no telemetry files when off. Document how deskperf reads statusgen records and how future context resolver 20 consumes explicit immutable snapshots without weakening independent membership enumeration. Keep module resolution working with GOWORK=off.\n\n## Verify\n\nNamed tests are planned deliverables. Each command requires its exact PASS line; a missing\nselector is failure. Negative controls must exercise the production owner with the stated\nbreak planted, not a duplicate checker.\n\n| # | Class | Command | Expect |\n|---|---|---|---|\n| 1 | check:ci +flow +mutation +dereference | `(cd statusgen && out=$(mktemp) && trap 'rm -f \"$out\"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > \"$out\" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' \"$out\")` | exit 0; named PASS; compiled offline lint/regen/gate-scores/next-up and fake deskread retain output/exit, produce correct shared records and deskperf can read them; copied writer fails parity |\n| 2 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f \"$out\"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > \"$out\" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' \"$out\")` | exit 0; named PASS; same snapshot shares parsing, while new/deleted/untracked consumers and changed contents match fresh reference results; HEAD-only or prior-readset reuse fails |\n| 3 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f \"$out\"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > \"$out\" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' \"$out\")` | exit 0; named PASS; dependency closure contains no desk/custody/authenticated adapter imports, off creates no files and fake deskread stays the sole online route; planted direct credential getter fails |\n| 4 | check +dereference | `statusgen --root . --consumers --brief statusgen/26` | exit 0; actual implementation diff corroborates declared routing; out-of-scope sufficiency remains review, and no unavailable check is recorded as a pass. |\n\n## Pre-mortem and detection\n\n- Row 1: compiled offline lint/regen/gate-scores/next-up and fake deskread retain output/exit, produce correct shared records and deskperf can read them; copied writer fails parity.\n- Row 2: same snapshot shares parsing, while new/deleted/untracked consumers and changed contents match fresh reference results; HEAD-only or prior-readset reuse fails.\n- Row 3: dependency closure contains no desk/custody/authenticated adapter imports, off creates no files and fake deskread stays the sole online route; planted direct credential getter fails.\n\nScope sufficiency and workload representativeness remain review judgments; publish the\nmeasured environment and limitations. No fixture success is a live permission or fleet speed claim.\n\n## Perf-v3 delivery amendment — 19 October 2026\n\nConsume the [perf-v3 contract](../../performance-attribution-spec.md) directly from perfrec; do not import desk internals or authenticated\nadapters. Bind the shared --perf-* / explicit env sources through statusgen's real parser;\nkeep help/version offline, prior opt-in/schema defaults and no-profile behavior. Current\nphase/snapshot work stays in scope. A statusgen invocation has fresh identity, receives\nwork/session/agent/desk and assigned role through the selected workflow profile, and supplies\nits invocation as the deskread child's parent. The child reports its own forge attempts,\ntiming and points; missing child instrumentation is a coverage gap, never parent zero-cost.\n\nExtend TestSharedPhaseRecorderFlow (row 1) with two qualified work references, override/clear,\nchild causal links and mixed v1/v2/v3 records. Extend TestPerformanceKeepsCredentialBoundary\n(row 3) to prove inherited workflow fields cannot appear in tool profile and malformed optional\ncontext cannot change normal output/exit. Old privacy defaults remain binding outside v3.\n\n## Evidence\n\n<!-- Independent verifier records actual subject revision, environment, command, exit, named result and date. No implementation is claimed by this authoring change. -->\n\n## Review\n\nGate: model; all risk answers are no. Reject false-zero, stale-hit, silently changed legacy semantics or unmeasured savings claims.\n",
+    "after": "---\nbrief: assay:assay:statusgen:26\ntitle: \"Extend statusgen phase measurements through the shared performance recorder\"\nwhy: \"Statusgen already shares the local recorder but aggregate duration cannot explain discovery, parsing, evaluation, rendering or deskread overhead. Reusing the improved contract makes its costs comparable and identifies safe parse reuse without importing credential or desk internals.\"\nwave: 4\ndepends: [\"desktools-v2/63\", \"desktools-v2/64\"]\nunblocks: []\neffort: M\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v2\noutcome: none\nversion: 3\ndelivery:\n  - {in: \"assay#3759\", covers: partial, note: \"sub-split (a); snapshot reuse, workloads and Verify 2 remain owed\"}\nid: 34374f41-67cd-492a-9bb3-5d3353cf0559\nauthored: 2026-10-16 by performance brief authoring\nsources:\n  - \"docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed\"\n  - \"assay:assay:desktools-v2:62 — matched desk workload; this brief supplies the statusgen consumer using the same recorder\"\n  - docs/streams/desktools-v2/README.md — Performance delivery priority, 2026-10-16\n  - docs/library-first.md\n  - docs/streams/desk-tools/brief-25-token-memo-and-cache-before-install-id.md\n  - docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md\n  - freshness-checked 2026-10-16 @ eba941721 (origin/main); installed reference e70f08e4\nexec-tier: strong\nexec-tier-why: Cross-consumer compatibility, concurrency and unavailable-state behavior require negative-path and flow proofs.\ndomain: complicated\nconsumers:\n  - \"statusgen/perfrecord.go, main.go, load.go, parse.go and forgeread.go: follow-up statusgen/26\"\n  - \"statusgen/go.mod and go.sum: follow-up statusgen/26\"\n  - \"perfrec/: follow-up desktools-v2/61 (one shared recorder implementation)\"\n  - \"tools/desk/cmd/deskperf/: follow-up statusgen/26 (read actual statusgen records)\"\n  - \"tools/desk/cmd/deskread: out-of-scope (existing online credential boundary is retained; child benefits from desktools-v2/58 and /59)\"\n  - \"statusgen/contexthandoff/: follow-up statusgen/20 (reuse only explicit source-bound immutable input snapshots)\"\n  - \"qualgen/: out-of-scope (documented consumer candidate; no measured hotpath or new wrapper claimed)\"\n  - \"docs/telemetry.md: follow-up statusgen/26\"\n---\n\n# Brief 26 — Extend statusgen phase measurements through the shared performance recorder\n\n## Context\n\nfiles:\n- `statusgen/perfrecord.go`\n- `statusgen/perfrecord_test.go`\n- `statusgen/main.go`\n- `statusgen/load.go`\n- `statusgen/parse.go`\n- `statusgen/forgeread.go`\n- `statusgen/go.mod`\n- `statusgen/go.sum`\n- `statusgen/bench/perfworkload.sh` (planned)\n- `statusgen/testdata/perfworkload/` (planned)\n- `docs/telemetry.md`\n- `changelog/statusgen-performance-phases.md` (planned)\n\nfacts (source and date in frontmatter):\n- At fresh main eba941721, statusgen/perfrecord.go already calls perfrec.New/Append and CPUMillis; every main exit passes exitProcess. Preserve that coverage and its off-by-default local-only contract.\n- docs/library-first.md allows only offline/frozen in-process fact readers; statusgen may not import tools/desk, deskkit, authenticated forgeread adapters or a credential provider.\n- Existing telemetry.go has separate counts-only network consent. Local phase measurements do not widen that payload, enable an endpoint or add upload.\n- Statusgen has distinct lint, regen, gate-scores, next-up and forge-read modes. A new file/consumer outside a previous read set invalidates completeness; HEAD equality alone does not make a dirty working-tree parse immutable.\n\nlayering: one canonical library owner; command/config/effect adapters preserve their existing authority.\n\nsingle-point-of-failure: an incorrectly reused or incompletely observed input could appear current; independent fresh-reference comparisons and direct lower-boundary negative controls below expose it.\n\ndesign-fit:\n  owner: perfrec and existing domain producers\n  contract: versioned local performance record\n  retires: [incompatible timing boundaries and unclassified measured paths]\n  weight: verbs +0; flags +0; no new service, credential holder or online endpoint\n  why-add: Reuse the existing semantic owner and retire duplicated work; proposed measurements are local, optional and bounded.\n\n## Read first\n\nRead the existing implementations listed in Context, the source-pinned performance priority\nsection of the desktools-v2 README, and docs/library-first.md. Refresh current claims and the\nsource revision before implementation; dated measurements do not certify current deployment.\n\n## Ground rules\n\nFeature branch and draft PR only; no merge, release, workflow dispatch or live infrastructure\ncontact. Use isolated temporary homes, fake providers and synthetic repositories. Preserve\nexisting custody, stop, trust, audit, budget and unavailable-state semantics. Optional\nmeasurement cannot change the operation result. Stop at implemented; independent verification\nowns Evidence. All new paths and named tests below are implementation deliverables.\n\n## Interface contract\n\nUse perf-v3 from /63 and the shared context contract from /64 directly, with statusgen-owned fixed mode/phase rosters and the same\nwall/CPU baseline semantics. Observe source discovery, read/parse, evaluation, rendering and\nexisting deskread child time. Online work remains behind the existing verb with no credentials\nin statusgen. Input reuse is limited to an invocation-local explicit snapshot and versioned\nparser/evaluator result; no persistent semantic cache or second parser is introduced here.\nIf a required source is unavailable, preserve the existing incomplete/held result.\n\n## Task\n\n1. Adopt the perf-v3 shared recorder API and explicitly selected profile at the current exitProcess boundary, preserving all exits, opt-out behavior and legacy mode mapping. Account for package-init versus Go-entrypoint timing explicitly; do not change historical perf-v1 semantics.\n2. Add phases through existing owners for discovery/load, parse, eligibility/coverage evaluation and rendering. Observe actual deskread child starts/elapsed time without opening a forge client in statusgen; the child owns provider/credential counters. Do not sum child and parent inclusive time as elapsed savings.\n3. Inventory repeated reads/parses within one invocation in lint, regen, gate-scores and next-up. Reuse the same validated source snapshot/results where those owners already support it; keep the parser/evaluation implementations canonical. A changed membership or file revision between declared snapshots must trigger fresh input, never a stale empty result. Report no-op reuse when the reference workload shows none.\n4. Add credential-free synthetic small/large stream workloads for all four offline modes plus a fake deskread process. Record cold/warm p50/p95, CPU, file reads/parses and child counts with sample and source revisions. Compare output/exit/coverage byte-for-byte against the fresh reference evaluator; numerical targets require a declared workload.\n5. Prove statusgen keeps zero imports of tools/desk/custody, no new network endpoint and no telemetry files when off. Document how deskperf reads statusgen records and how future context resolver 20 consumes explicit immutable snapshots without weakening independent membership enumeration. Keep module resolution working with GOWORK=off.\n\n## Verify\n\nNamed tests are planned deliverables. Each command requires its exact PASS line; a missing\nselector is failure. Negative controls must exercise the production owner with the stated\nbreak planted, not a duplicate checker.\n\n| # | Class | Command | Expect |\n|---|---|---|---|\n| 1 | check:ci +flow +mutation +dereference | `(cd statusgen && out=$(mktemp) && trap 'rm -f \"$out\"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > \"$out\" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' \"$out\")` | exit 0; named PASS; compiled offline lint/regen/gate-scores/next-up and fake deskread retain output/exit, produce correct shared records and deskperf can read them; copied writer fails parity |\n| 2 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f \"$out\"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > \"$out\" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' \"$out\")` | exit 0; named PASS; same snapshot shares parsing, while new/deleted/untracked consumers and changed contents match fresh reference results; HEAD-only or prior-readset reuse fails |\n| 3 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f \"$out\"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > \"$out\" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' \"$out\")` | exit 0; named PASS; dependency closure contains no desk/custody/authenticated adapter imports, off creates no files and fake deskread stays the sole online route; planted direct credential getter fails |\n| 4 | check +dereference | `statusgen --root . --consumers --brief statusgen/26` | exit 0; actual implementation diff corroborates declared routing; out-of-scope sufficiency remains review, and no unavailable check is recorded as a pass. |\n\n## Pre-mortem and detection\n\n- Row 1: compiled offline lint/regen/gate-scores/next-up and fake deskread retain output/exit, produce correct shared records and deskperf can read them; copied writer fails parity.\n- Row 2: same snapshot shares parsing, while new/deleted/untracked consumers and changed contents match fresh reference results; HEAD-only or prior-readset reuse fails.\n- Row 3: dependency closure contains no desk/custody/authenticated adapter imports, off creates no files and fake deskread stays the sole online route; planted direct credential getter fails.\n\nScope sufficiency and workload representativeness remain review judgments; publish the\nmeasured environment and limitations. No fixture success is a live permission or fleet speed claim.\n\n## Perf-v3 delivery amendment — 19 October 2026\n\nConsume the [perf-v3 contract](../../performance-attribution-spec.md) directly from perfrec; do not import desk internals or authenticated\nadapters. Bind the shared --perf-* / explicit env sources through statusgen's real parser;\nkeep help/version offline, prior opt-in/schema defaults and no-profile behavior. Current\nphase/snapshot work stays in scope. A statusgen invocation has fresh identity, receives\nwork/session/agent/desk and assigned role through the selected workflow profile, and supplies\nits invocation as the deskread child's parent. The child reports its own forge attempts,\ntiming and points; missing child instrumentation is a coverage gap, never parent zero-cost.\n\nExtend TestSharedPhaseRecorderFlow (row 1) with two qualified work references, override/clear,\nchild causal links and mixed v1/v2/v3 records. Extend TestPerformanceKeepsCredentialBoundary\n(row 3) to prove inherited workflow fields cannot appear in tool profile and malformed optional\ncontext cannot change normal output/exit. Old privacy defaults remain binding outside v3.\n\n## Evidence\n\n<!-- Independent verifier records actual subject revision, environment, command, exit, named result and date. No implementation is claimed by this authoring change. -->\n\n## Review\n\nGate: model; all risk answers are no. Reject false-zero, stale-hit, silently changed legacy semantics or unmeasured savings claims.\n"
+  }
+}

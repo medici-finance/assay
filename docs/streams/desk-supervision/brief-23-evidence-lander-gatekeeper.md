@@ -111,8 +111,7 @@ files:
   validator's decision), `lander.go` (the lander's decision), `scope_test.go` (planned),
   `lander_test.go` (planned), fixtures under its `testdata/`, and
   `tools/desk/cmd/evidencegate/testdata/mutate.sh` (planned).
-- **add** `statusgen/evidenceaudit.go` (planned) + `statusgen/evidenceaudit_test.go` (planned) —
-  the `statusgen evidence-audit` subcommand (post-land audit).
+- **add** `statusgen/evidenceaudit.go` (planned) + `statusgen/evidenceaudit_test.go` (planned) — the `statusgen evidence-audit` subcommand (post-land audit).
 - **add** `.github/workflows/evidence-scope.yml` (planned) (event-facing validator half: its
   event-facing jobs hold only a read-only `GITHUB_TOKEN`; it also runs the post-land audit, whose
   push-to-main job holds a `GITHUB_TOKEN` scoped to `issues: write` only and never an App key),

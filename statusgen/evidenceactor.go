@@ -551,7 +551,10 @@ func isEvidenceHeading(trimmed string) bool {
 // backticked-path check (recordsection.go) reuses this parser rather than
 // carrying a second section detector.
 func sectionLineRange(raw string, isHeading func(trimmed string) bool) (start, end int, ok bool) {
-	lines := strings.Split(raw, "\n")
+	// A terminal newline ends the last physical line; Split's extra empty
+	// element is not a line Git can blame. Remove exactly that delimiter,
+	// retaining real trailing blank lines and unterminated final content.
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
 	head := -1
 	for i, l := range lines {
 		if isHeading(strings.TrimSpace(l)) {
@@ -882,11 +885,42 @@ func historyGitPrefix(dir string) []string {
 	return []string{"--no-replace-objects", "-c", "diff.algorithm=myers", "-C", dir}
 }
 
+// historyRepoEnv are the environment variables that tell git WHICH repository
+// (or which object store) to read, overriding the -C directory. A runner (or a
+// hook that launched it) that exports one would otherwise redirect every
+// provenance read to a decoy repository.
+var historyRepoEnv = []string{
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_COMMON_DIR",
+	"GIT_INDEX_FILE",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+}
+
 // historyGitEnv also points git at an empty graft file, so a runner-local
-// .git/info/grafts cannot rewrite a commit's parents.
+// .git/info/grafts cannot rewrite a commit's parents, and removes the
+// repository-locating variables (historyRepoEnv) so the -C directory alone
+// names the repository.
 func historyGitEnv(cmd *exec.Cmd) *exec.Cmd {
-	cmd.Env = append(os.Environ(), "GIT_GRAFT_FILE="+os.DevNull)
+	cmd.Env = append(historyCleanEnv(os.Environ()), "GIT_GRAFT_FILE="+os.DevNull)
 	return cmd
+}
+
+// historyCleanEnv returns env without any historyRepoEnv entry.
+func historyCleanEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+next:
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		for _, drop := range historyRepoEnv {
+			if k == drop {
+				continue next
+			}
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 // historyGit is the git command for a provenance read in dir (see

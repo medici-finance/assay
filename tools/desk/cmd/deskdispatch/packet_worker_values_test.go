@@ -112,6 +112,7 @@ func wpSeenAll(t *testing.T, markers []string, seen map[string]int) {
 
 // TestWorkerShepherdPacketShowsOutsideValuesOnlyInCodeSpans: every single-line value a
 // shepherding packet writes at its own level is in a code span it cannot end.
+// regression: medici-finance/assay#3755
 func TestWorkerShepherdPacketShowsOutsideValuesOnlyInCodeSpans(t *testing.T) {
 	root, home := wpRoot(t), wpWorktree(t)
 	seen := map[string]int{}
@@ -168,7 +169,10 @@ func TestWorkerShepherdPacketShowsOutsideValuesOnlyInCodeSpans(t *testing.T) {
 	g.diffErr = errors.New(wpHostile("M-DIFFERR"))
 	useWorkerForge(t, g)
 	in := input()
-	in.o.brief = filepath.Join(root, wpHostileName("M-NOBRIEF"), "missing.md")
+	// A relative path that starts with its marker: the read error names the path, and the
+	// packet cuts a value at 240 characters, so an absolute path under the test's temp
+	// directory would put the marker past the cut whenever TMPDIR is long.
+	in.o.brief = filepath.Join(wpHostileName("M-NOBRIEF"), "missing.md")
 	if p, err = buildWorkerPacket(t, in); err != nil {
 		t.Fatal(err)
 	}

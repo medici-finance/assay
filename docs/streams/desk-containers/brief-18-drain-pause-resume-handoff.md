@@ -12,7 +12,7 @@ why: >-
   meaning when the lifecycle contract replaces the mechanism underneath.
 wave: 9
 depends: ["desk-containers/15", "desk-containers/16", "desk-containers/17"]
-unblocks: ["desk-containers/19", "desk-containers/21", "desk-containers/22"]
+unblocks: ["desk-containers/19", "desk-containers/21", "desk-containers/22", "desk-containers/29"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -106,6 +106,7 @@ facts:
 - Abandonment is never silent: every claim still held at stop appears in the result's `actions[]` and in the handoff record.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - The only process this brief may stop is the named role's own window and harness, through the identity-verified single-surface close of a role that passed the idle re-measure. It never signals any other process: no siblings, no other cell's roles, no orphans (those are `doctor`/`gc` and #2880).
 - Do not let the verbs' observable meaning depend on the interim mechanism. Tests assert transitions and states, not flag-file paths, except in the one `lifecycle.go` test that pins the interim mapping.

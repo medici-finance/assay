@@ -38,6 +38,14 @@ func providerPreset(name, suffix string) string {
 // providerValue is the EFFECTIVE value (cell.env/env line, else the preset, else empty) and
 // where it came from (`cell.env`, `defaults.env`, `preset`, `unset`).
 func (c *Cell) providerValue(name, suffix string) (string, string) {
+	// A scrubbed cell's endpoint cannot be redirected by the operator environment:
+	// that would send its private credential to a host-selected service.
+	if c.Kind == "scrubbed" && c.Env.Source(providerVar(name, suffix)) != layerCellEnv {
+		if v := providerPreset(name, suffix); v != "" {
+			return v, "preset"
+		}
+		return "", "unset"
+	}
 	if v := c.Env.Get(providerVar(name, suffix)); v != "" {
 		if c.Env.Source(providerVar(name, suffix)) == layerDefaults {
 			return v, cellDefaultsFile
@@ -72,6 +80,9 @@ func (c *Cell) resolveProvider(name string) Provider {
 // an error so a preflight loop (`up`/`check` under a model policy) can report every role before
 // deciding, instead of dying on the first.
 func (c *Cell) providerCredential(name string) (Provider, error) {
+	if c.Kind == "scrubbed" {
+		return c.scrubbedProviderCredential(name)
+	}
 	var p Provider
 	baseVar, tokenVar := providerVar(name, "BASE_URL"), providerVar(name, "TOKEN_ENV")
 	p.BaseURL, _ = c.providerValue(name, "BASE_URL")

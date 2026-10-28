@@ -1844,7 +1844,7 @@ discipline every harness uses, and where the sandbox cannot create a worktree th
 **refuses** rather than working in a shared checkout — the isolation floor never degrades.
 
 The one **parity** acceptance step is a live smoke run on a Cursor install, run against the
-scripted Cursor smoke protocol checklist (`cursor-smoke-protocol.md`) — a full desk loop
+scripted Cursor smoke protocol checklist ([`cursor-smoke-protocol.md`](./cursor-smoke-protocol.md)) — a full desk loop
 (dispatch → isolated worktree → draft PR → one review cycle) on both surfaces, headless-first,
 not just a single skill invocation. That step and its Verify rows are specified in
 [brief 13](./streams/harness-portability/brief-13-cursor-live-desk-smoke.md). Its signed run

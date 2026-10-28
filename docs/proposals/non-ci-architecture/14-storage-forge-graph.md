@@ -192,3 +192,29 @@ Broker acceptance, recipient acknowledgment and completed business effect are di
 Messages that exist only in the broker cannot be reconstructed from Git/forge; the
 selected profile must qualify its own persistence, replication, backup and loss policy.
 The current file backend remains a transition implementation until explicit migration.
+
+## Performance identity and cost storage — requested amendment, 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) keeps identifiable qualified
+work linkage in the explicitly selected local workflow record, using the existing perfrec
+history and retention. The future performance-collection adapter maps these references to
+source/epoch aliases before its separate spool, database, preview or upload; raw work locators
+and native harness IDs never cross that boundary. Preserve immutable invocation identity,
+causal links, units, nullable point/timing coverage and mergeable distributions through
+retention/replay. This adds no operational database table, cross-database foreign key,
+mandatory dual write or performance dependency to the forge service/cell.
+
+## Planner refresh consumers — requested 23 October 2026
+
+Serve the [shared candidate-plus-priority contract](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+through the existing R6 mirror/refresh owner. Candidate source scope and priority/policy
+revision are different inputs: a policy change or freed slot invalidates selection, not
+necessarily source collection. Complete membership, permission, time-expiry and changed
+source dependencies remain explicit; missed events need overlap polling and full inventory.
+
+One collection can feed prose/discrete planning, stage depth and alarms only for compatible
+scope and applicability. Charge producer/provider work once plus actual targeted refreshes;
+a zero-GH client query is not zero fleet cost. A mirror outage holds stale/unknown freshness-
+dependent work rather than starting one full poller per desk. Preserve role custody and
+consequential rechecks. forge-neutral/37–43 own the existing implementation; no additional
+cache daemon or SQL authority is introduced.

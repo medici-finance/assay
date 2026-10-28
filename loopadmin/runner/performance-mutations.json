@@ -1,0 +1,35 @@
+{
+  "test": "go test -timeout=60s -count=1 -run '^TestPerfV3RunnerIdentityLifecycle$|^TestNoGraphDependency$' ./runner",
+  "control": {
+    "name": "skip actual runner context boundary",
+    "file": "runner/client.go",
+    "old": "c.performanceStart(ctx, req)",
+    "new": "c.performanceStart(context.Background(), req)"
+  },
+  "mutations": [
+    {
+      "name": "never preserve explicit resume",
+      "file": "runner/performance.go",
+      "old": "resume = &d",
+      "new": "_ = d"
+    },
+    {
+      "name": "retain native mapping beyond seven UTC days",
+      "file": "runner/performance.go",
+      "old": "today.AddDate(0, 0, -6)",
+      "new": "today.AddDate(0, 0, -7)"
+    },
+    {
+      "name": "conceal unknown mapping continuity gap",
+      "file": "runner/performance.go",
+      "old": "gap = true",
+      "new": "gap = false"
+    },
+    {
+      "name": "permit planted second module",
+      "file": "runner/request_test.go",
+      "old": "return fmt.Errorf(\"runner module closure includes an unadmitted dependency\")",
+      "new": "return nil"
+    }
+  ]
+}

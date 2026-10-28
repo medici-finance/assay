@@ -1,24 +1,12 @@
 {
-  "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation)$'",
+  "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation|GoPackagesQuietHome|GoGuardControl|GoQuietOffPin|GoQuietHostUntouched)$'",
   "control": {
-    "name": "CONTROL — the template carries no settings: every fixture repository forks automatic maintenance again (the #1608 race)",
+    "name": "CONTROL — the desk adapter never installs the shared template",
     "file": "internal/gitquiet/gitquiet.go",
-    "old": "\t{\"maintenance.auto\", \"false\"},\n\t{\"gc.auto\", \"0\"},\n",
-    "new": ""
+    "old": "return shared.Run(m)",
+    "new": "return m.Run()"
   },
   "mutations": [
-    {
-      "name": "the template is written but GIT_TEMPLATE_DIR is never pointed at it — git init/clone fall back to the default template",
-      "file": "internal/gitquiet/gitquiet.go",
-      "old": "os.Setenv(\"GIT_TEMPLATE_DIR\", dir)",
-      "new": "os.Setenv(\"GITQUIET_UNUSED\", dir)"
-    },
-    {
-      "name": "the template config is rendered empty — repositories get no settings",
-      "file": "internal/gitquiet/gitquiet.go",
-      "old": "\treturn b.String()\n",
-      "new": "\treturn \"\"\n"
-    },
     {
       "name": "guard: a TestMain that never installs the template is accepted",
       "file": "internal/gitquiet/gitquiet_test.go",
@@ -56,12 +44,6 @@
       "new": "\treturn launches\n"
     },
     {
-      "name": "TemplateDir returns an empty directory — a fixture passing it explicitly gets no settings",
-      "file": "internal/gitquiet/gitquiet.go",
-      "old": "\tif err := writeTemplate(dir); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treturn dir\n",
-      "new": "\treturn dir\n"
-    },
-    {
       "name": "the regression floor's shell fixtures lose their explicit template — FixtureEnv's GIT_* drop leaves their repositories forking maintenance",
       "file": "internal/regression/shell_test.go",
       "old": "\t\t\"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t))\n",
@@ -72,6 +54,60 @@
       "file": "cmd/deskclaim-ref/regression_test.go",
       "old": "\t\t\t\"GIT_TEMPLATE_DIR=\"+template)\n",
       "new": "\t\t\t\"GITQUIET_UNUSED=\"+template)\n"
+    },
+    {
+      "name": "go guard: the go-binary matcher stops matching — no package is examined and the scan reports clean",
+      "file": "internal/gitquiet/goquiet_test.go",
+      "old": "namesGo = namesGo || s == \"go\"",
+      "new": "namesGo = namesGo || s == \"go-never\""
+    },
+    {
+      "name": "go guard: a \"HOME=\" env entry no longer counts as moving HOME",
+      "file": "internal/gitquiet/goquiet_test.go",
+      "old": "moves = moves || eq && homeKey(k)",
+      "new": "moves = moves || eq && homeKey(k) && false"
+    },
+    {
+      "name": "go guard: t.Setenv/os.Setenv of HOME no longer counts as moving HOME",
+      "file": "internal/gitquiet/goquiet_test.go",
+      "old": "if s, ok := str(n.Args[0]); ok && homeKey(s) {",
+      "new": "if s, ok := str(n.Args[0]); ok && homeKey(s) && false {"
+    },
+    {
+      "name": "go guard: XDG_CONFIG_HOME is not treated as moving the config directory",
+      "file": "internal/gitquiet/goquiet_test.go",
+      "old": "return s == \"HOME\" || s == \"XDG_CONFIG_HOME\"",
+      "new": "return s == \"HOME\""
+    },
+    {
+      "name": "go guard: a non-test harness file importing testing is skipped",
+      "file": "internal/gitquiet/goquiet_test.go",
+      "old": "\t\tif p, _ := strconv.Unquote(imp.Path.Value); p == \"testing\" {",
+      "new": "\t\tif p, _ := strconv.Unquote(imp.Path.Value); p == \"testing-never\" {"
+    },
+    {
+      "name": "go guard: any call at all counts as quieting telemetry",
+      "file": "internal/gitquiet/goquiet_test.go",
+      "old": "quiet = quiet || a == \"telemetry\" && b == \"off\"",
+      "new": "quiet = true || a == b"
+    },
+    {
+      "name": "goquiet: Off never runs `go telemetry off`",
+      "file": "../../gitquiet/goquiet/goquiet.go",
+      "old": "\tgobin, err := exec.LookPath(\"go\")\n\tif err != nil {",
+      "new": "\tgobin, err := exec.LookPath(\"go\")\n\tif err == nil {"
+    },
+    {
+      "name": "goquiet: the host config directory is treated as scratch (Off would flip the developer's own telemetry)",
+      "file": "../../gitquiet/goquiet/goquiet.go",
+      "old": "if dir == \"\" || !filepath.IsAbs(dir) || dir == host {",
+      "new": "if dir == \"\" || !filepath.IsAbs(dir) {"
+    },
+    {
+      "name": "goquiet: Wrote never reports a counter file",
+      "file": "../../gitquiet/goquiet/goquiet.go",
+      "old": "rel != \"mode\" {",
+      "new": "rel == \"never\" {"
     }
   ]
 }

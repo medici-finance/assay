@@ -1,0 +1,17 @@
+{
+  "test": "go test . -count=1 -timeout 120s -run '^Test(FixtureGitQuiet|QuietEnvPreserved)$'",
+  "control": {
+    "name": "statusgen TestMain omits the shared protection",
+    "file": "rosterfixture_test.go",
+    "old": "code := gitquiet.Run(m)",
+    "new": "code := m.Run(); _ = gitquiet.Run"
+  },
+  "mutations": [
+    {
+      "name": "fixture environment drops the shared template before child initialization",
+      "file": "gitinfo_test.go",
+      "old": "if key == \"GIT_NO_REPLACE_OBJECTS\" ||",
+      "new": "if key == \"GIT_TEMPLATE_DIR\" || key == \"GIT_NO_REPLACE_OBJECTS\" ||"
+    }
+  ]
+}

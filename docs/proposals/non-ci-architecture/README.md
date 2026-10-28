@@ -1,6 +1,6 @@
 # Unified product architecture for Assay
 
-**Status: future architecture we are moving towards. Updated 15 October 2026; includes portfolio, drift, the write-through forge-service amendment and the operation-count split (fail-closed brakes, best-effort pacing).** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
+**Status: future architecture we are moving towards. Updated 21 October 2026; includes the requested extensible JSON amendment and includes portfolio, drift, the write-through forge service, operation-count split, portable execution environments and the proposed shared write-policy and implementation-pickup amendments.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
 
@@ -40,7 +40,10 @@ Verification is the first end-to-end test.
 | [Communications future state](24-communications.md) | Proposal pending approval: reusable client/server, broker-owned delivery, config CLI and applied backlog dependencies |
 | [Tool families and CI integration](25-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
 | [Product intent and portfolio](26-product-intent-and-portfolio.md) | Product-target, capacity and observation contracts; concrete briefs, active-work boundaries and remaining admission |
+| [Agent execution environments](27-agent-execution-environments.md) | Qualified harness/model/backend profiles, workspace readiness receipts, recovery and lifecycle visibility; seven implementation briefs |
 | [Desk workflow efficiency](../../desk-workflow-efficiency-spec.md) | Draft: complete review observations, shared collection/evaluation, diagnostic measurement and caller retirement; [existing-work reconciliation](../../desk-workflow-efficiency-change-map.md) |
+| [Shared write policy](../../write-policy.md) | Proposed pure evaluator in deskcore, retained writeguard adapter, managed consumers and independent enforcement qualification |
+| [Extensible JSON contracts](29-extensible-json-contracts.md) | Requested 21 October: stable cores, versioned extensions, source census, strict required capabilities and reader-first migration; perf-v4 first |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -160,3 +163,16 @@ runtime effects; Git retains definitions/evidence; the forge service owns scoped
 observations and effects. There is no second runtime, native SCM prerequisite or new signer
 deployment. The coverage table maps existing owners and routes only two new contract gaps
 (graph-execution/30–31), with amendments to their existing admission/store/publication consumers.
+
+## Portable execution environments — 16 October 2026
+
+The [execution amendment](27-agent-execution-environments.md) extends existing R2/R3/R4/R7 owners through the [agent-execution stream](../../streams/agent-execution/README.md). It separates harness, model and backend selection, makes preparation and preservation explicit, and qualifies recovery without making an environment receipt an authority grant. AX remains an optional offline compatibility investigation. Existing PostgreSQL coordination, role executors, lifecycle and activation decisions remain controlling; no remote backend is selected.
+
+## Interactive Kubernetes desks — requested 20 October 2026
+
+[Amendment 28](28-interactive-kubernetes-desks.md) makes separately interactive desk Pods and
+an in-cluster Linux cellctl operator the required cohort. Native Windows, desktop Docker,
+tick CronJobs and workflow-controller adoption do not gate it. The public existing owners
+carry optimization and custody; agent-execution/09 and desk-containers/28–29 close the
+profile, operator and end-to-end qualification gaps. Existing approval/admission and live
+activation boundaries remain. This records direction and authored work, not deployment.

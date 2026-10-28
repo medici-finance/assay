@@ -91,6 +91,9 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		shownItem = o.itemAlias + ":" + o.item
 	}
 	fmt.Fprintf(&b, "# Assignment — %s\n\n", shownItem)
+	if plan.performancePath != "" {
+		fmt.Fprintf(&b, "## Optional local performance context\n\nPrivate local handoff: `%s`. Apply only its seven documented ASSAY_PERF_* environment entries; ignore every other environment key. Use the loop-role override only as --perf-loop-role, never as DESK_LOOP. Apply entries per tool call with quoted env KEY=value arguments or supported --perf-* flags; never eval the file or export it into a persistent shell. Apply this context only for this launch and before expiresBeforeUtc; never copy them into logs, replies or a shared shell. This context is descriptive, never custody or dispatch authority. Preserve the operator-selected ASSAY_TELEMETRY setting; the handoff does not opt you in. Missing runtime propagation remains unavailable coverage.\n\n", plan.performancePath)
+	}
 	fmt.Fprintf(&b, "- **Item key:** `%s`\n", shownItem)
 	switch {
 	case review:
@@ -286,6 +289,13 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	// open PR when the real obstruction was an unrelated stale local directory. "never clobbered"
 	// appears in that message and in no branch message, so it is the discriminator. The answer
 	// mirrors the verifier arm above — point at the stale dir and `deskwt remove`, never at a PR.
+	// A resume's earlier home was found but failed deskwt's finished-home proof (#4272): it
+	// holds something the forge does not, is locked, or belongs to another run. Removing it
+	// blind would lose exactly that, so the hint points at the clause deskwt named.
+	case strings.Contains(deskwtSaid, "Not adopted as a finished home"):
+		return "An earlier home of this item exists but is NOT provably finished (deskwt names the failed clause " +
+			"below) — it may hold work the forge does not. Inspect it; push or discard that work, or let its owner " +
+			"finish, then re-dispatch. Do not remove it unread."
 	case strings.Contains(deskwtSaid, "never clobbered"):
 		return "The worktree TARGET DIRECTORY already exists and deskwt never clobbers one — this is a stale " +
 			"directory on this session key, NOT a branch collision and NOT a delivered brief, so do not look " +
@@ -509,11 +519,12 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 	b.WriteString("## Run the Verify table against merged main — READ-ONLY, no PR\n\n")
 	fmt.Fprintf(b, "You are VERIFYING `%s` in `%s`. This is a VERIFY pass, not an implementation: you run "+
 		"the item's Verify table against MERGED main and produce a written VERDICT (Evidence rows plus "+
-		"the BOLD marker `**VERIFY: PASS**` or `**VERIFY: FAIL**`, any qualifier after the closing "+
+		"the BOLD marker `**VERIFY: PASS**`, `**VERIFY: FAIL**` or `**VERIFY: BLOCKED**`, any qualifier after the closing "+
 		"asterisks), never a change. Do not create a pull request, do not push a "+
 		"branch for implementation changes. An Evidence-only draft follows the deskevidence lane after verification. Do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
 		"worker kit, not this one. A verifier never sets verified/done itself and never flips a PR ready "+
 		"(per the standing verifier clauses below).\n\n", o.item, repo)
+	writeOutcomeRecordLine(b, plan, repo, home)
 	b.WriteString("Release the dispatch claim once your verdict has LANDED — Evidence recorded and the item " +
 		"advanced or routed to the human gate — not on a branch push, which is not this class's output:\n\n")
 	writeReleaseClaim(b, o, plan, repo)

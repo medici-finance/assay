@@ -1,6 +1,8 @@
 package deskkit
 
 import (
+	"github.com/medici-finance/assay/deskcore/attestation"
+
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,10 +12,11 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
-const VerifierAttestationTitle = "[verification-attestation] "
+const VerifierAttestationTitle = attestation.Title
 const verifierRecordName = "assay-verifier-attestation.json"
 
 // VerifierAttestationRecord is the file name of a verifier home's local admission
@@ -25,11 +28,7 @@ const VerifierAttestationRecord = verifierRecordName
 // This is dispatch provenance, NEVER a Verify result or evidence of execution.
 // Checkout pins the line-ending conversion the home was checked out with, so
 // admission renders attested blobs from the commit and this record only.
-type VerifierBinding struct {
-	Version                                                                              int
-	SourceRepo, TrackingSource, TrackingHomeSHA256, TrackingCheckout                     string `json:",omitempty"`
-	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier, Checkout string
-}
+type VerifierBinding = attestation.Binding
 
 // verifierPhase names the admission checkpoint. Before execution every source
 // file, the stream index included, must hold its attested bytes; at Evidence
@@ -53,12 +52,23 @@ type VerifierReceipt struct {
 	// the tracking tree, so a root derived from the brief's location would run
 	// the rows against a tree the attestation does not name.
 	SourceHome string `json:",omitempty"`
+	// World is the run-bound prerequisite record admitted with this run
+	// (example-stream/50), local-only like BriefRoot and never part of the issue
+	// body. Admission rechecks it before rows execute, and landing consumes it.
+	World *RunWorld `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
 	Home         string
 	TrackingHome string `json:",omitempty"`
 	Attempted    bool
+	// WorldRequired marks a run whose prepare step admits and binds a
+	// prerequisite record (example-stream/50). It is set before the stamp is
+	// issued, so a run whose admission was held or could not check carries the
+	// mark and no World, and row and Evidence admission refuse it. A record
+	// without the mark (written by an earlier build) keeps the earlier
+	// behaviour: no record, nothing to recheck.
+	WorldRequired bool `json:",omitempty"`
 }
 
 func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -327,11 +337,8 @@ func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
 	}
 	return verifierSave(home, r)
 }
-func verifierBody(b VerifierBinding) string {
-	data, _ := json.MarshalIndent(b, "", "  ")
-	return "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(data) + "\n"
-}
-func verifierAuthority(login string) bool { return attestationAuthority("verifier")(login) }
+func verifierBody(b VerifierBinding) string { return attestation.Body(b) }
+func verifierAuthority(login string) bool   { return attestationAuthority("verifier")(login) }
 func verifierIssue(f Forge, repo ForgeRepo, r verifierLocal) (*Issue, error) {
 	return attestationRecord(f, repo, r.Issue, VerifierAttestationTitle+r.Binding.Run, verifierBody(r.Binding), verifierAuthority, "verifier")
 }
@@ -410,7 +417,9 @@ func IssueVerifierAttestation(root string, f Forge) (VerifierReceipt, error) {
 			return r.VerifierReceipt, Unverifiable("cannot close attestation record (not a verification result)", err)
 		}
 	}
-	return CheckVerifierAttestationWithForge(root, r.Binding.Brief, f)
+	// The stamp read-back runs before the prepare step binds its record, so it
+	// does not require one; row and Evidence admission do.
+	return checkVerifierRun(root, r.Binding.Brief, f, verifierExecution, false)
 }
 
 // CheckVerifierAttestationWithForge is pre-execution admission: every source
@@ -419,12 +428,28 @@ func CheckVerifierAttestationWithForge(root, brief string, f Forge) (VerifierRec
 	return checkVerifierAttestation(root, brief, f, verifierExecution)
 }
 func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) (VerifierReceipt, error) {
+	return checkVerifierRun(root, brief, f, phase, true)
+}
+
+// checkVerifierRun is admission of one prepared run. requireWorld is false
+// only for the stamp read-back inside IssueVerifierAttestation; every
+// admission that lets rows execute or Evidence land requires the record a
+// marked run's prepare step bound.
+func checkVerifierRun(root, brief string, f Forge, phase verifierPhase, requireWorld bool) (VerifierReceipt, error) {
 	r, err := verifierLoad(root)
 	if err != nil {
 		return r.VerifierReceipt, err
 	}
 	if err = verifierLocalCheck(root, brief, r, phase); err != nil {
 		return r.VerifierReceipt, err
+	}
+	if requireWorld && r.WorldRequired && r.World == nil {
+		return r.VerifierReceipt, Refused("verifier run has no admitted prerequisite record (its prepare-step admission was held or could not check); no Verify rows or Evidence admitted; recover with deskdispatch --attest-verifier --root <home>, which re-admits it")
+	}
+	if r.World != nil {
+		if err = r.World.Recheck(worldRecheckProbes); err != nil {
+			return r.VerifierReceipt, err
+		}
 	}
 	if r.Issue <= 0 {
 		return r.VerifierReceipt, Refused("verifier stamp is pending; no Verify rows admitted")
@@ -491,6 +516,87 @@ func (r VerifierReceipt) EvidenceBinding() string {
 }
 func IsVerifierAttestation(title, author string) bool {
 	return strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)
+}
+
+// ReadVerifierAttestation admits an existing remote record without requiring the
+// original local verifier home. Scheduling readers use the same immutable record
+// and dispatcher stamp gates as execution and Evidence admission; this is never
+// authority to execute rows, land Evidence, or advance lifecycle.
+func ReadVerifierAttestation(f Forge, repo ForgeRepo, n int) (VerifierReceipt, error) {
+	return readVerifierAttestation(f, repo, n)
+}
+
+// The shared validator can consume only these read capabilities. Extending it
+// requires an explicit adapter change at compile time, rather than a nil-Forge
+// panic or an accidental live request from a prepared observation.
+type verifierAttestationReader interface {
+	attestationRecordReader
+	issueLabelEventReader
+	GetIssueTyped(ForgeRepo, int, TargetKind) (*Issue, error)
+}
+
+func readVerifierAttestation(f verifierAttestationReader, repo ForgeRepo, n int) (VerifierReceipt, error) {
+	r := VerifierReceipt{Issue: n}
+	if n <= 0 {
+		return r, Refused("verifier attestation number must be positive")
+	}
+	issue, err := f.GetIssueTyped(repo, n, TargetIssue)
+	if err != nil {
+		return r, Unverifiable("cannot read verifier attestation", err)
+	}
+	if issue == nil {
+		return r, Refused("missing verifier attestation")
+	}
+	r.Binding, err = attestation.ParseBody(issue.Body)
+	if err != nil {
+		return r, Refused("verifier attestation body is not a binding")
+	}
+
+	b := r.Binding
+	if why := attestation.BindingProblem(b, repo.Slug(), attestation.GeneralV1V2, IsAllowedRepo(b.SourceRepo)); why != "" {
+		return r, Refused("invalid verifier attestation binding: " + why)
+	}
+	if err := r.CheckEvidenceTarget(b.Brief); err != nil {
+		return r, err
+	}
+
+	title, body := VerifierAttestationTitle+b.Run, verifierBody(b)
+	issue, err = attestationRecordObserved(f, repo, n, issue, title, body, verifierAuthority, "verifier")
+	if err != nil {
+		return r, err
+	}
+	if issue.State != "closed" {
+		return r, Refused("verifier pre-work attestation has not completed")
+	}
+	// Keep a consequential current-state read AFTER body provenance. Reusing
+	// the initial issue is not permission to admit an edited/reopened record or
+	// moved labels. As in StampTimelineFor, current labels are read BEFORE their
+	// history. Dispatch and Evidence admission retain their independent reads.
+	issue, err = f.GetIssueTyped(repo, n, TargetIssue)
+	if err != nil {
+		return r, Unverifiable("cannot reconcile verifier attestation", err)
+	}
+	if err := attestationTarget(issue, title, body, verifierAuthority, "verifier"); err != nil {
+		return r, err
+	}
+	if issue.State != "closed" {
+		return r, Refused("verifier pre-work attestation has not completed")
+	}
+	tl, err := stampTimelineForIssue(f, repo, n, issue)
+	if err != nil {
+		return r, err
+	}
+	facts := make([]attestation.LabelEvent, 0, len(tl.Events))
+	for _, e := range tl.Events {
+		facts = append(facts, attestation.LabelEvent{Label: e.Name, Removed: e.Removed, Authority: verifierAuthority(e.AppliedBy)})
+	}
+	model, tier, why := attestation.Stamp(tl.Present, facts)
+	if why != "" || model != b.Model || tier != b.Tier {
+		return r, Refused("missing or mismatched dispatcher verifier stamp")
+	}
+
+	r.URL = issue.URL
+	return r, nil
 }
 
 // CheckVerifierEvidence reuses pre-work admission at landing time, after the
@@ -592,6 +698,103 @@ func (r VerifierReceipt) CheckEvidenceContent(target string, content []byte, row
 		}
 	}
 	return nil
+}
+
+// CheckObservedBrief binds a scheduling reader's immutable source bytes to the
+// exact original brief and plan admitted before this verifier run.
+func (r VerifierReceipt) CheckObservedBrief(content []byte) error {
+	if verifierDigest(content) != r.Binding.BriefSHA256 || verifierDigest(withoutEvidence(content)) != r.Binding.PlanSHA256 {
+		return Refused("attested source brief digest mismatch")
+	}
+	return nil
+}
+
+// CheckVerifierSourceTree establishes unchanged source bytes for a scheduling
+// hold that has no wake receipt. It reuses admission's tree/checkout checks;
+// HEAD identity alone says nothing about modified, ignored or untracked bytes.
+func CheckVerifierSourceTree(root, source string) error {
+	checkout, err := readVerifierCheckout(root)
+	if err != nil {
+		return err
+	}
+	if err := verifierNoReplacements(root); err != nil {
+		return err
+	}
+	if err := verifierNoLocalAttributes(root); err != nil {
+		return err
+	}
+	return verifierSourceClosure(root, source, checkout, nil)
+}
+
+// VerifierEvidenceBindings returns real binding lines inside Evidence. Fenced
+// examples and mentions elsewhere never establish an Evidence run. Shared by
+// outcome admission and queue scheduling so the two read the same contract.
+func VerifierEvidenceBindings(content []byte) []string {
+	var lines []string
+	inEvidence, fence := false, ""
+	fenceLine := regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+	for _, line := range strings.Split(string(content), "\n") {
+		if match := fenceLine.FindStringSubmatch(line); match != nil {
+			if fence == "" {
+				fence = match[1]
+			} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue
+		}
+		if strings.HasPrefix(line, "## ") {
+			inEvidence = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == "Evidence"
+		}
+		line = strings.TrimRight(line, " \t\r")
+		if inEvidence && strings.HasPrefix(line, "Verification-Attestation: ") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// worldRecheckProbes is the probe set admission rechecks a bound RunWorld with.
+// Tests replace it; production reads local state only.
+var worldRecheckProbes PreflightProbes
+
+// RequireVerifierWorld marks a prepared run as one whose prepare step binds a
+// prerequisite record. The shipped prepare path calls it BEFORE the stamp is
+// issued, so no closed stamp from that path is admissible without a bound
+// record. It is idempotent.
+func RequireVerifierWorld(home string) error {
+	r, err := verifierLoad(home)
+	if err != nil {
+		return err
+	}
+	if r.WorldRequired {
+		return nil
+	}
+	r.WorldRequired = true
+	return verifierSave(home, r)
+}
+
+// BindVerifierWorld persists w as the prepared run's prerequisite record. A
+// run already bound to a different record refuses: the record is admitted
+// once, and a changed world is a new run, never a silent rebind.
+func BindVerifierWorld(home string, w RunWorld) (VerifierReceipt, error) {
+	r, err := verifierLoad(home)
+	if err != nil {
+		return r.VerifierReceipt, err
+	}
+	if r.World != nil {
+		if r.World.Digest() != w.Digest() {
+			return r.VerifierReceipt, Refused("verifier run is already bound to a different prerequisite record; re-admit a new run")
+		}
+		return r.VerifierReceipt, nil
+	}
+	r.World = &w
+	if err = verifierSave(home, r); err != nil {
+		return r.VerifierReceipt, err
+	}
+	return r.VerifierReceipt, nil
 }
 
 // PlanVerifierAttestation validates the existing local binding without forge access.

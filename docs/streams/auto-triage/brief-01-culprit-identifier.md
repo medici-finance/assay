@@ -34,6 +34,8 @@ id: 2e97241c-23a2-4269-9e1e-a5eb081680c6
 
 # Brief 01 — culprit identifier
 
+> **Contract note, 2026-10-18.** This brief implements the culprit record, the gate-red admission predicate, the conservative judgement default and the withheld-detail rule that graph-execution/08 now defines for the signal-triggered pattern's gate-red class. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
 ## Context
 
 single-point-of-failure: this brief IS the head control — the classifier's output is what
@@ -45,10 +47,7 @@ classify as `judgement`, never `mechanical`.
 
 files:
 - `tools/autotriage/` (new Go package) — the parser + classifier and its tests.
-- `tools/autotriage/testdata/` (new) — captured CI-output fixtures (gofmt failure, a
-  statusgen `PROBLEM` line, a `go test` failure, a leak-sweep red status, a timing-flake
-  log), each a real-shaped sample with any withheld/sensitive content redacted to a
-  synthetic placeholder.
+- `tools/autotriage/testdata/` (new) — captured CI-output fixtures (gofmt failure, a statusgen `PROBLEM` line, a `go test` failure, a leak-sweep red status, a timing-flake log), each a real-shaped sample with any withheld/sensitive content redacted to a synthetic placeholder.
 
 facts:
 - Input: the failing gate's output as CI exposes it — a job log (`gh run view --log`

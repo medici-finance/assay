@@ -19,23 +19,12 @@ package main
 // runs nothing, writes nothing — so unlike `verifyrun` it has no business
 // executing Verify rows and is never part of `--lint`.
 //
-// ACCEPTANCE — two independent halves, BOTH required (the same pair the issue
-// names: "Verified stamp + verifyrun witness present"):
-//
-//  1. THE STAMP. The brief's stream-README row is at Status `verified` or
-//     `done`, and its Verified cell carries a dated runner (verifiedCellRe).
-//     A brief still at `implemented` fails here — that is the stuck-flip shape.
-//
-//  2. THE WITNESS. Every Verify row the brief carries has a matching, passing
-//     EXECUTION WITNESS in its Evidence (checkWitnesses / checkExitCode, the
-//     same audit `verifyrun --check` runs). Filled-but-unwitnessed Evidence
-//     fails here. A brief with NO Verify rows has nothing to witness and clears
-//     this half on the stamp alone.
-//
-// Both halves reuse the existing acceptance code — the register Status/Verified
-// cells and verifiedCellRe (the stamp), checkWitnesses/checkExitCode (the
-// witness) — so the criteria live in ONE place and this command can never drift
-// from what the board and the witness audit already mean.
+// ACCEPTANCE is owned by checkSelectedClosure, the same per-brief validator
+// brief --check-verified uses: verified/done status, dated stamp, non-empty
+// applicable Verify rows, passing current witnesses, a human stamp for gate:human
+// rows, and current fail-first evidence for risk-bearing rows. The fail-first
+// policy is also the one corpus lint calls, with its own transition scope.
+// Attribution and landing authorization are separate caller responsibilities.
 //
 // THREE-STATE (common-clause C4). A brief whose file or board row cannot be read
 // is could-not-check (exit 2), never rounded to accepted and never to refused:
@@ -46,6 +35,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"os"
 	"strings"
 )
@@ -69,7 +59,7 @@ const verifyclosureUsage = `statusgen verifyclosure — is a lint-valid ` + "`ve
 Usage:
   statusgen verifyclosure --brief <stream>/<NN> [--root <dir>]
 
-Reads ONLY the board and the brief; runs nothing, writes nothing. Exit 0 when the
+Reads the board, brief and local Git provenance; runs no Verify commands and writes nothing. Exit 0 when the
 tree accepts a ` + "`verified`" + ` closure for the brief (the Verified stamp is present AND
 every Verify row carries a passing execution witness), exit 1 when it does not
 (the stuck-flip shape a ` + "`verified`" + ` sidecar row must not record), exit 2 when the
@@ -84,6 +74,7 @@ Flags:
 // the "verifyclosure" token main() already stripped.
 func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("verifyclosure", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
 	briefKey := fs.String("brief", "", "brief key <stream>/<NN> to evaluate")
@@ -127,52 +118,32 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 		return verifyclosureExitCouldNotCheck
 	}
 
-	// Half 1 — the stamp. A brief still at implemented (or any non-closed state),
-	// or one at verified/done with no dated runner in the Verified cell, does not
-	// present a lint-valid closure. This is the stuck-flip discriminator.
-	if br.Status != "verified" && br.Status != "done" {
-		fmt.Fprintf(stdout, "%s: NOT accepted — Status is %q, not verified/done — a `verified` sidecar row for a brief the board still calls %q is the stuck-flip mismatch (#1309)\n", key, br.Status, br.Status)
-		return verifyclosureExitNotAccepted
-	}
-	if !verifiedCellRe.MatchString(br.Verified) {
-		fmt.Fprintf(stdout, "%s: NOT accepted — Status is %q but the Verified cell %q carries no dated runner stamp (YYYY-MM-DD <runner>)\n", key, br.Status, br.Verified)
-		return verifyclosureExitNotAccepted
-	}
-
-	// Half 2 — the witness. Every Verify row must carry a matching, passing
-	// execution witness. A brief with no Verify rows has nothing to witness and
-	// clears this half on the stamp alone.
 	art, ok := loadBriefArtifacts(s, num)
 	if !ok {
 		fmt.Fprintf(stderr, "statusgen verifyclosure: could-not-check — cannot read the brief file for %s under %s\n", key, root)
 		return verifyclosureExitCouldNotCheck
 	}
-	// This verb does not run the lint, so it refuses an unterminated `<!--`
-	// itself (#1939): a line-start one hides the witness table on the page.
-	findings, refusal := closureWitnesses(art.Verify, art.Evidence)
-	if refusal != "" {
-		fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, refusal)
-		return verifyclosureExitNotAccepted
-	}
-	if len(findings) == 0 {
-		// No Verify rows: nothing to witness. The stamp already passed.
-		fmt.Fprintf(stdout, "%s: accepted — Status %q with a stamped Verified cell; no Verify rows to witness\n", key, br.Status)
-		return verifyclosureExitAccepted
-	}
-	if code := checkExitCode(findings); code != verifyrunExitPass {
-		var missing []string
-		for _, f := range findings {
-			if f.State != statePass {
-				missing = append(missing, fmt.Sprintf("row %s: %s", f.ID, f.State))
-			}
+	findings, err := checkSelectedClosure(root, key, br.Status, br.Verified, art)
+	if err != nil {
+		var structural *evaluation.ClosureStructureError
+		if errors.As(err, &structural) {
+			fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, structural.Detail)
+		} else {
+			fmt.Fprintf(stdout, "%s: NOT accepted — %v\n", key, err)
 		}
-		fmt.Fprintf(stdout, "%s: NOT accepted — Status %q but %d Verify row(s) lack a passing execution witness (%s) — `statusgen verifyrun --brief <path>` writes one\n",
-			key, br.Status, len(missing), strings.Join(missing, "; "))
 		return verifyclosureExitNotAccepted
 	}
 
-	fmt.Fprintf(stdout, "%s: accepted — Status %q, Verified cell stamped, and all %d Verify row(s) carry a passing execution witness\n",
-		key, br.Status, len(findings))
+	passed, supplemental := 0, 0
+	for _, f := range findings {
+		if f.State == statePass {
+			passed++
+		} else if f.State == stateAuthorAdded {
+			supplemental++
+		}
+	}
+	fmt.Fprintf(stdout, "%s: accepted — Status %q, Verified cell stamped, %d passing acceptance row(s), %d author-added row(s) with no acceptance credit\n",
+		key, br.Status, passed, supplemental)
 	return verifyclosureExitAccepted
 }
 

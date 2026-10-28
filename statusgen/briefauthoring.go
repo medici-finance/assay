@@ -29,9 +29,10 @@ package main
 // answer. The brief derives `unknown` and the read is disclosed in `unread`, which refuses
 // `--apply` (reconcile.go) — it is never guessed in either direction.
 //
-// COST. One file-list read per candidate PR, cached for the run. The trailer fold classifies
-// only briefs whose board row is todo or in-progress (the only rows --apply can move); the
-// backfill classifies only the merged pulls that match a todo-derived brief.
+// COST. One file-list read per candidate PR, cached for the run. Every derived brief is
+// classified, including completed rows the drift comparator reads. Evidence-shaped file lists
+// reuse the existing PRShape reader and evidenceOnlyReason classifier; ordinary code, authoring
+// and declared-partial PRs need no shape read. Backfill shares both caches.
 
 import (
 	"encoding/json"
@@ -177,6 +178,7 @@ type authoringClassifier struct {
 	stderr io.Writer
 	mu     sync.Mutex // guards cache: prefetch fills it from several readers
 	cache  map[int]filesResult
+	shapes map[int]shapeResult
 	// partials is the run's declared-partial deliveries (briefdelivery.go), set by
 	// admitPRWitnesses so the --backfill match skips them too.
 	partials declaredPartials
@@ -193,7 +195,7 @@ type filesResult struct {
 }
 
 func newAuthoringClassifier(client *ghClient, repo string, stderr io.Writer) *authoringClassifier {
-	return &authoringClassifier{client: client, repo: repo, stderr: stderr, cache: map[int]filesResult{}}
+	return &authoringClassifier{client: client, repo: repo, stderr: stderr, cache: map[int]filesResult{}, shapes: map[int]shapeResult{}}
 }
 
 // authoringOnly reports whether PR number only authored briefID. A non-nil error means the file
@@ -214,7 +216,7 @@ func (a *authoringClassifier) authoringOnly(number int, briefID string) (bool, e
 }
 
 // nonDelivery reports whether PR number is NOT a delivery of briefID: the brief declares it a
-// partial delivery (briefdelivery.go, #2703), or it only authored the brief. It is the seam the
+// partial delivery (briefdelivery.go, #2703), or it only authored the brief or recorded Evidence. It is the seam the
 // --backfill match takes, so the two readers that turn a PR into a witness exempt the same PRs.
 func (a *authoringClassifier) nonDelivery(number int, briefID string) (bool, error) {
 	if a.partials.partial(number, briefID) {
@@ -224,7 +226,7 @@ func (a *authoringClassifier) nonDelivery(number int, briefID string) (bool, err
 		}
 		return true, nil
 	}
-	return a.authoringOnly(number, briefID)
+	return a.notImplementation(number, briefID)
 }
 
 // files returns PR number's file-list read, reading it on the first ask.
@@ -276,7 +278,8 @@ func (a *authoringClassifier) prefetch(numbers []int) {
 // sequential match that follows answers from the cache. It replays the match
 // in waves: each wave reads, for every brief still unresolved, the next
 // candidate the match would ask about — the newest not yet shown to be
-// authoring-only — and stops a brief at its first delivery or unreadable list.
+// authoring-only or walked past by its trailer — and stops a brief at its first delivery or
+// unreadable list.
 // The set of PRs read is therefore the set the sequential walk reads, never a
 // speculative superset; only the waiting is overlapped.
 func (a *authoringClassifier) prefetchBackfill(pulls []ghPull, briefs [][2]string) {
@@ -309,11 +312,16 @@ func (a *authoringClassifier) prefetchBackfill(pulls []ghPull, briefs [][2]strin
 					}
 					break
 				}
-				if r.err != nil || !briefAuthoringOnly(w.id, r.files) {
+				only, err := a.notImplementation(n, w.id)
+				if r.err != nil || err != nil {
+					w.next = len(w.cands) // unreadable: the match stops here
+					break
+				}
+				if past, _ := backfillWalkPast(w.cands[w.next].Body, w.id); !past && !only {
 					w.next = len(w.cands) // resolved: the match stops here
 					break
 				}
-				w.next++ // authoring-only: the match asks about the next one
+				w.next++ // walked past or authoring-only: the match asks about the next one
 			}
 		}
 		if len(wave) == 0 {
@@ -326,13 +334,12 @@ func (a *authoringClassifier) prefetchBackfill(pulls []ghPull, briefs [][2]strin
 // unreadAuthoring is the disclosure for a PR whose authored-or-delivered question could not be
 // answered.
 func unreadAuthoring(number int, briefID string, err error) string {
-	return fmt.Sprintf("could-not-check whether PR #%d authored or delivered %s (%v) — %s derives unknown, not a witnessed implemented",
+	return fmt.Sprintf("could-not-check whether PR #%d implemented %s (%v) — %s derives unknown, not a witnessed implemented",
 		number, briefID, err, briefID)
 }
 
-// dropAuthoringPRs removes, from the `Brief:`-trailer PR records, each open or merged PR that
-// only AUTHORED the brief its trailer names. inScope narrows which briefs are classified (nil =
-// all), by canonical key. A PR the classifier could not read is KEPT (the status quo) but its
+// dropAuthoringPRs removes authoring and Evidence-only PRs from the trailer records.
+// inScope narrows which briefs are classified (nil = all), by canonical key. A PR the classifier could not read is KEPT (the status quo) but its
 // brief is returned in undecided (by every ident id sharing the key), so the cell derives
 // `unknown`, and the reason is returned in unread, which refuses --apply.
 func dropAuthoringPRs(cl *authoringClassifier, prs []PRRecord, idents []BriefIdent, inScope func(key string) bool) (kept []PRRecord, undecided map[string]string, unread []string) {
@@ -349,7 +356,11 @@ func dropAuthoringPRs(cl *authoringClassifier, prs []PRRecord, idents []BriefIde
 			kept = append(kept, pr)
 			continue
 		}
-		only, err := cl.authoringOnly(pr.Number, key)
+		if cl.partials.partial(pr.Number, key) {
+			kept = append(kept, pr) // retained as in-progress by markDeclaredPartials
+			continue
+		}
+		only, err := cl.notImplementation(pr.Number, key)
 		switch {
 		case err != nil:
 			why := unreadAuthoring(pr.Number, key, err)
@@ -377,10 +388,15 @@ type backfillAuthoring func(number int, briefID string) (bool, error)
 // first, and the first delivery wins. A candidate whose file list could not be read ends the
 // search unresolved (unread non-empty, ok false): a lower-numbered match is not taken in its
 // place, because the unread PR may be the delivery.
+//
+// A TRAILER-ERA candidate that does not name the brief is walked past (backfillWalkPast,
+// derived-board/10 amendment B): the fallback exists for trailerless history, so a PR whose own
+// link trailer declares another brief, an issue or authoring only MENTIONS this brief. The rule
+// holds with and without the seam. With the seam wired the candidate's file list is read FIRST,
+// so a walk-past never skips a read that would have ended the search unknown.
 func matchBackfillPRChecked(pulls []ghPull, stream, num string, authoring backfillAuthoring) (match ghPull, ok bool, unread string) {
 	if authoring == nil {
-		m, found := matchBackfillPR(pulls, stream, num)
-		return m, found, ""
+		authoring = func(int, string) (bool, error) { return false, nil } // classifies nothing
 	}
 	id := stream + "/" + num
 	for _, p := range backfillCandidates(pulls, stream, num) {
@@ -388,11 +404,40 @@ func matchBackfillPRChecked(pulls []ghPull, stream, num string, authoring backfi
 		if err != nil {
 			return ghPull{}, false, unreadAuthoring(p.Number, id, err)
 		}
+		if past, _ := backfillWalkPast(p.Body, id); past {
+			continue
+		}
 		if !only {
 			return p, true, ""
 		}
 	}
 	return ghPull{}, false, ""
+}
+
+// backfillWalkPast is the --backfill walk's trailer rule. It is a variable only so a test can
+// disable the rule in an isolated seam and watch the mention-only witness come back.
+var backfillWalkPast = backfillTrailerWalkPast
+
+// backfillTrailerWalkPast reports whether a backfill candidate with this body is walked past for
+// briefID, and why. A body with no link trailer (`Brief:`, `Authors:` or `Issue:`, outside fenced
+// code) is trailerless history and is never walked past here. Otherwise the verdict is the shared
+// trailer predicate's (linkTrailerVerdict, the one autoflip's attributeCandidate uses): a
+// walk-past (a `Brief:` naming another brief, or `Authors:` only) walks past; a credit, or several
+// `Brief:` values, goes on to the authoring, Evidence-only and declared-partial reader. One arm is
+// backfill's own: no `Brief:` but an `Issue:` trailer walks past — that PR is an issue's.
+func backfillTrailerWalkPast(body, briefID string) (bool, string) {
+	count, briefs, issues := parseLinkTrailers(body)
+	if count == 0 && issues == 0 {
+		return false, ""
+	}
+	v, why := linkTrailerVerdict(count, briefs, briefID)
+	switch {
+	case v == candidateWalkPast:
+		return true, why
+	case v == candidateUnattributable && len(briefs) == 0 && issues > 0:
+		return true, fmt.Sprintf("it carries an `Issue:` trailer and no `Brief:` trailer — an issue's PR that only mentions %s", canonicalBriefKey(briefID))
+	}
+	return false, ""
 }
 
 // backfillCandidates lists the MERGED pulls that name stream/num in a declared
@@ -411,28 +456,8 @@ func backfillCandidates(pulls []ghPull, stream, num string) []ghPull {
 	return cands
 }
 
-// movableBriefKeys returns the canonical keys of the briefs whose board row is todo or
-// in-progress — the only rows `reconcile --apply` can move to implemented. It is the scope of
-// the trailer-fold classification, which keeps the file-list reads to the rows that matter.
-// ok is false when the board could not be read, in which case the caller classifies everything.
-func movableBriefKeys(boardRoot string) (keys map[string]bool, ok bool) {
-	streams, _, err := loadStreams(boardRoot)
-	if err != nil {
-		return nil, false
-	}
-	keys = map[string]bool{}
-	for _, s := range streams {
-		for _, b := range s.Briefs {
-			if b.Status == "todo" || b.Status == "in-progress" {
-				keys[canonicalBriefKey(s.Name+"/"+b.Num)] = true
-			}
-		}
-	}
-	return keys, true
-}
-
 // admitPRWitnesses is the one place the `Brief:`-trailer PR set is narrowed to genuine
-// witnesses. It builds the run's classifier, drops the authoring-only PRs from in.PRs (in
+// witnesses. It builds the run's classifier, drops authoring/Evidence-only PRs from in.PRs (in
 // place), marks the declared-partial merges (briefdelivery.go), and returns the classifier
 // (shared with the --backfill match so a PR's files are read once), the briefs whose question
 // could not be answered (to be merged into in.Undecided AFTER wireFoldInputs resets that map),
@@ -444,18 +469,22 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 	if !in.LookedAt {
 		return cl, nil, nil
 	}
-	var inScope func(string) bool
+	// Admission follows the derivation's input set, not the write arm's mutable
+	// rows: completed rows still feed drift and witness/provenance overlays.
+	keys := map[string]bool{}
+	for _, b := range in.Briefs {
+		keys[canonicalBriefKey(b.ID)] = true
+	}
+	inScope := func(key string) bool { return keys[key] }
 	boardRoot, found := findBoardRoot(root)
 	if found {
-		if keys, ok := movableBriefKeys(boardRoot); ok {
-			inScope = func(key string) bool { return keys[key] }
-		}
+		cl.partials = readDeclaredPartials(boardRoot, repo)
 	}
 	// dropAuthoringPRs reads one file list per in-scope open or merged PR;
 	// read exactly those in parallel first, so its walk answers from the cache.
 	var reads []int
 	for _, pr := range in.PRs {
-		if pr.State != prClosed && (inScope == nil || inScope(canonicalBriefKey(pr.BriefRef))) {
+		if pr.State != prClosed && inScope(canonicalBriefKey(pr.BriefRef)) && !cl.partials.partial(pr.Number, pr.BriefRef) {
 			reads = append(reads, pr.Number)
 		}
 	}
@@ -465,7 +494,6 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 	// implementation (briefdelivery.go, #2703). Every brief is read: the claims are
 	// in the tree, so they cost no forge read.
 	if found {
-		cl.partials = readDeclaredPartials(boardRoot, repo)
 		markDeclaredPartials(kept, cl.partials, stderr)
 		for id, why := range cl.partials.undecided {
 			if _, taken := undecided[id]; !taken {
@@ -474,6 +502,14 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 		}
 		unread = append(unread, cl.partials.unread...)
 	}
+	// A PR that merged in ANOTHER configured root with this brief's `Brief:`
+	// trailer is a delivery witness too (crossroot.go). It cannot have authored
+	// a file in this tree, so it skips the authoring classifier.
+	self, bRoot := root, ""
+	if found {
+		self, bRoot = boardRoot, boardRoot
+	}
+	kept = append(kept, crossRootPRRecords(self, repo, bRoot, inScope, stderr)...)
 	in.PRs = kept
 	for _, m := range unread {
 		fmt.Fprintf(stderr, "reconcile: %s\n", m)

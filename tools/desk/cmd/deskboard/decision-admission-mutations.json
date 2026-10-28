@@ -1,0 +1,173 @@
+{
+  "test": "go test ./internal/deskkit ./cmd/deskboard -count=1 -timeout 90s -run '^(TestDecision|TestBoardAdmission|TestBoardDropsUnruledGate)'",
+  "control": {
+    "name": "CONTROL: a missing ruling no longer holds",
+    "file": "internal/deskkit/briefadmission.go",
+    "old": "w.Waiting = true",
+    "new": "w.Waiting = false"
+  },
+  "mutations": [
+    {
+      "name": "discovery repeated per row",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "s.discover.Do(func() {",
+      "new": "new(sync.Once).Do(func() {"
+    },
+    {
+      "name": "issue read not coalesced",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "if read := s.issues[n]; read != nil {",
+      "new": "if read := s.issues[n]; false && read != nil {"
+    },
+    {
+      "name": "ruling read not coalesced",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "if read := s.reads[n]; read != nil {",
+      "new": "if read := s.reads[n]; false && read != nil {"
+    },
+    {
+      "name": "partial discovery treated as complete",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "if s.discoveryErr != nil {",
+      "new": "if false && s.discoveryErr != nil {"
+    },
+    {
+      "name": "search body replaces fresh marker membership",
+      "file": "internal/deskkit/briefadmission.go",
+      "old": "if decisionBodyHasSpelling(item.Body, spelling) {",
+      "new": "if true || decisionBodyHasSpelling(item.Body, spelling) {"
+    },
+    {
+      "name": "highest numbered candidate wins",
+      "file": "internal/deskkit/briefadmission.go",
+      "old": "sort.Ints(candidates)",
+      "new": "sort.Sort(sort.Reverse(sort.IntSlice(candidates)))"
+    },
+    {
+      "name": "GitHub incomplete result accepted",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "|| *w.Incomplete {",
+      "new": "|| false {"
+    },
+    {
+      "name": "GitHub next page ignored",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "len(out) == *w.Total && !hasNextLink(hdr)",
+      "new": "len(out) == *w.Total && (!hasNextLink(hdr) || true)"
+    },
+    {
+      "name": "GitLab first page treated as whole",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "if resp.NextPage == 0 {",
+      "new": "if true {"
+    },
+    {
+      "name": "single worker serializes admission reads",
+      "file": "cmd/deskboard/admission.go",
+      "old": "sweepConcurrent(results, sweepConcurrency,",
+      "new": "sweepConcurrent(results, 1,"
+    },
+    {
+      "name": "ruling cache survives a sweep",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "func NewDecisionSweep(f DecisionForge, repo ForgeRepo, isRatifier func(string, int64) bool) *DecisionSweep {\n\treturn &DecisionSweep{forge: f, repo: repo, ratifier: isRatifier, reads: map[int]*decisionSweepRead{}, issues: map[int]*decisionSweepIssue{}}\n}\n",
+      "new": "var leakedDecisionReads = map[int]*decisionSweepRead{}\n\nfunc NewDecisionSweep(f DecisionForge, repo ForgeRepo, isRatifier func(string, int64) bool) *DecisionSweep {\n\treturn &DecisionSweep{forge: f, repo: repo, ratifier: isRatifier, reads: leakedDecisionReads, issues: map[int]*decisionSweepIssue{}}\n}\n"
+    },
+    {
+      "name": "foreign project colon markers become aliases",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "spellings := decisionBriefSpellings(id)",
+      "new": "var spellings []string\n\t\tfor spelling := range s.markers {\n\t\t\tif normalizeDecisionBriefID(spelling) == normalizeDecisionBriefID(id) {\n\t\t\t\tspellings = append(spellings, spelling)\n\t\t\t}\n\t\t}"
+    },
+    {
+      "name": "result cap loses its diagnostic class",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "cause = \"decision-marker result limit reached\"",
+      "new": "cause = \"transport or response unavailable\""
+    },
+    {
+      "name": "raw provider error leaks into board reason",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "return fmt.Sprintf(\"the search for %s's decision issue on %s could not run (%s)\", id, repo.Slug(), cause)",
+      "new": "_ = cause; return fmt.Sprintf(\"the search for %s's decision issue on %s could not run (%s)\", id, repo.Slug(), err.Error())"
+    },
+    {
+      "name": "GitHub search syntax forwarded to GitLab",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "gitlab.Ptr(ms.text)",
+      "new": "gitlab.Ptr(fmt.Sprintf(\"%q in:body\", ms.text))"
+    },
+    {
+      "name": "GitHub discovery loses stable sort",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "&sort=created&order=asc",
+      "new": "&order=asc"
+    },
+    {
+      "name": "local refusal loses its diagnostic class",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "cause = \"decision query refused locally\"",
+      "new": "cause = \"transport or response unavailable\""
+    },
+    {
+      "name": "GitHub short-page overrun mislabelled as result cap",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "Unverifiable(ms.what+\" search exceeded its page bound\", errDecisionSearchIncomplete)",
+      "new": "Unverifiable(ms.what+\" search exceeded its page bound\", errDecisionSearchCap)"
+    },
+    {
+      "name": "embedded double quote accepted",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": " || r == '\"' ",
+      "new": " "
+    },
+    {
+      "name": "embedded backslash accepted",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": " || r == '\\\\' ",
+      "new": " "
+    },
+    {
+      "name": "shared path skips opaque-token validation",
+      "file": "internal/deskkit/decisionsweep.go",
+      "old": "if err := validateDecisionSearch(SearchIssuesInput{DecisionGateMarkers: true, DecisionGateBrief: id}); err != nil {",
+      "new": "if err := validateDecisionSearch(SearchIssuesInput{DecisionGateMarkers: true, DecisionGateBrief: id}); false && err != nil {"
+    },
+    {
+      "name": "GitHub client missing-token cause lost",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {\n\tif g.Token == \"\" {\n\t\treturn nil, missingForgeToken(\"refusing to reach the GitHub forge without an explicitly minted token \u2014 \" +\n\t\t\t\"the go-gh backend never falls back to an ambient gh-CLI keyring/config identity\")\n\t}",
+      "new": "func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {\n\tif g.Token == \"\" {\n\t\treturn nil, Unverifiable(\"refusing to reach the GitHub forge without an explicitly minted token \u2014 \" +\n\t\t\t\"the go-gh backend never falls back to an ambient gh-CLI keyring/config identity\", nil)\n\t}"
+    },
+    {
+      "name": "GitHub diff missing-token cause lost",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {\n\tif g.Token == \"\" {\n\t\treturn \"\", missingForgeToken(\"refusing to reach the GitHub forge without an explicitly minted token \u2014 \" +\n\t\t\t\"the go-gh backend never falls back to an ambient gh-CLI keyring/config identity\")\n\t}",
+      "new": "func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {\n\tif g.Token == \"\" {\n\t\treturn \"\", Unverifiable(\"refusing to reach the GitHub forge without an explicitly minted token \u2014 \" +\n\t\t\t\"the go-gh backend never falls back to an ambient gh-CLI keyring/config identity\", nil)\n\t}"
+    },
+    {
+      "name": "GitLab client missing-token cause lost",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "func (g *GitLabForge) client() (*gitlab.Client, error) {\n\tif g.Token == \"\" {\n\t\treturn nil, missingForgeToken(\"refusing to reach the GitLab forge without an explicitly minted token \u2014 \" +\n\t\t\t\"this backend never falls back to an anonymous or ambient identity\")\n\t}",
+      "new": "func (g *GitLabForge) client() (*gitlab.Client, error) {\n\tif g.Token == \"\" {\n\t\treturn nil, Unverifiable(\"refusing to reach the GitLab forge without an explicitly minted token \u2014 \" +\n\t\t\t\"this backend never falls back to an anonymous or ambient identity\", nil)\n\t}"
+    },
+    {
+      "name": "GitLab trigger-constructor missing-token cause lost",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {\n\tif g.Token == \"\" {\n\t\treturn nil, missingForgeToken(\"refusing to reach the GitLab forge without an explicitly minted token \u2014 \" +\n\t\t\t\"this backend never falls back to an anonymous or ambient identity\")\n\t}",
+      "new": "func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {\n\tif g.Token == \"\" {\n\t\treturn nil, Unverifiable(\"refusing to reach the GitLab forge without an explicitly minted token \u2014 \" +\n\t\t\t\"this backend never falls back to an anonymous or ambient identity\", nil)\n\t}"
+    },
+    {
+      "name": "missing minted token loses safe diagnostic label",
+      "file": "internal/deskkit/decisionsearch.go",
+      "old": "case errors.Is(err, errForgeTokenMissing):",
+      "new": "case false && errors.Is(err, errForgeTokenMissing):"
+    },
+    {
+      "name": "missing-token wrapper drops its unverifiable cause chain",
+      "file": "internal/deskkit/forge.go",
+      "old": "func (e *forgeTokenMissingError) Unwrap() error        { return e.DeskError }",
+      "new": "func (e *forgeTokenMissingError) Unwrap() error        { return nil }"
+    }
+  ]
+}

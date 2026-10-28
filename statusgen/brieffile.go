@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
@@ -69,6 +72,13 @@ type BriefFile struct {
 	// which derivation question(s) it answered yes and why.
 	// NOTICEd when exec-tier: strong but exec-tier-why is absent or empty.
 	ExecTierWhy string
+	// IndependenceOverride is the optional `independence-override:` key: the
+	// recorded, human-authorized override of the committer-identity cross-check's
+	// hard PROBLEM for one brief (measured-status/05; attribution.go,
+	// independenceOverrideRefusal). "" when absent. Only its TYPE is checked at
+	// parse; its grammar, the named human, and who committed it are checked by
+	// attributionProblems, and only when the brief actually fails that check.
+	IndependenceOverride string
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
 	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
@@ -115,6 +125,15 @@ type BriefFile struct {
 	// wrong TYPE is a parse error; the ref grammar and the conservation check live
 	// in splitflags.go, not here (same split satisfies:/design: use).
 	SplitFrom string
+	// Withdrawal is the OPTIONAL withdrawn-status record (withdrawn.go): the
+	// `withdrawn-date:`, `withdrawn-reason:` and `superseded-by:` keys, which
+	// exist only in schema brief-v3 and are parsed only there (on brief-v1/v2
+	// they are tolerated unknown keys). nil when none is present or the file is
+	// not brief-v3.
+	// A wrong TYPE is a parse error; the pairing with the README `withdrawn`
+	// Status cell and the successor-ref resolution are checked in
+	// checkBriefFiles, where the README row and the tree are in hand.
+	Withdrawal *Withdrawal
 	// Satisfies is the optional brief-v1 `satisfies:` list (registers-v1 §6.5):
 	// the requirements this brief was written against, as REQ-<slug> /
 	// <alias>:REQ-<slug> references. RESERVED, not gating — the refs are parsed
@@ -145,6 +164,12 @@ type BriefFile struct {
 	// costoutcome.go, and the absence NOTICE for post-cutover briefs lives in
 	// lifecyclelint.go.
 	Outcome *string
+	// OutcomeRevision is the optional brief-v1 `outcome-revision:` key: the
+	// approved product target revision of Outcome this brief was selected
+	// against (statusgen/23). nil when absent — an unbound brief, which a
+	// product-binding assessment reports as unknown, never aligned. It binds
+	// only a named outcome; outcomeRevisionProblem checks its grammar.
+	OutcomeRevision *string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -252,8 +277,12 @@ var (
 	// parseBriefFile (#271) — a tree on a schema this statusgen predates is
 	// refused, not misread — whereas a value outside the family (contract-v1,
 	// placeholder-v1, …) stays exempt.
-	briefSchemaCurrent      = "brief-v1"
-	briefSchemaV2           = "brief-v2"
+	briefSchemaCurrent = "brief-v1"
+	briefSchemaV2      = "brief-v2"
+	// briefSchemaV3 is brief-v2 plus the off-path `withdrawn` status keys
+	// (withdrawn-date / withdrawn-reason / superseded-by, withdrawn.go). Every
+	// brief-v2 rule applies to it unchanged — see isBriefV2Family.
+	briefSchemaV3           = "brief-v3"
 	briefSchemaFamilyPrefix = "brief-v"
 
 	// Required frontmatter keys. `schema` is intentionally absent: its presence
@@ -263,8 +292,9 @@ var (
 		"brief", "title", "wave", "depends", "unblocks", "effort",
 		"gate", "risk", "issues", "authored", "sources",
 	}
-	canonicalRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
-	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
+	// The risk questions are owned by briefdoc; these are projections of that one list.
+	canonicalRiskKeys = briefdoc.RiskKeys()
+	canonicalRiskSet  = riskKeySet(canonicalRiskKeys)
 	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
 	validGate         = map[string]bool{"model": true, "human": true}
 	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field.
@@ -302,6 +332,7 @@ var (
 	recognizedBriefSchemas = map[string]bool{
 		briefSchemaCurrent: true, // brief-v1
 		briefSchemaV2:      true, // brief-v2 (derived-board)
+		briefSchemaV3:      true, // brief-v3 (brief-v2 + the withdrawn status keys)
 	}
 )
 
@@ -459,6 +490,7 @@ func expectedBriefID(path string) (id, num string, ok bool) {
 //
 // Callers MUST test err before ok.
 func parseBriefFile(path string) (*BriefFile, bool, error) {
+	defer perfEnter("parse")() // the read + memo lookup, even when the memo answers
 	// Memo on (path, content-hash). Measured before this cache: one --lint made 3,351
 	// parseBriefFile calls over 172 distinct paths — up to 23 re-parses of a single file —
 	// because the thirty-odd checks that walk the brief tree each walk it independently and
@@ -570,7 +602,10 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	if strings.TrimSpace(first) != "---" {
 		return nil, false, nil // legacy (no frontmatter) → exempt
 	}
-	fmRaw, body, err := splitFrontmatter(content)
+	// splitFrontmatter rewrites CRLF itself: hand it the raw text so the
+	// rewrite runs once. Run twice, it erases a carriage return the page
+	// reads as a line ending, which the held scan must still see (heldRender).
+	fmRaw, body, err := splitFrontmatter(string(raw))
 	if err != nil {
 		// A leading `---` means the file intends frontmatter; a split failure
 		// (unterminated fence) is a real error, not an exemption.
@@ -613,13 +648,13 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	}
 	switch {
 	case recognizedBriefSchemas[s]:
-		// Recognized brief schema (brief-v1 or brief-v2) → validate below.
+		// Recognized brief schema (brief-v1, brief-v2 or brief-v3) → validate below.
 	case strings.HasPrefix(s, briefSchemaFamilyPrefix):
 		// A brief-schema-family version this binary does not understand → the
 		// #271 flag-day trap. Refuse it: the tree is on a brief schema this
 		// statusgen predates, and misreading it green-by-exemption would disable
 		// every typed-dep / gate / attribution / demotion check silently.
-		return nil, false, fmt.Errorf("%s: unrecognized brief schema %q — the tree is %s but this statusgen predates it; it validates only %s. Upgrade statusgen to a build that understands this schema (schema evolution fails closed, #271)", path, s, s, recognizedBriefSchemaList())
+		return nil, false, fmt.Errorf("%s", unknownBriefSchemaMessage(path, s))
 	default:
 		// A different document kind (contract-v1, placeholder-v1, …) → not a
 		// brief this parser validates. Exempt, as before.
@@ -864,6 +899,16 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("split-from must be a string")
 		}
 	}
+	// withdrawn-date / withdrawn-reason / superseded-by are brief-v3 keys (the
+	// off-path `withdrawn` status, withdrawn.go). They are parsed ONLY on a
+	// brief-v3 file: under brief-v1/brief-v2 they are unknown keys and are
+	// tolerated as written — existing boards already use `superseded-by:` as
+	// free prose, and a statusgen upgrade must not redden them. On brief-v3
+	// only TYPES are checked here; presence rules need the README row and live
+	// in checkBriefFiles.
+	if bf.Schema == briefSchemaV3 {
+		parseWithdrawalKeys(data, bf, addBad)
+	}
 	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
 	// of an intra-brief split. Absence is the default and is never flagged —
 	// every brief on file today omits it and dispatches to one worker, which is
@@ -986,6 +1031,16 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("outcome must be a string (a requirement id REQ-<slug>, or none)")
 		}
 	}
+	// outcome-revision is an OPTIONAL but KNOWN key: the approved product
+	// target revision the brief was selected against. A wrong TYPE is a parse
+	// error; its grammar and its pairing with outcome are checked semantically.
+	if v, ok := data["outcome-revision"]; ok {
+		if s, ok := v.(string); ok {
+			bf.OutcomeRevision = &s
+		} else {
+			addBad("outcome-revision must be a string (the approved product target revision the brief was selected against)")
+		}
+	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub
 	// issue # for the open needs-decision issue tracking this brief. Absence is
 	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
@@ -1010,10 +1065,21 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("ruling must be a string (an issue-comment URL)")
 		}
 	}
+	// independence-override is an OPTIONAL but KNOWN key (measured-status/05): a
+	// single-line "human:<name> YYYY-MM-DD <reason>" value. A wrong TYPE is a parse
+	// error; everything else is judged where the override would apply
+	// (attribution.go), so a malformed value is echoed back there, never here.
+	if v, ok := data["independence-override"]; ok {
+		if s, isStr := v.(string); isStr {
+			bf.IndependenceOverride = strings.TrimSpace(s)
+		} else {
+			addBad("independence-override must be a string (\"human:<name> YYYY-MM-DD <reason>\")")
+		}
+	}
 	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1
 	// file that carries one of these keys is untouched here (an unknown key is not
 	// schema drift under v1 — the same tolerance every other optional key gets).
-	if bf.Schema == briefSchemaV2 {
+	if isBriefV2Family(bf.Schema) {
 		parseBriefV2Keys(data, bf, addBad)
 	}
 	if len(bad) > 0 {
@@ -1280,57 +1346,23 @@ func extractEvidence(body string) string {
 // section's boundaries are decided; extractEvidence and the auto-flip's
 // Evidence-only classifier (evidenceshape.go) both read them from here, so a
 // line the parser does not read as Evidence is never classified as Evidence.
-func evidenceSectionSpan(lines []string) (start, end int, ok bool) {
-	start = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Evidence" {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return 0, 0, false
-	}
-	end = len(lines)
-	for i := start; i < len(lines); i++ {
-		if isSectionHeading(lines[i]) {
-			end = i
-			break
-		}
-	}
-	return start, end, true
+func evidenceSectionSpan(lines []string) (int, int, bool) {
+	return briefdoc.SectionBounds(lines, "Evidence", false)
 }
 
 // isSectionHeading reports whether a brief line is a `## ` section heading as
 // the parser reads one: leading and trailing whitespace ignored.
-func isSectionHeading(l string) bool {
-	return strings.HasPrefix(strings.TrimSpace(l), "## ")
-}
+func isSectionHeading(l string) bool { return briefdoc.IsSection(l) }
 
 // evidenceHasContent reports whether an Evidence section has at least one
 // content row: a non-empty line outside HTML comments (the contract comment
 // alone does not count).
-func evidenceHasContent(section string) bool {
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
-	for _, l := range strings.Split(stripped, "\n") {
-		if strings.TrimSpace(l) != "" {
-			return true
-		}
-	}
-	return false
-}
+func evidenceHasContent(section string) bool { return briefdoc.HasContent(section) }
 
 // hasHumanReviewer reports whether a Reviewed-column value names a human — a
 // whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
 // that merely contains the substring (e.g. "superhuman:x") does NOT count.
-func hasHumanReviewer(reviewed string) bool {
-	for _, tok := range strings.Fields(reviewed) {
-		if strings.HasPrefix(tok, "human:") {
-			return true
-		}
-	}
-	return false
-}
+func hasHumanReviewer(reviewed string) bool { return evaluation.HasHumanReviewer(reviewed) }
 
 // verifyTableHasRow reports whether a `## Verify` section body contains at least
 // one table data row whose Command and Expect cells are both non-empty. It
@@ -1572,6 +1604,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 		return reg
 	}
 	v2IDOwner := map[string]string{} // uuid -> first brief path that used it
+	// withdrawn status (withdrawn.go): successor refs and depends-on-withdrawn
+	// resolve against every stream of the run, partitioned by root.
+	withdrawRes := newWithdrawalResolver(allStreams)
 	// outcome: dereferences against the requirement register of the brief's OWN
 	// root, read once per root (costoutcome.go).
 	outcomeRegCache := map[string]outcomeRegister{}
@@ -1600,8 +1635,8 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				add("%s: filename must match brief-<NN>[-slug].md", path)
 				continue
 			}
-			if bf.Schema == briefSchemaV2 {
-				// brief-v2: the id is the hierarchical <cell>:<repo>:<stream>:<NN>
+			if isBriefV2Family(bf.Schema) {
+				// brief-v2 / brief-v3: the id is the hierarchical <cell>:<repo>:<stream>:<NN>
 				// form, validated against the registry and the path by the v2
 				// semantic pass — not the v1 exact filename-match.
 				reg := graphReposFor(s.Root)
@@ -1704,6 +1739,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				if reason := budgetProblem(*bf.Budget); reason != "" {
 					add("%s: budget %s", path, reason)
 				}
+			}
+			if p := outcomeRevisionProblem(bf); p != "" {
+				add("%s: outcome-revision %s", path, p)
 			}
 			if bf.Outcome != nil {
 				probs, notes := outcomeChecks(*bf.Outcome, graphReposFor(s.Root), outcomeRegisterFor(s.Root))
@@ -1848,10 +1886,18 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// Evidence worms into the Brief row for render-time
 				// VERIFY:PASS / VERIFY:FAIL classification.
 				row.Evidence = bf.Evidence
+				// withdrawn-date/-reason/superseded-by worm into the row for the
+				// STATUS.md Withdrawn section and the depends-on-withdrawn NOTICE.
+				if w := bf.Withdrawal; w != nil {
+					row.WithdrawnDate = w.Date
+					row.WithdrawnReason = w.Reason
+					row.SupersededBy = w.SupersededBy
+				}
 
 				if row.Wave != bf.Wave {
 					add("%s: frontmatter wave %d != README table wave %d", path, bf.Wave, row.Wave)
 				}
+				checkWithdrawalFile(add, notice, path, id, bf, row, s, withdrawRes)
 				// A verified/done brief must carry real Evidence — a content row
 				// beyond the contract comment.
 				if (row.Status == "verified" || row.Status == "done") && !evidenceHasContent(bf.Evidence) {
@@ -2028,6 +2074,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// 0) until those edges are reconciled two-sided, then returns to PROBLEM.
 	// Follow-up reconciliation is tracked as a separate backlog item (below).
 	notices = append(notices, recip.reciprocityNotices()...)
+	problems = append(problems, withdrawnRowProblems(streams)...)
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices
@@ -2128,4 +2175,33 @@ func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName m
 		}
 	}
 	add("%s: %s %q references unknown brief %q in stream %s", path, kind, ref, parts[1], parts[0])
+}
+
+// riskKeySet returns keys as a membership set.
+func riskKeySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return set
+}
+
+// outcomeRevisionRe is the revision-name grammar context-handoff-v3 records a
+// product target revision in.
+var outcomeRevisionRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// outcomeRevisionProblem checks a present outcome-revision: a revision name,
+// binding an outcome the brief names (never `none`, never an absent outcome).
+func outcomeRevisionProblem(bf *BriefFile) string {
+	if bf.OutcomeRevision == nil {
+		return ""
+	}
+	rev := *bf.OutcomeRevision
+	if bf.Outcome == nil || strings.TrimSpace(*bf.Outcome) == outcomeNone {
+		return fmt.Sprintf("%q binds no outcome — it is the product target revision of the outcome: key, which is absent or none", rev)
+	}
+	if !outcomeRevisionRe.MatchString(rev) {
+		return fmt.Sprintf("%q is not a revision name (lowercase letters and digits, then '.', '_' or '-')", rev)
+	}
+	return ""
 }

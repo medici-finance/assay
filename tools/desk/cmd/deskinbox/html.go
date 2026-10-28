@@ -139,12 +139,12 @@ func pageSummaryText(itemCount, repoCount int, failures []queryFailure, flowFail
 }
 
 // runHTML implements `deskinbox html OUT.html [repo ...]`.
-func runHTML(stdout, stderr io.Writer, outPath string, repos []string, now time.Time) int {
+func runHTML(stdout, stderr io.Writer, outPath string, repos []string, now time.Time, observers ...deskkit.RequestObserver) int {
 	if err := validateRepos(repos); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitCodeOf(err)
 	}
-	items, failures := fetchQueue(repos)
+	items, failures := fetchQueue(repos, observers...)
 	for _, f := range failures {
 		fmt.Fprintf(stderr, "deskinbox: QUERY FAILED for %s: %v\n", f.Repo, f.Err)
 	}
@@ -155,7 +155,7 @@ func runHTML(stdout, stderr io.Writer, outPath string, repos []string, now time.
 		if owner, name, ok := splitRepo(it.Repo); ok {
 			fr = deskkit.ForgeRepo{Owner: owner, Name: name}
 		}
-		d := fetchDetail(fr, it.Number)
+		d := fetchDetail(fr, it.Number, observers...)
 		r := buildRendered(it, d, i, len(items), now)
 		cards = append(cards, cardData{Item: it, Index: i + 1, Total: len(items), Rendered: r})
 	}

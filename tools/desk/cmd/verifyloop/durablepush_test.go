@@ -12,12 +12,16 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
+	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 
 func gitT(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	// Reuse the floor fixture isolation; preserve only our own quiet template/config.
+	cmd.Env = regression.FixtureEnv("GIT_TEMPLATE_DIR="+gitquiet.TemplateDir(t), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)

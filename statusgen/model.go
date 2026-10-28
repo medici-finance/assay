@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/streamview"
@@ -95,8 +96,9 @@ type Stream struct {
 }
 
 type Brief struct {
-	Num   string // "01", "12a"
-	Title string
+	IntakeAssessment issueflow.IntakeAssessment
+	Num              string // "01", "12a"
+	Title            string
 	// RawCell is the raw, un-unwrapped text of the `Brief` column cell as read
 	// from the stream README table (before unwrapTitleLink strips a `[text](url)`
 	// link to its text). It preserves a ROW-level re-home marker — the rendered
@@ -107,7 +109,7 @@ type Brief struct {
 	RawCell  string
 	Wave     int
 	Effort   string
-	Status   string // todo | in-progress | implemented | verified | done | blocked
+	Status   string // todo | in-progress | implemented | verified | done | blocked | withdrawn
 	Verified string // "" = unset
 	Reviewed string // "" = unset
 	// StaleRef is the finding ID when THIS brief is named by an unresolved
@@ -228,6 +230,32 @@ type Brief struct {
 	// (nextup.go) as an eligibility exclusion in the same shape as HomedIn;
 	// NEVER a Next-up score input.
 	MergedInSibling string
+	// PhantomHeld is set by applyPhantomHolds (boardhonesty.go), NOT from
+	// frontmatter: "<class> (<evidence>)" for a TODO row the board-honesty
+	// classifier caught on STRONG evidence only — a merge whose `Brief:` trailer
+	// names this brief, or a pointer row whose own cell carries a re-home marker
+	// and whose brief file is gone. A text mention in a brief body (de-housed,
+	// deliverable lands in, deferred) is never strong. "" otherwise. Read by
+	// eligibleBase (nextup.go) in the same shape as HomedIn/MergedInSibling and
+	// NAMED in NextUp.PhantomElsewhere; NEVER a score input.
+	PhantomHeld string
+	// PhantomFlip is set with PhantomHeld for an already-merged-unflipped hold:
+	// phantomFlipHeld when the reconcile's own lint hold refuses to write the row,
+	// phantomFlipUnchecked when it could not evaluate it (PhantomHeld then names which).
+	// Neither is cleared by reconciling, so the board names each apart
+	// (NextUp.PhantomFlip) with its own fix.
+	PhantomFlip phantomFlipState
+	// WithdrawnDate, WithdrawnReason and SupersededBy are the brief-v3
+	// `withdrawn-date:` / `withdrawn-reason:` / `superseded-by:` frontmatter keys,
+	// wired from BriefFile by checkBriefFiles (withdrawn.go). They describe a
+	// brief whose README Status cell is the off-path `withdrawn` token: the date
+	// it was withdrawn, why, and the successor brief id(s) the work moved to
+	// (`<stream>/<NN>` in this repo, or a global `<cell>:<alias>:<stream>:<NN>`
+	// id; empty = won't-fix, no successor). Display and lint inputs only —
+	// NEVER a Next-up score input.
+	WithdrawnDate   string
+	WithdrawnReason string
+	SupersededBy    []string
 }
 
 // DeliveryClaim is one entry of a brief's `delivery:` frontmatter list: a

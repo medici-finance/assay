@@ -5,9 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
-	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -93,25 +91,8 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 	// The binding must be a real line inside Evidence, not a mention in Context,
 	// a code example, or a previous run's stamp. Historical Evidence is allowed
 	// alongside it, but cannot substitute for this exact admitted run.
-	inEvidence := false
-	fence := ""
-	fenceLine := regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
-	for _, line := range strings.Split(string(atCommit), "\n") {
-		if match := fenceLine.FindStringSubmatch(line); match != nil {
-			if fence == "" {
-				fence = match[1]
-			} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
-				fence = ""
-			}
-			continue
-		}
-		if fence != "" {
-			continue
-		}
-		if strings.HasPrefix(line, "## ") {
-			inEvidence = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == "Evidence"
-		}
-		if inEvidence && strings.TrimRight(line, " \t\r") == receipt.EvidenceBinding() {
+	for _, line := range deskkit.VerifierEvidenceBindings(atCommit) {
+		if line == receipt.EvidenceBinding() {
 			return nil
 		}
 	}
@@ -151,8 +132,8 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 	return nil
 }
 
-// The existing receipt hashes present files, not absence or directory membership.
-// Changed membership/kinds need a new admission instead of a stale failure hold.
+// Scope keys retain absence and membership at the observation. Changed
+// membership/kinds between Source and Evidence still require a new admission.
 func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evidenceSHA string) error {
 	source, err := newGitOutcomeTree(root, receipt.BriefSource())
 	if err != nil {
@@ -170,54 +151,33 @@ func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evi
 	if err != nil {
 		return deskkit.Unverifiable("cannot read Evidence input declarations", err)
 	}
-	paths := func(content []byte) []string {
-		unique := map[string]bool{}
-		for _, decl := range deskkit.BriefDeclaredFiles(string(content)) {
-			if p := strings.TrimSuffix(decl, "/"); p != "" {
-				unique[p] = true
-			}
-		}
-		var result []string
-		for p := range unique {
-			result = append(result, p)
-		}
-		sort.Strings(result)
-		return result
+	sourceDecl, err := deskkit.BriefDeclaredFiles(string(sourceBrief))
+	if err != nil {
+		return err
 	}
-	declared := paths(sourceBrief)
+	evidenceDecl, err := deskkit.BriefDeclaredFiles(string(evidenceBrief))
+	if err != nil {
+		return err
+	}
+	// Sibling-repository declarations never resolve against this tree; the
+	// set itself must not change between Source and Evidence.
+	sourceLocal, sourceSiblings := deskkit.SplitSiblingDeclarations(sourceDecl)
+	evidenceLocal, evidenceSiblings := deskkit.SplitSiblingDeclarations(evidenceDecl)
+	before, err := deskkit.ResolveDeclaredScope(sourceLocal, source)
+	if err != nil {
+		return err
+	}
+	after, err := deskkit.ResolveDeclaredScope(evidenceLocal, evidence)
+	if err != nil {
+		return err
+	}
 	changed := func() error {
 		return deskkit.Refused("refused: declared deliverables changed shape between admitted Source and Evidence; fresh independent verification on the current target branch is required before recording an outcome")
 	}
-	if !slices.Equal(declared, paths(evidenceBrief)) {
+	slices.Sort(sourceSiblings)
+	slices.Sort(evidenceSiblings)
+	if !maps.Equal(before.Shapes, after.Shapes) || !slices.Equal(sourceSiblings, evidenceSiblings) {
 		return changed()
-	}
-	for _, p := range declared {
-		before, err := source.PathKind(p)
-		if err != nil {
-			return deskkit.Unverifiable("cannot read observed input kind", err)
-		}
-		after, err := evidence.PathKind(p)
-		if err != nil {
-			return deskkit.Unverifiable("cannot read Evidence input kind", err)
-		}
-		if before != after {
-			return changed()
-		}
-		if before == "tree" {
-			oldFiles, err := source.ListFiles(p)
-			if err != nil {
-				return deskkit.Unverifiable("cannot read observed directory inputs", err)
-			}
-			newFiles, err := evidence.ListFiles(p)
-			if err != nil {
-				return deskkit.Unverifiable("cannot read Evidence directory inputs", err)
-			}
-			sort.Strings(oldFiles)
-			sort.Strings(newFiles)
-			if !slices.Equal(oldFiles, newFiles) {
-				return changed()
-			}
-		}
 	}
 	return nil
 }

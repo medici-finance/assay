@@ -90,7 +90,15 @@ Options:
 2. **Hold the extraction** — retain current reads until the implementation supplies adequate
    evidence of equivalent scope and independent enforcement.
 
-Default if no answer: none — rollout remains held.
+Default if no answer: none — blocks until answered.
+
+**Superseded direction (note added 2026-10-25).** `DR-forge-neutral-36`, the design this brief
+cites, is superseded by `DR-forge-library` (the driver's ruling of 2026-10-25 on #2395): one
+shared forge library for reads and writes, linked by statusgen, holding the role-and-repo
+credential. Option 1's clause that statusgen's online reads stay on the deskread process adapter,
+and Task 3's matching clause, are superseded going forward by desktools-v2/77, which replaces
+that adapter with the library. This brief's delivered module, Verify table and Evidence are
+unchanged and stand as recorded; the `forgeread` root package stays dependency-free (row 11).
 
 ## Ground rules
 
@@ -167,6 +175,45 @@ human review judgments.
 ## Evidence
 
 <!-- Independent verifier records subject revision, results and retained negative controls. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKCLIParity$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKCLIParity " "$result")` | pass exit=0 sandbox=container-netns | sha256:71288a36da37 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKUnavailable$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKUnavailable " "$result")` | pass exit=0 sandbox=container-netns | sha256:e6fb56e373d9 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKAuthorityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKAuthorityBoundary " "$result")` | pass exit=0 sandbox=container-netns | sha256:56ef03eb7fa7 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKExternalConsumer$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKExternalConsumer " "$result")` | pass exit=0 sandbox=container-netns | sha256:eca1b3ab59bc | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 5 | `test -d forgeread && { sh tools/desk/scripts/forge-ban.sh > "${TMPDIR:-/tmp}/b36-r5.out" 2>&1; rc=$?; grep -F 'forgeread sites: 0' "${TMPDIR:-/tmp}/b36-r5.out" && test "$rc" -eq 0; }` | pass exit=0 sandbox=container-netns | sha256:42249b361d60 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 6 | `sh -c 'test -d forgeread \|\| exit 1; mkdir -p forgeread/zz_banprobe && printf "package zz\nimport \"os/exec\"\nvar _ = exec.CommandContext(nil, \"gh\", \"api\")\n" > forgeread/zz_banprobe/probe.go; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; rc=$?; rm -rf forgeread/zz_banprobe; echo "rc=$rc"; test "$rc" -ne 0'` | pass exit=0 sandbox=container-netns | sha256:91d957f8f274 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && go test -count=1 -v -run "^TestAmbientTokenGuardCoversForgeread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestAmbientTokenGuardCoversForgeread " "$result")` | pass exit=0 sandbox=container-netns | sha256:7bbc0faaa7b1 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c -F '"forgeread/**"' .github/workflows/forge-surface-control.yml` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 9 | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && go test -count=1 -v -run "^TestSharedReadLowerScope$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestSharedReadLowerScope " "$result")` | pass exit=0 sandbox=container-netns | sha256:9f7359a63e43 | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 10 | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"([^"]*/)?forgeread/[^"]+"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+| 11 | `test -f forgeread/go.mod && (cd forgeread && GOWORK=off go list -deps . > "${TMPDIR:-/tmp}/b36-r11.out") && { grep -E '^(net/http\|os/exec)$\|(^\|/)forgeread/' "${TMPDIR:-/tmp}/b36-r11.out" \|\| [ $? -eq 1 ]; } \| wc -l` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-10-20 | assay-verifier-app[bot] @ 331aba8f343c (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier run — 2026-10-20 claude-opus-5-5 verifier at 331aba8f343c (11 of 11 rows pass; gate:human sign-off pending)
+
+Verification-Attestation: medici-finance/assay#3663 run=ae22e400a9eaecb1cd48d55c6aed6f5e8925906fb6e7615c2d7946409a5b8f4f source=331aba8f343c828763a1fae23c4cba26abff7560 brief=docs/streams/forge-neutral/brief-36-importable-fact-reader-sdk-and-first-shared-read.md model=claude-opus-5-5 tier=strong
+
+Context: run by a fresh verifier, not the implementer, from a home worktree detached at merged main 331aba8f343c828763a1fae23c4cba26abff7560. Admission came first: `deskdispatch --check-verifier` exited 0 and bound run ae22e400a9ea; it was repeated after the rows. The witness table above was written by `statusgen verifyrun --sandbox container-netns` in a local docker container (image assay-verify:go1.27, built FROM golang:1.27.2-trixie, git 2.47, `--network none`, default seccomp profile), cloned from this home at its source commit; verifyrun exited 0 with 11 pass, 0 fail, 0 could-not-run. This runner follows the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Every row was also run by hand (go1.27.2 darwin/arm64, git 2.56.0) in a scratch clone at the same commit outside the home, with `KUBECONFIG=/dev/null` and a TMPDIR outside the home; a table-escaped pipe was run as a plain pipe (rows 6, 10 and 11). By hand rows 1 to 8, 10 and 11 met Expect as authored. Row 8 printed 2, and rows 10 and 11 each printed 0; the witness output hashes for those rows match those exact outputs (row 8 matches "2", rows 10 and 11 match "0"). Row 6 printed rc=1 and removed its probe directory. Row 5 reported "forgeread sites: 0" on its own line, separate from the statusgen count.
+
+Prior Evidence: none. This brief's Evidence section held only its placeholder comment on origin/main, so this is the first Evidence pass. The work was delivered by 01e6a7f44 (medici-finance/assay#2536), and the workflow promotion that row 8 reads landed in 251e94739 (medici-finance/assay#2540). Since then, eight more commits touch the shared reader module, the statusgen seam, deskread, the counter or the workflow. They include medici-finance/assay#3329, medici-finance/assay#2944 and medici-finance/assay#2978. All 11 rows still hold at the current head.
+
+Row 9, by-hand diagnosis (classification: environment-only, not a deliverable defect). In the first by-hand clone, origin pointed at a local path. There TestSharedReadLowerScope failed at sharedread_test.go:94, because ReadOnlyForgeForCIToken resolves the forge kind before it builds the backend: "cannot resolve which forge serves example-org/own: no ASSAY_REPO_FORGES entry names it, and the origin remote's host is absent ...". With origin set to the github.com URL, which matches the real checkout and the witness clone, the row exits 0 with the named PASS. The row asserts the lower-layer scope refusal, not anything about the environment, so this is a test hermeticity gap and not a defect in the boundary.
+
+Fail-first mutations, applied only in the scratch clone and restored afterwards (git status clean after each):
+- Row 9: disabling the `s.only` scope comparison in scopedAccess.GetPage (tools/desk/internal/deskkit/sharedread.go:45) makes the test FAIL. All three out-of-scope repositories return 1 issue, and "3 request(s) reached the provider for out-of-scope repositories, want 0". The lower layer catches the fault with the upper check bypassed, and no upper-layer check stands in for it.
+- Row 10: a planted non-test statusgen file importing the github adapter subpackage counts 1.
+- Row 11: a planted root-package file importing net/http counts 1, and that mutant was run in the rendered form, where each table-escaped pipe is a plain pipe. The lint notice [ere-literal-pipe] on this row reads the source-escaped text. Run as raw source, that text is a shell syntax error (exit 2), so the witness's exit 0 with output "0" comes from the rendered command, where the grep -E pattern is a real alternation.
+
+Risk-bearing values (sensitive-data: yes). Enumeration covered the delivery diff 01e6a7f44 over the forgeread module and the deskkit, deskread and statusgen files it changed:
+- RISK-VALUE: DERIVED — onlyRepo = jobRepo @ tools/desk/internal/deskkit/forgeresolve.go:834 (checked case-insensitively by scopedAccess.GetPage @ tools/desk/internal/deskkit/sharedread.go:45). The CI workflow token is admitted for the job's own repository only, and the constructor already refuses any other requested repository at forgeresolve.go:821. So the lower layer is bound to exactly that one coordinate, through separate code at the read boundary. A wider value would let a consumer-side bypass read another repository's private issues; the row 9 mutant shows the binding alone stops that.
+- RISK-VALUE: DERIVED — ciTokenPrefix = "ghs_" @ tools/desk/internal/deskkit/forgeresolve.go:796. This value was not changed by the diff. It is the GitHub App installation-token prefix, so personal, OAuth and user-to-server tokens are refused before any request.
+- RISK-VALUE: DERIVED — EnvelopeSchema = 1 @ forgeread/reader.go:35. It is the first wire version, and any other declared value is refused (ErrUnsupportedSchema @ forgeread/envelope.go:40) rather than parsed best-effort. Row 2 covers this as its unsupported-schema fixture.
+- Reversible knobs rank last and need no derivation. They are carried unchanged from the deleted deskkit constants: GitHub PerPage = 100 and MaxPages = 100 @ forgeread/adapters/github/github.go:19 and :21 (previously forgeIssuePerPage = 100 and forgeMaxIssuePages = 100), and GitLab PerPage = 100 and MaxPages = 25 @ forgeread/adapters/gitlab/gitlab.go:20 and :23 (previously gitlabPerPage = 100 and gitlabMaxIssuePage = 25). A walk past MaxPages becomes TruncatedError, which is could-not-check and never an empty result. APIVersion = "1.0.0" @ forgeread/reader.go:31 is a version label.
+
+Gate is human, with sensitive-data: yes and every other risk answer no. A model does not sign this item off. Every row passes on merged main, the scope, import-closure and counter mutants are each caught, and the human confirmations named in gate-why (no credential moves into a credential-free process; rows 5 to 8; row 9) remain the reviewer's to give.
+
+**VERIFY: PASS** — 11 of 11 rows pass at 331aba8f343c in the container witness and by hand; first stamp, gate:human sign-off pending.
 
 ## Review
 

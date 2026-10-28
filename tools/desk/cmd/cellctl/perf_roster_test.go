@@ -20,7 +20,7 @@ func TestPerfVerbRosterCoversTree(t *testing.T) {
 		}
 	}
 	t.Setenv("ASSAY_TELEMETRY", "")
-	if got := perfVerbs(); got != nil {
-		t.Errorf("perf off still builds a roster: %v", got)
+	if got := perfVerbs(); len(got) == 0 {
+		t.Fatal("late config consent lost the fixed verb roster")
 	}
 }

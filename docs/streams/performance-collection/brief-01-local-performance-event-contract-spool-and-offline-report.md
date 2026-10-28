@@ -12,10 +12,13 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 3
+version: 5
 id: 1f12e2ac-a0b9-4881-a452-4be522f432ad
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "assay:assay:desktools-v2:63 — perf-v3 contract fixture and importer compatibility"
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -29,6 +32,7 @@ exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics
 domain: complicated
 outcome: none
 consumers:
+  - "perfrec/: out-of-scope (desktools-v2/61 owns the existing local recorder; this brief defines the separate correlated collection contract)"
   - "perfdata/go.mod: follow-up performance-collection/01"
   - "perfdata/event.go: follow-up performance-collection/01"
   - "perfdata/event_test.go: follow-up performance-collection/01"
@@ -92,7 +96,9 @@ Options:
 1. **Accept the bounded implementation** — accept only the demonstrated field, failure and isolation contract; keep live activation separately controlled.
 2. **Hold for correction** — name the unsupported claim or boundary and revise the implementation before acceptance.
 
-Default if no answer: none — acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
 
 ## Ground rules
 
@@ -132,7 +138,9 @@ existing selected profile; tool-only profiles cannot smuggle workflow identity. 
 summary plus child-event double counting and never sum overlapping wall intervals as elapsed time.
 Preserve perf-v1/telemetry-v1 and existing privacy, seven-day policy, optional-sink isolation and
 schema/version rules. This remains one event/spool/report owner, not a parallel profiler. No DB/API
-is needed for local tests and the stream remains parked. Bound implementation to this schema/reducer
+is needed for local tests.
+Stream implementation is admitted by the full-scope approval ruling of 21 October 2026: https://github.com/medici-finance/assay/pull/3381#issuecomment-6322683460
+Collection and transmission still require their existing explicit consent. Bound implementation to this schema/reducer
 contract; defer extra producer integrations to /02.
 
 This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
@@ -171,6 +179,51 @@ Bypass the profile/field filter, make the sink propagate disk-full into the call
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Performance reuse amendment — 2026-10-16
+
+Fresh main already carries perfrec, shared by desk-tools and statusgen/perfrecord.go. Keep
+that local-only recorder and its existing consent/history as an independent instrument;
+desktools-v2/61 owns its schema/boundary evolution, not this correlated-spool contract.
+Define timing basis, inclusive/exclusive semantics, availability and instrument/schema
+version explicitly on imported observations. A legacy perf-v1 total and a new entrypoint
+measurement are not interchangeable samples. Nested phase, child and parent durations
+cannot be added into causal elapsed-time savings. The contract accepts bounded typed
+observations without requiring a database, network collector or runtime service.
+
+Preserve the historical sources and the merged reporting amendment as dated history;
+the current implementation state is the shared perfrec module at eba941721. This amendment
+does not replace its writer or retrospectively widen old payload/consent promises.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Freeze the collection representation of the perf-v3 contract, not a second local instrument.
+Local workflow v3 may contain typed qualified work locators; the existing source/epoch alias
+mapper must translate them before this spool, preview or upload. Keep the explicit selected
+workflow profile and never forward native harness IDs/raw qualified locators. Preserve agent,
+session, fresh invocation/parent identities with scoped aliases, desk versus assigned role,
+request-duration distributions and measured/estimated/unknown GraphQL units/sample coverage.
+Child observations are own-process; deduplicate identity and never sum inclusive timing.
+Extend TestPhaseCostSchema and TestEventPrivacy to reject planted raw locators, inherited
+identity in tool profile, invalid context, false-zero points and parent-summary duplication.
+No dependency on v3 implementation is required to freeze synthetic collection fixtures.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Preserve the query/cache boundary contract from docs/performance-attribution-spec.md:
+client logical service calls and transport attempts, handler timing/cache/coalescing outcomes,
+and actual direct/passthrough/refresh/poll/repair provider sends/cost remain different kinds.
+Import correlation only under the selected aliased workflow policy; never forward raw local
+locators or infer missing server coverage as zero. Shared refresh/background cost remains
+shared/unallocated and one provider observation cannot be copied to all waiting work items.
+Do not sum client wait, handler/provider spans or concurrent process CPU as elapsed savings.
+Extend the existing local/served/replay/report Verify flow for this owner with the shared
+50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
+data. Wrongly combining the two sides of one service call or multiplying upstream points
+must fail the independent expected result; existing selectors and all Evidence remain intact.
 
 ## Evidence
 

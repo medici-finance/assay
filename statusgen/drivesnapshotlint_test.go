@@ -31,7 +31,7 @@ func TestDriveLintReusesHydratedBoardAndClaimRead(t *testing.T) {
 	if rc != 0 || first != second || reads != 1 {
 		t.Fatalf("shared render changed or reread claims: rc=%d reads=%d", rc, reads)
 	}
-	wantProblems, wantNotices := driveRegionLintFromBoard(root, streams, driveTestNow)
+	wantProblems, wantNotices := driveRegionLintProblems(root, streams, resolveClaims, driveTestNow)
 	if len(wantProblems) != 0 {
 		t.Fatalf("hydrated fixture must lint clean: %v", wantProblems)
 	}
@@ -42,7 +42,7 @@ func TestDriveLintReusesHydratedBoardAndClaimRead(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	gotProblems, gotNotices := driveRegionLintFromBoard(root, streams, driveTestNow)
+	gotProblems, gotNotices := driveRegionLintProblems(root, streams, resolveClaims, driveTestNow)
 	if !reflect.DeepEqual(gotProblems, wantProblems) || !reflect.DeepEqual(gotNotices, wantNotices) {
 		t.Fatalf("validated board was reloaded: problems=%v notices=%v; want %v %v", gotProblems, gotNotices, wantProblems, wantNotices)
 	}
@@ -109,12 +109,25 @@ func TestRunDriveLintScopeArms(t *testing.T) {
 	if !ok || !strings.Contains(stale, "pb/02") || normalizeDriveSnapshot(stale) == normalizeDriveSnapshot(fresh) {
 		t.Fatalf("fixture drift: unhydrated, pb/02 must reach the frontier (ok=%v):\n%s", ok, stale)
 	}
+	// A plain --lint reads no claim set (#3323), so the fresh region's todo briefs
+	// are assumed unclaimed: the one drive-region line allowed is that
+	// could-not-check, naming exactly them. Any other drive-region line — drift,
+	// or a drive that no longer renders — is the comparison going wrong.
+	const assumedFree = "NOTICE: drive-region-drift: docs/roadmap/drives/d1.md matches a fresh render only if pb/01, pb/02 are not claimed by an open branch;"
 	for _, scope := range []string{"", "product-a"} {
 		stderr := captureStderr(t, func() { run(root, "lint", nil, nil, scope) })
+		sawAssumed := false
 		for _, line := range strings.Split(stderr, "\n") {
+			if strings.HasPrefix(line, assumedFree) {
+				sawAssumed = true
+				continue
+			}
 			if strings.Contains(line, "drive-region-drift") || strings.Contains(line, "drive-without-manifest") {
 				t.Errorf("scope=%q: the fresh region must compare clean, got: %s", scope, line)
 			}
+		}
+		if !sawAssumed {
+			t.Errorf("scope=%q: offline, the fresh region must read could-not-check on its unread claims (%q); stderr:\n%s", scope, assumedFree, stderr)
 		}
 	}
 	// Positive control: a hand-edited region is drift under both arms, so the
@@ -173,7 +186,7 @@ func TestLintDriveRegionDrift(t *testing.T) {
 
 	// Clean: an identical region raises no drift PROBLEM.
 	writePlanMD(t, root, "d1", plan)
-	if problems, _ := driveRegionLintProblems(root, driveTestNow); hasProblemContaining(problems, "drive-region-drift") {
+	if problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow); hasProblemContaining(problems, "drive-region-drift") {
 		t.Fatalf("identical region must not PROBLEM: %v", problems)
 	}
 
@@ -183,7 +196,7 @@ func TestLintDriveRegionDrift(t *testing.T) {
 		t.Fatal("mutation target not found")
 	}
 	writePlanMD(t, root, "d1", drifted)
-	problems, _ := driveRegionLintProblems(root, driveTestNow)
+	problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow)
 	if !hasProblemContaining(problems, "drive-region-drift") {
 		t.Fatalf("a hand-edited region must PROBLEM drive-region-drift: %v", problems)
 	}
@@ -193,7 +206,7 @@ func TestLintDriveRegionDrift(t *testing.T) {
 
 	// Absent docs/roadmap/drives ⇒ inert.
 	empty := t.TempDir()
-	if p, n := driveRegionLintProblems(empty, driveTestNow); len(p) != 0 || len(n) != 0 {
+	if p, n := driveRegionLintProblems(empty, nil, nil, driveTestNow); len(p) != 0 || len(n) != 0 {
 		t.Errorf("no drives dir must be inert: problems=%v notices=%v", p, n)
 	}
 }
@@ -205,7 +218,7 @@ func TestLintDriveWithoutManifest(t *testing.T) {
 	makeStreamsDir(t, root)
 	writePlanMD(t, root, "orphan", "# Orphan drive\n\nno manifest beside me\n")
 
-	problems, _ := driveRegionLintProblems(root, driveTestNow)
+	problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow)
 	if !hasProblemContaining(problems, "drive-without-manifest") {
 		t.Fatalf("a plan file with no manifest must PROBLEM drive-without-manifest: %v", problems)
 	}
@@ -215,7 +228,7 @@ func TestLintDriveWithoutManifest(t *testing.T) {
 
 	// With the manifest beside it, the drive-without-manifest PROBLEM clears.
 	writeDrive(t, root, "orphan", activeActOnlyManifest)
-	problems2, _ := driveRegionLintProblems(root, driveTestNow)
+	problems2, _ := driveRegionLintProblems(root, nil, nil, driveTestNow)
 	if hasProblemContaining(problems2, "drive-without-manifest") {
 		t.Errorf("a manifest beside the plan must clear drive-without-manifest: %v", problems2)
 	}
@@ -246,7 +259,7 @@ func TestLintDrivePlanSymlinkRefused(t *testing.T) {
 		if err := os.Symlink(secret, link); err != nil {
 			t.Skipf("symlinks unsupported on this platform: %v", err)
 		}
-		problems, notices := driveRegionLintProblems(root, driveTestNow)
+		problems, notices := driveRegionLintProblems(root, nil, nil, driveTestNow)
 		if !hasProblemContaining(problems, "symlink escape") {
 			t.Fatalf("a symlinked plan .md must PROBLEM a symlink escape: problems=%v", problems)
 		}
@@ -297,7 +310,7 @@ func TestLintDrivePlanSymlinkRefused(t *testing.T) {
 			t.Skipf("symlinks unsupported on this platform: %v", err)
 		}
 
-		problems, notices := driveRegionLintProblems(root, driveTestNow)
+		problems, notices := driveRegionLintProblems(root, nil, nil, driveTestNow)
 		if !hasProblemContaining(problems, "symlinked ancestor") {
 			t.Fatalf("a symlinked ANCESTOR dir must PROBLEM a symlink escape before any read: problems=%v", problems)
 		}
@@ -320,7 +333,7 @@ func TestLintDrivePlanSymlinkRefused(t *testing.T) {
 		if err := os.Symlink(secret, link); err != nil {
 			t.Skipf("symlinks unsupported on this platform: %v", err)
 		}
-		problems, _ := driveRegionLintProblems(root, driveTestNow)
+		problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow)
 		if !hasProblemContaining(problems, "drive-manifest-symlink") {
 			t.Fatalf("a symlinked manifest must PROBLEM drive-manifest-symlink: %v", problems)
 		}
@@ -339,7 +352,7 @@ func TestLintDrivePlanSymlinkRefused(t *testing.T) {
 		writePlanMD(t, root, "d1", "# Drive d1\n\nprose\n\n"+region)
 		// A real, in-tree, identical-region plan file raises no symlink PROBLEM and
 		// no drift PROBLEM: the containment guard never blocks legitimate files.
-		problems, _ := driveRegionLintProblems(root, driveTestNow)
+		problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow)
 		if hasProblemContaining(problems, "symlink") {
 			t.Errorf("a real in-tree plan file must not PROBLEM a symlink: %v", problems)
 		}

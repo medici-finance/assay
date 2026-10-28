@@ -55,10 +55,28 @@ reviewable artifact, not a run.
   in a separate maintainer-credentialled commit. Until that copy lands, the merged change
   is inert: the running workflow is still the old file.
 - `truth-suite.yml` — the standing truth suite (`docs/test-policy.md` § "Standing truth
-  suite"): the test corpus plus the release mutation gate, on push to the default branch and
-  on a daily schedule, reporting three-state. **Already live** — promoted to
-  `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
-  so a change to it is authored here first and re-promoted by a maintainer commit.
+  suite"): the test corpus plus the release mutation gate, on a nightly schedule and on manual
+  dispatch, reporting three-state. **Already live** — promoted to
+  `.github/workflows/truth-suite.yml` on 2026-09-10; a change to it is authored here first
+  and re-promoted by a maintainer commit. **Pending promotion (#3292):** the staged twin adds
+  `internal/cellop/mutations.json` (the `cellctl` plan/apply guards) to the `mutation-gate`
+  matrix, which no workflow runs today; it was otherwise byte-identical to the live file when
+  staged, and `truth-suite.yml.pending` classifies the difference. Because a `pending` twin is
+  no longer compared with live by the drift guard, a change made to the live file on main
+  after staging would be silently reverted by a bare copy. So promote it in two steps, in a
+  maintainer-credentialled commit: first review the full `diff -u` against live and confirm it
+  shows only the cellop matrix line and its comment block (anything else is a live change
+  made since; re-base the twin on the live file, three-way, before copying), then copy it
+  over the live one:
+  ```
+  diff -u .github/workflows/truth-suite.yml ci/staged-workflows/truth-suite.yml
+  cp ci/staged-workflows/truth-suite.yml .github/workflows/truth-suite.yml
+  git commit -m "ci: promote truth-suite.yml"
+  git push
+  ```
+  Until then the cellop sweep runs only by hand
+  (`cd tools/desk && go run ./cmd/muhar -j 0 -spec internal/cellop/mutations.json`); its
+  anchors are still dry-run on every PR by the muhar stale-anchor guard.
 - `assay-statusgen.yml` — a STAGED TWIN of the live `.github/workflows/assay-statusgen.yml`
   carrying the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5), alongside
   the classified board push (#2910) described below, which `declared-changes.json` classes
@@ -121,6 +139,15 @@ reviewable artifact, not a run.
   guard cannot build a base that already has the module. **This part is promoted** into the
   live `.github/workflows/assay-statusgen.yml` in the same pull request that adds `perfrec/`
   (#3113); the rest of the staged copy (#2910) stays pending.
+- `assay-statusgen.yml` — full-history regen part (#3364): the staged copy's `regen` job checks
+  out with `fetch-depth: 0`, as the `lint` job already does. The regen runs the same history-reading
+  checks as `--lint` (the consumed-changelog-fragment exemption, the Evidence staleness read), and
+  on a shallow clone those are could-not-check by design, so a release that consumes a fragment a
+  brief names turns the default-branch regen red while the PR lint passes. **Live**: the same
+  one-line `fetch-depth: 0` landed on its own in the live `regen` job's checkout `with:` (#3385),
+  and this copy's line is now byte-identical to it; the rest of the staged copy (#2910) stays
+  pending. `TestBoardRegenFullHistory` in `statusgen` pins the line on the live file, this copy
+  and the `tools/ci-load/activation/` copy.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
@@ -331,7 +358,11 @@ build-test job runs this guard on every PR and main push.
 The live `release.yml` and its identical staged twin build binary artifacts
 first, then use one protected `release` job to build/check/push all nine images
 and publish the immutable GitHub release. The job holds `contents: write` and
-`packages: write` behind one `release` Environment approval. It serializes on
+`packages: write` behind one `release` Environment approval, plus `id-token: write`
+and `attestations: write` for the SLSA build-provenance attestation it makes over
+every published asset before the tag is written; it publishes the Sigstore bundle
+beside each asset as `<asset>.sigstore.json` and refuses to publish a release
+missing one (`tools/release/bundles.py`). No other job holds either permission. It serializes on
 the normalized umbrella version before registry absence checks; image and
 reference validation finish before the tag or GitHub release is written.
 

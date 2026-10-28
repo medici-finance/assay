@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"io"
 	"io/fs"
 	"os"
@@ -46,7 +48,7 @@ func toolBinary(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			out += ".exe"
 		}
-		if b, err := exec.Command("go", "build", "-o", out, ".").CombinedOutput(); err != nil {
+		if b, err := goquiet.Cmd(exec.Command("go", "build", "-o", out, ".")).CombinedOutput(); err != nil {
 			binErr = fmt.Errorf("go build: %v\n%s", err, b)
 			return
 		}
@@ -140,7 +142,7 @@ func record(t *testing.T) *recorder {
 	t.Setenv("HOME", t.TempDir())
 	r := &recorder{}
 	prevD, prevG, prevO := dispatchFn, guard, onResolve
-	dispatchFn = func(sub, root string, _ time.Time, sla int, to string) (*Report, error) {
+	dispatchFn = func(sub, root string, _ time.Time, sla int, to string, _ ...deskkit.RequestObserver) (*Report, error) {
 		r.calls++
 		r.sub, r.root, r.sla, r.to = sub, root, sla, to
 		return &Report{render: func(w io.Writer) { fmt.Fprintln(w, "board") }, detail: "stub"}, nil

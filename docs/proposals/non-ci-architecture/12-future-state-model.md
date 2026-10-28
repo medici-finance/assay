@@ -191,6 +191,22 @@ Preserve historical Evidence and dated source accounts; changing profiles never
 upgrades old self-checks to independent verification. Unavailable mandatory policy/
 qualification input is a scoped hold, not a claim that the lighter contract applies.
 
+## Execution-environment target and transition — 16 October 2026
+
+The [execution amendment](27-agent-execution-environments.md) is a requested target change,
+with explicit delivery obligations in agent-execution/01–07. Keep its profile/receipt schema
+revision separate from architecture-target approval, installed bundle and qualified backend.
+Existing runner-v1 implementation is observed foundation; prepared-environment integration
+and stronger preservation declarations remain planned. The seven new briefs do not turn their
+future test names into evidence of implementation.
+
+Impact/handoff records must find current v1 callers, supervisor/local-adapter and standing-desk
+plans, candidate/retirement owners, cell-operation status and R7 consumers. A transition binds
+new mandatory extensions to supported readers and a qualified profile; a reader that cannot
+understand one holds. Historical v1 Evidence remains evidence of v1, and an environment
+readiness receipt is distinct from acceptance evidence. AX compatibility conclusions are
+observations of a pinned source/fixture, not a deployment or backend selection.
+
 ## Desk-process improvement bindings — proposal of 17 October 2026
 
 [Amendment 22](22-desk-improvement.md) uses the existing enduring operational subject and
@@ -205,3 +221,39 @@ completed experiment cannot assert adoption or subsequent exposure. The proposed
 implemented by public desk-improvement/01–10; an adopter qualifies its own permitted inputs
 and scope. Missing bindings/labels stay unresolved and cannot silently invalidate unrelated
 approved work or satisfy a mandatory acceptance claim.
+
+## Performance attribution in target handoff — requested amendment, 19 October 2026
+
+Bind future tool/runtime measurement to the [perf-v3 contract](../../performance-attribution-spec.md):
+local qualified work, session/agent/invocation identity and causal parent links, originating
+desk and assigned execution role, request timing and nullable measured/estimated GraphQL
+cost. Desired support, implemented instrument version, released version, selected collection
+profile and actual covered observations remain separate facts. A source schema never proves
+that a live subagent is attributed. Work changes per invocation; shared session overhead is
+not assigned to the last brief. Export consumes aliased profile-selected observations through
+the existing performance-collection owner; target bindings confer no collection authority.
+
+## Implementation pickup and applicable guidelines — amendment, 18 October 2026
+
+Apply the same affected-context assessment at initial implementation pickup, resumed
+work, and a material scope/target change, not only during authoring. The selected
+approved target/transition, semantic contracts, engineering guidelines, producer and
+consumer versions, planned replacements and actual implementation are distinct inputs.
+A newer draft alone never invalidates authorized work. Inaccessible required sources
+are scoped unknowns; an unrelated edit can retain prior conclusions with a reason.
+
+[Brief specification §4.1.1](../../../spec/brief-v1.md#411-implementation-pickup-assessment)
+and the [pickup procedure](../../../plugins/assay/references/implementation-pickup.md)
+define the immediate manual path. statusgen/20 owns reusable discovery/recheck;
+statusgen/21 owns author/worker and dispatch integration once that interface ships.
+The same receipt and append-only continue/adapt/hold disposition are reused; no
+parallel checker, target registry or unsupported frontmatter field is introduced.
+
+## Wire compatibility in architecture targets — 21 October 2026
+
+Contract-version records must distinguish core major, named extension versions and
+required capabilities. Transition records carry producer/consumer compatibility and
+retained historical-reader obligations. The [JSON contract census](29-extensible-json-contracts.md)
+assigns migration families; observation of an unknown optional facet is unavailable,
+not absence, and an unsupported required facet prevents conformance. A source or
+binary revision alone cannot certify a compatible deployed combination.

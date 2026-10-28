@@ -104,14 +104,16 @@ with a `#!` line), skipping `.git`, `node_modules`, `vendor` and hidden director
 | parser | the hand-rolled parser it uses today |
 | complexity, basis | `simple` or `complex`, with the measured LOC, verbs and flags behind it |
 | consumers | the files that mention the entrypoint most at the measured commit, up to six. A starting list, not an exhaustive one: re-enumerate every caller at pickup |
-| owner, state | the owning brief, and `pending`, `migrated`, `retired` or `excluded` |
-| class, reason | excluded rows only: `test`, `fixture`, `library`, `vendor` or `demo`, and why |
+| owner, state | the owning brief, and `pending`, `migrated`, `retired`, `excluded` or `exempt` |
+| class, reason | excluded rows: `test`, `fixture`, `library`, `vendor` or `demo`, and why; exempt rows: the reason only, naming the retirement path |
 | migrated_to | migrated scripts only: the inventoried Go entrypoint the script now delegates to |
 
 **States.** `pending` — owned, not migrated. `migrated` — the owner tests pass on the migrated
 command; a Go row imports Cobra or the adapter, and a script row names a Go entrypoint that the
 script itself still invokes. `retired` — removed, with its consumers, by the owner's merged
-change. `excluded` — not an operator entrypoint.
+change. `excluded` — not an operator entrypoint. `exempt` — the owner's parser port was
+withdrawn because the entrypoint's domain retires or re-homes (§7); it keeps its current parser
+until it is retired, its reason names the retirement path, and its owner names an existing brief.
 
 **Exclusion rules** carry a class, a pattern and a reason; a rule that matches nothing is stale.
 A shipped entrypoint (anything in the plugin bundle, a desk command the Makefile packages, or
@@ -122,11 +124,11 @@ a path the release workflow or Makefile names) can never be excluded. Test-named
 flags; a script is complex at 1000 lines or more. Everything else is simple.
 
 **Budget.** One owning brief takes one complex entrypoint alone, or at most five simple ones.
-Every owner depends on desktools-v2/16, the reference adapter migration, and
-desktools-v2/17 depends on every owner.
+Every owner of a non-exempt row depends on desktools-v2/16, the reference adapter migration,
+and desktools-v2/17 depends on every such owner. Exempt rows carry no budget and no edge.
 
 TestCLIInventory fails on an unrouted entrypoint, a stale or duplicate row, a stale rule, an
-orphan owner, a missing edge, an over-budget owner, or an owner whose Verify rows select no
+orphan owner, an exempt row without a reason, a missing edge, an over-budget owner, or an owner whose Verify rows select no
 TestCLI test or use an empty `-run` selector.
 
 ## 6. Deliberate help changes (not legacy compatibility)
@@ -144,9 +146,54 @@ Everything else a caller can observe (flag spellings, exit codes, output text an
 refusals) stays as it was, unless the owning brief's compatibility report lists the change
 and, for a human-gated brief, the sign-off approves it.
 
+## 7. New tools and retiring tools — 2026-10-18
+
+**Rule (normative).** Every new command-line tool or verb adapter built for the target
+architecture — role executors' CLIs, forge-service/SDK commands, loop-admin/runner commands,
+cellctl operator verbs, and any thin verb adapter — MUST be built on the shared Cobra/Viper
+foundation (desktools-v2/15: `tools/desk/internal/cli` in the desk module; Cobra and a
+command-local Viper under §1–§2 in a standalone module). It enters the registry as a
+`pending` or `migrated` row with the §4 owner tests, never as `exempt`. Tools scheduled for
+retirement are exempt.
+This rule has no ruling of its own: it applies the ratification below and the request in medici-finance/assay#2111.
+
+**Why.** Ratification of the target architecture at revision 23f655f5d: https://github.com/medici-finance/assay/issues/2500#issuecomment-6137853872
+The target architecture
+([11](../../proposals/non-ci-architecture/11-target-architecture.md), "What happens to
+today's tools") turns desk-tools verbs into thin adapters over typed use cases and
+role-bound effects and does not port the whole command matrix; the
+[migration plan](../../proposals/non-ci-architecture/13-migration-and-decisions.md) makes no
+parser migration a prerequisite. Porting the parser of a verb whose domain is retiring buys
+nothing; building a new command on a hand-rolled parser restarts the debt this contract
+removes.
+
+**Retiring tools.** A verb whose domain the target retires or re-homes keeps its current
+parser, routed `exempt` with the withdrawn port brief as owner, until a merged change retires
+it and its consumers (then `retired`). An exempt verb that turns out to survive is re-routed to
+a bounded owner before desktools-v2/17 completes. desktools-v2/17 enforces both halves.
+
 ## Library-first composition
 
 Follow [the component contract](../../library-first.md). Command handlers parse and call
 application APIs; use typed clients at independent authority boundaries. Configuration
 resolution does not grant admission. SDK/package extraction is owned by its named brief,
 not silently included in a parser migration. Preserve direct-domain admission tests.
+
+## 8. Performance context — local source integration, 19 October 2026
+
+[The attribution specification](../../performance-attribution-spec.md#environment-cli-and-shared-library-seam)
+freezes the shared `--perf-*`/environment bindings, field lifecycle and measurement units.
+Desktools-v2/63 supplies the credential-free typed resolver; /64 binds it through this
+adapter and the maintained-entrypoint inventory. Flag > named env > unavailable; present
+empty clears inherited context, repeated work flags replace the entire env work list.
+Attribution never changes operational role/custody and invalid optional values are not
+echoed or allowed to fail the underlying operation. No config-file discovery/AutomaticEnv.
+
+Existing CLI migration owners adopt the shared binding when available or record an explicit
+uninstrumented boundary until /64 integrates it; they do not invent a second v2-only contract.
+Shared TestPerfV3CLIContextPrecedence and per-owner offline help/exit fixtures cover these
+bindings; /17's final suite qualification includes their flow. A standalone module uses
+perfrec directly, never an import of desk internals. No profile means the prior recorder
+behavior, and tool profile cannot carry inherited workflow identity. The [maintained-entrypoint inventory](../../performance-entrypoints.json) distinguishes
+parsed recorder handoffs from pending parser and standalone boundaries. This is source
+integration evidence, not a claim about released binaries or deployed adoption.

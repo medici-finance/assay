@@ -53,7 +53,7 @@ func TestQualificationProbe(t *testing.T) {
 	}}
 	gh := &deskkit.GitHubForge{Token: "local-fixture", BaseURL: "https://fixture.invalid", Client: &http.Client{Transport: transport}}
 	previous := forgeFor
-	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	forgeFor = func(repo string, _ ...deskkit.RequestObserver) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		f, fr, err := previous(repo)
 		if err != nil {
 			return nil, fr, err

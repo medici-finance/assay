@@ -64,6 +64,7 @@ facts:
   - Single-point-of-failure note: the ONE control is the harness's own assertions. Second, independent layer: Verify row 5 regenerates the report's table from the binary and diffs it against the committed report, so a hand-edited "pass" cannot survive; third: the sibling briefs' own tests (01–04) run unchanged in CI, so a harness that stubs one of them out still leaves that brief's contract proven elsewhere.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task instructions only.
 - Offline only: the harness reads no network and no forge. A fixture that needs a token is a fixture defect.
 - Do not edit the sibling briefs' code to make a case pass; a case that cannot pass is recorded as `fail` in the report with the reason, and the report is still the deliverable.

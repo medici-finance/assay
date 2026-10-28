@@ -35,12 +35,9 @@ version: 1
 ## Context
 
 files:
-- `statusgen/externalpr.go` (new) — the counter: inbound pull requests from identities outside
-  the roster, bucketed by tier at open and by outcome (merged / closed / open), over a rolling
-  window. Pure over an injected lister so it tests offline.
+- `statusgen/externalpr.go` (new) — the counter: inbound pull requests from identities outside the roster, bucketed by tier at open and by outcome (merged / closed / open), over a rolling window. Pure over an injected lister so it tests offline.
 - `statusgen/externalpr_test.go` (new).
-- `statusgen/testdata/` — fixtures: a mixed window, an empty window, and a window the lister
-  could not read.
+- `statusgen/testdata/` — fixtures: a mixed window, an empty window, and a window the lister could not read.
 - `docs/contributor-trust.md` (planned) — a note that counts are published and identities are not.
 - `changelog/contributor-trust-metrics.md` (new).
 

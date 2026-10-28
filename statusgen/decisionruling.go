@@ -143,6 +143,7 @@ type decisionRecordStamp struct {
 
 // rulingOutcome is the resolved verdict for one record's ruling link.
 type rulingOutcome struct {
+	Body    string       // authenticated, unedited human comment, populated only on success
 	Present bool         // the record carries a ruling: (or could not be read)
 	Reason  rulingReason // rulingOK on a pass
 	Detail  string       // human-readable evidence (pass) or explanation (refusal)
@@ -407,6 +408,7 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	}
 
 	out.Reason = rulingOK
+	out.Body = cm.Body
 	url := cm.HTMLURL
 	if url == "" {
 		url = rec.Ruling
@@ -695,17 +697,22 @@ func decisionCitingBriefs(root, id string) []string {
 	return out
 }
 
-// resolveDecisionRulings is the runner glue: one outcome per touched record.
-func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecordStamp, humanLogins map[string]string) rulingOutcomes {
-	out := rulingOutcomes{}
-	// The consumer's alias registry (the one citation-alias-resolution reads) lets a
-	// colon-form marker name the repository by an alias. An unreadable registry is a
-	// could-not-check: say so, and fall back to the literal name only (fail closed).
+// decisionRepoAliases returns the aliases the consumer's registry (the one
+// citation-alias-resolution reads) declares for repo, so a colon-form marker may
+// name the repository by an alias. An unreadable registry is a could-not-check:
+// say so, and fall back to the literal name only (fail closed).
+func decisionRepoAliases(root, repo string) []string {
 	reg, _, rerr := loadGraphRepos(root)
 	if rerr != nil {
 		fmt.Fprintf(os.Stderr, "statusgen --corroborate: could-not-check: alias registry unreadable, decision-gate markers are matched by repository name only: %v\n", rerr)
 	}
-	aliases := repoAliasesFor(reg, repo)
+	return repoAliasesFor(reg, repo)
+}
+
+// resolveDecisionRulings is the runner glue: one outcome per touched record.
+func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecordStamp, humanLogins map[string]string) rulingOutcomes {
+	out := rulingOutcomes{}
+	aliases := decisionRepoAliases(root, repo)
 	for _, r := range recs {
 		// Name the forge target BEFORE first contact, so an operator sees what is
 		// about to be read, not only the verdict afterwards.

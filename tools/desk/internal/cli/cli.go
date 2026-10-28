@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/medici-finance/assay/perfrec"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -27,7 +29,10 @@ type IO struct {
 
 // Options shapes one Run.
 type Options struct {
-	IO IO
+	// Performance receives the immutable context selected by this invocation's real parser.
+	// It runs once, before effects; it never grants operational authority.
+	Performance func(perfrec.Context)
+	IO          IO
 	// Version is printed by --version on the root command. Empty disables the flag.
 	Version string
 	// VersionTemplate overrides Cobra's "<name> version <v>" line; legacy tools that print a
@@ -47,13 +52,15 @@ type Options struct {
 // Cobra's own error and usage printing off (Run prints parse errors once, and a handler
 // error is the handler's to report).
 func NewRoot(use, short string) *cobra.Command {
-	return &cobra.Command{
+	root := &cobra.Command{
 		Use:               use,
 		Short:             short,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
+	BindPerformance(root)
+	return root
 }
 
 // handlerError marks an error returned by a handler, so Run can tell it from a parse error.
@@ -108,7 +115,9 @@ func Run(build func() *cobra.Command, args []string, opts Options) int {
 	if helpErr != nil || help == root {
 		help = nil
 	}
-	wrapHandlers(root, help)
+	selectPerformance := performanceSelection(root, opts.Performance)
+	defer selectPerformance(root)
+	wrapHandlers(root, help, selectPerformance)
 	refuseCompletionRequests(root)
 	if args == nil {
 		args = []string{}
@@ -152,12 +161,13 @@ func Run(build func() *cobra.Command, args []string, opts Options) int {
 
 // wrapHandlers marks every handler error in the tree. Hooks Cobra runs after parsing
 // (pre-run, run, post-run) are handlers; argument validation and flag parsing are not.
-func wrapHandlers(c, help *cobra.Command) {
+func wrapHandlers(c, help *cobra.Command, selectPerformance func(*cobra.Command)) {
 	wrap := func(f func(*cobra.Command, []string) error, persistent bool) func(*cobra.Command, []string) error {
 		if f == nil {
 			return nil
 		}
 		return func(cmd *cobra.Command, args []string) error {
+			selectPerformance(cmd)
 			if persistent && cmd == help {
 				return nil
 			}
@@ -172,6 +182,7 @@ func wrapHandlers(c, help *cobra.Command) {
 			return nil
 		}
 		return func(cmd *cobra.Command, args []string) {
+			selectPerformance(cmd)
 			if cmd != help {
 				f(cmd, args)
 			}
@@ -181,11 +192,15 @@ func wrapHandlers(c, help *cobra.Command) {
 	c.PersistentPreRun = wrapPersistent(c.PersistentPreRun)
 	c.PreRunE = wrap(c.PreRunE, false)
 	c.RunE = wrap(c.RunE, false)
+	if c.Run != nil {
+		run := c.Run
+		c.Run = func(cmd *cobra.Command, args []string) { selectPerformance(cmd); run(cmd, args) }
+	}
 	c.PostRunE = wrap(c.PostRunE, false)
 	c.PersistentPostRunE = wrap(c.PersistentPostRunE, true)
 	c.PersistentPostRun = wrapPersistent(c.PersistentPostRun)
 	for _, sub := range c.Commands() {
-		wrapHandlers(sub, help)
+		wrapHandlers(sub, help, selectPerformance)
 	}
 }
 

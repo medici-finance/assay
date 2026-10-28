@@ -11,7 +11,7 @@ why: >-
   recovery point, validate, switch endpoints, reconcile, and only then reopen admission.
 wave: 4
 depends: ["desk-containers/06", "desk-containers/26"]
-unblocks: []
+unblocks: ["desk-containers/29", "cell-api/05"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -27,7 +27,7 @@ gate-why: >-
   isolation boundary carried over from brief 26 is stated at the database layer.
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by the-desk (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-13: CloudNativePG on Kubernetes — a CNPG Cluster manifest beside brief 06's Kustomize manifests, per-cell databases and roles, Secrets out of band, backups to an example S3-compatible endpoint, and the explicit local-to-CNPG migration procedure"
@@ -90,6 +90,7 @@ facts:
 - Not a core-system brief, but its credential custody is human-gated (see `gate-why`). The single control between a migrating cell and a split write is the source role's `NOLOGIN`. The target role's `login: false` until reopen is the second, independent layer; it trips on a different server. The single control between a migrated dump and the target's superuser is that the data load authenticates as `assay_restore`; the second layer is that `assay_restore` is a non-inheriting member of the one cell role only. Between cell code and a surviving restore login, the single control is the trap's ordered teardown; `VALID UNTIL` is the second layer, and the target role's `login: false` does not depend on either. Between a cell identity and the in-pod superuser, the single control is RBAC withholding `pods/exec`, `pods/attach` and `pods/ephemeralcontainers`; there is no second layer inside this brief, because the in-pod socket session is how CNPG's own tooling administers the instance, and the doc says so. Cell-to-cell isolation is the database layer's, as in brief 26; the credential layer is stated, not claimed. <!-- graph: encoded desk-containers/26→desk-containers/27 -->
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows / run mutating commands against any shared cluster or checkout. Cluster-side checks run only in a throwaway `kind` cluster that the drill creates and deletes; `kind-drill.sh` refuses to run unless the current kube context is the `kind-` context it created.
 - Stop at `implemented` — you do not set verified/done.
 - Public repository: example values only (`example-cell`, `example-org`, `example.com`, `s3.example.com`); no real organisation, host, bucket or person names, and no credential value in any committed file.
@@ -130,3 +131,13 @@ Gate: human, `sensitive-data: yes`: the brief designs credential custody on the 
 - that `kind-drill.sh` refuses any kube context it did not create;
 - that `migrate-cell.sh` has no path that reopens admission or sets `login: true`;
 - that each CRD field used is cited in the PR body to the pinned release's CRD or docs.
+
+## Interactive cohort routing — 20 October 2026
+
+[The current target](../../proposals/non-ci-architecture/28-interactive-kubernetes-desks.md)
+requires separately interactive standing desks. Tick-mode CronJobs remain an opt-in distinct
+profile, never the default or an additional writer for an interactive role binding. The
+interactive cohort does not depend on CronJob/GitOps examples. /27's CNPG packaging consumes
+/06's base directly; it must not require /12's component to exist. CNPG administration and
+restore terminal capabilities remain separate from the /28 operator and all desk identities.
+Existing tasks, migration gates, recovery obligations and Verify rows otherwise stand.

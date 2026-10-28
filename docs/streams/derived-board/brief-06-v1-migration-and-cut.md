@@ -42,21 +42,9 @@ id: 0786889c-9b51-4b97-b02d-333c757cca9a
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/migrate.go` — new op `statusgen-regen: {verb: migrate,
-  args: [brief-v1-to-v2]}`: runs the PINNED statusgen (resolved from `.assay-versions`,
-  never `$PATH`) with `--root`; dry-run prints the statusgen dry-run; idempotent.
-- `statusgen/migrate.go` (new) — verb `migrate brief-v1-to-v2 [--dry-run]`: rewrite
-  `schema: brief-v1` → `brief-v2` on every brief; rewrite `brief: <stream>/<NN>` →
-  `brief: <cell>:<repo>:<stream>:<NN>` using the tree's `graph-repos.yaml` (refuse, exit 5, if
-  absent — the adopter writes the registry first; the release note says so); add `version: 1`
-  where absent; mint `id:` (uuid v4) on every brief that lacks one (spec §8 — minted at
-  migration, once); wrap each stream README's Briefs table in
-  the markers and add `board: generated`; refuse (exit 5) if any README has no
-  recognisable table. Prints a per-file plan under `--dry-run`.
-- `migrations/0001-v0.28.0-to-v1.0.0-derived-board.md` (planned) — the first REAL migration (source umbrella v0.28.0, the latest at cut time — medici-finance/assay#453) — `apply:` =
-  `statusgen-regen` + `ensure-line` in `docs/UPGRADING.txt`; body = the adopter-facing
-  release note (what changes on their board, the trailer they must now write, the
-  reconcile step they must add to their workflow — with the exact YAML).
+- `tools/desk/internal/deskkit/migrate.go` — new op `statusgen-regen: {verb: migrate, args: [brief-v1-to-v2]}`: runs the PINNED statusgen (resolved from `.assay-versions`, never `$PATH`) with `--root`; dry-run prints the statusgen dry-run; idempotent.
+- `statusgen/migrate.go` (new) — verb `migrate brief-v1-to-v2 [--dry-run]`: rewrite `schema: brief-v1` → `brief-v2` on every brief; rewrite `brief: <stream>/<NN>` → `brief: <cell>:<repo>:<stream>:<NN>` using the tree's `graph-repos.yaml` (refuse, exit 5, if absent — the adopter writes the registry first; the release note says so); add `version: 1` where absent; mint `id:` (uuid v4) on every brief that lacks one (spec §8 — minted at migration, once); wrap each stream README's Briefs table in the markers and add `board: generated`; refuse (exit 5) if any README has no recognisable table. Prints a per-file plan under `--dry-run`.
+- `migrations/0001-v0.28.0-to-v1.0.0-derived-board.md` (planned) — the first REAL migration (source umbrella v0.28.0, the latest at cut time — medici-finance/assay#453) — `apply:` = `statusgen-regen` + `ensure-line` in `docs/UPGRADING.txt`; body = the adopter-facing release note (what changes on their board, the trailer they must now write, the reconcile step they must add to their workflow — with the exact YAML).
 - `statusgen/main.go` + brief-reading desk tools (`deskboard`, `deskpr`, `deskclaim`,
   `deskevidence`) — on `schema: brief-v2` in the tree with a binary `< v1.0.0`: exit 6
   "tree is brief-v2; this <tool> is vX; run assay:upgrade-assay".
@@ -460,6 +448,83 @@ TO, never superseding the flag day. **MIGRATION STILL NOT RUN HERE — pin bump 
 - **Digest confirmed end-to-end, row 10 re-measured.** The published `statusgen-darwin-arm64`
   hashes to the manifest entry AND the pin line (`b2f926cd…04fa1`), self-reports `v1.0.6`, and
   `statusgen --root . --lint` with it → **exit 0, `LINT: PASS`**, NOTICEs only, no `PROBLEM` line.
+
+### Non-implementer re-wake verify pass — 2026-10-20 (verify-desk dispatch, claude-opus-5-5, strong tier), gate:human Evidence-only
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test . -run Migrate -count=1` | pass exit=0 sandbox=container-netns | sha256:7b05e0c519f0 | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run 'StatusgenRegen' -count=1 && go test ./internal/deskkit/ -run 'Migrat' -count=1` | pass exit=0 sandbox=container-netns | sha256:87cd60d8f952 | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root ../../examples/adopter-scaffold --dry-run; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:48e14de07eee | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `rm -rf "$TMPDIR/adopt" && cp -r examples/adopter-scaffold "$TMPDIR/adopt" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt" && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt"; echo rc=$?; grep -c 'schema: brief-v2' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c -E '^brief: [a-z0-9-]+:[a-z0-9-]+:example-service:0[12]$' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c '^version: 1' "$TMPDIR"/adopt/docs/streams/example-service/*.md` | pass exit=0 sandbox=container-netns | sha256:4713981b5524 | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 4b | `rm -rf "$TMPDIR/adopt2" && cp -r examples/adopter-scaffold "$TMPDIR/adopt2" && rm "$TMPDIR/adopt2/docs/streams/graph-repos.yaml" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt2"; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:79207bcf98fb | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `printf 'statusgen v1.0.0 aaaa\ndesk-tools-linux-amd64 v0.13.0 bbbb\n' > "$TMPDIR/adopt/.assay-versions" && statusgen --root "$TMPDIR/adopt" --lint; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:b51cbbf6c1c2 | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go build -ldflags '-X main.version=v0.13.0' -o "$TMPDIR/deskboard-old" ./cmd/deskboard && "$TMPDIR/deskboard-old" --root "$TMPDIR/adopt"; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:4d7e8a15e0be | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `python3 -c "import json,yaml;p=json.load(open('plugins/assay/.claude-plugin/plugin.json'))['version'];y=yaml.safe_load(open('plugins/assay/paired-versions.yaml'));assert p==y['plugin']=='1.0.0' and y['statusgen']['tag']==y['desk-tools']['tag'];print('ok')" && bash plugins/assay/scripts/check-paired-versions.sh >/dev/null && echo checked` | fail exit=1 sandbox=container-netns | sha256:299f7dc4de5e | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 8 | `! grep -n -E 'v1\.0\.0 [0-9a-f]{64}' plugins/assay/paired-versions.yaml` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go run ./cmd/upgrade-assay --root "$TMPDIR/adopt" --to v1.0.0 --dry-run \| grep -c 'What changed'` | fail exit=1 sandbox=container-netns | sha256:b40626296b7f | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --root . --lint` | pass exit=0 sandbox=container-netns | sha256:24baf48c3a43 | 2026-10-20 | assay-verifier-app[bot] @ 578a9f39d73e (on-behalf-of human:ian) (forge-identity) |
+
+**Re-wake verification at 578a9f3 (2026-10-20).** The table above is the execution witness,
+re-run at source `578a9f39d73ec48bdc07fbdfd3938edb463e7b9b` in a local docker container, image
+assay-verify:go1.27 (id sha256:955fd6c46c93, built FROM
+golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e,
+git 2.47), `--network none`, sandbox=container-netns, default seccomp, under the driver's
+2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house
+tracker). Every row was also run by hand in a scratch clone at the same sha. This is an Evidence
+pass only: the brief is gate: human, so no sign-off is written here. The prior Evidence
+(2026-09-10, merged main 8d799c6bc026) recorded every executable row passing, not signed off;
+since then the plugin manifest version is stamped at every umbrella cut (#814, now 1.0.53),
+deskboard moved to a Cobra/Viper CLI (#3248), and the pins moved to v1.0.52.
+
+Witness caveat: rows 3, 4, 4b, 5 and 6 end in `; echo rc=$?`, so their recorded exit is the
+echo's, not the command's. The by-hand runs below are the discriminating reading for those rows.
+
+- **Rows 1, 2, 8, 10 — pass** in the witness and by hand (8 and 4 + 9 tests; no `v1.0.0` hash
+  line in the pin manifest; `LINT: PASS`). A by-hand clone whose origin/main lagged the source
+  reported verify-obligation PROBLEMs for row 10; with origin/main at the source it is exit 0,
+  `LINT: PASS` — environment-only.
+- **Row 3 — pass by hand:** exit 0, selects `0001-v0.28.0-to-v1.0.0-derived-board`, three files
+  would change, examples/ untouched.
+- **Row 4 — pass by hand:** both runs exit 0, the second a `clean no-op`; both briefs carry all
+  three markers once.
+- **Row 4b — pass in substance:** the built binary exits 5 naming the absent `graph-repos.yaml`
+  alias registry; under `go run` that surfaces as `exit status 5` with the wrapper exiting 1, so
+  the printed `rc=` is 1. Wording nit for the row, not a deliverable defect.
+- **Row 5 — pass by hand:** exit 1, `PROBLEM: … artifact tags differ across pinned artifacts —
+  v0.13.0 (desk-tools-linux-amd64); v1.0.0 (statusgen)`, `LINT: FAIL`.
+- **Row 6 — stale row** (its witness pass is the masked echo). By hand the v0.13.0 build prints
+  `deskboard: unknown flag: --root` and exits 5, not the refusal 6 the row expects. deskboard
+  never owned `--root`; before #3248 its brief-schema gate read raw args, and since the Cobra
+  migration the gate runs inside the board command after flag parsing, so the row's invocation
+  never reaches it. Supplemental probe, discharging no row: the same build run with the migrated
+  tree as working directory (`deskboard-old prs`) exits 6 with `tree is brief-v2; this deskboard
+  is v0.13.0; run assay:upgrade-assay` — the gate itself holds.
+- **Row 7 — stale row** (witness fail). The assertion pins the literal `1.0.0`, but since #814
+  the plugin manifest and the paired-versions `plugin:` are stamped per cut and both read
+  `1.0.53`; the statusgen and desk-tools tags are equal (v1.0.52). `check-paired-versions.sh`,
+  the repo's own pairing check, exits 0. (A host python3 without PyYAML fails earlier with
+  `ModuleNotFoundError`; environment-only.)
+- **Row 9 — row-sequencing defect** (witness fail exit=1, same finding as 2026-09-10). Row 5
+  overwrites the shared adopter copy's `.assay-versions` with two lines and no `assay` umbrella
+  line, so upgrade-assay refuses (exit status 6, `current umbrella version could not be
+  determined`) and the count is 0. On a fresh scaffold copy, and on row 4's migrated copy before
+  row 5 runs, it prints the release note's `What changed` section: count 1, exit 0.
+
+Risk-bearing values (irreversible: yes), ranked:
+
+RISK-VALUE: DERIVED — schema gate floor = `v[0] < 1` @ tools/desk/internal/deskkit/briefschemagate.go:39 and statusgen/versiongate.go:76 — brief-v2 is the first contract-breaking brief schema and is cut as v1.0.0, so every tool below major 1 must refuse a v2 tree.
+RISK-VALUE: DERIVED — ExitUnverifiable = `6` @ tools/desk/internal/deskkit/exitcodes.go:55 — the deskkit exit contract defines 6 as "a precondition could not be POSITIVELY verified … fail closed"; a sub-v1 tool cannot read a brief-v2 tree, so it fails closed in that class rather than guessing.
+RISK-VALUE: DERIVED — migrateExitRefused = `5` @ statusgen/migrate.go:53 — mirrors deskkit ExitRefused = 5 ("refused by a compiled-in constraint"); an absent alias registry is a determinate precondition failure, distinct from 6, so callers can tell "fix your tree" from "upgrade your tool".
+RISK-VALUE: DERIVED — migration span `from: v0.28.0` / `to: v1.0.0` @ examples/adopter-scaffold/migrations/0001-v0.28.0-to-v1.0.0-derived-board.md:3-4 — v0.28.0 is the last brief-v1 release and v1.0.0 the flag day the gate floor names.
+RISK-VALUE: DERIVED — statusgen and desk-tools per-platform sha256 pins (ten lines, tag `v1.0.52`) @ plugins/assay/paired-versions.yaml:42-46 and :67-71 — all ten equal the v1.0.52 release's published checksums.txt byte-for-byte (read 2026-10-20, 0 mismatches).
+RISK-VALUE: DERIVED — harness digest = `sha256:64f131ec208def087b50565a4ddd407b95bd89ac418a86597ad1bac1d29047d3` @ plugins/assay/paired-versions.yaml:102 — present in the v1.0.52 release-images.json, whose own sha256 matches that release's checksums.txt entry.
+RISK-VALUE: DERIVED — plugin = `"1.0.53"` @ plugins/assay/paired-versions.yaml:31 (and plugin.json:5) — #814 stamps the manifest at every umbrella cut, and check-paired-versions.sh enforces the two are equal (exit 0).
+RISK-VALUE: NAMED, NOT DERIVED — StatusgenBinEnv = `"STATUSGEN_BIN"` @ tools/desk/internal/deskkit/migrate.go:47 — the authority binding for which statusgen the migration runs; when unset it falls back to `statusgen` on PATH, which is not sha256-checked at run time. Whether that fallback is acceptable is a human question, not derivable from the spec.
+
+Verification-Attestation: medici-finance/assay#3678 run=35c119f92c34a8e93ad49285330412d96704da8f33aa8ff68445e70db57d9d5c source=578a9f39d73ec48bdc07fbdfd3938edb463e7b9b brief=docs/streams/derived-board/brief-06-v1-migration-and-cut.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — no deliverable obligation was observed failing, but rows 6, 7 and 9 cannot pass as written at current main (stale `--root` invocation after #3248, a `1.0.0` literal superseded by #814, and row 5 mutating row 9's input), so the Verify table needs a definition repair before a human sign-off. Blocker filed: #3838 (row-definition repair for rows 4b, 6, 7 and 9). The `outcome: blocked` receipt follows from the fresh verify that #3838 names.
 
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9

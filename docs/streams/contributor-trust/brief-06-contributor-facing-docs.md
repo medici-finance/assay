@@ -39,7 +39,7 @@ consumers:
   - ".github/PULL_REQUEST_TEMPLATE.md: follow-up contributor-trust/06 (this brief; the claims checklist and the how-I-verified prompt — landed by the partial, outside this branch's diff)"
   - "docs/contributor-trust.md: fixed-here (this change lands the provenance-card hop — the published model gains its contributor-facing entry point into what a submission is measured on)"
   - "SECURITY.md: out-of-scope (the reporting path is unchanged; the new sections link to it rather than restating it, since a second copy of a security contact is the copy that goes stale)"
-version: 1
+version: 2
 ---
 
 # Brief 06 — Contributor-facing documents
@@ -47,13 +47,8 @@ version: 1
 ## Context
 
 files:
-- `CONTRIBUTING.md` — a new section stating the trust bar: that automation acts only on
-  maintainer-admitted items, that submissions from unrecognised accounts carry a mechanically
-  derived provenance comment and what it measures, that trust levels exist and what each
-  unlocks, and that who holds which level is not published.
-- `.github/PULL_REQUEST_TEMPLATE.md` (planned) (new) — the claims checklist, the how-I-verified prompt,
-  and the automated-assistance disclosure field (whose tiering consequence is stated in
-  `contributor-trust/07`, not here).
+- `CONTRIBUTING.md` — a new section stating the trust bar: that automation acts only on maintainer-admitted items, that submissions from unrecognised accounts carry a mechanically derived provenance comment and what it measures, that trust levels exist and what each unlocks, and that who holds which level is not published.
+- `.github/PULL_REQUEST_TEMPLATE.md` (planned) (new) — the claims checklist, the how-I-verified prompt, and the automated-assistance disclosure field (whose tiering consequence is stated in `contributor-trust/07`, not here).
 - `docs/contributor-trust.md` (planned) — the contributor-facing entry point into the published model.
 - `changelog/contributor-trust-docs.md` (new).
 
@@ -156,7 +151,7 @@ that is the review gate's judgement.
 | 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | exit 1; no matching line (contributor-facing pages name no internal automation identity) | check |
 | 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | exit 0; at least one matching line (the reporting path is linked, not restated) | check +neighbour |
 | 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; at least one matching line from each (the contributor's path runs `CONTRIBUTING.md` to the published model to the description of what the provenance comment measures, and every hop exists) | check +flow |
-| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
+| 11 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief assay:assay:contributor-trust:06 --delivery a5c8286832514bf1e1ce2dad552612389bbc02b1 --base 7e5f189e36e774a13925beb3ab85e7ed8c6720b4 > "$o" && cat "$o" && grep -Fxq 'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The new section quietly describes an advisory guideline as
 enforced, so the page promises something the repository does not do" is caught by row 5. "The
@@ -206,6 +201,55 @@ what they pin. No code, no test suite: the changed paths are markdown only.
 | 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; line 24 (pre-existing) + line 91 (new section links it, does not restate the path) | 2026-09-20 | glm-5.3[1m]-worker |
 | 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; ≥1 line each | exit 0; line 76 (link to `docs/contributor-trust.md`) and lines 69, 74 (`provenance card`, link to `contributor-provenance.md`); both halves RED (rc=1) at base | 2026-09-20 | glm-5.3[1m]-worker |
 | 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; `corroborated`; no `DISPROVED`/`COULD-NOT-CHECK` | exit 0; `summary: 3 corroborated, 0 disproved, 1 unchecked` against merge-base `e4109205` (the unchecked entry is SECURITY.md `out-of-scope`, byte-identical to the merge-base — a reviewer judgement by design, never a pass); requires the brief file itself in the branch diff, which its Evidence edit supplies | 2026-09-20 | glm-5.3[1m]-worker |
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f .github/PULL_REQUEST_TEMPLATE.md` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -n -i 'how you verified' .github/PULL_REQUEST_TEMPLATE.md` | pass exit=0 sandbox=container-netns | sha256:53b118f6a842 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -n -i 'automated' .github/PULL_REQUEST_TEMPLATE.md` | pass exit=0 sandbox=container-netns | sha256:aecab1b99705 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -n -i 'provenance' CONTRIBUTING.md` | pass exit=0 sandbox=container-netns | sha256:d48a4d2609ca | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -n -i 'advisory' CONTRIBUTING.md` | pass exit=0 sandbox=container-netns | sha256:4fe4a447f3e5 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -n -i 'not published' CONTRIBUTING.md` | pass exit=0 sandbox=container-netns | sha256:69a77305e0b0 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -n 'changelog' CONTRIBUTING.md` | pass exit=0 sandbox=container-netns | sha256:acf59439d849 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | pass exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | pass exit=0 sandbox=container-netns | sha256:b5a307cd7646 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | pass exit=0 sandbox=container-netns | sha256:2f7979d9dc24 | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | fail exit=2 sandbox=container-netns | sha256:d3f384fc21ae | 2026-10-20 | assay-verifier-app[bot] @ 75cc11f14233 (on-behalf-of human:ian) (forge-identity) |
+
+Verifier pass, 2026-10-20, a fresh non-implementer verifier (claude-opus-5-5, strong tier) at merged
+main source 75cc11f1423301ea8ba0b111d48c8d5b8a303537, admitted by dispatcher attestation run
+4c17dbe3936f45fe0ca7e47aab5f6b5d6963bbd406e1da1d67eaf13eddf78702 (brief sha256 3b36b80af428…,
+checked before and after the witness). The witness table above came from a local docker container,
+image assay-verify:go1.27 (id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie, git 2.47),
+started with `--network none`, sandbox=container-netns, the engine's default seccomp profile, running
+under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the
+private house tracker). Every row was also run by hand in the attested home with identical exit codes.
+This brief is gate: human with risk customer: yes; this pass records Evidence only and signs nothing off.
+
+Prior Evidence: the implementer's rows of 2026-09-20 against the delivery a5c828683 (PR #1370), with
+no verifier verdict. Since then two later commits touched the deliverables (1c3378f9a and d69aec77c,
+adding to CONTRIBUTING.md and the template), and row 11 was rewritten by c24f792be and restored to its
+original text by e9de8ff00 on the driver's ruling; rows 1–10 still hold at current main.
+
+Row 11 classification: tool limit, not a deliverable defect. At merged main the brief is not in any
+diff and the committed Evidence carries no Verification-Table marker naming the delivery, so
+statusgen answers exit 2 with `COULD-NOT-CHECK: assay:assay:contributor-trust:06 is not in the diff
+against 75cc11f14233…, and the brief's delivery could not be derived` — the post-merge shape tracked
+by medici-finance/assay#1915. The witness records that exit 2 as its row result; the substance is that
+the instrument could not look. A separately labelled supplemental probe, which discharges no original
+row, ran `statusgen --root . --consumers --brief assay:assay:contributor-trust:06 --delivery
+a5c8286832514bf1e1ce2dad552612389bbc02b1 --base 7e5f189e36e774a13925beb3ab85e7ed8c6720b4` → exit 0,
+`summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` (the unchecked
+entry is the SECURITY.md out-of-scope claim, a reviewer judgement).
+
+Risk-bearing values (enumerated over the delivery diffs a5c828683 and 649b6acef on CONTRIBUTING.md,
+the pull-request template and docs/contributor-trust.md; the concurrency figure "three" predates
+both and is outside scope):
+- RISK-VALUE: DERIVED — published tier set = `unknown`, `blessed-once`, `contributor`, `maintainer` ("four tiers") @ CONTRIBUTING.md:109 — it equals the implemented tier names in tools/desk/internal/deskkit/trusttier.go lines 67–73 and the published model in docs/contributor-trust.md line 11, so the page promises no tier the code lacks; a wrong name is reversible by an edit.
+
+Verification-Attestation: medici-finance/assay#3666 run=4c17dbe3936f45fe0ca7e47aab5f6b5d6963bbd406e1da1d67eaf13eddf78702 source=75cc11f1423301ea8ba0b111d48c8d5b8a303537 brief=docs/streams/contributor-trust/brief-06-contributor-facing-docs.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — rows 1–10 pass at merged main; row 11's acceptance command cannot corroborate post-merge without a delivery marker (medici-finance/assay#1915), so its obligation has no admissible evidence.
 
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.

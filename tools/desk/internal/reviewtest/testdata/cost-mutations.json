@@ -1,0 +1,65 @@
+{
+  "test": "go test ./internal/reviewtest -count=1 -timeout 180s -run '^TestCostCohort$'",
+  "control": {
+    "name": "disable the unknown-cost report assertion",
+    "file": "internal/reviewtest/qualification_test.go",
+    "old": "func checkCostUnknowns(raw []byte) error {",
+    "new": "func checkCostUnknowns(raw []byte) error { return nil;"
+  },
+  "mutations": [
+    {
+      "name": "production command descendant CPU becomes zero",
+      "file": "internal/reviewtest/qualification_test.go",
+      "old": "v := invocation{Tool: tool, Start: time.Now()}",
+      "new": "v := invocation{Tool: tool, Start: time.Now(), DescendantCPUMs: new(float64)}"
+    },
+    {
+      "name": "second site Git agent descendant CPU becomes zero",
+      "file": "internal/reviewtest/qualification_test.go",
+      "old": "x := invocation{Tool: \"fixture-agent/git-diff\", Start: time.Now()}",
+      "new": "x := invocation{Tool: \"fixture-agent/git-diff\", Start: time.Now(), DescendantCPUMs: new(float64)}"
+    },
+    {
+      "name": "production command inclusive CPU becomes zero",
+      "file": "internal/reviewtest/qualification_test.go",
+      "old": "v := invocation{Tool: tool, Start: time.Now()}",
+      "new": "v := invocation{Tool: tool, Start: time.Now(), InclusiveCPUMs: new(float64)}"
+    },
+    {
+      "name": "HTTP retry lineage becomes known false",
+      "file": "internal/reviewtest/http.go",
+      "old": "Status: status})",
+      "new": "Status: status, Retry: new(bool)})"
+    },
+    {
+      "name": "HTTP quota points become zero",
+      "file": "internal/reviewtest/http.go",
+      "old": "Status: status})",
+      "new": "Status: status, Points: new(int64)})"
+    },
+    {
+      "name": "serialized descendant CPU disappears",
+      "file": "internal/reviewtest/qualification_test.go",
+      "old": "`json:\"descendantCpuMs\"`",
+      "new": "`json:\"descendantCpuMs,omitempty\"`"
+    },
+    {
+      "name": "serialized inclusive CPU disappears",
+      "file": "internal/reviewtest/qualification_test.go",
+      "old": "`json:\"inclusiveCpuMs\"`",
+      "new": "`json:\"inclusiveCpuMs,omitempty\"`"
+    },
+    {
+      "name": "serialized quota points disappear",
+      "file": "internal/reviewtest/http.go",
+      "old": "`json:\"points\"`",
+      "new": "`json:\"points,omitempty\"`"
+    },
+    {
+      "name": "serialized retry lineage disappears",
+      "file": "internal/reviewtest/http.go",
+      "old": "`json:\"retry\"`",
+      "new": "`json:\"retry,omitempty\"`"
+    }
+  ]
+}

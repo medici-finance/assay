@@ -10,7 +10,7 @@ lifecycle hooks.
 
 | Command | What it does |
 |---|---|
-| [`inbox.md`](./inbox.md) (`assay:inbox`) | The inbox: shells `../scripts/assay-inbox.sh` to query `gh` across your configured repos for open `needs-decision` / `question` / `help wanted` / `urgent` issues (the escalation contract), sorted urgency-then-age. Three renderings of one queue: the terminal table, `--walk [--item K]` for one item in the five-part decision format, and `--html OUT.html` for the whole queue as a self-contained page. Read-only, terminal-agnostic. |
+| [`inbox.md`](./inbox.md) (`assay:inbox`) | The inbox: shells `../scripts/assay-inbox.sh` to query `gh` across your configured repos for open `needs-decision` / `question` / `help wanted` / `urgent` issues (the escalation contract), sorted urgency-then-age. Three renderings of one queue: the terminal table, `--walk [--item K]` for one item in the five-part decision format, and `--html OUT.html` for the whole queue as a self-contained page. Read-only. Issue discovery requires a nonempty desk identity in auto mode; an operator in an ambient terminal selects `ASSAY_INBOX_READER=legacy` explicitly. Flow-only rendering needs no discovery identity. |
 
 **Naming:** command names follow the same kebab-case convention as skills; a
 command's `description` frontmatter is what a user/agent sees before invoking it —

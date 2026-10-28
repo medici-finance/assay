@@ -29,6 +29,8 @@ package main
 // different `--root`. No write mode of statusgen is run under this pool.
 
 import (
+	"fmt"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -109,4 +111,104 @@ func resolveRootsOnce() (rootSet, error) {
 // not be read can never leave the board reporting a queue that silently excludes it.
 func runPerRoot[T any](rs rootSet, work func(deskkit.RootConfig) (T, error)) ([]T, error) {
 	return sweepConcurrent(rs.roots, rootPoolLimit, work)
+}
+
+// ---------------------------------------------------------------------------
+// Queue-contract coverage (brief 45).
+//
+// `statusgen --gate-scores` rows carry the verification queue's classification
+// (statusgen/awaiting_bucket.go queueFor). A root is only COUNTED toward a queue
+// depth when it delivered that classification; every other state is a named
+// coverage gap, never a zero. The states, per root:
+//
+//	healthy      every row carries a supported queueVersion and a valid class
+//	degraded     supported rows, but some are explicitly unreadable (unknown)
+//	unsupported  some row has no queueVersion / an unknown one (older statusgen)
+//	unreadable   the root itself could not be read (statusgen failed, bad JSON,
+//	             or the root's declared repo disagrees with its configuration)
+// ---------------------------------------------------------------------------
+
+const (
+	// queueContractVersion is the statusgen queue contract this binary reads.
+	queueContractVersion = 1
+
+	rootHealthy     = "healthy"
+	rootDegraded    = "degraded"
+	rootUnsupported = "unsupported"
+	rootUnreadable  = "unreadable"
+
+	// queueClassUnclassified is what a consumer calls a row whose statusgen did
+	// not deliver a supported classification. It is never work and never zero.
+	queueClassUnclassified = "unclassified"
+
+	queueClassJudgment   = "judgment-dispatch"
+	queueClassRunner     = "runnable-offline"
+	queueClassContinue   = "continuation"
+	queueClassHuman      = "human-action"
+	queueClassUnreadable = "unreadable"
+	queueClassPaused     = "paused"
+	queueClassParked     = "parked"
+)
+
+// rootCoverage is one root's queue-contract reading.
+type rootCoverage struct {
+	Repo   string `json:"repo"`
+	Path   string `json:"path"`
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+	Rows   int    `json:"rows"`
+	// Unknown counts rows whose class is unreadable or unclassified: awaiting
+	// work this reading cannot place.
+	Unknown int `json:"unknown"`
+}
+
+// gap reports whether this root's reading is anything less than complete.
+func (c rootCoverage) gap() bool { return c.State != rootHealthy }
+
+// rowSupported reports whether a gate-scores row carries a queue classification
+// this binary understands.
+func rowSupported(r gateScoreRow) bool {
+	return r.QueueVersion == queueContractVersion && r.QueueClass != ""
+}
+
+// classOf is the row's class as a consumer must read it: the statusgen class
+// when supported, else queueClassUnclassified.
+func classOf(r gateScoreRow) string {
+	if !rowSupported(r) {
+		return queueClassUnclassified
+	}
+	if !r.QueueValid {
+		return queueClassUnreadable
+	}
+	return r.QueueClass
+}
+
+// coverageOf grades one root's rows (or its read error) against the contract.
+func coverageOf(rc deskkit.RootConfig, rows []gateScoreRow, readErr error) rootCoverage {
+	c := rootCoverage{Repo: rc.Repo, Path: rc.Path, State: rootHealthy, Rows: len(rows)}
+	if readErr != nil {
+		c.State, c.Reason, c.Rows = rootUnreadable, readErr.Error(), 0
+		return c
+	}
+	unsupported, invalid := 0, 0
+	for _, r := range rows {
+		switch cl := classOf(r); cl {
+		case queueClassUnclassified:
+			unsupported++
+			c.Unknown++
+		case queueClassUnreadable:
+			invalid++
+			c.Unknown++
+		}
+	}
+	switch {
+	case unsupported > 0:
+		c.State = rootUnsupported
+		c.Reason = fmt.Sprintf("%d row(s) carry no supported queueVersion (statusgen predates the queue contract v%d)",
+			unsupported, queueContractVersion)
+	case invalid > 0:
+		c.State = rootDegraded
+		c.Reason = fmt.Sprintf("%d row(s) are could-not-check", invalid)
+	}
+	return c
 }

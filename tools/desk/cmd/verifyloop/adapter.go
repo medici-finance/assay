@@ -25,8 +25,13 @@ import (
 // NOT cryptographic un-forgeability. A holder of signing material can still forge; the close
 // is author!=approver between distinct Apps + branch protection, which is out of scope here.
 type VerifyLoop struct {
-	attested verifierRuns
-	Attest   func(loopengine.Item, string, string) (deskkit.VerifierReceipt, error)
+	performance verifyPerformance // optional invocation diagnostics; never scheduling authority
+	attested    verifierRuns
+	Attest      func(loopengine.Item, string, string) (deskkit.VerifierReceipt, error)
+	// World, when set, binds every run to its admitted prerequisite record
+	// (example-stream/50). nil keeps the legacy path, which neither requires nor
+	// consumes one.
+	World *worldGate
 
 	Root      string // repo root the Awaiting scan runs against
 	TargetSHA string // merged-main SHA verifiers run against (stamped onto every Item)
@@ -115,11 +120,54 @@ func (v *VerifyLoop) Name() string { return "verify-desk" }
 // (implemented + empty Evidence) before tier-2 (free-closes / Evidence-present), oldest-first
 // within class. See briefscan.go.
 func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
-	now := v.wakeNow()
-	if len(v.Roots) > 0 {
-		return scanAwaitingRoots(v.Roots, v.TargetSHA, v.WakeReader, v.Issues, now)
+	if source, ok := v.Issues.(interface{ beginPlanningPass() }); ok {
+		source.beginPlanningPass()
 	}
-	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.RootRepo, v.TargetSHA, v.WakeReader, v.Issues, now)
+	now := v.wakeNow()
+	var items []loopengine.Item
+	var err error
+	stopScan := v.performance.phase("queue-scan")
+	pass := deskkit.NewVerifierAssociationPass(v.performance.session)
+	if len(v.Roots) > 0 {
+		items, err = scanAwaitingRootsPass(v.Roots, v.TargetSHA, v.WakeReader, v.Issues, now, pass)
+	} else {
+		items, err = scanAwaitingPass(deskkit.RootConfig{Path: v.Root}, v.RootRepo, v.TargetSHA, v.WakeReader, v.Issues, now, pass)
+	}
+	stopScan()
+	if err != nil {
+		return nil, err
+	}
+	// Both single-root and multi-root consumers pass this join. A source with
+	// no pending-Evidence capability keeps the offline board-only scan.
+	if source, ok := v.Issues.(pendingEvidenceSource); ok {
+		if prepare, ok := v.Issues.(interface {
+			preparePendingEvidence([]loopengine.Item, string)
+		}); ok {
+			prepare.preparePendingEvidence(items, v.RootRepo)
+		}
+		for i, it := range items {
+			if payloadValue(it, "could_not_check") != "" {
+				continue
+			}
+			root, repo := payloadValue(it, "root"), payloadValue(it, "repo")
+			if root == "" {
+				root = v.Root
+			}
+			if repo == "" {
+				repo = v.RootRepo
+			}
+			ref, err := source.PendingEvidence(root, repo, it, now, v.WakeReader)
+			if err != nil {
+				items[i].Payload["could_not_check"] = "pending Evidence: " + oneLine(err)
+			} else if ref != "" {
+				items[i].Payload["awaiting_merge"] = ref
+			}
+		}
+	}
+	if v.World != nil {
+		v.World.admitItems(v, items)
+	}
+	return items, nil
 }
 
 // wakeNow is the clock the wake evaluator uses — v.Now when injected (deterministic in tests),
@@ -138,6 +186,12 @@ func (v *VerifyLoop) wakeNow() time.Time {
 // drives a real ACP child process (dispatch_native.go). The rendered prompt is identical
 // either way — renderDispatchPrompt is the single source, unchanged.
 func (v *VerifyLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
+	if ref := payloadValue(it, "awaiting_merge"); ref != "" {
+		return nil, fmt.Errorf("awaiting-merge %s: pending verifier Evidence", ref)
+	}
+	if why := payloadValue(it, "could_not_check"); why != "" {
+		return nil, fmt.Errorf("could-not-check: %s", why)
+	}
 	if v.Native {
 		return v.dispatchNative(it, tier)
 	}
@@ -163,6 +217,11 @@ func (v *VerifyLoop) dispatchInterim(it loopengine.Item, tier loopengine.Tier) (
 	}
 	receipt, err := v.attestRun(it, v.Root, "")
 	if err != nil {
+		return nil, err
+	}
+	// Interim mode reads the shared record in place, so the world is bound in
+	// memory only; Land consumes it from the remembered run.
+	if receipt, err = v.bindDispatchWorld(it, v.Root, receipt, false); err != nil {
 		return nil, err
 	}
 	prompt, err := admittedVerifierPrompt(it, tier, receipt)

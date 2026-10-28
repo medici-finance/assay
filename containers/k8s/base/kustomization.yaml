@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: assay-desks
+resources:
+  - namespace.yaml
+  - network.yaml
+  - intake-desk.yaml
+  - worker-desk.yaml
+  - pr-review-desk.yaml
+  - verify-desk.yaml
+  - the-desk.yaml

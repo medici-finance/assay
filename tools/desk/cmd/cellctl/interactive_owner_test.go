@@ -35,15 +35,17 @@ func TestInteractiveOwnerFixture(t *testing.T) {
 	}
 	c.cadenceLease = l
 	defer l.Close()
-	env := envSet(os.Environ(), "CELL_INTERACTIVE_FIXTURE", "child")
+	env := fixtureProcessEnv("CELL_INTERACTIVE_FIXTURE=child")
 	env = envSet(env, "ASSAY_SOURCE_REVISION", "fixture-revision")
 	c.runInteractiveHarness("worker-desk", []string{os.Args[0], "-test.run=^TestInteractiveOwnerFixture$"}, env, dir)
 }
 
 func TestInteractiveOwnerCrashRefusesCadence(t *testing.T) {
 	dir := t.TempDir()
+	cell := &Cell{Name: "sample", Dir: dir, Kind: "house"}
+	hashes := retainedHistory(t, cell, 10)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestInteractiveOwnerFixture$")
-	cmd.Env = append(os.Environ(), "CELL_INTERACTIVE_FIXTURE=owner", "CELL_INTERACTIVE_DIR="+dir)
+	cmd.Env = fixtureProcessEnv("CELL_INTERACTIVE_FIXTURE=owner", "CELL_INTERACTIVE_DIR="+dir)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	cmd.WaitDelay = 200 * time.Millisecond
 	if err := cmd.Start(); err != nil {
@@ -77,6 +79,13 @@ func TestInteractiveOwnerCrashRefusesCadence(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = cmd.Wait()
+	if _, err := cell.prepareLaunch(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cell.stopCadences(); !errors.Is(err, cellcadence.ErrUnfinished) {
+		t.Fatalf("interrupted down accepted dirty owner: %v", err)
+	}
+	assertHistory(t, hashes)
 	l, err := cellcadence.Acquire(stateDir)
 	if err != nil {
 		t.Fatal(err)

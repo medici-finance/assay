@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -97,6 +98,28 @@ var dispatchRequirements = []dispatchRequirement{
 		How:     carriedInPrompt,
 		Probes:  []string{"Brief: ", "Target SHA"},
 		Note:    "verify table supplied by the board read via Payload[\"verify_table\"]",
+	},
+	{
+		ID:      "preflight-exact-acceptance-commands",
+		Anchors: []string{"preflight the exact acceptance commands", "approved executor envelope"},
+		How:     carriedInPrompt,
+		Probes: []string{"Preflight the exact acceptance commands before execution.",
+			"Never silently add a test filter", "reviewed amendment alone does not supersede the original baseline",
+			"Never invent a CLI override"},
+	},
+	{
+		ID:      "original-acceptance-row-inventory",
+		Anchors: []string{"account for the original row inventory", "immutable original acceptance table"},
+		How:     carriedInPrompt,
+		Probes: []string{"Account for the original row inventory.", "incomplete even on exit 0",
+			"supplemental rows receive no original acceptance credit", "Verification-Table"},
+	},
+	{
+		// Kit § "Run every row": the container lane for a check:ci row the host cannot sandbox.
+		ID:      "check-ci-container-admission-bracket",
+		Anchors: []string{"check:ci", "admission bracket", "container-netns", "never substitute a locally built binary"},
+		How:     carriedInPrompt,
+		Probes:  []string{"runs in the container lane", "--open-bracket", "--container-image-digest sha256:", "--close-bracket", "Admission-Bracket:", "Never substitute a locally built binary in an admitted run."},
 	},
 	{
 		// Kit § "Run every row", clause 2.
@@ -253,6 +276,12 @@ var dispatchRequirements = []dispatchRequirement{
 // exactly what went stale. The enumeration is dispatchRequirements above, checked against the
 // verifier dispatch kit by TestDispatchRequirements_MatchSkillMD. Change the prompt below and
 // you change the registry with it, or the test says so.
+// This is an illustrative metadata shape, never observations to copy into Evidence.
+const wakeOutcomeRowsExample = `{"rows":[2],"rows_total":3,"rows_passed":2,"row_results":[{"row":1,"result":"pass"},{"row":2,"result":"could-not-run"},{"row":"6a","result":"pass"}]}`
+
+// A gapped inventory needs exact results: row 10 is held out of nine original rows.
+const wakeOutcomeGappedRowsExample = `{"rows":[10],"rows_total":9,"rows_passed":8,"row_results":[{"row":1,"result":"pass"},{"row":2,"result":"pass"},{"row":3,"result":"pass"},{"row":4,"result":"pass"},{"row":5,"result":"pass"},{"row":6,"result":"pass"},{"row":7,"result":"pass"},{"row":8,"result":"pass"},{"row":10,"result":"could-not-run"}]}`
+
 func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	verifyTable := it.Payload["verify_table"]
 	if strings.TrimSpace(verifyTable) == "" {
@@ -271,14 +300,27 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	b.WriteString("Isolation (MANDATORY):\n")
 	b.WriteString("- Create and work in your OWN temporary worktree under /private/tmp off the target SHA.\n")
 	b.WriteString("- Never touch a shared checkout; never `git restore`/`git clean`; path-specific `git add` only.\n\n")
-	b.WriteString("Verify table — run EVERY row, record command -> exit code -> key observed output line\n")
+	// Keep these acceptance clauses verbatim with the kit; the sync test compares full clauses.
+	b.WriteString("- **Preflight the exact acceptance commands before execution.** Read every required row's Command, Expect and class against the approved executor envelope: offline/network limits, available tools, sandbox, timeout, output location and fail-first side effects. For protected tables use the original acceptance commands and provenance from `deskpathguard rederive --root <home> --brief <path>`. Read `docs/protected-paths.md` section \"Recording closure after re-derivation\" for the immutable table marker and original-row obligations; if that contract or its required objects are unavailable, report incomplete evidence. If a command cannot run as admitted, record the exact command and reason unrun and route the missing capability or a reviewed check-definition repair. Never silently add a test filter, replace a command, shorten its scope or relax the sandbox to make it runnable. A separately labelled supplemental probe (including a tighter test selector) can diagnose a blocker but discharges no original row. A definition repair requires fresh dispatch/admission after it lands. For a protected table, a reviewed amendment alone does not supersede the original baseline: closure still requires the delivered table and original obligations. Retain their provenance and hold when no supported acceptance-transition path exists. Never invent a CLI override, relabel a supplemental probe as acceptance, or repoint delivery to bypass that obligation.\n")
+	b.WriteString("- **Account for the original row inventory.** For a protected table, re-derive its immutable original acceptance table before execution and retain its provenance. Zero rows, a missing original row, or a filtered run with no required-row coverage is incomplete even on exit 0. Preserve every original row ID, Command, Expect, class and fail-first obligation. Author-added and supplemental rows receive no original acceptance credit. Retain the immutable `Verification-Table` marker required by the protected-table closure contract.\n")
+	b.WriteString("- **A `check:ci` row the host cannot sandbox runs in the container lane.** Where the default `unshare --net` sandbox is unavailable (a non-Linux host such as darwin, or a Linux host with unprivileged user namespaces disabled), run the row inside the closed admission bracket that `docs/brief-rules.md` rule 45 and the verify-desk skill's \"Pre-work admission\" section define, within one dispatch and with no edit to the home between the steps: (1) on the host, `statusgen verifyrun --open-bracket --root <home> --brief <path> --out <receipt>`, with `<receipt>` outside the home; (2) in a `--network none` container with the receipt mounted read-only, `statusgen verifyrun --sandbox=container-netns --brief <path> --admission-receipt <receipt> --container-image-digest sha256:<64 hex> --witness <file>`, with `<file>` a new file outside the home; (3) on the host, `statusgen verifyrun --close-bracket --root <home> --brief <path> --admission-receipt <receipt> --witness <file>`. Land the closed witness file's bytes, its `Admission-Bracket:` line included, as the Evidence block, after `statusgen verifyrun --bracket-digest --witness <file>` reports `verdict=match`. Record the row as could-not-run only when the installed statusgen has no `--open-bracket` or a bracket step refuses, quoting the refusal. Never substitute a locally built binary in an admitted run.\n")
+	b.WriteString("\n")
+	if payloadValue(it, "wake_runnable_rows") != "" {
+		b.WriteString("Verify table — account for EVERY row. Under this unchanged partial receipt, execute only the newly runnable identities listed below; retain prior PASS as prior observations and held rows as explicitly unrun. These lists govern this partial run, never a whole-brief PASS.\n")
+	} else {
+		b.WriteString("Verify table — run EVERY row, record command -> exit code -> key observed output line\n")
+	}
 	b.WriteString("(real output, never a claim; a row that cannot run is recorded as explicitly unrun):\n")
 	b.WriteString(verifyTable)
 	b.WriteString("\n\n")
 	if deferred := payloadValue(it, "deferred_rows"); deferred != "" {
 		// Per-row derivation (briefscan.go): these rows name an online lane or a longitudinal
 		// window in their Command cell. They are recorded as explicitly unrun — the rest run.
-		fmt.Fprintf(&b, "Rows to record as explicitly UNRUN (not runnable offline; run every other row): %s\n\n", deferred)
+		if payloadValue(it, "wake_runnable_rows") != "" {
+			fmt.Fprintf(&b, "Rows to record as explicitly UNRUN (not runnable offline): %s\n\n", deferred)
+		} else {
+			fmt.Fprintf(&b, "Rows to record as explicitly UNRUN (not runnable offline; run every other row): %s\n\n", deferred)
+		}
 	}
 	if held := payloadValue(it, "wake_held_rows"); held != "" {
 		// Wake partial (example-stream/16): a still-unchanged wake receipt holds these rows.
@@ -286,6 +328,16 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 		// must NOT report a whole-brief PASS, so the held rows can never be closed by this run.
 		fmt.Fprintf(&b, "Rows still WAKE-HELD (unchanged blocker; record as explicitly UNRUN — do NOT re-run them, and do NOT report a whole-brief PASS): %s\n\n", held)
 	}
+	if rows := payloadValue(it, "wake_runnable_rows"); rows != "" {
+		fmt.Fprintf(&b, "Newly runnable row identities under the unchanged partial receipt: %s. Run only these rows within the admitted execution envelope.\n\n", rows)
+	}
+	if rows := payloadValue(it, "wake_passed_rows"); rows != "" {
+		fmt.Fprintf(&b, "Prior receipt PASS observations (do NOT re-run or relabel as fresh Evidence, and never infer a whole-brief PASS): %s\n\n", rows)
+	}
+	b.WriteString("Evidence submission: keep separate Date (YYYY-MM-DD) and Runner cells on every execution observation in PASS, FAIL and BLOCKED submissions, including unrun rows and supplemental host observations with no acceptance credit. For unrun rows attribute observation of the blocker, not execution. A dated heading or commit author is insufficient. Recover missing attribution from retained run records or rerun; never guess it or invent execution witnesses. Preserve admitted witness bytes; deskevidence owns the on-behalf-of stamp. Run deskevidence --dry-run before publication and repair any refusal without a lifecycle flip.\n")
+	b.WriteString("Outcome-record producer contract: rows names only exact identities still held by this receipt; never list every covered row in rows. When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results. This includes non-contiguous numeric and suffixed inventories. When rows is empty or omitted, row_results remains optional. A verified record omits rows. Derive these fields only from this run's real witnessed Evidence, never from this illustrative example. For existing draft records using covered rows, follow the producer migration at https://github.com/medici-finance/assay/blob/main/docs/verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows; preserve historical records and report missing row evidence rather than guessing.\n")
+	b.WriteString("Outcome row metadata example: " + wakeOutcomeRowsExample + "\n")
+	b.WriteString("Gapped row metadata example: " + wakeOutcomeGappedRowsExample + "\n")
 	b.WriteString("You are NOT this brief's implementer (verifier != author). Fresh agent only.\n")
 	b.WriteString("Report back a STRUCTURED result: one Evidence row per Verify row (command, exit, output),\n")
 	b.WriteString("a clear verdict PASS|FAIL|BLOCKED, and your runner identity. Free-text verdicts are not accepted.\n")
@@ -316,4 +368,31 @@ func assertNoSharedCheckout(prompt string) error {
 		}
 	}
 	return nil
+}
+
+// bindDispatchWorld is the dispatch half of the run-bound prerequisite record
+// (example-stream/50). After admission and BEFORE any prompt is emitted or child
+// launched, the item's admitted record must exist and still hold; it is then
+// bound into the receipt (and, for a run in its own home, persisted with the
+// run record so the executor's own --check-verifier recheck consumes it). A
+// missing record is could-not-check, a moved input refuses: neither spends a
+// Verify row, and neither is a FAIL about the code.
+func (v *VerifyLoop) bindDispatchWorld(it loopengine.Item, home string, receipt deskkit.VerifierReceipt, persist bool) (deskkit.VerifierReceipt, error) {
+	if v.World == nil {
+		return receipt, nil
+	}
+	w, ok := v.World.item(it.ID)
+	if !ok {
+		return receipt, deskkit.Unverifiable("environment could-not-check: "+it.ID+" has no admitted prerequisite record; re-plan before dispatch", nil)
+	}
+	if err := w.Recheck(v.World.probes); err != nil {
+		return receipt, err
+	}
+	if persist {
+		if _, err := deskkit.BindVerifierWorld(home, w); err != nil {
+			return receipt, err
+		}
+	}
+	receipt.World = &w
+	return receipt, nil
 }

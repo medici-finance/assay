@@ -1,0 +1,8 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/actions/runs/501/rerun-failed-jobs"
+    }
+  ]
+}

@@ -222,7 +222,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 14 | [Run and gate-approval verbs — RunWorkflow, ApproveGate and deskrun on the resolver](brief-14-run-and-gate-approval-verbs-deskrun.md) | 2 | M | implemented | — | — |
 | 15 | [desklabel — a role-keyed label verb](brief-15-desklabel-role-keyed.md) | 2 | M | implemented | — | — |
 | 16 | [deskclose widened lanes — author-App self-withdraw, verifier reopen+close on verify-gate, and manifest as the documented human-ruled batch lane](brief-16-deskclose-widened-lanes.md) | 4 | M | implemented | — | — |
-| 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | todo | — | — |
+| 17 | [deskrun log and retry — read-only run-log access broadly, retry roster-bound like dispatch](brief-17-deskrun-log-retry.md) | 2 | M | implemented | — | — |
 | 18 | [statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk](brief-18-statusgen-off-gh-one-read-verb.md) | 5 | L | in-progress | — | — |
 | 19 | [Human-only surfaces made server-side — merge, workflow-file pushes, rulesets, variables, App installs](brief-19-human-only-surfaces-server-side.md) | 1 | M | implemented | — | — |
 | 20 | [Measurements — what the reviewer writes, who reads claims, and what the file store can know about where it runs](brief-20-claim-store-measurements.md) | 1 | M | implemented | — | — |
@@ -488,8 +488,8 @@ findings and do not exist yet.
   18 depends on 08, 33 and 34 and stays in wave 5.
 - **Wave 1 (beside 01)** — `forge-neutral/36` (the importable fact-reader module and its first
   shared read, human-gated; depends on nothing and unblocks nothing — its library-first
-  premise is ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, and it
-  keeps its own human gate; no other brief waits on it).
+  premise was ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, since
+  superseded by `DR-forge-library`, and it keeps its own human gate; no other brief waits on it).
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -563,6 +563,15 @@ not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskrea
 every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
 enforcement in desktools-v2/08 waits for both /18 and /35.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+**Superseded 2026-10-25 (`DR-forge-library`).** The driver's later ruling on #2395 replaces the
+offline-and-frozen limit: one shared forge library for reads and writes, built by
+desktools-v2/75, which statusgen links for its forge calls (desktools-v2/77), with the credential
+held privately by the library. For this stream: /18 and /35 still move statusgen's reads onto its
+injected reader seam, and still add no credential of statusgen's own; their transport-specific
+checks (/18 rows 21 to 23) are restated so they hold for either transport, and desktools-v2/77
+swaps the seam from `deskread` to the library after both land. /36's delivered module and
+Evidence stand.
 
 ## Non-CI coordination applicability — 2026-10-13
 
@@ -667,3 +676,23 @@ rows only; existing human decisions and historical Evidence remain intact.
 ## Workflow-efficiency contract amendment — 17 October 2026
 
 The approved workflow-efficiency spec adds review/issue consumer acceptance to /37–45. /39 maps the qualified desk-tools/39 contract through a legal public API; /45 requires desk-tools/43–44 caller/cost qualification. Direct-reader /38–44 in desk-tools do not depend on this service path. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+
+## Performance reuse — 2026-10-16
+
+The immediate local lane remains desktools-v2/58–62 plus statusgen/26. This stream keeps
+the shared online ownership: /37 refresh coalescing and coverage, /38 event hints, /40
+isolated role executors, /43 incremental recomputation, /44 Git reuse trial and /45
+served qualification. /40 now explicitly consumes /58–59's internal provider; /45 consumes
+/62's matched workload. Their existing later waves and activation gates remain. No
+local credential/startup fix is made dependent on the service or PostgreSQL.
+
+## Query/cache performance observations — 19 October 2026
+
+The [perf-v3 boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+uses /37–45's existing service owners. /39 defines typed client diagnostic context, /37–38
+refresh/poll/event origins, /40–41 service/executor/passthrough, /42–43 query/cache outcomes
+and /45 the served 50-query/three-page/coalescing/report flow. Client, handler and provider
+measurements stay separately named; shared upstream cost is observed once and missing
+instrumentation is a gap. These remain planned todo packages at inspected main 2e02111ed,
+not claims of deployment. Reuse /63–65's local contract/adapters without creating a new
+measurement service or making local v3 depend on the future forge service.

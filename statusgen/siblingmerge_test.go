@@ -1093,3 +1093,20 @@ func TestSiblingMergeOffNoticeCountsUnresolvedRows(t *testing.T) {
 		t.Errorf("the not-checked line must count the unresolvable-alias row; stderr:\n%s", stderr)
 	}
 }
+
+// regression: F-resolving-trailer
+// TestSiblingIssueResolvingForm — key k2 matches deskpr's resolving `Fixes: #N` trailer
+// (a closing keyword with a colon), not only `Issue: #N` and the colon-less `Fixes #N`.
+func TestSiblingIssueResolvingForm(t *testing.T) {
+	p := siblingIssuePattern(12)
+	for _, body := range []string{"Issue: #12", "Fixes #12", "Fixes: #12", "Closes:#12", "resolves: #12"} {
+		if !p.MatchString("x\n\n" + body + "\n") {
+			t.Errorf("%q does not match issue 12", body)
+		}
+	}
+	for _, body := range []string{"Fixes: #123", "Fixes: #1", "Mentions #12"} {
+		if p.MatchString(body) {
+			t.Errorf("%q matched issue 12", body)
+		}
+	}
+}

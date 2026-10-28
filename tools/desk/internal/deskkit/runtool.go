@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -31,6 +32,8 @@ import (
 
 // ToolCall describes one child process to run.
 type ToolCall struct {
+	// Context optionally carries the caller's immutable performance context.
+	Context context.Context
 	// Name and Args are the argv, ALWAYS as an explicit slice of literal verbs plus
 	// already-validated values — never a shell string. The runner never interposes a shell,
 	// so no value in Args can be re-read as an option by anything but the child itself.
@@ -88,6 +91,16 @@ func Run(c ToolCall) ToolRun {
 	}
 	if env == nil {
 		env = os.Environ()
+	}
+	resolvedContext := false
+	if c.Context != nil {
+		if pc, ok := PerfContext(c.Context); ok {
+			env = PerfContextEnv(env, pc, true)
+			resolvedContext = true
+		}
+	}
+	if !resolvedContext {
+		env = unknownPerfParentEnv(env)
 	}
 	cmd.Env = UnsurfacedEchoEnv(env)
 	var out, errb bytes.Buffer

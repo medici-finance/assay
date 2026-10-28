@@ -42,6 +42,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/medici-finance/assay/perfrec"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -84,20 +86,30 @@ stale   — READ-ONLY: report whether <item>'s claim is reclaimable, WITHOUT tou
 Exit: 0 ok/noop/stale · 3 disabled · 5 refused (already claimed / live) · 6 unverifiable.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskclaim", nil, os.Args[1:], func([]string) int {
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+
+	os.Exit(deskkit.PerfRunMeasured("deskclaim", nil, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		sink := func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
 		// Explicit roster class (a correctness review): deskclaim acts on
 		// local state, ciEligible=false — it reads the config-home file, never the environment.
 		deskkit.SetToolClass(deskkit.ClassForTool(false))
 		// P3: echo the effective roster once per run.
 		deskkit.EchoEffectiveConfig(os.Stderr)
 		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
+			return deskkit.ExitUnverifiable, selected
 		}
-		return run(os.Args[1:])
+		return runSelected(a, sink), selected
 	}))
 }
 
-func run(args []string) int {
+func run(args []string) int { return runSelected(args, nil) }
+
+func runSelected(args []string, sink func(perfrec.Context)) int {
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
@@ -133,13 +145,13 @@ func run(args []string) int {
 	var err error
 	switch verb {
 	case "acquire":
-		err = cmdAcquire(rest)
+		err = cmdAcquire(rest, sink)
 	case "release":
-		err = cmdRelease(rest)
+		err = cmdRelease(rest, sink)
 	case "list":
-		err = cmdList(rest)
+		err = cmdList(rest, sink)
 	case "stale":
-		err = cmdStale(rest)
+		err = cmdStale(rest, sink)
 	default:
 		err = deskkit.Refused("refused: unknown verb " + verb + " (want one of: acquire, release, list, stale)")
 	}

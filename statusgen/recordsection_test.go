@@ -143,10 +143,11 @@ func TestRecordSectionDeadLinkStillReported(t *testing.T) {
 	}
 }
 
+// regression: #3659
 func TestRecordSectionRangesAndLineIndex(t *testing.T) {
 	raw := "# B\n## Task\nx\n## Evidence\nrow\nrow\n## Review\nr\n## Proof it can fail — M\nm\n"
 	rs := recordSectionRanges(raw)
-	want := recordRanges{{5, 6}, {10, 11}}
+	want := recordRanges{{5, 6}, {10, 10}}
 	if len(rs) != len(want) || rs[0] != want[0] || rs[1] != want[1] {
 		t.Fatalf("recordSectionRanges = %v, want %v", rs, want)
 	}

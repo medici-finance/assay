@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"io"
 	"io/fs"
 	"os"
@@ -47,7 +49,7 @@ func toolBinary(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			out += ".exe"
 		}
-		if b, err := exec.Command("go", "build", "-o", out, ".").CombinedOutput(); err != nil {
+		if b, err := goquiet.Cmd(exec.Command("go", "build", "-o", out, ".")).CombinedOutput(); err != nil {
 			binErr = fmt.Errorf("go build: %v\n%s", err, b)
 			return
 		}
@@ -147,7 +149,7 @@ func record(t *testing.T) *recorder {
 	t.Setenv("HOME", t.TempDir())
 	r := &recorder{}
 	prevQ, prevF, prevG, prevO := queueFn, flowFn, guard, onResolve
-	queueFn = func(stdout, _ io.Writer, mode, htmlOut string, repos []string, item int, _ time.Time) int {
+	queueFn = func(stdout, _ io.Writer, mode, htmlOut string, repos []string, item int, _ time.Time, _ ...deskkit.RequestObserver) int {
 		r.calls++
 		r.handler, r.mode, r.htmlOut, r.repos, r.item = "queue", mode, htmlOut, repos, item
 		fmt.Fprintln(stdout, "queue")

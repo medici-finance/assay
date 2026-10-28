@@ -29,10 +29,14 @@ package main
 // ASSAY_ALLOWED_REPOS (set-equal at 13, verified by extracting both and diffing).
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -93,6 +97,9 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	if err := pinFixtureGoCaches(); err != nil {
+		panic(err)
+	}
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
@@ -100,4 +107,27 @@ func TestMain(m *testing.M) {
 	code := gitquiet.Run(m)
 	cleanup()
 	os.Exit(code)
+}
+
+// Resolve Go's original defaults before the roster fixture replaces HOME.
+// Otherwise the real statusgen child build searches an empty fixture module
+// cache instead of the caller's prepared dependencies (#3327, #3343).
+func pinFixtureGoCaches() error {
+	out, err := goquiet.Cmd(exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH")).Output()
+	if err != nil {
+		return fmt.Errorf("resolve Go fixture paths: %w", err)
+	}
+	var paths map[string]string
+	if err := json.Unmarshal(out, &paths); err != nil {
+		return fmt.Errorf("decode Go fixture paths: %w", err)
+	}
+	for _, key := range []string{"GOMODCACHE", "GOCACHE", "GOPATH"} {
+		if paths[key] == "" {
+			return fmt.Errorf("empty Go fixture path %s", key)
+		}
+		if err := os.Setenv(key, paths[key]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

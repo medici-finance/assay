@@ -54,13 +54,9 @@ version: 1
 ## Context
 
 files:
-- `tools/desk/cmd/deskbless/main.go` (new) — the verb: post a marked blessing comment on one
-  item, with a scope and a reason, and write the ledger row. `--dry-run` prints and posts
-  nothing.
+- `tools/desk/cmd/deskbless/main.go` (new) — the verb: post a marked blessing comment on one item, with a scope and a reason, and write the ledger row. `--dry-run` prints and posts nothing.
 - `tools/desk/cmd/deskbless/testdata/` — fixtures for each evaluator case below.
-- `statusgen/trustgate.go` and `tools/desk/internal/deskkit/trust.go` — the two documented-
-  duplicate evaluators gain the marker form, in the same change, with the existing shared
-  vector file extended to cover it.
+- `statusgen/trustgate.go` and `tools/desk/internal/deskkit/trust.go` — the two documented- duplicate evaluators gain the marker form, in the same change, with the existing shared vector file extended to cover it.
 - `docs/contributor-trust.md` (planned) — the sanctioned admission path, added to the published model.
 - `changelog/contributor-trust-bless.md` (new).
 

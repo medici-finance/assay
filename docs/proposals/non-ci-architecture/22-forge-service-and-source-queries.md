@@ -41,6 +41,13 @@ composition can live in `tools/desk/internal/forgeservice/`, with a thin `forges
 the public typed read/client contracts extend the dependency-free `forgeread` module in
 separate packages. Root/offline consumers acquire no HTTP, database or credential dependency.
 Do not export all of deskkit or add a generic raw-request interface.
+*(Note, 25 October 2026: `DR-forge-library` records the driver's ruling of one shared forge
+library for reads and writes. Its desk-default placement is a separate repository-root module,
+`forgeclient/`, which composes the `forgeread` adapters, rather than further packages of the
+`forgeread` module. This keeps the `forgeread` module itself free of any credential. The path is
+decided at desktools-v2/75's human gate. The library's typed operation surface is the same
+shape as this document's role executor, so the custody service described here stays future
+work.)*
 
 A query process holds only its admitted read access and mirror-reader role. Each existing
 role-bound publisher/executor retains its own credential custody and process boundary;
@@ -196,3 +203,31 @@ served boundary and recovery, inventory legacy credentials, and request one scop
 cutover. Preserve one mutating cell per external repository. No SQL edit is a publication API,
 no new universal service token is provisioned, and no deployment/merge/release is performed by
 this authoring change.
+
+## Performance boundary contract — requested amendment, 19 October 2026
+
+[Perf-v3](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+measures service client calls, per-handler query/cache/coalescing work, and actual upstream
+direct/passthrough/refresh/poll/repair requests separately. Local/cache answers remain observed
+operations even when their covered upstream call count is zero. Client/server views of one
+logical request cannot be added into two queries, and a shared refresh's provider pages or
+GraphQL points cannot be copied to every waiter. Missing service instrumentation stays unknown.
+
+Per-request context is immutable; concurrent handler CPU cannot be inferred from process CPU.
+Opaque diagnostic links require explicit service-protocol/transport admission and workflow
+consent on both ends; profile selection alone adds no headers, authority, endpoint discovery
+or raw work locator forwarding. Required auth/access/receipt fields and optional diagnostics
+remain distinct. /39 owns typed client context, /37–38 refresh/poll, /40–41 handler/executor,
+/42–43 cache/source outcomes and /45 the real served workload proof. This does not claim the
+planned service exists or add a service prerequisite to the local perf-v3 recorder.
+
+## Candidate-plan query consumer — requested 23 October 2026
+
+Expose the [existing candidate-plus-priority planning contract](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+through current /39–43 serving/derived-query owners. Scope filtering precedes joins and
+counts. The supplied policy/evaluator revision, time/capacity, candidate membership and
+source freshness bind selection; a local priority change need not fetch unchanged GH
+facts. Preserve visible missing matches and partial coverage. One mirror refresh can feed
+prose/discrete planning and depth only at compatible scope/cutoff, while role executors
+retain consequential current-state checks. No new endpoint is promised by this pointer;
+qualify producer/consumer versions and count the retained provider work once.

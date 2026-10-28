@@ -50,7 +50,9 @@ sources:
 consumers:
   # Authoring PR: routed to this brief (rule 6); each flips to fixed-here in the implementation
   # commit that edits the path.
-  - "tools/desk/internal/deskkit/approvalcarry.go (planned; both carry predicates): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation adds it)"
+  - "statusgen/evaluation/reviewcurrency.go (planned; the review-currency rule with both carry methods, pure over caller-supplied observations): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation adds it)"
+  - "tools/desk/internal/deskkit/approvalcarry.go (planned; thin fact-gathering adapters that call the evaluator, no carry logic of their own): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation adds it)"
+  - "tools/desk/go.mod (a relative require of the statusgen module for its offline evaluation package only): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/cmd/deskpost (the carry verb, and `deskpost ready` gate (b) re-deriving a carry): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/cmd/deskflip (accepts a carry verdict only after its own re-derivation): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/cmd/deskboard (MERGE-CURR becomes CARRY on the same predicate; CARRY-ON-READY is keyed on forge data: the ready-mark's actor and order, and the carry's re-derivation at head): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
@@ -66,15 +68,27 @@ consumers:
 
 # Brief 25 — Carry a correctness approval across a no-diff merge of main
 
+
+> **Rescoped 2026-10-18 — wrong home corrected.** The behaviour below is unchanged: the same
+> predicate, conditions C1–C9, verbs, guard and Verify expectations. What moves is the owner. Under
+> the ratified target architecture (`docs/proposals/non-ci-architecture/11-target-architecture.md`,
+> "One semantic owner for each domain"), review currency belongs to the work/policy domain:
+> pure evaluation over explicit observations, with the rule that "the evaluator and publisher
+> must share" it. So the carry predicate is delivered as the review-currency rule in the
+> evaluator (`statusgen/evaluation`, the existing owner of eligibility and evidence coverage), not
+> inside deskkit or deskflip. The v1 tools (`deskpost carry`, `deskflip`, `deskpost ready`,
+> `deskboard`, `carrycheck`) become consumers that gather facts and call it, so the later
+> runner-hosted publisher reuses the same rule instead of re-deriving it.
+
 ## Context
 
 files:
-- **add** `tools/desk/internal/deskkit/approvalcarry.go` (planned) + `approvalcarry_test.go` (planned)
-  — two pure predicates, `CarryByPatch` and `CarryByBlobs`, and the verdict body grammar.
+- **add** `statusgen/evaluation/reviewcurrency.go` (planned) + `reviewcurrency_test.go` (planned) — the review-currency rule: two pure methods, `CarryByPatch` and `CarryByBlobs`, over immutable caller-supplied observations, and the verdict body grammar.
+- **add** `tools/desk/internal/deskkit/approvalcarry.go` (planned) + `approvalcarry_test.go` (planned) — thin adapters that gather the git and forge facts and call the evaluator; no carry logic.
+- **edit** `tools/desk/go.mod` — a relative require of the statusgen module, linking only the offline `statusgen/evaluation` package.
 - **edit** `tools/desk/cmd/deskpost/` — a `carry` verb + tests, and gate (b) of `ready.go`.
 - **edit** `tools/desk/cmd/deskflip/flip.go` + tests — `checkReviewerApproved`.
-- **edit** `tools/desk/cmd/deskboard/board.go` + tests — the MERGE-CURR branch of `classify`, and the
-  carry-on-ready anomaly.
+- **edit** `tools/desk/cmd/deskboard/board.go` + tests — the MERGE-CURR branch of `classify`, and the carry-on-ready anomaly.
 - **add** `tools/desk/cmd/carrycheck/` (planned) — the read-only `CarryByBlobs` command the guard runs.
 - **add** `tools/evidence-automerge/carry-guard.sh` (planned) +
   `tools/evidence-automerge/carry-guard_test.sh` (planned) — the auto-merge carry guard's decision.
@@ -255,7 +269,11 @@ Default if no answer: none — blocks until answered.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. **Two predicates in deskkit, two methods.**
+1. **Two methods in the work/policy evaluator's review-currency rule** (`statusgen/evaluation`;
+   rescoped 2026-10-18, see Context). The methods take explicit observations only: no git,
+   forge, environment, clock or filesystem read inside the library. The fact gathering below is
+   the adapter's job in `tools/desk/internal/deskkit`, and every consumer (the carry verb, both
+   flip verbs, the board, `carrycheck`) calls the one evaluator.
    - `CarryByPatch(facts)`: C1-C9 over local git facts (ancestry, commit parents, the two patch-ids
      and name-status lists, each merge's tree and its driver-free recompute) plus the forge facts C5,
      C6, C8 and C9 need, gathered by a thin adapter that runs the git commands above in a checkout.
@@ -338,8 +356,8 @@ Default if no answer: none — blocks until answered.
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCarryByPatch$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r1-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryByPatch' "${TMPDIR:-/tmp}/b25-r1-1.out"` | exit 0; output contains `--- PASS: TestCarryByPatch`. carry: a draft PR with a clean two-parent merge of main and an identical diff. no-carry, one fixture each, naming the condition: a non-merge commit after `A` (C2); a merge of a non-base branch (C2); an octopus merge (C2); `A` not an ancestor of `H` after a rewrite (C1); main changed a line inside a PR hunk's context (C3); a whitespace-only edit to a PR file (C3, which plain `--stable` would miss); a file-mode change (C3); a conflict resolution in a PR file (C4); a union-driver resolution of two appends (C4); a merge that adds a file neither parent has (C4); a non-empty `info/attributes` (C4, could-not-check); a CHANGES_REQUESTED after the source from the reviewer, from another trusted reviewer, and one later dismissed (C5); an open review-finding record (C5); a source whose body names no head, and one whose body head differs from its `commit_id` (C5); a source that is itself a carry (C5, resolved to the original); a body edit and a title edit after the source, and an unreadable edit record (C6); a standing security fail (C7); a ready PR and a draft with an auto-merge request (C8). A missing object is could-not-check | check:ci +mutation |
-| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCarryByBlobs$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r2-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryByBlobs' "${TMPDIR:-/tmp}/b25-r2-1.out"` | exit 0; output contains `--- PASS: TestCarryByBlobs`. The row 1 scenarios expressed as forge data give the same verdicts, a mode-only change included (tree entries, not bare blob ids); a truncated compare (300 files) or file list is could-not-check; a merge whose second parent is not on `M` is no-carry. `TestCarryPredicatesAgree` (planned) runs both predicates over every shared scenario and fails on any disagreement EXCEPT the two named asymmetries, which it asserts explicitly: a main edit to a PR file outside the context window (patch carries, blobs refuse) and, under `-U0`, a main edit next to a PR hunk (patch carries, blobs refuse) | check:ci +mutation |
+| 1 | `cd statusgen && GOWORK=off go test ./evaluation/ -run '^TestCarryByPatch$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r1-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryByPatch' "${TMPDIR:-/tmp}/b25-r1-1.out"` | exit 0; output contains `--- PASS: TestCarryByPatch`. carry: a draft PR with a clean two-parent merge of main and an identical diff. no-carry, one fixture each, naming the condition: a non-merge commit after `A` (C2); a merge of a non-base branch (C2); an octopus merge (C2); `A` not an ancestor of `H` after a rewrite (C1); main changed a line inside a PR hunk's context (C3); a whitespace-only edit to a PR file (C3, which plain `--stable` would miss); a file-mode change (C3); a conflict resolution in a PR file (C4); a union-driver resolution of two appends (C4); a merge that adds a file neither parent has (C4); a non-empty `info/attributes` (C4, could-not-check); a CHANGES_REQUESTED after the source from the reviewer, from another trusted reviewer, and one later dismissed (C5); an open review-finding record (C5); a source whose body names no head, and one whose body head differs from its `commit_id` (C5); a source that is itself a carry (C5, resolved to the original); a body edit and a title edit after the source, and an unreadable edit record (C6); a standing security fail (C7); a ready PR and a draft with an auto-merge request (C8). A missing object is could-not-check | check:ci +mutation |
+| 2 | `cd statusgen && GOWORK=off go test ./evaluation/ -run '^TestCarryByBlobs$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r2-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryByBlobs' "${TMPDIR:-/tmp}/b25-r2-1.out"` | exit 0; output contains `--- PASS: TestCarryByBlobs`. The row 1 scenarios expressed as forge data give the same verdicts, a mode-only change included (tree entries, not bare blob ids); a truncated compare (300 files) or file list is could-not-check; a merge whose second parent is not on `M` is no-carry. `TestCarryPredicatesAgree` (planned) runs both predicates over every shared scenario and fails on any disagreement EXCEPT the two named asymmetries, which it asserts explicitly: a main edit to a PR file outside the context window (patch carries, blobs refuse) and, under `-U0`, a main edit next to a PR hunk (patch carries, blobs refuse) | check:ci +mutation |
 | 3 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestCarryVerb$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r3-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryVerb' "${TMPDIR:-/tmp}/b25-r3-1.out"` | exit 0; output contains `--- PASS: TestCarryVerb`. Each disqualifier exits 5 and the stub forge records zero posts, a ready PR and an auto-merge-requested draft included; could-not-check exits 6 with zero posts; an eligible PR gets exactly one APPROVED at `H` carrying the three body lines and no `Security-Review:` line; the verb has no security-lane form; C9: with no `carry-guard: v1` marker in the default branch's auto-merge workflow, a verifier-authored `docs/streams/`-only PR exits 5 naming C9; so does a workflow carrying the marker but no step invoking the guard, and one whose invoking step has an `if:` that could skip it; an unreadable workflow copy exits 6 | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestFlipCarriedVerdict$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r4-1.out" 2>&1 && grep -F -e '--- PASS: TestFlipCarriedVerdict' "${TMPDIR:-/tmp}/b25-r4-1.out"` | exit 0; output contains `--- PASS: TestFlipCarriedVerdict`. LOWER LAYER WITH THE UPPER BYPASSED: a carry APPROVED at `H` placed directly in the fixture's reviews, never produced by the verb, citing an `A` whose file entries differ at `H` (a merge that edited a PR file), is refused naming the carry and the failed condition. A valid carry flips. A carry on a risk-classed PR with no fresh security pass at `H` is refused at the security condition. A carry citing a source whose body head differs from its `commit_id` is refused. The security reductions ignore any review whose body carries `Approval-Carried-From:`, even one that also carries a `Security-Review: pass` line | check:ci +mutation |
 | 5 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestReadyCarriedVerdict$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r5-1.out" 2>&1 && grep -F -e '--- PASS: TestReadyCarriedVerdict' "${TMPDIR:-/tmp}/b25-r5-1.out"` | exit 0; output contains `--- PASS: TestReadyCarriedVerdict`. The same LOWER-LAYER fixtures as row 4, run through `deskpost ready` gate (b): the verb-less carry over a content change is refused naming the carry; a valid carry flips; the head-stable re-read refuses when the head moves between read and mutation | check:ci +mutation |

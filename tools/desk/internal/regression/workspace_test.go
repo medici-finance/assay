@@ -3,6 +3,8 @@ package regression
 import (
 	"os/exec"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // TestWorkspaceModuleSuite runs the shared workspace module's own suite from the desk
@@ -15,7 +17,7 @@ func TestWorkspaceModuleSuite(t *testing.T) {
 	cmd := exec.Command("go", "test", "-count=1", "-timeout=120s", "./...")
 	cmd.Dir = "../../../../workspace"
 	cmd.Env = FixtureEnv("GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local", "GOSUMDB=off")
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if output, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 		t.Fatalf("workspace module suite: %v\n%s", err, output)
 	}
 }

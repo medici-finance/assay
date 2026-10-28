@@ -54,12 +54,12 @@ func commandOrFill(c string) string {
 // and prints it. It returns the process exit code (deskkit's shared taxonomy — see
 // summary.go) and writes to stdout/stderr exactly as the oracle's walk case does: the
 // block, a blank line, then the terminating summary.
-func runWalk(stdout, stderr io.Writer, repos []string, walkItem int, now time.Time) int {
+func runWalk(stdout, stderr io.Writer, repos []string, walkItem int, now time.Time, observers ...deskkit.RequestObserver) int {
 	if err := validateRepos(repos); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitCodeOf(err)
 	}
-	items, failures := fetchQueue(repos)
+	items, failures := fetchQueue(repos, observers...)
 	for _, f := range failures {
 		fmt.Fprintf(stderr, "deskinbox: QUERY FAILED for %s: %v\n", f.Repo, f.Err)
 	}
@@ -82,7 +82,7 @@ func runWalk(stdout, stderr io.Writer, repos []string, walkItem int, now time.Ti
 	if owner, name, ok := splitRepo(it.Repo); ok {
 		fr = deskkit.ForgeRepo{Owner: owner, Name: name}
 	}
-	d := fetchDetail(fr, it.Number)
+	d := fetchDetail(fr, it.Number, observers...)
 	r := buildRendered(it, d, k, len(items), now)
 
 	renderWalk(stdout, r)

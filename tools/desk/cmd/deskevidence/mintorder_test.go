@@ -357,9 +357,12 @@ func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 // handed THAT forge, and admission returns before the landing's first branch read.
 func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 	rec := `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`
+	// The record sits OUTSIDE the home, where a --root landing requires it.
+	outsideRecord := filepath.Join(t.TempDir(), "record.json")
+	writeFixtureFile(t, outsideRecord, rec)
 	for name, args := range map[string][]string{
 		"evidence":       {"--evidence-file", "docs/streams/x/brief.md"},
-		"outcome-record": {"--outcome-record", "record.json"},
+		"outcome-record": {"--outcome-record", outsideRecord},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f, errBuf := setupFake(t)
@@ -384,7 +387,6 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 				return stubAdmittedReceipt(target), nil
 			}
 			root := rootWithFile(t, "docs/streams/x/brief.md", "# Brief\n\n## Evidence\n| 1 | fixture | 0 | ok |\n")
-			writeFixtureFile(t, filepath.Join(root, "record.json"), rec)
 			f.setFile("docs/streams/x/brief.md", "# Brief\n\n## Evidence\n")
 
 			if code := run(append([]string{fixtureRepo, "main", "--root", root}, args...)); code != deskkit.ExitOK {

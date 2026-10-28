@@ -20,6 +20,8 @@ package main
 // /issues/comments/{id} and GET /issues/{n}.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"encoding/json"
 	"fmt"
 	"io"
@@ -240,6 +242,7 @@ func (c *ghClient) get(url string) ([]byte, int, error) {
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
+	perfCountHTTP()
 	resp, err := c.doer.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("HTTP transport error: %v", err)
@@ -273,23 +276,15 @@ func httpReason(status int, body []byte) string {
 // trailer (outside fenced code), reusing prlink.go's classifier for the count so
 // the fetch half and the tree half agree on what a link is. ok is false for an
 // unlinked or multi-linked body.
-func singleBriefTrailer(body string) (ref string, ok bool) {
-	if ClassifyPRLink([]PRLinkRecord{{Number: 0, Body: body}})[0] != PRLinkLinked {
+func singleBriefTrailer(body string) (string, bool) {
+	var refs []string
+	for _, t := range trailers.Scan([]byte(body)) {
+		if t.Kind == trailers.TrailerBrief {
+			refs = append(refs, t.Value)
+		}
+	}
+	if len(refs) != 1 {
 		return "", false
 	}
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		if rePRLinkBrief.MatchString(raw) {
-			_, after, _ := strings.Cut(raw, "Brief:")
-			return strings.TrimSpace(after), true
-		}
-	}
-	return "", false
+	return refs[0], true
 }

@@ -16,6 +16,12 @@ depends: ["forge-gitlab/13", "forge-gitlab/14", "forge-gitlab/15"]
 unblocks: []
 effort: M
 gate: human
+decision-issue: 1150
+ruling: "https://github.com/medici-finance/assay/issues/1150#issuecomment-5690170338"
+delivery:
+  - in: "assay#1155"
+    covers: partial
+    note: "Offline refusal goldens and conformance scaffold only; the live review tick and signed verdict remain owed (PR #1155)."
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   The walk needs a live GitLab project, live per-role service-account credentials, and it performs
@@ -80,9 +86,7 @@ converts each into a verdict an issue can be closed on, or into a named residue 
 new brief.
 
 files:
-- `docs/streams/forge-gitlab/pilot-report.md` — a review-tick appendix: the per-verb conformance
-  table, the per-issue close-out verdicts, and the negative-path results. No transcripts, no
-  host names, no credentials, no project identifiers beyond what the report already carries.
+- `docs/streams/forge-gitlab/pilot-report.md` — a review-tick appendix: the per-verb conformance table, the per-issue close-out verdicts, and the negative-path results. No transcripts, no host names, no credentials, no project identifiers beyond what the report already carries.
 - `docs/streams/forge-gitlab/README.md` — the status row and the finish-line proven-on date.
 - `changelog/forge-gitlab-16-review-tick-conformance-walk.md` (planned).
 

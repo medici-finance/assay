@@ -49,12 +49,9 @@ id: 38a45459-d392-4a7c-a84e-8bf599ed0f75
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/forgeresolve.go` (planned) — the resolver, the config key, and
-  the refusal type.
-- `tools/desk/internal/deskkit/forgeresolve_test.go` (planned) — including the negative-path
-  tests below.
-- `tools/desk/internal/deskkit/rosterconfig.go` — the new config key registers here (an
-  unregistered `ASSAY_*` key fails the roster closed).
+- `tools/desk/internal/deskkit/forgeresolve.go` (planned) — the resolver, the config key, and the refusal type.
+- `tools/desk/internal/deskkit/forgeresolve_test.go` (planned) — including the negative-path tests below.
+- `tools/desk/internal/deskkit/rosterconfig.go` — the new config key registers here (an unregistered `ASSAY_*` key fails the roster closed).
 - `tools/desk/cmd/deskpost/github.go` — the one verb wired through the resolver in this brief.
 
 single-point-of-failure: the resolver is the ONE place a backend is constructed, so the

@@ -41,16 +41,11 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/cmd/cellctl/cell.go` (planned) — created by desk-containers/10 — the kind loader gains a
-  RETIRED-ALIAS arm: `local` is refused (exit 3, like any unknown kind) with the migration line.
-- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the same arm, same text, in the bash oracle (`load_cell`, :224-236),
-  so brief 10's parity harness stays green; no other bash change.
-- `tools/cellctl/tests/parity.test.sh` (planned) — created by desk-containers/10 — one added fixture:
-  a `CELL_KIND=local` cell, verb `check`, expected divergence 0 (both refuse identically).
-- `tools/cellctl/tests/scrubbed-cell.test.sh` (planned) — created by desk-containers/09 — one added
-  case `migrate-local`.
-- `docs/cellctl.md` — new section *One `cellctl` on PATH* (after §Install) and a *Migrating a
-  bridge-era registration* paragraph in §*Scrubbed cells*.
+- `tools/desk/cmd/cellctl/cell.go` (planned) — created by desk-containers/10 — the kind loader gains a RETIRED-ALIAS arm: `local` is refused (exit 3, like any unknown kind) with the migration line.
+- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the same arm, same text, in the bash oracle (`load_cell`, :224-236), so brief 10's parity harness stays green; no other bash change.
+- `tools/cellctl/tests/parity.test.sh` (planned) — created by desk-containers/10 — one added fixture: a `CELL_KIND=local` cell, verb `check`, expected divergence 0 (both refuse identically).
+- `tools/cellctl/tests/scrubbed-cell.test.sh` (planned) — created by desk-containers/09 — one added case `migrate-local`.
+- `docs/cellctl.md` — new section *One `cellctl` on PATH* (after §Install) and a *Migrating a bridge-era registration* paragraph in §*Scrubbed cells*.
 - `changelog/desk-containers-11-retire-bridge.md` (planned) — one `### Changed` bullet.
 
 facts:
@@ -128,7 +123,7 @@ facts:
 | 6 | `grep -c '^## One .cellctl. on PATH' docs/cellctl.md` | exit 0; prints `1` | check |
 | 7 | `doc=$(grep -o 'cellctl set <cell> CELL_KIND=scrubbed' docs/cellctl.md \| head -1); code=$(grep -o 'cellctl set [$][^ ]* CELL_KIND=scrubbed' tools/cellctl/testdata/cellctl-shell-oracle.sh \| head -1); test -n "$doc" && test -n "$code"` | exit 0 — the migration command appears in the docs (with `<cell>`) and in the oracle's refusal text (with the cell variable); a rename of the target kind on one side only goes red here | check +dereference |
 | 8 | `bash tools/cellctl/tests/house-cell.test.sh && bash tools/cellctl/tests/container-cell.test.sh` | exit 0 — the two neighbouring kinds still pass (they pass on the merge-base too: regression guard) | check:ci +neighbour |
-| 9 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | exit 0 | check:ci |
+| 9 | `statusgen --consumers --root . --brief desk-containers/11 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | pre-merge only; exit 0; branch routing dispositions are checked against the pinned fork. Inherited and out-of-scope routes remain unchecked obligations. At implementation replace this provisional command with the actual full delivery and first-parent pins, plus exact summary counts, before post-merge verification (see [delivery contract](../../consumer-delivery-checks.md)). | check:ci |
 
 ## Definition of Done
 - Verify rows green, recorded in Evidence by a non-implementer.

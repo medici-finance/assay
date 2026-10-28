@@ -55,8 +55,7 @@ version: 3
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/forge_github.go` — the existing go-gh-seated GitHub backend;
-  the native read client is built here or beside it, reusing its refuse-if-empty contract.
+- `tools/desk/internal/deskkit/forge_github.go` — the existing go-gh-seated GitHub backend; the native read client is built here or beside it, reusing its refuse-if-empty contract.
 - The read verbs the inventory (`desktools-v2/01`) names as gh-shelling reads — each routed
   onto the native client, its gh reach-around DELETED in the same change (never left dormant).
 - NEW `..._test.go` siblings — including the negative-path tests below.

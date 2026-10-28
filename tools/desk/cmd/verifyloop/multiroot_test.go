@@ -13,6 +13,7 @@ package main
 // --root narrows to one. With DESK_ROOTS unset the single-root read is byte-identical to before.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,5 +157,38 @@ func TestPlan_UnsetRootsIsSingleRootAsBefore(t *testing.T) {
 	out := captureStdout(t, func() { _ = cmdPlan([]string{"--root", a}) })
 	if !strings.Contains(out, "=== DISPATCH stream-a/01 (tier=local) ===") || strings.Contains(out, "root=") {
 		t.Fatalf("single-root output changed:\n%s", out)
+	}
+}
+
+func TestPlan_AllRejectedRootsDoNotRead(t *testing.T) {
+	for _, base := range []bool{false, true} {
+		t.Run(fmt.Sprintf("base-%v", base), func(t *testing.T) {
+			plantFixtureRoster(t)
+			a, b := twoRoots(t)
+			t.Setenv(deskkit.RootsEnv, "example-org/tracker="+a+",example-org/agents="+b)
+			stubPreflight(t, func(string) error { return deskkit.Unverifiable("fixture preflight red", nil) })
+			reads := 0
+			source := &forgeIssueSource{forgeFor: func(deskkit.ForgeRepo) (deskkit.Forge, error) {
+				reads++
+				return nil, fmt.Errorf("must not resolve a forge")
+			}}
+			oldBase := baseQueueRows
+			baseQueueRows = func(string) ([]baseRow, error) { t.Fatal("rejected root read by canonical base"); return nil, nil }
+			t.Cleanup(func() { baseQueueRows = oldBase })
+			// The loop also has an old admitted root: it cannot leak into this pass.
+			v := &VerifyLoop{Root: a, RootRepo: "example-org/tracker", Roots: []deskkit.RootConfig{{Repo: "example-org/tracker", Path: a}}, Issues: source}
+			doc, err := buildPlan(v, planOpts{root: a, multi: true, baseQueue: base})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if doc.Skipped != 2 || doc.Complete || len(doc.Gaps) != 2 || doc.Counts.Awaiting != 0 || len(doc.Items) != 0 || reads != 0 || len(v.Roots) != 0 {
+				t.Fatalf("rejected roots read or coverage lost: doc=%+v reads=%d roots=%v", doc, reads, v.Roots)
+			}
+			var commandErr error
+			out := captureStdout(t, func() { commandErr = cmdPlan([]string{"--json"}) })
+			if deskkit.ExitCodeOf(commandErr) != deskkit.ExitUnverifiable || !strings.Contains(out, `"complete": false`) || !strings.Contains(out, `"awaiting": 0`) {
+				t.Fatalf("incomplete is not idle/success: %v %s", commandErr, out)
+			}
+		})
 	}
 }

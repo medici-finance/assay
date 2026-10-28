@@ -336,6 +336,7 @@ func TestWriterBareRefReadsBlocker(t *testing.T) {
 // COR-2410-1 / F-bare-ref-no-repo, planner half: a record with no repo key (written before the
 // writer stamped one) resolves its bare #N in the single-root plan's own repository — the
 // checkout's origin — through cmdPlan; with no origin it stays could-not-check, never guessed.
+// regression: #2798 / R3429-F1
 func TestPlanBareRefUsesRootRepo(t *testing.T) {
 	old := issueSourceFn
 	t.Cleanup(func() { issueSourceFn = old })
@@ -353,7 +354,12 @@ func TestPlanBareRefUsesRootRepo(t *testing.T) {
 		}
 		rec := heldReceipt(holdTS)
 		rec.Repo = ""
-		rec.Inputs = map[string]string{"file:pkg/x.go": deskkit.Sha256Hex([]byte(content))}
+		briefPath := "docs/streams/example-stream/brief-01-x.md"
+		brief, err := os.ReadFile(filepath.Join(root, briefPath))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec.Inputs = map[string]string{"file:pkg/x.go": deskkit.Sha256Hex([]byte(content)), "file:" + briefPath: deskkit.Sha256Hex(brief)}
 		writeReceipts(t, root, rec)
 		if withOrigin {
 			gitT(t, root, "init", "-q")

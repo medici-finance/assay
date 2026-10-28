@@ -51,13 +51,8 @@ consumers:
 ## Context
 
 files:
-- **create** `docs/streams/desk-supervision/workflow-only-pr-contract.md` (planned) — the rule of record:
-  a workflow change travels as a single PR whose diff touches ONLY `.github/workflows/**` and its
-  own `changelog/*` fragment; the workflow App is its author; no other-file coupling is permitted.
-- **create** `tools/workflowpr/` (Go) — the verb: given a prepared workflow change, it opens a
-  workflow-only branch, commits the `.github/workflows/**` change (and changelog fragment) as the
-  workflow App, and opens the PR. Whether it also merges is set by the merge-authority decision
-  below.
+- **create** `docs/streams/desk-supervision/workflow-only-pr-contract.md` (planned) — the rule of record: a workflow change travels as a single PR whose diff touches ONLY `.github/workflows/**` and its own `changelog/*` fragment; the workflow App is its author; no other-file coupling is permitted.
+- **create** `tools/workflowpr/` (Go) — the verb: given a prepared workflow change, it opens a workflow-only branch, commits the `.github/workflows/**` change (and changelog fragment) as the workflow App, and opens the PR. Whether it also merges is set by the merge-authority decision below.
 - **create** a mixed-PR **guard** invoked by the EXISTING CI (a `tools/workflowpr --check <base>..<head>`
   mode or a sibling guard tool run from `ci.yml`), NOT a brand-new workflow file — so installing
   the guard does not itself require `workflows: write` and cannot bootstrap-block on the very rule

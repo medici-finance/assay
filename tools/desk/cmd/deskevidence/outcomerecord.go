@@ -56,14 +56,21 @@ var receiptValidateFn = validateReceipt
 var nowFn = time.Now
 
 // cmdOutcomeRecordWrite implements `deskevidence <owner/repo> <branch> --outcome-record <file>`.
-// localFile is the LOCAL path to a file holding exactly one JSON verify-outcome record; root, if
-// set, rebases a repo-relative localFile against it (mirrors --evidence-file's --root handling,
-// #1709).
+// localFile is the LOCAL path to a file holding exactly one JSON verify-outcome record.
+//
+// With --root (the verifier home) the record must be an absolute file OUTSIDE that home,
+// mirroring the --brief-path fragment guard: a file inside the home is an untracked file there,
+// which refuses verifier admission, so a relative path (it would resolve inside the home) or an
+// absolute one pathWithin places inside it (symlink aliases included) is refused here, before
+// the file is read or the forge is touched. The dispatcher names the directory to use in the
+// verifier prompt. Without --root the path is read as given, unchanged.
 func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, ac *auditCtx) error {
-	readPath := localFile
-	if root != "" && !filepath.IsAbs(localFile) {
-		readPath = filepath.Join(root, localFile)
+	if root != "" && (!filepath.IsAbs(localFile) || pathWithin(root, localFile)) {
+		return deskkit.Refused("refused: with --root, --outcome-record must be an absolute file OUTSIDE --root " +
+			"(the verifier home; a record inside it refuses admission) — write it to the dispatcher-named " +
+			"outcome directory from the verifier prompt; got " + localFile)
 	}
+	readPath := localFile
 	raw, rerr := os.ReadFile(readPath)
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot read --outcome-record "+readPath, rerr)
@@ -257,10 +264,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := json.Unmarshal(commitContent, &outcome); err != nil {
 		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
 	}
-	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, branch, receipt, outcome.SHA); err != nil {
+	landedRoot, landedHead, cleanup, err := landedClosureFn(evidenceRoot, targetRepoPath, nil, commitContent, false, fg, fr, branch)
+	if err != nil {
 		return err
 	}
-	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, branch, receipt, outcome); err != nil {
+	defer cleanup()
+	closureRef := branch
+	if landedHead != "" {
+		closureRef = landedHead
+	}
+	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome.SHA); err != nil {
+		return err
+	}
+	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {
 		return err
 	}
 
@@ -287,10 +303,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// added log line today: "before" is empty (a brand-new file), "after" is the record's own
 	// canonical bytes. isVerifyOutcomesSidecar recognises this per-file path, so the gates
 	// activate for a `verified` record precisely as they did for an appended log line.
-	if err := outcomeGuardFn(lintRoot, targetRepoPath, nil, commitContent, fg, fr, branch); err != nil {
+	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, nil, commitContent, fg, fr, closureRef); err != nil {
 		return err
 	}
-	introduced, lerr := lintDiffFn(lintRoot, targetRepoPath, commitContent)
+	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
 	if lerr != nil {
 		return lerr
 	}
@@ -299,7 +315,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
-	if verr := gateVerifiedSidecarLanding(targetRepoPath, lintRoot, nil, commitContent, false); verr != nil {
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, nil, commitContent, false); verr != nil {
 		return verr
 	}
 
@@ -312,7 +328,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + jerr.Error())
 	}
 	if wr.Schema == deskkit.SchemaWakeV1 {
-		if verr := receiptValidateFn(lintRoot, fg, fr, branch, repoSlug, wr); verr != nil {
+		if verr := receiptValidateFn(lintRoot, fg, fr, closureRef, repoSlug, wr); verr != nil {
 			return verr
 		}
 	}
@@ -326,17 +342,22 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return oerr
 	}
 
-	res, werr := fg.WriteFile(fr, deskkit.WriteFileInput{
+	writeInput := deskkit.WriteFileInput{
 		File:    targetRepoPath,
 		Branch:  branch,
 		Content: commitContent,
 		Message: "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix,
-	})
+	}
+	writeInput.ExpectedHead = landedHead
+	res, werr := fg.WriteFile(fr, writeInput)
 	if werr != nil {
 		return werr
 	}
 
 	if res.DefaultBranchNotWritable {
+		if landedHead != "" {
+			return deskkit.Unverifiable("pinned verified outcome cannot fall back to a different branch", nil)
+		}
 		return landOutcomeRecordAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, wr.Brief, ac)
 	}
 
@@ -510,23 +531,35 @@ func newGitOutcomeTree(root, sha string) (gitOutcomeTree, error) {
 }
 
 func (g gitOutcomeTree) PathKind(rel string) (string, error) {
-	kind, ok := gitPathKindAt(g.root, g.sha, rel)
-	if !ok {
-		return "", nil // the commit resolves (newGitOutcomeTree), so a miss is an absent path
+	// ls-tree distinguishes a successful absent lookup from a read failure.
+	out, err := outcomeGit(g.root, "ls-tree", "-z", g.sha, "--", ":(literal)"+rel).Output()
+	if err != nil {
+		return "", err
 	}
-	return kind, nil
+	if len(out) == 0 {
+		return "", nil
+	}
+	fields := strings.Fields(strings.SplitN(string(out), "\t", 2)[0])
+	if len(fields) != 3 {
+		return "", fmt.Errorf("unreadable input kind")
+	}
+	return fields[1], nil
 }
 
 func (g gitOutcomeTree) ReadFile(rel string) ([]byte, error) { return gitShowAt(g.root, g.sha, rel) }
 
 func (g gitOutcomeTree) ListFiles(rel string) ([]string, error) {
-	out, err := outcomeGit(g.root, "ls-tree", "-r", "--name-only", g.sha, "--", strings.TrimSuffix(rel, "/")+"/").Output()
+	args := []string{"ls-tree", "-rz", "--name-only", g.sha}
+	if rel != "." {
+		args = append(args, "--", ":(literal)"+strings.TrimSuffix(rel, "/")+"/")
+	}
+	out, err := outcomeGit(g.root, args...).Output()
 	if err != nil {
 		return nil, err
 	}
 	var files []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
+	for _, l := range strings.Split(string(out), "\x00") {
+		if l != "" {
 			files = append(files, l)
 		}
 	}

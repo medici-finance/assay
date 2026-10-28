@@ -51,10 +51,7 @@ files:
 - **edit** `tools/desk/cmd/deskinstall/` and the scaffold paths `assay:install` drives so that
   every outside step writes its ledger line at the moment of creation (label created, ruleset
   entry added, App installation observed).
-- **create** `tools/desk/cmd/deskdisable/` — `deskdisable <component> [--dry-run] [--yes]`:
-  replays the component's reverses LIFO; inside steps run; outside steps run their compensation
-  only when it is marked `unattended: true` in the manifest, otherwise they are printed as a
-  human checklist. `--dry-run` prints the plan and exits 0 without touching anything.
+- **create** `tools/desk/cmd/deskdisable/` — `deskdisable <component> [--dry-run] [--yes]`: replays the component's reverses LIFO; inside steps run; outside steps run their compensation only when it is marked `unattended: true` in the manifest, otherwise they are printed as a human checklist. `--dry-run` prints the plan and exits 0 without touching anything.
 - **edit** `tools/desk/component.yaml` (planned) — provides `assay.desk.verbs` now includes `deskdisable`.
 
 facts:
@@ -76,6 +73,7 @@ facts:
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Do not `git push`, trigger workflows, or run mutating infrastructure commands unless
   explicitly instructed. The deliverable is a draft PR opened by the desk verbs.
 - Stop at `implemented`. Do not set `verified` or `done`.

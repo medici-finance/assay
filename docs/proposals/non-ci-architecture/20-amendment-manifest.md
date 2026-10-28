@@ -28,7 +28,7 @@ brief; a package estimate is a brief count, not elapsed time.
 | R4: role-bound publication and reconciliation | graph-execution: amend `graph-execution/04` (effect identity, lost acknowledgment) and `graph-execution/25` (evidence-PR bridge) | `drainloop/`, `workflow/publication/` (as planned by 25) | follow-up names it | R1–R3 | Stale-capability refusal at the effect boundary; ambiguous-effect reconciliation (doc 15 new obligations) | Legacy publication briefs desk-supervision/23, /26, /27 and desk-tools/30 stay on the supported legacy path with applicability noted by the follow-up; urgent fixes continue there. | 2 briefs, each ≤ L |
 | R5: complete verifier use case | graph-execution: amend `graph-execution/21` (controller host, verifier use case), `graph-execution/14` (admission), `graph-execution/18` (integrated proof) | `workflow/controller/` (as planned by 21) | consumes R1–R4 contracts | R1–R4 | Complete disposable journey with crashes at durable transitions (doc 15 layer 3) | 21, 14, 18 are todo, unclaimed. | 2–3 briefs, each ≤ L |
 | R6: forge mirror and shared observations | forge-neutral: new brief(s) by the follow-up, building on implemented `forge-neutral/33` and `forge-neutral/36` and verified `desktools-v2/09` | `forgeread/`, mirror store paths per follow-up | follow-up names it | R1–R2; beside R3–R5 | `cd forgeread && GOWORK=off go test -count=1 ./...` plus pagination, lost/reordered event and permission-loss cases | forge-neutral/18 is in progress; the follow-up must not rebind it silently. | 2 briefs, each ≤ L |
-| R7: public API and thin cockpit | No existing owner. Proposed: a new stream `cell-api`, `status: parked` (see the cell operator surface rows below; ratified when medici-finance/assay#2890 is merged by the maintainer). The manifest's original options were extending derived-board (projection semantics) or a new stream; a new stream ships `status: parked` and its PR names the swap. | follow-up | follow-up | R5–R6 (interface work may begin earlier) | Mounted-route authorization and cross-cell isolation cases | None active. | 2–3 briefs, each ≤ L |
+| R7: public API and thin cockpit | The `cell-api` stream owns R7, ratified by the maintainer merge of medici-finance/assay#2890. Created parked; active for implementation from 20 October 2026 on the maintainer's own unpark request (https://github.com/medici-finance/assay/issues/3669#issuecomment-6302690781). The stream retains its existing qualification and human gates. | follow-up | follow-up | R5–R6 (interface work may begin earlier) | Mounted-route authorization and cross-cell isolation cases | cell-api/01–07; declared gates apply. | Seven briefs, each M |
 | R8: shadow, migration and retirement | composability: amend `composability/03` (desired-state reconcile, migration notices); build-less-brittle/11 testledger consumed as the departure report | `tools/desk/cmd/deskmigrate/` (per composability/03), `migrations/` (adopter migration notices), `tools/desk/internal/testledger/` (consumed) | follow-up | R5–R7 | Old-capability refusal, repository-wide handover and rollback in a disposable environment; classified old/new differences | composability/03 is todo, unclaimed. | 2 briefs, each ≤ L |
 | Workspace lifecycle completion (continuing-operations slice) | continuing-operations (parked, no authored briefs) for the slice; desk-tools deskwt briefs for current-tool flags | `tools/desk/cmd/deskwt/`, sweep and maintenance owner paths per follow-up | retirement and maintenance contracts (R1/R2) | R1 retirement identities; R2 retirement progress | Sustained-work workload retiring disposable resources with held reasons explainable | medici-finance/assay#2525 (offline repository maintenance) is open; the follow-up reconciles against it, never in parallel. | 2 briefs, each ≤ M |
 
@@ -102,7 +102,7 @@ Owner rows for the [cell operator surface amendment](21-cell-operator-surface.md
 | Approval-based apply (deferred) | R7 (served route) and R3 (isolation from the desk account); evidence-and-decisions shapes the record | Gated on amendment 21's five approval properties; no brief | Deferred; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge) |
 | Interim verbs: up, status, doctor, logs, gc, upgrade | desk-containers (interim bridges) | `desk-containers/17`, `/20`, `/21`, `/22`, `/24`, `/23` | Authored; each names its target owner |
 | Lifecycle transitions (pause, resume, drain, stop, start; restart as a sequence) and handoff record | graph-execution: **R2 records the requested transition and the handoff record; R3 executes it on processes** | Interim adapters `desk-containers/16`, `/18`, `/19`; R2/R3 owner amendments follow ratification | Split is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge) |
-| Cell API status queries and scoped operator requests (from `send`) | R7: new stream `cell-api` (`status: parked` at creation; scaffolding is a follow-up PR) | No brief; requirements recorded in amendment 21 | Owner is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge) |
+| Cell API status queries and scoped operator requests (from `send`) | R7: `cell-api` (created parked; active for implementation from 20 October 2026) | cell-api/01–07; requirements in amendment 21 | Ownership ratified by the maintainer merge of medici-finance/assay#2890; stream scheduling follows the maintainer's own unpark request (https://github.com/medici-finance/assay/issues/3669#issuecomment-6302690781), a post-ratification scheduling act |
 | Workspace retirement behind `gc` | continuing-operations workspace-lifecycle slice (row above) | gc is a trigger only | Reconciled with that slice's follow-up |
 | Upgrade / release-pin migration behind `upgrade` | cell operation; R8 (composability/03) | upgrade is a trigger only | Reconciled with the R8 follow-up |
 
@@ -210,6 +210,33 @@ Existing Task/Verify rows and historical Evidence remain intact; each brief adds
 bumps `version:`. No installed limiter, default, credential, executor activation or hard
 resource limit changes in this documentation PR.
 
+## Portable execution environments — 16 October 2026
+
+Controlling delta: [agent execution environments](27-agent-execution-environments.md).
+The agent-execution stream authors the seven bounded extensions of existing owners below.
+Approval of amendment 27 and implementation admission of the stream are proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
+maintainer's merge of it. Later /08–09 profile
+qualification and all deployment/custody gates remain separate:
+
+| Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
+|---|---|---|---|
+| Qualified harness/model/backend and explicit preservation | agent-execution/01 | implemented graph-execution/20 | New extension obligation; reciprocal edge only on /20, existing Evidence untouched |
+| Prepared-environment receipt and workspace port | agent-execution/02 | /01; existing candidate and retirement owners retained | New pure port; no second Git, resource store or pruner |
+| Local enforcement | agent-execution/03 | /02, graph-execution/22 and /26 | Follow-on to their existing implementation; reciprocal edges, no reassignment |
+| Integrated restore/effect proof | agent-execution/04 | /03, graph-execution/21 and /25 | Production-owner integration tests; no alternative scheduler or effect ledger |
+| Lifecycle projection | agent-execution/05 | /03–04, graph-execution/27 | Existing cellop/cellctl consumers; R7 retains API/cockpit ingress |
+| AX source/fixture qualification | agent-execution/06 | /01–02, independent of managed integration | Offline go/no-go/unknown report; no production adapter or cluster activation |
+| Governed harness refinement | agent-execution/07 | /01–02; existing improvement/promotion owners retained | Offline protocol experiment with independent holdouts, protected controls and complete cost; no live optimizer |
+
+Source: main ec8d77e56627a7c2269f3d143ef6a31f3e41bd02, open-PR inventory refreshed
+16 October. No listed implementation PR targets the new extension/receipt paths. The open
+/20 Evidence PR is preserved. Refresh claims and PRs again at pickup; this bounded observation
+is not an ownership transfer. Existing Task/Verify text, gates, versions and Evidence are
+unchanged; only reciprocal unblocks and dated routing notes are added. /03's concrete profile
+adoption decision ripens after its implementation design. Full live qualification retains
+existing R1–R8 and operator decisions. No existing platform/profile is silently replaced.
+
 ## Desk-process improvement — proposed owner set, 17 October 2026
 
 [Amendment 22](22-desk-improvement.md) extends continuing operations/quality. It does not
@@ -233,3 +260,126 @@ its real producer closure. Public implementation has no private adopter dependen
 Semantic prerequisites: desk-improvement/01 consumes continuing-operations/01 (after
 statusgen/22); /03 consumes continuing-operations/02. These are explicit build gates,
 so generic source contracts are implemented once, before their assessment consumers.
+
+## Perf-v3 attribution and forge cost — requested amendment, 19 October 2026
+
+[Contract](../../performance-attribution-spec.md): new desktools-v2/63–65 own versioned local
+schema/readers, desk/agent/CLI propagation and own-request timing/points. Unfinished /62,
+statusgen/26 and performance-collection/01–09 are amended; completed /61 stays intact.
+The target, future-state bindings, storage/recovery and runtime handoff carry the same
+context/consent/coverage contract. This supersedes earlier v2-only future measurement intent,
+not historical v1/v2 facts, Evidence or the collection stream's admission state.
+
+## Write-policy and pickup amendment — 18 October 2026
+
+| Obligation | Owning plan / candidate change | Proof and limits |
+|---|---|---|
+| One reusable local write evaluator and command adapter | New desktools-v2/66 (writeguard keeps its current parser; the /31 port is withdrawn) | Library/built-hook parity, effect boundary, source-bound consumers and external-module builds; other guards keep independent owners |
+| Future/guideline recheck at implementation pickup | statusgen/20–21 amended; current spec and worker-kit instructions use the manual procedure | /20 scoped guideline/target discovery; /21 actual dispatch hold/continue behavior and shipped-version citation; no resolver/activation claimed |
+| Managed workspace consumers | Consumer plans must bind allocation observations, hook profile and sandbox roots; qualification consumes exact producer versions | Public contracts stand alone; adopter tracking/rollout and active-worker acknowledgments remain in their own venue |
+
+Inspected base: `c3d073572f41e09bedcac05944f9a202c3267353`. Historical accounts and
+completed Evidence remain unchanged. Live claims/PRs were not read in this local
+authoring pass: these candidate amendments require the existing affected-work
+checkpoint/reconciliation before dispatch and never silently rebind a running worker.
+
+Active-plan inspection, 18 October 2026: 52 open public PRs were enumerated through
+the worker identity. medici-finance/assay#3409 (since merged) withdrew /31; medici-finance/assay#3429 (since
+merged) also changed the brief specification.
+This amendment keeps /66 independent and adds graph-execution/22 as its target
+consumer. Reconcile source revisions at merge/pickup; no running worker is rebound
+and no competing proposal is treated as approved. Dispatch refs were not read.
+
+## Interactive Kubernetes owner routing — 20 October 2026
+
+[Controlling amendment](28-interactive-kubernetes-desks.md). No new stream or runtime owner.
+
+| Obligation | Applied authoring change | Acceptance |
+|---|---|---|
+| Separately interactive role Pods | desk-containers/06 version 5 | Five workloads/PVCs; structured offline negative controls; compatibility custody disclosed |
+| Shared Kubernetes transport and managed standing profile | New agent-execution/09; /08 follows /09 | Current identity/stop/readiness checks, no workflow-store prerequisite; verifier privileges remain distinct |
+| In-cluster operator | New desk-containers/28 | Compiled cellctl through existing clients; scoped operator capability, reconnect never launches |
+| Whole-cell and optimization proof | New desk-containers/29 | Five-role flow, custody/recovery boundaries, bounded startup and zero idle model calls; separate real-profile witness |
+| Optional fleet presentation | desk-containers/07 version 4 after /28 | Linux attachment layout; no native Windows gate or parallel launcher |
+| Storage and scheduled compatibility | /27 and /12 dated routing | CNPG profile consumes base directly; CronJobs cannot co-own interactive roles |
+| Shared runtime, roles and public migration | graph-execution/26–27 consumption; amendment 28 migration table | Existing R1–R8 semantics, exact-subject observations and perf-v3 counts retained; source handoff preserves history |
+
+New tests are future implementation obligations. Existing completed Evidence is unchanged.
+Active PostgreSQL/image-scan/performance PRs are recorded in amendment 28 and reconciled at
+pickup. Historical note: when this routing note was written the execution stream was
+parked, and the note did not admit it. Stream admission is carried only by amendment 27's
+status line (see the portable execution environments section above).
+
+## Extensible JSON amendment — 21 October 2026
+
+[The census](29-extensible-json-contracts.md) is the owner/transition manifest for this
+requested change. Desktools-v2/69 delivers the architecture and performance contract;
+/67 implements compatible readers and /68 selects producers. Existing owners retain
+all other families; their next contract-changing briefs must carry the reader-first
+compatibility matrix and consumer dispositions before implementation. This amendment
+changes no existing Verify/Evidence section or active owner's implementation. The
+earlier whole-target ratification does not certify these later codec changes.
+
+## Contract acceptance and consumer integration — 23 October 2026
+
+This coupled authoring amendment separates local /28 acceptance from its required
+consumer integration, preserving the R1 → R2/R3 → R4 → R5 → R7 → R8 sequence.
+It changes no execution architecture, runtime authority or activation gate.
+
+The boundary is approved through the acceptance-transition route, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/4452#issuecomment-6403449344
+
+That ruling selected option A: local /28 acceptance is original rows 1–9, row 10 stays
+present and uncredited, and the /19, /23 and /29 consumer-use holds attach to those briefs.
+
+The existing independent Evidence PR #3921 owner recorded its checkpoint (preserved: yes):
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6403147264
+
+That checkpoint answers the request at
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6367743364 . It is a
+readiness record, not acceptance or merge permission; its reconciliation conditions for
+the Evidence branch still apply.
+
+Original /28 rows 1–9 belong to the pre-delivery definition at
+0580e0a02df8dce18bd2d65359225e49d525bcd6. Original implementation delivery
+3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf has that actual first parent; later
+metadata repair #4174 is not a new delivery. /28's entire delivered Verify section and current historical Evidence
+remain unchanged by this amendment. Delivery-added row 10 remains an uncredited supplemental routing
+disposition; it neither proves consumer use nor supplies an original acceptance witness.
+/29's entire six-row Verify definition and Evidence also remain unchanged.
+
+| Retained assertion | Existing acceptance owner and proof |
+|---|---|
+| Qualified work/path independence; explicit missing/could-not-check facts; exact candidate/acceptance binding; execution never acceptance; current reevaluation generation | /28 original Verify 1–5, with all original positive and mutation controls |
+| Real evaluator identity and tree-bound witnesses; pure imports; schema/semantic fixtures and canonical records; separate execution, acceptance, publication and retirement | /28 original Verify 6–9 and its existing spec/schema contract |
+| Immutable delivery/first-parent provenance and exact routing result counts; follow-up ownership is not actual use | /28 unchanged supplemental row 10, disposition only; independent subject/environment/admission requirements remain |
+| Actual old package-main adapter and new domain.Record/domain.Assess consume identical frozen facts and hand-written expected results | /29 Task 3, original Verify 2; original inventory, difference/staleness, zero-case, six baseline and runner-conformance checks all remain |
+| Durable shared identity, subject, definition, fact completeness, generation and progress round-trip through the real evaluator; valid recovery succeeds, missing facts hold and wrong/stale bindings cannot pass | /19 Tasks 3–4, strengthened prospective Verify 1–2; all existing PostgreSQL/outbox/incarnation/claim/feedback/reconstruction/context/brake obligations in rows 3–13 remain |
+| Actual shared candidate/acceptance records at freeze, independent reviewer input and restore; same-branch replacement, foreign/dirty/wrong-tree input, artifact/binding tampering and stale generations cannot inherit evidence | /23 Tasks 1–4, strengthened prospective Verify 1–3, retaining valid snapshot/recovery and existing mutation controls |
+| Connected production controller/store/runner/assessor/publication flow, crashes and unknown-outcome reconciliation | Existing /18 Task and Verify 6–7; no new owner, runtime or prerequisite is introduced |
+
+Every actual-use row above remains a required hold on its named consumer's acceptance
+until independently proved. Local /28 acceptance discharges none; routing success,
+serialization alone and matching hashes cannot substitute for production flow. No row
+is recorded passed, no historical hold/result is rewritten, and the independent owners
+still decide adequacy and omitted-consumer coverage. No /19 or /23 reverse dependency
+is added to the existing /26–27 launcher path. Generated lifecycle views are untouched.
+
+## Candidate-plus-priority amendment routing — requested 23 October 2026
+
+Source pickup: App-fetched public main `9c4307a19`; release v1.0.57 call-path audit.
+The operator requested one candidate-plus-current-priority planner for prose and discrete
+desks and ranked GH reductions. This row set routes the delta within existing owners;
+prior approval, active assignments, completed Evidence and enrollment remain unchanged.
+
+| Obligation | Existing owner / actual amendment | Remaining adoption |
+|---|---|---|
+| Complete observation + explicit policy/time/capacity -> explainable ordered plan | desk-workflow-efficiency-spec; desk-tools/39–40 | graph-execution/27 uses tools/desk-local role bindings; no cross-module internal imports |
+| Candidate coverage and priority parity for every role | desk-tools/42,45,51 and graph-execution/27 | Existing prose/discrete role cutovers prove A11; held/unknown/unmapped and repair populations remain |
+| Ranked network request reductions and matched growth curves | desk-tools/44 and current measurement owners | A12 counts producer, HTTP attempts/points, fallbacks and final checks without double-counting |
+| Shared refresh/invalidation and immutable source reuse | forge-neutral/37–43; 14-storage-forge-graph and 22-forge-service-and-source-queries | Qualified R6 path later; direct-reader bridge first; no per-caller outage poller |
+| Custody/query/CLI compatibility | Existing desktools-v2 /09, /20–21 | No rerun of completed query work, new ranker, credential pooling or premature command deletion |
+
+Reuse [the existing change map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026)
+for exact scope and sequencing. Recheck active work before dispatch/publication; material
+assignment changes require its existing owner checkpoint/acknowledgment, not silent rebinding.

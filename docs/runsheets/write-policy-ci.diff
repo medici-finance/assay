@@ -1,0 +1,18 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -113,6 +113,7 @@
+               # must execute on PRs; build/vet and rendering existing artifacts
+               # do not reach the trace append path (review F-m2-ci).
+               */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
++              */deskcore|deskcore) extra="GOWORK=off go test -count=1 ./..." ;;
+               */tools/desk|tools/desk) extra="go test ./..." ;;
+               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
+               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -569,4 +569,5 @@
+         if: matrix.leg == 'desk-tools'
+         run: |
+           set -euo pipefail
++          (cd deskcore && GOWORK=off go test -count=1 ./... && go vet ./...)
+           cd tools/desk && go test ./... && go vet ./...

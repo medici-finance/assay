@@ -599,3 +599,14 @@ C1–C4, baseline and ratified advisory gates. Time/cost/recovery measures are s
 lower token use alone does not establish reduced brittleness. New packet machinery still
 counts in the existing weight and operator-relay measures. No additional brief or gate is
 created by this clarification.
+
+## Proposed review-profile extension — 15 October 2026 (unapproved)
+
+[Review profiles](../review-profiles/spec.md) propose to make design-fit's direction
+explicit: does this PR move toward the applicable future state? The extension reuses
+this stream's owner, weight, retirement, fitness-function and finding semantics. It
+adds calibration and an evidence-bound assessment envelope rather than a second
+architecture gate. Prior rulings and historical implementation/Evidence are unchanged.
+Proposed future architecture alone does not create a new blocking obligation; any
+profile promotion remains a separately recorded policy decision. Architecture direction
+and algorithm-efficiency assessment can also inform spec/brief design before coding.

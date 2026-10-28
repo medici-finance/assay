@@ -21,13 +21,15 @@ import (
 // it. The Client also keeps deep copies of what it records and returns copies,
 // so no one sharing a slice, map or pointer with it can rewrite its state.
 type Client struct {
-	adapter Adapter
-	caps    Capabilities
-	fence   Fence
+	adapter  Adapter
+	caps     Capabilities
+	profiles []QualifiedProfile // the adapter's qualified-profile declaration, if it knows the extension
+	fence    Fence
 
-	mu   sync.Mutex
-	inv  map[string]*invocation
-	held map[string]string // authority key -> invocation key that still holds it
+	mu          sync.Mutex
+	inv         map[string]*invocation
+	performance map[string]performanceMap // private native-ID mapping, memory-only, seven UTC days
+	held        map[string]string         // authority key -> invocation key that still holds it
 }
 
 type invocation struct {
@@ -37,15 +39,30 @@ type invocation struct {
 	obs       *Observation
 	cancelled bool // a cancel was acknowledged without error
 	fellBack  bool // an adapter ran a model other than the pinned one
+	// profile is the admitted execution-profile requirement, nil when the
+	// extension does not govern the launch; substituted is set when the
+	// adapter reported a harness, backend or profile other than that one.
+	profile     *ProfileRequirement
+	substituted bool
+	// extRefused is the verdict on a receipt's or an observation's ext map
+	// (checkAdapterExtensions). It is sticky: an invocation whose adapter
+	// reported an extension value the contract refuses is never accepted.
+	extRefused extRefusal
 }
 
 // NewClient wraps an adapter. The fence reads the caller's current authority
 // generation; a nil fence is a programming error and refuses every acceptance.
 func NewClient(a Adapter, f Fence) *Client {
-	return &Client{
+	c := &Client{
 		adapter: a, caps: a.Capabilities().clone(), fence: f,
-		inv: map[string]*invocation{}, held: map[string]string{},
+		inv: map[string]*invocation{}, held: map[string]string{}, performance: map[string]performanceMap{},
 	}
+	if d, ok := a.(ProfileDeclarer); ok {
+		for _, p := range d.QualifiedProfiles() {
+			c.profiles = append(c.profiles, p.clone())
+		}
+	}
+	return c
 }
 
 // Accepted is a result that passed the contract: the invocation finished, its
@@ -59,6 +76,12 @@ type Accepted struct {
 	Usage       Usage
 	UsageKnown  bool
 	ActualModel string
+	// Execution is the adapter's report of the harness, backend and profile it
+	// ran, checked against the pinned qualified profile; nil when the
+	// execution-profile extension did not govern the launch. Like the rest of
+	// Accepted it is not authority: the caller rechecks its own current
+	// profile before acting on it.
+	Execution *ExecutionReport
 }
 
 // Start records the launch intent, then asks the adapter to start. A definite
@@ -71,6 +94,10 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 		return Ref{}, "", err
 	}
 	if err := req.CheckCapabilities(c.caps); err != nil {
+		return Ref{}, "", err
+	}
+	need, err := req.checkExecutionProfile(c.caps, c.profiles)
+	if err != nil {
 		return Ref{}, "", err
 	}
 	ref := req.Ref()
@@ -91,10 +118,11 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 	// Intent first: the invocation exists as unknown before the adapter is
 	// asked, so a crash or a lost acknowledgment can never leave a launch the
 	// client does not know about.
-	in := &invocation{req: req, state: StateUnknown}
+	in := &invocation{req: req, state: StateUnknown, profile: need}
 	c.inv[ref.key()] = in
 	c.held[req.Authority.Key] = ref.key()
-	rec, aerr := c.adapter.Start(ctx, req.clone())
+	launchContext, identity := c.performanceStart(ctx, req)
+	rec, aerr := c.adapter.Start(launchContext, req.clone())
 	if aerr != nil {
 		if errors.Is(aerr, ErrDefiniteFailure) {
 			in.state = StateFailed
@@ -102,7 +130,20 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 		}
 		return ref, in.state, &opaque{sentinel: ErrReconcileRequired, cause: aerr}
 	}
+	c.performanceRemember(rec, identity)
 	in.state = StateRunning
+	// The launch happened, so the invocation runs and holds its authority;
+	// only the receipt's ext is refused, and with it the invocation's result.
+	if r := checkAdapterExtensions(req, c.caps, rec.Extensions); r != extClean {
+		in.extRefused = r
+		return ref, in.state, r.err()
+	}
+	if in.profile != nil {
+		if rep, ok, rerr := executionReport(rec.Extensions); rerr == nil && ok && rep.substituted(*in.profile) {
+			in.substituted = true
+			return ref, in.state, ErrProfileMismatch
+		}
+	}
 	// A receipt that names no model is not yet a fallback: the model is
 	// unknown, and acceptance refuses a result whose model stays unreported.
 	if rec.ActualModel != "" && rec.ActualModel != req.Profile.Model {
@@ -138,6 +179,12 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 		return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}
 	}
 	obs = obs.clone() // the adapter keeps no handle on what is recorded
+	// An observation whose ext the contract refuses is neither returned nor
+	// recorded, and the invocation's result is never accepted.
+	if r := checkAdapterExtensions(in.req, c.caps, obs.Extensions); r != extClean {
+		in.extRefused = r
+		return Observation{}, r.err()
+	}
 	if obs.State == StateAbsent {
 		if c.caps.LaunchDedupe && in.state == StateUnknown {
 			in.state = StateFailed
@@ -175,6 +222,12 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 	kept := obs.clone() // the caller gets obs, which shares nothing with kept
 	in.usage = kept.Usage
 	in.obs = &kept
+	if in.profile != nil {
+		if rep, ok, rerr := executionReport(obs.Extensions); rerr == nil && ok && rep.substituted(*in.profile) {
+			in.substituted = true
+			return obs, ErrProfileMismatch
+		}
+	}
 	if obs.ActualModel != "" && obs.ActualModel != in.req.Profile.Model {
 		in.fellBack = true
 		return obs, ErrModelFallback
@@ -229,7 +282,9 @@ func (c *Client) get(ref Ref) (*invocation, error) {
 
 // AcceptResult applies the contract's acceptance checks to a finished
 // invocation. The generation fence comes first: an attempt whose generation is
-// no longer current is refused however well formed its result is.
+// no longer current is refused however well formed its result is. An
+// invocation whose adapter reported an ext value the contract refused is
+// refused before any of them.
 func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	in, err := c.get(ref)
 	if err != nil {
@@ -237,11 +292,17 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	}
 	c.mu.Lock()
 	state, obs, req, fellBack := in.state, in.obs, in.req, in.fellBack
+	profile, substituted, extRefused := in.profile, in.substituted, in.extRefused
 	if obs != nil {
 		kept := obs.clone() // the Accepted below shares nothing with the record
 		obs = &kept
 	}
 	c.mu.Unlock()
+	// The adapter reported an ext value the contract refused: nothing it
+	// reported for this invocation is accepted, whatever its state.
+	if extRefused != extClean {
+		return Accepted{}, extRefused.err()
+	}
 	if state != StateFinished || obs == nil || obs.Result == nil {
 		return Accepted{}, ErrNotFinished
 	}
@@ -265,6 +326,17 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	if obs.ActualModel != req.Profile.Model {
 		return Accepted{}, ErrModelFallback
 	}
+	if substituted {
+		return Accepted{}, ErrProfileMismatch
+	}
+	var execution *ExecutionReport
+	if profile != nil {
+		rep, err := checkReport(req, *profile, obs.Extensions)
+		if err != nil {
+			return Accepted{}, err
+		}
+		execution = rep
+	}
 	res := *obs.Result
 	if err := res.Validate(); err != nil {
 		return Accepted{}, err
@@ -283,6 +355,7 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	return Accepted{
 		Ref: ref, Authority: req.Authority, Result: res,
 		Usage: obs.Usage, UsageKnown: obs.Usage.Complete(), ActualModel: obs.ActualModel,
+		Execution: execution,
 	}, nil
 }
 
@@ -301,9 +374,11 @@ func (c *Client) Usage(caller string) Usage {
 }
 
 // sameOutcome reports whether a later finished observation repeats the
-// recorded one: the same result and the same reported model.
+// recorded one: the same result, the same reported model and the same
+// execution report.
 func sameOutcome(kept *Observation, obs Observation) bool {
-	return kept != nil && kept.ActualModel == obs.ActualModel && reflect.DeepEqual(kept.Result, obs.Result)
+	return kept != nil && kept.ActualModel == obs.ActualModel && reflect.DeepEqual(kept.Result, obs.Result) &&
+		string(kept.Extensions[ExecutionProfileExt]) == string(obs.Extensions[ExecutionProfileExt])
 }
 
 func contains(list []string, s string) bool {

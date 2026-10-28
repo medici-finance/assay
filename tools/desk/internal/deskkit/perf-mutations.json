@@ -16,8 +16,8 @@
     {
       "name": "widen the field allowlist by one planted value: the verb field carries the argv (repo, PR, branch, path)",
       "file": "internal/deskkit/perf.go",
-      "old": "rec := newPerfRecord(tool, verb, wall, code)",
-      "new": "verb = strings.Join(args, \" \")\n\trec := newPerfRecord(tool, verb, wall, code)"
+      "old": "rec := sess.Finish(perfTool(tool), verb, perfRole(os.Getenv(\"DESK_LOOP\")), code, sha)",
+      "new": "verb = strings.Join(args, \" \")\n\trec := sess.Finish(perfTool(tool), verb, perfRole(os.Getenv(\"DESK_LOOP\")), code, sha)"
     },
     {
       "name": "widen the field allowlist by one planted value: the role field carries DESK_SESSION",
@@ -46,7 +46,7 @@
     {
       "name": "propagate the perf write error into the verb's exit code (a full disk turns a green verb red)",
       "file": "internal/deskkit/perf.go",
-      "old": "\tperfAppend(rec)\n\treturn code\n}",
+      "old": "\tperfAppendEnabled(enabled, rec)\n\treturn code\n}",
       "new": "\tif perfWrite(rec) != nil {\n\t\treturn ExitUnverifiable\n\t}\n\treturn code\n}"
     }
   ],

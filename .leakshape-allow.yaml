@@ -22,6 +22,13 @@
 #
 # Shared reasons are YAML anchors (&name) reused by alias (*name).
 allow:
+  - path: statusgen/acceptancetransition_test.go
+    shape: ssh-host-alias
+    sha256:
+      - a5a91287253726d45904dba4de7f0712728649f0c4600c8604e6755c614b2195
+      - 8bb8193ef61273471dcd570f54b18ae183af5d6c54a5ca60a9e1c1bd1cd3c670
+      - 0510d7a5588eb1556f0d30efa130a1fc8f06d236f9305d9fd79ebdf48e4f6a7a
+    reason: "reserved .example hosts in acceptance-transition refusal tests for a self-hosted forge SCP remote and a foreign SSH URL with a port; exact synthetic fixture values, no real host or identity"
   - path: .github/workflows/assay-qualgen.yml
     shape: noreply-id-email
     sha256:
@@ -138,6 +145,12 @@ allow:
     sha256:
       - f0bd4a46eb253ca14463110be949bf6edc92b74cc787d40a563385b744f5f64c
     reason: *fx-mail
+  - path: statusgen/claimdecay_github_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 1e57fc9009c343a9e9d079a8b3dd62a998a1100917f12b23e23f99c4c474a849
+      - d8b71b9778124d50d53ef9edb52e852f1a447288f3d0e494d005d5d14e0b8896
+    reason: *fx-ssh
   - path: statusgen/claimdecay_gitlab.go
     shape: ssh-host-alias
     sha256:
@@ -425,11 +438,6 @@ allow:
     sha256:
       - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
     reason: *fx-ssh
-  - path: tools/desk/cmd/deskwt/main.go
-    shape: ssh-host-alias
-    sha256:
-      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
-    reason: *doc-ssh
   - path: tools/desk/cmd/deskwt/pushtransport_test.go
     shape: ssh-host-alias
     sha256:

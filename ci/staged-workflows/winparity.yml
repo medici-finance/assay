@@ -23,14 +23,30 @@ name: winparity
 # nowhere; the staged copy is the reviewable artifact. See ci/staged-workflows/README.md.
 
 on:
+  # push is limited to main: a PR branch is already checked by its pull_request
+  # run, so a push trigger on every branch checked each PR head twice.
+  # paths: the check reads only the Makefile and the Windows build script, so it
+  # runs only when one of those, its own source, or this workflow changes. It is
+  # not a required check, so a filtered-out PR shows no winparity run at all.
   push:
+    branches: [main]
+    paths:
+      - Makefile
+      - scripts/build-windows.ps1
+      - tools/winparity/**
+      - .github/workflows/winparity.yml
   pull_request:
+    paths:
+      - Makefile
+      - scripts/build-windows.ps1
+      - tools/winparity/**
+      - .github/workflows/winparity.yml
 
 permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
 
 jobs:
   winparity:

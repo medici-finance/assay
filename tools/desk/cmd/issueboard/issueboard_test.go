@@ -145,7 +145,7 @@ func installForge(t *testing.T, byRepo map[string]*repoFixture) *[]forgeCall {
 	t.Setenv("DESK_TOOLS_DISABLED", "") // ensure the kill switch is disarmed
 	calls := &[]forgeCall{}
 	prev := forgeFor
-	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	forgeFor = func(repo string, _ ...deskkit.RequestObserver) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		owner, name, _ := strings.Cut(repo, "/")
 		return &fakeForge{repo: repo, data: byRepo[repo], calls: calls}, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
@@ -249,8 +249,8 @@ func TestReadsOnly(t *testing.T) {
 	t.Logf("read-only proof: %d forge ops enumerated, all reads", len(*calls))
 
 	board := out.String()
-	if !strings.Contains(board, "RETIRE") {
-		t.Errorf("expected a RETIRE row for the closed-issue placeholder; got:\n%s", board)
+	if !strings.Contains(board, "AWAIT") || !strings.Contains(board, "classification-needed") {
+		t.Errorf("expected the unclassified closed source to remain visible; got:\n%s", board)
 	}
 	if !strings.Contains(board, "CREATE-PLACEHOLDER") {
 		t.Errorf("expected a CREATE-PLACEHOLDER row for the placeholder-less open issue; got:\n%s", board)

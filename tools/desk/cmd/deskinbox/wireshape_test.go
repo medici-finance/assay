@@ -94,7 +94,7 @@ func readDetailOverREST(t *testing.T, repo deskkit.ForgeRepo, number int, body s
 	t.Cleanup(func() {
 		forgeFor, sessionRoleFn, mintTokenFn, forgeAPIBase = prevForge, prevRole, prevMint, prevBase
 	})
-	forgeFor = func(string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	forgeFor = func(_ string, _ ...deskkit.RequestObserver) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return &bodyForge{body: body}, repo, nil
 	}
 	sessionRoleFn = func(string) (string, string, error) { return "worker", "worker-desk", nil }

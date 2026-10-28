@@ -129,7 +129,7 @@ type JoinInput struct {
 // decode would have matched.
 var joinTopKeys = []string{
 	"prs", "prs_unknown_reason", "verifier_tier", "started", "finished", "rows_passed", "rows_total",
-	"row_results", "dispatch_ref", "dispatch_ref_sha256",
+	"rows", "row_results", "dispatch_ref", "dispatch_ref_sha256",
 }
 
 var prEntryKeys = []string{"repo", "number", "merge_sha", "withheld"}
@@ -351,6 +351,24 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 		return Refused(fmt.Sprintf("refused: rows_passed %d exceeds rows_total %d", passed, total))
 	}
 
+	heldRows := map[VerifyRowID]bool{}
+	if v, has := f["rows"]; has {
+		var rows []VerifyRowID
+		if err := json.Unmarshal(v, &rows); err != nil {
+			return Refused("refused: rows must contain positive integers or exact suffixed identities")
+		}
+		seen := map[VerifyRowID]bool{}
+		for _, row := range rows {
+			if seen[row] {
+				return Refused("refused: rows repeats row " + string(row))
+			}
+			seen[row] = true
+			heldRows[row] = true
+		}
+	}
+	if hasPassed && hasTotal && passed > total-len(heldRows) {
+		return Refused(fmt.Sprintf("refused: rows_passed %d exceeds non-held rows %d", passed, total-len(heldRows)))
+	}
 	if v, has := f["row_results"]; has {
 		var entries []json.RawMessage
 		if err := json.Unmarshal(v, &entries); err != nil || entries == nil {
@@ -362,7 +380,7 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 		if len(entries) != total {
 			return Refused(fmt.Sprintf("refused: row_results lists %d rows but rows_total is %d — it covers ALL rows", len(entries), total))
 		}
-		seen := map[int]bool{}
+		seen := map[VerifyRowID]bool{}
 		pass := 0
 		for i, e := range entries {
 			var obj map[string]json.RawMessage
@@ -374,13 +392,12 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 					return Refused(fmt.Sprintf("refused: row_results[%d].%s is not a row_results field (row, result)", i, k))
 				}
 			}
-			lex := strings.TrimSpace(string(obj["row"]))
-			row, rerr := strconv.Atoi(lex)
-			if !intLexemeRe.MatchString(lex) || rerr != nil || row < 1 {
-				return Refused(fmt.Sprintf("refused: row_results[%d].row must be a JSON integer >= 1", i))
+			var row VerifyRowID
+			if err := json.Unmarshal(obj["row"], &row); err != nil {
+				return Refused(fmt.Sprintf("refused: row_results[%d].row must be a positive integer or exact suffixed identity", i))
 			}
 			if seen[row] {
-				return Refused(fmt.Sprintf("refused: row_results[%d].row %d repeats", i, row))
+				return Refused(fmt.Sprintf("refused: row_results[%d].row %s repeats", i, row))
 			}
 			seen[row] = true
 			var res string
@@ -388,11 +405,28 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 				return Refused(fmt.Sprintf("refused: row_results[%d].result must be one of pass, fail, could-not-run, deferred", i))
 			}
 			if res == RowPass {
+				if heldRows[row] {
+					return Refused("refused: held row " + string(row) + " also claims PASS")
+				}
 				pass++
 			}
 		}
 		if hasPassed && pass != passed {
 			return Refused(fmt.Sprintf("refused: row_results holds %d pass rows but rows_passed is %d", pass, passed))
+		}
+		for row := range heldRows {
+			if !seen[row] {
+				return Refused("refused: held row " + string(row) + " is absent from row_results inventory")
+			}
+		}
+	} else if hasTotal {
+		// Without exact results, only the declared contiguous numeric inventory
+		// 1..total is known. Never infer a suffix or a foreign held identity.
+		for row := range heldRows {
+			n, err := strconv.Atoi(string(row))
+			if err != nil || n > total {
+				return Refused("refused: held row " + string(row) + " is outside count-only inventory 1..rows_total")
+			}
 		}
 	}
 	return nil

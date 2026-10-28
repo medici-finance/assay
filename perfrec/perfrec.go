@@ -1,7 +1,14 @@
 // Package perfrec is the one writer of the opt-in, LOCAL-ONLY per-invocation performance
-// record (schema perf-v1). Every tool that records one — the desk tools through their shared
-// kit, statusgen directly — calls this package, so there is exactly one implementation of the
-// schema, the day-file layout, the 7-day retention and the install id.
+// record. Every tool that records one — the desk tools through their shared kit, statusgen
+// directly — calls this package, so there is exactly one implementation of the schemas, the
+// day-file layout, the 7-day retention and the install id.
+//
+// Two schemas share the day files (schema.go): the legacy perf-v1 line New builds, whose
+// wallMs starts wherever its caller started a timer and whose cpuMs is process-lifetime
+// CPU; and perf-v2, built only by a Session (session.go), whose wall and CPU are deltas over
+// ONE declared boundary and whose counters carry explicit measured/unavailable coverage. A
+// reader never mixes the two meanings: Record's JSON codec refuses a line whose fields do not
+// belong to the schema it names.
 //
 // The contract, each clause enforced by a test rather than promised:
 //
@@ -31,9 +38,9 @@ import (
 	"time"
 )
 
-// Schema is the on-disk record version. Adding ANY field bumps it (perf-v2), updates the
-// field table in docs/telemetry.md, and adds a case to the no-identifier test — all three in
-// the same change.
+// Schema is the LEGACY on-disk record version New builds. Its field set and meanings are
+// frozen: a changed boundary or field is a new schema (SchemaV2 is the first), with its own
+// field table in docs/telemetry.md and its own case in the no-identifier tests.
 const Schema = "perf-v1"
 
 // EnvVar is the one opt-in. It is the SAME variable statusgen's network telemetry reads.
@@ -68,8 +75,18 @@ const (
 	exitUnverifiable = 6
 )
 
-// Record is one perf-v1 line. Exactly these fields and no others; cpuMs alone is omitted when
-// unmeasurable, so "not measured" and "used no CPU" stay distinguishable.
+// Record is one line of the perf history, in either schema. Schema decides which fields the
+// line carries and what they mean; the JSON codec (schema.go) writes exactly that schema's
+// field set and refuses a record that carries another schema's fields.
+//
+// perf-v1 (legacy): every field down to Install except the v2-only block. cpuMs alone is
+// omitted when unmeasurable, so "not measured" and "used no CPU" stay distinguishable;
+// wallMs is whatever the caller timed and cpuMs is process-lifetime CPU.
+//
+// perf-v2: the shared fields plus the v2-only block, and none of the three legacy
+// counters (their meanings live on as counters with explicit coverage). wallMs and cpuMs
+// are deltas over Boundary; CPU names the CPU coverage state, and cpuMs is present only when
+// it is CPUMeasured.
 type Record struct {
 	Schema      string `json:"schema"`
 	TS          string `json:"ts"`
@@ -85,6 +102,20 @@ type Record struct {
 	ForgeCalls  int64  `json:"forgeCalls"`
 	SourceSHA   string `json:"sourceSHA"`
 	Install     string `json:"install"`
+
+	// perf-v3 only; legacy wire shapes never include it.
+	V3 *V3Data `json:"v3,omitempty"`
+	// V4 is a closed typed extension registry. Unsupported reader payloads are
+	// discarded; no raw extension names or values cross this API.
+	V4 *V4Data `json:"-"`
+
+	// perf-v2 and perf-v3 interval fields.
+	Boundary     string            `json:"boundary,omitempty"`
+	CPU          string            `json:"cpu,omitempty"`
+	Phases       []PhaseStat       `json:"phases,omitempty"`
+	PhaseOverlap bool              `json:"phaseOverlap,omitempty"`
+	Counters     map[Counter]int64 `json:"counters,omitempty"`
+	Unavailable  []Counter         `json:"unavailable,omitempty"`
 }
 
 // Enabled reports whether local perf logging is armed: ASSAY_TELEMETRY compared to "1"
@@ -155,8 +186,10 @@ func SourceSHA(stamp string) string {
 	return Unpinned
 }
 
-// New builds a record. tool, verb and role must already be roster values (the caller maps
-// them); the timestamp, result and schema are fixed here. sha is passed through SourceSHA.
+// New builds a LEGACY perf-v1 record (wall as the caller timed it; the caller may set cpuMs
+// to process-lifetime CPU and the three legacy counters). tool, verb and role must already be
+// roster values (the caller maps them); the timestamp, result and schema are fixed here. sha
+// is passed through SourceSHA. New measurements use Begin/Finish (session.go) instead.
 func New(tool, verb, role string, wall time.Duration, exit int, sha string, now time.Time) Record {
 	return Record{
 		Schema:    Schema,
@@ -309,9 +342,56 @@ func (w *Writer) Append(stateDir string, rec Record) { _ = w.Write(stateDir, rec
 // Write is Append's body with the error kept, for the tests that need to see WHY a write did
 // not land. Production callers go through Append, which discards it.
 func (w *Writer) Write(stateDir string, rec Record) error {
+	return w.WriteEnabled((rec.Schema != SchemaV3 && rec.Schema != SchemaV4) || Enabled(), stateDir, rec)
+}
+
+// WriteEnabled records with the application's resolved consent. Applications
+// that resolve configuration after process entry use the same writer and sink;
+// this value changes no retention, schema, redaction or observation contract.
+// V3 additionally requires the exact process-environment opt-in at the writer;
+// resolved application consent cannot extend the v3 consent boundary.
+func (w *Writer) WriteEnabled(enabled bool, stateDir string, rec Record) error {
+	if !enabled {
+		return errors.New("perfrec: recording is disabled")
+	}
+	if rec.Schema == SchemaV3 || rec.Schema == SchemaV4 {
+		if !Enabled() {
+			return errors.New("perfrec: v3 recording is disabled")
+		}
+		var err error
+		if rec.Schema == SchemaV4 {
+			err = validateV4(rec, true)
+		} else {
+			err = validV3(rec)
+		}
+		if err != nil {
+			return err
+		}
+	}
 	dir := Dir(stateDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
+	}
+	if rec.Schema == SchemaV3 || rec.Schema == SchemaV4 {
+		if info, err := os.Lstat(dir); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("perfrec: unsafe v3 directory")
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return err
+		}
+		for _, name := range []string{"install-id", w.now().UTC().Format("2006-01-02") + ".jsonl"} {
+			p := filepath.Join(dir, name)
+			if info, err := os.Lstat(p); err == nil {
+				if !info.Mode().IsRegular() {
+					return errors.New("perfrec: unsafe v3 file")
+				}
+				if err = os.Chmod(p, 0o600); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 	}
 	w.pruneOnce(dir)
 	id, err := InstallID(dir)

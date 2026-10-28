@@ -25,49 +25,48 @@ func auditBytes(t *testing.T) []byte {
 }
 
 // TestHelpWritesNoAuditRow is the runtime half of the help retrofit for deskwt: a help
-// request — the single-token tier-one shape AND the wider tier-two shapes that reach the
-// subcommand's own flag parse — exits 0, prints the usage screen, and leaves the audit
-// ledger byte-identical. The bad-flag control in the same position must still refuse
-// (exit 5) AND still append its row, so going quiet on real misuse fails the test too.
+// request — `<verb> --help` alone, and help after a positional or another flag — exits 0,
+// prints that command's own help on stdout, and leaves the audit ledger byte-identical. The
+// controls in the same position must still behave: a malformed command line is refused with
+// the usage code before any effect (no audit row, as with every parse error since the Cobra
+// port), and a real domain refusal still refuses AND still appends its row, so going quiet on
+// misuse fails the test too.
 func TestHelpWritesNoAuditRow(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		args []string
+		want string // a line of the command's own help
 	}{
-		// Tier one: `<sub> --help` alone, answered before Guard.
-		{"add --help", []string{"add", "--help"}},
-		{"add -h", []string{"add", "-h"}},
-		{"remove --help", []string{"remove", "--help"}},
-		{"prune --help", []string{"prune", "--help"}},
-		{"maintain --help", []string{"maintain", "--help"}},
-		{"role-init --help", []string{"role-init", "--help"}},
-		{"role-clean --help", []string{"role-clean", "--help"}},
-		// Tier two: help after a positional or another flag reaches the subcommand's
-		// parser as flag.ErrHelp, inside the audited verb.
-		{"add name --help", []string{"add", "wt-name", "--help"}},
-		{"add --dry-run -h", []string{"add", "--dry-run", "-h"}},
-		{"remove name --help", []string{"remove", "wt-name", "--help"}},
-		{"maintain --apply --help", []string{"maintain", "--apply", "--help"}},
+		{"add --help", []string{"add", "--help"}, "deskwt add <name>"},
+		{"add -h", []string{"add", "-h"}, "deskwt add <name>"},
+		{"remove --help", []string{"remove", "--help"}, "deskwt remove <path>"},
+		{"prune --help", []string{"prune", "--help"}, "deskwt prune"},
+		{"maintain --help", []string{"maintain", "--help"}, "deskwt maintain"},
+		{"role-init --help", []string{"role-init", "--help"}, "deskwt role-init"},
+		{"role-clean --help", []string{"role-clean", "--help"}, "deskwt role-clean"},
+		{"add name --help", []string{"add", "wt-name", "--help"}, "deskwt add <name>"},
+		{"add --dry-run -h", []string{"add", "--dry-run", "-h"}, "deskwt add <name>"},
+		{"remove name --help", []string{"remove", "wt-name", "--help"}, "deskwt remove <path>"},
+		{"maintain --apply --help", []string{"maintain", "--apply", "--help"}, "deskwt maintain"},
+		{"maintain objects --help", []string{"maintain", "objects", "--help"}, "deskwt maintain objects"},
+		{"maintain objects --apply --help", []string{"maintain", "objects", "--apply", "--help"}, "deskwt maintain objects"},
+		{"help add", []string{"help", "add"}, "deskwt add <name>"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			withEnv(t, t.TempDir())
 
 			before := auditBytes(t)
-			rc, stderr := runCapErr(t, c.args)
+			rc, stdout, stderr := runCapBoth(t, c.args)
 
 			if rc != deskkit.ExitOK {
 				t.Errorf("%s exited %d, want %d — a help screen is a successful read, not a refusal\nstderr: %s",
 					c.name, rc, deskkit.ExitOK, stderr)
 			}
-			// stderr ends with the usage screen and carries no refusal line (the pre-retrofit
-			// `refused: bad flags: flag: help requested`). The only other line allowed is the
-			// unpinned-build warning a tier-two run prints after Guard under `go test`.
-			trimmed := strings.TrimSpace(stderr)
-			if !strings.HasSuffix(trimmed, strings.TrimSpace(usage)) {
-				t.Errorf("%s did not end with the usage screen; stderr:\n%s", c.name, stderr)
-			} else if lead := strings.TrimSuffix(trimmed, strings.TrimSpace(usage)); strings.Contains(lead, "refused") ||
-				strings.Contains(lead, "help requested") {
-				t.Errorf("%s printed a refusal ahead of the usage screen: %q", c.name, lead)
+			if !strings.Contains(stdout, "Usage:") || !strings.Contains(stdout, c.want) {
+				t.Errorf("%s did not print its own help (want %q); stdout:\n%s", c.name, c.want, stdout)
+			}
+			if strings.Contains(stderr, "refused") || strings.Contains(stderr, "help requested") {
+				t.Errorf("%s printed a refusal: %q", c.name, stderr)
 			}
 			after := auditBytes(t)
 			if string(after) != string(before) {
@@ -77,19 +76,36 @@ func TestHelpWritesNoAuditRow(t *testing.T) {
 		})
 	}
 
-	// THE CONTROL. A genuinely bad flag in the same position must still refuse AND still
-	// write its row: the fix is about help screens, not about going quiet on misuse.
-	t.Run("bad flag still refuses and audits", func(t *testing.T) {
+	// CONTROL ONE. A bad flag is a malformed command line: the usage code, refused before
+	// the kill switch, the roster or the audit ledger is touched.
+	t.Run("bad flag is a usage error with no effect", func(t *testing.T) {
 		withEnv(t, t.TempDir())
 
 		before := auditBytes(t)
 		rc, stderr := runCapErr(t, []string{"add", "--no-such-flag"})
+		if rc != 2 {
+			t.Fatalf("an unknown flag exited %d, want 2 (usage)\nstderr: %s", rc, stderr)
+		}
+		if !strings.Contains(stderr, "unknown flag: --no-such-flag") {
+			t.Errorf("an unknown flag did not name itself; stderr:\n%s", stderr)
+		}
+		if after := auditBytes(t); string(after) != string(before) {
+			t.Errorf("a parse error reached the audit ledger (before %d bytes, after %d)", len(before), len(after))
+		}
+	})
+
+	// CONTROL TWO. A well-formed verb the domain refuses still refuses AND still audits.
+	t.Run("domain refusal still refuses and audits", func(t *testing.T) {
+		withEnv(t, newRepo(t))
+
+		before := auditBytes(t)
+		rc, stderr := runCapErr(t, []string{"add", "../escape"})
 		if rc != deskkit.ExitRefused {
-			t.Fatalf("an unknown flag exited %d, want %d\nstderr: %s", rc, deskkit.ExitRefused, stderr)
+			t.Fatalf("an escaping name exited %d, want %d\nstderr: %s", rc, deskkit.ExitRefused, stderr)
 		}
 		after := auditBytes(t)
 		if len(after) <= len(before) {
-			t.Errorf("an unknown flag wrote no audit row — real misuse must stay recorded "+
+			t.Errorf("a domain refusal wrote no audit row — real misuse must stay recorded "+
 				"(before %d bytes, after %d)", len(before), len(after))
 		}
 	})

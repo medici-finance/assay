@@ -1,0 +1,95 @@
+{
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|ProtectedRecordRun|ProtectedRecordRefusal|ProtectedRecordCredit)$' -count=1 -timeout 240s",
+  "control": {
+    "name": "approval payload binding removed",
+    "file": "acceptancetransition.go",
+    "old": "if strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {",
+    "new": "if false && strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {"
+  },
+  "mutations": [
+    {
+      "name": "restore immutable-only delivery contract",
+      "file": "protectedclosure.go",
+      "old": "if strings.Contains(evidence, \"Acceptance-Transition:\") {",
+      "new": "if false && strings.Contains(evidence, \"Acceptance-Transition:\") {"
+    },
+    {
+      "name": "omit original commands from host execution",
+      "file": "verifyrun.go",
+      "old": "rows, numbered = numberedVerifyRows(protectedExecution.Verify)",
+      "new": "rows, numbered = numberedVerifyRows(verify)"
+    },
+    {
+      "name": "origin host binding removed",
+      "file": "acceptancetransition.go",
+      "old": "if err != nil || remoteHost(string(origin)) != \"github.com\" {",
+      "new": "if err != nil {"
+    },
+    {
+      "name": "decision issue marker bypassed",
+      "file": "acceptancetransition.go",
+      "old": "return strings.Contains(iss.Body, \"<!-- acceptance-transition: \"+rel+\" -->\")",
+      "new": "return true || strings.Contains(iss.Body, \"<!-- acceptance-transition: \"+rel+\" -->\")"
+    },
+    {
+      "name": "CRLF comment normalization removed",
+      "file": "acceptancetransition.go",
+      "old": "strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload",
+      "new": "strings.TrimSpace(out.Body) != payload"
+    },
+    {
+      "name": "command context comparison omitted",
+      "file": "acceptancetransition.go",
+      "old": "!oldOK || !nextOK || oldContext != nextContext",
+      "new": "!oldOK || !nextOK || (false && oldContext != nextContext)"
+    },
+    {
+      "name": "original complete definition unbound",
+      "file": "acceptancetransition.go",
+      "old": "if !reflect.DeepEqual(source, old) {",
+      "new": "if false && !reflect.DeepEqual(source, old) {"
+    },
+    {
+      "name": "whole cell rewrite drops context",
+      "file": "acceptancetransition.go",
+      "old": "strings.Replace(originalCell, codeSpanOf(originals[cells[0]].Command), codeSpanOf(changed.Command), 1)",
+      "new": "codeSpanOf(changed.Command)"
+    },
+    {
+      "name": "ambiguous rendered context admitted",
+      "file": "acceptancetransition.go",
+      "old": "!plain || len(spans) != 1",
+      "new": "(false && !plain) || len(spans) != 1"
+    },
+    {
+      "name": "protected record keeps redefined originals",
+      "file": "verifyrun.go",
+      "old": "why = originalDefinitionDrift(protectedExecution.Verify, verify)",
+      "new": "why = \"\""
+    },
+    {
+      "name": "protected record admits extra lines",
+      "file": "protectedclosure.go",
+      "old": "case len(lines) == 1 && strings.HasPrefix(lines[0], \"Verification-Table:\"):",
+      "new": "case len(lines) >= 1 && !strings.HasPrefix(lines[len(lines)-1], \"Acceptance-Transition:\") && strings.HasPrefix(lines[0], \"Verification-Table:\"):"
+    },
+    {
+      "name": "supplemental rows witnessed as credited",
+      "file": "verifyrun.go",
+      "old": "ws[i].State = stateAuthorAdded",
+      "new": "if false {\n\t\t\t\t\t\tws[i].State = stateAuthorAdded\n\t\t\t\t\t}"
+    },
+    {
+      "name": "post-delivery Verify edit admitted",
+      "file": "protectedclosure.go",
+      "old": "if strings.TrimSpace(verify) != strings.TrimSpace(delivered) {",
+      "new": "if false && strings.TrimSpace(verify) != strings.TrimSpace(delivered) {"
+    },
+    {
+      "name": "supplemental credit claim admitted",
+      "file": "protectedclosure.go",
+      "old": "if proposal == \"\" && (len(cells) == 0 ||",
+      "new": "if false && proposal == \"\" && (len(cells) == 0 ||"
+    }
+  ]
+}

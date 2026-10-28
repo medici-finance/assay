@@ -35,6 +35,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -44,10 +45,18 @@ import (
 // deskkit "unverifiable" code (6): the tool cannot soundly read this tree.
 const statusgenExitTreeTooNew = 6
 
-// gateParseVersion parses a strict bare `vX.Y.Z` into a comparable tuple, ok=false
-// for any other shape (including "dev" / "" — an unstamped build, treated as
-// latest by the caller).
+// gateParseVersion parses a `vX.Y.Z` into a comparable tuple, ok=false for any
+// other shape (including "dev" / "" — an unstamped build, treated as latest by the
+// caller). A `+<build>` metadata suffix is accepted and the BASE is gated: a local
+// hotfix stamped `vX.Y.Z+hotfix-<sha12>` is gated exactly as its pin `vX.Y.Z`, so a
+// hotfix of an old release can never slip past the gate as "latest".
 func gateParseVersion(tag string) (v [3]int, ok bool) {
+	if i := strings.IndexByte(tag, '+'); i >= 0 {
+		if i == len(tag)-1 {
+			return v, false
+		}
+		tag = tag[:i]
+	}
 	if !strings.HasPrefix(tag, "v") {
 		return v, false
 	}
@@ -63,6 +72,19 @@ func gateParseVersion(tag string) (v [3]int, ok bool) {
 		v[i] = n
 	}
 	return v, true
+}
+
+// hotfixTagPattern mirrors deskkit's hotfix grammar exactly (statusgen is its own
+// module): a bare release tag, `+hotfix-`, twelve lowercase hex digits.
+var hotfixTagPattern = regexp.MustCompile(`^(v[0-9]+\.[0-9]+\.[0-9]+)\+hotfix-([0-9a-f]{12})$`)
+
+// hotfixBase returns the pin a hotfix tag is built over; ok=false for any other tag.
+func hotfixBase(tag string) (string, bool) {
+	m := hotfixTagPattern.FindStringSubmatch(tag)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // gateBelowV1 reports whether a STAMPED version parses and is strictly below
@@ -95,7 +117,10 @@ func treeHasBriefV2(root string) bool {
 		}
 		for _, line := range strings.Split(string(raw), "\n") {
 			t := strings.TrimSpace(line)
-			if t == "schema: "+briefSchemaV2 || t == "schema: \""+briefSchemaV2+"\"" {
+			// brief-v3 is brief-v2 plus the withdrawn keys: a v3 tree is a v2 tree
+			// for this boundary.
+			if t == "schema: "+briefSchemaV2 || t == "schema: \""+briefSchemaV2+"\"" ||
+				t == "schema: "+briefSchemaV3 || t == "schema: \""+briefSchemaV3+"\"" {
 				found = true
 				return filepath.SkipAll
 			}

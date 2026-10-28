@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,18 +27,20 @@ import (
 // it is not a brief-*.md file, so every brief-v1 gate — which globs brief-*.md —
 // simply never sees it. Its lifecycle is issue-driven (close-out).
 type Placeholder struct {
-	Path      string
-	Brief     string   // "<stream>/<stem>", e.g. "issue-loop/issue-300"
-	Issue     int      // GitHub issue number
-	Repo      string   // "owner/name"
-	Wave      int      // default 0
-	Effort    string   // DERIVED (default M) unless overridden in frontmatter
-	Gate      string   // DERIVED from labels/title (model|human) unless overridden
-	Status    string   // lifecycle token; default "todo"
-	Labels    []string // issue labels — drives gate derivation + the bug-label boost
-	Value     string   // optional low|med|high scoring input
-	Blocked   string   // "" or "awaiting-issue-response"; excludes from Next-up
-	BlockedAt string   // ISO 8601 timestamp when blocked was set; "" when not blocked
+	HandoffAssessment issueflow.IntakeAssessment
+	Handoff           string
+	Path              string
+	Brief             string   // "<stream>/<stem>", e.g. "issue-loop/issue-300"
+	Issue             int      // GitHub issue number
+	Repo              string   // "owner/name"
+	Wave              int      // default 0
+	Effort            string   // DERIVED (default M) unless overridden in frontmatter
+	Gate              string   // DERIVED from labels/title (model|human) unless overridden
+	Status            string   // lifecycle token; default "todo"
+	Labels            []string // issue labels — drives gate derivation + the bug-label boost
+	Value             string   // optional low|med|high scoring input
+	Blocked           string   // "" or "awaiting-issue-response"; excludes from Next-up
+	BlockedAt         string   // ISO 8601 timestamp when blocked was set; "" when not blocked
 	// CloseCandidate is the optional (D4) verdict marking a
 	// placeholder whose DELIVERABLE is a reviewed close-PR that no merge would
 	// produce (FIXED-NOT-CLOSED|WONTFIX|DUPLICATE|STALE). "" for the normal
@@ -358,6 +361,11 @@ func parsePlaceholderFile(path string) (*Placeholder, bool, error) {
 	if len(bad) > 0 {
 		return nil, false, fmt.Errorf("%s: %s", path, strings.Join(bad, "; "))
 	}
+	handoff, _ := data["handoff"].(string)
+	ph.Handoff = handoff
+	opened, _ := data["handoff-opened"].(string)
+	h, herr := readIntakeHandoff(path, handoff)
+	ph.HandoffAssessment = assessRecordedIntake(h, fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), opened, ph.Labels, herr == nil)
 	return ph, true, nil
 }
 
@@ -383,15 +391,19 @@ func (p *Placeholder) toBrief() Brief {
 	if p.Blocked != "" {
 		title = fmt.Sprintf("[blocked:%s] %s", p.Blocked, title)
 	}
+	if !issueflow.RepairDispositionSettled(p.HandoffAssessment) {
+		title = fmt.Sprintf("[intake:%s] %s", firstIntakeState(p.HandoffAssessment.State), title)
+	}
 	return Brief{
-		Num:     placeholderNum(p.Path),
-		Title:   title,
-		Wave:    p.Wave,
-		Effort:  p.Effort,
-		Status:  p.Status,
-		Schema:  "placeholder-v1",
-		Value:   p.Value,
-		Blocked: p.Blocked,
+		IntakeAssessment: p.HandoffAssessment,
+		Num:              placeholderNum(p.Path),
+		Title:            title,
+		Wave:             p.Wave,
+		Effort:           p.Effort,
+		Status:           p.Status,
+		Schema:           "placeholder-v1",
+		Value:            p.Value,
+		Blocked:          p.Blocked,
 		// The placeholder's own issue, as a full ref, for the main-red arm.
 		IssueRefs: []string{fmt.Sprintf("%s#%d", p.Repo, p.Issue)},
 	}
@@ -452,7 +464,7 @@ func checkPlaceholderFiles(streams []*Stream) (problems, notices []string) {
 			if !validGate[ph.Gate] {
 				add("%s: invalid gate %q (want model or human)", path, ph.Gate)
 			}
-			if !validBriefStatus[ph.Status] {
+			if !validPlaceholderStatus[ph.Status] {
 				add("%s: invalid status %q", path, ph.Status)
 			}
 			if ph.Value != "" && !validValue[ph.Value] {
@@ -506,4 +518,11 @@ func claimedPlaceholders(streams []*Stream, branches []string) map[string]bool {
 		}
 	}
 	return claimed
+}
+
+func firstIntakeState(state string) string {
+	if state == "" {
+		return "classification-needed"
+	}
+	return state
 }

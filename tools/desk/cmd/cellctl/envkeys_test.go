@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -1396,4 +1397,41 @@ func modelPinKeyList() []string {
 		}
 	}
 	return keys
+}
+
+// Regression: the shared library's declared inputs follow the real resolver,
+// including keys read only by the workflow profile. No file may persist them.
+func TestPerfContextEnvRegistry(t *testing.T) {
+	seen := map[string]bool{}
+	perfrec.ResolveContext(perfrec.ContextInput{LookupEnv: func(key string) (string, bool) {
+		seen[key] = true
+		switch key {
+		case "ASSAY_TELEMETRY":
+			return "1", true
+		case "ASSAY_PERF_PROFILE":
+			return "workflow", true
+		default:
+			return "", false
+		}
+	}})
+	delete(seen, "ASSAY_TELEMETRY") // cell consent already has its own registered owner
+	var want []string
+	for _, entry := range envKeys {
+		if strings.HasPrefix(entry.key, "ASSAY_PERF_") || entry.key == "DESK_LOOP" {
+			want = append(want, entry.key)
+		}
+	}
+	sort.Strings(want)
+	var got []string
+	for key := range seen {
+		got = append(got, key)
+		entry, ok := envKeyLookup(key)
+		if !ok || entry.class != envNotLever || entry.from != envFromRun || knownCellEnvKey(key) {
+			t.Errorf("%s may escape invocation-only attribution into persistent configuration", key)
+		}
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolver reads %v; registered library inputs declare %v", got, want)
+	}
 }

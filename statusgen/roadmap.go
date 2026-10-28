@@ -291,7 +291,7 @@ func stageCounts(s *Stream) map[string]int {
 func nextWave(s *Stream) int {
 	next := 0
 	for _, b := range s.Briefs {
-		if b.Status == "done" || b.Status == "verified" {
+		if b.Status == "done" || b.Status == "verified" || isWithdrawn(b.Status) {
 			continue
 		}
 		if next == 0 || b.Wave < next {
@@ -728,6 +728,9 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	totalBriefs := 0
 	for _, s := range streams {
 		for _, b := range s.Briefs {
+			if isWithdrawn(b.Status) {
+				continue // terminal, out of the portfolio denominator
+			}
 			totalCounts[b.Status]++
 			totalBriefs++
 		}
@@ -1112,6 +1115,7 @@ func runRoadmap(root, cadence string) int {
 	// back as "merged in a sibling" as dispatchable. Notices are discarded — the
 	// deck renders its own health/blocker prose, never board NOTICE text.
 	_, _ = runSiblingMergeIfOptedIn(streams, root) // opt-in only: --sibling-merge or ASSAY_SIBLING_MERGE=1
+	holdPhantomRowsFromGit(streams, root)          // strong board-honesty findings (boardhonesty.go)
 
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
 	// The zero ClaimView says so honestly, which also means a stream that

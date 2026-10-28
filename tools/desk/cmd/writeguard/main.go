@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -122,6 +121,7 @@ func run(stdin io.Reader) (Verdict, error) {
 	}
 
 	sentinel, _ := sentinelPath() // "" on error: the sentinel gate is then inert
+	claim := observeClaim()
 	cfg := Config{
 		SharedRoot: sharedRoot,
 		ProjectDir: projectDir,
@@ -130,7 +130,7 @@ func run(stdin io.Reader) (Verdict, error) {
 		// #1035: the shared-homed exemption is opt-in. #1190: the claim is
 		// the env token OR a short-lived sentinel file, because the env token
 		// alone is unreachable from the Bash tool.
-		SharedOK:     sharedOKClaimed(sharedRoot),
+		claim:        &claim,
 		SentinelPath: sentinel,
 		// The adopter's dangerous-command callout, "" when unconfigured (the shipped
 		// state: compiled generic indicators only). Read from the roster's config-home
@@ -163,20 +163,8 @@ func run(stdin io.Reader) (Verdict, error) {
 		return Verdict{}, nil
 	}
 
-	// The claim sentinel is human-only, and that check runs BEFORE the
-	// exemption gate: an exempt session must not be able to renew its own
-	// claim indefinitely, and a guarded one must not be able to issue one
-	// (#1190 review, blocking 2).
-	if v := cfg.CheckClaimSentinel(in.ToolName, target); v.Block {
-		return v, nil
-	}
-	if cfg.Exempt() {
-		return Verdict{}, nil
-	}
-	if in.ToolName == "Bash" {
-		return cfg.CheckBash(target), nil
-	}
-	return cfg.CheckFilePath(in.ToolName, target), nil
+	v, _, _ := cfg.evaluate(in.ToolName, target)
+	return v, nil
 }
 
 // --- the shared-OK claim (#1035 opt-in, #1190 reachability) ---
@@ -242,49 +230,6 @@ func sentinelPathForMessage() string {
 		return "~/.config/assay/writeguard-shared-ok"
 	}
 	return p
-}
-
-// sharedOKClaimed reports whether the shared-checkout exemption has been
-// claimed for sharedRoot — by the env token (human shells) or by a live,
-// in-scope sentinel file.
-func sharedOKClaimed(sharedRoot string) bool {
-	if os.Getenv("WRITEGUARD_SHARED_OK") != "" {
-		return true
-	}
-	p, err := sentinelPath()
-	if err != nil {
-		return false
-	}
-	fi, err := os.Stat(p)
-	if err != nil || fi.IsDir() {
-		return false
-	}
-	if time.Since(fi.ModTime()) > sentinelTTL() {
-		return false // stale claim: an exemption must not outlive its session
-	}
-	body, err := os.ReadFile(p)
-	if err != nil {
-		return false
-	}
-	return sentinelCoversRoot(string(body), sharedRoot)
-}
-
-// sentinelCoversRoot reports whether the sentinel body claims sharedRoot: an
-// empty body (or one with only comments) claims any checkout; otherwise only
-// the listed paths are claimed.
-func sentinelCoversRoot(body, sharedRoot string) bool {
-	scoped := false
-	for _, line := range strings.Split(body, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		scoped = true
-		if samePath(resolvePath(line), resolvePath(sharedRoot)) {
-			return true
-		}
-	}
-	return !scoped
 }
 
 // worktreeToplevel returns the toplevel of the git worktree containing dir,

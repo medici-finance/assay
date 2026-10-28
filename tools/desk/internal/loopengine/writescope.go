@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // WriteScope is one normalized advisory write-scope: a repo-relative path prefix, optionally
@@ -109,6 +111,8 @@ func normalizeScopeEntry(raw string) (WriteScope, bool) {
 	s := strings.TrimSpace(raw)
 	s = strings.Trim(s, "`'\"")
 	s = strings.TrimSpace(s)
+	// `a.go (planned)` names a.go: the same annotation rule the declared-scope parser uses.
+	s = deskkit.TrimScopeAnnotation(s)
 	if s == "" {
 		return WriteScope{}, false
 	}

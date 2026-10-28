@@ -10,6 +10,8 @@ gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 gate-why: "Changes which review findings can hold a PR or how a standing rejection can clear; approve the precise rule before changing that control."
 decision-trigger: "start"
+decision-issue: 1403
+ruling: "https://github.com/medici-finance/assay/issues/1403#issuecomment-5762224251"
 design: "DR-external-prereq-21"
 issues: [1387]
 schema: "brief-v2"
@@ -64,16 +66,15 @@ Options:
 Default if no answer: none — blocks until answered.
 
 **Ruling recorded (2026-09-21): APPROVED — option 1.** The driver ruled on the brief's
-decision-gate issue in their own login:
-[issue 1403](https://github.com/medici-finance/assay/issues/1403), the
-[ruling comment](https://github.com/medici-finance/assay/issues/1403#issuecomment-5762224251).
+decision-gate issue in their own login, in the ruling comment on decision issue #1403
+(the brief's `ruling:` key links it).
 The ruling approves the narrow same-head external-prerequisite exception: it applies only to
 an authenticated review explicitly stating that external prerequisites are the sole blockers;
 every prerequisite is independently verified from fresh evidence and revalidated at ready
 time; mixed code/content findings, missing evidence, later revocations and unsatisfied
 security reviews still block; issue closure alone does not establish a human ruling; and the
 board, planner and ready gate must agree — no empty or comment-only source commit is needed.
-The design-decision record is [DR-external-prereq-21](../decisions/DR-external-prereq-21.md).
+The design-decision record is `docs/streams/decisions/DR-external-prereq-21.md` (the brief's `design:` key).
 
 ## Interface contract
 
@@ -110,7 +111,38 @@ Named tests below are planned. The verifier must see each named PASS; exit zero 
 
 ## Evidence
 
-Pending implementation and independent verification. Authoring claims no acceptance result.
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/deskpost/ -run ^TestExternalPrerequisiteSameHead$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:0932fdefbc15 | 2026-10-20 | assay-verifier-app[bot] @ b1cf3d790708 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/deskpost/ -run ^TestExternalPrerequisiteMixedAndForged$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:2a51eb4de905 | 2026-10-20 | assay-verifier-app[bot] @ b1cf3d790708 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/deskpost/ -run ^TestExternalPrerequisiteFreshnessAndLanes$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:2a7fa7031951 | 2026-10-20 | assay-verifier-app[bot] @ b1cf3d790708 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/deskpost/ -run ^TestExternalPrerequisiteRestartAndCheckOnly$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:200ce99f0c58 | 2026-10-20 | assay-verifier-app[bot] @ b1cf3d790708 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOWORK=off go run ./cmd/muhar -spec cmd/deskpost/externalprerequisite-mutations.json` | pass exit=0 sandbox=container-netns | sha256:a62e01dd0ecd | 2026-10-20 | assay-verifier-app[bot] @ b1cf3d790708 (on-behalf-of human:ian) (forge-identity) |
+
+Verification pass 2026-10-20 by a dispatched verifier (strong tier, not the implementer) at source b1cf3d7907080ca6ff8dc3b023a0e7558af1123e. The witness table above is a mechanical re-run of all five Verify rows by statusgen verifyrun in a local docker container (image assay-verify:go1.27, built from golang:1.27.2-trixie, git 2.47) started with `--network none`, sandbox=container-netns, the engine's default seccomp profile, offline module cache, under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). verifyrun exited 0 and `statusgen verifyrun --check` reported 5 pass, 0 fail, 0 could-not-run of 5 Verify rows. Because the witness records exit status and an output hash only, each row was also run by hand at the same source in a scratch clone on the host (darwin/arm64, go1.27.2) to read the named results the Expect cells require:
+
+- Row 1: exit 0; `--- PASS: TestExternalPrerequisiteSameHead`, `ok` for the deskpost package.
+- Row 2: exit 0; `--- PASS: TestExternalPrerequisiteMixedAndForged` with 8 subtests passing and none failing.
+- Row 3: exit 0; `--- PASS: TestExternalPrerequisiteFreshnessAndLanes` with 5 subtests passing and none failing.
+- Row 4: exit 0; `--- PASS: TestExternalPrerequisiteRestartAndCheckOnly` with 3 subtests passing and none failing.
+- Row 5: exit 0, run alone in its own scratch clone, which was left clean afterwards; `Harness healthy: baseline GREEN, positive control CAUGHT.`, each of the six named mutations (could-not-check, unrelated-object, revocation, wrong-revision, freshness, standing-security-failure) CAUGHT by its named negative-path subtest, and `Totals: 6 caught, 0 NOT CAUGHT, 0 could-not-mutate.`
+
+Prior Evidence: none. Before this pass the section held only the authoring placeholder, so this is the first acceptance pass; the deliverable landed in the implementation PR medici-finance/assay#1417, with later fixes to the same decision code in #1602, #2136 and #2311, all present at this source.
+
+Human decision: the gate's ruling is the driver's own-login comment on decision issue medici-finance/assay#1403 (2026-09-21, option 1 approved), which matches this brief's `ruling:` key; that issue is closed and still carries its `needs-decision` label. A re-filed decision-gate issue for this item, medici-finance/assay#3711, is open and carries no reply yet.
+
+Risk-bearing values (enumerated over the decision code in the deskkit and deskpost externalprerequisite sources). The step runs because the brief touches the deskkit package, which the repository classes as a security path; every risk answer is no and none is irreversible, so each value below can be undone by an edit and a redeploy:
+
+- RISK-VALUE: DERIVED — externalPrereqOnly = regexp `(?i)^[ \t]*External-Prereq-Only:[ \t]*(\S.*?)[ \t\r]*$` @ tools/desk/internal/deskkit/externalprerequisite.go:58 — the explicit, typed declaration the ruling requires; it is read with fenced lines skipped and only as the sole marker value, so legacy free text cannot qualify; the row 2 subtest "quoted declaration is not a declaration" shows that a quoted marker does not qualify either.
+- RISK-VALUE: DERIVED — clearedPrereq = regexp `(?i)^[ \t]*Cleared-Prereq:[ \t]*(\S.*?)[ \t\r]*$` @ tools/desk/internal/deskkit/externalprerequisite.go:69, with `len(fields) < 3` @ line 102 — each clearance must name condition, object and satisfying ref, which is the binding to object and condition that the interface contract asks for; a shorter value is kept as malformed and refused, not dropped.
+- RISK-VALUE: DERIVED — authority binding `login == want` where want = the roster's reviewer App login @ tools/desk/cmd/deskpost/github.go:66 — only the authenticated reviewer identity can declare or clear, so a worker marker never grants approval (row 2 checks this).
+- RISK-VALUE: DERIVED — `len(d.Conditions) == 0` refuses @ tools/desk/internal/deskkit/externalprerequisite.go:261 — a declaration that lists no blocking condition fails closed instead of clearing on an empty set.
+- RISK-VALUE: DERIVED — freshness `!obs.ObservedAt.After(in.CRSubmittedAt)` @ tools/desk/internal/deskkit/externalprerequisite.go:327 — a strict later-than check with zero tolerance, which matches the contract's requirement that the prerequisite changed after the rejection; a zero rejection time also refuses (rows 3 and 5 check this).
+- The three-round finding cap is untouched by this work: the delivering diff only cites it as unchanged, as the brief requires.
+
+Verification-Attestation: medici-finance/assay#3712 run=88ad4b85e792134f91b3a68e0b670e3807c64fe4fc669da9ba59cf0063a59932 source=b1cf3d7907080ca6ff8dc3b023a0e7558af1123e brief=docs/streams/desk-supervision/brief-21-external-prerequisite-reverification.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: PASS** — all five Verify rows pass at b1cf3d790708 in the offline container witness, and the by-hand run shows each named test passing and the mutation totals; this is the first stamp, and the gate:human sign-off is still pending.
 
 ## Review
 

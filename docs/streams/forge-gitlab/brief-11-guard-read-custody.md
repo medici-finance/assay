@@ -144,54 +144,17 @@ guard's tests pin is preserved and sharpened: the DOCUMENT is the source of ever
 the TOOL is the source of the enumerated reads, and neither can widen the other.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` — op 40 `RepoHardeningRead` + `HardeningReadKind` +
-  `ValidateHardeningReadKind`; no other method, no field taking a path.
-- `tools/desk/internal/deskkit/forge_github.go`, `forge_github_golden_test.go` — the six GitHub
-  kinds, one golden per kind (the `rulesets` golden pins the list-then-detail walk) plus
-  `hardening_read_unknown_kind` emitting ZERO requests.
-- `tools/desk/internal/deskkit/forge_gitlab.go`, `forge_gitlab_test.go` — the named refusal
-  (`could-not-check: gitlab serves no hardening read of kind %q — forge-gitlab/12`), one golden so
-  `TestForgeGitlabCoverage` reconciles.
-- `tools/desk/cmd/repohardenguard/check.go`, `checklist.go`, `main.go`, `repohardenguard_test.go`
-  — `Checker.Get(endpoint)` → `Checker.Read(kind)`; `Row.Endpoint()` → `Row.Kind()`; `httpStatus`
-  reads `*deskkit.ForgeAPIError.Status` / `IsForgeNotFound` instead of regexing `gh`'s stderr;
-  the preflight becomes `read repo`; `identity()` reports the minted role's known login
-  (`<slug>[bot]`, the mechanism `deskclose` already uses) instead of `/user`, which an App token
-  cannot read; the fake-`gh` test fixture becomes a stub `Forge` keyed by kind, every existing
-  verdict asserted unchanged.
-- `tools/desk/cmd/repohardenguard/forge.go` (new) — the resolver seam: `deskkit.ForgeFor(fr,
-  "auditor")` (a FIXED role, the `deskevidence`/`"verifier"` shape — the guard runs outside any
-  desk window, so it must not read `$DESK_LOOP`); forge resolution by the roster's
-  `ASSAY_REPO_FORGES` entry only, never the CWD's origin remote (the guard is routinely run from a
-  checkout of a different repo); unresolvable → exit 6 naming the key.
-- `tools/desk/cmd/desktoken/desktoken.go` — `validRoles` += `auditor`. Nothing else: the GitHub
-  mint resolves `auditor-app.pem` / `AUDITOR_APP_ID` / `AUDITOR_INSTALL_ID` by the existing
-  role-parameterised lookup; the GitLab path reads/rotates `gitlab-auditor.token` by the same
-  brief-03 contract. `desktoken --version` echoes the new binding.
-- `tools/desk/cmd/desktoken/adopterdocs_test.go` (new) — `TestAdopterDocsEnumerateEveryRole` (planned): the
-  docs-drift guard for the #857 ruling's docs half, the `secondcell_test.go` `adopterContract`
-  shape. It walks `validRoles` and fails naming any role absent from `docs/adopting-assay.md` or
-  from `docs/adopting-assay-gitlab.md`'s role table and token-file list, so a SEVENTH role added
-  in code with no page naming it reddens CI instead of reaching an adopter as a Refused exit. The
-  same test asserts the auditor's documented GitHub grant carries no `: write`.
-- `tools/desk/internal/forgeban/allowlist.go` — remove `cmd/repohardenguard/check.go::ghRun::gh`;
-  lower `allowedInvocationCeiling` by exactly the rows removed. `forgeban.go:173` — reword the
-  comment so it no longer carries the literal the whole-tree grep counts.
-- `tools/desk/internal/deskkit/echocoverage_test.go` — `exemptFromRoster["repohardenguard"]`
-  reason updated (reads the forge map, never the write-authorisation set).
-- `docs/streams/forge-gitlab/inventory.md` — op 40 row + delta paragraph (consumer:
-  `repohardenguard`), the residual-call-sites table updated, the ceiling narrative.
-- `docs/adopting-assay.md`, `docs/adopting-assay-gitlab.md` — provisioning the auditor identity,
-  at EVERY place these pages enumerate a role or a permission set (the #857 ruling's docs half):
-  GitHub — the §2 App inventory row and the §4 provisioning-checklist step that lists the Apps to
-  create, both naming an App with `Metadata: read`, `Contents: read`, `Administration: read` and
-  NO write permission of any kind; GitLab — the role→service-account table row (`auditor` |
-  service account | Reporter (20) | `read_api` | GET-only hardening reads) and the per-role
-  `gitlab-<role>.token` link/copy list, which must include `auditor`. Both pages state the
-  accepted consequence in the adopter's own terms: the admin-gated rows report could-not-check
-  under this identity and are re-run by a human administrator, and the grant is NOT widened to
-  make them readable. The auditor is NOT added to the `--raised-by` attribution roles — it never
-  files.
+- `tools/desk/internal/deskkit/forge.go` — op 40 `RepoHardeningRead` + `HardeningReadKind` + `ValidateHardeningReadKind`; no other method, no field taking a path.
+- `tools/desk/internal/deskkit/forge_github.go`, `forge_github_golden_test.go` — the six GitHub kinds, one golden per kind (the `rulesets` golden pins the list-then-detail walk) plus `hardening_read_unknown_kind` emitting ZERO requests.
+- `tools/desk/internal/deskkit/forge_gitlab.go`, `forge_gitlab_test.go` — the named refusal (`could-not-check: gitlab serves no hardening read of kind %q — forge-gitlab/12`), one golden so `TestForgeGitlabCoverage` reconciles.
+- `tools/desk/cmd/repohardenguard/check.go`, `checklist.go`, `main.go`, `repohardenguard_test.go` — `Checker.Get(endpoint)` → `Checker.Read(kind)`; `Row.Endpoint()` → `Row.Kind()`; `httpStatus` reads `*deskkit.ForgeAPIError.Status` / `IsForgeNotFound` instead of regexing `gh`'s stderr; the preflight becomes `read repo`; `identity()` reports the minted role's known login (`<slug>[bot]`, the mechanism `deskclose` already uses) instead of `/user`, which an App token cannot read; the fake-`gh` test fixture becomes a stub `Forge` keyed by kind, every existing verdict asserted unchanged.
+- `tools/desk/cmd/repohardenguard/forge.go` (new) — the resolver seam: `deskkit.ForgeFor(fr, "auditor")` (a FIXED role, the `deskevidence`/`"verifier"` shape — the guard runs outside any desk window, so it must not read `$DESK_LOOP`); forge resolution by the roster's `ASSAY_REPO_FORGES` entry only, never the CWD's origin remote (the guard is routinely run from a checkout of a different repo); unresolvable → exit 6 naming the key.
+- `tools/desk/cmd/desktoken/desktoken.go` — `validRoles` += `auditor`. Nothing else: the GitHub mint resolves `auditor-app.pem` / `AUDITOR_APP_ID` / `AUDITOR_INSTALL_ID` by the existing role-parameterised lookup; the GitLab path reads/rotates `gitlab-auditor.token` by the same brief-03 contract. `desktoken --version` echoes the new binding.
+- `tools/desk/cmd/desktoken/adopterdocs_test.go` (new) — `TestAdopterDocsEnumerateEveryRole` (planned): the docs-drift guard for the #857 ruling's docs half, the `secondcell_test.go` `adopterContract` shape. It walks `validRoles` and fails naming any role absent from `docs/adopting-assay.md` or from `docs/adopting-assay-gitlab.md`'s role table and token-file list, so a SEVENTH role added in code with no page naming it reddens CI instead of reaching an adopter as a Refused exit. The same test asserts the auditor's documented GitHub grant carries no `: write`.
+- `tools/desk/internal/forgeban/allowlist.go` — remove `cmd/repohardenguard/check.go::ghRun::gh`; lower `allowedInvocationCeiling` by exactly the rows removed. `forgeban.go:173` — reword the comment so it no longer carries the literal the whole-tree grep counts.
+- `tools/desk/internal/deskkit/echocoverage_test.go` — `exemptFromRoster["repohardenguard"]` reason updated (reads the forge map, never the write-authorisation set).
+- `docs/streams/forge-gitlab/inventory.md` — op 40 row + delta paragraph (consumer: `repohardenguard`), the residual-call-sites table updated, the ceiling narrative.
+- `docs/adopting-assay.md`, `docs/adopting-assay-gitlab.md` — provisioning the auditor identity, at EVERY place these pages enumerate a role or a permission set (the #857 ruling's docs half): GitHub — the §2 App inventory row and the §4 provisioning-checklist step that lists the Apps to create, both naming an App with `Metadata: read`, `Contents: read`, `Administration: read` and NO write permission of any kind; GitLab — the role→service-account table row (`auditor` | service account | Reporter (20) | `read_api` | GET-only hardening reads) and the per-role `gitlab-<role>.token` link/copy list, which must include `auditor`. Both pages state the accepted consequence in the adopter's own terms: the admin-gated rows report could-not-check under this identity and are re-run by a human administrator, and the grant is NOT widened to make them readable. The auditor is NOT added to the `--raised-by` attribution roles — it never files.
 - `CHANGELOG.md`, the v1.0.8 section — the fragment (changelog/forge-gitlab-11-guard-read-custody.md) was consumed by the v1.0.8 changelog roll, so the fragment file no longer exists and the section is its record.
 - Conditional: `tools/desk/cmd/deskroster/roster.go`, `forge.go`, tests — ONLY if #841 has
   closed unmerged at pickup; then re-land its diff here unchanged (same ops, same session-role

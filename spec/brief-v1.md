@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.49
+**Describes reference implementation:** `statusgen` v1.0.65
 
 ## 1. Scope
 
@@ -65,6 +65,7 @@ validated against the value set given.
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
 | `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence as such. A change that MOVES, relabels or drops a `gate: human` brief is a different matter: without a decision issue and a recorded ruling that change is refused by the decision-gate hold (`lifecycle-v1.md` §4.5). |
 | `ruling` | string | OPTIONAL | Link to the comment on `decision-issue` that records the human ruling, as an issue-comment URL `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>`. A wrong TYPE is a parse error. The link's grammar, and what it must resolve to (an unedited comment by a human login on the brief's own decision issue, naming the brief by its board id), are the decision-gate hold's (`lifecycle-v1.md` §4.5); absence is never flagged on its own. |
+| `independence-override` | string | OPTIONAL | A recorded override, naming a human, of the committer-identity independence check, for one brief whose authoring commit and every Evidence commit share one git identity in a repository with several identities (a legitimate post-verification re-touch). Grammar: `human:<name> YYYY-MM-DD <reason>`, the human token first, the date a real calendar date and the reason non-empty. A wrong TYPE is a parse error. It is honored ONLY when `<name>` resolves through the CURRENT human-login map, is not the brief's own author, the brief is not in a declared fixture corpus, the committed line was last written by a commit whose git author identity (the commit object's own email, not a mailmap-resolved one) differs from the one it excuses, the date is no more than one day after that commit's committer date (one day of slack for timezones), and the Evidence section has not changed since that commit. An uncommitted value is not honored. Otherwise the independence failure stands and names why the override was refused; an honored override is reported as a notice, never silently, and the notice says that lint does not corroborate the named human's authorization. These offline conditions read git metadata, which the committer sets: they refuse an override committed under the excused identity's own author email, but they do not tie `<name>` to the person who made the commit. That binding is the network corroboration lane, which checks the `human:<name>` token on an added override line like any other stamp, and it holds only where that lane runs on the change that adds the override. |
 | `domain` | string | OPTIONAL | Cynefin classification of the work — one of `clear`, `complicated`, `complex`, or `chaotic`. Absent is equivalent to `complicated` (the safe Ordered default) at read time. An out-of-set value MUST be flagged. |
 | `blocked-by` | string | OPTIONAL | Environment-blocked marker; the only defined value is `env` (the brief is blocked on infrastructure or environment). Absent means the brief is not blocked. An out-of-set value MUST be flagged. |
 | `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
@@ -73,6 +74,7 @@ validated against the value set given.
 | `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
 | `budget` | scalar | OPTIONAL | What the brief is sized to spend, beside `effort`, WITH its unit: `<amount>[k\|M] <unit>` (the multiplier is case-sensitive: `k` thousand, `M` million), the unit being `tokens` or a three-letter currency code (`400k tokens`, `25 USD`). Absent means no budget checkpoint applies and MUST NOT be flagged. A present value without a unit (`budget: 400`), with an unrecognised unit, or with a non-positive amount MUST be flagged by value; a bare number is read as the scalar it is so it reaches that flag rather than failing as a type error. A non-scalar is a parse error. |
 | `outcome` | string | OPTIONAL | What the brief is meant to move: a requirement id from the requirement register (`registers-v1.md` §6) — `REQ-<slug>` in-repo or `<alias>:REQ-<slug>` cross-repo, the same grammar as `satisfies` — or the literal `none`. The register's ids ARE the vocabulary; there is no second one. A value that is neither `none` nor a requirement reference MUST be flagged, and so MUST a well-formed in-repo id the register does not define (an unknown outcome id). A cross-repo id names a register the offline linter cannot read and is a could-not-check NOTICE, never a pass. A wrong TYPE is a parse error. Absence is never a PROBLEM; a conforming linter SHOULD emit an advisory NOTICE for a brief authored after the key's introduction that carries neither an id nor `none` — `none` is a decision, absence is not. |
+| `outcome-revision` | string | OPTIONAL | The approved product target revision of the brief's `outcome` that the brief was selected against (statusgen/23): a revision name matching `^[a-z0-9][a-z0-9._-]*$`, such as `r1`. It qualifies `outcome` and never changes its grammar; there is no `REQ@revision` form. A present value MUST be flagged when the brief carries no `outcome` or `outcome: none` (a revision binds no requirement) or when it does not match the revision grammar. A wrong TYPE is a parse error. Absence is never flagged: a brief without it is **unbound**, which a [context-handoff-v3](./context-handoff-v3.md) receipt reports as an unknown product assessment, never as aligned. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 | `split-from` | string | OPTIONAL | The `<stream>/<NN>` id of the brief this brief was split off from — the explicit parent for the split-flag conservation gate (§3.4), used when the parentage is NOT encoded in the numbering (a split across streams, or a renumbered child). Absent means the brief is not a declared split child. A value that is not a `<stream>/<NN>` in-repo brief reference, or that names the brief itself, MUST be flagged; a wrong TYPE is a parse error. A value that does not resolve to a brief in the tree is a `could-not-check` NOTICE (the parent may have been retired in the same change), never a silent pass. |
 
@@ -84,7 +86,7 @@ with the `risk` answers, any `wave` value inconsistent with `depends`, any empty
 `exec-tier`, and any `exec-tier: strong` brief missing `exec-tier-why`. It MUST also flag
 any out-of-set `domain`, `blocked-by`, or `measures` value, any malformed `homed-in`
 shape, any `budget` without a unit, any `outcome` that is neither `none` nor a registered
-requirement id, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
+requirement id, any `outcome-revision` that binds no outcome or is not a revision name, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
 missing `name`, or gives `name` a non-string value. For every optional field in section
 3.2 the rule is the same: an ABSENT field is never flagged, and a wrong *type* is a parse
 error, while a present-but-out-of-set *value* is the semantic flag described here.
@@ -154,15 +156,221 @@ This is a conservation check, not an authorization one: it never licenses loweri
 and a genuinely clean split whose risky work all went to a sibling conserves by keeping the
 child's flags UP, not down.
 
-### Product-target binding planning (13 October 2026)
+### 3.5 Schema versions
 
-The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
-routes optional `outcome-revision` and versioned context bindings to statusgen/23.
-This note does not add a supported field to the frontmatter contract: parser, schemas,
-version negotiation and all consuming readers must land together. Keep `outcome` and
-`satisfies` grammar unchanged; missing legacy bindings remain explicitly unbound.
+A brief's `schema:` value names the frontmatter contract it is validated against. Each version
+is a strict superset of the one before it; no field is removed or changed in meaning.
+
+| Schema | Adds | Machine-readable contract | First `statusgen` release that reads it |
+|--------|------|---------------------------|------------------------------------------|
+| `brief-v1` | this document's fields (§3.1, §3.2) | `schemas/brief-v1.json` | v0.9.0 (the earliest published release) |
+| `brief-v2` | the hierarchical `brief:` id `<cell>:<repo>:<stream>:<NN>`, `version:`, and the identity/graph keys `id`, `supersedes`, `gates`, `feathers`, `verify` | `schemas/brief-v2.json` | v1.0.0 |
+| `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | v1.0.50 |
+
+A `statusgen` release declares the versions it reads, and the first release of each, in
+machine-readable form: `statusgen --version --json` prints
+`{"version": …, "briefSchemas": […], "briefSchemaFirstRelease": {…}}`. The bare
+`statusgen --version` stays a single line holding the tag, because pin checks compare it
+verbatim.
+
+Schema evolution fails closed. A file with no `schema:` key at all is a legacy brief and is
+exempt (§3.1). A `schema:` value in the brief family (`brief-v<N>`) that the binary does not
+recognize MUST NOT fall into that exemption. A conforming linter MUST refuse it loudly,
+naming the schema the file needs, the versions the binary supports, where the first
+supporting release is listed (this table), and the `statusgen` the repository pins in
+`.assay-versions`. A `schema:` value outside the brief family (`contract-v1`,
+`placeholder-v1`, …) names a different document kind and stays out of this parser's scope.
+
+### 3.6 Withdrawn briefs (`brief-v3`)
+
+A brief that a later decision retires, or that is merged into another brief, is
+**withdrawn** (`lifecycle-v1.md` §2.0a). It is not deleted: the file stays, for history and
+links. A withdrawn brief MUST be `schema: brief-v3` and MUST carry:
+
+| Field | Type | Requirement | Description |
+|-------|------|-------------|-------------|
+| `withdrawn-date` | string | REQUIRED when withdrawn | `YYYY-MM-DD` date of the withdrawal. |
+| `withdrawn-reason` | string | REQUIRED when withdrawn, non-empty | One sentence: why, citing the decision, and what (if anything) survives where. |
+| `superseded-by` | array[string] | OPTIONAL | The successor brief(s): `<stream>/<NN>` for this repository, or the global brief id `<cell>:<repo-alias>:<stream>:<NN>` (the brief-v2 `brief:` form) for another one. `[]` means won't-fix: no successor. For a duplicate merged into another brief it names the survivor. |
+
+The stream README row carries the bare Status token `withdrawn`; its link text keeps the
+brief's original title. Unexecuted work leaves Verified and Reviewed as `—`; any existing stamps, Evidence, receipts and review decisions MUST be preserved. The body keeps a
+banner directly under the H1:
+
+```
+> **Withdrawn YYYY-MM-DD — superseded by <successor>.** <reason>. Not executable.
+```
+
+The withdrawal keys (including optional `withdrawal-context`, below) belong to `brief-v3` only. On a `brief-v1` or `brief-v2` file they are
+unknown keys and MUST be tolerated as written — not parsed, not flagged — because boards
+that predate brief-v3 already carry `superseded-by:` as free prose, and a linter upgrade
+MUST NOT turn a previously valid board red. The one rule that crosses versions is the
+status itself: a conforming linter MUST flag a `withdrawn` row whose brief is not
+`brief-v3`, or that has no typed brief file at all.
+
+On a `brief-v3` file a conforming linter MUST flag, as hard problems:
+
+- a withdrawn brief without `withdrawn-date` (or with one that is not a `YYYY-MM-DD`
+  calendar date) or without a non-empty `withdrawn-reason`;
+- a `superseded-by` that is not a list of strings;
+- any withdrawal key on a brief whose status is not `withdrawn`;
+- a same-repository `superseded-by` entry that does not resolve to an existing brief, an
+  entry naming the brief itself, and an entry in neither ref form.
+
+A global `superseded-by` id is syntax-checked, and resolved only when the root it names is
+configured in the run (by that root's registry `self:` key, or by the `<cell>:<alias>`
+prefix of its own brief-v2 ids); an unconfigured root raises a could-not-check NOTICE (syntax checked only). A successor cycle among configured roots is a hard problem. A chain may pass through another withdrawn brief but must terminate; a terminal chain or empty successor list does not prove that any surviving obligation was delivered. A brief whose
+`depends:` names a withdrawn brief MUST get a NOTICE naming the successor, so the edge is
+re-pointed: a withdrawn brief never satisfies a dependency.
+
+#### Revision-bound withdrawal context
+
+A brief-v3 withdrawal MAY point at one shared amendment record:
+
+```yaml
+withdrawal-context:
+  path: docs/changes/example/handoff.json
+  digest: "sha256:<64 lower-case hex characters>"
+```
+
+`path` MUST be a clean repository-relative regular file within the repository (including
+symlink resolution), at most 4 MiB. The object is closed: `path` and `digest` are required,
+and no other key is allowed. `digest` is the canonical decoded handoff digest, not a raw
+file checksum. Lint strictly decodes context-handoff-v1 or
+[context-handoff-v2](context-handoff-v2.md), checks the digest, requires approval of the
+record's exact target revision, and finds this brief's retire/replace/split obligation.
+Its normalized `replaced_by` list MUST match `superseded-by`. Observed active work on the
+brief MUST have an acknowledged treatment, including cancellation/reconciliation. An
+executed impact (including in-progress work) or a brief carrying Evidence MUST have a preserved-history entry.
+
+One handoff can cover many briefs. This pointer does not duplicate the target, approval,
+claim, history or metric payload into every brief. A valid record is internally consistent;
+it is not proof of discovery completeness, a stopped worker, or a delivered successor.
+Current claims and PR heads must be re-read at the amendment boundary. The existing
+handoff/manifest contract continues to own patch and follow-up binding.
+
+For rollout, missing `withdrawal-context` is advisory on human-gated or historically
+executed work, rather than a new failure on existing branches. Supplied contexts MUST
+validate. Withdrawal MUST NOT clear Evidence, Verified/Reviewed stamps or merged-work
+debt. The witness comparator MUST still surface known execution (including a merged PR
+whose current fold is unknown); only an unstarted `todo` witness needs no drift NOTICE.
+Use `statusgen withdrawal-audit` and the [rollout runbook](../docs/withdrawal-rollout.md)
+to reconcile open implementation and evidence PRs. A missing context never suppresses
+those checks, and a supplied context never grants merge, closure or verification authority.
+
+### Product-target binding (statusgen/23)
+
+The [architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
+routed optional `outcome-revision` and versioned context bindings to statusgen/23, which
+ships them together: the §3.2 key, the brief reader and linter, and the
+[context-handoff-v3](./context-handoff-v3.md) receipt that compares each binding with the
+current approved product target. The `outcome` and `satisfies` grammar is unchanged;
+missing legacy bindings remain explicitly unbound.
 Observation syntax belongs to the continuing-operations impact extension, not a second
 brief lifecycle or a universal observation mandate.
+
+### 3.7 Proposed delivery milestone integration (not shipped)
+
+The draft [`milestone-v1.md`](./milestone-v1.md) defines a separate, versioned outcome
+contract. It does not extend the supported schema table above. A future negotiated
+brief schema (provisionally `brief-v4`, not allocated or implemented by this change)
+would add an optional `requires-milestones: array[string]` containing exact versioned
+milestone references per milestone §2: `<stream>:m-<NN>@<version>` for the current
+root, `<repo>:<stream>:m-<NN>@<version>` within the declaring cell, or
+`<cell>:<repo>:<stream>:m-<NN>@<version>` for explicit qualification.
+These use the new typed milestone-reference grammar, not the existing brief-only
+`qualifiedRef` parser; brief §3.8 defines `:b-<NN>[@<version>]` and compatibility
+with the existing internal brief `fullId` `<cell>:<repo>:<stream>:<NN>`. Its presence would mean the capability is required before
+the consuming brief starts; absent/empty means no additional milestone start requirement.
+Unknown, unreadable or unaccepted required capabilities cannot be treated as ready.
+The brief Context must identify the capability it uses and the relevant supported
+environment/profile; an acceptance for a different subject cannot satisfy that need.
+
+`depends` and `unblocks` continue to name briefs; do not insert milestone IDs into their
+existing grammar or into `outcome`/`satisfies`, which name requirements. Existing brief
+waves continue to describe brief dependencies. The additional capability gate is shown
+separately and participates in mixed-graph cycle checks; a wave alone is not readiness.
+The implementation must recheck eligibility at dispatch/pickup using current capability
+observations, without retroactively rewriting completed execution or evidence.
+
+Milestone contribution membership is authored only in the milestone's `contributes`
+list; reverse brief membership is generated. Contributing to a milestone does not
+inherit that milestone's final-acceptance prerequisites as brief start dependencies.
+A brief may serve several milestones. Existing Task/Verify amendment, version, risk,
+design and review obligations still apply to edits prompted by a milestone change.
+
+This proposed field MUST NOT be added to a legacy operational brief merely because its
+parser tolerates extra keys. Schema negotiation, dispatch refusal, all graph readers and
+report consumers must ship together before operational use (milestone §10).
+
+### 3.8 Proposed colon-only brief references and deprecation (not shipped)
+
+For new authoring with negotiated reader support, the canonical brief ID is
+`<cell>:<repo>:<stream>:b-<NN>`, for example `example-cell:tools:build:b-11`.
+A brief definition's `brief` field uses that full, unversioned ID; its existing
+positive integer `version` field records the Task/Verify revision separately.
+References may optionally pin that revision as `:b-<NN>@<version>`.
+Milestone references use `:m-<NN>@<contract-version>` instead. The prefixes name
+different work types, and the two version counters have different meanings.
+
+The future typed brief adapter accepts these colon-only forms:
+
+| Written reference | Expanded identity |
+|---|---|
+| `<cell>:<repo>:<stream>:b-<NN>[@<version>]` | Explicit owning cell, repo and stream. |
+| `<repo>:<stream>:b-<NN>[@<version>]` | Declaring cell; explicit repo and stream. |
+| `<stream>:b-<NN>[@<version>]` | Declaring cell/repo; explicit stream. |
+
+Brackets above indicate an optional suffix; they are not literal syntax. Names,
+repo-alias lookup and brief-number grammar follow context-handoff §2. Expansion uses
+the declaration's actual cell/root, never a fuzzy search. A present version is a
+positive integer and MUST resolve to that exact authored brief revision. A missing
+or unreadable requested revision is unknown; a newer revision cannot silently replace
+it. With no suffix, resolve the brief at the selected source snapshot and record its
+observed version/commit before execution or assessment. No implicit global latest.
+The revision selector is not part of logical work identity and MUST NOT allocate a
+second task, claim or workflow. Conflicting revision requirements must be surfaced.
+
+### Compatibility and canonical writes
+
+Existing `<stream>/<NN>`, `<stream>:<NN>`, `<repo>:<stream>:<NN>`,
+`<cell>:<repo>:<stream>:<NN>`, `<repo>:<stream>/<NN>` and
+`<cell>:<repo>:<stream>/<NN>` references remain compatibility inputs under their
+existing resolution rules. Earlier prefixed draft slash labels (`<stream>/b-<NN>`
+and `<cell>:<repo>:<stream>/b-<NN>`, optionally versioned) may also be read by the
+new negotiated adapter. New writes emit colon-only prefixed IDs/references; legacy
+unprefixed and slash forms are **deprecated for new authoring after adoption**, not
+invalid historical records. No compatibility read may reinterpret a milestone as a brief.
+
+All aliases normalize to the same existing permanent UUID/work identity. The current
+internal brief `fullId` `<cell>:<repo>:<stream>:<NN>` used by context-handoff and
+verification-domain remains an internal compatibility representation, not a second
+work item. Existing `qualifiedRef` and verification-domain APIs are not changed by
+this draft: they still reject `b-`, `m-`, slash and revision suffixes. The future
+adapter resolves type, identity and revision, then supplies the existing normalized
+ID plus separately bound version/subject to those APIs. Never feed new syntax to an
+old parser and assume it understood it. Unknown/ambiguous aliases refuse or remain
+unknown; aliases resolving to different UUIDs are a collision, not duplicates to merge.
+
+Preserve brief versions, lifecycle, Evidence, source locators and historical aliases.
+Label conversion alone does not bump Task/Verify version or establish completion.
+The `brief-<NN>-<slug>.md` filename convention is unchanged. No bulk rename, UUID
+reminting or historical Evidence rewrite is required.
+
+The new references require a future negotiated brief schema (provisionally `brief-v4`,
+subject to allocation alongside §3.7). Update generator/scaffolding, graph/dependency
+readers, board/eligibility, PR trailers/claims, workflow/handoff adapters, the
+human-gate ruling-link/board-ID check (lifecycle §4.5), and history/export/import
+consumers together. Old/new aliases must bind the same brief in human rulings;
+normalization must not bypass or weaken a human gate. Advertise support and refuse required
+unsupported semantics. This draft adds no supporting release or operational YAML.
+
+Authoring skills MUST write the new colon-only form once the pinned generator and all
+required consumers support it. Until then capture proposed IDs in scoping prose;
+executable briefs retain the pinned reader's supported legacy form with the limitation
+disclosed. The pilot must show old/new aliases deduplicate, optional revision pins bind
+exactly, unversioned reads bind a source snapshot, unknown versions stay unknown,
+unsupported readers refuse, cross-root elisions resolve, and `m-` never becomes brief work.
 
 ## 4. Body structure
 
@@ -170,7 +378,37 @@ brief lifecycle or a universal observation mandate.
 
 The body MUST contain a `## Context` section. It MUST include:
 
-- A `files:` line listing exact paths the implementer touches.
+- A column-zero `files:` field listing repository-relative paths the implementer touches, as
+  bare or backtick-quoted list items or inline comma-separated declarations.
+  The following grammar governs verification input receipts, coverage, admission
+  binding and wake scheduling; other coordination-tag readers are outside this contract.
+  Literal files/directories, segment globs (`*`, `?`, character classes) and
+  bounded finite brace alternatives are supported. A declaration ends before
+  its em-dash description or a colon after a quoted path; descriptions and
+  parenthesized annotations do not declare additional paths. The field ends at
+  the next blank line, known column-zero Context field key or column-zero section
+  heading. An indented `## ` line inside Context MUST refuse, including while a
+  files list is paused after a blank. A field key may carry a parenthesized
+  annotation, such as `facts (date):`. HTML comments within a declaration or its
+  description, and raw HTML blocks or comments while awaiting the next field,
+  MUST refuse ambiguous section containment. Trailing whitespace and CRLF MUST
+  NOT count as indentation. Unknown keys, loose list/quote/code
+  continuations after the blank, and unsupported markers inside Context MUST
+  refuse rather than drop declarations. Outside Context, field-shaped `files:`
+  declarations refuse; ordinary prose and inline references remain prose.
+  Hyphen-minus/en-dash description separators are unsupported. Examples inside fences do not
+  declare paths. A region skipped as fenced MUST NOT contain a section heading
+  or files marker; such examples refuse conservatively. Inside Context, an
+  indented opener or one within/after the files field before its next known field
+  MUST refuse. This bounded grammar does not infer list/HTML container ends.
+  Fence openers/closers MUST have at most three leading ASCII spaces;
+  a backtick opener's info string MUST contain no backtick. Ambiguous fence-shaped
+  Context lines refuse. A closing fence MUST use the same character and be at least as
+  long as its opener; an unclosed fence refuses. Duplicate Context sections/fields
+  are ambiguous and refused.
+  Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
+  be reported explicitly, never interpreted as absent deliverables. See the
+  [declaration and observation contract](../docs/declared-input-scope.md).
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
@@ -278,6 +516,26 @@ rules keep it from becoming a delete-everything bias:
    invariant is still covered at its owner, not that every old test survives. This rule adds
    an obligation and grants no authority: retiring a security or access control is still
    subject to the `risk`/`gate` derivation (§3.1) like any other change.
+
+### 4.1.1 Implementation pickup assessment
+
+For work within §4.1's architecture scope, the executor MUST assess the selected
+approved target/transition, current semantic owners and applicable engineering
+guidelines against the brief and actual producer/consumer implementations before
+implementation effects, on resume and after a material change. Record source
+revisions, coverage gaps and a reasoned continue/adapt/hold disposition in the
+implementation plan or PR, using the existing context receipt where supported.
+The [pickup procedure](../plugins/assay/references/implementation-pickup.md) is the
+single procedural reference. Missing required context holds only the affected scope;
+a newer unapproved proposal or unrelated edit MUST NOT veto authorized work.
+
+A material contract/owner change requires reconciled Task, dependencies, consumers
+and Verify plus existing active-work acknowledgement and approval where applicable.
+Preserve dated sources and completed Evidence. Brief authors MUST cite canonical
+contract/guideline entry points in Read first rather than freeze copied rule text.
+This execution obligation adds no frontmatter key or current lint/runtime gate.
+Automated discovery/recheck and dispatch integration are delivered by statusgen/20–21;
+until supported, use the explicitly bounded manual bootstrap.
 
 ### 4.2 Ground rules
 

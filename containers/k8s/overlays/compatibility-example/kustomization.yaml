@@ -1,0 +1,13 @@
+# Opt-in template only. Replace documentation addresses/storage before applying.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - endpoints.yaml
+patches:
+  - target:
+      kind: StatefulSet
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: replace-storage-class

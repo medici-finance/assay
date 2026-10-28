@@ -414,6 +414,44 @@ RISK-VALUE: NAMED, NOT DERIVED — example strong tier "claude-opus-4-8[1m]" @ t
 
 Verification-Attestation: medici-finance/assay#3003 run=32bd543335da07e9e694a7320d9016fd9be6489d6df6021cf9e0c4db2441f0f6 source=8efe5579d9253813835db650d45180eea76cf33e brief=docs/streams/desk-supervision/brief-22-cell-model-policy.md model=claude-opus-5-5 tier=any
 
+### Non-implementer verifier full re-run — 2026-10-20
+
+Non-implementer verification on merged main b73d90d774fca8aec8974ef410da63ebcb10eece by assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk). Gate: model; all four risk answers are "no". Admitted by `deskdispatch --check-verifier` (exit 0 before the run and exit 0 after the hand run, run f8895148c4d4, issue #3615). This pass follows the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). The execution witness below ran `statusgen verifyrun --sandbox container-netns` non-dry in a local docker container: image assay-verify:go1.27 (id sha256:955fd6c46c93, built from golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e, git 2.47.3), `--network none`, sandbox=container-netns, the engine's default seccomp profile, statusgen and the desk tools built from this tree. Witness window 2026-10-20T04:10:21Z to 04:10:52Z; verifyrun exit 0 and `verifyrun --check` reported 5 pass, 0 fail, 0 could-not-run of 5 Verify rows.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | pass exit=0 sandbox=container-netns | sha256:53fb66ee9c96 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | pass exit=0 sandbox=container-netns | sha256:ea8200f8d07f | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | pass exit=0 sandbox=container-netns | sha256:7997f03ece8b | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | pass exit=0 sandbox=container-netns | sha256:3e7302423768 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+
+Why this re-run: the latest prior Evidence, the 2026-10-15 re-run at 8efe5579d925, is the substance this pass supersedes; it passed every row by hand but predates later changes on the tested surface, among them #3168 (tmux and herdr stubs in every suite's private PATH), #3276, #3377 and #3463. So every row was executed again at this source, by hand and in the witness above.
+
+Hand run on the darwin host in a scrubbed environment: env -i keeping only PATH (Homebrew and system directories), LANG and TERM; a throwaway HOME, TMPDIR and GOCACHE outside the checkout; KUBECONFIG=/dev/null; a placeholder git identity. Each row ran exactly as authored from the checkout root, 2026-10-20T04:07:58Z to 04:08:51Z.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | named tests pass, including mixed-provider show/up/desk agreement and recording-harness exec arguments | exit 0. "Ran 19 tests in 8.031s ... OK"; all 19 print ok, among them test_desk_show_and_up_agree_on_mixed_providers, test_real_exec_argv_and_env, test_ban_cannot_be_removed_by_omitting_deny, test_child_mapping_allowlist_and_hooks, test_unsupported_efforts and test_up_preflights_all_roles_before_windows | 2026-10-20 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | exit 0; existing provider credential and override behavior preserved without policy | exit 0. "provider.test.sh: OK", 79 ok lines, no FAIL line | 2026-10-20 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | exit 0; existing Claude/Codex launch behavior preserved without policy | exit 0. "harness.test.sh: OK", 63 ok lines, no FAIL line | 2026-10-20 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0; no legacy pin, override or persistence regression | exit 0. "model-namespace.test.sh: OK" (28 ok), "model-override.test.sh: OK" (25 ok), "cell-set.test.sh: OK" (94 ok), no FAIL line | 2026-10-20 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 | exit 0, no output | 2026-10-20 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+
+Supplemental probe (no acceptance credit): rows 3 and 4 re-executed with tmux and herdr removed from PATH (a scratch directory linking every other Homebrew tool; `command -v` found neither). Row 3 exits 0 ("harness.test.sh: OK") and row 4 exits 0 (all three suites OK). At 8efe5579d925 the same probe made row 3 exit 1 with 6 failures and row 4 exit 1, so the host-tmux dependency recorded at #1927 no longer reproduces for this brief after #3168. The witness image carries tmux (herdr is absent), so the witness alone does not discriminate this dependency; this probe does.
+
+Risk-bearing values. Risk metadata is present, every field is "no" and irreversible is "no", so the fail-safe trigger does not fire. The enumeration was redone at b73d90d774fc over the bash oracle's policy arm, the example policy file and the Go launcher's policy arm: the example file, the Go model and policy sources show no diff since 8efe5579d925, and the oracle ban line is unchanged at line 758.
+
+RISK-VALUE: DERIVED — oracle ban banned + ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:758 — the brief says "Prohibit Opus 5, including explicit child requests"; matched against the lowercased ID with [1m] stripped, the wildcard refuses every Opus 5 spelling (derivation in the 2026-10-15 block, literal unchanged), and row 1's ban tests pass at this source.
+RISK-VALUE: NAMED, NOT DERIVED — Go built-in ban isBannedOpus50 (major == 5 && minor == 0, opusMinorMaxDigits = 2) @ tools/desk/cmd/cellctl/model.go:61, :63 and :69 — no Verify row executes the Go policy path, and the 5.0-only reading versus the oracle's every-5.x reading still needs an operator ruling (#1937).
+RISK-VALUE: NAMED, NOT DERIVED — example strong tier "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44 and example deny "*opus-5" @ tools/cellctl/examples/model-policy.json:4 — these match the brief's "map the example Opus tier to 4.8"; the example choice itself is not further derived (#1938).
+
+Open outside the Verify table: the Go policy arm has no Verify row (#1937), and Task 5's rollout check (release, enable, inspect a parent and child transcript) is outside this table.
+
+**VERIFY: PASS** — all 5 Verify rows pass with 0 fail at b73d90d774fc, both by hand on the scrubbed darwin host and in the `--network none` container-netns witness.
+
+Verification-Attestation: medici-finance/assay#3615 run=f8895148c4d419afd7fc304627244afa6322f92ca554ae78f1401a96d0501a4b source=b73d90d774fca8aec8974ef410da63ebcb10eece brief=docs/streams/desk-supervision/brief-22-cell-model-policy.md model=claude-opus-5-5 tier=strong
+
 
 ## Review
 

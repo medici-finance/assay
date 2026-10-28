@@ -40,12 +40,9 @@ consumers:
 
 ## Context
 files:
-- **edit** `docs/records-and-retention.md` — new rows in the `## Record classes` table; a new
-  `## What is never recorded` section; a one-line pointer in the intro that the page indexes
-  records and their schema homes hold the field lists.
+- **edit** `docs/records-and-retention.md` — new rows in the `## Record classes` table; a new `## What is never recorded` section; a one-line pointer in the intro that the page indexes records and their schema homes hold the field lists.
 - **edit** `docs/telemetry.md` — §Retention: one sentence linking `records-and-retention.md`.
-- **edit** `docs/adopting-assay.md` — one sentence directly after the §2 Component inventory
-  table linking `records-and-retention.md` (what the tools record about the adopter's work).
+- **edit** `docs/adopting-assay.md` — one sentence directly after the §2 Component inventory table linking `records-and-retention.md` (what the tools record about the adopter's work).
 - **add** `changelog/desk-supervision-35.md` (planned).
 
 facts:

@@ -63,17 +63,12 @@ id: 3fa23219-219a-4f14-bf58-9e83ea4a03a1
 ## Context
 
 files:
-- `tools/desk/internal/loopengine/recyclepolicy.go` (new) — `RecyclePolicy{ContextPctMax,
-  SessionAgeMax}`, `DefaultRecyclePolicy()`, engine-internal Config data (the `liveness.go`
-  shape; a nil policy disables recycle entirely, strictly additive).
+- `tools/desk/internal/loopengine/recyclepolicy.go` (new) — `RecyclePolicy{ContextPctMax, SessionAgeMax}`, `DefaultRecyclePolicy()`, engine-internal Config data (the `liveness.go` shape; a nil policy disables recycle entirely, strictly additive).
 - `tools/desk/internal/loopengine/recyclepolicy_test.go` (new).
-- `tools/desk/cmd/desksupervise/recycle.go` (new) — the evaluator: read the holder session's
-  `resource` block, classify against the policy, set `recycle` to `null` / `{state: GRACE}` /
-  `{state: HARD-RECYCLE}` with a reason; integrated into `tick`/`status`.
+- `tools/desk/cmd/desksupervise/recycle.go` (new) — the evaluator: read the holder session's `resource` block, classify against the policy, set `recycle` to `null` / `{state: GRACE}` / `{state: HARD-RECYCLE}` with a reason; integrated into `tick`/`status`.
 - `tools/desk/cmd/desksupervise/recycle_test.go` (new).
 - `schemas/desksupervise-status-v1.json` — each claim gains a `recycle` field (`object | null`).
-- `tools/desk/hooks.example.yaml` — a documented `before_remove` note that the graceful path
-  is hook-mediated.
+- `tools/desk/hooks.example.yaml` — a documented `before_remove` note that the graceful path is hook-mediated.
 - `tools/desk/cmd/desksupervise/testdata/` — recycle fixtures.
 - `docs/desk-tools/` — a short recycle page: the threshold policy + the graceful-exit protocol.
 

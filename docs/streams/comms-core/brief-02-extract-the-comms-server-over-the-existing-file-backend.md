@@ -79,7 +79,9 @@ Options:
 1. **Approve the bounded extraction (recommended)** — accept the reviewed report with the existing authority and disclosure controls preserved.
 2. **Narrow or revise** — remove incompatible changes and resubmit the report.
 
-Default if no answer: none — implementation approval remains pending.
+Default if no answer: none — blocks until answered.
+
+Implementation approval remains pending.
 
 ## Ground rules
 

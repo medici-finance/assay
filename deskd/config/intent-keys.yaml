@@ -1,0 +1,30 @@
+# intent-keys.yaml — generic empty example of the TRUST ANCHOR for /v1 signed intents.
+#
+# A SignedIntent is honoured ONLY when it verifies against an ed25519 public key
+# enrolled here under the intent's login. This file is reviewed config: a key
+# is enrolled or revoked by a reviewed PR to this file, never by an environment
+# variable, a request field, or a platform lookup. Loader and rules:
+# config/intentkeys/intentkeys.go.
+#
+# Format:
+#
+#   version: 1
+#   logins:
+#     <github-login>:            # lowercase
+#       - id: <key-id>           # [a-z0-9][a-z0-9._-]{0,63}, unique per login
+#         ed25519: <base64>      # the RAW 32-byte public key, standard base64
+#
+# Fail closed: if this file is missing, empty, unparsable, or breaks ANY rule
+# (unknown key, wrong version, bad length, one key under two logins, ...), deskd
+# trusts NO key and refuses every signed intent. One bad entry refuses the whole
+# file — a reviewer approved the file, not a subset of it.
+#
+# Enrolling a key is also not enough on its own: the intent's login must be the
+# cell's authorized answerer (answer_as), and deskd must be started with the
+# gateway credential the write runs under (DESKD_INTENT_GATEWAY_TOKEN_FILE /
+# _LOGIN: an App installation token, re-read on every write; user-bound tokens
+# are refused).
+#
+# No key is enrolled yet.
+version: 1
+logins: {}

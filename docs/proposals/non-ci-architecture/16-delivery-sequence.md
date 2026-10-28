@@ -190,3 +190,63 @@ the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/REA
 owns this decomposition; it does not wait for the runtime controller. R8 retains the
 desk/operator/service relocation work routed by the layout inventory and must qualify
 module visibility, authority and lifecycle before retiring their old paths.
+
+## Execution-environment delivery — 16 October 2026
+
+[Agent-execution](../../streams/agent-execution/README.md) extends the R3 runner boundary:
+/01 profile contract then /02 preparation receipt can proceed over implemented runner v1;
+/03 follows the existing supervisor/first adapter, /04 follows actual controller/publication,
+and /05 follows their recovery proof and standing clients. The independent /06 AX feasibility
+report neither gates the local path nor activates a remote service. Use its typed dependency
+waves and existing R1–R8 owners; do not duplicate their implementations to accelerate a demo.
+
+## Verifier pilot sequencing proposal — 19 October 2026
+
+Consume [the verifier migration amendment](../../streams/graph-execution/verifier-migration.md).
+An adopter may move evidence production through its existing qualified owner before R2–R8,
+and evaluate shared assessment in shadow after R1. This grants neither a second standing
+claim authority nor a publisher. Managed completion retains R1–R8 and repository-wide
+handover. The Kubernetes verifier profile is agent-execution/08. Admission of amendment 27
+and its stream for implementation is proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes effect on the
+maintainer's merge of it; that does not authorize a concrete profile, cluster contact or
+live deployment.
+
+## Perf-v3 delivery — requested amendment, 19 October 2026
+
+[Attributed performance](../../performance-attribution-spec.md) starts from implemented
+local perf-v2 (/61): /63 freezes schema/profiles/context/readers; /64 propagates desk/agent
+context through launchers and real CLI/env adapters; /65 independently adds actual request
+timing/GraphQL point observations. /62 and statusgen/26 qualify production records using
+these owners. Collection/01 defines aliased event meanings independently; /02 consumes
+v1/v2/v3 after /63–65; later storage/transport/reporting preserves their coverage and units.
+A local record/read/report path needs no server or database. Leave collection's admission
+state to its own ruling and keep credential work independent; do not reopen /61 or imply deployment/collection activation.
+
+## Extensible contracts and perf-v4 — requested amendment, 21 October 2026
+
+Apply the [JSON transition policy](29-extensible-json-contracts.md) across the existing
+semantic owners. Deliver desktools-v2/69's architecture/specification first, /67's
+perf-v4 codec and historical-compatible reader next, then /68's selected producers
+once /64 and /65 independently qualify. Existing statusgen/26 snapshot reuse and
+benchmarks and desktools-v2/62's integration retain their declared dependencies;
+reconcile their future writer/read tests to v4 without discarding landed v3 behavior
+or inventing verification. Other JSON families migrate with their owner's next
+contract revision, using reader-first cutovers and published release pins. No
+performance-collection activation or simultaneous fleet upgrade is implied.
+
+## Candidate-plus-priority delivery reuse — requested 23 October 2026
+
+Follow the [efficiency change map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+The existing direct-read route /37 oracle -> desk-tools/39 pure review contract -> /40
+observation bridge -> /43 callers -> /44 cost/retirement remains independently useful.
+graph-execution/27 binds the five roles to those existing evaluators; desk-tools/42 issue
+and /45 verification contracts are real prerequisites, not duplicate work to embed in it.
+The bridge does not wait for the full R6 database/service. Cross-window removal of repeated
+bulk reads follows forge-neutral/37–43 and its qualified service/custody dependencies.
+
+Both drivers must produce equal ordered plans from equal candidate/policy/time/capacity
+inputs, including held/unknown sources, while claims and final checks stay independent.
+Retain existing adopter cutover and drain/reconcile/fence ownership; do not revive withdrawn
+policy/core briefs or infer adoption from approved architecture. The efficiency spec's
+ranked provider-cost model is an estimate to qualify, not a new activation/cost guarantee.
