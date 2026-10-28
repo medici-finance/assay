@@ -28,6 +28,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -324,7 +325,16 @@ func isBareConfig(path string) (bool, error) {
 		}
 		return false, fmt.Errorf("gitcore: read %s: %w", path, err)
 	}
-	defer f.Close()
+	return readBareConfig(path, f)
+}
+
+func readBareConfig(path string, f io.ReadCloser) (bare bool, resultErr error) {
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && resultErr == nil {
+			bare = false
+			resultErr = fmt.Errorf("gitcore: close %s: %w", path, closeErr)
+		}
+	}()
 	raw := gitconfig.New()
 	if err := gitconfig.NewDecoder(f).Decode(raw); err != nil {
 		return false, fmt.Errorf("gitcore: parse %s: %w", path, err)

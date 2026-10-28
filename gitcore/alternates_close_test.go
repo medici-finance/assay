@@ -31,7 +31,7 @@ func TestAlternatesClose(t *testing.T) {
 	if baselineReader.closes != 1 || baseline.fs == nil || baseline.diagnosis != "" {
 		t.Fatalf("healthy alternate fixture: %+v closes=%d", baseline, baselineReader.closes)
 	}
-	failingReader := &alternateCloseRead{Reader: strings.NewReader(payload), closeErr: closeCanary}
+	failingReader := &alternateCloseRead{Reader: strings.NewReader(payload), closeErr: errCloseCanary}
 	got := readAlternatesWith(root, func(string) (io.ReadCloser, error) { return failingReader, nil })
 	if failingReader.closes != 1 || got.fs == nil || got.fs.Root() != baseline.fs.Root() || got.nativeReason != baseline.nativeReason {
 		t.Fatalf("close changed valid filesystem/read capability: %+v closes=%d", got, failingReader.closes)

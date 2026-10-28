@@ -13,10 +13,10 @@ import (
 func TestRevisionPortProfiles(t *testing.T) {
 	t.Run("ordinary-repository-locator", func(t *testing.T) {
 		a, _ := revisionFixture(t)
-		b, want := revisionFixture(t)
+		b, _ := revisionFixture(t)
 		// Give the two repositories distinct immutable commits, even in one second.
 		runGit(t, b, "commit", "--allow-empty", "-qm", "decoy is deliberately distinct")
-		want = strings.TrimSpace(string(parityGitBytes(t, b, "rev-parse", "HEAD")))
+		want := strings.TrimSpace(string(parityGitBytes(t, b, "rev-parse", "HEAD")))
 		runGit(t, b, "update-ref", "refs/remotes/origin/main", want)
 		t.Setenv("GIT_DIR", filepath.Join(b, ".git"))
 		if got := exactRefCommit(a, "refs/remotes/origin/main"); got != want {

@@ -93,7 +93,7 @@ func isFullHex(s string) bool {
 		return false
 	}
 	for _, c := range s {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
@@ -156,18 +156,32 @@ func writeTreeFile(dest, name string, file *object.File, exec bool) error {
 	if err != nil {
 		return fmt.Errorf("gitcore: materialise: create %s: %w", name, err)
 	}
+	return writeTreeFileContents(name, file, out)
+}
+
+// writeTreeFileContents owns the two acquired streams. Output finalization keeps
+// its existing precedence after copying; input cleanup never replaces it or a
+// primary reader/copy error.
+func writeTreeFileContents(name string, file *object.File, out io.WriteCloser) (resultErr error) {
+	var inputCloseErr error
+	defer func() {
+		outputCloseErr := out.Close()
+		if resultErr == nil {
+			if outputCloseErr != nil {
+				resultErr = fmt.Errorf("gitcore: materialise: write %s: %w", name, outputCloseErr)
+			} else if inputCloseErr != nil {
+				resultErr = fmt.Errorf("gitcore: materialise: write %s: %w", name, inputCloseErr)
+			}
+		}
+	}()
 	rc, err := file.Reader()
 	if err != nil {
-		out.Close()
 		return fmt.Errorf("gitcore: materialise: read %s: %w", name, err)
 	}
-	_, cerr := io.Copy(out, rc)
-	rc.Close()
-	if clerr := out.Close(); cerr == nil {
-		cerr = clerr
-	}
-	if cerr != nil {
-		return fmt.Errorf("gitcore: materialise: write %s: %w", name, cerr)
+	_, copyErr := io.Copy(out, rc)
+	inputCloseErr = rc.Close()
+	if copyErr != nil {
+		return fmt.Errorf("gitcore: materialise: write %s: %w", name, copyErr)
 	}
 	return nil
 }

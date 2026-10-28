@@ -377,7 +377,7 @@ func verify(got []site, want inventory) error {
 		return fmt.Errorf("retired Git sites must lower the inventory and ceiling: %s", strings.Join(stale, ", "))
 	}
 	if actualDirect > want.Direct || actualDynamic > want.Dynamic || actualSeams > want.Seams {
-		return fmt.Errorf("Git launch ratchet exceeded")
+		return fmt.Errorf("git launch ratchet exceeded")
 	}
 	fmt.Printf("statusgen git launches: %d literal Git spawn definitions (ceiling %d); %d unresolved executable constructions (ceiling %d); %d operation callers through native seams (ceiling %d)\n", actualDirect, want.Direct, actualDynamic, want.Dynamic, actualSeams, want.Seams)
 	return nil
@@ -415,7 +415,7 @@ func checkPrior(root string, current inventory) error {
 		return fmt.Errorf("invalid prior ratchet revision")
 	}
 	for _, c := range base {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return fmt.Errorf("invalid prior ratchet revision")
 		}
 	}

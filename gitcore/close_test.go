@@ -18,8 +18,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
-var closeCanary = errors.New("https://example.invalid/cleanup synthetic-auth payload-canary")
-var primaryCloseTest = errors.New("primary transport failure")
+var errCloseCanary = errors.New("https://example.invalid/cleanup synthetic-auth payload-canary")
+var errPrimaryCloseTest = errors.New("primary transport failure")
 
 type closeReceive struct {
 	adv                                *packp.AdvRefs
@@ -96,15 +96,15 @@ func TestCloseKeepsCAS(t *testing.T) {
 			}
 			t.Run(op+"/"+outcome, func(t *testing.T) {
 				var events []string
-				sess := &closeReceive{adv: closeAdv(t, ref, outcome != "absent"), closeErr: closeCanary, status: "ok", events: &events}
+				sess := &closeReceive{adv: closeAdv(t, ref, outcome != "absent"), closeErr: errCloseCanary, status: "ok", events: &events}
 				if outcome == "rejected" {
 					sess.status = "policy refused"
 				}
 				if outcome == "advertise-error" {
-					sess.advertiseErr = primaryCloseTest
+					sess.advertiseErr = errPrimaryCloseTest
 				}
 				if outcome == "receive-error" {
-					sess.receiveErr = primaryCloseTest
+					sess.receiveErr = errPrimaryCloseTest
 				}
 				factory := func(*transport.Endpoint, *RefReceipt) (transport.Transport, *ackTransport, error) {
 					return closeClient{receive: sess}, nil, nil
@@ -115,7 +115,7 @@ func TestCloseKeepsCAS(t *testing.T) {
 				if op == "push" {
 					v, err := pushRefUpdateVerdict(context.Background(), RefUpdate{URL: "fixture://example.invalid/repo", Ref: ref, New: oid, Objects: objs, Trace: trace}, factory)
 					if strings.HasSuffix(outcome, "error") {
-						if !errors.Is(err, primaryCloseTest) {
+						if !errors.Is(err, errPrimaryCloseTest) {
 							t.Fatalf("primary error changed: %v", err)
 						}
 					} else if err != nil {
@@ -144,7 +144,7 @@ func TestCloseKeepsCAS(t *testing.T) {
 							t.Fatalf("direct rejected type/fields changed: %T %v %+v", err, err, receipt)
 						}
 					default:
-						if !errors.Is(err, primaryCloseTest) {
+						if !errors.Is(err, errPrimaryCloseTest) {
 							t.Fatalf("primary delete error changed: %v", err)
 						}
 					}
@@ -249,14 +249,14 @@ func TestCloseKeepsPayload(t *testing.T) {
 					var events []string
 					sess := &closeUpload{adv: packp.NewAdvRefs(), data: append([]byte(nil), pack.Bytes()...), events: &events}
 					if failed {
-						sess.closeErr = closeCanary
-						sess.responseErr = closeCanary
+						sess.closeErr = errCloseCanary
+						sess.responseErr = errCloseCanary
 					}
 					if outcome == "advertise-error" {
-						sess.advertiseErr = primaryCloseTest
+						sess.advertiseErr = errPrimaryCloseTest
 					}
 					if outcome == "upload-error" {
-						sess.uploadErr = primaryCloseTest
+						sess.uploadErr = errPrimaryCloseTest
 					}
 					if outcome == "decode-error" {
 						sess.data = []byte("not a pack")
@@ -273,7 +273,7 @@ func TestCloseKeepsPayload(t *testing.T) {
 							t.Fatalf("payload tuple changed: %+v %v", payload, err)
 						}
 					} else if outcome != "decode-error" {
-						if !errors.Is(err, primaryCloseTest) {
+						if !errors.Is(err, errPrimaryCloseTest) {
 							t.Fatalf("primary payload error changed: %v", err)
 						}
 					} else if err == nil || !strings.Contains(err.Error(), "upload-pack decode") {
@@ -333,7 +333,7 @@ func TestAckCloseIsOutcome(t *testing.T) {
 	}
 	req.Commands = []*packp.Command{{Name: ref}}
 	var events []string
-	body := &closeRead{Reader: strings.NewReader(ackPkt("unpack ok\n") + ackPkt("ok "+ref.String()+"\n") + "0000"), err: closeCanary, events: &events}
+	body := &closeRead{Reader: strings.NewReader(ackPkt("unpack ok\n") + ackPkt("ok "+ref.String()+"\n") + "0000"), err: errCloseCanary, events: &events}
 	observed := &ackTransport{body: &ackBody{ReadCloser: body}}
 	report := &packp.ReportStatus{UnpackStatus: "ok", CommandStatuses: []*packp.CommandStatus{{ReferenceName: ref, Status: "ok"}}}
 	v, err := receiveClaim(context.Background(), stubReceive{report}, req, &bytes.Buffer{}, observed, &RefReceipt{})

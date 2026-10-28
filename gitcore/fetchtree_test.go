@@ -19,14 +19,14 @@ func TestFetchTreeWritesTreeAndNoRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	server.CommitFile(t, "sub/deep/a.txt", "deep\n", "nested")
-	sha := server.CommitFile(t, "run.sh", "#!/bin/sh\n", "script")
+	server.CommitFile(t, "run.sh", "#!/bin/sh\n", "script")
 	if _, err := server.Git("update-index", "--chmod=+x", "run.sh"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := server.Git("commit", "-q", "-m", "exec bit"); err != nil {
 		t.Fatal(err)
 	}
-	sha, _ = server.Git("rev-parse", "HEAD")
+	sha, _ := server.Git("rev-parse", "HEAD")
 
 	dest := t.TempDir()
 	res, err := FetchTree(TreeOpts{URL: server.Dir, RefSpecs: fetchTreeSpecs, Commit: sha}, dest)

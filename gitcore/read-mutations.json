@@ -1,5 +1,5 @@
 {
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestRawCommitBytes|TestCloseKeepsCAS|TestCloseKeepsPayload|TestAlternatesClose|TestAckCloseIsOutcome)$' .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestRawCommitBytes|TestCloseKeepsCAS|TestCloseKeepsPayload|TestAlternatesClose|TestAckCloseIsOutcome|TestLocalMaterialiseClose|TestBoundedBlobClose|TestBareConfigClose)$' .",
   "control": {
     "name": "CONTROL raw provenance bytes replaced after successful read",
     "file": "rawread.go",
@@ -42,6 +42,30 @@
       "file": "alternates.go",
       "old": "problems = append(problems, fmt.Sprintf(\"objects/info/alternates could not be read to the end: %v\", serr))",
       "new": "problems = append(problems, \"scanner diagnosis erased\")"
+    },
+    {
+      "name": "local materialization output close failure lost",
+      "file": "fetchtree.go",
+      "old": "if outputCloseErr != nil {",
+      "new": "if outputCloseErr != nil && false {"
+    },
+    {
+      "name": "local materialization input close failure lost",
+      "file": "fetchtree.go",
+      "old": "} else if inputCloseErr != nil {",
+      "new": "} else if inputCloseErr != nil && false {"
+    },
+    {
+      "name": "bounded blob sole close failure lost",
+      "file": "filebounded.go",
+      "old": "closeErr != nil && resultErr == nil && !oversized",
+      "new": "closeErr != nil && false && resultErr == nil && !oversized"
+    },
+    {
+      "name": "local config sole close failure lost",
+      "file": "localtransport.go",
+      "old": "closeErr != nil && resultErr == nil",
+      "new": "closeErr != nil && false && resultErr == nil"
     }
   ]
 }

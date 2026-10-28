@@ -45,7 +45,9 @@ func RoleHTTP(t *testing.T, projectRoot, token string) *RoleWire {
 		count.Requests.Add(1)
 		if count.Broken.Load() {
 			w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
-			fmt.Fprint(w, "001e# service=git-upload-pack\n00000040truncated")
+			if _, err := fmt.Fprint(w, "001e# service=git-upload-pack\n00000040truncated"); err != nil {
+				t.Error("fixture failed to write truncated upload-pack advertisement")
+			}
 			return
 		}
 		backend.ServeHTTP(w, r)

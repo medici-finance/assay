@@ -56,7 +56,7 @@ func TestFilesystemProfile(t *testing.T) {
 				if c.fail && n == 1 {
 					return nil, boom
 				}
-				return discoveryInfo{dev: c.devices[n], dir: !(c.notdir && n == 0)}, nil
+				return discoveryInfo{dev: c.devices[n], dir: !c.notdir || n != 0}, nil
 			}
 			device := func(info os.FileInfo) (uint64, bool) { return info.(discoveryInfo).dev, !c.unknown }
 			why, err := filesystemReadReason(dir, root, stat, device)

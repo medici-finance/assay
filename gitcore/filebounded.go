@@ -44,12 +44,22 @@ func (r *Repo) FileAtBounded(rev, path string, limit int64) (string, bool, error
 	if e != nil {
 		return "", false, e
 	}
-	defer rd.Close()
-	b, e := io.ReadAll(io.LimitReader(rd, limit+1))
+	return readBoundedBlob(rd, limit)
+}
+
+// readBoundedBlob preserves budget skips and primary read errors. A sole close
+// failure cannot certify an otherwise successful local blob read.
+func readBoundedBlob(rd io.ReadCloser, limit int64) (content string, oversized bool, resultErr error) {
+	defer func() {
+		if closeErr := rd.Close(); closeErr != nil && resultErr == nil && !oversized {
+			resultErr = fmt.Errorf("gitcore: bounded blob close: %w", closeErr)
+		}
+	}()
+	b, err := io.ReadAll(io.LimitReader(rd, limit+1))
 	if int64(len(b)) > limit {
 		return "", true, nil
 	}
-	return string(b), false, e
+	return string(b), false, err
 }
 
 // DiffSymmetricBounded checks changed blob headers before rename detection or
