@@ -14,7 +14,7 @@ why: >-
   deferred until it does.
 wave: 7
 depends: []
-unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/28", "cell-api/01"]
+unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/28", "cell-api/01", "desk-containers/31"]
 effort: M
 gate: human
 design: DR-cell-op-contract

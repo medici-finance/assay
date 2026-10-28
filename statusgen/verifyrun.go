@@ -1540,13 +1540,18 @@ func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, run
 // in `unshare --net`. sandboxContainerNetns skips that wrapper — the run is
 // already inside a --network none container — and so FIRST runs the
 // loopback-only precheck, once, before any row: if it refuses, every row that
-// would execute is recorded could-not-run with the reason, never run.
+// would execute is recorded could-not-run with the reason, never run. It also
+// reads, once, which of the tree's module requirements the image's baked
+// module cache lacks (#4683, modcachegap.go): a row that then exits non-zero
+// naming one of them stopped on module resolution, so it is could-not-run.
 func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	refused := ""
+	var gaps []modGap
 	if sandbox == sandboxContainerNetns {
 		if ok, why := loopbackOnlyPrecheck(listInterfacesFn); !ok {
 			refused = containerNetnsRefusedNote(why)
 		}
+		gaps = runModuleCacheGap(root)
 	}
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
@@ -1602,6 +1607,9 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			if hit := gapsNamedIn(res.output, gaps); !res.couldNotRun && res.exit != 0 && len(hit) > 0 {
+				res.couldNotRun, res.reason = true, modCacheGapNote(hit)
+			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -1976,9 +1984,13 @@ Flags:
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
-                    this brief (version 1 only) and it names a runner, and
-                    refuses after the rows if they changed that tree. Its rows'
-                    Runner cell is the receipt's, never derived in the container.
+                    this brief and it names a runner, and refuses after the
+                    rows if they changed that tree. Its rows' Runner cell is
+                    the receipt's, never derived in the container. A version-2
+                    (cross-repository) receipt also needs --root naming the
+                    deliverable home and --brief naming the tracking brief
+                    outside it, holding the bytes the receipt's BriefSHA256
+                    names; its attestation line names both repositories.
   --container-image-digest sha256:<64 hex>  the image the rows run in, named by
                     the host; recorded as Container-Image on the witness.
   --witness <file>  container-netns: a NEW file outside the home the witness
@@ -2045,9 +2057,12 @@ Flags:
                     login-only verifier entry or a shallow clone is
                     could-not-check), (b) the span's attestation line equal
                     to the line rendered from its record, read with deskread
-                    (issue, trust, label-events): a same-repository, closed,
-                    never-edited issue written by the dispatcher, not the
-                    verifier, carrying the dispatcher's model stamp, and
+                    (issue, trust, label-events): a closed, never-edited
+                    issue in the brief's own repository, written by the
+                    dispatcher, not the verifier, carrying the dispatcher's
+                    model stamp; a version-2 (cross-repository) line also
+                    needs its source-repo= in the configured repository set
+                    (ASSAY_ALLOWED_REPOS), else it is not-credited, and
                     (c) the attestation's brief= equal to the --witness
                     file's repository path and its source= equal to
                     --source. A failed read is could-not-check. Exit 0 only
@@ -2597,6 +2612,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		executionTree = strings.TrimSpace(string(full))
+	}
+	if netnsContainer {
+		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
+			fmt.Fprintln(stderr, modCacheGapNotice(gaps))
+		}
 	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {

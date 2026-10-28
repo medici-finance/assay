@@ -1019,6 +1019,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		keywordLocs := routingKeywordRe.FindAllStringIndex(view, -1)
 		refLocs := routingRefRe.FindAllStringIndex(view, -1)
 		for _, h := range heldLocs {
+			// A sourced derivation may name a product state without observing
+			// a verification hold. Classify only this occurrence, never the
+			// whole RISK-VALUE line or a neighbouring Result cell (#4536).
+			if cuts == nil && read.key == "" && len(read.blank) == 0 && heldRiskDefinition(clean, h) {
+				continue
+			}
 			// A negated or zero-counted occurrence ("no could-not-check",
 			// "summary: 0 HELD") is not a live disposition at all — it is
 			// excused outright, the same as a routed one, without needing a

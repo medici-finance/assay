@@ -569,9 +569,10 @@ func siblingIDPattern(id string) *regexp.Regexp {
 }
 
 // siblingIssuePattern matches an `Issue: #<N>` trailer or a GitHub closing
-// keyword for issue #<N> (key k2).
+// keyword for issue #<N> (key k2), with or without a colon after the keyword —
+// so deskpr's resolving `Fixes: #<N>` trailer matches as well as `Fixes #<N>`.
 func siblingIssuePattern(n int) *regexp.Regexp {
-	return regexp.MustCompile(`(?i)(?:\bissue:\s*#|\b(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#)` + strconv.Itoa(n) + `\b`)
+	return regexp.MustCompile(`(?i)(?:\bissue:\s*#|\b(?:close[sd]?|fixe[sd]?|resolve[sd]?)(?::\s*|\s+)#)` + strconv.Itoa(n) + `\b`)
 }
 
 // matchedSiblingCommit is one commit that matched a row, via which key.
@@ -737,12 +738,9 @@ func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string,
 // itself, exactly as run() does (errNoGitForMerge): the queue and the board must not
 // disagree about the same tree.
 func holdPhantomRowsFromGit(streams []*Stream, root string) {
-	if hasNoGitDir(root) {
-		applyPhantomHolds(streams, nil, errNoGitForMerge)
-		return
-	}
-	merged, err := mergedPRsFromGit(root)
-	applyPhantomHolds(streams, merged, err)
+	ownRepo, _ := rootRepo(streams)
+	merged, _, err := deliveryHistory(root, ownRepo) // crossroot.go: own root + every configured root
+	applyPhantomHolds(root, streams, merged, err)
 }
 
 // siblingMergeOffNotices is what --lint prints INSTEAD of the check when the

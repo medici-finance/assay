@@ -208,8 +208,18 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if e != nil {
 		return fail("cannot resolve repository")
 	}
-	root := strings.TrimSpace(string(rootRaw))
-	canonicalPath, e := filepath.EvalSymlinks(path)
+	// Git returns an absolute worktree root, while callers may supply a
+	// relative brief path (notably --root .). Compare physical absolute paths
+	// on both sides so aliases cannot change the ruling's repository coordinate.
+	root, e := filepath.EvalSymlinks(strings.TrimSpace(string(rootRaw)))
+	if e != nil {
+		return fail("cannot resolve canonical repository path")
+	}
+	absolutePath, e := filepath.Abs(path)
+	if e != nil {
+		return fail("cannot resolve absolute brief path")
+	}
+	canonicalPath, e := filepath.EvalSymlinks(absolutePath)
 	if e != nil {
 		return fail("cannot resolve canonical brief path")
 	}

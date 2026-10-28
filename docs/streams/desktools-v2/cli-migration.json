@@ -117,6 +117,16 @@
       "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
     },
     {
+      "class": "library",
+      "pattern": "tools/release/sbom.py",
+      "reason": "internal release SBOM writer imported by the fixed release workflow Python call; no shebang, main guard, argument parser or independent operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/sbom_test.py",
+      "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
+    },
+    {
       "class": "test",
       "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
       "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
@@ -727,7 +737,7 @@
       "complexity": "simple",
       "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskclaim",
@@ -1323,7 +1333,7 @@
       "complexity": "simple",
       "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrelease",
@@ -1651,7 +1661,7 @@
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar-action.sh",
@@ -1669,7 +1679,8 @@
       "complexity": "simple",
       "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/muhar"
     },
     {
       "executable": "opmetrics",
@@ -1685,7 +1696,7 @@
       "complexity": "simple",
       "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "repohardenguard",
