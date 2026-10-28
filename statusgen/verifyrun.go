@@ -2644,6 +2644,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	table := witnessTable(ws)
 	if transitionDescriptor != "" {
 		table = transitionDescriptor + "\n\n" + table
+		if protectedExecution.Changes != "" {
+			table = "Acceptance-Changes: " + protectedExecution.Changes + "\n" + table
+		}
 	}
 	if containerTree != "" {
 		// The pre-row digest says which tree the rows started on; this one says

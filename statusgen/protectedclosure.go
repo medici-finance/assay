@@ -19,6 +19,7 @@ type protectedPlan struct {
 	Added     []checkFinding
 	Original  string            // authenticated immutable acceptance-definition revision
 	Revisions map[string]string // approved per-row amendments; omitted rows retain Original
+	Changes   string            // derived changed-column receipt; never approval input
 }
 
 func closureSatisfied(f checkFinding) bool {
@@ -187,12 +188,15 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		return refuse("original table differs from pre-delivery baseline; independent re-derivation is required")
 	}
 	var revisions map[string]string
+	var changes string
 	if strings.Contains(evidence, "Acceptance-Transition:") {
 		var why string
+		originalVerify := baseline
 		baseline, revisions, why = acceptanceTransition(paths[0], verify, fullEvidence, evidence, delivery, base, original, baseline, delivered, proposal == "", read)
 		if why != "" {
 			return refuse(why)
 		}
+		changes = acceptanceChanges(originalVerify, baseline, revisions)
 		delivered = verify
 	}
 	if strings.TrimSpace(verify) != strings.TrimSpace(delivered) {
@@ -251,7 +255,7 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		}
 		added = append(added, checkFinding{row.ID, stateAuthorAdded, "supplemental row; no acceptance credit (immutable original table preserved)"})
 	}
-	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions}, ""
+	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions, Changes: changes}, ""
 }
 
 // acceptanceRecordKind classifies a verifyrun --acceptance-record descriptor.
@@ -378,4 +382,25 @@ func protectedClosureProblems(streams []*Stream) []string {
 		}
 	}
 	return problems
+}
+
+// acceptanceChanges describes the exact approved columns from authenticated
+// snapshots. It is output only: neither descriptors nor witnesses can supply it.
+func acceptanceChanges(original, effective string, revisions map[string]string) string {
+	old := map[string]verifyRow{}
+	for _, row := range briefVerifyRows(original) {
+		old[row.ID] = row
+	}
+	var changes []string
+	for _, row := range briefVerifyRows(effective) {
+		if revisions[row.ID] == "" {
+			continue
+		}
+		column := "Command"
+		if row.Expect != old[row.ID].Expect {
+			column = "Expect"
+		}
+		changes = append(changes, row.ID+"="+column)
+	}
+	return strings.Join(changes, ",")
 }
