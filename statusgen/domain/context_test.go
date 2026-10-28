@@ -12,9 +12,11 @@ import (
 	"github.com/medici-finance/assay/statusgen/internal/testschema"
 )
 
-func contextFixture(t *testing.T) EvaluationContext {
+func contextFixture(t *testing.T) EvaluationContext { return readContext(t, "valid") }
+
+func readContext(t *testing.T, name string) EvaluationContext {
 	t.Helper()
-	b, e := os.ReadFile("../testdata/domain/context/valid.json")
+	b, e := os.ReadFile("../testdata/domain/context/" + name + ".json")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -54,10 +56,6 @@ func TestContextInputs(t *testing.T) {
 		"options":           func(x *EvaluationContext) { x.OptionsDigest = "sha256:" + strings.Repeat("b", 64) },
 		"policy":            func(x *EvaluationContext) { x.PolicyDigest = "sha256:" + strings.Repeat("b", 64) },
 		"environment":       func(x *EvaluationContext) { x.EnvironmentDigest = "sha256:" + strings.Repeat("b", 64) },
-		"epoch":             func(x *EvaluationContext) { x.AccessEpoch++ },
-		"generation":        func(x *EvaluationContext) { x.Generation++ },
-		"cutoff":            func(x *EvaluationContext) { x.ObservedCutoff = "2026-10-28T10:01:00Z" },
-		"expiry":            func(x *EvaluationContext) { x.Bounds[0].ExpiresAt = "2026-10-28T10:05:00Z" },
 	}
 	for name, change := range changes {
 		t.Run(name, func(t *testing.T) {
@@ -73,16 +71,34 @@ func TestContextInputs(t *testing.T) {
 		})
 	}
 	for name, change := range map[string]func(*EvaluationContext){
-		"version":    func(x *EvaluationContext) { x.Schema = "future" },
-		"capability": func(x *EvaluationContext) { x.Requires = []string{"future@1"} },
-		"evaluator":  func(x *EvaluationContext) { x.Evaluator = evaluation.Identity{} },
-		"membership": func(x *EvaluationContext) { x.Dependencies = nil },
-		"coverage":   func(x *EvaluationContext) { x.Coverage = CouldNotCheck },
-		"sources":    func(x *EvaluationContext) { x.Sources = nil },
-		"facts":      func(x *EvaluationContext) { x.Facts = nil },
-		"options":    func(x *EvaluationContext) { x.OptionsDigest = "" },
-		"epoch":      func(x *EvaluationContext) { x.AccessEpoch = 0 },
-		"bounds":     func(x *EvaluationContext) { x.Bounds = nil },
+		"epoch":      func(x *EvaluationContext) { x.AccessEpoch++ },
+		"generation": func(x *EvaluationContext) { x.Generation++ },
+	} {
+		t.Run("currency-"+name, func(t *testing.T) {
+			x := contextFixture(t)
+			change(&x)
+			fp, e := x.Fingerprint()
+			if e != nil || fp != got {
+				t.Fatal("currency changed derivation")
+			}
+			if CheckApplicability(c, x, "2026-10-28T10:02:00Z").State != "reevaluate" {
+				t.Fatal("stale currency reused")
+			}
+		})
+	}
+	for name, change := range map[string]func(*EvaluationContext){
+		"empty-requires":     func(x *EvaluationContext) { x.Requires = []string{} },
+		"duplicate-requires": func(x *EvaluationContext) { x.Requires = []string{"context@1", "context@1"} },
+		"version":            func(x *EvaluationContext) { x.Schema = "future" },
+		"capability":         func(x *EvaluationContext) { x.Requires = []string{"future@1"} },
+		"evaluator":          func(x *EvaluationContext) { x.Evaluator = evaluation.Identity{} },
+		"membership":         func(x *EvaluationContext) { x.Dependencies = nil },
+		"coverage":           func(x *EvaluationContext) { x.Coverage = CouldNotCheck },
+		"sources":            func(x *EvaluationContext) { x.Sources = nil },
+		"facts":              func(x *EvaluationContext) { x.Facts = nil },
+		"options":            func(x *EvaluationContext) { x.OptionsDigest = "" },
+		"epoch":              func(x *EvaluationContext) { x.AccessEpoch = 0 },
+		"bounds":             func(x *EvaluationContext) { x.Bounds = nil },
 	} {
 		t.Run("missing-"+name, func(t *testing.T) {
 			x := contextFixture(t)
@@ -106,9 +122,9 @@ func TestContextInputs(t *testing.T) {
 		t.Fatalf("canonical set order: %s %v", fp, e)
 	}
 	x = contextFixture(t)
-	x.Generation = 9007199254740993
+	x.Acceptance.Version = 9007199254740993
 	a, _ := x.Fingerprint()
-	x.Generation--
+	x.Acceptance.Version--
 	b, _ := x.Fingerprint()
 	if a == b {
 		t.Fatal("integer precision lost")
@@ -138,11 +154,35 @@ func TestContextExpiry(t *testing.T) {
 			}
 		})
 	}
-	for _, now := range []string{"", "unavailable", "2026-10-28T09:59:59Z"} {
-		if CheckApplicability(c, c, now).State != "held" {
-			t.Fatal("unavailable or past time reused")
+	current := readContext(t, "current")
+	for _, now := range []string{"", "unavailable", "2026-10-28T09:59:59Z", "2026-10-28T10:00:30Z"} {
+		if CheckApplicability(c, current, now).State != "held" {
+			t.Fatal("unavailable or before-current-cutoff time reused")
 		}
 	}
+	if got := CheckApplicability(c, current, "2026-10-28T10:02:00Z"); got.State != "reusable" {
+		t.Fatalf("independently renewed context: %+v", got)
+	}
+	// Both receipts remain bounded: renewal cannot erase the old receipt's bound.
+	if CheckApplicability(c, current, "2026-10-28T10:10:00Z").State != "reevaluate" {
+		t.Fatal("cached expiry erased by renewal")
+	}
+	for _, kind := range []string{"lease", "access", "evaluation"} {
+		x := readContext(t, "current")
+		if kind == "evaluation" {
+			x.Bounds = append(x.Bounds, ValidityBound{kind, "2026-10-28T10:02:00Z"})
+		} else {
+			for i := range x.Bounds {
+				if x.Bounds[i].Kind == kind {
+					x.Bounds[i].ExpiresAt = "2026-10-28T10:02:00Z"
+				}
+			}
+		}
+		if CheckApplicability(c, x, "2026-10-28T10:02:00Z").State != "reevaluate" {
+			t.Fatal("shortened current bound ignored: " + kind)
+		}
+	}
+
 }
 
 // regression: graph-execution/30
@@ -181,13 +221,22 @@ func TestContextMembership(t *testing.T) {
 
 // currentAuthority models the separate admission boundary, deliberately taking
 // independently supplied facts instead of trusting the applicability result.
-func currentAuthority(authorized bool, grantExpiry, now string) bool {
+func currentAuthority(hit, authorized bool, grantExpiry, now string) bool {
 	expiry, e := time.Parse(time.RFC3339, grantExpiry)
 	if e != nil {
 		return false
 	}
 	at, e := time.Parse(time.RFC3339, now)
 	return e == nil && authorized && at.Before(expiry)
+}
+
+// This synthetic composition has two explicit boundaries. The test can bypass
+// the upper validator while retaining the lower authorization/grant observation.
+func admitContext(cached, current EvaluationContext, now string, hit, authorized, bypassUpper bool, grant string) bool {
+	if !bypassUpper && CheckApplicability(cached, current, now).State != "reusable" {
+		return false
+	}
+	return currentAuthority(hit, authorized, grant, now)
 }
 
 // regression: graph-execution/30
@@ -205,21 +254,23 @@ func TestContextAdmissionFlow(t *testing.T) {
 	if e != nil || !reflect.DeepEqual(cached, fresh) {
 		t.Fatal("fresh differs")
 	}
-	if CheckApplicability(c, c, "2026-10-28T10:02:00Z").State != "reusable" || !currentAuthority(true, "2026-10-28T10:10:00Z", "2026-10-28T10:02:00Z") {
-		t.Fatal("authorized immutable hit held")
+	current := readContext(t, "current")
+	if c.ObservedCutoff == current.ObservedCutoff || reflect.DeepEqual(c.Bounds, current.Bounds) {
+		t.Fatal("positive copied currency")
 	}
-	if CheckApplicability(c, c, "2026-10-28T10:10:00Z").State != "reevaluate" {
-		t.Fatal("expired runtime result reused")
+	if !admitContext(c, current, "2026-10-28T10:02:00Z", cached.State == "supported", true, false, "2026-10-28T11:00:00Z") {
+		t.Fatal("authorized independently observed immutable hit held")
 	}
-	// Bypass the upper context validator entirely: cached support still grants
-	// no effect when the independent lower grant is expired or unavailable.
-	for _, grant := range []string{"2026-10-28T10:10:00Z", ""} {
-		if currentAuthority(true, grant, "2026-10-28T10:10:00Z") {
-			t.Fatal("cache hit became authority")
+	if admitContext(c, current, "2026-10-28T10:10:00Z", true, true, false, "2026-10-28T11:00:00Z") {
+		t.Fatal("expired runtime decision reused")
+	}
+	for _, grant := range []string{"2026-10-28T10:02:00Z", ""} {
+		if admitContext(c, current, "2026-10-28T10:02:00Z", true, true, true, grant) {
+			t.Fatal("hit became authority with upper validator bypassed")
 		}
 	}
-	if currentAuthority(false, "2026-10-28T11:00:00Z", "2026-10-28T10:02:00Z") {
-		t.Fatal("revocation ignored")
+	if admitContext(c, current, "2026-10-28T10:02:00Z", true, false, true, "2026-10-28T11:00:00Z") {
+		t.Fatal("revoked authority accepted cached hit")
 	}
 	moved := r
 	moved.Candidate.Tree = strings.Repeat("b", 40)
@@ -248,6 +299,13 @@ func TestContextSchema(t *testing.T) {
 	if e = s.Accepts(b); e != nil {
 		t.Fatal(e)
 	}
+	independent, e := os.ReadFile("../testdata/domain/context/current.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Accepts(independent); e != nil {
+		t.Fatal(e)
+	}
 	var fields map[string]json.RawMessage
 	if e = json.Unmarshal(b, &fields); e != nil {
 		t.Fatal(e)
@@ -272,7 +330,7 @@ func TestContextSchema(t *testing.T) {
 	if len(required) != len(fields) || reflect.TypeOf(EvaluationContext{}).NumField() != len(fields) {
 		t.Fatal("wire field inventory drift")
 	}
-	for _, name := range []string{"unknown-field", "missing-evaluator", "bad-digest", "unknown-version"} {
+	for _, name := range []string{"unknown-field", "missing-evaluator", "bad-digest", "unknown-version", "empty-requires", "duplicate-requires"} {
 		raw, e := os.ReadFile("../testdata/domain/context/" + name + ".json")
 		if e != nil {
 			t.Fatal(e)

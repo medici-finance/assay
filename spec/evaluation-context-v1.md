@@ -8,7 +8,8 @@ Unknown fields, versions and mandatory capabilities cannot be silently ignored.
 
 The required field inventory is:
 
-- `schema`, `requires`: version and understood capabilities (`context@1`).
+- `schema`, `requires`: version and exactly one capability (`["context@1"]`).
+  Empty, repeated and unsupported requirements are refused; the v1 set has one member.
 - `work`, `candidate`, `acceptance`: the existing verification-domain-v1 identities
   and exact accepted definition, including its candidate and required facts. The
   qualified work names cell/repository; the candidate names the forge repository.
@@ -38,20 +39,29 @@ The required field inventory is:
   evaluation expiry may further shorten validity. Every bound is strictly after
   the cutoff. No omitted or unavailable authority implies an infinite expiry.
 
-Fingerprint validates complete inputs and SHA-256 hashes canonical JSON: object
-keys recursively sorted, decimal integers preserved exactly, standard encoding/json
-escaping, and named sets sorted (requires, acceptance requirements, frontiers,
-dependencies, bounds). Duplicates in frontiers, dependencies and bounds refuse.
-Caller slices are not mutated. The fingerprint includes cutoff and recorded bounds;
-advancing the current clock does not alter this immutable derivation identity.
-It proves content identity only, never authenticity or caller authorization.
+Fingerprint validates the complete receipt, then hashes only the immutable
+projection: schema, requires, work, candidate, acceptance, sources, facts, evaluator,
+query-digest, options-digest, dependencies, dependency-digest, coverage, policy-digest
+and environment-digest. It excludes observed-cutoff, bounds, access-epoch and
+generation: those are mandatory currency observations, separately checked at use.
+Canonical JSON has recursively sorted object keys, exact decimal integers, standard
+encoding/json escaping and sorted named sets (requires, acceptance requirements,
+frontiers and dependencies). Duplicate frontiers, dependencies and bounds refuse;
+requires is the exact singleton above. Caller slices are not mutated. A digest proves
+content identity only, never authenticity, current validity or caller authorization.
 
 CheckApplicability(cached, current, observedNow) consumes independently observed
 current context and explicit trusted time, reading no clock itself. Invalid or
-incomplete contexts/time yield held; changed complete contexts yield reevaluate.
-Matching inputs are reusable only at/after cutoff and strictly before every bound
-(the earliest expiry wins). At or after lease, access or evaluation expiry,
-unchanged immutable data still yields reevaluate. Results have stable state/reason
+incomplete contexts/time yield held; changed immutable inputs yield reevaluate.
+Access-policy epoch and reevaluation generation must separately match exactly, even
+when the immutable fingerprint is unchanged. A later re-observation cutoff or renewed
+bound alone does not change immutable derivation identity and can retain a hit.
+
+Matching derivations are reusable only at/after both cutoffs and strictly before
+every bound in both receipts: the effective window is their intersection. A renewed
+current grant never extends the cached receipt's expiry; a shortened current lease,
+access grant or evaluation bound takes effect immediately. At or after any required
+expiry, unchanged immutable data yields reevaluate. Results have stable state/reason
 and omit input values. Held or reevaluate never mean eligible or authorized.
 
 Reuse is advisory computation. Admission must independently obtain current caller
@@ -70,6 +80,11 @@ Forge source/index cache owners remain separate and gain no permissions here.
 Conformance: TestContextInputs, TestContextExpiry, TestContextAdmissionFlow,
 TestContextMembership and TestContextSchema exercise fixed fixtures, existing Assess
 and evaluation, exact revision binding and an independent synthetic admission check.
-The schema supplies shape; the pure package adds calendar validity, set uniqueness,
+An independently loaded current fixture has a later cutoff and renewed bounds;
+its immutable hit is compared with fresh Assess. Explicit bypass of the synthetic
+upper context check still reaches the independent lower authorization check. The
+committed authority and membership mutations respectively treat a hit as authority
+and compare only the surviving dependency intersection. The schema supplies shape;
+the pure package adds calendar validity, set uniqueness,
 required lease/access kinds and cross-field/digest consistency. The contract does
 not authenticate observations or implement a production gate cache.

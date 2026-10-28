@@ -102,7 +102,7 @@ func (c EvaluationContext) Validate() error {
 	if c.Schema != ContextSchema {
 		return unknown("context-version")
 	}
-	if c.Requires == nil {
+	if len(c.Requires) != 1 {
 		return unknown("context-requires-missing")
 	}
 	for _, r := range c.Requires {
@@ -173,8 +173,9 @@ func (c EvaluationContext) Validate() error {
 	return nil
 }
 
-// Fingerprint identifies the complete immutable derivation receipt. Advancing
-// the current time does not change it. Incomplete coverage cannot produce a
+// Fingerprint identifies immutable derivation inputs, excluding observation
+// cutoff, expiry bounds, access epoch and reevaluation generation. Those remain
+// mandatory separately checked currency; incomplete coverage cannot produce a
 // reusable fingerprint. Set order has no meaning; duplicate members are refused.
 func (c EvaluationContext) Fingerprint() (string, error) {
 	if err := c.Validate(); err != nil {
@@ -193,9 +194,15 @@ func (c EvaluationContext) Fingerprint() (string, error) {
 	sort.Slice(c.Facts, func(i, j int) bool { return c.Facts[i].Name < c.Facts[j].Name })
 	c.Dependencies = append([]Dependency{}, c.Dependencies...)
 	sort.Slice(c.Dependencies, func(i, j int) bool { return c.Dependencies[i].Work < c.Dependencies[j].Work })
-	c.Bounds = append([]ValidityBound{}, c.Bounds...)
-	sort.Slice(c.Bounds, func(i, j int) bool { return c.Bounds[i].Kind < c.Bounds[j].Kind })
-	return contextHash(c)
+	// Explicit immutable projection: currency cannot accidentally become part of
+	// the derivation identity merely by adding another receipt field.
+	return contextHash(map[string]any{
+		"schema": c.Schema, "requires": c.Requires, "work": c.Work, "candidate": c.Candidate,
+		"acceptance": c.Acceptance, "sources": c.Sources, "facts": c.Facts,
+		"evaluator": c.Evaluator, "query-digest": c.QueryDigest, "options-digest": c.OptionsDigest,
+		"dependencies": c.Dependencies, "dependency-digest": c.DependencyDigest,
+		"coverage": c.Coverage, "policy-digest": c.PolicyDigest, "environment-digest": c.EnvironmentDigest,
+	})
 }
 
 // Applicability reports computational reuse only. A reusable result still needs
@@ -222,16 +229,25 @@ func CheckApplicability(cached, current EvaluationContext, observedNow string) A
 	if old != fresh {
 		return Applicability{"reevaluate", "context-inputs-changed"}
 	}
-	now, _ := time.Parse(time.RFC3339, observedNow)
-	cutoff, _ := time.Parse(time.RFC3339, cached.ObservedCutoff)
-	if now.Before(cutoff) {
-		return Applicability{"held", "context-time-before-cutoff"}
+	if cached.AccessEpoch != current.AccessEpoch || cached.Generation != current.Generation {
+		return Applicability{"reevaluate", "context-currency-changed"}
 	}
-	for _, b := range cached.Bounds {
-		expiry, _ := time.Parse(time.RFC3339, b.ExpiresAt)
-		if !now.Before(expiry) {
-			return Applicability{"reevaluate", "context-expired"}
+	now, _ := time.Parse(time.RFC3339, observedNow)
+	// The validity window is the intersection of the cached receipt and the
+	// independently observed current receipt. A renewed grant cannot erase an old
+	// expiry, and a shortened/revoked current grant cannot inherit the old bound.
+	for _, receipt := range []EvaluationContext{cached, current} {
+		cutoff, _ := time.Parse(time.RFC3339, receipt.ObservedCutoff)
+		if now.Before(cutoff) {
+			return Applicability{"held", "context-time-before-cutoff"}
+		}
+		for _, b := range receipt.Bounds {
+			expiry, _ := time.Parse(time.RFC3339, b.ExpiresAt)
+			if !now.Before(expiry) {
+				return Applicability{"reevaluate", "context-expired"}
+			}
 		}
 	}
+
 	return Applicability{"reusable", "context-unchanged"}
 }

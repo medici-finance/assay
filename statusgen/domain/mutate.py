@@ -16,10 +16,18 @@ RECORDS = "statusgen/domain/records.go"
 ASSESS = "statusgen/domain/assess.go"
 CONTEXT = "statusgen/domain/context.go"
 MUTATIONS = [
-    ("context-evaluator", "TestContextInputs", [(CONTEXT, "return contextHash(c)", 'c.Evaluator.Version = "omitted"; return contextHash(c)')]),
+    ("context-currency-key", "TestContextExpiry", [(CONTEXT, "return contextHash(map[string]any{", 'return contextHash(map[string]any{ "observed-cutoff":c.ObservedCutoff,')]),
+    ("context-currency-check", "TestContextInputs", [(CONTEXT, "if cached.AccessEpoch != current.AccessEpoch || cached.Generation != current.Generation {", "if false {")]),
+    ("context-requires-set", "TestContextInputs", [(CONTEXT, "if len(c.Requires) != 1 {", "if c.Requires == nil {")]),
+    ("context-evaluator", "TestContextInputs", [(CONTEXT, "return contextHash(map[string]any{", 'c.Evaluator.Version = "omitted"; return contextHash(map[string]any{')]),
     ("context-expiry", "TestContextExpiry", [(CONTEXT, "if !now.Before(expiry) {", "if false && !now.Before(expiry) {")]),
-    ("context-authority", "TestContextAdmissionFlow", [("statusgen/domain/context_test.go", "return e == nil && authorized && at.Before(expiry)", "return e == nil && authorized && (at.Before(expiry) || at.Equal(expiry))")]),
-    ("context-membership", "TestContextMembership", [(CONTEXT, "if old != fresh {", "if old != fresh && cached.Generation != current.Generation {")]),
+    ("context-authority", "TestContextAdmissionFlow", [("statusgen/domain/context_test.go", "func currentAuthority(hit, authorized bool, grantExpiry, now string) bool {", "func currentAuthority(hit, authorized bool, grantExpiry, now string) bool {\n if hit { return true }")]),
+    ("context-membership", "TestContextMembership", [(CONTEXT, "old, err := cached.Fingerprint()", """// Planted defect: compare only dependencies surviving in both inventories.
+ left, right := []Dependency{}, []Dependency{}
+ for _,a := range cached.Dependencies { for _,b := range current.Dependencies { if a.Work==b.Work {left=append(left,a);right=append(right,b)} } }
+ cached.Dependencies=left; current.Dependencies=right
+ cached.DependencyDigest,_=DependencySetDigest(left); current.DependencyDigest,_=DependencySetDigest(right)
+ old, err := cached.Fingerprint()""") ]),
     ("context-schema", "TestContextSchema", [("schemas/evaluation-context-v1.json", '    "evaluator",', '')]),
     ("path-identity", "TestDomainPathIsNotIdentity", [(RECORDS, "key := q.String()", "key := item.Path + q.String()")]),
     ("unknown-fact", "TestDomainMissingFactHolds", [(ASSESS, "if state != Present {", "if state != Present && state != CouldNotCheck {")]),

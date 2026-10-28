@@ -32,7 +32,8 @@
       "items": {
         "const": "context@1"
       },
-      "minItems": 0
+      "minItems": 1,
+      "maxItems": 1
     },
     "work": {
       "$ref": "#/$defs/work-identity"
