@@ -77,6 +77,10 @@ name: release
 #   * images — the single release job builds and verifies all nine images from
 #     the prepared source and Linux binary artifacts, then pushes them before
 #     tagging and publishing their checksummed references with the binaries.
+#     verify-runner is multi-arch (linux/amd64 + linux/arm64, #4323): both
+#     platforms are built and checked on this runner, which therefore needs
+#     arm64 emulation registered with its Docker engine; its reference pins
+#     the image index digest. The other eight images stay linux/amd64.
 #     One release Environment approval covers this entire publication sequence.
 
 on:
@@ -1199,6 +1203,11 @@ jobs:
           GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
           GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
           GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+          # linux-arm64 is the statusgen the arm64 half of the multi-arch
+          # verify-runner image carries (#4323). It is a published asset like the
+          # others: checksummed, described in the SBOM and attested, so the
+          # statusgen inside each runner platform is a release asset by sha256.
+          GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-arm64  .
           # windows-port/01: Go cross-compiles the two Windows targets on this same
           # Linux runner (no Windows host); the .exe suffix is part of the asset name.
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-amd64.exe .
@@ -1297,7 +1306,7 @@ jobs:
           go run ./cmd/deskinstall --harness cursor --bundle ../../plugins/assay --release "$RELEASE_TAG" --pack ../../cursor-bundle.tar.gz
 
       # SOFTWARE BILL OF MATERIALS. One SPDX 2.3 document, sbom.spdx.json, covers
-      # every Go-built asset: the five statusgen binaries, the five qualgen
+      # every Go-built asset: the six statusgen binaries, the five qualgen
       # binaries, and the five desk-tools tarballs (each tarball described by the
       # union of the Go binaries inside it). tools.release.sbom reads the Go
       # build information the linker embedded (`go version -m`), so no extra tool
@@ -1318,7 +1327,7 @@ jobs:
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct HEAD)
           export SOURCE_DATE_EPOCH
           python3 - \
-            statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
+            statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 statusgen-linux-arm64 \
             statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
             qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
             qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
@@ -1333,7 +1342,7 @@ jobs:
           PY_SBOM
           echo "sbom.spdx.json: $(grep -c '"name"' sbom.spdx.json) named elements"
 
-      # One checksums.txt covers every asset on the umbrella release — the five
+      # One checksums.txt covers every asset on the umbrella release — the six
       # statusgen binaries, the five qualgen binaries, the five desk-tools
       # per-platform tarballs, the Cursor source bundle and the SBOM
       # (sbom.spdx.json). Consumers pin each binary line by sha256 in
@@ -1345,6 +1354,7 @@ jobs:
             statusgen-darwin-arm64 \
             statusgen-darwin-amd64 \
             statusgen-linux-amd64 \
+            statusgen-linux-arm64 \
             statusgen-windows-amd64.exe \
             statusgen-windows-arm64.exe \
             qualgen-darwin-arm64 \
@@ -1449,7 +1459,7 @@ jobs:
           sha256sum prepared-source.tar.gz image-bugs-gc-linux-amd64 release-highlights.md checksums.txt > build-inputs.sha256
           if [ -f release-source.bundle ]; then sha256sum release-source.bundle >> build-inputs.sha256; fi
 
-      # Independent platform artifacts let download-artifact transfer up to five
+      # Independent platform artifacts let download-artifact transfer up to six
       # platforms concurrently. Store the already-gzipped suites without another
       # compression pass; the loose binaries remain unstripped.
       - name: Upload prepared release artifacts (darwin-arm64)
@@ -1487,6 +1497,18 @@ jobs:
             statusgen-linux-amd64
             qualgen-linux-amd64
             desk-tools-linux-amd64.tar.gz
+
+      # linux-arm64 carries statusgen only: it exists for the arm64 half of the
+      # multi-arch verify-runner image (#4323), not as a full platform suite.
+      - name: Upload prepared release artifacts (linux-arm64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-linux-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-linux-arm64
 
       - name: Upload prepared release artifacts (windows-amd64)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1613,10 +1635,13 @@ jobs:
           python3 - <<'PY_REFS'
           import json, os
           from pathlib import Path
-          from tools.release.images_contract import validate
+          from tools.release.images_contract import RUNNER_PLATFORM, validate
+          # A new release records the multi-arch runner; only a consumer of an
+          # older release's record accepts its amd64-only runner entry.
           validate(json.loads(Path('release-images.json').read_text()),
                    os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
-                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'])
+                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'],
+                   runner_platforms=(RUNNER_PLATFORM,))
           PY_REFS
           sha256sum release-images.json verify-runner-image.txt >> checksums.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1657,7 +1682,7 @@ jobs:
           # the "Assemble the tool-validation evidence pack" step above.
           # windows-port/01: the two statusgen .exe assets and the two desk-tools
           # windows tarballs are published alongside the Unix assets.
-          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
+          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 statusgen-linux-arm64 \
                    statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
                    qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
                    qualgen-windows-amd64.exe qualgen-windows-arm64.exe \

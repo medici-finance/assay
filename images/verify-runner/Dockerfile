@@ -1,5 +1,13 @@
 # The release's own statusgen bytes plus the fleet's digest-pinned toolchain.
 #
+# PLATFORMS - linux/amd64 and linux/arm64 (#4323). The release builds this file
+#   once per platform and publishes one image index over both, so an arm64 host
+#   runs it natively instead of under amd64 emulation. RUNNER_BASE is a
+#   multi-platform index digest, so each build takes that platform's base. The
+#   tool checksums below are pinned per TARGETARCH and any other arch fails the
+#   build. statusgen is the release asset statusgen-linux-${TARGETARCH}, staged
+#   by tools/release/images.py, so a platform without one fails at its COPY.
+#
 # GIT FLOOR - git 2.41 or later at /usr/bin/git (#4207). The admitted verify
 #   runner calls /usr/bin/git with a fixed PATH and renders a converted file from
 #   the attested commit's own attributes via `git --attr-source`, which arrived in
@@ -153,7 +161,7 @@ RUN set -eu; \
     printf '%s\n' tools/desk statusgen > /usr/local/share/verify-runner/go-module-roots.txt; \
     rm -rf /tmp/modsrc /root/.cache
 
-COPY .release-images/harness/statusgen /usr/local/bin/statusgen
+COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
 
 # git from the gitbuild stage, over /usr. The check script stays in the image so a
 # running home can re-check itself.
