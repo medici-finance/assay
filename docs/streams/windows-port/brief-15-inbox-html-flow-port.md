@@ -482,6 +482,8 @@ RISK-VALUE: NAMED, NOT DERIVED — commandNotDerivable = "not derivable — desk
 
 **VERIFY: BLOCKED** — rows_passed 9 / rows_total 10 at 558f3e56d95e. Met: rows 1–7 and 9 by the host execution witness, and row 10 (check:ci) by the closed container-netns bracket (verdict=match). Could-not-check: row 8, whose witness credits only the exit code (medici-finance/assay#3569). No acceptance obligation was observed to fail. Gate is model and all four risk answers are no. Next actor: row 8 needs re-authoring per medici-finance/assay#3569.
 
+Outcome record (follow-up, 2026-10-28): no `blocked` outcome record landed for this run. The record for it (`outcome: blocked`, `sha` 9c16f22a6c11269f2dda1451d14491d307817b1a, this run's Evidence commit; `blocker_kind: check-definition`, `blocker_ref: #3569`, `rows: [8]`, `row_results` for all ten rows, `tool_version` v1.0.63) was refused by `deskevidence --outcome-record`, exit 5: `deskevidence: environment changed since admission: tool — the run is invalid; re-admit it before landing`. The installed desk tools moved from v1.0.63 to v1.0.64 after this run was admitted. Row 8's blocker stays #3569. Next actor for row 8: the driver, because re-authoring a Verify command of this delivered brief is an acceptance amendment, not verifier or worker work.
+
 ## Review
 Gate: **model**. Reviewer's questions: (1) does the flow-model port reproduce the
 could-not-check-vs-n/a distinction and the fleet-row "AT LEAST" partial-sum flag, or does a
