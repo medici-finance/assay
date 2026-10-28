@@ -9,6 +9,10 @@ import tarfile
 
 DESKS = ("intake-desk", "worker-desk", "pr-review-desk", "verify-desk", "the-desk")
 NAMES = ("desk-tools", "assay-harness", "desk-base", *DESKS, "verify-runner")
+# verify-runner's platforms (#4323); the other images are linux/amd64. These
+# equal images_contract's values, which the release step validates against.
+RUNNER_PLATFORMS = ("linux/amd64", "linux/arm64")
+RUNNER_PLATFORM = ",".join(RUNNER_PLATFORMS)
 
 
 def run(*args, capture=False):
@@ -36,11 +40,17 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         raise ValueError("refusing to replace existing image-reference artifacts")
     refs = {name: f"{prefix}/{name}:{version}" for name in NAMES}
     refs["verify-runner"] = f"{verify_image}:{version}"
-    print("Release image targets: " + ", ".join(refs.values()), flush=True)
+    # verify-runner is one image index over RUNNER_PLATFORMS (#4323). Each
+    # platform image is built, checked and pushed under its own tag first; the
+    # versioned tag then names the index over exactly those pushed digests.
+    runner_refs = {platform: refs["verify-runner"] + "-" + platform.replace("/", "-")
+                   for platform in RUNNER_PLATFORMS}
+    targets = [*refs.values(), *runner_refs.values()]
+    print("Release image targets: " + ", ".join(targets), flush=True)
     if publish:
         # A failed lookup is absence only for the registry's explicit unknown
         # manifest response. Auth/transport failures never permit an overwrite.
-        for ref in refs.values():
+        for ref in targets:
             result = subprocess.run(["docker", "manifest", "inspect", ref],
                                     text=True, capture_output=True)
             if result.returncode == 0:
@@ -78,6 +88,15 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
                            ("image-bugs-gc-linux-amd64", "bugs-gc")):
         shutil.copyfile(artifacts / artifact, bins / name)
         (bins / name).chmod(0o755)
+    # The runner's statusgen per platform, named as the release asset it is.
+    # images/verify-runner/Dockerfile copies statusgen-linux-${TARGETARCH}, so a
+    # platform with no staged binary fails its build.
+    runner_bins = stage / "verify-runner"
+    runner_bins.mkdir()
+    for platform in RUNNER_PLATFORMS:
+        asset = "statusgen-" + platform.replace("/", "-")
+        shutil.copyfile(artifacts / asset, runner_bins / asset)
+        (runner_bins / asset).chmod(0o755)
     for name in ("statusgen", "deskboard", "cellctl", "bugs-gc"):
         if not (bins / name).is_file():
             raise ValueError(f"release build did not produce {name}")
@@ -101,22 +120,32 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         run("docker", "build", "--platform", "linux/amd64", "--build-arg",
             f"BASE_IMAGE={refs['desk-base']}", "-t", refs[name],
             "-f", root / f"containers/{name}/Dockerfile", root)
-    run("docker", "build", "--platform", "linux/amd64", "-t", refs["verify-runner"],
-        "-f", root / "images/verify-runner/Dockerfile", root)
-    for name, ref in refs.items():
-        got = run("docker", "run", "--rm", "--network", "none", "--platform", "linux/amd64",
+    # A non-native platform builds under the runner's registered emulation; a
+    # runner without it fails here, before any push.
+    for platform, ref in runner_refs.items():
+        run("docker", "build", "--platform", platform, "-t", ref,
+            "-f", root / "images/verify-runner/Dockerfile", root)
+        got = run("docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}",
+                  ref, capture=True).strip()
+        if got != platform:
+            raise ValueError(f"verify-runner build for {platform} produced {got!r}")
+    checks = [(name, ref, "linux/amd64") for name, ref in refs.items() if name != "verify-runner"]
+    checks += [("verify-runner " + platform, ref, platform) for platform, ref in runner_refs.items()]
+    for name, ref, platform in checks:
+        got = run("docker", "run", "--rm", "--network", "none", "--platform", platform,
                   "--entrypoint", "statusgen", ref, "--version", capture=True).strip()
         if got != version:
             raise ValueError(f"{name} statusgen version {got!r} != {version}")
-    # Probe the built image with its own non-root, read-only, no-network fence.
-    # Source stays in the release contract; no mounts, installs or credentials.
-    run("docker", "run", "--rm", "--pull", "never", "--network", "none",
-        "--platform", "linux/amd64", "--read-only", "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges", "--user", "1000:1000",
-        "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
-        "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
-        "--entrypoint", "python3", refs["verify-runner"], "-B", "-c",
-        (root / "images/verify-runner/check.py").read_text())
+    # Probe each runner platform with its own non-root, read-only, no-network
+    # fence. Source stays in the release contract; no mounts, installs or credentials.
+    for platform, ref in runner_refs.items():
+        run("docker", "run", "--rm", "--pull", "never", "--network", "none",
+            "--platform", platform, "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges", "--user", "1000:1000",
+            "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+            "--entrypoint", "python3", ref, "-B", "-c",
+            (root / "images/verify-runner/check.py").read_text())
     for name in ("desk-base", *DESKS):
         run("sh", root / "containers/scripts/layer-secret-scan.sh", refs[name])
     if not publish:
@@ -124,18 +153,61 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         return
     images = []
     for name, ref in refs.items():
-        run("docker", "push", ref)
-        repo = ref.rsplit(":", 1)[0]
-        digests = run("docker", "image", "inspect", "--format",
-                      "{{range .RepoDigests}}{{println .}}{{end}}", ref, capture=True).splitlines()
-        candidates = {s for s in digests if re.fullmatch(re.escape(repo) + r"@sha256:[0-9a-f]{64}", s)}
-        if len(candidates) != 1:
-            raise ValueError(f"push did not yield one immutable digest for {ref}")
-        pinnable = ref + "@" + candidates.pop().split("@", 1)[1]
-        images.append({"name": name, "platform": "linux/amd64", "ref": pinnable})
+        if name == "verify-runner":
+            digest = publish_runner_index(ref, runner_refs)
+            images.append({"name": name, "platform": RUNNER_PLATFORM, "ref": ref + "@" + digest})
+            continue
+        images.append({"name": name, "platform": "linux/amd64",
+                       "ref": ref + "@" + push_digest(ref)})
     manifest = {"schema": "release-images-v1", "version": version,
                 "source_revision": source, "repository": prefix.removeprefix("ghcr.io/"), "images": images}
     (out / "release-images.json").write_text(json.dumps(manifest, indent=2) + "\n")
     runner = next(image["ref"] for image in images if image["name"] == "verify-runner")
     (out / "verify-runner-image.txt").write_text(runner + "\n")
     print("Published all release images; immutable references are release artifacts.")
+
+
+def push_digest(ref):
+    """Push one tagged image and return the registry manifest digest it got."""
+    run("docker", "push", ref)
+    repo = ref.rsplit(":", 1)[0]
+    digests = run("docker", "image", "inspect", "--format",
+                  "{{range .RepoDigests}}{{println .}}{{end}}", ref, capture=True).splitlines()
+    candidates = {s for s in digests if re.fullmatch(re.escape(repo) + r"@sha256:[0-9a-f]{64}", s)}
+    if len(candidates) != 1:
+        raise ValueError(f"push did not yield one immutable digest for {ref}")
+    return candidates.pop().split("@", 1)[1]
+
+
+INDEX_TYPES = ("application/vnd.docker.distribution.manifest.list.v2+json",
+               "application/vnd.oci.image.index.v1+json")
+
+
+def publish_runner_index(ref, runner_refs):
+    """Push each platform image, then the index over exactly those digests.
+
+    Returns the index digest. The reference pins the index, not one platform:
+    the index bytes name every platform manifest by digest, so one immutable
+    pin selects one exact image per platform. The index is read back by that
+    digest and must list exactly the pushed platform digests, nothing else.
+    """
+    repo = ref.rsplit(":", 1)[0]
+    pushed = {platform: push_digest(platform_ref) for platform, platform_ref in runner_refs.items()}
+    run("docker", "manifest", "create", ref, *(repo + "@" + d for d in pushed.values()))
+    out = run("docker", "manifest", "push", "--purge", ref, capture=True).split()
+    if not out or not re.fullmatch(r"sha256:[0-9a-f]{64}", out[-1]):
+        raise ValueError(f"index push did not yield an immutable digest for {ref}")
+    digest = out[-1]
+    index = json.loads(run("docker", "manifest", "inspect", repo + "@" + digest, capture=True))
+    if index.get("mediaType") not in INDEX_TYPES:
+        raise ValueError(f"{ref}@{digest} is not an image index")
+    listed = {}
+    for entry in index.get("manifests", []):
+        platform = entry.get("platform", {})
+        key = f"{platform.get('os')}/{platform.get('architecture')}"
+        if key in listed:
+            raise ValueError(f"{ref}@{digest} lists platform {key} twice")
+        listed[key] = entry.get("digest")
+    if listed != pushed:
+        raise ValueError(f"{ref}@{digest} does not list exactly the pushed platform images")
+    return digest

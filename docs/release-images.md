@@ -26,8 +26,15 @@ roll remains a separate downstream job under its own existing identity.
    Build assay-harness with the same binaries and prepared plugin source, and
    verify-runner from the release statusgen plus its digest-pinned Go base and
    the Python packages pinned in `images/verify-runner/Dockerfile`.
-3. Check statusgen's version in all nine images. Execute the release-owned
-   `images/verify-runner/check.py` inside the built runner: import PyYAML and
+   verify-runner is multi-arch: it is built once for `linux/amd64` and once for
+   `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
+   binary, and each build's OS/architecture is read back before any check. The
+   release runner therefore needs arm64 emulation registered with its Docker
+   engine; without it the arm64 build fails before any push. The other eight
+   images stay `linux/amd64`.
+3. Check statusgen's version in all nine images, and in both runner
+   platforms. Execute the release-owned
+   `images/verify-runner/check.py` inside each built runner platform: import PyYAML and
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
    valid instance passes and an invalid one raises a validation error. It also
    checks the cluster backend's baked entrypoints (`stage-source.sh`,
@@ -46,7 +53,11 @@ roll remains a separate downstream job under its own existing identity.
    absence checks, including dispatches with or without a leading `v`.
    Publish the versioned images and read their registry digests. Refuse an
    existing image tag, an indeterminate registry lookup, or a missing/wrong
-   digest. Attach the references and their checksums to the draft GitHub release
+   digest. verify-runner is pushed as two per-platform tags
+   (`<umbrella-tag>-linux-amd64`, `<umbrella-tag>-linux-arm64`, both
+   absence-checked with the rest), then joined under the umbrella tag as one
+   image index naming those two pushed digests. The index is read back by its
+   digest and must list exactly those two platforms and digests. Attach the references and their checksums to the draft GitHub release
    before its single immutable publish. A partial registry push is not atomic:
    if a later push fails, no complete image manifest or GitHub release is
    published; recover by fixing forward with the next version.
@@ -73,8 +84,16 @@ future workflow runs; an already-running release keeps its original job graph.
 - intake-desk, worker-desk, pr-review-desk, verify-desk and the-desk;
 - verify-runner.
 
-Each record has `name`, `platform` (`linux/amd64`) and a complete
+Each record has `name`, `platform` and a complete
 `<repository>:<umbrella-tag>@sha256:<registry-manifest-digest>` reference.
+`platform` is `linux/amd64` for eight images; verify-runner records
+`linux/amd64,linux/arm64` and its digest is the image index (manifest list)
+digest, not a per-platform one. One reference then serves both host
+architectures: the engine selects the native platform, and the index bytes the
+digest covers name each per-platform manifest digest, so the pin stays
+immutable for both. Records from releases before the multi-arch runner carry
+`linux/amd64` for verify-runner; the contract still accepts them when a consumer
+validates an older release, while a new release must record both platforms.
 `verify-runner-image.txt` contains exactly its matching reference plus a newline.
 Both files are listed in `checksums.txt`. `tools/release/images_contract.py`
 rejects missing/duplicate images, wrong tags, repositories, platforms or source
@@ -90,7 +109,10 @@ Download the selected release's checksums and reference artifacts, verify the
 artifact bytes, validate the manifest against the selected version, source
 revision and release repository, then update repository/cell pins together.
 For a verify-runner consumer, copy `verify-runner-image.txt` into its image lock
-and move the accompanying tool-version marker in the same change.
+and move the accompanying tool-version marker in the same change. Do not force
+`--platform linux/amd64` when running a multi-arch runner reference: let the
+engine pick the host's platform, or pass the host's own platform, so an arm64
+host runs the native image instead of an emulated one.
 The Kubernetes desk package keeps the selected release's `release-images.json`
 byte for byte beside its manifests; its offline check pins that record's sha256,
 validates it with this contract and requires every role reference to equal the recorded one
