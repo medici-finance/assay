@@ -737,7 +737,7 @@
       "complexity": "simple",
       "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskclaim",
@@ -1333,7 +1333,7 @@
       "complexity": "simple",
       "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrelease",
@@ -1661,7 +1661,7 @@
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar-action.sh",
@@ -1679,7 +1679,8 @@
       "complexity": "simple",
       "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/muhar"
     },
     {
       "executable": "opmetrics",
@@ -1695,7 +1696,7 @@
       "complexity": "simple",
       "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "repohardenguard",
