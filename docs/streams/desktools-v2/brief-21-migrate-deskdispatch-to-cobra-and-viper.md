@@ -439,7 +439,7 @@ Risk-bearing values were enumerated over the change since the prior pass (e4d234
 - ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20. Unchanged.
 - tier default = "any" and kit default = "worker" @ tools/desk/cmd/deskdispatch/cli.go:73. Unchanged.
 - gate value for unreadable frontmatter = "human" @ tools/desk/cmd/deskdispatch/brief.go:58 and :62. New; it was "" (no gate) before.
-- rework adoption binding: "--adopt-run" with the held claim key @ tools/desk/cmd/deskdispatch/reviewworktree.go:41. New.
+- rework adoption binding: "--adopt-run" with the claim key the run already owns @ tools/desk/cmd/deskdispatch/reviewworktree.go:41. New.
 - verifier prerequisite record bound to runnercmds.Commands @ tools/desk/cmd/deskdispatch/verifierattestation.go:62 and :148. New.
 - hint discriminator "Not adopted as a finished home" @ tools/desk/cmd/deskdispatch/prompt.go:295. New; it selects hint text only.
 Each can be reversed with an edit and a redeploy.
