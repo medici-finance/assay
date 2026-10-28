@@ -467,6 +467,9 @@ type ghCheckRunsWire struct {
 		Conclusion  string `json:"conclusion"`
 		StartedAt   string `json:"started_at"`
 		CompletedAt string `json:"completed_at"`
+		App         struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
 	} `json:"check_runs"`
 }
 
@@ -1379,6 +1382,7 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 				ID:   checkRunID(c.ID),
 				Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+				AppSlug: c.App.Slug,
 			})
 		}
 		if len(cr.CheckRuns) < forgeCIPerPage {

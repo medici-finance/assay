@@ -38,7 +38,8 @@
         "Status": "completed",
         "Conclusion": "success",
         "StartedAt": "",
-        "CompletedAt": "2026-09-15T10:04:00Z"
+        "CompletedAt": "2026-09-15T10:04:00Z",
+        "AppSlug": ""
       }
     ]
   }

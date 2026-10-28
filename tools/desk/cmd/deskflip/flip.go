@@ -447,11 +447,30 @@ func flip(o flipOpts) error {
 	}
 	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
 
-	if err := checkLifecyclePreflight(pr.Body, files, checks, head, bodyEditedAt); err != nil {
+	// Adoption is read from the server, never assumed: the condition binds only where the
+	// base branch's required status checks name lifecycle-preflight. Memoized so the
+	// required set is read once for this flip.
+	var (
+		requiredRead bool
+		requiredSet  []string
+		requiredErr  error
+	)
+	requiredForLifecycle := func() ([]string, error) {
+		if !requiredRead {
+			requiredRead = true
+			requiredSet, requiredErr = readRequiredChecks(o, fg, fr, pr.BaseRef, head)
+		}
+		return requiredSet, requiredErr
+	}
+	lifecycleAdopted, err := checkLifecyclePreflight(pr.Body, files, checks, head, requiredForLifecycle, bodyEditedAt)
+	if err != nil {
 		return err
 	}
-
-	o.say("%s OK: delivery check succeeded at %s, or declaration is authoring/issue-only", condLifecyclePreflight, short(head))
+	if lifecycleAdopted {
+		o.say("%s OK: delivery check succeeded at %s (check run by %s)", condLifecyclePreflight, short(head), lifecycleProducerApp)
+	} else {
+		o.say("%s OK: no Brief:/Cross-repo-brief: delivery declared, or %q does not require %s (not adopted)", condLifecyclePreflight, pr.BaseRef, condLifecyclePreflight)
+	}
 
 	// --- head-stable (TOCTOU) ----------------------------------------------------
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
@@ -513,13 +532,17 @@ func flip(o flipOpts) error {
 	// desk-decided re-runs against the SAME re-read (review finding F2 on attention-budget/19's
 	// PR): an `Undeclared-desk-decision:` line posted at this head during the checks, or a body
 	// or label edited between the reads, is exactly the change this re-read exists to see.
-	// The body can acquire a delivery trailer without a head change. Reclassify
-	// the live body against the same complete diff before any mutation.
-	if body2 != pr.Body && (lifecycleDelivery(pr.Body, files) || lifecycleDelivery(body2, files)) {
-		return deskkit.Unverifiable(fmt.Sprintf("condition %s: the PR body changed during gating; rerun lifecycle-preflight for the current declaration", condLifecyclePreflight), nil)
-	}
-	if err := checkLifecyclePreflight(body2, files, checks, head, bodyEditedAt); err != nil {
-		return err
+	// The body can acquire a delivery trailer without a head change. The check observed
+	// above judged the FIRST body; a changed body that declares (or declared) a delivery
+	// is unjudged, so refuse before any mutation. An unchanged body was judged above.
+	if body2 != pr.Body && (lifecycleDelivery(pr.Body) || lifecycleDelivery(body2)) {
+		adopted, err := lifecycleAdoptedOn(requiredForLifecycle)
+		if err != nil {
+			return err
+		}
+		if adopted {
+			return deskkit.Unverifiable(fmt.Sprintf("condition %s: the PR body changed during gating; rerun lifecycle-preflight for the current declaration", condLifecyclePreflight), nil)
+		}
 	}
 	pr2 := pr
 	pr2.Body = body2
@@ -1679,6 +1702,10 @@ type rollupEntry struct {
 	StartedAt   string
 	CompletedAt string
 	CreatedAt   string
+	// AppSlug is the App that created a check run (deskkit.CheckRun.AppSlug); "" for a
+	// status context or a forge that reports no producer. checks-green ignores it; the
+	// lifecycle-preflight condition binds its verdict to it.
+	AppSlug string
 }
 
 func (e rollupEntry) label() string {
@@ -1850,6 +1877,7 @@ func readChecks(o flipOpts, read func() (*deskkit.ChecksAtHead, error), head str
 			ID:   c.ID,
 			Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 			StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+			AppSlug: c.AppSlug,
 		})
 	}
 	return out, nil

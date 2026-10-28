@@ -129,11 +129,17 @@ nothing is mutated:
                     the CURRENT head carries the literal Security-Review: pass line. An
                     explicit fail at head blocks the flip whether risk-classed or not.
   lifecycle-preflight
-                    a delivering Brief: PR must carry a completed, successful
-                    lifecycle-preflight check at the current head. Missing, skipped,
-                    pending or failed checks never grant a flip. Authors:/Issue: and
-                    actual authoring-only diffs are exempt; statusgen owns partial
-                    delivery and lifecycle policy.
+                    binds only where the base branch's required status checks
+                    include lifecycle-preflight (adoption is read from the server; an
+                    unreadable required set refuses). There, a Brief: or
+                    Cross-repo-brief: PR must carry a completed, successful
+                    lifecycle-preflight CHECK RUN created by the github-actions App at
+                    the current head. A commit status, a run from any other App, and a
+                    missing, skipped, pending or failed run never grant a flip; a PR
+                    that changes .github/workflows/ or .github/actions/ is refused
+                    (its own job could produce the run). Authors:/Issue: PRs are
+                    exempt; statusgen owns authoring-only, partial-delivery and
+                    lifecycle policy.
   head-stable       the head AND the reviewer verdicts are re-read immediately before the
                     mutation. A moved head means the verified state is stale; an unchanged
                     head is not enough on its own, because a security verdict can be

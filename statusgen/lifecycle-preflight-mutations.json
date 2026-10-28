@@ -36,6 +36,42 @@
       "file": "lifecyclepreflight.go",
       "old": "return nil, fmt.Errorf(\"empty Brief: declaration\")",
       "new": "return nil, nil"
+    },
+    {
+      "name": "unresolvable record ruling becomes a soft refusal",
+      "file": "lifecyclepreflight.go",
+      "old": "if out.Reason == rulingUnresolvable || out.Reason == rulingRecordUnreadable {",
+      "new": "if false {"
+    },
+    {
+      "name": "readable non-OK record ruling accepted",
+      "file": "lifecyclepreflight.go",
+      "old": "if !out.Present || out.Reason != rulingOK {",
+      "new": "if false {"
+    },
+    {
+      "name": "alias registry read from the judged PR tree",
+      "file": "lifecyclepreflight.go",
+      "old": "aliases := decisionGateAliases(root, baseRev, repo)",
+      "new": "aliases := decisionRepoAliases(root, repo)"
+    },
+    {
+      "name": "Cross-repo-brief delivery passes vacuously",
+      "file": "lifecyclepreflight.go",
+      "old": "if len(refs) == 0 && preflightHasCrossRepoDelivery(pull.Body) {",
+      "new": "if false {"
+    },
+    {
+      "name": "unparseable authored skips cited design record",
+      "file": "lifecyclepreflight.go",
+      "old": "\t\tif !ok {\n\t\t\treturn fail(fmt.Errorf(\"Brief: %s authored: %q does not parse",
+      "new": "\t\tif !ok && false {\n\t\t\treturn fail(fmt.Errorf(\"Brief: %s authored: %q does not parse"
+    },
+    {
+      "name": "non-merge checkout falls back to the working tree base",
+      "file": "lifecyclepreflight.go",
+      "old": "\t\treturn \"\", fmt.Errorf(\"judged base unknown: --root is not a PR merge checkout",
+      "new": "\t\treturn rev(\"HEAD\")\n\t\treturn \"\", fmt.Errorf(\"judged base unknown: --root is not a PR merge checkout"
     }
   ]
 }

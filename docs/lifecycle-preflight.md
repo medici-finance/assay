@@ -15,11 +15,29 @@ and applies the same authoring and partial-delivery classifications as
 reconciliation. A held transition and an unreadable fact both prevent admission.
 This does not approve a design, verify a delivery, or claim a release is qualified.
 
-For a delivering `Brief:` PR, `deskflip` requires literal success from the
-`lifecycle-preflight` check at the current head. A skipped or neutral result is
-insufficient. Authors-only and issue-only PRs keep their existing classification;
-a partial-delivery declaration still goes through statusgen's classification.
-The review kit requires reviewers to inspect that result against the actual PR.
+`deskflip` enforces the check only where it is adopted: the base branch's
+required status checks include `lifecycle-preflight`. It reads that set from the
+server; a set it cannot read refuses the flip rather than reading as "not
+adopted". The review kit uses the same predicate. In a repository that does not
+require the check, a delivery flips as it did before this change.
+
+Where adopted, a PR carrying `Brief:` or `Cross-repo-brief:` needs literal
+success from a `lifecycle-preflight` check run created by the GitHub Actions
+App at the current head. A skipped or neutral result is insufficient. A commit
+status with that context and a check run from any other App are not accepted. A
+PR that changes `.github/workflows/` or `.github/actions/` is refused, because
+its own job could produce the run. Authors-only and issue-only PRs are exempt.
+Statusgen alone decides whether a declared brief is authoring-only or a partial
+delivery; deskflip requires the check for every declaration. Statusgen does not
+evaluate a `Cross-repo-brief:` delivery, so it reports could-not-check for one;
+that delivery's lifecycle is judged in the brief's own repository. The review
+kit requires reviewers to inspect that result against the actual PR.
+
+The checker judges the PR against its base. Run on the PR merge checkout, it
+takes `HEAD^1` as the judged base after confirming `HEAD^2` is the expected
+head; elsewhere `--base-rev` names it. The decision-gate base snapshot and the
+repository alias registry are read at that base, so a change cannot relax its
+own brief's gate or widen which markers rule on it.
 
 ## Activation is a separate maintainer act
 
@@ -35,11 +53,13 @@ Roll out in this order:
 2. Promote the workflow with a maintainer credential using the runsheet below.
 3. Observe the normal PR run at its exact head. Require the `lifecycle-preflight`
    check in the main branch ruleset, retaining every existing required check.
-   Select GitHub Actions as the expected check source where available. Do not
-   replace a ruleset using an incomplete copied settings payload.
+   Select GitHub Actions as the expected check source; `deskflip` independently
+   accepts only a check run created by that App. Do not replace a ruleset using
+   an incomplete copied settings payload.
 4. Release and install the desk-tools and plugin changes through the existing
-   release/pin process. Do not deploy a deskflip that requires this check before
-   that repository can emit it.
+   release/pin process. The released deskflip enforces the check only where step
+   3's required check exists, so a consumer that has not provisioned the
+   workflow keeps its previous flip behaviour.
 
 The staged job runs on all PR paths and on body/base edits. It builds the checker
 from the trusted base and reads the PR merge tree as data, following the existing

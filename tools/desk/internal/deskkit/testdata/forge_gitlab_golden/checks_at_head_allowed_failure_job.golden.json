@@ -33,7 +33,8 @@
         "Status": "completed",
         "Conclusion": "success",
         "StartedAt": "",
-        "CompletedAt": ""
+        "CompletedAt": "",
+        "AppSlug": ""
       },
       {
         "ID": "9202",
@@ -41,7 +42,8 @@
         "Status": "completed",
         "Conclusion": "neutral",
         "StartedAt": "",
-        "CompletedAt": ""
+        "CompletedAt": "",
+        "AppSlug": ""
       }
     ]
   }

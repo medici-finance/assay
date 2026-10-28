@@ -888,7 +888,7 @@ docs live elsewhere.
 
 ### Prospective delivery lifecycle check
 
-`statusgen lifecycle-preflight --root <PR-tree> --repo owner/name --pr N --expected-head <40-character-PR-head-SHA> --json`
+`statusgen lifecycle-preflight --root <PR-merge-checkout> --repo owner/name --pr N --expected-head <40-character-PR-head-SHA> [--base-rev <commit>] --json`
 
 This read-only GitHub check tests the lifecycle transition an implementation PR
 would establish before it merges. It reads the authoritative PR body and complete
@@ -901,7 +901,15 @@ readable complete file list. An unresolved partial claim,
 unreadable input, missing brief/board row, or changed head cannot pass.
 
 A full delivery is evaluated prospectively at `implemented`, even if the board
-still says `todo`. The human decision gate uses its existing two-layer evaluator;
+still says `todo`. The human decision gate uses its existing two-layer evaluator
+with its base layer and the alias registry (`docs/streams/graph-repos.yaml`) read
+as committed at the judged base, never from the tree under judgment, so a delivery
+cannot downgrade its own brief's gate or widen which markers rule on it. The
+judged base is `--base-rev` when given; otherwise `--root` must be the PR merge
+checkout (`HEAD^2` equal to `--expected-head`) and the base is `HEAD^1`. Any other
+root is could-not-check. A `Cross-repo-brief:` carrier with no `Brief:` is
+could-not-check, as is a delivering brief that cites a `design:` record while its
+`authored:` date does not parse;
 a referenced risk-gated design record uses the existing register validator, and a
 present ruling URL uses the existing network ruling resolver. Optional ruling URLs
 remain optional under the existing PR-anchor policy. The tool neither approves a

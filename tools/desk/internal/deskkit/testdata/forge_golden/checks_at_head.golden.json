@@ -29,7 +29,8 @@
         "Status": "completed",
         "Conclusion": "success",
         "StartedAt": "2026-08-24T00:00:00Z",
-        "CompletedAt": "2026-08-24T00:05:00Z"
+        "CompletedAt": "2026-08-24T00:05:00Z",
+        "AppSlug": "github-actions"
       },
       {
         "ID": "",
@@ -37,7 +38,8 @@
         "Status": "completed",
         "Conclusion": "success",
         "StartedAt": "2026-08-24T00:00:00Z",
-        "CompletedAt": "2026-08-24T00:04:00Z"
+        "CompletedAt": "2026-08-24T00:04:00Z",
+        "AppSlug": ""
       }
     ]
   }

@@ -523,7 +523,8 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.checks = map[string]any{"total_count": 2,
 					"check_runs": []map[string]any{
 						{"id": 41234567890, "name": "go-test", "status": "completed", "conclusion": "success",
-							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"},
+							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z",
+							"app": map[string]any{"slug": "github-actions"}},
 						{"name": "lint", "status": "completed", "conclusion": "success",
 							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:04:00Z"},
 					}}
