@@ -92,7 +92,7 @@ design-fit:
 
 ## Human decision
 
-At implementation pickup, record the concrete trusted-custodian profile, launch record and controlled-stop design before asking for acceptance. The executor authors a self-contained decision section from that design under decision-trigger: spec. No response authorizes no deployment, credential grant or profile activation; offline design and fixtures can proceed.
+Decision-trigger: spec. At implementation pickup, record the concrete trusted-custodian profile, launch record and controlled-stop design before asking for acceptance. The executor authors a self-contained decision section from that design. No response authorizes no deployment, credential grant or profile activation; offline design and fixtures can proceed.
 
 ## Ground rules
 
