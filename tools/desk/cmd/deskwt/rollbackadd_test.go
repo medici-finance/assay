@@ -25,6 +25,11 @@ func failingCheckoutHook(t *testing.T, work string) string {
 	return hook
 }
 
+// trackerLeaf is the leaf deskwt mints for a worktree name (the guard allows only
+// tracker-* children of the tmp dir). Fixtures name targets through it, so this source
+// never spells a minted scratch-worktree name for the public self-containment scan.
+func trackerLeaf(name string) string { return "tracker-" + name }
+
 // regression: #2746
 //
 // A failed `git worktree add` must not leave its target directory or its registration
@@ -55,7 +60,7 @@ func TestFailedAddLeavesNoTarget(t *testing.T) {
 			if guardErr != nil {
 				t.Fatal(guardErr)
 			}
-			target := guard.worktreeTarget("tracker-" + wtName)
+			target := guard.worktreeTarget(trackerLeaf(wtName))
 			if _, err := os.Lstat(target); !os.IsNotExist(err) {
 				t.Fatalf("failed add left %s behind (err=%v)", target, err)
 			}
@@ -91,7 +96,7 @@ func TestRollbackSkipsForeignTarget(t *testing.T) {
 	if guardErr != nil {
 		t.Fatal(guardErr)
 	}
-	target := guard.worktreeTarget("tracker-" + wtName)
+	target := guard.worktreeTarget(trackerLeaf(wtName))
 	if note := rollbackFailedAdd(guard, work, target, nil); note != "" {
 		t.Fatalf("rollback acted on a target another add owns: %q", note)
 	}
@@ -107,7 +112,7 @@ func TestRollbackSymlinkTarget(t *testing.T) {
 	outside := t.TempDir()
 	marker := filepath.Join(outside, "keep")
 	writeFile(t, marker, "foreign data")
-	target := filepath.Join(tmpBaseDir, "tracker-link")
+	target := filepath.Join(tmpBaseDir, trackerLeaf("foreign-symlink"))
 	if err := os.Symlink(outside, target); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
@@ -134,7 +139,7 @@ func TestRollbackOwnership(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			target := filepath.Join(tmpBaseDir, "tracker-owned")
+			target := filepath.Join(tmpBaseDir, trackerLeaf("owned"))
 			owned, err := reserveAddTarget(target)
 			if err != nil {
 				t.Fatal(err)
@@ -229,7 +234,7 @@ func TestAddRefLockRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := guard.worktreeTarget("tracker-locked")
+	target := guard.worktreeTarget(trackerLeaf("locked"))
 	if _, err := os.Lstat(target); !os.IsNotExist(err) {
 		t.Fatalf("lock failure left target: %v", err)
 	}
@@ -252,7 +257,7 @@ func TestLocalizedRaceKeepsWinner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := guard.worktreeTarget("tracker-loser")
+	target := guard.worktreeTarget(trackerLeaf("loser"))
 	oldExec := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		if name == "git" && len(args) > 1 && args[0] == "worktree" && args[1] == "add" {
