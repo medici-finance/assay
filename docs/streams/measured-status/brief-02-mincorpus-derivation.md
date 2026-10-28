@@ -365,7 +365,17 @@ Ranked: EventsPerVariable is first, because it sets when the learned model is tr
 RISK-VALUE: DERIVED — EventsPerVariable = 10 @ qualgen/riskscore/learned.go:46 — the learned layer is a logistic regression, and 10 per predictor is the conventional logistic EPV floor (Peduzzi et al. 1996). It is also the value the brief's own fact names. 10 x 15 features = 150 total labeled rows. It counts total rows, not rarer-outcome events, which the code documents as a weaker condition (medici-finance/assay#1171).
 
 **VERIFY: BLOCKED** — (blocker: medici-finance/assay#1915) all 5 current-table commands exit 0 in the witness, and row 5 corroborates. Acceptance accounting: rows 3 and 4 pass. Rows 1 and 2 are could-not-run as protected original obligations, because the original command has no witness. Row 5 is held: it is uncreditable for a closure, since it trips `[consumer-delivery-range]` on a closing tree. 2 of 5 acceptance obligations are credited.
+
 ### Non-implementer verifier re-run — 2026-10-28 claude-opus-5-5
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=9363e5df55fa |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=9363e5df55fa |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=9363e5df55fa |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=9363e5df55fa |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02 --delivery a11ac41674c09aadb2a940bc7d1edbcd5e4c1402 --base a7b4bed48f3075336958b812617964306274f188` | pass exit=0 | sha256:69323c53f98d | 2026-10-28 | assay-verifier-app[bot] @ 9363e5df55fa (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=9363e5df55fa |
+Verification-Attestation: medici-finance/assay#4754 run=29d7109809f8b9a3484c681821e499ab984b1edbbec2e1068d53752a72abff42 source=9363e5df55fa6f6a9b39cf87d83e4f5648fa6065 brief=docs/streams/measured-status/brief-02-mincorpus-derivation.md model=claude-opus-5-5 tier=strong
 
 Witness: the table directly above, written by installed `statusgen verifyrun` v1.0.64 with `--fail-first --base a7b4bed48f3075336958b812617964306274f188` on a darwin-arm64 host, in the admitted home detached at merged main 9363e5df55fa6f6a9b39cf87d83e4f5648fa6065, real Go module and build caches. The base is the first parent of the delivering squash a11ac41674c09aadb2a940bc7d1edbcd5e4c1402 (PR #2054), resolved from the forge. Runner is not the implementer. This run supersedes the re-verify on PR #4731, which was admitted under the prior tool release and whose follow-up could not be admitted; its witness is not credited here.
 
