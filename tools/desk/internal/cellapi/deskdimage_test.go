@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -558,23 +559,44 @@ func checkIgnore(text string) []deskdProblem {
 // ---------------------------------------------------------------------------
 // Makefile
 
-// makeRecipe returns target's recipe as logical shell lines (continuations
-// joined, leading @/- markers dropped), and whether the rule exists.
-func makeRecipe(makefile, target string) ([]string, bool) {
+// makeRule is a target's recipe as the checker reads it.
+type makeRule struct {
+	lines   []string // logical shell lines: continuations joined, leading @ - + markers dropped
+	ignored []bool   // lines[i] carried make's - marker, so make ignores its exit status
+	recipes int      // rules for the target that carry a recipe; make runs only the last
+}
+
+// makeRecipe returns target's first recipe and whether the rule exists. The -
+// marker is recorded per line rather than dropped silently: a line make runs
+// with its status ignored can fail without failing the target.
+func makeRecipe(makefile, target string) (makeRule, bool) {
 	lines := strings.Split(strings.ReplaceAll(makefile, "\r\n", "\n"), "\n")
-	start := -1
+	var r makeRule
+	found := false
 	for i, l := range lines {
-		if strings.HasPrefix(l, target+":") {
-			start = i + 1
-			break
+		if !strings.HasPrefix(l, target+":") {
+			continue
+		}
+		found = true
+		body, ignored := recipeLines(lines[i+1:])
+		if len(body) == 0 {
+			continue
+		}
+		r.recipes++
+		if r.recipes == 1 {
+			r.lines, r.ignored = body, ignored
 		}
 	}
-	if start < 0 {
-		return nil, false
-	}
+	return r, found
+}
+
+// recipeLines reads the tab-led recipe lines at the top of lines.
+func recipeLines(lines []string) ([]string, []bool) {
 	var out []string
+	var ignored []bool
 	var cur strings.Builder
-	for _, l := range lines[start:] {
+	ign := false
+	for _, l := range lines {
 		if !strings.HasPrefix(l, "\t") {
 			if cur.Len() == 0 {
 				break
@@ -582,7 +604,10 @@ func makeRecipe(makefile, target string) ([]string, bool) {
 		}
 		body := strings.TrimSpace(l)
 		if cur.Len() == 0 {
-			body = strings.TrimLeft(body, "@-+")
+			// make reads any run of @, - and + (blanks between them allowed).
+			marks := body[:len(body)-len(strings.TrimLeft(body, "@-+ \t"))]
+			ign = strings.Contains(marks, "-")
+			body = body[len(marks):]
 		}
 		if strings.HasSuffix(body, `\`) {
 			cur.WriteString(strings.TrimSuffix(body, `\`))
@@ -591,9 +616,71 @@ func makeRecipe(makefile, target string) ([]string, bool) {
 		}
 		cur.WriteString(body)
 		out = append(out, cur.String())
+		ignored = append(ignored, ign)
 		cur.Reset()
 	}
-	return out, true
+	return out, ignored
+}
+
+// makeIgnoresErrors names each Makefile-level setting under which make does not
+// fail a target on a failed recipe line, or reads the recipe other than one
+// shell per line: .IGNORE (bare, naming target, or through a variable),
+// MAKEFLAGS/MFLAGS gaining -i or --ignore-errors, and .ONESHELL.
+func makeIgnoresErrors(makefile string, targets []string) []string {
+	ignoreRule := regexp.MustCompile(`^\.IGNORE\s*:(.*)$`)
+	flagsSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*(?:MAKEFLAGS|MFLAGS)\s*(?:\+|:|::|\?|!)?=(.*)$`)
+	var why []string
+	for _, l := range strings.Split(strings.ReplaceAll(makefile, "\r\n", "\n"), "\n") {
+		if strings.HasPrefix(l, "\t") {
+			continue
+		}
+		l, _, _ = strings.Cut(l, "#")
+		if m := ignoreRule.FindStringSubmatch(l); m != nil {
+			deps := strings.Fields(m[1])
+			named := len(deps) == 0 || strings.Contains(m[1], "$")
+			for _, d := range deps {
+				for _, t := range targets {
+					named = named || d == t
+				}
+			}
+			if named {
+				why = append(why, ".IGNORE makes make ignore failed recipe lines: "+strconv.Quote(strings.TrimSpace(l)))
+			}
+		}
+		if m := flagsSet.FindStringSubmatch(l); m != nil && makeflagsIgnore(m[1]) {
+			why = append(why, "MAKEFLAGS runs make with -i, ignoring failed recipe lines: "+strconv.Quote(strings.TrimSpace(l)))
+		}
+		if regexp.MustCompile(`^\.ONESHELL\s*:`).MatchString(l) {
+			why = append(why, ".ONESHELL runs each recipe as one shell, so a later line decides the target's status")
+		}
+	}
+	return why
+}
+
+// makeflagsIgnore reports whether a MAKEFLAGS value carries -i, alone or in a
+// short-flag group (a letter that takes an argument ends the group), or
+// --ignore-errors. A variable reference cannot be read, so it counts.
+func makeflagsIgnore(v string) bool {
+	if strings.Contains(v, "$") {
+		return true
+	}
+	for _, w := range strings.Fields(v) {
+		if w == "--ignore-errors" {
+			return true
+		}
+		if strings.HasPrefix(w, "--") {
+			continue
+		}
+		for _, c := range strings.TrimPrefix(w, "-") {
+			if strings.ContainsRune("CfIjlOoWE", c) {
+				break
+			}
+			if c == 'i' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func phonyTargets(makefile string) map[string]bool {
@@ -618,6 +705,15 @@ func phonyTargets(makefile string) map[string]bool {
 // end, or ; under errexit. errexit does not stop the shell for a command on the
 // left of && or ||, inside an if or after !, and without pipefail a pipeline
 // reports only its last command, so those positions are refused too.
+//
+// On a line that carries a step, a trap (which can rewrite the exit status), an
+// exit/return without a literal non-zero status or an exec before the step
+// (which end the line first), and a function or alias named after the step's
+// command (which shadows it) are refused as well. At the make level, a line
+// marked -, .IGNORE, MAKEFLAGS with -i, .ONESHELL and a second recipe for the
+// target are refused in checkMakefile. Out of this file's reach, and so not
+// held here: a caller running make -i or exporting MAKEFLAGS, and a SHELL or
+// .SHELLFLAGS that is not a POSIX sh -c.
 
 // recipeStep is a command whose failure must fail its make target.
 type recipeStep struct {
@@ -821,9 +917,35 @@ func unfatalSteps(line string, steps []recipeStep) []string {
 		}
 	}
 	masked := maskQuotes(line)
+	carries := false
 	for _, st := range steps {
-		if n := len(st.at.FindAllStringIndex(masked, -1)); n > plain[st.name] {
+		n := len(st.at.FindAllStringIndex(masked, -1))
+		carries = carries || n > 0
+		if n > plain[st.name] {
 			why = append(why, st.name+" is not a plain command, so its status is not the line's")
+		}
+		cmd := regexp.QuoteMeta(st.words[0])
+		if regexp.MustCompile(`(^|[\s;&|(!{])((function\s+)?` + cmd + `\s*\(\s*\)|alias\s+` + cmd + `=)`).MatchString(masked) {
+			why = append(why, st.name+"'s command "+st.words[0]+" is redefined on the line, so the real one may not run")
+		}
+	}
+	if !carries {
+		return why
+	}
+	stepSeen := false
+	for _, s := range segs {
+		w := commandWords(s.masked)
+		for _, st := range steps {
+			stepSeen = stepSeen || hasWords(w, st.words...)
+		}
+		switch {
+		case len(w) == 0:
+		case w[0] == "trap":
+			why = append(why, "line sets a trap, which can rewrite its exit status")
+		case stepSeen:
+		case w[0] == "exec",
+			(w[0] == "exit" || w[0] == "return") && (len(w) < 2 || !regexp.MustCompile(`^0*[1-9][0-9]*$`).MatchString(w[1])):
+			why = append(why, "line runs "+w[0]+" before its step, which ends it first with a status the step did not set")
 		}
 	}
 	return why
@@ -837,13 +959,25 @@ func checkMakefile(text string) []deskdProblem {
 	var ps []deskdProblem
 	add := func(code, d string) { ps = append(ps, deskdProblem{code, d}) }
 	phony := phonyTargets(text)
+	targets := []string{"deskd-build", "deskd-image"}
 	recipes := map[string][]string{}
-	for _, t := range []string{"deskd-build", "deskd-image"} {
+	for _, t := range targets {
 		r, ok := makeRecipe(text, t)
-		if !phony[t] || !ok || len(r) == 0 {
+		if !phony[t] || !ok || len(r.lines) == 0 {
 			add("target-missing", t+" must be on .PHONY and have a recipe")
 		}
-		recipes[t] = r
+		if r.recipes > 1 {
+			add("target-missing", t+" must have exactly one recipe; make runs only the last of its "+strconv.Itoa(r.recipes)+", not the one held here")
+		}
+		for i, l := range r.lines {
+			if r.ignored[i] {
+				add("step-not-fatal", t+": the recipe line is marked -, so make ignores its exit status: "+strconv.Quote(l))
+			}
+		}
+		recipes[t] = r.lines
+	}
+	for _, why := range makeIgnoresErrors(text, targets) {
+		add("step-not-fatal", why)
 	}
 
 	// deskd-build: unprivileged, GOWORK=off, writes only under deskd/dist/.
@@ -897,15 +1031,27 @@ func checkMakefile(text string) []deskdProblem {
 		}
 		// Presence only, on quote-masked text: a scan named inside an echo string
 		// never runs. Whether its failure fails the target is step-not-fatal's.
-		scan := regexp.MustCompile(`(^|[\s;&|(!])sh\s+containers/scripts/layer-secret-scan\.sh\s+[^\s;&|]+`)
-		scanOK := false
-		for _, l := range recipes["deskd-image"] {
-			if scan.MatchString(maskQuotes(l)) {
-				scanOK = true
+		// The scanned reference must be the one the build tagged (when that tag is
+		// the local name; tag-not-local reports otherwise), read from the unmasked
+		// text at the masked match's offsets.
+		scan := regexp.MustCompile(`(^|[\s;&|(!])sh\s+containers/scripts/layer-secret-scan\.sh\s+([^\s;&|]+)`)
+		tag := ""
+		for i, f := range build {
+			if f == "-t" && i+1 < len(build) && strings.HasPrefix(strings.Trim(build[i+1], `"`), "assay-deskd:") {
+				tag = build[i+1]
 			}
 		}
-		if !scanOK {
+		var scanned []string
+		for _, l := range recipes["deskd-image"] {
+			for _, m := range scan.FindAllStringSubmatchIndex(maskQuotes(l), -1) {
+				scanned = append(scanned, l[m[4]:m[5]])
+			}
+		}
+		switch {
+		case len(scanned) == 0:
 			add("missing-secret-scan", "deskd-image must run containers/scripts/layer-secret-scan.sh on the built image")
+		case tag != "" && !slices.Contains(scanned, tag):
+			add("missing-secret-scan", "deskd-image scans "+strings.Join(scanned, ", ")+", not the image its build tagged, "+tag)
 		}
 		for _, l := range recipes["deskd-image"] {
 			for _, why := range unfatalSteps(l, imageSteps) {
