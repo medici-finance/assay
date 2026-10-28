@@ -85,15 +85,15 @@ files:
 - `ci/staged-workflows/README.md`
 - `ci/staged-workflows/declared-changes.json`
 - `ci/staged-workflows/assay-statusgen.yml`
-- `.github/workflows/assay-statusgen.yml`
+- `.github/workflows/assay-statusgen.yml` (maintainer promotion only)
 - `ci/staged-workflows/verify-gate-close.yml`
-- `.github/workflows/verify-gate-close.yml`
+- `.github/workflows/verify-gate-close.yml` (maintainer promotion only)
 - `tools/desk/internal/deskkit/declaredscope.go`
 - `tools/desk/internal/deskkit/declaredscope_test.go`
 
 facts (source and date in frontmatter):
 - verifyrun writes the witness row as `| id | command | result | sha256:<output> | date | <runner> @ <commit-short>[+dirty|+unknown] (on-behalf-of) (source) |` from `treeSHA`; the identity before `@` is what the attribution reads use. The container runner (`--in-container`) is digest-pinned but passes a credential env-file and does not set `--network none`, so today no run is provably network-free.
-- deskevidence writes verify-outcome records under `docs/streams/verify-outcomes/<stream>/` (planned) with `wake_schema: verify-wake-v1`, a top-level `sha`, an `inputs` map (SHA-256 of the brief file, the tool tag) and `prs: [{merge_sha, number, repo}]`. deskkit's readers join records by `sha`; #3658 counts 95 of 379 such shas unreachable from main.
+- deskevidence writes verify-outcome records under `docs/streams/verify-outcomes/` in per-stream subdirectories with `wake_schema: verify-wake-v1`, a top-level `sha`, an `inputs` map (SHA-256 of the brief file, the tool tag) and `prs: [{merge_sha, number, repo}]`. deskkit's readers join records by `sha`; #3658 counts 95 of 379 such shas unreachable from main.
 - `deskkit.Forge.GetPullRequest` returns head, state and mergeability for GitHub and GitLab, but no landed (merge or squash) commit.
 - tools/desk is a separate Go module and cannot import statusgen's `package main`. statusgen/36 adds the seams: `statusgen witnessdigest --json` and the versioned `witness` field on `statusgen --coverage --json`.
 - Desk tools and statusgen ship together in one release, so a version skew means an older release reading a newer record.

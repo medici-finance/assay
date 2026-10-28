@@ -325,10 +325,11 @@ historical attribution, staged custody configuration and fixed-D execution/recor
 PR 4139 rather than a second preflight. /31 owns corroborated metadata, /38 bounded
 historical compatibility/backfill, and /35 the real active cohort/report.
 
-The current implementation head is the approved D/A and custody policy plus /36's
+The current head is the pending FDV-SUBJECT/D/A and custody decisions plus /36's
 reader/admission work; PR 4409 is already in flight and needs scope reassessment, not
-duplicate dispatch. /14's verified design is preserved. /28 and /32 have source
-implementations; stale `todo` board cells do not justify rebuilding them.
+duplicate dispatch. /14's verified design is preserved. /27 (PR 4134), /28 (PR 4140)
+and /32 (PR 4137) have source implementations; their acceptance remains owed, and
+stale `todo` board cells do not justify rebuilding them.
 
 ```text
 statusgen/36 -> statusgen/37 -> statusgen/38 -> desk-tools/51 -> handoff/06

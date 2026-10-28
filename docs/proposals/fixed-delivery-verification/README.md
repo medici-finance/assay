@@ -288,10 +288,11 @@ do not dispatch duplicate implementation from the stale board label.
 | verification-handoff/01, shared contract | [4225](https://github.com/medici-finance/assay/pull/4225); independent PASS [4255](https://github.com/medici-finance/assay/pull/4255); design record [4412](https://github.com/medici-finance/assay/pull/4412) | Reconcile existing credited Evidence and remaining human/lifecycle acceptance; production dependents must use the shared assessment |
 | verification-handoff/03, accountable disposition | [4413](https://github.com/medici-finance/assay/pull/4413) | Independently verify and complete its existing acceptance; connect worker discovery through /04 |
 
-Likewise statusgen/28's notice separation is delivered in
+Likewise statusgen/27's actionable-notice ratchet is delivered in
+[4134](https://github.com/medici-finance/assay/pull/4134), /28's notice separation in
 [4140](https://github.com/medici-finance/assay/pull/4140), and /32's reconciliation
-routing in [4137](https://github.com/medici-finance/assay/pull/4137). Neither is a new
-implementation prerequisite to author again. The binding resolver's shared trailer fix
+routing in [4137](https://github.com/medici-finance/assay/pull/4137). Their existing
+acceptance remains owed; none needs duplicate implementation from a stale `todo` cell. The binding resolver's shared trailer fix
 in PR 4571 is also reused, not duplicated.
 
 ### Historical backlog and existing defect work
@@ -299,7 +300,7 @@ in PR 4571 is also reused, not duplicated.
 | Existing owner / work | Finish and limit |
 |---|---|
 | statusgen/38 | Recover only available, attributable content witnesses after /36–37. Delivery attribution and exact amendment authority are separate. Unreachable or narrative-only evidence cannot acquire invented execution credit |
-| statusgen/31 and /35 | Own derivable active metadata repair and active backlog cleanup; preserve closed records and all original Evidence. /35 currently depends on /27–32, including unfinished /27, /29, /30 and /31. Keep that broader debt plan distinct from the minimal D acceptance cutover; it is not permission to add another repair mechanism or to make every delivery wait for all notice debt |
+| statusgen/31 and /35 | Own derivable active metadata repair and active backlog cleanup; preserve closed records and all original Evidence. /35 currently depends on /27–32, including unfinished /29, /30 and /31. Keep that broader debt plan distinct from the minimal D acceptance cutover; it is not permission to add another repair mechanism or to make every delivery wait for all notice debt |
 | Shared declared-scope reader: [3697](https://github.com/medici-finance/assay/issues/3697), [3708](https://github.com/medici-finance/assay/issues/3708) | Finish wrapped/prose and basename handling in the existing owner and outcome-writing path. PR 3703 was a partial corpus cleanup; it did not clear the class |
 | [PR 4371](https://github.com/medici-finance/assay/pull/4371) | Finish relative-brief resolution, containment review finding and merge conflict. Do not claim that this alone fixes every CI/root spelling |
 | [PR 4150](https://github.com/medici-finance/assay/pull/4150), [PR 4149](https://github.com/medici-finance/assay/pull/4149) | Finish evidence-bound historical diagnostics and the specific statusgen/02 table repair. At the work-map read, PR 4150 is approved; PR 4149 still has a changelog-format failure |

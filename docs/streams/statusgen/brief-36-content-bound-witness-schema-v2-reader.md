@@ -147,7 +147,8 @@ Read `EvaluateCoverage`, `CoverageInput`, `DependencyManifest` and `WorkInputDep
 - Feature branch and draft PR only. Never push to main, merge, release or dispatch a workflow. Merge main in, never rebase.
 - Stop at `implemented`. A different, non-implementing identity owns verification and Evidence.
 - Fixture repositories only; no network in tests.
-- Schema v1 comparison is unchanged for the same explicit evaluation revision. The approved fixed-delivery cutover changes the acceptance caller's subject from H to admitted D; it does not weaken v1's comparison or permit credit at H when that comparison refuses. Preserve the original H behavior for health/legacy callers until their reviewed cutover. New policy remains subject to the amendment's authority boundary.
+- Schema v1 is never loosened. Every existing witness is judged exactly as today. A change that releases any v1 witness that main refuses is a defect.
+- FDV-SUBJECT remains pending. This planning amendment grants no exception to the preceding v1 guard. Only after that decision is ruled under its own unique reply token on the existing decision surface may the named acceptance caller's H-to-D cutover proceed under an explicitly authorized contract amendment. That later amendment must reconcile the applicable Ground rules, Review, pre-mortem and Verify obligations before the affected implementation; it preserves v1 comparison for the same explicit revision. No cutover is described as approved by this PR.
 - Do not edit any Evidence row, verify-outcome record or lifecycle cell. Records are append-only.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Do not guess.
 
