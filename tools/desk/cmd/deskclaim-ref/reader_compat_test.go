@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/gitcore/gittest"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 

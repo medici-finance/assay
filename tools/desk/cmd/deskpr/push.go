@@ -30,8 +30,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // pushSpec is one in-process push: which local ref goes to which remote branch.

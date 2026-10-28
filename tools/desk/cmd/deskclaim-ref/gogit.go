@@ -39,8 +39,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // storeTimeout bounds every forge round trip so a hung remote fails closed (as

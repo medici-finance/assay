@@ -313,7 +313,7 @@ func TestGitPackagesInstallQuiet(t *testing.T) {
 	for _, name := range lifted {
 		missing = append(missing, "gitcore/"+name)
 	}
-	t.Logf("lifted Git source: %d git-test packages examined",liftedCount)
+	t.Logf("lifted Git source: %d git-test packages examined", liftedCount)
 	// Non-vacuous: the two packages the race was first reported in are git-test packages.
 	if examined < 20 {
 		t.Fatalf("the scan found only %d packages whose tests run git; the matcher has stopped matching", examined)

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // deskprStderr is the seam for warnIfConflicting's advisory output and run()'s terminal

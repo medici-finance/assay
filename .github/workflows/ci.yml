@@ -184,6 +184,10 @@ jobs:
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The statusgen ratchet compares the immutable merge base to origin/main.
+          # Keep the check fail-closed by supplying its full comparison history.
+          fetch-depth: 0
 
       - name: Install Go
         run: |

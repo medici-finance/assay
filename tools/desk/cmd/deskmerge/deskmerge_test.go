@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // deskmerge_test.go — the Verify table, executed.

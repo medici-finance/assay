@@ -7,9 +7,9 @@ import (
 	"sort"
 
 	"github.com/medici-finance/assay/forgeread"
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/gitcore"
 	"github.com/spf13/cobra"
 )
 

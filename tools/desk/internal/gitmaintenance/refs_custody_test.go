@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 func diskReceipt(t *testing.T, tmp *TempRef) tempReceipt {

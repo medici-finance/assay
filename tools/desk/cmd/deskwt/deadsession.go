@@ -52,8 +52,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // reapVerdict is the reap arm's judgement for ONE worktree, and it is the unit the plan is
