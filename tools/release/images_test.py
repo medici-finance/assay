@@ -257,6 +257,19 @@ if args[:2] == ['image', 'inspect']:
         self.assertFalse(any('ghcr.io/example/verify-runner:v1.2.3' in c for c in calls))
 
     # regression: #4323
+    def test_runner_platform_builds_push_a_single_manifest(self):
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
+        self.assertEqual(len(builds), 2)
+        for build in builds:
+            # An attestation-carrying image pushes as an index, which
+            # `docker manifest create` refuses after the tags are spent.
+            self.assertIn('--provenance=false', build)
+            self.assertIn('--sbom=false', build)
+
+    # regression: #4323
     def test_runner_platforms_match_the_contract(self):
         spec = importlib.util.spec_from_file_location('images', HERE / 'images.py')
         images = importlib.util.module_from_spec(spec)

@@ -121,9 +121,14 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
             f"BASE_IMAGE={refs['desk-base']}", "-t", refs[name],
             "-f", root / f"containers/{name}/Dockerfile", root)
     # A non-native platform builds under the runner's registered emulation; a
-    # runner without it fails here, before any push.
+    # runner without it fails here, before any push. Each platform image must
+    # push as ONE manifest: with the containerd image store a default build
+    # attaches provenance/SBOM attestations and pushes as an index, which
+    # `docker manifest create` refuses after the platform tags are spent.
+    # These are BuildKit flags; every build here already needs BuildKit.
     for platform, ref in runner_refs.items():
-        run("docker", "build", "--platform", platform, "-t", ref,
+        run("docker", "build", "--platform", platform,
+            "--provenance=false", "--sbom=false", "-t", ref,
             "-f", root / "images/verify-runner/Dockerfile", root)
         got = run("docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}",
                   ref, capture=True).strip()
