@@ -109,7 +109,7 @@ or removing any human gate (spec §5 states the divergence).
 | 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 6 | L | todo | — | — |
 | 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | L | todo | — | — |
 | 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | implemented | — | — |
-| 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | implemented | — | — |
+| 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | verified | 2026-10-28 assay-verifier-app[bot] @ 9363e5df55fa (forge-identity) | — |
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
