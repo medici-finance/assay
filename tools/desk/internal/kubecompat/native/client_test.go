@@ -41,19 +41,17 @@ func TestKubeCompatIdentity(t *testing.T) {
 	sizes := make(chan kc.Size, 1)
 	sizes <- kc.Size{Width: 99, Height: 33}
 	close(sizes)
+	// The fixture holds the exec result until it has read the size frame, so the
+	// size is recorded before Attach returns and no wait is needed below (#4779).
+	s.AwaitResize = true
 	if e := rt.Attach(ctx, "worker-desk", kc.Terminal{In: strings.NewReader("retained input"), Out: &output, Sizes: sizes}); e != nil {
 		t.Fatal(e)
 	}
 	if !strings.Contains(output.String(), "retained terminal") {
 		t.Fatal("native stdout was not streamed")
 	}
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		_, _, count := s.Counts()
-		if count > 0 {
-			break
-		}
-		time.Sleep(time.Millisecond)
+	if _, _, resizes := s.Counts(); resizes != 1 {
+		t.Fatal("native resize frame count", resizes)
 	}
 	if s.Input("worker-desk") != "retained input" || s.Resize() != (kc.Size{Width: 99, Height: 33}) {
 		t.Fatal("positive native stdin/resize not delivered", s.Input("worker-desk"), s.Resize())
