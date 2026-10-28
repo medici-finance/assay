@@ -4,7 +4,7 @@ title: Operate trusted compatibility Kubernetes desks through cellctl
 why: Operators need interactive agents with retained files in Kubernetes without first replacing desk scheduling, verification or the whole managed runtime. The existing package opens shells; this bounded compatibility path starts the actual configured agents and makes reconnect and controlled stop explicit.
 wave: 8
 depends: ["desk-containers/06", "desk-containers/15"]
-unblocks: []
+unblocks: ["desk-containers/32"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

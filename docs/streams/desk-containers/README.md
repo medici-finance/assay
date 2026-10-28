@@ -61,6 +61,7 @@ component list, build/run topology, and open questions.
 | 29 | [Qualify the Kubernetes desk cell and operator recovery end to end](brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md) | 11 | M | todo | — | — |
 | 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | todo | — | — |
 | 31 | [Operate trusted compatibility Kubernetes desks through cellctl](brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md) | 8 | M | blocked | — | — |
+| 32 | [Qualify the compatibility Kubernetes desk cell](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | 9 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -338,10 +339,12 @@ or a workflow engine.
   Their retained verification and human acceptance remain distinct from code availability.
 - **Wave 8:** desk-containers/31 supplies the opt-in operator backend, bounded actual-agent
   launcher and its independent failure controls. Its typed dependencies are /06 and /15.
-- A separate small-profile qualification brief consumes that concrete implementation and
-  checks all five roles, effective custody, useful work and controlled recovery. It does not
-  substitute the larger managed qualification promise. Its author adds the exact typed
-  dependency and inverse edge when that brief exists.
+- **Wave 9:** [desk-containers/32](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md)
+  consumes /31's concrete implementation and checks all five roles, effective custody,
+  useful work and controlled recovery. Its sole implementation start dependency is /31,
+  with the reciprocal edge recorded there. It does not substitute the larger managed
+  qualification promise. Credential-contract acceptance is required before a real-profile
+  run and final adoption, rather than an artificial prerequisite to offline harness work.
 - Final adoption is a separately authorized operator act after complete independent evidence
   and all inherited human acceptances. Authoring, a passing offline checker or a Running Pod
   does not supply that act.
@@ -370,19 +373,20 @@ there is no milestone YAML, dispatch claim or automated acceptance assertion her
 Executable briefs retain supported brief-v2 legacy IDs.
 
 Proposed promise: **assay:assay:desk-containers:m-01@1 — Trusted interactive Kubernetes desks**.
-Proposed contributing label for the new integration is **assay:assay:desk-containers:b-31@1**;
+Proposed contributing labels are **assay:assay:desk-containers:b-31@1** for integration and
+**assay:assay:desk-containers:b-32@1** for independent small-profile qualification;
 existing /02, /06 and /15 contribute their already-defined credential, package and CLI
 contracts without having their IDs, Evidence or lifecycle rewritten.
 
 | Criterion | Observable pass condition | Implementation / evidence owner |
 |---|---|---|
-| C1 — actual role execution | Five separate pinned agent executions use the configured roles and retained PVCs; a shell alone fails | existing /06 package; /31 boot/image binding; independent small-profile qualifier |
-| C2 — reconnect | Terminal I/O/resize/detach/reconnect and operator-client recreation preserve the exact current execution and add no agent/model invocation | /31 native transport and independent qualifier |
-| C3 — controlled stop | Busy/unknown work holds; complete execution stop is observed before one new execution can act | /31 role/boot/identity controls; independent qualifier |
-| C4 — uncertain lineage | Same-Pod container restart, lost acknowledgement, partition and erased/corrupt history hold without replacement | /31 lower boot layer and transport; independent qualifier |
-| C5 — custody | Effective terminal/log/Secret/network access stays inside the current role custody, with agent API token disabled and unauthorized readers denied | existing /02; /31 package; human-authorized independent qualifier |
-| C6 — useful work | Each role can carry out its bounded configured task while preserving its existing claims, STOP checks and human effect/acceptance gates | existing role policies; independent qualifier |
-| C7 — honest recovery | Retained files, conversation restoration and process continuation are separately demonstrated or declared unsupported; no PVC-only continuity claim | /31 docs/interface; independent qualifier and adopting operator |
+| C1 — actual role execution | Five separate pinned agent executions use the configured roles and retained PVCs; a shell alone fails | existing /06 package; /31 boot/image binding; /32 Verify rows 1 and 4 |
+| C2 — reconnect | Terminal I/O/resize/detach/reconnect and operator-client recreation preserve the exact current execution and add no agent/model invocation | /31 native transport; /32 Verify rows 1, 2 and 4 |
+| C3 — controlled stop | Busy/unknown work holds; complete execution stop is observed before one new execution can act | /31 role/boot/identity controls; /32 Verify rows 2 and 4 |
+| C4 — uncertain lineage | Same-Pod container restart, lost acknowledgement, partition and erased/corrupt history hold without replacement | /31 lower boot layer and transport; /32 Verify rows 2 and 4 |
+| C5 — custody | Effective terminal/log/Secret/network access stays inside the current role custody, with agent API token disabled and unauthorized readers denied | existing /02; /31 package; /32 Verify rows 3–5 and human-authorized target acceptance |
+| C6 — useful work | Each role can carry out its bounded configured task while preserving its existing claims, STOP checks and human effect/acceptance gates | existing role policies; /32 Verify rows 1 and 4 |
+| C7 — honest recovery | Retained files, conversation restoration and process continuation are separately demonstrated or declared unsupported; no PVC-only continuity claim | /31 docs/interface; /32 Verify rows 2 and 4; adopting operator |
 
 Implementation work may use offline fake APIs, synthetic credentials and retained fixtures.
 Effective Kubernetes/CNI/log behavior and final acceptance require a separately authorized,
