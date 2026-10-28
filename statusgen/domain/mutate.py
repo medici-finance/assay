@@ -16,6 +16,9 @@ RECORDS = "statusgen/domain/records.go"
 ASSESS = "statusgen/domain/assess.go"
 CONTEXT = "statusgen/domain/context.go"
 MUTATIONS = [
+    ("context-cached-cutoff", "TestContextExpiry", [(CONTEXT, "time.Parse(time.RFC3339, receipt.ObservedCutoff)", "time.Parse(time.RFC3339, current.ObservedCutoff)")]),
+    ("context-time-guard", "TestContextExpiry", [(CONTEXT, "if !timestamp(observedNow) {", "if false {")]),
+    ("context-bound-order", "TestContextExpiry", [(CONTEXT, "if !expiry.After(cutoff) {", "if false && !expiry.After(cutoff) {")]),
     ("context-currency-key", "TestContextExpiry", [(CONTEXT, "return contextHash(map[string]any{", 'return contextHash(map[string]any{ "observed-cutoff":c.ObservedCutoff,')]),
     ("context-currency-check", "TestContextInputs", [(CONTEXT, "if cached.AccessEpoch != current.AccessEpoch || cached.Generation != current.Generation {", "if false {")]),
     ("context-requires-set", "TestContextInputs", [(CONTEXT, "if len(c.Requires) != 1 {", "if c.Requires == nil {")]),

@@ -155,11 +155,30 @@ func TestContextExpiry(t *testing.T) {
 		})
 	}
 	current := readContext(t, "current")
-	for _, now := range []string{"", "unavailable", "2026-10-28T09:59:59Z", "2026-10-28T10:00:30Z"} {
-		if CheckApplicability(c, current, now).State != "held" {
-			t.Fatal("unavailable or before-current-cutoff time reused")
+	for _, now := range []string{"", "unavailable", "2026-10-28T10:02:00.5Z", "2026-10-28T10:02:00+00:00"} {
+		if got := CheckApplicability(c, current, now); got != (Applicability{"held", "context-time-unavailable"}) {
+			t.Fatalf("invalid time reason: %+v", got)
 		}
 	}
+	for _, now := range []string{"2026-10-28T09:59:59Z", "2026-10-28T10:00:30Z"} {
+		if got := CheckApplicability(c, current, now); got != (Applicability{"held", "context-time-before-cutoff"}) {
+			t.Fatalf("before-current-cutoff reason: %+v", got)
+		}
+	}
+	// Either side can have the later cutoff. Inverting the independently loaded
+	// fixtures makes only the cached half decisive; checking current twice fails.
+	if got := CheckApplicability(current, c, "2026-10-28T10:00:30Z"); got != (Applicability{"held", "context-time-before-cutoff"}) {
+		t.Fatalf("cached cutoff ignored: %+v", got)
+	}
+	for _, expiry := range []string{"2026-10-28T10:00:00Z", "2026-10-28T09:59:59Z"} {
+		invalid := contextFixture(t)
+		invalid.Bounds[0].ExpiresAt = expiry
+		requireCode(t, invalid.Validate(), "context-bound-before-cutoff")
+		if CheckApplicability(invalid, current, "2026-10-28T10:02:00Z").State != "held" || CheckApplicability(current, invalid, "2026-10-28T10:02:00Z").State != "held" {
+			t.Fatal("inverted receipt window not held")
+		}
+	}
+
 	if got := CheckApplicability(c, current, "2026-10-28T10:02:00Z"); got.State != "reusable" {
 		t.Fatalf("independently renewed context: %+v", got)
 	}
