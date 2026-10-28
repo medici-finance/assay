@@ -458,7 +458,7 @@ def compatibility_mutations(docs, pins, custody):
     cases = [
         ('live-replicas', lambda value: workloads(value)[0]['spec'].update(replicas=1)),
         ('old-shell-image', lambda value: workloads(value)[0]['spec']['template']['spec']['containers'][0].update(image=recorded_images()[roles()[0]])),
-        ('token-automount', lambda value: workloads(value)[0]['spec']['template']['spec'].update(automountServiceAccountToken=True)),
+        ('token-automount', lambda value: workloads(value)[0]['spec']['template']['spec'].update({'automountServiceAccountToken': True})),
         ('missing-readiness', lambda value: workloads(value)[0]['spec']['template']['spec']['containers'][0].pop('readinessProbe')),
         ('broad-mount', lambda value: workloads(value)[0]['spec']['template']['spec']['volumes'].append({'name': 'broad', 'hostPath': {'path': '/'}})),
         ('wildcard-rbac', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][0].update(resources=['*'])),
