@@ -1540,13 +1540,18 @@ func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, run
 // in `unshare --net`. sandboxContainerNetns skips that wrapper — the run is
 // already inside a --network none container — and so FIRST runs the
 // loopback-only precheck, once, before any row: if it refuses, every row that
-// would execute is recorded could-not-run with the reason, never run.
+// would execute is recorded could-not-run with the reason, never run. It also
+// reads, once, which of the tree's module requirements the image's baked
+// module cache lacks (#4683, modcachegap.go): a row that then exits non-zero
+// naming one of them stopped on module resolution, so it is could-not-run.
 func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	refused := ""
+	var gaps []modGap
 	if sandbox == sandboxContainerNetns {
 		if ok, why := loopbackOnlyPrecheck(listInterfacesFn); !ok {
 			refused = containerNetnsRefusedNote(why)
 		}
+		gaps = runModuleCacheGap(root)
 	}
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
@@ -1602,6 +1607,9 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			if hit := gapsNamedIn(res.output, gaps); !res.couldNotRun && res.exit != 0 && len(hit) > 0 {
+				res.couldNotRun, res.reason = true, modCacheGapNote(hit)
+			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -2604,6 +2612,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		executionTree = full
+	}
+	if netnsContainer {
+		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
+			fmt.Fprintln(stderr, modCacheGapNotice(gaps))
+		}
 	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {

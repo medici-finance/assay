@@ -229,13 +229,13 @@ func TestPerfRunnerCI(t *testing.T) {
 func TestGitcoreConsumerCI(t *testing.T) {
 	const root = "../../../.."
 	want := map[string]bool{
-		"gitcore/ackguard_test.go": true,
-		"gitcore/claimref_guard_test.go": true,
-		"gitcore/fetchtags_guard_test.go": true,
-		"tools/desk/internal/reviewtest/prepare_test.go": true,
-		"tools/desk/internal/gitquiet/gitquiet_test.go": true,
+		"gitcore/ackguard_test.go":                               true,
+		"gitcore/claimref_guard_test.go":                         true,
+		"gitcore/fetchtags_guard_test.go":                        true,
+		"tools/desk/internal/reviewtest/prepare_test.go":         true,
+		"tools/desk/internal/gitquiet/gitquiet_test.go":          true,
 		"tools/desk/internal/deskkit/ambienttoken_guard_test.go": true,
-		"tools/desk/internal/deskkit/forge_surface_test.go": true,
+		"tools/desk/internal/deskkit/forge_surface_test.go":      true,
 	}
 	for _, e := range ciCrossModuleRegistry() {
 		if !want[e.test] {
@@ -341,6 +341,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "tools/desk/internal/deskkit/forge_surface_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: deskShardInvokes,
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
+		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema coverage and actual Go/Python launch hash parity; workflow has no path filter"},
 
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"schemas/perf-v4.json"},
