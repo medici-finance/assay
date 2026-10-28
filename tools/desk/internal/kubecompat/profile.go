@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 )
@@ -193,7 +194,7 @@ func (p Profile) Validate(cell string) error {
 	seen := map[string]bool{}
 	for _, name := range Roles {
 		r, ok := p.Roles[name]
-		if !ok || !nameRE.MatchString(r.StatefulSet) || r.Pod != r.StatefulSet+"-0" || r.Container != name || seen[r.StatefulSet] || !imageRE.MatchString(r.Image) || !hashRE.MatchString(r.LaunchID) || !hashRE.MatchString(r.AgentSHA256) || !hashRE.MatchString(r.InstructionsSHA256) || r.Cell != p.Cell || r.InitialPrompt != RolePrompt(name) || r.AgentVersion == "" || !filepath.IsAbs(r.Agent) || !filepath.IsAbs(r.VersionManifest) || !filepath.IsAbs(r.Workdir) || r.LaunchID != r.LaunchDigest(name) || r.Model == "" || !filepath.IsAbs(r.Instructions) || !hashRE.MatchString(r.InitializationID) {
+		if !ok || !nameRE.MatchString(r.StatefulSet) || r.Pod != r.StatefulSet+"-0" || r.Container != name || seen[r.StatefulSet] || !imageRE.MatchString(r.Image) || !hashRE.MatchString(r.LaunchID) || !hashRE.MatchString(r.AgentSHA256) || !hashRE.MatchString(r.InstructionsSHA256) || r.Cell != p.Cell || r.InitialPrompt != RolePrompt(name) || r.AgentVersion == "" || !path.IsAbs(r.Agent) || !path.IsAbs(r.VersionManifest) || !path.IsAbs(r.Workdir) || r.LaunchID != r.LaunchDigest(name) || r.Model == "" || !path.IsAbs(r.Instructions) || !hashRE.MatchString(r.InitializationID) {
 			return bad()
 		}
 		seen[r.StatefulSet] = true

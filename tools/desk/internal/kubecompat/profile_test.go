@@ -11,7 +11,7 @@ import (
 )
 
 func testProfile() *Profile {
-	p := &Profile{Schema: ProfileName, Cell: "example", Namespace: "assay-desks", Kubeconfig: "/fixture/kubeconfig", Context: "example", Endpoint: "https://api.example.invalid:6443", TLSServerName: "api.example.invalid", CASHA256: strings.Repeat("a", 64), Custody: Custody{"role-custodian", "role-custodian", "role-custodian", "role-custodian", "excluded"}, Roles: map[string]Role{}}
+	p := &Profile{Schema: ProfileName, Cell: "example", Namespace: "assay-desks", Kubeconfig: filepath.Join(os.TempDir(), "fixture-kubeconfig"), Context: "example", Endpoint: "https://api.example.invalid:6443", TLSServerName: "api.example.invalid", CASHA256: strings.Repeat("a", 64), Custody: Custody{"role-custodian", "role-custodian", "role-custodian", "role-custodian", "excluded"}, Roles: map[string]Role{}}
 	for _, name := range Roles {
 		r := Role{StatefulSet: name, Pod: name + "-0", Container: name, Image: "ghcr.io/medici-finance/assay/" + name + ":candidate@sha256:" + strings.Repeat("b", 64), Agent: "/work/agent/claude", VersionManifest: "/work/agent/package.json", Workdir: "/work/repository", AgentSHA256: strings.Repeat("c", 64), AgentVersion: "2.0.0", Model: "sonnet", Instructions: "/work/role.md", InstructionsSHA256: strings.Repeat("d", 64), InitializationID: strings.Repeat("e", 64)}
 		r.Cell = p.Cell
