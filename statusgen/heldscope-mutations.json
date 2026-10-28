@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldStructured' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL \u2014 supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -1434,6 +1434,84 @@
       "file": "heldscope.go",
       "old": "\"once\": true, \"twice\": true,\n",
       "new": "\"once\": true, \"twice\": true, \"both\": true,\n"
+    },
+    {
+      "name": "#4721 rule 6 off: every prose occurrence holds",
+      "file": "verifyissues.go",
+      "old": "if !tabular && !heldStructuredHold(clean, h) {",
+      "new": "if false && !tabular && !heldStructuredHold(clean, h) {"
+    },
+    {
+      "name": "#4721 rule 6: prose never holds",
+      "file": "heldscope.go",
+      "old": "func heldStructuredHold(clean string, h []int) bool {\n",
+      "new": "func heldStructuredHold(clean string, h []int) bool {\n\treturn false\n"
+    },
+    {
+      "name": "#4721 rule 6: a zero count after the state counts as a hold",
+      "file": "heldscope.go",
+      "old": "return err != nil || n != 0 || heldShortRatio(clean)",
+      "new": "return err != nil || n >= 0 || heldShortRatio(clean)"
+    },
+    {
+      "name": "#4721 rule 6: a lower-case state word counts as the marker",
+      "file": "heldscope.go",
+      "old": "case word == \"HELD\" || word == \"COULD-NOT-CHECK\" || word == \"COULD-NOT-RUN\":",
+      "new": "case strings.EqualFold(word, \"HELD\") || strings.EqualFold(word, \"COULD-NOT-CHECK\") || strings.EqualFold(word, \"COULD-NOT-RUN\"):"
+    },
+    {
+      "name": "#4721 rule 6: a prose line with a pipe is read as prose",
+      "file": "verifyissues.go",
+      "old": "strings.Contains(line, \"|\") || heldHTMLTableRe",
+      "new": "heldHTMLTableRe"
+    },
+    {
+      "name": "#4721 rule 6: a row named before the state is not a signal",
+      "file": "heldscope.go",
+      "old": "case heldRowBeforeRe.MatchString(before), heldRowAfterRe.MatchString(after):",
+      "new": "case heldRowAfterRe.MatchString(after):"
+    },
+    {
+      "name": "#4721 rule 6: a row named after the state is not a signal",
+      "file": "heldscope.go",
+      "old": "case heldRowBeforeRe.MatchString(before), heldRowAfterRe.MatchString(after):",
+      "new": "case heldRowBeforeRe.MatchString(before):"
+    },
+    {
+      "name": "#4721 rule 6: a stated reason or value is not a signal",
+      "file": "heldscope.go",
+      "old": "case heldReasonAfterRe.MatchString(after), heldValueAfterRe.MatchString(after):",
+      "new": "case false:"
+    },
+    {
+      "name": "#4721 rule 6: a line-leading state word is not a signal",
+      "file": "heldscope.go",
+      "old": "case heldLeadRe.MatchString(before):",
+      "new": "case false:"
+    },
+    {
+      "name": "#4721 rule 6: held at a status is not a signal",
+      "file": "heldscope.go",
+      "old": "case strings.EqualFold(word, \"held\") && heldStatusAfterRe.MatchString(after):",
+      "new": "case false:"
+    },
+    {
+      "name": "#4721 rule 6: a RISK-VALUE record is not a signal",
+      "file": "heldscope.go",
+      "old": "case heldRiskLineRe.MatchString(clean), heldVerdictLineRe.MatchString(clean):",
+      "new": "case heldVerdictLineRe.MatchString(clean):"
+    },
+    {
+      "name": "#4721 rule 6: a blocking verdict line is not a signal",
+      "file": "heldscope.go",
+      "old": "case heldRiskLineRe.MatchString(clean), heldVerdictLineRe.MatchString(clean):",
+      "new": "case heldRiskLineRe.MatchString(clean):"
+    },
+    {
+      "name": "#4721 rule 6: a count before the state is not a signal",
+      "file": "heldscope.go",
+      "old": "return heldCountBeforeRe.MatchString(before)\n",
+      "new": "return false\n"
     }
   ]
 }
