@@ -32,11 +32,25 @@ roll remains a separate downstream job under its own existing identity.
    binary, and each build's OS/architecture is read back before any check. The
    arm64 build runs under emulation, so before any image is built the release
    job registers it with the runner's Docker engine from a digest-pinned
-   `tonistiigi/binfmt` installer, then proves a `linux/arm64` container of the
-   runner's own base image reports `aarch64`, and stops with an error if not
-   ([issue 4784](https://github.com/medici-finance/assay/issues/4784)). That
-   privileged installer runs before the registry login and carries no
-   credential. The other eight images stay `linux/amd64`.
+   `tonistiigi/binfmt` installer
+   ([issue 4784](https://github.com/medici-finance/assay/issues/4784)). The
+   installer first removes any `qemu-aarch64` handler already on the node, so
+   the pinned emulator is the one in force; an arm64 program started on the
+   same node during that brief gap fails. The installer exits 0 even when a
+   registration fails, so the job gates on its `installing: arm64 OK` output
+   line, then proves a `linux/arm64` container of the runner's own base image
+   reports `aarch64`, and stops with an error if either check fails. The other
+   eight images stay `linux/amd64`.
+
+   The installer runs as a `--privileged` container. The digest pin is the
+   only control against a malicious installer image. Running it before the
+   registry login, with no secret in its step's environment, an empty
+   `DOCKER_CONFIG` and no network, only limits accidental exposure. None of
+   that protects the credentials the runner holds for the whole job from a
+   privileged container: the OIDC request token and URL that `id-token: write`
+   provides to every step, and the job's `GITHUB_TOKEN`. The registration
+   itself is kernel-wide on the runner node and persists into later steps and
+   later jobs.
 3. Check statusgen's version in all nine images, and in both runner
    platforms. Execute the release-owned
    `images/verify-runner/check.py` inside each built runner platform: import PyYAML and

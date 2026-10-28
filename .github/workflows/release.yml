@@ -1597,11 +1597,21 @@ jobs:
       # amd64 runner under QEMU, so the job registers the handler itself: a
       # replaced runner pod would silently lose host-side setup. It runs in dry
       # runs too, because a dry run builds both runner platforms.
-      # ORDERING: the installer is a --privileged container, so it runs here,
-      # BEFORE the image step's `docker login` and before any step whose env
-      # holds a credential. This step's env carries no secret, it uses an empty
-      # DOCKER_CONFIG, and the container has no network and no mounts.
-      # Registration is kernel-wide on the node and outlives this job.
+      # TRUST: the installer is a --privileged container, with every capability
+      # and host device. The single control against a malicious installer is
+      # the content-addressed digest pin below. Running it here, before the
+      # image step's `docker login`, with no secret in this step's env, an empty
+      # DOCKER_CONFIG, no network and no mounts only limits ACCIDENTAL exposure.
+      # None of it protects the credentials the runner holds for the whole job
+      # (the OIDC request token and URL that `id-token: write` puts in every
+      # step's environment, and the job's GITHUB_TOKEN) from a privileged
+      # container. The registration it makes is kernel-wide on the node: it
+      # persists into later steps (after the login) and into later jobs.
+      # HANDLER: the installer exits 0 even when a registration fails, so its
+      # `installing: arm64 OK` line, not its exit status, is the first gate. It
+      # uninstalls any qemu-aarch64 handler first, so the pinned emulator is the
+      # one in force; an arm64 exec started on this node between the uninstall
+      # and the install fails. The arm64 `uname -m` probe is the second gate.
       # Admission: the installer's risk summary is recorded on issue #4784.
       - name: Register and prove arm64 emulation
         env:
@@ -1622,16 +1632,18 @@ jobs:
             exit 1
           fi
           status=0
-          docker run --privileged --rm --network none "$BINFMT_IMAGE" --install arm64 || status=$?
-          arch="$(docker run --rm --network none --platform linux/arm64 "$probe" uname -m)" || arch=""
-          if [ "$arch" != aarch64 ]; then
-            echo "::error::arm64 emulation is not working on this runner: a linux/arm64 container reported '${arch}', not 'aarch64' (binfmt installer exit ${status}). The linux/arm64 verify-runner build would fail with 'exec format error'; stopping before any image is built."
+          installed="$(docker run --privileged --rm --network none "$BINFMT_IMAGE" --uninstall qemu-aarch64 --install arm64 2>&1)" || status=$?
+          printf '%s\n' "$installed"
+          if ! grep -qx 'installing: arm64 OK' <<<"$installed"; then
+            echo "::error::The pinned binfmt installer did not register its arm64 emulator: no 'installing: arm64 OK' line in its output (exit ${status}). If it reports 'qemu-aarch64 already registered', a stale handler on this node survived the uninstall: unregister it on the runner host (echo -1 > /proc/sys/fs/binfmt_misc/qemu-aarch64) and rerun. Stopping before any image is built."
             exit 1
           fi
-          if [ "$status" -ne 0 ]; then
-            echo "::warning::The binfmt installer exited ${status}, but a linux/arm64 container runs (an arm64 handler was already registered)."
+          arch="$(docker run --rm --network none --platform linux/arm64 "$probe" uname -m)" || arch=""
+          if [ "$arch" != aarch64 ]; then
+            echo "::error::arm64 emulation is not working on this runner: a linux/arm64 container reported '${arch}', not 'aarch64'. The linux/arm64 verify-runner build would fail with 'exec format error'. If another handler for arm64 binaries is registered on this node (ls /proc/sys/fs/binfmt_misc), unregister it on the runner host and rerun. Stopping before any image is built."
+            exit 1
           fi
-          echo "arm64 emulation ready: linux/arm64 container reports ${arch}."
+          echo "arm64 emulation ready: the pinned emulator is registered and a linux/arm64 container reports ${arch}."
       - name: Build, verify and publish the release images
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
