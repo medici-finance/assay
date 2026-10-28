@@ -135,6 +135,48 @@ func TestRoleTokenMemoRemintsPastMaxAge(t *testing.T) {
 	}
 }
 
+// regression: desktools-v2/58 — the memo bounded reuse by its own 45-minute age alone, so a
+// token whose ACTUAL expiry (recorded by the provider beside the cache) fell inside that
+// window was handed out after it died. The memo now also stops roleTokenExpirySkew before
+// the reported expiry.
+func TestRoleTokenMemoHonoursReportedExpiry(t *testing.T) {
+	dir := t.TempDir()
+	var calls int
+	restore := SetRoleTokenMinter(func(role, owner string) (string, string, error) {
+		calls++
+		p := filepath.Join(dir, role+"-"+owner+".token")
+		if err := os.WriteFile(p, []byte("stub-token"), 0o600); err != nil {
+			return "", "", err
+		}
+		// The provider's recorded expiry: 20 minutes from the (real) mint time.
+		exp := time.Now().Add(20 * time.Minute).UTC().Format(time.RFC3339)
+		if err := os.WriteFile(p+".expires", []byte(exp+"\n"), 0o600); err != nil {
+			return "", "", err
+		}
+		return p, "", nil
+	})
+	t.Cleanup(func() { restore(); resetRoleTokenMemo() })
+	resetRoleTokenMemo()
+
+	base := time.Now()
+	roleTokenNow = func() time.Time { return base }
+	t.Cleanup(func() { roleTokenNow = time.Now })
+	if _, _, err := RoleTokenForOwner("worker", "acct-one"); err != nil {
+		t.Fatalf("seed lookup: %v", err)
+	}
+	// 10 minutes on: 10 minutes of life left, more than the skew — reused.
+	roleTokenNow = func() time.Time { return base.Add(10 * time.Minute) }
+	if _, _, err := RoleTokenForOwner("worker", "acct-one"); err != nil || calls != 1 {
+		t.Fatalf("10m lookup: calls=%d err=%v, want the memo entry reused", calls, err)
+	}
+	// 16 minutes on: inside the memo's 45-minute age bound, but within the skew of the
+	// token's reported expiry — the minter must run again.
+	roleTokenNow = func() time.Time { return base.Add(16 * time.Minute) }
+	if _, _, err := RoleTokenForOwner("worker", "acct-one"); err != nil || calls != 2 {
+		t.Fatalf("16m lookup: calls=%d err=%v, want a re-mint before the reported expiry", calls, err)
+	}
+}
+
 // TestRoleTokenMemoDoesNotCacheFailures — Verify row 4. All four failure shapes, each
 // followed by a success that must FORK AGAIN, and each refusal's text asserted so the memo
 // cannot be shown to have changed what a failure says.

@@ -1,6 +1,8 @@
 package deskkit
 
 import (
+	"github.com/medici-finance/assay/deskcore/attestation"
+
 	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -245,9 +247,7 @@ func (c verifierCheckout) args(rest ...string) []string {
 func parseVerifierCheckout(s string) (verifierCheckout, error) {
 	a, e, _ := strings.Cut(s, " ")
 	c := verifierCheckout{autocrlf: strings.TrimPrefix(a, "autocrlf="), eol: strings.TrimPrefix(e, "eol=")}
-	okA := c.autocrlf == "true" || c.autocrlf == "false" || c.autocrlf == "input"
-	okE := c.eol == "lf" || c.eol == "crlf" || c.eol == "native"
-	if !okA || !okE || c.String() != s {
+	if !attestation.CheckoutOK(s) {
 		return c, Refused("invalid verifier binding: checkout conversion")
 	}
 	return c, nil

@@ -57,8 +57,10 @@ not permission to read outside the admitted repository.
 Supported path forms:
 
 - Literal files and directories; a directory includes every nested file. A trailing
-  slash is normalized. A literal not yet present has an absence scope digest and
-  no content hash; that is distinct from an unreadable tree.
+  slash is normalized. That normalisation applies to declarations only: the
+  `scope:` input key re-adds the slash when the literal is observed as a directory
+  (see the reader contract below). A literal not yet present has an absence scope
+  digest and no content hash; that is distinct from an unreadable tree.
 - Segment globs interpreted by Go `path.Match`: `*`, `?` and character classes.
   Matched directories include their descendants. A glob with no match has an empty
   membership digest. Patterns use slash separators on every host.
@@ -99,6 +101,36 @@ they do not acquire new hashes from the current branch. Known observed changes
 still fire. No declared files is a legitimate empty declaration set; an unsupported
 declaration is an error. Generic/custom input readers retain opaque semantics
 unless they implement `CheckReceiptScope`.
+
+Scope keys have two forms, decided by the observed path kind and never by the
+declaration, which is always canonical without a trailing slash:
+
+- `scope:<decl>/` for a literal declaration observed as a directory;
+- `scope:<decl>` for a literal file, an absent literal and every glob, and for every
+  directory key written before the slash form existed.
+
+The digest is the same in both forms. Readers accept both: the completeness check
+counts a declaration as covered when exactly one of the two forms is present with a
+non-empty value (for a glob only `scope:<decl>` counts), and the root reader parses
+the key back to its declaration and returns the one digest that resolution
+produces, whichever form the key is in. A directory that becomes a file, or a file
+that becomes a directory, therefore changes the digest and wakes; it never reads as
+missing. "Ambiguous" means both forms of one declaration are present in a receipt;
+that is refused and reads as could-not-check. A key with an empty declaration, a
+double slash, a non-canonical declaration or a slash after a glob (never emitted)
+is unreadable, so could-not-check. Every `scope:` value, in either form, must be
+exactly the producer's digest format (64 lowercase hex characters); any other value
+is refused and reads as could-not-check.
+
+Measured residual of the slash form (the secret pattern sweep reads every landed
+record). At a slash-keyed position the sweep's generic pattern rule matches no
+value, so it no longer inspects that value; dedicated provider rules still match
+there. Readers refuse to read any non-digest value, but that refusal happens after
+publication, not before: it is not a pre-publication control. Keys that keep the
+no-slash form can still trip the generic rule when they end in a credential
+keyword: an extensionless file literal, an absent literal, and a glob whose last
+segment ends in such a keyword. The landed corpus held none of these when the slash
+form was introduced; they are recorded here, not fixed.
 
 Local enumeration never follows ancestor directory symlinks. A final symlink is a
 Git-style blob whose content hash is its link text. Read/enumeration errors are

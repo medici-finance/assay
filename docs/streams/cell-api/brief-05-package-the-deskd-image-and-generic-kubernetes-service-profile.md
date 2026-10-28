@@ -3,7 +3,7 @@ brief: assay:assay:cell-api:05
 title: Package the deskd image and generic Kubernetes service profile
 why: "A desk workload image and an operator image do not package the service. A separate public deskd image and generic Kubernetes profile make its read, health and network boundaries inspectable before any deployment."
 wave: 14
-depends: ["cell-api/03", "desk-containers/27", "desk-containers/29"]
+depends: ["cell-api/03", "cell-api/08", "desk-containers/27", "desk-containers/29"]
 unblocks: ["cell-api/06"]
 effort: M
 gate: human
@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the service deployment profile, admitted read capability, effective network policy and health/recovery behavior. Operator-selected workload and recovery targets must exist before real-profile exposure."
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: 682f451b-986d-442c-97d7-acf2f8f4e70b
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -31,8 +31,17 @@ sources:
   - https://github.com/medici-finance/assay/pull/2890
   - https://github.com/medici-finance/assay/issues/3669
   - freshness-checked 2026-10-20 @ 15b60414f3ec134942a0ec3162b550cd95cbbc8e
+  - docs/streams/cell-api/brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md
+  - freshness-checked 2026-10-27 @ dda6c8c67d3bbdb185c16428609e6e11678ca63a
+  - docs/release-images.md
+  - containers/k8s/README.md
 consumers:
-  - "images/deskd/: follow-up cell-api/05"
+  - "images/deskd/: follow-up cell-api/08"
+  - "tools/release/images.py: follow-up cell-api/05"
+  - "tools/release/images_contract.py: follow-up cell-api/05"
+  - "tools/release/images_test.py: follow-up cell-api/05"
+  - "docs/release-images.md: follow-up cell-api/05"
+  - "containers/k8s/components/cell-api/release-images.json: follow-up cell-api/05"
   - "containers/k8s/components/cell-api/: follow-up cell-api/05"
   - "containers/k8s/components/postgres/: follow-up cell-api/05"
   - "containers/k8s/components/postgres-networkpolicy/: follow-up cell-api/05"
@@ -42,6 +51,9 @@ consumers:
   - "docs/cell-api-kubernetes.md: follow-up cell-api/05"
   - "docs/postgres.md: follow-up cell-api/05"
   - "changelog/cell-api-image.md: follow-up cell-api/05"
+  - "Makefile: follow-up cell-api/05"
+  - "scripts/build-windows.ps1: follow-up cell-api/05"
+  - "tools/desk/internal/deskkit/citrigger_test.go: follow-up cell-api/05"
   - "legacy source consumers: out-of-scope (private source owner retains their exact crosswalk; this brief records public dispositions and does not edit them)"
 ---
 
@@ -49,12 +61,14 @@ consumers:
 
 ## Context
 
-files: `images/deskd/` (planned), `containers/k8s/components/cell-api/` (planned), `containers/k8s/components/postgres/` (planned), `containers/k8s/components/postgres-networkpolicy/` (planned), `containers/k8s/qualify.sh` (planned), `tools/desk/internal/cellapi/` (planned), `tools/desk/testdata/cellapi/` (planned), `docs/cell-api-kubernetes.md` (planned), `docs/postgres.md` (planned), `changelog/cell-api-image.md` (planned)
+files: `images/deskd/` (planned by cell-api/08; consumed here), `tools/release/images.py`, `tools/release/images_contract.py`, `tools/release/images_test.py`, `docs/release-images.md`, `containers/k8s/components/cell-api/release-images.json` (planned), `Makefile`, `scripts/build-windows.ps1`, `tools/desk/internal/deskkit/citrigger_test.go`, `containers/k8s/components/cell-api/` (planned), `containers/k8s/components/postgres/` (planned), `containers/k8s/components/postgres-networkpolicy/` (planned), `containers/k8s/qualify.sh` (planned), `tools/desk/internal/cellapi/` (planned), `tools/desk/testdata/cellapi/` (planned), `docs/cell-api-kubernetes.md` (planned), `docs/postgres.md` (planned), `changelog/cell-api-image.md` (planned)
 
 facts:
 - pin: public main 15b60414f, inspected 2026-10-20; images/deskd and service component are planned.
 - separation: the service, dedicated Linux operator and five role Pods have distinct capabilities and lifecycle.
 - storage: desk-containers/27 owns the CNPG profile and its per-cell owner/login role. That existing role is not a service read identity; this brief owns the proposed additive read-role/profile amendment, under the same database owner.
+- build: cell-api/08 owns the deskd binary and local image build (`images/deskd/Dockerfile`, `make deskd-build`, `make deskd-image`). Inspected again at public main dda6c8c67 on 2026-10-27, the root `Makefile` documents `desk-install` as HUMAN-ONLY, and `tools/winparity` holds its `.PHONY` set equal to `scripts/build-windows.ps1`'s parity block.
+- release: the umbrella release is the only producer of a pinnable image reference (`docs/release-images.md`). Its approved release job publishes `ghcr.io/<repository>/<name>:<umbrella-tag>@sha256:<registry-manifest-digest>` records in `release-images.json`, after its pre-push checks and layer-secret gate, and `tools/release/images_contract.py` validates them. At dda6c8c67 that set is nine images, with no deskd record. cell-api/08's `make deskd-image` writes only to the local image store: it has no registry digest, and two builds of one source SHA need not share an image ID.
 - limits: no production latency, density, RTO or RPO target is established by authoring.
 
 layering: A service host is justified by read-side lifecycle and custody separation; it composes 03 and existing R6, never agent/operator machinery. Verify 1–3 and 6 inspect rendered and local disposable fixtures; Verify 7 separately qualifies actual policy in an explicitly authorized disposable profile.
@@ -105,7 +119,10 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 
 ## Task
 
-1. Build a publication-clean standalone deskd image from the public source and pinned supported build inputs; no copied private build history, host paths or baked credentials. Keep the runtime minimal, non-root and separate from the model/desk/operator images. Declare the artifact pin and supported service/client matrix; publishing an image remains a separate release act.
+1. Consume cell-api/08's deskd image definition; do not fork, re-implement or widen its build. A change the profile needs in the image goes through 08's contract and its Verify rows, not a second Dockerfile here.
+   - **Release set.** Add deskd to the umbrella release producer's image set: `tools/release/images.py` builds it from `images/deskd/Dockerfile` for `linux/amd64` with the prepared release source, runs the existing layer-secret gate on it before the first push, and writes its record to `release-images.json`. `tools/release/images_contract.py` requires that record for releases cut after this change and still accepts the pinned pre-change record that the Kubernetes desk package consumes. Update `docs/release-images.md`'s image list and count, and keep the release workflow's image-count text and its staged twin in step. A dry run builds and checks deskd and pushes nothing. Publishing remains the release's single approved act; this brief cuts no release.
+   - **Artifact pin.** The pin is the deskd record of one published umbrella release: `ghcr.io/<repository>/deskd:<umbrella-tag>@sha256:<registry-manifest-digest>`. The profile keeps that release's `release-images.json` byte for byte as `containers/k8s/components/cell-api/release-images.json` (planned), and its offline check pins the record's sha256 and validates it with the release contract, as the Kubernetes desk package does (`containers/k8s/README.md`, "Image provenance"). Every profile, receipt and `deskd-deploy` reference is that record's deskd reference. A local image ID, a locally built or out-of-band pushed image, a `-dirty` build, or a mutable tag is never a pin. If no published release carries a deskd record yet, the pin is unset and `deskd-deploy` refuses; the gap is never repaired by building or pushing an image.
+   - Also declare the supported service/client matrix.
 
 2. Create the generic offline-renderable Kubernetes service component with explicit cell/source bindings and default-deny ingress and egress. Allow only named qualified clients to its read API and the service to the existing projection endpoint and required DNS; namespace and Pod selectors must intersect, never accidentally broaden into alternative peers. The initial profile denies agent-Pod ingress to the service and agent access to SQL/publishers. No privileged host mounts, host network/ports, Docker socket, wildcard RBAC, ambient kubeconfig or agent/operator credential mounts. Render a ClusterIP Service only; no Ingress, NodePort, LoadBalancer or external IP. A policy removed, widened or not enforced is a failed exposure gate.
 
@@ -115,9 +132,20 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 
 4. Distinguish process live, dependencies ready, projection freshness and acceptance: stale/unavailable authorization or data reports degraded readiness/coverage, with no private counts in probes. Qualify restart, graceful termination, SSE resync and dependency outage with local disposable processes and offline render checks. A Pod restart or reconnect cannot launch agents, renew authority or replay effects. Scope retry/load behavior to inherited forge budget and perf-v3 observations; add no invented production budget.
 
-5. Own the service-specific qualification here. Deliver `containers/k8s/components/cell-api/qualify.sh` (planned) for a separately authorized, isolated disposable profile: require explicit opt-in, profile, kubeconfig and context; print the target before contact. Reuse desk-containers/29's qualification harness and receipt-bound target guard: resolve endpoint/TLS identity offline, compare it to the run-owned receipt and pin it on connection before any API call. Refuse substituted files/endpoints, ambient, shared or production contexts. Exercise actual CNI reachability with real rendered resources and the scoped service identity; removing policy or widening selectors must fail the expected matrix. Its receipt binds image digest, rendered policy/profile hash, database grants/identity, target and test results. Missing tooling, skipped probes, unreadable results or mismatched receipts are could-not-check and nonzero, never success. This implementation does not contact a live cluster; an authorized operator executes Verify 7 separately before exposure. desk-containers/29's existing suite does not cover this new service. Brief 07 must dereference this receipt as a prerequisite, not invent or substitute one.
+5. Own the service-specific qualification here. Deliver `containers/k8s/components/cell-api/qualify.sh` (planned) for a separately authorized, isolated disposable profile: require explicit opt-in, profile, kubeconfig and context; print the target before contact. Reuse desk-containers/29's qualification harness and receipt-bound target guard: resolve endpoint/TLS identity offline, compare it to the run-owned receipt and pin it on connection before any API call. Refuse substituted files/endpoints, ambient, shared or production contexts. Exercise actual CNI reachability with real rendered resources and the scoped service identity; removing policy or widening selectors must fail the expected matrix. On a passing run it writes a qualification receipt, its schema documented in `docs/cell-api-kubernetes.md` (planned), that binds the Task 1 image reference, rendered policy/profile hash, database grants/identity, target context, API endpoint, TLS identity and test results. Missing tooling, skipped probes, unreadable results or mismatched receipts are could-not-check and nonzero, never success. This implementation does not contact a live cluster; an authorized operator executes Verify 7 separately before exposure. desk-containers/29's existing suite does not cover this new service. Brief 07 must dereference this receipt as a prerequisite, not invent or substitute one.
 
 6. Document image/profile pins, secret-reference custody, the network/health matrix and rollback; regenerate examples offline. Admission and human acceptance of the proposed read-role/profile amendment precede provisioning or exposure. Existing R2/R3/R4 owners retain authority, and separate operational acts remain required.
+
+7. Add a HUMAN-ONLY `deskd-deploy` target to the root `Makefile`, documented in its header beside `desk-install`. It applies this brief's rendered profile, pinned to Task 1's image digest, to one explicitly named target:
+   - It requires explicit `DESKD_PROFILE`, `DESKD_KUBECONFIG`, `DESKD_CONTEXT` and `DESKD_RECEIPT` arguments. It passes `--kubeconfig` and `--context` on every kubectl call. It ignores and refuses an ambient `KUBECONFIG` or the default kubeconfig file, and a missing argument is a named refusal.
+   - `DESKD_RECEIPT` is the qualification receipt that Task 5's `qualify.sh` wrote for this same profile in its authorized disposable run. Its provenance is that run, and it binds the image reference, the rendered-profile hash, the target context, the API endpoint and the TLS identity. Before any cluster contact `deskd-deploy` resolves those values offline and requires each to equal the receipt's. A missing, unreadable or schema-invalid receipt, a receipt that records a failing or could-not-check result, and a foreign receipt (another run, profile, image or target) each refuse with zero cluster calls. A deploy is therefore only ever to a target that this profile's qualification bound.
+   - Before any cluster contact it prints the context, API endpoint, namespace, image reference and rendered-profile hash.
+   - It reuses desk-containers/29's receipt-bound target guard, as Task 5 does, with `DESKD_RECEIPT` as the bound receipt. It refuses ambient, shared, production or receipt-unbound contexts and substituted kubeconfig files or endpoints, with zero cluster calls.
+   - It takes no image argument. It deploys only the deskd reference from the profile's pinned release record, after checking that record's sha256 and validating it with the release contract. A reference that is absent from that record or differs from it, a record whose sha256 differs from the pin or that has no deskd entry, a local image ID, an `assay-deskd:` local or `-dirty` tag, and a mutable tag each refuse with zero cluster calls.
+   - It resolves `kubectl` through PATH, so the existing cluster-guard shim and its explicit operator opt-in still apply. It adds no bypass of that shim.
+   - A human operator runs it, as with `desk-install`. No CI workflow, plugin, desk tool or agent dispatch invokes it.
+   - Add it to `.PHONY` and the `scripts/build-windows.ps1` parity block. Its Windows handler is a named non-zero refusal, and `tools/winparity` stays green.
+   - Deliver `TestDeskdDeployRefusesUnboundTargets` (planned), checked by Verify 8. It runs the real recipe extracted from the `Makefile` under `/bin/sh`, because CI has no make. A temporary HOME and a recording fake `kubectl` on PATH stand in for the cluster. Register the test in `ciCrossModuleRegistry`.
 
 ## Interface and acceptance contract
 
@@ -161,6 +189,9 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
 | 6 | check:ci +flow +mutation +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdDatabaseScope$' ./internal/cellapi/... > "$o" && grep -F -- '--- PASS: TestDeskdDatabaseScope ' "$o")` | exit 0; named PASS with a real disposable PostgreSQL fixture and production grant templates. Bypass HTTP and connect with the service role: approved projection SELECT succeeds; DML/DDL/TEMP, owner SET ROLE, mutating functions, non-allowlisted data and foreign-cell database access fail. Planted owner-role Secret or inherited/PUBLIC/default write grant fails the oracle; absent database fixture fails, never skips. |
 | 7 | gate:human +flow +mutation +neighbour | `test -n "$ASSAY_CELL_API_PROFILE" && test -n "$ASSAY_CELL_API_KUBECONFIG" && test -n "$ASSAY_CELL_API_CONTEXT" && test -n "$ASSAY_CELL_API_RECEIPT" && sh containers/k8s/components/cell-api/qualify.sh --allow-cluster-queries --profile "$ASSAY_CELL_API_PROFILE" --kubeconfig "$ASSAY_CELL_API_KUBECONFIG" --context "$ASSAY_CELL_API_CONTEXT" --receipt "$ASSAY_CELL_API_RECEIPT"` | exit 0 only with human authorization and receipt-bound API/TLS identity in the owned disposable profile. Actual CNI allows qualified client-to-service and service-to-projection reads; agent/foreign-namespace ingress, agent-to-database/publisher and unauthorized service egress fail with application ingress bypassed. Missing/widened policy mutations fail; record exact image/profile/grants-bound receipt and controls. An offline render pass, absent receipt or unavailable probe cannot satisfy this row. |
+| 8 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdDeployRefusesUnboundTargets$' ./internal/cellapi/... > "$o" && grep -F -- '--- PASS: TestDeskdDeployRefusesUnboundTargets ' "$o")` | exit 0; named PASS over the real `deskd-deploy` recipe from the root `Makefile`, run under `/bin/sh` with a temporary HOME and a recording fake `kubectl`. Each of these exits non-zero with a named reason and records zero kubectl calls: missing profile, missing kubeconfig, missing context, missing receipt, ambient `KUBECONFIG` only, default kubeconfig file only, shared or production context, unreadable or schema-invalid receipt, receipt recording a failing or could-not-check result, foreign receipt (profile hash, image reference, context, endpoint or TLS identity not equal to the deploy's), substituted kubeconfig, image reference absent from or different from the pinned release record, release record whose sha256 differs from the pin or that has no deskd entry, local image ID, `assay-deskd:` local or `-dirty` tag, an image override argument, and mutable image tag. The bound disposable fixture prints context, endpoint, namespace, image reference and profile hash before its first kubectl call, and every call carries explicit `--kubeconfig` and `--context`. A static scan of every tracked file (`git ls-files`) finds no `deskd-deploy` invocation outside an explicit allowlist: the root `Makefile`, the Windows refusal handler in `scripts/build-windows.ps1`, documentation under `docs/` and `changelog/`, and the test's own source and fixtures. A planted invocation in a scratch file under `scripts/`, `containers/` or `deskd/` fails the scan. Deleting any one refusal clause from a scratch copy of the recipe fails the test. |
+| 9 | check:ci +neighbour | `(cd tools/winparity && GOWORK=off go run . --root ../..)` | exit 0; prints `winparity: OK`. The Makefile `.PHONY` set and the Windows parity block are equal and include `deskd-deploy`, and the Windows handler is a named refusal, never a silent success. |
+| 10 | check:ci +flow +mutation | `o=$(mktemp) && python3 -B -m unittest discover -s tools/release -p images_test.py -v > "$o" 2>&1 && grep -E '^test_deskd_release_record .*\.\.\. ok$' "$o"` | exit 0; the existing suite passes and the named test `test_deskd_release_record` (planned) is ok. With fake Docker, a dry run builds deskd from `images/deskd/Dockerfile`, runs the layer-secret gate on it and pushes nothing. A publish writes a deskd record with a registry manifest digest only after every check, and the contract validates it. A post-change manifest without the deskd record, a deskd reference with a bare tag or the wrong repository, and a deskd layer-secret finding are each refused before any publication write; the pinned pre-change record still validates. Removing deskd from the producer set in a scratch copy fails the test. |
 
 ## Threat model and detection
 
@@ -172,6 +203,11 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | Healthy process is reported as healthy data/acceptance | row 2 |
 | Restart/reconnect becomes new runtime ownership or repeats work | row 3 |
 | Offline policy render or an unrelated qualification receipt is mistaken for effective service containment | row 7; missing or mismatched evidence holds exposure |
+| `deskd-deploy` reaches an ambient, shared, production or substituted cluster, or a target that no qualification receipt binds (missing, failing or foreign receipt), or deploys a mutable tag | row 8 (zero kubectl calls on every refusal); the cluster-guard shim's operator opt-in stays a separate layer |
+| `deskd-deploy` is run by CI or an agent instead of a human operator | row 8's static no-invocation scan; review-only beyond it |
+| The image deployed is not the release-published deskd image: a local, `-dirty` or out-of-band pushed build, or a reference absent from the pinned release record | row 8 (the deploy accepts only the pinned record's deskd reference, with zero kubectl calls otherwise), row 7's receipt binding the same reference, and row 10 (only the approved release job produces that record) |
+| deskd is published without the release's approval, pre-push checks or layer-secret gate | row 10; the release's single protected approval stays a separate human layer |
+| The Windows script drifts from the Makefile | row 9 |
 | A fixture is mistaken for deployment authority or a private inventory is called complete without its owner | No row; review-only: inspect decision provenance, source-owner receipt and explicit operational limits before acceptance. |
 
 ## Evidence
@@ -183,5 +219,8 @@ runner. Empty at authoring; no implementation or deployment result is asserted. 
 ## Review
 
 Gate: human. Review the actual mounted/effect boundary and retained ownership, the
-compatibility inventory and the independent negative controls. Test success grants
+compatibility inventory and the independent negative controls. Confirm that Task 1 adds
+cell-api/08's image definition to the release set without re-building it elsewhere, that
+the pin is a published release record's reference and never a local build, and that
+`deskd-deploy` stays a human-only act behind explicit, receipt-bound target arguments. Test success grants
 neither deployment nor credential provisioning, source closure or a human decision.

@@ -220,3 +220,99 @@ func TestDecisionForgeWiredInMain(t *testing.T) {
 		t.Error("decisionWaitForgeFn is set outside main(): tests that do not ask for it would read a forge")
 	}
 }
+
+// TestBriefGateSecondDocument pins that a human gate in a second YAML document
+// inside the frontmatter fence still fires the decision gate: the block is
+// unreadable, and unreadable metadata gates human.
+func TestBriefGateSecondDocument(t *testing.T) {
+	root := t.TempDir()
+	for i, content := range []string{
+		"---\neffort: S\n...\ngate: human\n---\nbody\n",
+		"---\ngate: model\n--- {gate: human}\n---\nbody\n",
+		"---\ngate: model\n\ufeff--- {gate: human}\n---\nbody\n",
+		"---\ngate: model\n\u2800--- {gate: human}\n---\nbody\n",
+		"---\ngate: model\nGate: human\n---\nbody\n",
+	} {
+		name := fmt.Sprintf("brief-%02d.md", i)
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !briefGatesHuman(root, name) {
+			t.Errorf("second-document human gate dropped: %q read as gate %q", content, briefFrontmatterGate(root, name))
+		}
+	}
+}
+
+// TestBriefGateContinuationLines pins that a gate or exec-tier line the shared
+// parser reads as text inside another value makes the dispatcher read the
+// brief as human-gated.
+func TestBriefGateContinuationLines(t *testing.T) {
+	root := t.TempDir()
+	for i, hidden := range continuationLines {
+		name := fmt.Sprintf("brief-%02d.md", i)
+		if err := os.WriteFile(filepath.Join(root, name), []byte("---\n"+hidden+"\n---\nbody\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !briefGatesHuman(root, name) {
+			t.Errorf("continuation line %q read as gate %q", hidden, briefFrontmatterGate(root, name))
+		}
+	}
+}
+
+// continuationLines hide a column-0 policy line inside a multi-line value
+// opened on an earlier line: the shared parser reads the line as text in that
+// value, while a first-match line reader reads it as the key.
+var continuationLines = []string{
+	"meta: {a: 1,\ngate: human\n}\ngate: model",
+	"meta: {a:1,\ngate: human\n}",
+	"tags: [a,\ngate: human\n]\ngate: model",
+	"tags: [a,\nexec-tier: strong]\nexec-tier: any",
+	"title: \"first\ngate: human\n  end\"\ngate: model",
+	"title: 'first\nexec-tier: strong\n  end'",
+	"meta: {a: 1,\ndecision-issue: 12\n}",
+}
+
+// TestDeliverableUnreadableFrontmatter pins that a brief whose frontmatter does
+// not parse is a could-not-check for the deliverable declarations, never "no
+// declaration": a refused block could still carry deliverable_repo, homed-in or
+// a brief-v2 id.
+func TestDeliverableUnreadableFrontmatter(t *testing.T) {
+	root := t.TempDir()
+	for i, content := range []string{
+		"---\ngate: model\ndeliverable_repo: example-tool\nmeta:\n  customer: yes\n---\nbody\n",
+		"---\ngate: model\n...\nhomed-in: example-org/console\n---\nbody\n",
+	} {
+		p := filepath.Join(root, fmt.Sprintf("brief-%02d.md", i))
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d, err := resolveDeliverable(dispatchOpts{brief: p, root: root})
+		if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable || !strings.Contains(fmt.Sprint(err), "frontmatter") {
+			t.Errorf("unreadable frontmatter read as no declaration: %q gave %+v, exit %d: %v", content, d, deskkit.ExitCodeOf(err), err)
+		}
+	}
+	// Control: a brief with readable frontmatter and no declaration stays inactive.
+	p := filepath.Join(root, "brief-plain.md")
+	if err := os.WriteFile(p, []byte("---\ngate: model\n---\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := resolveDeliverable(dispatchOpts{brief: p, root: root}); err != nil || d.active {
+		t.Errorf("readable brief with no declaration: %+v, %v", d, err)
+	}
+}
+
+// TestDeliverableIgnoresSiblingKeys pins that a quoted key which merely starts with
+// "deliverable_repo:", "homed-in:" or "brief:" is not read as that declaration: a brief with only
+// such keys declares nothing and stays inactive.
+func TestDeliverableIgnoresSiblingKeys(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "brief-decoy.md")
+	content := "---\ngate: model\n'deliverable_repo: example-tool': x\n'homed-in: example-org/console': x\n" +
+		"'brief: c:other:s:01': x\n---\nbody\n"
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := resolveDeliverable(dispatchOpts{brief: p, root: root}); err != nil || d.active {
+		t.Errorf("sibling keys read as a declaration: %+v, %v", d, err)
+	}
+}

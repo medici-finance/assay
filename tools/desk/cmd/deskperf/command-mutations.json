@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskperf -count=1 -run '^TestCommandOverview'",
+  "test": "go test ./cmd/deskperf -count=1 -run '^TestCommand(Overview|WorkflowV4)'",
   "control": {
     "name": "command invocation count conserves observations",
     "file": "internal/deskkit/perfcommands.go",
@@ -22,8 +22,8 @@
     {
       "name": "count nested service observations as command invocations",
       "file": "internal/deskkit/perfcommands.go",
-      "old": "if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {",
-      "new": "if false && r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {"
+      "old": "if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess {",
+      "new": "if false && (r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess) {"
     },
     {
       "name": "hide unfiltered conflict-only detail behind no-match",
@@ -38,10 +38,28 @@
       "new": "if false {"
     },
     {
+      "name": "hide v4 exclusions in the command overview",
+      "file": "cmd/deskperf/report.go",
+      "old": "if s.V4Duplicates+s.V4Conflicts+s.V4Invalid > 0 {",
+      "new": "if false {"
+    },
+    {
       "name": "hide workflow mismatch behind tool no-match",
       "file": "cmd/deskperf/report.go",
       "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {",
       "new": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") {"
+    },
+    {
+      "name": "hide window-wide v4 exclusions in by-day text",
+      "file": "cmd/deskperf/report.go",
+      "old": "if v4 != nil {",
+      "new": "if false && v4 != nil {"
+    },
+    {
+      "name": "restate by-day v4 exclusions as per-bucket zeros",
+      "file": "cmd/deskperf/report.go",
+      "old": "v4DayTable(stdout, day.Summary)",
+      "new": "v4Table(stdout, day.Summary)"
     }
   ]
 }

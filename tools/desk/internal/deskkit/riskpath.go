@@ -1,8 +1,7 @@
 package deskkit
 
 import (
-	"sort"
-	"strings"
+	"github.com/medici-finance/assay/deskcore/riskpath"
 
 	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
@@ -65,11 +64,7 @@ import (
 //	secrets/
 //	.github/workflows/
 //	k8s/*/rbac.yaml
-var baseRiskPathTriggers = []string{
-	"secrets/",
-	".github/workflows/",
-	"k8s/*/rbac.yaml",
-}
+var baseRiskPathTriggers = riskpath.Base()
 
 // repoRiskPathTriggersFor returns the ADDITIONAL triggers for one repo, layered on top
 // of baseRiskPathTriggers. A repo the topology says nothing about gets the base list
@@ -112,22 +107,7 @@ func configuredExtraTriggers() []string {
 }
 
 // unionSorted merges trigger lists, de-duplicating and sorting. It never removes.
-func unionSorted(lists ...[]string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, 8)
-	for _, l := range lists {
-		for _, p := range l {
-			p = strings.TrimSpace(p)
-			if p == "" || seen[p] {
-				continue
-			}
-			seen[p] = true
-			out = append(out, p)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
+func unionSorted(lists ...[]string) []string { return riskpath.Union(lists...) }
 
 // RiskPathTriggersFor returns the full sorted trigger set for repo: the universal base
 // list, any repo-specific compiled additions, and any adopter additions from
@@ -196,30 +176,4 @@ func pathTriggerHit(repo string, changedFiles []string) bool {
 
 // matchTrigger reports whether path matches trigger pattern. See RiskPathTriggered for
 // the matching rules. A '*' pattern segment is a single-segment wildcard.
-func matchTrigger(pattern, path string) bool {
-	dirPrefix := strings.HasSuffix(pattern, "/")
-	pp := strings.Split(strings.Trim(pattern, "/"), "/")
-	fp := strings.Split(strings.Trim(path, "/"), "/")
-
-	if dirPrefix {
-		// The pattern's segments must be a prefix of the path's segments — the file
-		// lives under the trigger directory.
-		if len(fp) < len(pp) {
-			return false
-		}
-	} else {
-		// Exact file match — same segment count.
-		if len(fp) != len(pp) {
-			return false
-		}
-	}
-	for i, seg := range pp {
-		if seg == "*" { // single-segment wildcard
-			continue
-		}
-		if fp[i] != seg {
-			return false
-		}
-	}
-	return true
-}
+func matchTrigger(pattern, path string) bool { return riskpath.Match(pattern, path) }

@@ -83,6 +83,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 Before changing the governed boundary, present the concrete implementation/design through the existing decision mechanism. Confirm the preserved actor, subject, revocation and effect-admission rules. Options: accept the bounded implementation; request corrections; hold. No answer supplies no approval. Do not infer this ruling from the planning request.
 
+Default if no answer: none — blocks until answered
+
 ## Task
 
 1. Extend historian/export/import through versioned adapters, recording source snapshot, effective membership, identity aliases and milestone acceptance references. Preserve append-only historical observations; a delivery milestone does not rename the existing brief-flow event milestone vocabulary.

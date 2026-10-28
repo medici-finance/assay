@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"os"
@@ -437,6 +438,107 @@ func TestCommandOverviewReadableDurations(t *testing.T) {
 	} {
 		if got := commandDuration(c.ms); got != c.want {
 			t.Errorf("%dms: %s, want %s", c.ms, got, c.want)
+		}
+	}
+}
+
+// regression: #4360 (review F2)
+func TestCommandOverviewV4ExclusionsVisible(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		summary deskkit.PerfCommandSummary
+		want    string
+	}{
+		{"duplicates", deskkit.PerfCommandSummary{V4Duplicates: 2}, "excluded perf-v4: 2 duplicates; 0 conflicting identities; 0 invalid"},
+		{"conflicts", deskkit.PerfCommandSummary{V4Conflicts: 3}, "excluded perf-v4: 0 duplicates; 3 conflicting identities; 0 invalid"},
+		{"invalid", deskkit.PerfCommandSummary{V4Invalid: 1}, "excluded perf-v4: 0 duplicates; 0 conflicting identities; 1 invalid"},
+		{"mixed", deskkit.PerfCommandSummary{V3Conflicts: 1, V4Duplicates: 2, V4Conflicts: 3, V4Invalid: 1}, "excluded perf-v4: 2 duplicates; 3 conflicting identities; 1 invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := commandTable(&out, tc.summary, 7); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Fatalf("v4 exclusions missing: %q", out.String())
+			}
+		})
+	}
+}
+
+// regression: #4360 (review 2 F2)
+func TestCommandOverviewByDayV4ExclusionsVisible(t *testing.T) {
+	a, err := perfrec.ToV4(commandProcess(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := a
+	b.Tool = "issueboard"
+	c, err := perfrec.ToV4(commandProcess(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a, b, c})
+	rc, out, errOut := runDeskperf("report", "--by-day")
+	if rc != 0 || errOut != "" {
+		t.Fatalf("by-day report failed: rc%d stdout%q stderr%q", rc, out, errOut)
+	}
+	if !strings.Contains(out, "perf-v4 — 1 record(s) kept; 0 duplicate(s); 1 conflicting identities excluded; 0 invalid (selected over the whole window before any day bucket)") {
+		t.Errorf("window-wide v4 exclusion hidden in by-day text: %q", out)
+	}
+	if strings.Contains(out, "0 conflicting identities excluded") {
+		t.Errorf("by-day text restates an exclusion as an affirmative per-bucket zero: %q", out)
+	}
+	if !strings.Contains(out, "perf-v4 — 1 records in this bucket (exclusions are counted once for the whole window, above)") {
+		t.Errorf("per-day v4 bucket line missing: %q", out)
+	}
+	rc, out, errOut = runDeskperf("report", "--by-day", "--json")
+	if rc != 0 || errOut != "" {
+		t.Fatalf("by-day json failed: rc%d stdout%q stderr%q", rc, out, errOut)
+	}
+	var got reportDayJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PerfV4 == nil || got.PerfV4.Records != 1 || got.PerfV4.Conflicts != 1 {
+		t.Errorf("window-wide v4 exclusion missing from by-day json: %+v", got.PerfV4)
+	}
+}
+
+// regression: #4360 (parent c4352-f1)
+func TestCommandWorkflowV4(t *testing.T) {
+	a, err := perfrec.ToV4(commandProcess(t, strings.Repeat("a", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a})
+	for _, byDay := range []bool{false, true} {
+		for _, asJSON := range []bool{false, true} {
+			for _, tool := range []string{a.Tool, "other-tool"} {
+				args := []string{"report", "--perf-profile", "workflow", "--session-id", strings.Repeat("b", 32), "--tool", tool}
+				if byDay {
+					args = append(args, "--by-day")
+				}
+				if asJSON {
+					args = append(args, "--json")
+				}
+				want := "no v3/v4 record matches the workflow filter"
+				if tool != a.Tool {
+					want = "no record matches --tool other-tool"
+				}
+				rc, out, diag := runDeskperf(args...)
+				if rc != deskkit.ExitRefused || out != "" || !strings.Contains(diag, want) {
+					t.Errorf("tool=%q day=%v json=%v: rc%d out%q diag%q; want %q", tool, byDay, asJSON, rc, out, diag, want)
+				}
+			}
 		}
 	}
 }

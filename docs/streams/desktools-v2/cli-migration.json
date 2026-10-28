@@ -82,6 +82,16 @@
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
     },
     {
+      "class": "library",
+      "pattern": "tools/release/bundles.py",
+      "reason": "internal release provenance-bundle check imported by fixed release workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3094)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/bundles_test.py",
+      "reason": "offline provenance-bundle and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#3094)"
+    },
+    {
       "class": "test",
       "pattern": "tools/release/images_test.py",
       "reason": "offline image producer and manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#3204)"
@@ -105,6 +115,16 @@
       "class": "test",
       "pattern": "tools/release/go_cache_mutation.py",
       "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/sbom.py",
+      "reason": "internal release SBOM writer imported by the fixed release workflow Python call; no shebang, main guard, argument parser or independent operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/sbom_test.py",
+      "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
     },
     {
       "class": "test",
@@ -717,7 +737,7 @@
       "complexity": "simple",
       "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskclaim",
@@ -926,11 +946,11 @@
         "tools/desk/README.md",
         "tools/desk/internal/regression/MANIFEST.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "1980 LOC, ~8 verbs, ~15 flags at 3ad1ad83c871",
       "owner": "desktools-v2/23",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskflip",
@@ -1024,7 +1044,7 @@
       "complexity": "simple",
       "basis": "1057 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/35",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "desklabel",
@@ -1313,7 +1333,7 @@
       "complexity": "simple",
       "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrelease",
@@ -1577,11 +1597,11 @@
         "tools/desk/internal/deskkit/pushtransport-mutations.json",
         "docs/cellctl.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "4684 LOC, ~7 verbs, ~18 flags at 3ad1ad83c871",
       "owner": "desktools-v2/22",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "fanoutloop",
@@ -1641,7 +1661,7 @@
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar-action.sh",
@@ -1659,7 +1679,8 @@
       "complexity": "simple",
       "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/muhar"
     },
     {
       "executable": "opmetrics",
@@ -1675,7 +1696,7 @@
       "complexity": "simple",
       "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "repohardenguard",

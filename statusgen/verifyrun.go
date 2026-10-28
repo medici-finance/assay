@@ -1247,6 +1247,100 @@ func treeSHA(root string) string {
 	return sha
 }
 
+// briefTreeSHA is treeSHA for a run of brief (#4299). The one change it does
+// not count as dirty is an edit confined to brief's own `## Evidence` section:
+// a witness or verdict the verifier recorded there is not source the commands
+// ran against, and admission already reads such an edit as clean. Any other
+// change, including an untracked file, a second changed path, an edit outside
+// that section, a new section heading or a carriage return, keeps `+dirty`.
+func briefTreeSHA(root, brief string) string {
+	tree := treeSHA(root)
+	if strings.HasSuffix(tree, "+dirty") && evidenceOnlyChange(root, brief) {
+		return strings.TrimSuffix(tree, "+dirty")
+	}
+	return tree
+}
+
+// evidenceOnlyChange reports whether the working tree's ONLY change against
+// HEAD is to brief, and brief differs from its HEAD blob only inside the
+// `## Evidence` section the brief parser bounds (evidenceSectionSpan).
+func evidenceOnlyChange(root, brief string) bool {
+	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return false
+	}
+	dir, err := filepath.EvalSymlinks(strings.TrimSpace(string(top)))
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(brief)
+	if err == nil {
+		abs, err = filepath.EvalSymlinks(abs)
+	}
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(dir, abs)
+	if err != nil || !filepath.IsLocal(rel) {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain=v1", "-z", "--untracked-files=all").Output()
+	if err != nil {
+		return false
+	}
+	entries := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(entries) != 1 || len(entries[0]) < 4 || entries[0][3:] != rel {
+		return false
+	}
+	switch entries[0][:2] {
+	case " M", "M ", "MM":
+	default:
+		return false
+	}
+	head, err := exec.Command("git", "-C", dir, "show", "HEAD:"+rel).Output()
+	if err != nil {
+		return false
+	}
+	work, err := os.ReadFile(abs)
+	if err != nil {
+		return false
+	}
+	a, okA := outsideEvidence(string(head))
+	b, okB := outsideEvidence(string(work))
+	return okA && okB && a == b
+}
+
+// outsideEvidence is a brief's text with its `## Evidence` section's lines cut
+// out, bounded exactly as the brief parser bounds them: the frontmatter fence
+// is split off first, then evidenceSectionSpan finds the section in the body.
+// ok is false for text the comparison cannot read the same way on both sides:
+// a carriage return, an unterminated frontmatter, or no Evidence section.
+func outsideEvidence(text string) (string, bool) {
+	if strings.Contains(text, "\r") {
+		return "", false
+	}
+	lines := strings.Split(text, "\n")
+	body := 0
+	if strings.TrimSpace(lines[0]) == "---" {
+		body = -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				body = i + 1
+				break
+			}
+		}
+		if body < 0 {
+			return "", false
+		}
+	}
+	start, end, ok := evidenceSectionSpan(lines[body:])
+	if !ok {
+		return "", false
+	}
+	return strings.Join(lines[:body+start], "\n") + "\x00" + strings.Join(lines[body+end:], "\n"), true
+}
+
 // ---------------------------------------------------------------------------
 // The run
 // ---------------------------------------------------------------------------
@@ -1459,13 +1553,18 @@ func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, run
 // in `unshare --net`. sandboxContainerNetns skips that wrapper — the run is
 // already inside a --network none container — and so FIRST runs the
 // loopback-only precheck, once, before any row: if it refuses, every row that
-// would execute is recorded could-not-run with the reason, never run.
+// would execute is recorded could-not-run with the reason, never run. It also
+// reads, once, which of the tree's module requirements the image's baked
+// module cache lacks (#4683, modcachegap.go): a row that then exits non-zero
+// naming one of them stopped on module resolution, so it is could-not-run.
 func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	refused := ""
+	var gaps []modGap
 	if sandbox == sandboxContainerNetns {
 		if ok, why := loopbackOnlyPrecheck(listInterfacesFn); !ok {
 			refused = containerNetnsRefusedNote(why)
 		}
+		gaps = runModuleCacheGap(root)
 	}
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
@@ -1521,6 +1620,9 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			if hit := gapsNamedIn(res.output, gaps); !res.couldNotRun && res.exit != 0 && len(hit) > 0 {
+				res.couldNotRun, res.reason = true, modCacheGapNote(hit)
+			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -1862,9 +1964,16 @@ Flags:
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
   --acceptance-forge  explicitly permit fresh human-approval reads on the host.
-  --acceptance-record <file>  coordinate-only transition descriptor; host execution
-                    only, same-repository admission, with --acceptance-forge.
-                    Executes the canonical original-plus-approved obligation plan.
+  --acceptance-record <file>  coordinate-only protected-table descriptor; host
+                    execution only, same-repository admission. One
+                    Verification-Table line is a protected record: original
+                    rows must equal their delivered definitions and run as
+                    delivered; every delivered row the original table lacks
+                    (derived from git at the coordinates, never from the file)
+                    is witnessed author-added with no acceptance credit. That
+                    line plus an Acceptance-Transition line is a transition,
+                    which also needs --acceptance-forge and executes the
+                    canonical original-plus-approved obligation plan.
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -1888,9 +1997,13 @@ Flags:
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
-                    this brief (version 1 only) and it names a runner, and
-                    refuses after the rows if they changed that tree. Its rows'
-                    Runner cell is the receipt's, never derived in the container.
+                    this brief and it names a runner, and refuses after the
+                    rows if they changed that tree. Its rows' Runner cell is
+                    the receipt's, never derived in the container. A version-2
+                    (cross-repository) receipt also needs --root naming the
+                    deliverable home and --brief naming the tracking brief
+                    outside it, holding the bytes the receipt's BriefSHA256
+                    names; its attestation line names both repositories.
   --container-image-digest sha256:<64 hex>  the image the rows run in, named by
                     the host; recorded as Container-Image on the witness.
   --witness <file>  container-netns: a NEW file outside the home the witness
@@ -1957,9 +2070,12 @@ Flags:
                     login-only verifier entry or a shallow clone is
                     could-not-check), (b) the span's attestation line equal
                     to the line rendered from its record, read with deskread
-                    (issue, trust, label-events): a same-repository, closed,
-                    never-edited issue written by the dispatcher, not the
-                    verifier, carrying the dispatcher's model stamp, and
+                    (issue, trust, label-events): a closed, never-edited
+                    issue in the brief's own repository, written by the
+                    dispatcher, not the verifier, carrying the dispatcher's
+                    model stamp; a version-2 (cross-repository) line also
+                    needs its source-repo= in the configured repository set
+                    (ASSAY_ALLOWED_REPOS), else it is not-credited, and
                     (c) the attestation's brief= equal to the --witness
                     file's repository path and its source= equal to
                     --source. A failed read is could-not-check. Exit 0 only
@@ -2048,7 +2164,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
-	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected transition descriptor; requires --acceptance-forge on the host")
+	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host only; a transition also requires --acceptance-forge")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
@@ -2314,8 +2430,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// execution and does not need to parse the brief here — the inner run reads it
 	// against the bind-mounted /work. The pass-through flags (--check/--dry-run/--ci
 	// and a non-default --timeout) travel into the container.
-	if *transitionRecord != "" && (*inContainer || *checkMode || admittedHome != "" || !transitionForge) {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-record requires host execution, --acceptance-forge, and same-repository admission")
+	if *transitionRecord != "" && (*inContainer || *checkMode || admittedHome != "") {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-record requires host execution and same-repository admission")
 		return verifyrunExitCouldNot
 	}
 	if *inContainer {
@@ -2384,7 +2500,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	var protectedExecution protectedPlan
+	// transitionDescriptor is the --acceptance-record text: a protected record
+	// (one Verification-Table line, #4499) or an acceptance transition (that
+	// line plus one Acceptance-Transition line). transitionRun is the latter.
 	var transitionDescriptor string
+	var transitionRun bool
 	if *transitionRecord != "" {
 		raw, err := os.ReadFile(*transitionRecord)
 		if err != nil {
@@ -2392,13 +2512,22 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		transitionDescriptor = strings.TrimSpace(string(raw))
-		descriptorLines := strings.Split(transitionDescriptor, "\n")
-		if len(descriptorLines) != 2 || !strings.HasPrefix(descriptorLines[0], "Verification-Table:") || !strings.HasPrefix(descriptorLines[1], "Acceptance-Transition:") {
-			fmt.Fprintln(stderr, "transition descriptor must contain exactly the two provenance markers")
+		why := ""
+		transitionRun, why = acceptanceRecordKind(transitionDescriptor)
+		if why == "" && transitionRun && !transitionForge {
+			why = "statusgen verifyrun: an Acceptance-Transition record requires --acceptance-forge"
+		}
+		if why != "" {
+			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
 		}
-		var why string
 		protectedExecution, why = protectedAcceptanceFor(verify, evidence, transitionDescriptor, path)
+		if why == "" && !transitionRun {
+			// No transition approves a changed original here, so every original
+			// row must run exactly as delivered (protectedAcceptanceFor has
+			// already required the current section to equal the delivery's).
+			why = originalDefinitionDrift(protectedExecution.Verify, verify)
+		}
 		if why != "" {
 			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
@@ -2481,17 +2610,26 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 	}
-	executionTree := treeSHA(root)
+	executionTree := briefTreeSHA(root, path)
 	if netnsContainer {
 		executionTree = container.cell.RunnerTree
 	}
-	if transitionDescriptor != "" {
+	if transitionRun {
+		// A transition run binds the full HEAD as its immutable source, so it
+		// keeps the strict check: even an Evidence-only edit (an earlier run's
+		// uncommitted witnesses) refuses it, and a transition run records its
+		// rows on a committed tree before any container bracket is opened.
 		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
-		if err != nil || strings.Contains(executionTree, "+") {
+		if err != nil || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
 			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
 			return verifyrunExitCouldNot
 		}
 		executionTree = strings.TrimSpace(string(full))
+	}
+	if netnsContainer {
+		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
+			fmt.Fprintln(stderr, modCacheGapNotice(gaps))
+		}
 	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
