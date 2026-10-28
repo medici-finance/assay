@@ -1160,8 +1160,10 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   record must be in the brief's own repository and authored by the dispatcher; a login-only
   verifier match, a shallow clone, a missing roster or an unreadable record is
   `credit=could-not-check`, which is not credit. Otherwise reject the row as unattested. A version-2 (cross-repository) bracket is admitted with
-  both repositories named in its attestation line, but `--credit` stays version-1 only and answers
-  `credit=not-credited` for it. Known limits: a linked worktree's git directory is not mounted in the container, so
+  both repositories named in its attestation line. `--credit` credits it only when both
+  repositories pass the repository checks: the tracking repository, where the record lives, is
+  the brief's own, and the source repository (`source-repo=`) is in the configured repository
+  set; otherwise it answers `credit=not-credited`. Known limits: a linked worktree's git directory is not mounted in the container, so
   rows that need git history must run on the host; the in-container digest is only as
   trustworthy as the pinned image that computes it; and condition 1 reads the commit author git
   records, which is author-asserted attribution, not authorization: whoever can commit to the brief can write

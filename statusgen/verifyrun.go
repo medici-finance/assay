@@ -2049,9 +2049,12 @@ Flags:
                     login-only verifier entry or a shallow clone is
                     could-not-check), (b) the span's attestation line equal
                     to the line rendered from its record, read with deskread
-                    (issue, trust, label-events): a same-repository, closed,
-                    never-edited issue written by the dispatcher, not the
-                    verifier, carrying the dispatcher's model stamp, and
+                    (issue, trust, label-events): a closed, never-edited
+                    issue in the brief's own repository, written by the
+                    dispatcher, not the verifier, carrying the dispatcher's
+                    model stamp; a version-2 (cross-repository) line also
+                    needs its source-repo= in the configured repository set
+                    (ASSAY_ALLOWED_REPOS), else it is not-credited, and
                     (c) the attestation's brief= equal to the --witness
                     file's repository path and its source= equal to
                     --source. A failed read is could-not-check. Exit 0 only

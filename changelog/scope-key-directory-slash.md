@@ -1,2 +1,0 @@
-### Fixed
-- Outcome records now key a declared directory as `scope:<dir>/`, with a trailing slash, so the secret pattern sweep stops flagging directories whose names end in a credential keyword. Records written before the change still read: the completeness check and the offline wake reader accept both key forms, refuse a receipt carrying both, and refuse any `scope:` value that is not a 64-hex digest.

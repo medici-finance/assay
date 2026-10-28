@@ -766,8 +766,12 @@ passing run — which is why they are lint rules and not review vigilance.
       binding's `BriefSHA256` names, and (open and close) the host check's
       admitted home is `--root`; the close also requires the host binding to
       equal the receipt's. Its attestation line names both repositories,
-      inside the digest. The credit rule above stays version-1 only, so a
-      version 2 span is `credit=not-credited`.
+      inside the digest. The credit rule above credits a version 2 span only
+      when both repositories pass the repository checks: the tracking
+      repository, where the record lives, is the brief's own, and the source
+      repository (`source-repo=`) is in the configured repository set. A
+      version 2 span whose source repository is outside that set is
+      `credit=not-credited`.
       Known limits: a
       linked worktree's git directory is not mounted in the container, so rows
       that need git history run on the host, and the container takes its
