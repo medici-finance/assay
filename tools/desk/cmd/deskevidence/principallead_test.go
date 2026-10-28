@@ -137,6 +137,11 @@ var leadRunners = []struct{ name, cell string }{
 	{"typeset-bracket-words", "$\\enspace \\mathrm{example-app\\lbrack bot\\rbrack}$" + foldTail},
 	{"typeset-letters-spaced-after-span", "$\\hphantom{y(}$ $\\enspace \\mathrm{e x a m p l e - a p p [ b o t ]}$" + foldTail},
 	{"typeset-bracket-words-spaced", "$\\qquad example-app \\lbrack bot \\rbrack$" + foldTail},
+	// A math span holding a control word the tool neither names nor reads as a character code,
+	// inside the tag: one that takes several arguments and typesets only one, or one that
+	// typesets a letter of its own. The span fails closed.
+	{"typeset-tag-unnamed-multi-argument", "$\\mathrm{example-app}\\lbrack\\mathrm{b}\\mathchoice{zz}{o}{zz}{zz}\\mathrm{t}\\rbrack$" + foldTail},
+	{"typeset-tag-unnamed-glyph", "$\\mathrm{example-app}\\lbrack\\mathrm{b}\\ell\\mathrm{t}\\rbrack$" + foldTail},
 	// A lead read past and a lone dollar sign, with a later dollar sign the lead's reading must
 	// not pair it with.
 	{"glyph-dollar-later-dollar", ":robot: $ example-app[bot]" + foldTail + " $"},
@@ -367,22 +372,15 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 		"<script>x</script> human:operator @ abc1234",
 		"human:operator @ abc1234 (rerun 10:30:00 by example-app review)",
 		":tada: human:operator @ abc1234 (rerun 10:30:00 by example-app review) :sparkles:",
-		"$\\bullet$ human:operator @ abc1234",
 		"$5 human:operator @ abc1234 (cost $6)",
 		"<details><summary>&#x2714;</summary>y</details> human:operator @ abc1234",
 		"y <br> human:operator @ abc1234 (see example-app review)",
-		"$\\qquad \\textrm{human:operator}$ @ abc1234",
 		"<rp>(</rp> human:operator @ abc1234",
 		"<span hidden>y</span> human:operator @ abc1234 (cost $5, then $6)",
-		"\\$5 $\\circ$ human:operator @ abc1234",
-		"`$$` $\\qquad \\textrm{human:operator}$ @ abc1234",
 		"<small hidden><u>y</u> z</small> human:operator @ abc1234",
-		"`$` `` $\\qquad \\mathsf{human:operator}$ ` @ abc1234",
-		"$\\lang \\rang$ human:operator @ abc1234 (see example-app\\lang x\\rang review)",
 		"<em data-x='> y '>human:operator</em> @ abc1234",
 		"<small data-n='>' hidden>y z</small> human:operator @ abc1234",
 		"<i hidden>y z</i> <b/hidden>human:operator @ abc1234</b>",
-		"$ $y(\\quad{}human:operator$ @ abc1234",
 		"<b/hidden><dialog><u>q</u>y z</dialog> human:operator @ abc1234",
 	} {
 		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
@@ -390,6 +388,28 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 			if code := landRendered(t, f, restampHead, restampHead+restampRow("2026-10-14", runner)); code != deskkit.ExitOK {
 				t.Fatalf("exit = %d, want 0: %q", code, lastAudit(t).Detail)
 			}
+		})
+	}
+}
+
+// regression: #4102
+// TestStampUnnamedMathLeadRefused: a lead or runner whose math span holds a control word the
+// tool neither names nor reads as a character code fails closed, even where the word would
+// typeset nothing or a blank: the tool cannot know what a renderer typesets for it.
+func TestStampUnnamedMathLeadRefused(t *testing.T) {
+	for _, runner := range []string{
+		"$\\bullet$ human:operator @ abc1234",
+		"$\\qquad \\textrm{human:operator}$ @ abc1234",
+		"\\$5 $\\circ$ human:operator @ abc1234",
+		"`$$` $\\qquad \\textrm{human:operator}$ @ abc1234",
+		"`$` `` $\\qquad \\mathsf{human:operator}$ ` @ abc1234",
+		"$\\lang \\rang$ human:operator @ abc1234 (see example-app\\lang x\\rang review)",
+		"$ $y(\\quad{}human:operator$ @ abc1234",
+	} {
+		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
+			f := setupStamp(t, true)
+			code := landRendered(t, f, restampHead, restampHead+restampRow("2026-10-14", runner))
+			wantRenderRefusal(t, f, code, "cannot read the way the lint does", "line 7")
 		})
 	}
 }
@@ -445,13 +465,35 @@ func TestShowsAppRunGlyphLead(t *testing.T) {
 	}
 }
 
+// unnamedMathLeads are the TestShowsAppRunShownLead leads whose math span holds a control word
+// the tool neither names nor reads as a character code.
+var unnamedMathLeads = map[string]bool{
+	"$\\bullet$":                     true,
+	"$\\;$":                          true,
+	"$\\cdot \\cdot$":                true,
+	"$$\\ast$$":                      true,
+	"($\\circ$)":                     true,
+	"\u2713 $\\bullet$":              true,
+	"$\\bullet$ $\\bullet$":          true,
+	"$\\qquad \\textrm{y}$":          true,
+	"$\\hphantom{y}$":                true,
+	"$\\circ$ $":                     true,
+	"$ $\\star$":                     true,
+	"\\$ $\\star$":                   true,
+	"&#x24; $\\star$":                true,
+	"`` $ `` $\\star$":               true,
+	"$ $\\qquad \\mathrm{y}$":        true,
+	"`$` `` $\\qquad \\mathrm{y}$ `": true,
+}
+
 // regression: #4102
 // TestShowsAppRunShownLead: a leading span a renderer can typeset as math as a symbol or blank
 // space, a leading element a renderer hides by default, or a glyph word and a lone dollar sign
 // with a later dollar sign in the cell, before an App login with white space between, and an
 // App login after a line break or a block element (a disclosure element among them), where the
 // text a reader sees starts a new line, are read as showing App-run text; before a human
-// runner, with a letter or digit glued to the span, or after a word a reader sees, they are not.
+// runner, with a letter or digit glued to the span, or after a word a reader sees, they are not,
+// unless the lead's math span holds a control word the tool does not name, which fails closed.
 func TestShowsAppRunShownLead(t *testing.T) {
 	for _, lead := range []string{
 		"$\\bullet$", "$\\;$", "$\\cdot \\cdot$", "$$\\ast$$", "$x$", "($\\circ$)", "\u2713 $\\bullet$",
@@ -468,8 +510,18 @@ func TestShowsAppRunShownLead(t *testing.T) {
 		if cell := lead + " example-app[bot]" + foldTail; !showsAppRun(cell) {
 			t.Errorf("%q not read as App-run", cell)
 		}
-		if cell := lead + " human:operator @ abc1234"; showsAppRun(cell) {
-			t.Errorf("%q read as App-run", cell)
+		// A lead whose math span holds a control word the tool does not name fails closed, so
+		// before a human runner it is read as showing App-run text too.
+		if cell := lead + " human:operator @ abc1234"; showsAppRun(cell) != unnamedMathLeads[lead] {
+			t.Errorf("%q read as App-run: %v, want %v", cell, !unnamedMathLeads[lead], unnamedMathLeads[lead])
+		}
+	}
+	for _, cell := range []string{
+		"y $\\textrm{example-app[bot]}$" + foldTail,
+		"y \\$ $\\star$ example-app[bot]" + foldTail,
+	} {
+		if !showsAppRun(cell) {
+			t.Errorf("%q not read as App-run (unnamed math word fails closed)", cell)
 		}
 	}
 	for _, cell := range []string{
@@ -478,9 +530,7 @@ func TestShowsAppRunShownLead(t *testing.T) {
 		"$5 operator @ abc1234 (cost $6)",
 		"<details><summary>y</summary>z example-app[bot]" + foldTail + "</details>",
 		"y <b>z</b> example-app[bot]" + foldTail,
-		"y $\\textrm{example-app[bot]}$" + foldTail,
 		"<rt>y</rt> example-app[bot]" + foldTail,
-		"y \\$ $\\star$ example-app[bot]" + foldTail,
 		"y <small hidden><u>z</u></small> example-app[bot]" + foldTail,
 	} {
 		if showsAppRun(cell) {
@@ -544,7 +594,7 @@ func TestShowsAppRunKeepsRefusalInContext(t *testing.T) {
 // showing what is asked for, never read with fewer readings, and the same human text under the
 // tool's cap is not.
 func TestShownTextsFailClosedPastCap(t *testing.T) {
-	cell := strings.Repeat("<br>", 10) + strings.Repeat("$\\quad x y$ ", 20) + " human:operator @ abc1234"
+	cell := strings.Repeat("<br>", 10) + strings.Repeat("$\\char120 x y$ ", 20) + " human:operator @ abc1234"
 	never := func(string) bool { return false }
 	if !eachShownTextWithin(cell, 1<<10, never) {
 		t.Errorf("%q read within a 1 KiB limit", cell)
@@ -553,7 +603,7 @@ func TestShownTextsFailClosedPastCap(t *testing.T) {
 		t.Errorf("%q refused under the cap", cell)
 	}
 	// With no line break or hidden element, the limit is reached among the math readings.
-	math := strings.Repeat("$\\quad x y$ ", 40) + " human:operator @ abc1234"
+	math := strings.Repeat("$\\char120 x y$ ", 40) + " human:operator @ abc1234"
 	if !eachShownTextWithin(math, 4<<10, never) {
 		t.Errorf("%q read within a 4 KiB limit", math)
 	}
@@ -593,6 +643,32 @@ func TestMathTextsCharacterCodes(t *testing.T) {
 		})
 		if !found {
 			t.Errorf("%q not read as %q", tc.math, tc.want)
+		}
+	}
+}
+
+// regression: #4102
+// TestMathTextsFailClosedOnUnnamedWord: a text read as math that holds a control word or symbol
+// the tool neither names nor reads as a character code is reported as showing App-run text
+// once its readings are taken, whatever add reports for them; one whose control words are all
+// named or character codes is not.
+func TestMathTextsFailClosedOnUnnamedWord(t *testing.T) {
+	for _, tc := range []struct {
+		math string
+		want bool
+	}{
+		{"x\\foo y", true},
+		{"x\\mathchoice{a}{b}{c}{d}y", true},
+		{"b\\ell t", true},
+		{"x\\(y", true},
+		{"x&#92;foo y", true},
+		{"x\\lbrack y\\rbrack", false},
+		{"x\\unicode{91}y\\char93 z", false},
+		{"base \\| tail", false},
+		{"a_b^{c}", false},
+	} {
+		if got := mathTexts(tc.math, func(string) bool { return false }); got != tc.want {
+			t.Errorf("mathTexts(%q) = %v, want %v", tc.math, got, tc.want)
 		}
 	}
 }

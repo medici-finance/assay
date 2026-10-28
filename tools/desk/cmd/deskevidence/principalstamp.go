@@ -555,7 +555,7 @@ func linkReadings(s string) []string {
 // `$` a span's text can start at (white space and control words), times the pairs of control
 // words in a span, so a short text can ask for far more work than its length. Past the cap the
 // text is taken as showing App-run text and refused, never read with fewer readings. The
-// heaviest text in the briefs the cap was set against reads about 22 MiB.
+// heaviest text in the briefs the cap was set against reads about 5.3 MiB.
 const readingCap = 128 << 20
 
 // readingBudget counts the bytes of the readings taken for one text against readingCap.
@@ -1007,7 +1007,13 @@ func mathReadings(d string, runs [][]int, add func(string) bool) bool {
 // character. When s holds a character code, all of that is read once with each code read as
 // its character and once with its control word read as one the tool does not name, so a
 // renderer that does not typeset the code is read as well and no reading is lost.
+// When s holds a control word or symbol the tool neither names nor reads as a character code,
+// it reports true once those readings are taken, as a text showing App-run text: the tool
+// cannot know how many arguments such a word takes or which of them a renderer typesets, or
+// what glyph it typesets for one, so a span holding one fails closed rather than being read
+// with fewer readings than a renderer can show.
 func mathTexts(s string, add func(string) bool) bool {
+	unread := false
 	for _, collapse := range []bool{false, true} {
 		p := mathPrepare(s, collapse)
 		toks := mathTokens(p, true)
@@ -1019,8 +1025,9 @@ func mathTexts(s string, add func(string) bool) bool {
 				return true
 			}
 		}
+		unread = unread || slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })
 	}
-	return false
+	return unread
 }
 
 // mathPicks calls add with mathText's reading of p for each pick mathTexts describes over

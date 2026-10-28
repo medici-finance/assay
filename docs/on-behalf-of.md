@@ -321,7 +321,13 @@ same roster's human set:
     and with that argument taken into the bracket, since a renderer can typeset a word and its
     argument as one character. A text holding a character code is read all of those ways once
     more with each code's control word read as one the tool does not name, for a renderer that
-    does not typeset the code, so reading codes adds readings and removes none. An escaped bar
+    does not typeset the code, so reading codes adds readings and removes none. A text read as
+    math that holds a control word or symbol the tool neither names nor reads as a character
+    code fails closed: once those readings are taken it is taken as showing App-run text and
+    refused, since the tool cannot know how many arguments such a word takes, which of them a
+    renderer typesets, or what glyph it typesets for it. That holds for a decorative lead too
+    (a bullet or a math space before a human runner): such a row is refused, and lands with a
+    plain Runner cell. An escaped bar
     (`\|`, as a table cell writes a shell pipe) is read as a bar, never as a bracket. No reading
     depends on which runs before a span a renderer pairs. A
     later backtick run can still close a code span an earlier one opens, and so take the runs

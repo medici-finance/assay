@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead|TestShowsAppRunKeepsRefusalInContext|TestShownTextsFailClosedPastCap|TestMathTextsCharacterCodes|TestHiddenReadingsStopAtBudget|TestMathTextsBarIsNoBracket)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead|TestShowsAppRunKeepsRefusalInContext|TestShownTextsFailClosedPastCap|TestMathTextsCharacterCodes|TestHiddenReadingsStopAtBudget|TestMathTextsBarIsNoBracket|TestMathTextsFailClosedOnUnnamedWord|TestStampUnnamedMathLeadRefused)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -1140,6 +1140,24 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "\t\t\tt := elementTagRe.FindStringSubmatchIndex(s[pos:])\n\t\t\tif t == nil {\n\t\t\t\tbreak\n\t\t\t}\n",
       "new": "\t\t\tall := elementTagRe.FindAllStringSubmatchIndex(s[pos:], -1)\n\t\t\tif len(all) == 0 {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tt := all[0]\n"
+    },
+    {
+      "name": "a math span holding an unnamed control word read with no fail-closed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tunread = unread || slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })\n",
+      "new": ""
+    },
+    {
+      "name": "only an unnamed control word with an argument fails closed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })",
+      "new": "slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed && t.arg > t.end })"
+    },
+    {
+      "name": "unnamed control words read for the fail-closed only with entities kept",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tunread = unread || slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })\n",
+      "new": "\t\tunread = unread || !collapse && slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })\n"
     }
   ]
 }
