@@ -46,8 +46,8 @@
     {
       "name": "refuse but do not roll back (the role worktree is left on disk with the inherited transport)",
       "file": "cmd/deskwt/deskwt.go",
-      "old": "transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\tif rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", terr, rerr)\n\t\t\t}\n\t\t\tfmt.Fprintln(os.Stderr, \"deskwt: worktree ROLLED BACK\")\n\t\t\treturn terr\n\t\t}",
-      "new": "transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\treturn terr\n\t\t}"
+      "old": "if note := rollbackFailedAdd(guard, dir, target, owned); note != \"\" {",
+      "new": "if note := \"\"; note != \"\" {"
     },
     {
       "name": "a --role add never wires the transport at all (the worktree inherits the shared checkout's)",
