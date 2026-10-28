@@ -14,7 +14,13 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 RECORDS = "statusgen/domain/records.go"
 ASSESS = "statusgen/domain/assess.go"
+CONTEXT = "statusgen/domain/context.go"
 MUTATIONS = [
+    ("context-evaluator", "TestContextInputs", [(CONTEXT, "return contextHash(c)", 'c.Evaluator.Version = "omitted"; return contextHash(c)')]),
+    ("context-expiry", "TestContextExpiry", [(CONTEXT, "if !now.Before(expiry) {", "if false && !now.Before(expiry) {")]),
+    ("context-authority", "TestContextAdmissionFlow", [("statusgen/domain/context_test.go", "return e == nil && authorized && at.Before(expiry)", "return e == nil && authorized && (at.Before(expiry) || at.Equal(expiry))")]),
+    ("context-membership", "TestContextMembership", [(CONTEXT, "if old != fresh {", "if old != fresh && cached.Generation != current.Generation {")]),
+    ("context-schema", "TestContextSchema", [("schemas/evaluation-context-v1.json", '    "evaluator",', '')]),
     ("path-identity", "TestDomainPathIsNotIdentity", [(RECORDS, "key := q.String()", "key := item.Path + q.String()")]),
     ("unknown-fact", "TestDomainMissingFactHolds", [(ASSESS, "if state != Present {", "if state != Present && state != CouldNotCheck {")]),
     ("candidate-binding", "TestDomainAcceptanceBindsCandidate", [(RECORDS, "if b.Candidate != c {", "if b.Candidate.Repository != c.Repository {")]),
@@ -45,17 +51,20 @@ def snapshot(dest):
     identity = Path("statusgen/contexthandoff/ids.go")
     (dest / identity).parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / identity, dest / identity)
-    for name in ("verification-domain-v1.json", "workflow-instance-v1.json"):
+    for name in ("verification-domain-v1.json", "workflow-instance-v1.json", "evaluation-context-v1.json"):
         out = dest / "schemas" / name
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "schemas" / name, out)
     out = dest / "spec/verification-domain-v1.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "spec/verification-domain-v1.md", out)
+    extra = dest / "spec/evaluation-context-v1.md"
+    shutil.copyfile(ROOT / "spec/evaluation-context-v1.md", extra)
     for f in (ROOT / "statusgen/testdata/domain").glob("*/*.json"):
         out = dest / f.relative_to(ROOT)
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(f, out)
+    shutil.copyfile(ROOT / "statusgen/testdata/domain/context/fingerprint.txt", dest / "statusgen/testdata/domain/context/fingerprint.txt")
     (dest / "statusgen/go.mod").write_text("module github.com/medici-finance/assay/statusgen\n\ngo 1.27.0\n")
 
 
