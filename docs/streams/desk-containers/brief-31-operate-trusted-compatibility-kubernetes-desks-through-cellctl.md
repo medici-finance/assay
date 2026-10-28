@@ -82,7 +82,7 @@ design-fit:
   owner: existing cellctl operator lifecycle; Kubernetes owns workload reconciliation and existing desks own task policy
   contract: none — add one explicitly selected compatibility profile to the existing operator boundary, retaining cell-op-v1
   retires: []
-  weight: verbs +1 attach-only, flags +0 ordinary lifecycle, configuration keys +1, bounded refusal cases +6 (target, identity, custody, lineage, quiescence, stop-unknown)
+  weight: verbs +1 attach-only operator command; counter flags +4 typed reads of existing up bindings, no new ordinary lifecycle flags; configuration keys +1; bounded refusal cases +6 (target, identity, custody, lineage, quiescence, stop-unknown)
   why-add: Existing k8s-kind routing starts a local harness and cannot address Pod streams. An opt-in backend and attach-only command avoid repointing legacy registrations or constructing the future general runtime. Manual attach was considered, but cannot make cellctl start/status/stop address the same execution.
 
 ## Read first
@@ -203,7 +203,7 @@ is inferred from code completion, a merge, a Running Pod or a local bookkeeping 
 
 ## Verify
 
-Every named test must execute and emit its named PASS; a go test invocation matching no test is not evidence. The delivery inputs in row 7 come from the actual merged implementation PR and its actual first parent, never a moving main or this authoring change.
+Every named test must execute and emit its named PASS; a go test invocation matching no test is not evidence. The delivery inputs in row 7 come from the actual merged implementation PR that carries genuine candidate pins and closes the required acceptance, and its actual first parent, never a moving main or this authoring change. A source-checkpoint PR merged while those requirements remain held is not that delivery: the later final delivery PR must carry the remaining pins and acceptance, and provide its immutable merge SHA and first parent for row 7. Until then this brief remains blocked.
 
 | # | Class | Command | Expect |
 |---|---|---|---|

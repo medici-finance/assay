@@ -13,7 +13,8 @@ cases=[
  ('attach-redirect','internal/kubecompat/native/client.go','NewSPDYExecutorRejectRedirects','NewSPDYExecutorForTransports','./internal/kubecompat/native','TestKubeCompatAttachRedirect'),
  ('stop-proof','internal/kubecompat/lifecycle.go','term.GroupEmpty','true','./cmd/cellctl','TestKubeCompatStopUncertainty'),
  ('existing-stop','cmd/cellctl/kube_compat.go','if e := c.cadenceGuard(role); e != nil {','if e := c.cadenceGuard(role); false {','./cmd/cellctl','TestKubeCompatParity'),
- ('unmeasured-result','cmd/cellctl/kube_compat.go','rt, e := c.kubeRuntimeE(false)','rt := c.kubeRuntime(false); var e error','./cmd/cellctl','TestKubeCompatPlanInputGone')]
+ ('unmeasured-result','cmd/cellctl/kube_compat.go','rt, e := c.kubeRuntimeE(false)','rt := c.kubeRuntime(false); var e error','./cmd/cellctl','TestKubeCompatPlanInputGone'),
+ ('partial-result','cmd/cellctl/kube_compat.go','if e := kubeAdmission(c, role); e != nil {\n\t\t\t\trow.State', 'if e := kubeAdmission(c, role); e != nil {\n\t\t\t\tdie("planted fatal per-role refusal: %v", e)\n\t\t\t\trow.State','./cmd/cellctl','TestKubeCompatPartialUp')]
 with tempfile.TemporaryDirectory(prefix='compat-native-mutations-') as scratch:
  root=Path(scratch);archive=root/'tracked.tar'
  with archive.open('wb') as target:

@@ -1528,6 +1528,7 @@ processes are not configuration.
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
+| `CELL_KUBERNETES_CONFIG` | binds one cell to its explicit Kubernetes compatibility profile and approved target |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
@@ -2037,6 +2038,9 @@ detach or connection loss never scales a workload, invokes another agent, resend
 the initial prompt or signals an agent. A slow detached presentation keeps a
 bounded display tail; the container runtime owns transcript retention. The
 existing transcript custody restrictions apply to logs and collectors too.
+Ctrl-] is reserved for the local detach command. Unknown escape text is forwarded
+without that control byte, so ordinary text is retained without permitting an
+attach terminal to enter the supervisor's controlled-stop protocol.
 
 Down requires an operator terminal. Its plan explicitly asks the custodian to
 confirm that the role is interactively idle and all claims/effects are reconciled

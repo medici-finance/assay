@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -177,7 +178,16 @@ func (c *Cell) kubeUp(cmd *cobra.Command, v *cli.Values, cfg string) {
 		return
 	}
 	roles := c.upTargets(v.Strings("role"), v.Bool("no-the-desk"))
-	rt := c.kubeRuntime(false)
+	// Freeze the approved target and credentials once, before any role can start.
+	// Later role controls are still rechecked and reported alongside earlier effects.
+	rt, runtimeErr := c.kubeRuntimeE(!v.Bool("plan") && c.Env.Get("DRY_RUN") != "1")
+	if runtimeErr != nil {
+		r := cellop.NewResult("up", c.Name, time.Now())
+		r.Finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, runtimeErr.Error(), time.Now())
+		emitResult(cmd, r)
+		exitWith(r.ExitCode())
+		return
+	}
 	if v.Bool("plan") {
 		cellopPlan(cmd, c, "up", c.kubeActions(rt, roles, "up"))
 		return
@@ -191,16 +201,19 @@ func (c *Cell) kubeUp(cmd *cobra.Command, v *cli.Values, cfg string) {
 			row.State = upStateWouldStart
 			row.Detail = "explicit compatibility profile validated; no API contact"
 		} else {
-			kubeGuard(c, role)
-			live := c.kubeRuntime(true)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			id, e := live.Start(ctx, role)
-			cancel()
-			if e != nil {
+			if e := kubeAdmission(c, role); e != nil {
 				row.State = upStateFailed
 				row.Detail = e.Error()
 			} else {
-				row.Detail = "pod=" + id.PodUID + " container=" + id.ContainerID + " (files retained; attach is presentation only)"
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				id, e := rt.Start(ctx, role)
+				cancel()
+				if e != nil {
+					row.State = upStateFailed
+					row.Detail = e.Error()
+				} else {
+					row.Detail = "pod=" + id.PodUID + " container=" + id.ContainerID + " (files retained; attach is presentation only)"
+				}
 			}
 		}
 		rows = append(rows, row)
@@ -312,36 +325,66 @@ func attachCmd() *cobra.Command {
 // A client detach command is consumed locally. It never enters the supervisor's
 // reserved stop protocol or sends a process signal to the agent.
 type kubeInput struct {
-	source  *os.File
+	source  io.Reader
 	cancel  context.CancelFunc
 	pending []byte
+	output  []byte
+	detach  bool
+	err     error
 }
 
 func (k *kubeInput) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if len(k.output) > 0 {
+		n := copy(p, k.output)
+		k.output = k.output[n:]
+		return n, nil
+	}
+	if k.detach {
+		k.cancel()
+		return 0, context.Canceled
+	}
+	if k.err != nil {
+		return 0, k.err
+	}
 	b := make([]byte, len(p))
 	n, e := k.source.Read(b)
-	if n == 0 {
-		return n, e
-	}
-	out := make([]byte, 0, n)
+	k.err = e
 	for _, c := range b[:n] {
 		if len(k.pending) > 0 || c == 0x1d {
 			k.pending = append(k.pending, c)
-			if len(k.pending) > 256 {
+			if string(k.pending) == "\x1ddetach\r" || string(k.pending) == "\x1ddetach\n" {
+				k.detach = true
 				k.pending = nil
+				break
 			}
-			if c == '\r' || c == '\n' {
-				if string(k.pending) == "\x1ddetach\r" || string(k.pending) == "\x1ddetach\n" {
-					k.cancel()
-					return 0, context.Canceled
-				}
-				k.pending = nil
+			if !strings.HasPrefix("\x1ddetach\r", string(k.pending)) && !strings.HasPrefix("\x1ddetach\n", string(k.pending)) {
+				k.flushPending()
 			}
 			continue
 		}
-		out = append(out, c)
+		k.output = append(k.output, c)
 	}
-	return copy(p, out), e
+	if e != nil {
+		k.flushPending()
+	}
+	if len(k.output) > 0 || k.detach {
+		return k.Read(p)
+	}
+	return 0, e
+}
+
+func (k *kubeInput) flushPending() {
+	// Ctrl-] is reserved locally. Preserve unknown escape text, but never forward
+	// the control byte that could enter the supervisor's confirmed-stop protocol.
+	for _, b := range k.pending {
+		if b != 0x1d {
+			k.output = append(k.output, b)
+		}
+	}
+	k.pending = nil
 }
 
 // Reuse the existing local lease/checkpoint inventory on migration. Selecting a

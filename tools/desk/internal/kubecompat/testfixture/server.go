@@ -50,6 +50,7 @@ type Server struct {
 	Fault                      string
 	Calls                      int
 	Files                      map[string]string
+	AfterStart                 func(string)
 }
 
 func New(t testing.TB) *Server {
@@ -183,6 +184,9 @@ func (s *Server) serve(w http.ResponseWriter, req *http.Request) {
 				r.Ready = true
 				r.UID = fmt.Sprintf("pod-%s-%d", role, r.Started)
 				r.ContainerID = fmt.Sprintf("containerd://%s-%d", role, r.Started)
+				if s.AfterStart != nil {
+					s.AfterStart(role)
+				}
 			}
 			if r.Replicas == 0 {
 				r.Present = false
