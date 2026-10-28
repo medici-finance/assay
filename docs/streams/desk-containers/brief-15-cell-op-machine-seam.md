@@ -18,6 +18,8 @@ unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "de
 effort: M
 gate: human
 design: DR-cell-op-contract
+decision-issue: 2985
+ruling: "https://github.com/medici-finance/assay/issues/2985#issuecomment-6480327632"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 decision-trigger: creation
 issues: []
@@ -29,7 +31,7 @@ sources:
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §Runtime durability — 'A human decision binds a human actor, subject, revision and permitted act; agent/MCP surfaces cannot fabricate that act. Exact custody deployment remains a design decision before activation'"
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) §Approvals: deferred — the future approval design and the five properties that gate ever enabling approval-based apply, owned by R7/R3"
   - "Security reviews 5521033873 and 5521336354, correctness reviews 5521049854 and 5521344748 — every approval design reviewed so far was reachable by a desk running under the operator's own OS account (presence is not intent; a desk-authored registry; an unpinned enrollment root; a desk-writable consumed set)"
-  - "The driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): defer approvals; no approval-based or non-interactive apply until R7/R3 provide real isolation from the desk account; keep the result/plan contract shipping now"
+  - "Human ratification of deferred approvals: https://github.com/medici-finance/assay/issues/2985#issuecomment-6272864859; exact desk-containers/15 and DR-cell-op-contract binding: https://github.com/medici-finance/assay/issues/2985#issuecomment-6480327632; no approval-based or non-interactive apply until R7/R3 provide real isolation from the desk account; keep the result/plan contract shipping now"
   - "docs/cellctl-go-cache.md — `cellctl cache <cell> status` already emits a versioned JSON document (could-not-check as null): the precedent for the result type"
   - "freshness-checked 2026-10-14 @ 9a8df91dc (origin/main) — no cross-verb result or plan schema exists in tools/desk/cmd/cellctl"
 gate-why: >-
@@ -95,14 +97,14 @@ Should applying a cell-operation plan stay an interactive confirmation at the op
 
 Several designs for a signed operator approval were reviewed. Each one could be defeated by an AI desk running under the operator's own user account: by raising a real presence prompt the operator cannot tell apart, by pointing verification at a key list it wrote, or by deleting the record that a plan was used. Until desks run with real isolation from that account, an approval would look stronger than it is.
 
-Option 1 is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+Option 1 was [ratified on 2026-10-19](https://github.com/medici-finance/assay/issues/2985#issuecomment-6272864859); the [explicit brief and decision-record binding](https://github.com/medici-finance/assay/issues/2985#issuecomment-6480327632) was recorded on 2026-10-28.
 
 Options:
 1. **Defer approvals** (recommended) — ship plans, results and status now. Applying a plan is a typed confirmation at the operator's own terminal, documented as a convenience rather than a security control. Signed approvals wait until the five properties in amendment 21 can be met by the isolation work (R7/R3).
 2. **Build signed approvals now** — implement the future design immediately, accepting that until isolation exists it can be bypassed by a desk under the same account.
 3. **No apply from cellctl at all** — plans are display-only, and the operator runs each underlying command by hand.
 
-Default if no answer: none — blocks until answered.
+Recorded outcome: option 1 — defer approvals, with the existing terminal-confirmation limit and the five approval prerequisites retained. The ruling links above record the existing design decision.
 
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.

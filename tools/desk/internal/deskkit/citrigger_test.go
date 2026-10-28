@@ -274,7 +274,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{
 			test: "statusgen/cellop_record_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
-			reads:      []string{"docs/streams/desk-containers/brief-15-cell-op-machine-seam.md"},
+			reads:      []string{"docs/streams"},
 			runInvokes: []string{"cd statusgen && go test ./... && go vet ./..."},
 			why:        "the completion regression reads the retained evidence record; unfiltered source CI runs statusgen tests on evidence-only edits",
 		},
