@@ -1,0 +1,7 @@
+{
+  "schema": "cell-kube-compat-candidate-v1",
+  "state": "unbuilt",
+  "source_revision": null,
+  "record_sha256": null,
+  "images": {}
+}
