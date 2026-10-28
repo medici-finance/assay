@@ -1,0 +1,83 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$' ./cmd/opmetrics/ ./cmd/deskcalibrate/ ./cmd/deskreconcile/ ./cmd/muhar/",
+  "control": {
+    "name": "CONTROL — deskcalibrate: a parse failure exits with the wrong code (usage exit 5 becomes 6)",
+    "file": "cmd/deskcalibrate/main.go",
+    "old": "UsageExit:    deskkit.ExitRefused,",
+    "new": "UsageExit:    deskkit.ExitUnverifiable,"
+  },
+  "mutations": [
+    {
+      "name": "opmetrics: help runs after a config read (the effective-config echo runs before the command line is parsed)",
+      "file": "cmd/opmetrics/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "deskkit.EchoEffectiveConfig(stderr)\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "opmetrics: an undeclared config key binding (--trend also read from an environment variable)",
+      "file": "cmd/opmetrics/main.go",
+      "old": "{Key: \"trend\", Kind: cli.Int, Flag: \"trend\", Default: 0,",
+      "new": "{Key: \"trend\", Kind: cli.Int, Flag: \"trend\", Default: 0, Env: []string{\"OPMETRICS_TREND\"},"
+    },
+    {
+      "name": "opmetrics: one legacy flag form dropped (the --gh-json alias no longer fills --gh-fixture)",
+      "file": "cmd/opmetrics/main.go",
+      "old": "o.ghFixture = v.String(\"gh-json\")",
+      "new": "_ = v.String(\"gh-json\")"
+    },
+    {
+      "name": "deskcalibrate: help runs after a config read (the startup echo and activation check run before the command line is parsed)",
+      "file": "cmd/deskcalibrate/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskcalibrate: an undeclared config key binding (--month also read from an environment variable)",
+      "file": "cmd/deskcalibrate/main.go",
+      "old": "{Key: \"month\", Kind: cli.String, Flag: \"month\",",
+      "new": "{Key: \"month\", Kind: cli.String, Flag: \"month\", Env: []string{\"DESKCALIBRATE_MONTH\"},"
+    },
+    {
+      "name": "deskcalibrate: one legacy flag form dropped (the single-dash -n N spelling stops parsing)",
+      "file": "cmd/deskcalibrate/main.go",
+      "old": "Flag: \"n\", Short: \"n\",",
+      "new": "Flag: \"n\","
+    },
+    {
+      "name": "deskreconcile: help runs after a config read (the startup echo and activation check run before the command line is parsed)",
+      "file": "cmd/deskreconcile/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskreconcile: an undeclared config key binding (--root also read from an environment variable)",
+      "file": "cmd/deskreconcile/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKRECONCILE_ROOT\"},"
+    },
+    {
+      "name": "deskreconcile: one legacy flag form dropped (the single-dash -worktree DIR spellings stop parsing)",
+      "file": "cmd/deskreconcile/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "muhar: help runs after a config read (the spec file is loaded before the command line is parsed)",
+      "file": "cmd/muhar/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_, _ = loadSpec(\"mutations.json\", stderr)\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "muhar: an undeclared config key binding (-spec also read from an environment variable)",
+      "file": "cmd/muhar/main.go",
+      "old": "{Key: \"spec\", Kind: cli.String, Flag: \"spec\",",
+      "new": "{Key: \"spec\", Kind: cli.String, Flag: \"spec\", Env: []string{\"MUHAR_SPEC\"},"
+    },
+    {
+      "name": "muhar: one legacy flag form dropped (the release workflow's -j 0 spelling stops parsing)",
+      "file": "cmd/muhar/main.go",
+      "old": "Flag: \"j\", Short: \"j\",",
+      "new": "Flag: \"j\","
+    }
+  ]
+}
