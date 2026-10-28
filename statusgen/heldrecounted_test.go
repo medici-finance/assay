@@ -85,7 +85,7 @@ func TestHeldRecountedKeepsHolds(t *testing.T) {
 		{"verdict blocked", "VERIFY: BLOCKED — the cluster rows could-not-check offline."},
 		{"risk record", "RISK-VALUE: DERIVED — smoke run = \"could-not-check\" @ runner.log:1 — no runner online."},
 		{"tally then second hold", "Accounting: passed 8; could-not-check 0; the live probe is held."},
-		{"pipe line", "Accounting: passed 8 | could-not-check 0."},
+		{"pipe line", "Accounting: could-not-check 0; passed 8 | n/a."},
 		{"rounds without target", "The adapter rounds could-not-check down to fail."},
 		{"tracker without flip", "The live smoke step was held on #4536."},
 		{"struck span beside tally", "Accounting: ~~passed 7~~ passed 8; could-not-check 0."},
