@@ -11,8 +11,13 @@ into the bundle unaccounted-for.
 
 Cursor is **lighter than Codex**: Cursor reads `SKILL.md` skills, `AGENTS.md`, and
 `.cursor/rules/*.mdc` directly from the repo tree (HP/12 §2.10 `install-mechanism`), so
-there is no per-harness plugin manifest — the packaging IS the instruction files. The
+the packaging is mostly the instruction files. The
 canonical generated rule is `cursor/assay.mdc` (the Cursor-native resident-rules rule).
+For Cursor's plugin route, `tools/harnessgen cursor` also generates a Cursor plugin
+manifest, `.cursor-plugin/plugin.json`. It names that rule and `./skills/` explicitly and
+carries the bundle's only Cursor version, copied from `../.claude-plugin/plugin.json`.
+The repo-root `.cursor-plugin/marketplace.json` points at this bundle and carries no
+version, so the release stamp has one Cursor file to move.
 `deskinstall --harness cursor` derives the repository/adopter runtime tree and its
 ownership inventory from this roster. Skill support files ship alongside SKILL.md;
 canonical `component.yaml` declarations stay in the source tree. Versioned release
@@ -33,7 +38,8 @@ Dispositions:
   conditionally) `refuses` on Cursor — all of which SHIP (see `../references/cursor.md`).
 
 `tools/harnessgen cursor --check`, exercised by `TestCursor*` in `tools/harnessgen`, enforces
-this; those tests cover the coverage, skew, drift, and parse-error paths. `ci.yml`'s
+this; those tests cover the coverage, skew, drift, and parse-error paths, plus the
+Cursor manifest and root marketplace (version equality, shape, and drift). `ci.yml`'s
 module walk auto-discovers `tools/harnessgen` (build + vet); the suites themselves are
 proven per the harness-portability/14 Verify table.
 
