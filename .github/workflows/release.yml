@@ -557,6 +557,12 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      # Same baseline step as ci.yml: the witness skew tests fail when
+      # SG_OLD_BIN is unset, so the release gate needs it too.
+      - name: Fetch the statusgen skew baseline (checksum-verified)
+        if: matrix.leg == 'statusgen'
+        run: bash statusgen/fetch-baseline.sh statusgen-linux-amd64 "${RUNNER_TEMP}/sg-baseline"
+
       # statusgen is its own Go module at statusgen/. Same commands the PR-time
       # ci.yml runs for it, from that module root.
       - name: Test and vet statusgen
