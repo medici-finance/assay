@@ -61,6 +61,8 @@ files: `schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v
 `statusgen/testdata/patterns/bad-withheld-mechanical.yaml` (planned),
 `statusgen/testdata/patterns/bad-containment-open.yaml` (planned),
 `statusgen/testdata/patterns/bad-options-on-effect.yaml` (planned),
+`statusgen/testdata/patterns/bad-exit-effect-no-admission.yaml` (planned),
+`statusgen/testdata/patterns/bad-mechanical-no-culprit.yaml` (planned),
 `plugins/assay/skills/author-brief/SKILL.md` and `.cursor/skills/author-brief/SKILL.md`
 (generated enforcement table only), `changelog/graph-execution-34-signal-classes.md` (planned).
 
@@ -175,15 +177,20 @@ design-fit:
      a pattern with a signal input declares at least one class and a pattern declaring classes
      has exactly one signal input; every node id a class names (`exit`, `mechanical-exit`,
      `judgement-exit`) is a node; a class names `exit`, or both `mechanical-exit` and
-     `judgement-exit`; and a class with `culprit-record` names both of those exits, `admission`,
-     `remedies` and `refused-paths`.
+     `judgement-exit`; and `mechanical-exit` and `culprit-record` imply each other and both imply
+     `judgement-exit`, `admission`, `remedies` and `refused-paths` (a class that names a
+     `mechanical-exit` carries the whole gate-red record, and a class that carries the culprit
+     record names a mechanical exit).
    - `pattern-replay-not-mandatory`: in a pattern with a signal input, at least one node outputs
      the reserved artifact `replay-fixture`, and every such node carries a `kind: command` evidence
      entry with `mandatory: true`. `replay-fixture` is a named constant beside the rules.
    - `pattern-signal-admission-open`: `admission.triggers` is a subset of `schedule`, `push`;
      when `push` is present, `push-refs` is exactly `[main]`; `push` with no `push-refs` is a
-     finding. A run that fails admission is refused wholesale, so the class has no lower-confidence
-     path for it; state that in the spec.
+     finding. Every class declares `admission` unless its `exit` is a `kind: decision`,
+     `role: human` node with no `effects`: a class whose exit (or `mechanical-exit`) is an
+     `effect` node and that declares no `admission` is a finding, so an automated effect is never
+     reachable from an unscreened run. A run that fails admission is refused wholesale, so the
+     class has no lower-confidence path for it; state that in the spec.
    - `pattern-remedy-set-open`: `remedies` is a non-empty subset of the closed constant
      `gofmt`, `stray-file-deletion`, `exact-stale-string-replace`; `refused-paths` contains every
      entry of the gate-configuration floor constant `.github/workflows/`; and the `mechanical-exit`
@@ -295,11 +302,16 @@ design-fit:
    (`workflow-file-edit` added to `remedies`); `bad-refused-paths-dropped` (`refused-paths: []`);
    `bad-judgement-no-default` (`default` removed from `judge`); `bad-withheld-mechanical`
    (`withheld: {class: mechanical, file: null}`); `bad-containment-open` (`guard-config-edit`
-   added to `containment`); `bad-options-on-effect` (`options: [a, b]` added to `propose`).
+   added to `containment`); `bad-options-on-effect` (`options: [a, b]` added to `propose`);
+   `bad-exit-effect-no-admission` (`example-alert`'s `exit` changed from `judge` to `propose`,
+   leaving the class with no `admission`); `bad-mechanical-no-culprit` (`culprit-record` removed
+   from `example-gate-red`, which still names `mechanical-exit`).
    Tests, each asserting its fixture reports the named rule tag and that the good fixture does not:
-   `TestPatternsSignalInput`, `TestPatternsReplayMandatory`, `TestPatternsSignalAdmission`,
-   `TestPatternsRemedySetClosed` (both remedy fixtures), `TestPatternsJudgementDefault`,
-   `TestPatternsCulpritRecord`, `TestPatternsDecisionOptions`, `TestPatternsContainmentSet`; add
+   `TestPatternsSignalInput` (planned) (including `bad-mechanical-no-culprit`),
+   `TestPatternsReplayMandatory` (planned), `TestPatternsSignalAdmission` (planned) (including
+   `bad-exit-effect-no-admission`),
+   `TestPatternsRemedySetClosed` (planned) (both remedy fixtures), `TestPatternsJudgementDefault` (planned),
+   `TestPatternsCulpritRecord` (planned), `TestPatternsDecisionOptions` (planned), `TestPatternsContainmentSet` (planned); add
    `good-signal-example.yaml` to `TestPatternsGoodFixturesLintClean`.
 9. **Changelog.** Add `changelog/graph-execution-34-signal-classes.md` (planned) with `### Added` and one `- ` bullet.
 
@@ -328,6 +340,8 @@ so rows 3-11 exit 4 there.
 | 14 | check:ci +flow | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; "$T/sg" enforcement-status > "$T/out" \|\| exit 3; for r in pattern-signal-input pattern-replay-not-mandatory pattern-signal-admission-open pattern-remedy-set-open pattern-judgement-no-default pattern-culprit-record pattern-decision-options pattern-containment-set; do grep -Fq -- "$r" "$T/out" \|\| exit 4; grep -Fq -- "$r" plugins/assay/skills/author-brief/SKILL.md \|\| exit 5; done; make skillslint)` | exit 0 (every rule is registered, present in the generated table, and the table is in sync) |
 | 15 | check | `statusgen --root . --consumers --brief assay:assay:graph-execution:34 --base "$(git merge-base HEAD refs/remotes/origin/main)"` | pre-merge only, on the implementing branch with its merge-base pinned: exit 0, and every `follow-up graph-execution/34` entry the implementation fixes has flipped to `fixed-here` and is corroborated by the diff |
 | 16 | check | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS" |
+| 17 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-exit-effect-no-admission.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-signal-admission-open]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class whose exit is an effect node with no admission is refused: the lower layer, not the happy path) |
+| 18 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-mechanical-no-culprit.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-signal-input]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class naming a mechanical exit without the culprit record is refused) |
 
 ## Pre-mortem
 
@@ -340,6 +354,7 @@ so rows 3-11 exit 4 there.
 | The amendment widens §7 or the role enum to make a fixture pass | row 13 (`TestPatternsRoleEffectPermissionsCoversTopologyRoles`), and review of the diff to `patternRoleEffectPermissions` |
 | The shipped patterns or 33's re-pinned instance fixtures break | row 2; instance fixtures are untouched by this brief (review-only: the diff must not touch `statusgen/testdata/instances/`) |
 | The schema twin drifts | row 13 (`TestPatternsEmbeddedSchemaMatchesCommitted`) |
+| An effect-exit class ships with no admission, or a mechanical exit with no culprit record | rows 17 and 18 |
 | The generated enforcement table is hand-edited or left stale | row 14 (`make skillslint`) |
 
 ## Evidence
