@@ -981,22 +981,33 @@ var commandWrappers = map[string]wrapperSpec{
 
 // envSplitString returns the command string an `env` split-string flag at
 // words[i] names (`-S STRING`, `-SSTRING`, `--split-string STRING`,
-// `--split-string=STRING`), with any words after it appended; ok is false when
-// words[i] is no such flag.
+// `--split-string=STRING`, and `S` ending a short-flag bundle such as
+// `-iS STRING` or `-vS'STRING'`), with any words after it appended; ok is
+// false when words[i] is no such flag.
 func envSplitString(words []shellWord, i int) (string, bool) {
 	t := words[i].text
 	var value string
 	next := i + 1
 	switch {
-	case t == "-S" || t == "--split-string":
+	case t == "--split-string":
 		if next >= len(words) {
 			return "", false
 		}
 		value, next = words[next].text, next+1
 	case strings.HasPrefix(t, "--split-string="):
 		value = strings.TrimPrefix(t, "--split-string=")
-	case strings.HasPrefix(t, "-S"):
-		value = t[2:]
+	case isShortFlagBundle(t):
+		flag, rest, known := envShortBundle(t)
+		if !known || flag != 'S' {
+			return "", false
+		}
+		if rest == "" {
+			if next >= len(words) {
+				return "", false
+			}
+			rest, next = words[next].text, next+1
+		}
+		value = rest
 	default:
 		return "", false
 	}
@@ -1005,6 +1016,31 @@ func envSplitString(words []shellWord, i int) (string, bool) {
 		parts = append(parts, "'"+strings.ReplaceAll(w.text, "'", `'\''`)+"'")
 	}
 	return strings.Join(parts, " "), true
+}
+
+// isShortFlagBundle reports whether t is a single-dash option word (`-i`,
+// `-iv`, `-iS'curl x'`); `-` alone and `--long` forms are not.
+func isShortFlagBundle(t string) bool { return len(t) > 1 && t[0] == '-' && t[1] != '-' }
+
+// envShortBundle reads a single-dash `env` option word the way env's option
+// parser does: flags that take no value (`-i`, `-0`, `-v`) may be bundled, and
+// the first flag that takes one (`-u`, `-C`, `-S`, `-a`, `-P`, `-L`, `-U`) ends
+// the bundle, its value being the rest of the word or, when that is empty, the
+// next word. flag is that value-taking flag (0 when the bundle has none) and
+// rest what follows it in the word; known is false when the bundle carries a
+// flag this reader does not know, which leaves the command unreadable.
+func envShortBundle(t string) (flag byte, rest string, known bool) {
+	for j := 1; j < len(t); j++ {
+		c := t[j]
+		switch {
+		case strings.IndexByte("i0v", c) >= 0:
+		case strings.IndexByte("uCSaPLU", c) >= 0:
+			return c, t[j+1:], true
+		default:
+			return 0, "", false
+		}
+	}
+	return 0, "", true
 }
 
 func isEnvAssign(w string) bool {
@@ -1097,6 +1133,19 @@ func networkInSimple(words []shellWord, depth int) (network, readable bool) {
 				// `env -S STRING` splits STRING into the command it runs.
 				if split, ok := envSplitString(words, i); ok {
 					return networkInCommand(split, depth+1)
+				}
+				// A short-flag bundle (`-iv`, `-iu NAME`) is read the way env
+				// reads it; a flag this reader does not know is unreadable.
+				if isShortFlagBundle(t) {
+					flag, rest, known := envShortBundle(t)
+					if !known {
+						return false, false
+					}
+					i++
+					if flag != 0 && rest == "" && i < len(words) {
+						i++
+					}
+					continue
 				}
 			}
 			if strings.HasPrefix(t, "-") && t != "-" {
@@ -1269,10 +1318,13 @@ type landingCommit struct {
 }
 
 // parseCommitObject reads a raw commit object (`git cat-file commit`): its
-// `parent` header lines and the message after the first blank line. Only
-// top-level header lines count; a continuation line (a signature body, a
-// merge tag) starts with a space and is never a parent. ok is false when the
-// object is not a well-formed commit or a parent is not an object id.
+// `parent` header lines and the message after the first blank line. Parents
+// are read the way git reads them: only the run of top-level `parent` headers
+// directly after `tree`. A `parent` header after any other header (an author
+// line, a continuation line of a signature or merge tag) is not a parent to
+// git, which walks such a commit without it, so it is not one here either.
+// ok is false when the object is not a well-formed commit or a parent is not
+// an object id.
 func parseCommitObject(content []byte) (parents []string, message string, ok bool) {
 	header, message, found := strings.Cut(string(content), "\n\n")
 	if !found {
@@ -1282,15 +1334,18 @@ func parseCommitObject(content []byte) (parents []string, message string, ok boo
 	if len(lines) == 0 || !strings.HasPrefix(lines[0], "tree ") || !IsObjectID(strings.TrimPrefix(lines[0], "tree ")) {
 		return nil, "", false
 	}
+	inParents := true
 	for _, l := range lines[1:] {
 		if l == "" {
 			return nil, "", false
 		}
 		if strings.HasPrefix(l, " ") {
+			inParents = false
 			continue
 		}
 		key, val, _ := strings.Cut(l, " ")
-		if key != "parent" {
+		if key != "parent" || !inParents {
+			inParents = false
 			continue
 		}
 		if !IsObjectID(val) {
@@ -1311,8 +1366,11 @@ func (x *evalCtx) landingOf(add WitnessAddition) (landingCommit, string, string)
 	if !ok {
 		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "the landing commit %s could not be read", add.Commit)
 	}
-	if o == nil || o.Type != "commit" || o.OID != add.Commit {
+	if o == nil {
 		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "shallow — the landing commit %s is not in the object store", add.Commit)
+	}
+	if o.Type != "commit" || o.OID != add.Commit {
+		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "the landing commit %s does not name a commit object (read a %s %s)", add.Commit, o.Type, o.OID)
 	}
 	parents, msg, ok := parseCommitObject(o.Content)
 	if !ok {

@@ -5,4 +5,4 @@
 - `docs/streams/witnesses/README.md` declares the witness records directory a register, so a reader that predates the reserved name skips it and refuses each v2 claim instead of stopping on the whole tree.
 
 ### Changed
-- Rows that depend on the network, a code-hosting service or a cluster are never released by digest: a host or back-filled run is environment-free only when its command is readable and names no network tool (looking through `env` (including `env -S`), `go -C`, `timeout`, `sudo`, `xargs`, `sh -c` and similar wrappers; `make` and other opaque runners are unreadable).
+- Rows that depend on the network, a code-hosting service or a cluster are never released by digest: a host or back-filled run is environment-free only when its command is readable and names no network tool (looking through `env` (including `env -S` and short flags bundled before it, with an unknown `env` flag unreadable), `go -C`, `timeout`, `sudo`, `xargs`, `sh -c` and similar wrappers; `make` and other opaque runners are unreadable).

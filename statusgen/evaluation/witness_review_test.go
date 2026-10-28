@@ -90,6 +90,19 @@ func TestWitnessNetworkWrappers(t *testing.T) {
 		{"go get example.invalid/m", true, true},
 		{"go mod download", true, true},
 		{"go mod tidy", true, true},
+		// regression: #4409 review SEC-3 — env short flags bundled before S
+		// (or before a value flag) are read the way env reads them; an
+		// unknown flag in a bundle is unreadable, never "no network".
+		{"env -iS 'curl x'", true, true},
+		{"env -ivS'wget x'", true, true},
+		{"env -0vS curl", true, true},
+		{"env -iS 'go test' ./pkg/", false, true},
+		{"env -iu HOME curl x", true, true},
+		{"env -iu HOME go test ./pkg/", false, true},
+		{"env -iC tools curl x", true, true},
+		{"env -iv go test ./pkg/", false, true},
+		{"env -x curl x", false, false},
+		{"env -ix go test ./pkg/", false, false},
 		// regression: #4409 review F13 — split strings and go -C
 		{"env -S 'curl x'", true, true},
 		{"env -S'curl x'", true, true},
@@ -167,6 +180,19 @@ func TestWitnessParseCommitObject(t *testing.T) {
 	if !strings.HasPrefix(msg, "Merge pull request #12 from example-org/feat\n") || !strings.Contains(msg, "parent "+strings.Repeat("5", 40)) {
 		t.Errorf("message %q", msg)
 	}
+	// regression: #4409 review SEC-2 — git reads parents only in the run of
+	// `parent` headers directly after `tree`; a `parent` header after another
+	// header, or a continuation line right after the parents, is not a parent.
+	for name, obj := range map[string]string{
+		"a parent header after the author": "tree " + tree + "\nparent " + p1 + "\n" + who + "parent " + p2 + "\n\nMerge pull request #12 from example-org/feat\n",
+		"a parent header after a header":   "tree " + tree + "\nparent " + p1 + "\nencoding UTF-8\nparent " + p2 + "\n" + who + "\nmsg\n",
+		"a continuation after the parents": "tree " + tree + "\nparent " + p1 + "\n parent " + p2 + "\n" + who + "\nmsg\n",
+	} {
+		parents, _, ok := parseCommitObject([]byte(obj))
+		if !ok || len(parents) != 1 || parents[0] != p1 {
+			t.Errorf("%s: parents %v ok=%v, want [%s]", name, parents, ok, p1)
+		}
+	}
 	for name, bad := range map[string]string{
 		"no tree header":    "parent " + p1 + "\n" + who + "\nmsg\n",
 		"a short parent id": "tree " + tree + "\nparent " + p1[:39] + "\n" + who + "\nmsg\n",
@@ -202,6 +228,11 @@ func TestWitnessLandingCommitObjectRequired(t *testing.T) {
 				}
 			}
 		}, gap: GapUnestablished, has: []string{"not in the object store"}},
+		// regression: #4409 review F15 — an id that reads as another object
+		// type is named as such, not as a shallow clone.
+		{name: "an adding commit id that reads as a non-commit object", mut: func(fx *v2fx) {
+			fx.refs = func(fx *v2fx) { fx.repo.objectType = map[string]string{fx.landing: "tag"} }
+		}, gap: GapUnestablished, has: []string{"does not name a commit object"}},
 		{name: "the commit object's parents decide, not the walked graph", mut: func(fx *v2fx) {
 			fx.refs = func(fx *v2fx) { fx.repo.objectParents = map[string][]string{fx.landing: {fx.base}} }
 		}, gap: GapCRUnverified, has: []string{"parent"}},

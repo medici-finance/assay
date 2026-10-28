@@ -1,5 +1,5 @@
 {
- "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness' -count=1 -timeout 280s",
+ "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness|CandidateCoverage' -count=1 -timeout 280s",
  "control": {
   "name": "CONTROL \u2014 the v2 judge never compares a recorded blob digest (a changed input still releases)",
   "file": "evaluation/witness.go",
@@ -412,7 +412,7 @@
   {
    "name": "commit object: an indented continuation line read as a parent header (review SEC-1)",
    "file": "evaluation/witness.go",
-   "old": "\t\tif strings.HasPrefix(l, \" \") {\n\t\t\tcontinue\n\t\t}\n\t\tkey, val, _ := strings.Cut(l, \" \")",
+   "old": "\t\tif strings.HasPrefix(l, \" \") {\n\t\t\tinParents = false\n\t\t\tcontinue\n\t\t}\n\t\tkey, val, _ := strings.Cut(l, \" \")",
    "new": "\t\tkey, val, _ := strings.Cut(strings.TrimSpace(l), \" \")"
   },
   {
@@ -442,8 +442,8 @@
   {
    "name": "landing: a missing commit object read as a commit with no parents (review SEC-1)",
    "file": "evaluation/witness.go",
-   "old": "\tif o == nil || o.Type != \"commit\" || o.OID != add.Commit {\n\t\treturn landingCommit{}",
-   "new": "\tif o == nil || o.Type != \"commit\" || o.OID != add.Commit {\n\t\treturn landingCommit{Commit: add.Commit}, \"\", \"\"\n\t}\n\tif false {\n\t\treturn landingCommit{}"
+   "old": "\tif o == nil {\n\t\treturn landingCommit{}",
+   "new": "\tif o == nil {\n\t\treturn landingCommit{Commit: add.Commit}, \"\", \"\"\n\t}\n\tif false {\n\t\treturn landingCommit{}"
   },
   {
    "name": "env split-string not looked through (review F13)",
@@ -462,6 +462,36 @@
    "file": "witnessdigest.go",
    "old": "\tbriefFile := briefArg\n\tif !*worktree {",
    "new": "\tbriefFile := briefArg\n\tif *rev != \"\" {"
+  },
+  {
+   "name": "commit object: a parent header after another header read as a parent (review SEC-2)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tif key != \"parent\" || !inParents {",
+   "new": "\t\tif key != \"parent\" || false && !inParents {"
+  },
+  {
+   "name": "landing: an id that reads as a non-commit object accepted as the landing commit (review F15)",
+   "file": "evaluation/witness.go",
+   "old": "\tif o.Type != \"commit\" || o.OID != add.Commit {\n\t\treturn landingCommit{}",
+   "new": "\tif false {\n\t\treturn landingCommit{}"
+  },
+  {
+   "name": "env: S bundled after other short flags not looked through (review SEC-3)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tif !known || flag != 'S' {",
+   "new": "\t\tif !known || flag != 'S' || len(t) > 2 && t[1] != 'S' {"
+  },
+  {
+   "name": "env: an unknown flag in a short bundle read as a flag without a value (review SEC-3)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tcase strings.IndexByte(\"uCSaPLU\", c) >= 0:\n\t\t\treturn c, t[j+1:], true\n\t\tdefault:\n\t\t\treturn 0, \"\", false",
+   "new": "\t\tcase strings.IndexByte(\"uCSaPLU\", c) >= 0:\n\t\t\treturn c, t[j+1:], true"
+  },
+  {
+   "name": "env: a bundled value flag's value read as the command (review SEC-3)",
+   "file": "evaluation/witness.go",
+   "old": "\t\t\t\t\tif flag != 0 && rest == \"\" && i < len(words) {",
+   "new": "\t\t\t\t\tif false && flag != 0 && rest == \"\" && i < len(words) {"
   }
  ]
 }

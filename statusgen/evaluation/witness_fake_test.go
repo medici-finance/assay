@@ -39,6 +39,9 @@ type fakeRepo struct {
 	// objectParents, when set for a commit id, is the parent list that
 	// commit's object states (CatObjects), apart from the graph the fake walks.
 	objectParents map[string][]string
+	// objectType, when set for a commit id, is the object type CatObjects
+	// reports for that id in place of "commit".
+	objectType map[string]string
 	// noFirstParents makes FirstParents report that it could not read.
 	noFirstParents bool
 	seq            int
@@ -215,7 +218,11 @@ func (f *fakeRepo) CatObjects(specs []string) (map[string]CatObject, bool) {
 			continue
 		}
 		if !isPath {
-			out[s] = CatObject{OID: c.id, Type: "commit", Content: f.commitObject(c)}
+			typ := "commit"
+			if t, ok := f.objectType[c.id]; ok {
+				typ = t
+			}
+			out[s] = CatObject{OID: c.id, Type: typ, Content: f.commitObject(c)}
 			continue
 		}
 		if e, ok := c.tree[path]; ok {
