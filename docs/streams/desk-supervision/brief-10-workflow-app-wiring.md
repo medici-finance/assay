@@ -53,16 +53,8 @@ consumers:
 ## Context
 
 files:
-- **edit** `docs/adopting-assay.md` — record the **workflow App** in the App inventory as a
-  capability that stands beside the desk-role Apps (it is not one of the desk roles and not a
-  tier): the single identity holding `workflows: write`, scoped to `contents: write` +
-  `workflows: write` + `pull_requests: write` + `metadata: read`, subscribing to zero webhook
-  events, with `administration`, `actions`, `checks`/`statuses: write`, `members`, and
-  secrets/variables withheld.
-- **create** `docs/streams/desk-supervision/workflow-app-scope.md` (planned) — a short scope-and-duties
-  note: the exact permission set (granted AND withheld), the duties it discharges (author a
-  workflow-only PR; optionally land it — see the DR's deferred merge-authority sub-decision), and
-  the invariant that NO other App holds `workflows: write`.
+- **edit** `docs/adopting-assay.md` — record the **workflow App** in the App inventory as a capability that stands beside the desk-role Apps (it is not one of the desk roles and not a tier): the single identity holding `workflows: write`, scoped to `contents: write` + `workflows: write` + `pull_requests: write` + `metadata: read`, subscribing to zero webhook events, with `administration`, `actions`, `checks`/`statuses: write`, `members`, and secrets/variables withheld.
+- **create** `docs/streams/desk-supervision/workflow-app-scope.md` (planned) — a short scope-and-duties note: the exact permission set (granted AND withheld), the duties it discharges (author a workflow-only PR; optionally land it — see the DR's deferred merge-authority sub-decision), and the invariant that NO other App holds `workflows: write`.
 
 facts:
 - workflows-write-holders-should-be: exactly one (the workflow App). Every desk-role App: none.

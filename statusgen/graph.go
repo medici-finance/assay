@@ -244,8 +244,13 @@ func buildGraph(root string) (*graphModel, error) {
 			if err != nil || !ok || bf == nil {
 				continue // parse failures are the lint's job, not the export's
 			}
-			from := bf.Brief
-			if !briefIDs[from] {
+			// Key on the filename-derived <stream>/<NN> id — the same id the
+			// eligibility reader wires a brief file's depends: onto its README
+			// row with (checkBriefFiles). bf.Brief is the qualified
+			// <cell>:<alias>:<stream>:<NN> form on a brief-v2 file and never
+			// matches a node id (#4113).
+			from, _, okName := expectedBriefID(path)
+			if !okName || !briefIDs[from] {
 				continue // a brief file whose id has no README row: skip its edges
 			}
 			for _, dep := range bf.Depends {

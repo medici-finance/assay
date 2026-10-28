@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -92,17 +94,36 @@ func accountTypeShort(t string) string {
 }
 
 // cmdCoverage implements `desktoken coverage <role> [--repo <slug>] [--json]`.
-func cmdCoverage(args []string) (err error) {
+func cmdCoverage(args []string, sinks ...func(perfrec.Context)) error {
+	return cmdCoverageMeasured(args, nil, sinks...)
+}
+
+func cmdCoverageMeasured(args []string, measurement *perfrec.Session, sinks ...func(perfrec.Context)) (err error) {
 	ac := &auditCtx{verb: "coverage", argsDigest: deskkit.ArgsDigest(os.Args[1:])}
 	defer func() { ac.finalize(err) }()
 
 	fs := flag.NewFlagSet("desktoken coverage", flag.ContinueOnError)
+	var context perfrec.Context
+	selected := cli.GoPerformance(fs, func(c perfrec.Context) {
+		context = c
+		if measurement != nil {
+			measurement.SelectContext(c)
+		}
+		for _, sink := range sinks {
+			if sink != nil {
+				sink(c)
+			}
+		}
+	})
+	defer selected()
 	fs.SetOutput(new(strings.Builder))
 	repo := fs.String("repo", "", "repo slug (owner/name): print only the installation that sees it; exit 0 if one does, 5 if none")
 	forge := fs.String("forge", "", "forge backend: empty/github (default); gitlab is refused (a PAT has no installation to enumerate)")
 	asJSON := fs.Bool("json", false, "emit the enumeration as one JSON object")
 
 	positionals, perr := parseInterspersed(fs, args)
+	selected()
+	authClient := measuredAuth(context, measurement)
 	if perr != nil {
 		// TIER TWO: see cmdToken — a help request writes no audit row.
 		if deskkit.IsHelpRequest(perr) {
@@ -140,7 +161,7 @@ func cmdCoverage(args []string) (err error) {
 	}
 
 	// List every installation of this App.
-	installs, ierr := listInstallations(jwt)
+	installs, ierr := listInstallations(jwt, authClient)
 	if ierr != nil {
 		return deskkit.Unverifiable("list App installations", ierr)
 	}
@@ -158,11 +179,11 @@ func cmdCoverage(args []string) (err error) {
 	totalRepos := 0
 	for _, inst := range installs {
 		instID := fmt.Sprintf("%d", inst.ID)
-		tok, xerr := exchangeJWT(jwt, instID)
+		tok, xerr := exchangeJWT(jwt, instID, authClient)
 		if xerr != nil {
 			return deskkit.Unverifiable("mint token for installation "+instID+" (account "+inst.Account.Login+")", xerr)
 		}
-		repos, rerr := listInstallationRepos(tok.Token)
+		repos, rerr := listInstallationRepos(tok.Token, authClient)
 		if rerr != nil {
 			// A page read that failed: could-not-check is NOT "not covered". Refuse
 			// with exit 6 naming the installation; never present a short list as complete.
@@ -257,7 +278,7 @@ func renderJSON(results []coverageResult) {
 
 // listInstallations GETs /app/installations with the App JWT and returns every
 // installation. Read-only.
-func listInstallations(jwt string) ([]coverageInstallation, error) {
+func listInstallations(jwt string, clients ...*http.Client) ([]coverageInstallation, error) {
 	url := deskkit.GitHubAPIBase + "/app/installations?per_page=100"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -267,7 +288,7 @@ func listInstallations(jwt string) ([]coverageInstallation, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := httpClient.Do(req)
+	resp, err := authHTTP(clients).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET installations: %w", err)
 	}
@@ -292,7 +313,7 @@ func listInstallations(jwt string) ([]coverageInstallation, error) {
 // an installation token, following pages until one returns fewer than
 // coveragePerPage. A page that does not return HTTP 200 is an ERROR — never a
 // shorter list read as complete.
-func listInstallationRepos(token string) ([]string, error) {
+func listInstallationRepos(token string, clients ...*http.Client) ([]string, error) {
 	var out []string
 	for page := 1; ; page++ {
 		url := fmt.Sprintf("%s/installation/repositories?per_page=%d&page=%d",
@@ -305,7 +326,7 @@ func listInstallationRepos(token string) ([]string, error) {
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-		resp, err := httpClient.Do(req)
+		resp, err := authHTTP(clients).Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("GET repositories page %d: %w", page, err)
 		}

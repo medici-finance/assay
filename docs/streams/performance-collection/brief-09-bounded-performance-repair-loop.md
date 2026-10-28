@@ -74,7 +74,9 @@ Options:
 1. Accept the demonstrated scope, source coverage and access/effect boundaries; select the concrete operating profile before activation.
 2. Hold the unsupported boundary and continue offline fixture work only.
 
-Default if no answer: none — acceptance/activation remains held; offline implementation can proceed.
+Default if no answer: none — blocks until answered.
+
+Acceptance/activation remains held; offline implementation can proceed.
 
 ## Ground rules
 

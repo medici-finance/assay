@@ -23,6 +23,8 @@ package deskkit
 // slot, while a false hold on a read failure would stop every human-gated brief.
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"regexp"
 	"sort"
@@ -74,39 +76,29 @@ type BriefAdmission struct {
 // GatesHuman reports whether the brief declares `gate: human`.
 func (b BriefAdmission) GatesHuman() bool { return b.Gate == "human" }
 
-var (
-	admissionIDRe       = regexp.MustCompile(`(?m)^brief:[ \t]*(.*)$`)
-	admissionExecTierRe = regexp.MustCompile(`(?m)^exec-tier:[ \t]*(.*)$`)
-	admissionDecisionRe = regexp.MustCompile(`(?m)^decision-issue:[ \t]*(.*)$`)
-)
-
 // ParseBriefAdmission reads the admission fields from a brief file's content.
 func ParseBriefAdmission(content string) BriefAdmission {
-	front := briefFrontmatterFence(content)
-	if front == "" {
+	front, _, err := briefdoc.Split(content)
+	if err != nil || front == "" {
 		return BriefAdmission{}
 	}
-	field := func(re *regexp.Regexp) string {
-		m := re.FindStringSubmatch(front)
-		if m == nil {
-			return ""
-		}
-		v := m[1]
-		if i := strings.Index(v, " #"); i >= 0 {
-			v = v[:i]
-		}
-		return strings.Trim(strings.TrimSpace(v), `"'`)
+	f, err := briefdoc.ParseFields(front)
+	if err != nil {
+		// Unreadable: human-gated and strong, keeping the brief id and decision issue the
+		// line readers find so a decision hold still applies.
+		lf := briefdoc.LineFields(front)
+		return BriefAdmission{Gate: "human", ExecTier: "strong", ID: lf["brief"], DecisionIssue: decisionIssueNumber(lf["decision-issue"])}
 	}
-	b := BriefAdmission{
-		Frontmatter: true,
-		ID:          field(admissionIDRe),
-		ExecTier:    field(admissionExecTierRe),
-		Gate:        strings.ToLower(field(briefGateLine)),
+	return BriefAdmission{Frontmatter: true, ID: f.Values["brief"], ExecTier: f.Values["exec-tier"], Gate: strings.ToLower(f.Values["gate"]), DecisionIssue: decisionIssueNumber(f.Values["decision-issue"])}
+}
+
+// decisionIssueNumber reads a `decision-issue:` value: a positive number, with or without
+// a leading "#", else 0.
+func decisionIssueNumber(v string) int {
+	if n, err := strconv.Atoi(strings.TrimPrefix(v, "#")); err == nil && n > 0 {
+		return n
 	}
-	if n, err := strconv.Atoi(strings.TrimPrefix(field(admissionDecisionRe), "#")); err == nil && n > 0 {
-		b.DecisionIssue = n
-	}
-	return b
+	return 0
 }
 
 // DecisionForge is the read-only forge surface BriefDecisionWait uses. Every method is one
@@ -233,38 +225,58 @@ func decisionIssueByMarker(f DecisionForge, fr ForgeRepo, id string) (int, strin
 	if id == "" {
 		return 0, ""
 	}
-	want := normalizeDecisionBriefID(id)
-	spellings := []string{id}
-	if alt := otherDecisionBriefSpelling(id); alt != "" {
-		spellings = append(spellings, alt)
-	}
+	spellings := decisionBriefSpellings(id)
 	seen := map[int]bool{}
 	var candidates []int
 	for _, s := range spellings {
-		hits, err := f.SearchIssues(fr, SearchIssuesInput{Query: fmt.Sprintf("%q in:body", DecisionGateMarkerPrefix+": "+s)})
+		hits, err := f.SearchIssues(fr, SearchIssuesInput{DecisionGateMarkers: true, DecisionGateBrief: s})
 		if err != nil {
-			return 0, fmt.Sprintf("the search for %s's decision issue on %s could not run", id, fr.Slug())
+			return 0, decisionSearchUnknown(fr, id, err)
 		}
 		for _, h := range hits {
-			if !seen[h.Number] {
+			if decisionBodyHasSpelling(h.Body, s) && !seen[h.Number] {
 				seen[h.Number] = true
 				candidates = append(candidates, h.Number)
 			}
 		}
 	}
+	return decisionIssueFromCandidates(f, fr, id, candidates)
+}
+
+// decisionIssueFromCandidates confirms marker membership on fresh issue reads;
+// search bodies are an index, not authoritative membership. Shared sweeps reuse
+// this same lowest-numbered-candidate rule as the single-brief dispatcher.
+func decisionIssueFromCandidates(f DecisionForge, fr ForgeRepo, id string, candidates []int) (int, string) {
 	sort.Ints(candidates)
 	for _, c := range candidates {
 		item, err := f.GetIssue(fr, c)
 		if err != nil || item == nil {
 			return 0, fmt.Sprintf("a candidate decision issue %s#%d for %s could not be read", fr.Slug(), c, id)
 		}
-		for _, m := range decisionMarkerRe.FindAllStringSubmatch(item.Body, -1) {
-			if normalizeDecisionBriefID(m[1]) == want {
+		for _, spelling := range decisionBriefSpellings(id) {
+			if decisionBodyHasSpelling(item.Body, spelling) {
 				return c, ""
 			}
 		}
 	}
 	return 0, ""
+}
+
+func decisionBodyHasSpelling(body, spelling string) bool {
+	for _, m := range decisionMarkerRe.FindAllStringSubmatch(body, -1) {
+		if m[1] == spelling {
+			return true
+		}
+	}
+	return false
+}
+
+func decisionBriefSpellings(id string) []string {
+	spellings := []string{id}
+	if alt := otherDecisionBriefSpelling(id); alt != "" {
+		spellings = append(spellings, alt)
+	}
+	return spellings
 }
 
 var (

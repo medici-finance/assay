@@ -57,6 +57,21 @@ distinct, owned step, not a side effect of merge.
   authenticated acts — the human acts in their own identity — never as a model role or a
   node with a token of its own.
 
+## Verifier domain observations
+
+[`verification-domain-v1`](../spec/verification-domain-v1.md) supplies shared pure
+records for qualified work, a frozen candidate, its acceptance definition, required
+facts and reevaluation generation. `statusgen/domain.Assess` uses the existing
+eligibility and evidence-coverage evaluators. A missing fact holds; a candidate or
+generation mismatch is refused. A supported assessment grants no acceptance or write.
+
+Bind/admit/execute/assess/decide/publish progress, execution outcome, acceptance,
+publication receipt and retirement are separate observations. Execution can succeed
+while acceptance is held; accepted work can await publication; Complete can retain a
+resource-retirement hold. Observation times and typed hold owners/events are explicit.
+This contract wires no runtime and changes no independent review, verification, human
+decision or publication gate. Complete applicability context remains graph-execution/30.
+
 ## STATUS.md — a single-writer generated artifact
 
 `STATUS.md` at the repo root is **generated from the stream READMEs and registers** — never

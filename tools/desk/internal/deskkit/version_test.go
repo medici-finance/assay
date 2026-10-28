@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVersionUnpinned(t *testing.T) {
@@ -338,5 +340,68 @@ func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
 	// beside the binaries is exactly the drift the Go port retired.
 	if strings.Contains(wf, "CELLCTL_VERSION") {
 		t.Error("release.yml still sed-stamps CELLCTL_VERSION — the shell-script packaging exception was removed when cellctl was ported to Go; it is stamped by -ldflags like every other verb")
+	}
+}
+
+// TestVersionBuildInfoFallback: a binary whose link-time stamp is empty reports the
+// toolchain-embedded vcs.revision / vcs.time instead of "unpinned"; a set stamp wins; a binary
+// with no VCS information stays explicitly "unpinned". IsPinned keys on the link-time stamp
+// alone, so the fallback never turns an unstamped build into a pinned one.
+// regression: F-release-binary-unpinned
+func TestVersionBuildInfoFallback(t *testing.T) {
+	oldS, oldB, oldR := SourceSHA, BuiltAt, readBuildInfo
+	t.Cleanup(func() { SourceSHA, BuiltAt, readBuildInfo = oldS, oldB, oldR })
+
+	rev := strings.Repeat("0123456789abcdef", 3)[:40]
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: rev},
+			{Key: "vcs.time", Value: "2026-10-20T01:32:51Z"},
+		}}, true
+	}
+	SourceSHA, BuiltAt = "", ""
+	if s, b := Version(); s != rev[:12] || b != "2026-10-20T01:32:51Z" {
+		t.Errorf("empty stamp: Version() = %q,%q, want the build-info revision and time", s, b)
+	}
+	if IsPinned() {
+		t.Errorf("IsPinned() = true for an unstamped build — the fallback must not pin it")
+	}
+
+	SourceSHA, BuiltAt = "abc1234", "2026-07-10T00:00:00Z"
+	if s, b := Version(); s != "abc1234" || b != "2026-07-10T00:00:00Z" {
+		t.Errorf("stamped: Version() = %q,%q, want the link-time stamp to win", s, b)
+	}
+
+	readBuildInfo = func() (*debug.BuildInfo, bool) { return &debug.BuildInfo{}, true }
+	SourceSHA, BuiltAt = "", ""
+	if s, b := Version(); s != "unpinned" || b != "unpinned" {
+		t.Errorf("no vcs info: Version() = %q,%q, want unpinned,unpinned", s, b)
+	}
+}
+
+// TestPerfRecordsBuildRevision: both desk perf writers — PerfRun's perf-v2 record and
+// PerfStep's perf-v1 step record — take sourceSHA from Version(), so an unstamped binary with
+// VCS information records its commit, not "unpinned", on every record it writes.
+// regression: F-release-binary-unpinned
+func TestPerfRecordsBuildRevision(t *testing.T) {
+	state := perfFixture(t)
+	oldS, oldB, oldR := SourceSHA, BuiltAt, readBuildInfo
+	t.Cleanup(func() { SourceSHA, BuiltAt, readBuildInfo = oldS, oldB, oldR })
+
+	rev := strings.Repeat("fedcba9876543210", 3)[:40]
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: rev}}}, true
+	}
+	SourceSHA, BuiltAt = "", ""
+	PerfRun("deskpr", []string{"create"}, []string{"create"}, func([]string) int { return 0 })
+	PerfStep("deskboot", "token-mint", time.Millisecond, 0)
+	recs, _ := perfLines(t, state)
+	if len(recs) != 2 {
+		t.Fatalf("want 2 records, got %d", len(recs))
+	}
+	for i, rec := range recs {
+		if rec["sourceSHA"] != rev[:12] {
+			t.Errorf("record %d (%v) sourceSHA = %v, want the build revision %s", i, rec["schema"], rec["sourceSHA"], rev[:12])
+		}
 	}
 }

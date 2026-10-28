@@ -1,0 +1,44 @@
+{
+  "why": "a trust answer with no bodyHistoryKnown",
+  "expect": "refuse",
+  "repo": "example-org/tracker",
+  "number": 53,
+  "issue": {
+    "state": "closed",
+    "title": "[verification-attestation] aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "body": "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n{\n  \"Version\": 1,\n  \"Run\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n  \"Repo\": \"example-org/tracker\",\n  \"Source\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n  \"Brief\": \"docs/streams/demo/brief-01-demo.md\",\n  \"BriefSHA256\": \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\n  \"PlanSHA256\": \"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\n  \"HomeSHA256\": \"1111111111111111111111111111111111111111111111111111111111111111\",\n  \"Model\": \"claude-opus-4\",\n  \"Tier\": \"strong\",\n  \"Checkout\": \"autocrlf=false eol=lf\"\n}\n",
+    "url": "https://github.com/example-org/tracker/issues/53",
+    "labels": [
+      "dispatched-model:claude-opus-4",
+      "dispatched-tier:strong"
+    ],
+    "author": {
+      "login": "assay-desk-app[bot]",
+      "id": 300000001,
+      "type": "Bot"
+    }
+  },
+  "trust": {
+    "complete": true,
+    "events": []
+  },
+  "labelEvents": {
+    "complete": true,
+    "events": [
+      {
+        "label": "dispatched-model:claude-opus-4",
+        "removed": false,
+        "createdAt": "2026-10-21T23:59:01Z",
+        "actorLogin": "assay-desk-app[bot]",
+        "actorId": 300000001
+      },
+      {
+        "label": "dispatched-tier:strong",
+        "removed": false,
+        "createdAt": "2026-10-21T23:59:02Z",
+        "actorLogin": "assay-desk-app[bot]",
+        "actorId": 300000001
+      }
+    ]
+  }
+}

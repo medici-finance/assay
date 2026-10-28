@@ -247,6 +247,7 @@ func githubGraphQLPost(endpoint, token, source string, payload []byte) ([]byte, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
+	perfCountHTTP()
 	resp, err := githubDecayClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP transport error: %v", err)

@@ -9,12 +9,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -116,11 +118,53 @@ func TestUnreadableIssueState_NeverRetires(t *testing.T) {
 	}
 }
 
-// TestPositiveClosedRead_StillRetires pins the unchanged semantics: a placeholder whose
-// issue positively reads CLOSED is RETIRE, with the title from that same read, exit 0.
-func TestPositiveClosedRead_StillRetires(t *testing.T) {
+// Closure proves source state, not an accountable handoff. Preserve the title
+// and classification-needed row when no disposition has been recorded.
+func TestPositiveClosedRead_RetainsUnclassified(t *testing.T) {
+	testPositiveClosedRead(t, false)
+}
+
+// An empty positive-read title keeps the fallback text under the intake prefix.
+func TestPositiveClosedRead_EmptyTitleKeepsFallback(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), placeholderFixture(homeRepo, "todo", ""))
+	installForge(t, map[string]*repoFixture{homeRepo: {
+		issues: []deskkit.IssueSummary{{Number: 1, Title: "open one", Author: deskkit.Account{Login: "shared-agent"}}},
+		titles: map[int]string{3: ""},
+	}})
+	var out, errb bytes.Buffer
+	if code := run([]string{"--root", root, "issues"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d, want 0; stderr=%s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "[intake:classification-needed] (title unavailable") {
+		t.Errorf("an empty title must show the fallback after the intake prefix; got:\n%s", out.String())
+	}
+}
+
+// A classified source still needs a positive closed read before retirement.
+// Keep this named control for the cross-package fault-injection harness.
+func TestPositiveClosedRead_StillRetires(t *testing.T) {
+	testPositiveClosedRead(t, true)
+}
+
+func testPositiveClosedRead(t *testing.T, classified bool) {
+	t.Helper()
+	root := t.TempDir()
+	body := placeholderFixture(homeRepo, "todo", "")
+	if classified {
+		const opened = "2026-10-25T12:00:00Z"
+		h := issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema,
+			Item: homeRepo + "#3", Opened: opened, Revision: 1,
+			DecidingRole: "intake-desk", Disposition: issueflow.Repair,
+			Route: "repair", Successor: homeRepo + "#3", Evidence: homeRepo + "#3"}
+		raw, err := json.Marshal(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(root, issueLoopDir, "handoff.json"), string(raw))
+		body = strings.Replace(body, "status: todo", "status: todo\nhandoff: handoff.json\nhandoff-opened: \""+opened+"\"", 1)
+	}
+	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), body)
 	calls := installForge(t, map[string]*repoFixture{homeRepo: {
 		issues: []deskkit.IssueSummary{{Number: 1, Title: "open one", Author: deskkit.Account{Login: "shared-agent"}}},
 		titles: map[int]string{3: "genuinely closed"},
@@ -129,11 +173,16 @@ func TestPositiveClosedRead_StillRetires(t *testing.T) {
 	if code := run([]string{"--root", root, "issues"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d, want 0; stderr=%s", code, errb.String())
 	}
-	if got := retireRows(out.String()); len(got) != 1 || got[0] != "tracker#3" {
-		t.Errorf("a positively-closed placeholder issue must be the ONE RETIRE row; got %v:\n%s", got, out.String())
+	got := retireRows(out.String())
+	if classified {
+		if len(got) != 1 || got[0] != "tracker#3" {
+			t.Errorf("a classified positively closed source must retire; got %v:\n%s", got, out.String())
+		}
+	} else if len(got) != 0 || !strings.Contains(out.String(), "classification-needed") {
+		t.Errorf("a closed unclassified source must remain awaiting disposition; got %v:\n%s", got, out.String())
 	}
 	if !strings.Contains(out.String(), "genuinely closed") {
-		t.Errorf("the RETIRE row must carry the title from the positive read; got:\n%s", out.String())
+		t.Errorf("the retained row must carry the title from the positive read; got:\n%s", out.String())
 	}
 	reads := 0
 	for _, c := range *calls {

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
@@ -47,7 +48,7 @@ func TestTwoSessionsCommsHelloRoundTrip(t *testing.T) {
 		}
 		cmd := exec.Command("go", args...)
 		cmd.Dir = module
-		if b, err := cmd.CombinedOutput(); err != nil {
+		if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", name, err, b)
 		}
 		return path

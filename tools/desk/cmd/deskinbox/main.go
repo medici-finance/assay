@@ -31,6 +31,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/medici-finance/assay/perfrec"
+
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -69,9 +71,15 @@ Flow section alone does not redden the exit — see plugins/assay/commands/inbox
 var perfVerbs = []string{"table", "walk", "html", "flow", "discovery", "version", "--version", "--help", "-h"}
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskinbox", perfVerbs, os.Args[1:], func([]string) int {
-		return execute(os.Args[1:], os.Stdout, os.Stderr, time.Now(), startup)
-	}))
+	os.Exit(deskkit.PerfRunMeasured("deskinbox", perfVerbs, os.Args[1:], performanceCallback(os.Stdout, os.Stderr, time.Now(), startup)))
+}
+
+func performanceCallback(stdout, stderr io.Writer, now time.Time, pre func(io.Writer) int) func([]string, *perfrec.Session) (int, perfrec.Context) {
+	return func(a []string, session *perfrec.Session) (int, perfrec.Context) {
+		selected := perfrec.ResolveContext(perfrec.ContextInput{})
+		code := executeMeasured(a, stdout, stderr, now, pre, session, func(c perfrec.Context) { selected = c })
+		return code, selected
+	}
 }
 
 // startup is what every real run does first, after its command line parsed and its values
@@ -145,20 +153,26 @@ func flowBindings() []cli.Binding {
 // execute runs one invocation against a fresh command tree. pre is the process startup (nil in
 // the in-package tests, as run never did it).
 func execute(args []string, stdout, stderr io.Writer, now time.Time, pre func(io.Writer) int) int {
+	return executeMeasured(args, stdout, stderr, now, pre, nil, nil)
+}
+
+func executeMeasured(args []string, stdout, stderr io.Writer, now time.Time, pre func(io.Writer) int, session *perfrec.Session, selected func(perfrec.Context)) int {
+	var observer deskkit.RequestObserver
+
 	build := func() *cobra.Command {
 		root := cli.NewRoot("deskinbox [owner/repo ...]", "the escalation-label inbox and the pipeline flow model")
 		root.Long = helpLong
 		root.Args = cobra.ArbitraryArgs
 		rootSet := cli.Declare(root, queueBindings()...)
 		root.RunE = func(_ *cobra.Command, args []string) error {
-			return codeErr(queueCommand("table", "", args, rootSet, stdout, stderr, now, pre))
+			return codeErr(queueCommand("table", "", args, rootSet, stdout, stderr, now, pre, session, observer))
 		}
 
 		walk := &cobra.Command{Use: "walk [--item K] [owner/repo ...]", Short: "print ONE item in the five-part decision format",
 			Args: cobra.ArbitraryArgs}
 		walkSet := cli.Declare(walk, queueBindings()...)
 		walk.RunE = func(_ *cobra.Command, args []string) error {
-			return codeErr(queueCommand("walk", "", args, walkSet, stdout, stderr, now, pre))
+			return codeErr(queueCommand("walk", "", args, walkSet, stdout, stderr, now, pre, session, observer))
 		}
 
 		html := &cobra.Command{Use: "html OUT.html [owner/repo ...]", Short: "write the whole queue to OUT.html as decision cards plus the Flow section",
@@ -170,7 +184,7 @@ func execute(args []string, stdout, stderr io.Writer, now time.Time, pre func(io
 			}}
 		htmlSet := cli.Declare(html, queueBindings()...)
 		html.RunE = func(_ *cobra.Command, args []string) error {
-			return codeErr(queueCommand("html", args[0], args[1:], htmlSet, stdout, stderr, now, pre))
+			return codeErr(queueCommand("html", args[0], args[1:], htmlSet, stdout, stderr, now, pre, session, observer))
 		}
 
 		// A bare word under flow names no repo or cell (flow resolves cells from
@@ -187,6 +201,7 @@ func execute(args []string, stdout, stderr io.Writer, now time.Time, pre func(io
 
 		version := &cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
 			RunE: func(*cobra.Command, []string) error {
+				deskkit.PerfCommand(perfVerbs, "version")
 				fmt.Fprintln(stdout, versionLine())
 				return nil
 			}}
@@ -196,7 +211,12 @@ func execute(args []string, stdout, stderr io.Writer, now time.Time, pre func(io
 				if code := begin(stderr, pre); code != deskkit.ExitOK {
 					return codeErr(code)
 				}
-				return codeErr(discoveryJSON(stdout, stderr, repos))
+				// Only discovery has a completely inventoried native request path.
+				// Other modes may use raw comments or child readers and stay unknown.
+				if session != nil {
+					session.ObserveRequests()
+				}
+				return codeErr(discoveryJSON(stdout, stderr, repos, observer))
 			}}
 		root.AddCommand(walk, html, flow, version, discovery)
 		return root
@@ -207,6 +227,15 @@ func execute(args []string, stdout, stderr io.Writer, now time.Time, pre func(io
 		VersionTemplate: "{{.Version}}\n",
 		// A parse error keeps the legacy refusal code (5), not the adapter's default.
 		UsageExit: deskkit.ExitRefused,
+		Performance: func(c perfrec.Context) {
+			if session != nil {
+				session.SelectContext(c)
+			}
+			observer = deskkit.RequestObserverFor(c, session, perfrec.OriginDirect)
+			if selected != nil {
+				selected(c)
+			}
+		},
 	})
 }
 
@@ -226,7 +255,7 @@ func begin(stderr io.Writer, pre func(io.Writer) int) int {
 
 // queueCommand settles the table/walk/html mode from the parsed values: --item and --walk
 // select walk from any of the three forms, as the hand-rolled loop did.
-func queueCommand(mode, htmlOut string, repoArgs []string, set *cli.Set, stdout, stderr io.Writer, now time.Time, pre func(io.Writer) int) int {
+func queueCommand(mode, htmlOut string, repoArgs []string, set *cli.Set, stdout, stderr io.Writer, now time.Time, pre func(io.Writer) int, session *perfrec.Session, observers ...deskkit.RequestObserver) int {
 	v, err := set.Resolve(cli.Inputs{})
 	if err != nil {
 		fmt.Fprintln(stderr, "deskinbox:", err)
@@ -249,10 +278,15 @@ func queueCommand(mode, htmlOut string, repoArgs []string, set *cli.Set, stdout,
 		mode = "walk"
 	}
 	deskkit.PerfCommand(perfVerbs, mode)
+	// The resolved table mode only lists through the native observer. --walk and
+	// --item have already changed mode, so their raw detail path stays unknown.
+	if mode == "table" && session != nil {
+		session.ObserveRequests()
+	}
 	if code := begin(stderr, pre); code != deskkit.ExitOK {
 		return code
 	}
-	return queueFn(stdout, stderr, mode, htmlOut, repoArgs, walkItem, now)
+	return queueFn(stdout, stderr, mode, htmlOut, repoArgs, walkItem, now, observers...)
 }
 
 // flowCommand passes flow's values to runFlow (flow.go). flow reads CELLS (a statusgen-root
@@ -281,7 +315,7 @@ func flowCommand(set *cli.Set, stdout, stderr io.Writer, now time.Time, pre func
 }
 
 // runQueue resolves the repo set and runs the table, walk or html rendering.
-func runQueue(stdout, stderr io.Writer, mode, htmlOut string, repoArgs []string, walkItem int, now time.Time) int {
+func runQueue(stdout, stderr io.Writer, mode, htmlOut string, repoArgs []string, walkItem int, now time.Time, observers ...deskkit.RequestObserver) int {
 	cwd, cerr := os.Getwd()
 	if cerr != nil {
 		fmt.Fprintln(stderr, deskkit.Unverifiable("cannot resolve the current directory", cerr))
@@ -299,11 +333,11 @@ func runQueue(stdout, stderr io.Writer, mode, htmlOut string, repoArgs []string,
 
 	switch mode {
 	case "walk":
-		return runWalk(stdout, stderr, repos, walkItem, now)
+		return runWalk(stdout, stderr, repos, walkItem, now, observers...)
 	case "html":
-		return runHTML(stdout, stderr, htmlOut, repos, now)
+		return runHTML(stdout, stderr, htmlOut, repos, now, observers...)
 	default:
-		return runTable(stdout, stderr, repos, now)
+		return runTable(stdout, stderr, repos, now, observers...)
 	}
 }
 
@@ -324,12 +358,12 @@ func parsePositiveInt(s string) (int, error) {
 	return n, nil
 }
 
-func runTable(stdout, stderr io.Writer, repos []string, now time.Time) int {
+func runTable(stdout, stderr io.Writer, repos []string, now time.Time, observers ...deskkit.RequestObserver) int {
 	if err := validateRepos(repos); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitCodeOf(err)
 	}
-	items, failures := fetchQueue(repos)
+	items, failures := fetchQueue(repos, observers...)
 	for _, f := range failures {
 		fmt.Fprintf(stderr, "deskinbox: QUERY FAILED for %s: %v\n", f.Repo, f.Err)
 	}

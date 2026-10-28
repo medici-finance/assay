@@ -232,3 +232,28 @@ profile and actual covered observations remain separate facts. A source schema n
 that a live subagent is attributed. Work changes per invocation; shared session overhead is
 not assigned to the last brief. Export consumes aliased profile-selected observations through
 the existing performance-collection owner; target bindings confer no collection authority.
+
+## Implementation pickup and applicable guidelines — amendment, 18 October 2026
+
+Apply the same affected-context assessment at initial implementation pickup, resumed
+work, and a material scope/target change, not only during authoring. The selected
+approved target/transition, semantic contracts, engineering guidelines, producer and
+consumer versions, planned replacements and actual implementation are distinct inputs.
+A newer draft alone never invalidates authorized work. Inaccessible required sources
+are scoped unknowns; an unrelated edit can retain prior conclusions with a reason.
+
+[Brief specification §4.1.1](../../../spec/brief-v1.md#411-implementation-pickup-assessment)
+and the [pickup procedure](../../../plugins/assay/references/implementation-pickup.md)
+define the immediate manual path. statusgen/20 owns reusable discovery/recheck;
+statusgen/21 owns author/worker and dispatch integration once that interface ships.
+The same receipt and append-only continue/adapt/hold disposition are reused; no
+parallel checker, target registry or unsupported frontmatter field is introduced.
+
+## Wire compatibility in architecture targets — 21 October 2026
+
+Contract-version records must distinguish core major, named extension versions and
+required capabilities. Transition records carry producer/consumer compatibility and
+retained historical-reader obligations. The [JSON contract census](29-extensible-json-contracts.md)
+assigns migration families; observation of an unknown optional facet is unavailable,
+not absence, and an unsupported required facet prevents conformance. A source or
+binary revision alone cannot certify a compatible deployed combination.

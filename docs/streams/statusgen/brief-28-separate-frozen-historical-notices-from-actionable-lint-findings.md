@@ -67,7 +67,9 @@ Options:
 2. Request the identified corrections before approval.
 3. Hold the change.
 
-Default if no answer: hold; no sign-off is inferred.
+Default if no answer: none — blocks until answered.
+
+Hold the change; no sign-off is inferred.
 
 ## Ground rules
 

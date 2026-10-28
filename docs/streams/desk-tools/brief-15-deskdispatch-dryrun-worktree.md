@@ -401,6 +401,26 @@ No row failed, so no row needs a failure classification. Risk: gate model, all f
 
 Verification-Attestation: medici-finance/assay#3527 run=9593ab60d5bb28ea281b535acb22ebb6666f0d31c952e5d6b8d36ea11eb44978 source=810a5edf064b0d7e76a49c0d8b74b1d3f2dbd442 brief=docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md model=claude-opus-5-5 tier=strong
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRendersVerifiedPath$' -count=1` | pass exit=0 sandbox=container-netns | sha256:90140d57f8ca | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRefusesUnverifiablePaths$' -count=1` | pass exit=0 sandbox=container-netns | sha256:7d6bc7e0e03e | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeFlagRefusedOnRealDispatch$' -count=1` | pass exit=0 sandbox=container-netns | sha256:84a9f232d1aa | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | pass exit=0 sandbox=container-netns | sha256:b74c80c7dd2c | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 6 | `gofmt -l tools/desk/cmd/deskdispatch > /tmp/dd-fmt.out; test ! -s /tmp/dd-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:98d12a78ccd2 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier re-run: 2026-10-20 (UTC), assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk), merged main b73d90d774fca8aec8974ef410da63ebcb10eece
+
+This mechanical re-wake pass ran at merged main b73d90d774fca8aec8974ef410da63ebcb10eece, admitted by the dispatcher attestation below (pre-run and post-run admission checks both exit 0). The execution witness table directly above was produced by `statusgen verifyrun --sandbox container-netns`, run non-dry inside a local docker container: image assay-verify:go1.27 (id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e, git 2.47), started with `--network none`, sandbox=container-netns, default seccomp profile. It records 7 pass, 0 fail, 0 could-not-run of 7 Verify rows, and `verifyrun --check` in the same container returned 0. Runner choice follows the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker).
+
+The substance is the existing by-hand Evidence recorded 2026-10-19 at merged main 810a5edf064b0d7e76a49c0d8b74b1d3f2dbd442, where all 7 Verify rows exited 0 by direct execution; between that sha and this one the deskdispatch package changed only in two worker-prompt reference files, with no code change to the validation, the real-dispatch guard or the exit codes.
+
+**VERIFY: PASS** — all 7 Verify rows pass in the network-off container witness at b73d90d774fc, matching the by-hand result at 810a5edf064b.
+
+Verification-Attestation: medici-finance/assay#3621 run=a95a904817dda97bf3571c8504cdb7e8c01b4e2c70786f78f4dd53438340b027 source=b73d90d774fca8aec8974ef410da63ebcb10eece brief=docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md model=claude-opus-5-5 tier=strong
+
 
 ## Review
 

@@ -4,7 +4,7 @@ title: "Forge service fault simulation and scoped cutover qualification"
 why: "The service crosses caller, executor, provider, database and cache boundaries. A complete disposable journey with lost replies, revocation and reconstruction is needed before routing real desk writes through it or retiring any direct publisher."
 wave: 9
 depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44", "desk-tools/43", "desk-tools/44", "desktools-v2/62"]
-unblocks: []
+unblocks: ["cell-api/07"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -88,7 +88,9 @@ Options:
 1. **Accept the demonstrated bounded design** — accept only the proven scope and failure behavior; keep live credential provisioning and activation as separate operator acts.
 2. **Hold for correction** — identify the unproven boundary or budget and revise before acceptance.
 
-Default if no answer: none — acceptance remains pending. This implementation-evidence decision
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
 

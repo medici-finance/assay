@@ -4,11 +4,12 @@ name: truth-suite
 # Verify row probes the DELTA a change introduced; this suite guards the BASELINE the
 # change did not touch, and reddens on a regression the delta's author never considered.
 #
-# STANDING, not only diff-triggered — it runs on push to the default branch AND on a
-# daily schedule, so a baseline that quietly rotted (a dependency shift, a runner change,
-# a mutation spec that stopped biting) is caught by a cadence run rather than waiting for
-# someone to happen to touch the same file. `workflow_dispatch` lets a maintainer run it
-# on demand.
+# STANDING, not diff-triggered — it runs on a nightly schedule, so a baseline that
+# quietly rotted (a dependency shift, a runner change, a mutation spec that stopped
+# biting) is caught by a cadence run rather than waiting for someone to happen to touch
+# the same file. It no longer runs on every push to main: per-change coverage is ci.yml's
+# job, and the self-hosted pool is shared. `workflow_dispatch` lets a maintainer run it
+# on demand (for example right after a risky merge). It is not a required check.
 #
 # THREE-STATE (docs/three-state-instrument-rule.md): a leg that could not run — a missing
 # toolchain, an absent module, a harness that would not build — reports COULD-NOT-CHECK
@@ -24,8 +25,6 @@ name: truth-suite
 # trust in its toolchain rather than matching ci.yml's parity claim on that one point.
 
 on:
-  push:
-    branches: [main]
   schedule:
     # 06:17 UTC daily — an off-the-hour minute so this suite is not contending with
     # every other cron scheduled on the hour.
@@ -35,14 +34,15 @@ on:
 permissions:
   contents: read
 
-# Superseded push runs on the same ref are cancelled (#2634). Cron and dispatch runs each
-# get their own group (run_id), so they never queue behind or cancel one another.
+# Cron and dispatch runs each get their own group (run_id), so they never queue behind or
+# cancel one another. The push arm (superseded push runs cancelled, #2634) is inert now that
+# the suite has no push trigger; it is kept so restoring that trigger needs no other edit.
 concurrency:
   group: truth-suite-${{ github.event_name == 'push' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
 
 jobs:
   # ── The repo's own test corpus ──────────────────────────────────────────────
@@ -65,7 +65,7 @@ jobs:
           # here) — a GO_VERSION change without a matching digest fails this step CLOSED
           # rather than trusting the fetch. This suite is a trust-establishing baseline,
           # so it verifies the toolchain before unpacking, same as release.yml.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -160,7 +160,7 @@ jobs:
           # here) — a GO_VERSION change without a matching digest fails this step CLOSED
           # rather than trusting the fetch. This suite is a trust-establishing baseline,
           # so it verifies the toolchain before unpacking, same as release.yml.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"

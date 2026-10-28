@@ -23,7 +23,9 @@ import (
 // admitted; a blessing of such a thread waits for a human look).
 
 // IssueTrustQuery fetches an issue's body-edit time and its comment content events.
-const IssueTrustQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){lastEditedAt comments(first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}`
+const issueTrustSelection = `lastEditedAt comments(first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}`
+
+const IssueTrustQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){` + issueTrustSelection + `}}}`
 
 // IssueEventsQuery reads ONE page of an issue's comment content events for the ESCALATION
 // CLOCK — walked to exhaustion under a hard page cap by GitHubForge.IssueContentEvents.

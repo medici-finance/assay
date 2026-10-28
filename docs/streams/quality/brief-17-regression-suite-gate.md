@@ -48,8 +48,7 @@ files:
   archives and materialized into `t.TempDir()` at test time (see the fixture fact below).
 - NEW `.github/workflows/regression-suite.yml` (planned) — the `regression-gate` job.
 - `docs/test-policy.md` — new `## Regression suite` section under `## Regression floor`.
-- `plugins/assay/skills/author-brief/SKILL.md` — a one-line pointer from the fix-brief
-  class-guard Verify-row paragraph (added by #1580) to the new test-policy section.
+- `plugins/assay/skills/author-brief/SKILL.md` — a one-line pointer from the fix-brief class-guard Verify-row paragraph (added by #1580) to the new test-policy section.
 - `tools/desk/cmd/deskwt/roleinitgitlabcred_test.go` — rename one existing test (seed).
 - `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
 

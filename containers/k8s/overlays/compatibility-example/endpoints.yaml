@@ -1,0 +1,21 @@
+# RFC 5737 documentation addresses, NOT live or qualified destinations.
+# Replace with the exact forge/model addresses qualified for this profile.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: desk-qualified-endpoints
+  namespace: assay-desks
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: assay-desks
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 192.0.2.10/32 # qualified forge endpoint placeholder
+        - ipBlock:
+            cidr: 198.51.100.20/32 # qualified model endpoint placeholder
+      ports:
+        - protocol: TCP
+          port: 443

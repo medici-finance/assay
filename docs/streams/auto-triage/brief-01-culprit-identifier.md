@@ -47,10 +47,7 @@ classify as `judgement`, never `mechanical`.
 
 files:
 - `tools/autotriage/` (new Go package) — the parser + classifier and its tests.
-- `tools/autotriage/testdata/` (new) — captured CI-output fixtures (gofmt failure, a
-  statusgen `PROBLEM` line, a `go test` failure, a leak-sweep red status, a timing-flake
-  log), each a real-shaped sample with any withheld/sensitive content redacted to a
-  synthetic placeholder.
+- `tools/autotriage/testdata/` (new) — captured CI-output fixtures (gofmt failure, a statusgen `PROBLEM` line, a `go test` failure, a leak-sweep red status, a timing-flake log), each a real-shaped sample with any withheld/sensitive content redacted to a synthetic placeholder.
 
 facts:
 - Input: the failing gate's output as CI exposes it — a job log (`gh run view --log`

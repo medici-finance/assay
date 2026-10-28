@@ -93,10 +93,7 @@ func TestNewReposForkNoMaintenance(t *testing.T) {
 
 // TestTemplateConfigParses — the rendered template is a config git reads back key by key.
 func TestTemplateConfigParses(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "config")
-	if err := os.WriteFile(p, []byte(templateConfig()), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	p := filepath.Join(TemplateDir(t), "config")
 	for _, kv := range Settings {
 		if got := git(t, filepath.Dir(p), "", "config", "--file", p, "--get", kv[0]); got != kv[1] {
 			t.Errorf("template %s = %q, want %q", kv[0], got, kv[1])

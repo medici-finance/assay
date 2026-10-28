@@ -62,6 +62,7 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/perfrec"
 	"os"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
@@ -89,9 +90,11 @@ func main() {
 	// human-gated brief is never held on its decision issue.
 	decisionWaitForgeFn = liveDecisionWaitForge
 	args := os.Args[1:]
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
 	// main owns the declared class, echo and activation discovery. Cobra invokes
 	// these callbacks only for execution, after help/version/kits and parsing.
 	env := dispatchCLI{
+		performance: func(c perfrec.Context) { selected = c },
 		before: func() error {
 			deskkit.SetToolClass(deskkit.ClassForTool(false))
 			deskkit.EchoEffectiveConfig(os.Stderr)
@@ -110,8 +113,16 @@ func main() {
 	// The one measurement finalizer wraps the whole command, parsing included, so
 	// the timer never restarts after Cobra. Consent is the environment opt-in only;
 	// help/version/kits classify themselves without reading operational config.
-	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, args, func(a []string) int {
-		return parseDispatchCLI(a, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
+	os.Exit(deskkit.PerfRunMeasured("deskdispatch", perfVerbs, args, func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		env.performance = func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
+		env.measurement = measurement
+		code := parseDispatchCLI(a, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
+		return code, selected
 	}))
 }
 

@@ -1,5 +1,5 @@
 ---
-description: What's waiting on you across your configured repos — needs-decision, question, help wanted, and urgent issues, sorted urgency-then-age. Add --walk to be asked one decision at a time, --html FILE to read them as a page, or --flow to see where the pipeline is stuck. Read-only, works from any terminal.
+description: What's waiting on you across your configured repos — needs-decision, question, help wanted, and urgent issues, sorted urgency-then-age. Add --walk to be asked one decision at a time, --html FILE to read them as a page, or --flow to see where the pipeline is stuck. Read-only; shell issue discovery needs a loop identity or explicit legacy selection.
 argument-hint: "[--walk [--item K] [--screened] | --html OUT.html | --flow [--html OUT.html]] [--no-screen] [owner/repo ...]"
 ---
 
@@ -22,7 +22,8 @@ only the oracle classifies, and so only the oracle numbers `--item K` over GENUI
 puts a class on each row and card.
 
 **Read-only.** It never writes to, comments on, or closes any issue. **Terminal-agnostic.**
-It is plain `git`/`gh` shell — it runs from any terminal.
+It runs from any terminal; shell issue discovery requires a loop identity or explicit
+`ASSAY_INBOX_READER=legacy` selection, as described below.
 
 ## What it queries
 
@@ -190,6 +191,15 @@ becomes a `could-not-check` stage carrying the binary's own message — for exam
 `flag provided but not defined: -net-flow`. That is the expected reading against a pinned
 build older than the flag, and it is reported as itself rather than as an empty queue.
 
+## Shell discovery identity
+
+The shell renderer defaults to `ASSAY_INBOX_READER=auto`, which requires a nonempty
+`DESK_LOOP` before any issue-discovery probe or read. A human terminal can explicitly
+select `ASSAY_INBOX_READER=legacy` for ambient `gh` discovery. `ASSAY_DESKINBOX` names
+the typed producer. Missing auto identity exits 6 before reading; it is an unavailable
+queue, not an empty one. Do not set a desk identity merely to bypass this requirement.
+Flow-only shell modes read no issues and require neither identity nor reader selection.
+
 ## A failed query is never shown as an empty inbox
 
 The run always ends with a summary line — `deskinbox: N item(s) across M repo(s)` (in `flow`,
@@ -209,6 +219,7 @@ rest (step 2 below) — keeps its own, older taxonomy:**
 | ok | every read succeeded — the output is complete | `0` | `0` |
 | refused / precondition | no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, a malformed `--since`, `html` with no output path; for the oracle also `gh`/`jq` missing, or `--walk` together with `--html` or with `--flow`) | `5` | `1` |
 | unverifiable / partial | one or more reads FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read | `6` | `2` |
+| unavailable auto discovery | no nonempty loop identity; no queue read attempted; explicitly select `ASSAY_INBOX_READER=legacy` for an ambient read | n/a | `6` |
 
 A blind Flow section on the `--html` page does **not** redden that run. The exit code of the
 decision modes is a statement about the *decision queue* — a caller checking it is asking

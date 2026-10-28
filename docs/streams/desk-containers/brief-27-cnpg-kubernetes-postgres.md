@@ -11,7 +11,7 @@ why: >-
   recovery point, validate, switch endpoints, reconcile, and only then reopen admission.
 wave: 4
 depends: ["desk-containers/06", "desk-containers/26"]
-unblocks: []
+unblocks: ["desk-containers/29", "cell-api/05"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -27,7 +27,7 @@ gate-why: >-
   isolation boundary carried over from brief 26 is stated at the database layer.
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by the-desk (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-13: CloudNativePG on Kubernetes — a CNPG Cluster manifest beside brief 06's Kustomize manifests, per-cell databases and roles, Secrets out of band, backups to an example S3-compatible endpoint, and the explicit local-to-CNPG migration procedure"
@@ -131,3 +131,13 @@ Gate: human, `sensitive-data: yes`: the brief designs credential custody on the 
 - that `kind-drill.sh` refuses any kube context it did not create;
 - that `migrate-cell.sh` has no path that reopens admission or sets `login: true`;
 - that each CRD field used is cited in the PR body to the pinned release's CRD or docs.
+
+## Interactive cohort routing — 20 October 2026
+
+[The current target](../../proposals/non-ci-architecture/28-interactive-kubernetes-desks.md)
+requires separately interactive standing desks. Tick-mode CronJobs remain an opt-in distinct
+profile, never the default or an additional writer for an interactive role binding. The
+interactive cohort does not depend on CronJob/GitOps examples. /27's CNPG packaging consumes
+/06's base directly; it must not require /12's component to exist. CNPG administration and
+restore terminal capabilities remain separate from the /28 operator and all desk identities.
+Existing tasks, migration gates, recovery obligations and Verify rows otherwise stand.

@@ -1,0 +1,60 @@
+{
+  "test": "go test -count=1 -timeout 60s -run 'TestPerfV3ContextAndConsent|TestV3DroppedCoverage|TestV3ReviewBoundaries|TestWriterResolvedConsent' .",
+  "schemata": true,
+  "control": {
+    "name": "tool profile writer bypass admits linked identity",
+    "file": "context.go",
+    "old": "return d.SessionID == \"\"",
+    "new": "return true || d.SessionID == \"\""
+  },
+  "mutations": [
+    {
+      "name": "later request seam observation erases previous drops",
+      "file": "v3.go",
+      "old": "s.v3 != nil && s.v3.RequestDrops == 0",
+      "new": "s.v3 != nil"
+    },
+    {
+      "name": "writer accepts measured coverage after drops",
+      "file": "v3.go",
+      "old": "v.RequestDrops > 0 && v.RequestCoverage != CoverageFailed",
+      "new": "false && v.RequestDrops > 0 && v.RequestCoverage != CoverageFailed"
+    },
+    {
+      "name": "direct v3 writer bypasses the exact telemetry opt-in",
+      "file": "perfrec.go",
+      "old": "if !Enabled() {\n\t\t\treturn errors.New(\"perfrec: v3 recording is disabled\")",
+      "new": "if false && !Enabled() {\n\t\t\treturn errors.New(\"perfrec: v3 recording is disabled\")"
+    },
+    {
+      "name": "reducer merges matching requests across observation kinds",
+      "file": "reduce.go",
+      "old": "a.Kind == v.Kind && sameRequest",
+      "new": "sameRequest"
+    },
+    {
+      "name": "writer accepts a duration maximum exceeding its total",
+      "file": "v3.go",
+      "old": "if s.DurationMaxMs > s.DurationSumMs ||",
+      "new": "if false && s.DurationMaxMs > s.DurationSumMs ||"
+    },
+    {
+      "name": "reader accepts an invalid typed work filter",
+      "file": "reduce.go",
+      "old": "if f.Work != nil && !validWork",
+      "new": "if false && f.Work != nil && !validWork"
+    },
+    {
+      "name": "null work claims measured coverage",
+      "file": "context.go",
+      "old": "strictJSON([]byte(raw), &ws) && ws != nil",
+      "new": "strictJSON([]byte(raw), &ws)"
+    },
+    {
+      "name": "direct writer accepts empty measured work",
+      "file": "context.go",
+      "old": "((len(d.Work) > 0) == (d.Coverage[FieldWork] == CoverageMeasured))",
+      "new": "(len(d.Work) == 0 || d.Coverage[FieldWork] == CoverageMeasured)"
+    }
+  ]
+}

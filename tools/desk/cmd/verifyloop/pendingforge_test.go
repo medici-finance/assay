@@ -82,13 +82,18 @@ func (f *pendingForge) ListIssueLabelEvents(deskkit.ForgeRepo, int) ([]deskkit.L
 // matter BEFORE the receipt binds the brief, so the binding stays exact.
 func pendingSetup(t *testing.T, implementer ...string) (*VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string) {
 	t.Helper()
+	return pendingSetupPlan(t, planBrief("model", "no", "no", "no", "no"), implementer...)
+}
+
+func pendingSetupPlan(t *testing.T, plan string, implementer ...string) (*VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string) {
+	t.Helper()
 	plantAllowedRoster(t, "example-org/tracker")
 	roster := "ASSAY_BLESS_LOGIN=ada:2001\nASSAY_TRUSTED_LOGINS=ada:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:300000004,verifier=example-verifier:300000005,worker=example-worker:300000006\nASSAY_ALLOWED_REPOS=example-org/tracker:ci:private\n"
 	if e := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env"), []byte(roster), 0600); e != nil {
 		t.Fatal(e)
 	}
 	deskkit.ReloadConfig()
-	brief := strings.Replace(planBrief("model", "no", "no", "no", "no"), "## Verify", "## Context\n\nfiles:\n- `input.go`\n- `planned.go`\n\n## Verify", 1)
+	brief := strings.Replace(plan, "## Verify", "## Context\n\nfiles:\n- `input.go`\n- `planned.go`\n\n## Verify", 1)
 	if len(implementer) > 0 {
 		brief = strings.Replace(brief, "brief: x\n", "brief: x\nimplementer: "+implementer[0]+"\n", 1)
 	}
@@ -261,6 +266,13 @@ func TestPendingForge(t *testing.T) {
 		// regression: A1 — the verifier App authored the Evidence AND is brief 01's declared
 		// implementer: no independent verifier, so no hold (could-not-check, never awaiting-merge).
 		{name: "implementer-is-verifier", want: "could-not-check", implementer: "example-verifier[bot]"},
+		// The same, with an inline comment after the declared implementer.
+		{name: "implementer-is-verifier-annotated", want: "could-not-check", implementer: "example-verifier[bot] # note"},
+		// The same, with the declared implementer quoted, in each quoting style and placement.
+		{name: "implementer-is-verifier-quoted-annotated", want: "could-not-check", implementer: `"example-verifier[bot]" # note`},
+		{name: "implementer-is-verifier-single-quoted-annotated", want: "could-not-check", implementer: `'example-verifier[bot]' # note`},
+		{name: "implementer-is-verifier-quoted-bare-annotation", want: "could-not-check", implementer: `"example-verifier[bot]"  #`},
+		{name: "implementer-is-verifier-quoted-next-line", want: "could-not-check", implementer: "\n  \"example-verifier[bot]\" # note"},
 		{name: "wrong-id", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.Author.ID = 123
 		}},

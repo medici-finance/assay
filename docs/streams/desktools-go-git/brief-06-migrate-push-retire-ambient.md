@@ -30,19 +30,10 @@ id: 4defb16c-2840-4103-880e-11693f41dc91
 ## Context
 
 files:
-- `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskpr/exec.go` — `push -u origin <branch>` (literal
-  argv). Migrate to `gitcore.Push` with in-process `BasicAuth`.
-- `tools/desk/cmd/deskreply/deskreply.go`, `tools/desk/cmd/deskreply/exec.go` — the push path. Migrate to
-  `gitcore.Push`.
-- `tools/desk/cmd/verifyloop/durable.go` — the `push HEAD:main` step of the durable-Evidence loop.
-  Migrate the PUSH to `gitcore.Push`. (The `pull --rebase` race resolution is NOT
-  migrated here — go-git supports neither rebase nor non-FF pull; that redesign is the
-  named follow-on, see spec boundaries. Keep the existing race handling around the new
-  push for now.)
-- `tools/desk/internal/deskkit/preflight.go` — DELETE the `push --dry-run --porcelain` transport
-  probe (and its `exec.LookPath("git")`, `GIT_TERMINAL_PROMPT=0`); replace its purpose
-  (prove transport + auth reachability) with `gitcore.List` (ls-remote) using the
-  in-memory token.
+- `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskpr/exec.go` — `push -u origin <branch>` (literal argv). Migrate to `gitcore.Push` with in-process `BasicAuth`.
+- `tools/desk/cmd/deskreply/deskreply.go`, `tools/desk/cmd/deskreply/exec.go` — the push path. Migrate to `gitcore.Push`.
+- `tools/desk/cmd/verifyloop/durable.go` — the `push HEAD:main` step of the durable-Evidence loop. Migrate the PUSH to `gitcore.Push`. (The `pull --rebase` race resolution is NOT migrated here — go-git supports neither rebase nor non-FF pull; that redesign is the named follow-on, see spec boundaries. Keep the existing race handling around the new push for now.)
+- `tools/desk/internal/deskkit/preflight.go` — DELETE the `push --dry-run --porcelain` transport probe (and its `exec.LookPath("git")`, `GIT_TERMINAL_PROMPT=0`); replace its purpose (prove transport + auth reachability) with `gitcore.List` (ls-remote) using the in-memory token.
 - `docs/streams/desktools-go-git/inventory.md` (planned) — tick op families 2 and 3.
 
 facts:
@@ -217,6 +208,150 @@ RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/
 listTimeout = 45s and the 0o111 mask are reversible operational knobs, ranked last; no derivation owed.
 
 **VERIFY: FAIL** — 5/6 rows pass; row 6 fails as written (193 is not below the recorded 163; the like-for-like 166 to 165 confirms the brief's own removal; re-pin #2337 is still open).
+
+Verification-Attestation: medici-finance/assay#3881 run=b5a9ba4a70fbbef0c2862827b6301f6845003a87571c80e1ef37aaf315a67756 source=65a6418cd90c921153db509370212b1cdcd4f5e1 brief=docs/streams/desktools-go-git/brief-06-migrate-push-retire-ambient.md model=claude-opus-5-5 tier=any
+
+Re-verify 2026-10-21 by a non-implementer at merged main 65a6418cd90c921153db509370212b1cdcd4f5e1 (the brief's change landed as cc0ef5475, #2298). Admission: deskdispatch --check-verifier exit 0, Issue #3881. Rows run by hand (go1.27.2 darwin/arm64, git 2.56.0, KUBECONFIG=/dev/null). Row 6 is the re-pinned form (shared clone, cc0ef547 parent and commit), so the stale-baseline failure of the earlier passes no longer applies. The host was shared and heavily loaded (load average 36 to 53) for the whole pass.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0 | exit 0; build and vet printed nothing | 2026-10-21 | assay-verifier-app[bot] @ 65a6418cd90c921153db509370212b1cdcd4f5e1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0; push + List goldens pass against the local fixture remote | exit 0 on the third run: ok deskpr (cached from the first run on this source, 263.3s), ok deskreply (cached, 11.3s), ok verifyloop 67.7s, ok deskkit 568.0s. The first two runs exited 1 only because deskkit hit go test's default 10m timeout under host load ("panic: test timed out after 10m0s"). No test reported FAIL, and the test running at the cutoff differed each time (TestUntrustscanCorpus, then TestAttestStreamIndex), which points at total runtime rather than a hang. A separately labelled supplemental probe with a longer timeout (go test -timeout 45m ./internal/deskkit/) gave ok 474.0s and gets no acceptance credit. go test -list shows the push goldens (TestPushLandsRef, TestPushAttachedHeadLands, TestPushRecordsUpstream, TestPushRecordsTrackingRef, TestPushRunsPrePushHook, TestDurablePushLandsMain, TestDurablePushRaceRejected, TestDurablePushHookRefuses) and the List goldens (row 5) in these packages | 2026-10-21 | assay-verifier-app[bot] @ 65a6418cd90c921153db509370212b1cdcd4f5e1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | exit 0; a force-requiring push is REJECTED, not silently forced (type-level no-force holds) | exit 0; ok deskpr 1.7s. With -v: --- PASS: TestForcePushRejected (the filter matched a real test) | 2026-10-21 | assay-verifier-app[bot] @ 65a6418cd90c921153db509370212b1cdcd4f5e1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | exit 1; output 0 | exit 1; output 0 | 2026-10-21 | assay-verifier-app[bot] @ 65a6418cd90c921153db509370212b1cdcd4f5e1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | exit 0; a preflight CALLER still gets a correct reachable/unreachable verdict via List | exit 0; ok deskkit 0.8s. With -v: --- PASS: TestPreflightReachabilityCaller, alongside the Local, 401, 403, 503, TextOnly, PortDigits and NoEp goldens | 2026-10-21 | assay-verifier-app[bot] @ 65a6418cd90c921153db509370212b1cdcd4f5e1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && for c in cc0ef547~1 cc0ef547; do git -C "$d" checkout -q -f --detach $c && cp "$s" "$d/tools/desk/scripts/" && (cd "$d" && sh tools/desk/scripts/count-git-exec.sh); done; rm -rf "$d"` | prints git-exec sites 166 then 165 | exit 0; printed "git-exec sites: 166 (direct spawns: 46, seam call sites: 120)" then "git-exec sites: 165 (direct spawns: 45, seam call sites: 120)" | 2026-10-21 | assay-verifier-app[bot] @ 65a6418cd90c921153db509370212b1cdcd4f5e1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Risk-bearing values (frontmatter risk answers are all no, irreversible no; enumerated anyway over the non-test Go and script diff of cc0ef5475 against its parent, line numbers re-read at 65a6418cd):
+- PushOpts.Force unset (Go zero value false) with RefSpecs = hash.String() + ":" + dstRef @ tools/desk/cmd/deskpr/push.go:109-111
+- PushOpts.Force unset with RefSpecs = head.String() + ":refs/heads/main" @ tools/desk/cmd/verifyloop/durable.go:122-124
+- force prefix "+" added only when force is true @ tools/desk/internal/gitcore/gitcore.go:500-501
+- len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177
+- listTimeout = 45 * time.Second @ tools/desk/internal/deskkit/preflight.go:1098
+- pre-push hook stdin remote sha = strings.Repeat("0", len(srcSHA)) @ tools/desk/internal/deskkit/prepush.go:69
+- hook executable test = Perm()&0o111 @ tools/desk/internal/deskkit/prepush.go:104
+
+Ranked: the force bit and refspec shape come first, because a wrong value overwrites remote history and a force-overwritten main cannot be undone by an edit and a redeploy. The single-destination rule and the hook remote-sha fill come next. The timeout and the executable mask are reversible knobs and rank last.
+
+RISK-VALUE: DERIVED — PushOpts.Force = false (unset) @ tools/desk/cmd/deskpr/push.go:109 and tools/desk/cmd/verifyloop/durable.go:122, RefSpecs with no "+" @ push.go:111 and durable.go:124 — buildRefSpecs (gitcore.go:500) prepends "+" only when force is true, and both refspec sources are resolved hashes, which cannot begin with "+". go-git therefore refuses a non-fast-forward update, which is the brief's type-level no-force fact. Row 3 passes against a rewritten-history push.
+RISK-VALUE: DERIVED — len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177 — git push sends to every push URL a remote lists, while gitcore.Push sends to one URL. Refusing anything but exactly one keeps a migrated push from silently reaching fewer destinations than git would.
+RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:69 — git's pre-push protocol passes the remote ref's current sha when the ref exists, but this fill always reports a new ref. Whether every hook a checkout might carry tolerates that is not derived here (same reading as the earlier passes).
+listTimeout = 45s and the 0o111 mask are reversible operational knobs, ranked last; no derivation owed.
+
+**VERIFY: PASS** — 6/6 rows pass at 65a6418cd. Row 6 passes in its re-pinned form (166 to 165 across cc0ef547). Row 2 needed three runs because deskkit ran past go test's default 10m timeout on a loaded host.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | pass exit=0 | sha256:88a3ce6c5764 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | pass exit=0 | sha256:7654ed04392c | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | pass exit=1 | sha256:9a271f2a916b | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | pass exit=0 | sha256:adbc83b10491 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && for c in cc0ef547~1 cc0ef547; do git -C "$d" checkout -q -f --detach $c && cp "$s" "$d/tools/desk/scripts/" && (cd "$d" && sh tools/desk/scripts/count-git-exec.sh); done; rm -rf "$d"` | pass exit=0 | sha256:f5bd03087a97 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4195 run=1637deb77b332d21e42d4b043cc0544da21c938afaca1eda51ffc1ecd309006b source=4b7568de01248b514f48493efea7734ce0149823 brief=docs/streams/desktools-go-git/brief-06-migrate-push-retire-ambient.md model=claude-opus-5-5 tier=strong
+
+Re-verify 2026-10-23 by a non-implementer at merged main 4b7568de01248b514f48493efea7734ce0149823. The brief's change landed as cc0ef5475 (#2298), and cb931e896 (#3165) re-pinned row 6 to the delivering commit. Admission: deskdispatch --check-verifier exited 0 before any row ran and again before hand-back. Run 1637deb77b33…, Issue #4195.
+
+The witness table above is the output of statusgen verifyrun v1.0.56, the installed release binary rather than a local build. It ran once from the admitted home with --dry-run --timeout 40m, from 04:44:01Z to 04:48:09Z, printed `row N: pass` for all six rows and exited 0. Runner: the host, darwin/arm64, git 2.56.0, KUBECONFIG=/dev/null.
+- Runner identity: the git identity came from the home's own worktree config. The on-behalf-of principal came from a copy of the live roster placed at the throwaway HOME's config path, so every Runner cell reads `(on-behalf-of human:ian) (forge-identity)`.
+- HOME and TMPDIR pointed at throwaway directories, so the audit and config files that row 2's packages write under HOME stayed out of the live audit log. The real Go build and module caches were used.
+- No row is check:ci-classed, so no row ran in a network sandbox. No row came back could-not-run.
+
+Earlier attempt, uncredited (per #4163). An earlier run of this re-verify today (attestation #4189, run 268eef45222c…) also printed 6/6 pass. It ran verifyrun with a throwaway HOME that held no roster, so its Runner cells read `(git-config)` with no on-behalf-of principal, and statusgen --lint rejects App-run rows like that. That attempt and its witness are discarded and not credited. The table above is the only credited witness.
+
+Per-row observations. Each row's verdict comes from the witness. The hand runs below only add detail.
+
+| # | Command | Expect | Observed | Runner |
+|---|---------|--------|----------|--------|
+| 1 | `cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0 | Witness: pass exit=0. Output hash e3b0c44298fc is the hash of empty output, so build and vet printed nothing | 2026-10-23 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 2 | `cd tools/desk && go test ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0; push + List goldens pass against the local fixture remote | Witness: pass exit=0 on the first and only credited run, with no retry. The push goldens (TestPushLandsRef, TestDurablePushLandsMain and the rest) run against a local bare fixture inside these packages | 2026-10-23 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | exit 0; a force-requiring push is REJECTED, not silently forced | Witness: pass exit=0. A supplemental -count=1 -v run of the same selector showed `--- PASS: TestForcePushRejected (0.25s)`, exactly one test, so the filter selected a real test | 2026-10-23 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | exit 1; output 0 | Witness: pass exit=1. Hand run: exit 1, output 0 | 2026-10-23 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | exit 0; a preflight CALLER still gets a correct reachable/unreachable verdict via List | Witness: pass exit=0. A supplemental -count=1 -v run showed TestPreflightReachabilityCaller PASS, with subtests reachable, denied and unreachable all PASS. The Local, 401, 403, 503, TextOnly, PortDigits and NoEp goldens also passed | 2026-10-23 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && for c in cc0ef547~1 cc0ef547; do git -C "$d" checkout -q -f --detach $c && cp "$s" "$d/tools/desk/scripts/" && (cd "$d" && sh tools/desk/scripts/count-git-exec.sh); done; rm -rf "$d"` | prints git-exec sites: 166 then git-exec sites: 165 | Witness: pass exit=0, output hash f5bd03087a97. The witness checks exit status only, so the row was also run by hand with the same command. It exited 0 and printed "git-exec sites: 166 (direct spawns: 46, seam call sites: 120)" then "git-exec sites: 165 (direct spawns: 45, seam call sites: 120)", which hashes to the same f5bd03087a97. 166 then 165 is exactly what the Expect requires | 2026-10-23 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+
+Attempt disclosure. One credited witness run, with no retries. One discarded attempt, #4189, is described above and not credited. Supplemental runs: -count=1 -v runs of the row 3 and row 5 selectors, and hand runs of rows 4 and 6. All of them exited 0 or matched the Expect, and none is credited as acceptance in place of the witness.
+
+Risk-bearing values. The frontmatter answers all four risk questions no, and irreversible is no. The values were enumerated anyway, over the non-test Go and script diff of cc0ef5475 against its parent, with line numbers re-read at 4b7568de0:
+- PushOpts.Force unset (Go zero value false), with RefSpecs = hash.String() + ":" + dstRef @ tools/desk/cmd/deskpr/push.go:109-111
+- PushOpts.Force unset, with RefSpecs = head.String() + ":refs/heads/main" @ tools/desk/cmd/verifyloop/durable.go:122-124
+- the "+" force prefix is added only when force is true @ tools/desk/internal/gitcore/gitcore.go:500-501
+- len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177
+- listTimeout = 45 * time.Second @ tools/desk/internal/deskkit/preflight.go:1098
+- pre-push hook stdin remote sha = strings.Repeat("0", len(srcSHA)) @ tools/desk/internal/deskkit/prepush.go:69
+- hook executable test = Perm()&0o111 @ tools/desk/internal/deskkit/prepush.go:104
+
+Ranked:
+1. The force bit and the refspec shape. A wrong value overwrites remote history, and a force-overwritten main cannot be undone by an edit and a redeploy.
+2. The single-destination rule and the hook remote-sha fill.
+3. The timeout and the executable mask. Both are reversible knobs.
+
+RISK-VALUE: DERIVED — PushOpts.Force = false (unset) @ tools/desk/cmd/deskpr/push.go:109 and tools/desk/cmd/verifyloop/durable.go:122, with RefSpecs carrying no "+" @ push.go:111 and durable.go:124. buildRefSpecs (gitcore.go:500) adds "+" only when force is true, and Push passes the same Force to go-git (gitcore.go:598-615). Both refspec sources are resolved hashes, which cannot begin with "+". go-git v5.19.3 runs checkFastForwardUpdate for any refspec that is not a force update (remote.go:754-757), so it refuses a non-fast-forward update. That is the brief's fact that no force is possible at the type level. Row 3 passes against a rewritten-history push, and TestDurablePushRaceRejected passes for main.
+RISK-VALUE: DERIVED — len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177. git push sends to every push URL a remote lists, while gitcore.Push sends to one URL. Refusing anything but exactly one URL keeps a migrated push from silently reaching fewer destinations than git would.
+RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:69 — Question filed: #4194.
+- What is derived. The fill is deliberate: the comment above PrePushHook.Run (prepush.go:42-47) calls it git's "not known to exist" id, chosen as the conservative reading. Three consequences follow:
+  - The in-repo deskpushguard does not read the field. Re-read at 4b7568de0, its refLine (tools/desk/cmd/deskpushguard/main.go:295) holds only the branch and the local sha, and parseRef never reads the fourth field.
+  - A hook that scans the range from the remote sha to the local sha scans the whole branch instead, which is a superset and the fail-closed direction.
+  - A hook that detects force pushes from the remote sha is blinded by the fill, but the type-level no-force derivation above covers that case.
+- What is not derived. A hook that exempts all-zero (new-branch) updates from its checks would be skipped on every in-process push, including updates to existing branches and to main. git would have passed the remote's current sha for those. Whether the fill should come from the remote's advertised refs is the open question on #4194. The set of hooks a checkout might carry is open-ended, so that safety is not derived here.
+
+listTimeout = 45s and the 0o111 mask are reversible operational knobs, ranked last, so no derivation is owed. A List timeout maps to ProbeInconclusive (could-not-check), never to reachable (preflight.go:1119-1120).
+
+Lifecycle: this block leaves row 06 at implemented. A verifier never sets verified and never hand-writes the Verified stamp: `deskevidence flip` derives the dated stamp from the strict PASS marker below. The NAMED, NOT DERIVED value's question issue is filed as #4194 and linked above, so the remaining order is the flip with its dated Verified stamp, then the verified outcome record.
+
+**VERIFY: PASS** — 6/6 rows pass with the statusgen verifyrun v1.0.56 execution witness from the admitted home at 4b7568de0 (0 fail, 0 could-not-run), with every Runner cell attributed on behalf of human:ian. Row 6 prints 166 then 165 as pinned. The prepush remote-sha value is NAMED, NOT DERIVED, and its question is filed as #4194.
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | pass exit=0 | sha256:8ae0094cafca | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | pass exit=0 | sha256:840619721d1d | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | pass exit=1 | sha256:9a271f2a916b | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | pass exit=0 | sha256:3c5179398889 | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && for c in cc0ef547~1 cc0ef547; do git -C "$d" checkout -q -f --detach $c && cp "$s" "$d/tools/desk/scripts/" && (cd "$d" && sh tools/desk/scripts/count-git-exec.sh); done; rm -rf "$d"` | pass exit=0 | sha256:f5bd03087a97 | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4679 run=efa7cde053d9fb38e80ec2abb623bdb41e47f145b157594452aa4391cf601c00 source=0f2b208cebc30af31269e7482b8b9159b602867d brief=docs/streams/desktools-go-git/brief-06-migrate-push-retire-ambient.md model=claude-opus-5-5 tier=strong
+
+
+Re-verify 2026-10-27 by a non-implementer at merged main 0f2b208cebc30af31269e7482b8b9159b602867d. The brief's change landed as cc0ef5475 (#2298); row 6 is the re-pinned form from cb931e896 (#3165). Admission: deskdispatch --check-verifier exited 0 before any row ran, Run efa7cde053d9…, Issue #4679.
+
+The witness table above is the output of statusgen verifyrun v1.0.63, the installed release binary, run once from the admitted home in write mode with --timeout 40m, from 22:24:18Z to 22:33:07Z. It printed `row N: pass` for all six rows and exited 0. Runner: the host, darwin/arm64, go1.27.2, git 2.56.0, KUBECONFIG=/dev/null, the real Go build and module caches. The Runner identity and its principal stamp were derived by verifyrun itself from the home's git identity and the live roster. No row is check:ci-classed, so no row ran in a network sandbox, and every row returned a result.
+
+Fail-first: the frontmatter answers every risk question no and no Verify row carries a risk-bearing, live, mutating or end-to-end tag, so statusgen classes no row as risk-bearing and no --fail-first base run is owed. The lint at this commit raises a risk-files-crossread NOTICE (not a PROBLEM) because the declared path tools/desk/internal/deskkit/preflight.go matches the repository's security-path trigger while the risk answers are no; the risk-bearing values were enumerated below for that reason, and whether the answers should change stays the reviewer's call.
+
+Per-row observations (each row's verdict comes from the witness; these add detail only):
+- Row 1: pass exit=0. Output hash e3b0c44298fc is the hash of empty output, so build and vet printed nothing.
+- Row 2: pass exit=0 on the first and only credited run, with no retry. A supplemental go test -list (no tests executed, no credit) shows the push goldens in these packages: TestForcePushRejected, TestPushDest* in deskpr and TestDurablePushLandsMain, TestDurablePushRaceRejected, TestDurablePushHookRefuses in verifyloop.
+- Row 3: pass exit=0. A supplemental go test -list of the same selector matched exactly one test, TestForcePushRejected, so the filter selects a real test.
+- Row 4: pass exit=1, output hash 9a271f2a916b, the same hash earlier passes recorded for output 0.
+- Row 5: pass exit=0. A supplemental go test -list of the same selector matched TestPreflightReachabilityLocal, 401, 403, 503, TextOnly, PortDigits, Caller and NoEp; Caller is the neighbour row's preflight-caller test.
+- Row 6: pass exit=0, output hash f5bd03087a97. The witness checks exit status only, so the row was also run by hand with the same command: exit 0, printed "git-exec sites: 166 (direct spawns: 46, seam call sites: 120)" then "git-exec sites: 165 (direct spawns: 45, seam call sites: 120)", which hashes to the same f5bd03087a97. 166 then 165 is what the Expect requires.
+
+Scope note: the brief's Task 1 names deskreply, but deskreply has no push path at this commit (its exec.go and deskreply.go say it never pushes, and inventory.md row 20 records that the deskreply bullet has no site to migrate).
+
+Attempt disclosure: one credited witness run, no retries, no discarded attempts. Supplemental, no acceptance credit: the go test -list reads above and the hand run of row 6.
+
+Risk-bearing values. The frontmatter answers all four risk questions no, and irreversible is no. The values were enumerated anyway over the non-test Go and script diff of cc0ef5475 against its parent, with line numbers re-read at 0f2b208ce:
+- PushOpts.Force unset (Go zero value false), with RefSpecs = hash.String() + ":" + dstRef @ tools/desk/cmd/deskpr/push.go:109-111
+- PushOpts.Force unset, with RefSpecs = head.String() + ":refs/heads/main" @ tools/desk/cmd/verifyloop/durable.go:129-131
+- the "+" force prefix is added only when force is true @ tools/desk/internal/gitcore/gitcore.go:500-501
+- len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177
+- listTimeout = 45 * time.Second @ tools/desk/internal/deskkit/preflight.go:1146
+- pre-push hook stdin remote sha = strings.Repeat("0", len(srcSHA)) @ tools/desk/internal/deskkit/prepush.go:69
+- hook executable test = Perm()&0o111 @ tools/desk/internal/deskkit/prepush.go:104
+
+Ranked:
+1. The force bit and the refspec shape. A wrong value overwrites remote history, and a force-overwritten main cannot be undone by an edit and a redeploy.
+2. The single-destination rule and the hook remote-sha fill.
+3. The timeout and the executable mask. Both are reversible knobs.
+
+RISK-VALUE: DERIVED — PushOpts.Force = false (unset) @ tools/desk/cmd/deskpr/push.go:109 and tools/desk/cmd/verifyloop/durable.go:129, with RefSpecs carrying no "+" @ push.go:111 and durable.go:131. buildRefSpecs (gitcore.go:497-501) adds "+" only when force is true, and Push passes the same Force to go-git. Both refspec sources are resolved hashes, which cannot begin with "+". go-git v5.19.3 runs checkFastForwardUpdate for any refspec that is not a force update (remote.go:754-757), so a non-fast-forward update is refused. That is the brief's fact that no force is possible at the type level; row 3 passes against a rewritten-history push.
+RISK-VALUE: DERIVED — len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:177. git push sends to every push URL a remote lists, while gitcore.Push sends to one URL. Refusing anything but exactly one URL keeps a migrated push from silently reaching fewer destinations than git would.
+RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:69 — the fill is deliberate (the comment at prepush.go:42-47 calls it git's "not known to exist" id, the conservative reading), but whether every hook a checkout might carry tolerates it is open-ended and not derived here. The question stays open as #4194 (read open on 2026-10-27).
+
+listTimeout = 45s and the 0o111 mask are reversible operational knobs, ranked last, so no derivation is owed. A List timeout maps to ProbeInconclusive, never to reachable (preflight.go:1167-1168).
+
+Lifecycle: this block leaves row 06 at implemented. A verifier never sets verified and never hand-writes the Verified stamp.
+
+**VERIFY: PASS** — 6/6 rows pass with the statusgen verifyrun v1.0.63 execution witness from the admitted home at 0f2b208ce (0 fail, 0 could-not-run); no row is risk-bearing, so no fail-first witness is owed. Row 6 prints 166 then 165 as pinned. The prepush remote-sha value is NAMED, NOT DERIVED, with its question open as #4194.
 
 ## Review
 Gate: model (all four risk answers no — the sensitive credential path was reviewed in

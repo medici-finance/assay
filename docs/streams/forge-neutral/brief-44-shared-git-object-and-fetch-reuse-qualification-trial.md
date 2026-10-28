@@ -13,10 +13,13 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: 1cb50a0e-129b-4009-a1e1-bf9fe498f765
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/research/2026-10-22-git-ai-cache-and-source-control.md — requested git-ai techniques amendment, 2026-10-22"
+  - "https://github.com/feder-cr/git-ai/tree/ecf3ed5e31b2bb148c501451bd09a32d080f2af1 — inspected cachetier and derived/storage documentation; reference implementation only"
+  - "freshness-checked 2026-10-22 @ 49d6511daca94a978fff49c00bceea3a0d8af9e6; existing Tasks, Verify, performance amendments and authority gates preserved"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
@@ -73,6 +76,10 @@ brief are restated here. The architecture draft is not activation approval; refr
 source paths, active claims and existing decisions before dispatch. Missing required contracts
 mean NEEDS_CONTEXT, not an invented substitute or a narrowed acceptance test.
 
+Read the [git-ai research report](../../research/2026-10-22-git-ai-cache-and-source-control.md)
+for pinned upstream code, concept mapping and limits. The requirements below are self-contained;
+the reference does not authorize adopting Graft or adding a service.
+
 ## Human decision
 
 Choose whether the measured common-store and fetch-reuse trial justifies a separately scoped production change. The valid outcomes are reuse the current path, author a bounded improvement, or retain uncertainty. No daemon or live fetch is activated by this experiment.
@@ -81,7 +88,9 @@ Options:
 1. **Accept the demonstrated bounded design** — accept only the proven scope and failure behavior; keep live credential provisioning and activation as separate operator acts.
 2. **Hold for correction** — identify the unproven boundary or budget and revise before acceptance.
 
-Default if no answer: none — acceptance remains pending. This implementation-evidence decision
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. This implementation-evidence decision
 does not prevent authoring or independent offline fixture work. Existing mirror retention and
 webhook payload decisions are not answered by this section.
 
@@ -119,6 +128,58 @@ This is an amendment to unfinished implementation acceptance. Preserve every pri
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
 
+### Requested git-ai techniques amendment — 22 October 2026
+
+Use git-ai as a pinned implementation reference, not a new backend. Run the following bounded
+comparison through the existing local fixture harness and Git readers; no Graft installation,
+network proxy, shipped daemon, live fetch, global config or new production service is required.
+Keep existing dependency, effort, gate and ownership boundaries.
+
+1. Freeze and document arms before sampling: A, current per-operation reads; B, existing optimized
+   common-store/isolated-worktree readers with shared object cache, persistent alternate readers and
+   one review preparation context; C, B plus bounded coalescing of simultaneous exact-source misses;
+   D, B plus bounded batched reads/serialized fetch reuse; E, the justified C+D combination. Keep
+   local object-read batching and local-remote fetch coalescing distinct in both setup and metrics.
+   Attribute C/D/E deltas to B so existing optimizations are not counted as git-ai savings. Omit an
+   inapplicable arm only with a recorded reason and coverage limit; do not require a Cartesian sweep.
+2. Select representative small and history/pack-heavy seeds, shared and disjoint exact-source
+   requests, serial and concurrent clients, cold/warm/evicting state, oversized blobs/listings and
+   the existing review preparation cohort. Include authorization/admission on every arm and account
+   for its hit-path latency and dependency failures. Declare which reuse is in-process versus across
+   processes/hosts; do not extrapolate an in-process result to a distributed cache. Disk tiers and
+   preseeded snapshots are deferred unless a bounded local variant fits this trial; any included
+   variant pays for seed construction, verification, startup, eviction, restart and retained disk.
+3. Before measurements, record repetitions/sample size, run ordering, warmup, absolute and relative
+   improvement thresholds, resource ceilings and tolerated tail regressions for the declared target
+   workload. Compare matched/interleaved runs; publish spread and insufficient-sample limits for
+   p95/p99. Report end-to-end preparation/query latency as well as handler time, CPU, actual object/
+   index opens, fetched bytes, coalesced waits, batch sizes, evictions, integrity failures, peak
+   aggregate memory/in-flight buffers, temporary/retained disk and maintenance/recovery work.
+   Separate real local-remote sends, simulated provider-equivalent requests and actual/unknown forge
+   quota data using the existing perf-v3 boundary. A warm hit still pays required access checks.
+4. Extend existing negative/lifecycle cases with canceled fill owner and surviving waiters, failed
+   fill with bounded retries, access revocation during fill, denied/coalesced callers, wrong-repo/
+   same-OID inputs, private quarantine/alternate objects, corrupt cache/seed, eviction and oversized
+   request fallback. Check exact answers, completeness, current admission, bounded aggregate memory
+   and retained evidence against independent literals/native Git. Faster wrong answers fail before
+   performance selection; no sharing of credentials or required evidence deletion is permitted.
+5. Produce a per-technique keep/reject/uncertain result against the predeclared thresholds, including
+   no-win and negative workloads. A service is not justified by fewer subprocesses, higher hit ratio
+   or git-ai's batched-landing benchmark. Prefer an improvement inside existing owners if it meets
+   the target. A recommendation to author a separate service brief must show the measured residual
+   cross-process/host need, expected incremental benefit over B/the best local arm, and latency,
+   memory, storage, authorization, availability, retention, maintenance and recovery budgets. If that
+   need was not measured, keep it uncertain. Neither a positive result nor acceptance activates a
+   service; a no-go/current-path result successfully completes this trial.
+
+Verify row 1 must produce the matched A–E samples, arm definitions, predeclared decision rule and
+independent correctness comparison. Row 2 exercises cancellation, bounds, corruption, eviction and
+existing owner-loss/retention cases; row 3 exercises coalesced admission/revocation and private views.
+Row 5 compares the complete review preparation cohort and checks that a deliberately misattributed
+baseline or omitted access/maintenance cost cannot support the report's adoption conclusion. Keep
+all existing named selectors and Evidence. The report must link the resulting raw samples and
+separate measured findings from deferred hypotheses in the [research reference](../../research/2026-10-22-git-ai-cache-and-source-control.md).
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -137,11 +198,11 @@ boundary and independent expectation, not another implementation of the same che
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseExperiment$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseExperiment ' "$r")` | exit 0; named PASS. Run the reproducible local-only experiment; exact-source answers match independent literals, raw metrics identify baseline/subject/seeds and no forge network requests occur. A deliberately wrong cached result fails correctness regardless of speed. |
-| 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseLifecycle$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseLifecycle ' "$r")` | exit 0; named PASS. Concurrent disposable clients retain access after another workspace retires; interrupted fetch, removed alternate, maintenance overlap and disk pressure expose safe held/unavailable states. Required evidence survives. |
-| 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseAuthorization$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseAuthorization ' "$r")` | exit 0; named PASS. Shared bytes cannot disclose a private canary through another repo/admission. Query fixture bypasses the route and tests source membership, not only an upper UI filter. |
+| 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseExperiment$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseExperiment ' "$r")` | exit 0; named PASS. Run matched A–E arms (or justified bounded omissions), predeclared thresholds/sample plan and per-technique deltas against optimized B; include access-check and aggregate memory cost. Run the reproducible local-only experiment; exact-source answers match independent literals, raw metrics identify baseline/subject/seeds and no forge network requests occur. A deliberately wrong cached result fails correctness regardless of speed. |
+| 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseLifecycle$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseLifecycle ' "$r")` | exit 0; named PASS. Canceled owner leaves admitted waiters usable; failed fills retry within bounds; corrupt/oversized/evicting entries preserve memory bounds and exact coverage. Concurrent disposable clients retain access after another workspace retires; interrupted fetch, removed alternate, maintenance overlap and disk pressure expose safe held/unavailable states. Required evidence survives. |
+| 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseAuthorization$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseAuthorization ' "$r")` | exit 0; named PASS. Revocation during fill and denied/coalesced readers preserve credential and quarantine/private-alternate isolation. Shared bytes cannot disclose a private canary through another repo/admission. Query fixture bypasses the route and tests source membership, not only an upper UI filter. |
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/44` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
-| 5 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewGitReuseTrial$' ./internal/gitcore/... > "$o" && grep -F -- '--- PASS: TestReviewGitReuseTrial ' "$o")` | exit 0; named PASS. Complete preparation cohort isolates context deduplication from optional Git reuse, preserves assigned-head oracle and includes failure/maintenance cost; a wrong cached object fails regardless of latency. |
+| 5 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewGitReuseTrial$' ./internal/gitcore/... > "$o" && grep -F -- '--- PASS: TestReviewGitReuseTrial ' "$o")` | exit 0; named PASS. A planted wrong baseline or omitted access/maintenance cost cannot justify adoption. Complete preparation cohort isolates context deduplication from optional Git reuse, preserves assigned-head oracle and includes failure/maintenance cost; a wrong cached object fails regardless of latency. |
 
 ## Pre-mortem and detection
 

@@ -452,7 +452,7 @@ func logOutboundOverride(w OutboundWrite, r outboundFinding, reason string) erro
 	if err := Log(Entry{
 		Tool:       w.Tool,
 		Verb:       ScanOverrideVerb,
-		Result:     ResultOK,
+		Result:     ResultLocal,
 		Detail:     StripControl(detail),
 		Repo:       w.Repo,
 		BodyDigest: r.digest,

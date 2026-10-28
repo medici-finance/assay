@@ -70,12 +70,9 @@ files:
   `plugins/assay/resident-rules.md` (planned), `plugins/assay/hooks/resident-rules.payload.txt`.
 - **add (3)** `docs/research/codex-harness-capabilities.md` (planned),
   `docs/research/cursor-harness-capabilities.md` (planned), `docs/codex-smoke-protocol.md` (planned).
-- **amend** `freshness.yaml` — five registrations (the two capability matrices and the three
-  binding files), each `last-reviewed` + `max-age-days: 45` + `upstreams: []`.
-- **amend** `docs/streams/harness-portability/README.md` — status row for 14, wave 6, the
-  cross-repo table, and the "Tool de-house note" wording the briefs currently carry.
-- **amend** `docs/streams/harness-portability/brief-02-drift-debt-authority-flip.md` — rows 2
-  and 2a only, per Task step 6.
+- **amend** `freshness.yaml` — five registrations (the two capability matrices and the three binding files), each `last-reviewed` + `max-age-days: 45` + `upstreams: []`.
+- **amend** `docs/streams/harness-portability/README.md` — status row for 14, wave 6, the cross-repo table, and the "Tool de-house note" wording the briefs currently carry.
+- **amend** `docs/streams/harness-portability/brief-02-drift-debt-authority-flip.md` — rows 2 and 2a only, per Task step 6.
 
 facts:
 - `total-candidate-files: 44` (verified 2026-09-06 by exporting the exact path set from the

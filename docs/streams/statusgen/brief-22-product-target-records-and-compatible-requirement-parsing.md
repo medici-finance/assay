@@ -143,6 +143,22 @@ RISK-VALUE: DERIVED — operational-reference kinds = "journey", "operational-wo
 
 Verification-Attestation: medici-finance/assay#3486 run=264eac3beb7d2d4fbd252a37f5a057efd8e3069c56118dc5ef2f6d4aead29039 source=4b15482af5c6c71b9312ca7df0f23b219de3f840 brief=docs/streams/statusgen/brief-22-product-target-records-and-compatible-requirement-parsing.md model=claude-opus-5-5 tier=strong
 
+### Receipt-bearing container-netns witness — 2026-10-20, claude-opus-5-5 / assay-verifier-app[bot]
+
+Subject: merged main e460818e309a9c585c3f4ddcbb2146ae6f860248. The delivery files from medici-finance/assay#3296 (statusgen/productintent, statusgen/requirements.go and its test, schemas/product-intent-v1.json, spec/registers-v1.md) are byte-identical to the prior subject 4b15482af5c6; only docs/contracts.md rows for other rules changed in the declared scope. Verifier is not the implementer. This is a fresh receipt-bearing pass at current main; the latest prior Evidence on main is the 2026-10-19 container-netns witness subsection above at 4b15482af5c6, landed by medici-finance/assay#3488. Runner: a local docker container, image assay-verify:go1.27 (id sha256:955fd6c46c93, built from golang:1.27.2-trixie, git 2.47), started with `--network none`, GOPROXY=off, GOTOOLCHAIN=local and the engine's default seccomp profile; statusgen and the desk tools were built from this tree inside the container and `statusgen verifyrun --sandbox container-netns` ran for real, per the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). verifyrun exited 0 and wrote the witness table below; `verifyrun --check` in the container reported 3 pass, 0 fail, 0 could-not-run of 3 Verify rows. Admission: `deskdispatch --check-verifier` exited 0 on the host before and after the container run, binding attestation medici-finance/assay#3654.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductIntentLegacyAndRevisionFlow$" . > "$check_output" && grep -F -- "--- PASS: TestProductIntentLegacyAndRevisionFlow " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:4ad9581a91d6 | 2026-10-20 | assay-verifier-app[bot] @ e460818e309a (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductIntentApprovalAndUnknown$" ./productintent/ > "$check_output" && grep -F -- "--- PASS: TestProductIntentApprovalAndUnknown " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:09bf6758cd27 | 2026-10-20 | assay-verifier-app[bot] @ e460818e309a (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestProductIntentSchemaParity$" ./productintent/ > "$check_output" && grep -F -- "--- PASS: TestProductIntentSchemaParity " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:228d75f91292 | 2026-10-20 | assay-verifier-app[bot] @ e460818e309a (on-behalf-of human:ian) (forge-identity) |
+
+Substance: the by-hand runs dated 2026-10-19 at source 4b15482af5c6 (each Verify command exactly as written, on the host and under deny-network, 3/3 named PASS, 13/13 mutations caught) are the by-hand Evidence this witness re-confirms mechanically at e460818e309a; the risk-value enumeration and its two DERIVED verdicts stand, every literal re-read at the same file:line at this source.
+
+**VERIFY: PASS** — all 3 Verify rows pass with 0 fail in the container-netns witness at e460818e309a (verifyrun rc 0, --check 3 pass), on unchanged delivery code whose by-hand Evidence also passed 3/3.
+
+Verification-Attestation: medici-finance/assay#3654 run=27d6f290fc7b6e7e45052e7352234e6ee4ce2f86230a5d77dabeb5d48c3a3801 source=e460818e309a9c585c3f4ddcbb2146ae6f860248 brief=docs/streams/statusgen/brief-22-product-target-records-and-compatible-requirement-parsing.md model=claude-opus-5-5 tier=strong
+
 ## Review
 
 Gate: model; all risk answers no because this slice processes synthetic/explicit offline

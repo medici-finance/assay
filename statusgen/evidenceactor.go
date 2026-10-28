@@ -551,7 +551,10 @@ func isEvidenceHeading(trimmed string) bool {
 // backticked-path check (recordsection.go) reuses this parser rather than
 // carrying a second section detector.
 func sectionLineRange(raw string, isHeading func(trimmed string) bool) (start, end int, ok bool) {
-	lines := strings.Split(raw, "\n")
+	// A terminal newline ends the last physical line; Split's extra empty
+	// element is not a line Git can blame. Remove exactly that delimiter,
+	// retaining real trailing blank lines and unterminated final content.
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
 	head := -1
 	for i, l := range lines {
 		if isHeading(strings.TrimSpace(l)) {

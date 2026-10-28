@@ -37,8 +37,7 @@ id: 6d3dad6c-3dcf-4e4f-b02e-fb171d909da6
 files:
 - `tools/desk/cmd/deskapps/state.go` (transitions), `resume.go`, `status.go`, `verbs.go` (page →
   CLI verbs), tests.
-- `tools/desk/cmd/deskapps/page/` — the throttle banner, the console strip, the Resume / Close
-  buttons, the Retry and Cancel controls.
+- `tools/desk/cmd/deskapps/page/` — the throttle banner, the console strip, the Resume / Close buttons, the Retry and Cancel controls.
 - `docs/desk-tools/deskapps.md` (planned).
 
 single-point-of-failure: the state file is the ONE record resume trusts. The independent layer:

@@ -179,7 +179,7 @@ application APIs; use typed clients at independent authority boundaries. Configu
 resolution does not grant admission. SDK/package extraction is owned by its named brief,
 not silently included in a parser migration. Preserve direct-domain admission tests.
 
-## 5. Performance context — planned perf-v3 extension, 19 October 2026
+## 8. Performance context — local source integration, 19 October 2026
 
 [The attribution specification](../../performance-attribution-spec.md#environment-cli-and-shared-library-seam)
 freezes the shared `--perf-*`/environment bindings, field lifecycle and measurement units.
@@ -194,5 +194,6 @@ uninstrumented boundary until /64 integrates it; they do not invent a second v2-
 Shared TestPerfV3CLIContextPrecedence and per-owner offline help/exit fixtures cover these
 bindings; /17's final suite qualification includes their flow. A standalone module uses
 perfrec directly, never an import of desk internals. No profile means the prior recorder
-behavior, and tool profile cannot carry inherited workflow identity. These are planned
-obligations, not a claim that current binaries accept the flags.
+behavior, and tool profile cannot carry inherited workflow identity. The [maintained-entrypoint inventory](../../performance-entrypoints.json) distinguishes
+parsed recorder handoffs from pending parser and standalone boundaries. This is source
+integration evidence, not a claim about released binaries or deployed adoption.

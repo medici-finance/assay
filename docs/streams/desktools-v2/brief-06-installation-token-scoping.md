@@ -87,7 +87,9 @@ Options:
    their Verify rows to an explicit follow-up before implementing the reduced scope.
 3. **Hold** — no identity-path implementation until the custody design is accepted.
 
-Default if no answer: none. A credential-scoping change never proceeds on silence.
+Default if no answer: none — blocks until answered.
+
+A credential-scoping change never proceeds on silence.
 
 ## Ground rules
 

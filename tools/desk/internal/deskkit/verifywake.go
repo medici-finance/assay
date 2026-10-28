@@ -76,11 +76,11 @@ type WakeReceipt struct {
 	SHA     string `json:"sha"`
 
 	// --- verify-wake-v1 additive fields ---
-	Schema   string `json:"wake_schema,omitempty"` // SchemaWakeV1 on a complete receipt
-	ID       string `json:"receipt_id,omitempty"`  // stable receipt ID (dedupe key)
-	Repo     string `json:"repo,omitempty"`        // owner/repo the brief lives in
-	Verifier string `json:"verifier,omitempty"`    // the TRUSTED WRITER identity, never free text
-	Rows     []int  `json:"rows,omitempty"`        // the Verify-row numbers this receipt holds
+	Schema   string        `json:"wake_schema,omitempty"` // SchemaWakeV1 on a complete receipt
+	ID       string        `json:"receipt_id,omitempty"`  // stable receipt ID (dedupe key)
+	Repo     string        `json:"repo,omitempty"`        // owner/repo the brief lives in
+	Verifier string        `json:"verifier,omitempty"`    // the TRUSTED WRITER identity, never free text
+	Rows     []VerifyRowID `json:"rows,omitempty"`        // the Verify-row numbers this receipt holds
 
 	// Inputs is the declared input scope: input key -> the revision observed at receipt time.
 	// Keys are opaque to the evaluator; the reader interprets them. An empty scope for a
@@ -124,8 +124,8 @@ type DeliveredPR struct {
 
 // RowResult is one entry of a record's row_results list.
 type RowResult struct {
-	Row    int    `json:"row"`
-	Result string `json:"result"`
+	Row    VerifyRowID `json:"row"`
+	Result string      `json:"result"`
 }
 
 // PRsUnknownReasonNoPRDelivery is the one value of prs_unknown_reason today: the brief's
@@ -418,7 +418,7 @@ func NewWakeReceipt(id, repo, brief, verifier, outcome, sha string, rows []int, 
 	toolVersion, blockerKind, blockerRef, predicate, deadline, recheckReason, ts string) WakeReceipt {
 	return WakeReceipt{
 		TS: ts, Brief: brief, Outcome: outcome, SHA: sha,
-		Schema: SchemaWakeV1, ID: id, Repo: repo, Verifier: verifier, Rows: rows,
+		Schema: SchemaWakeV1, ID: id, Repo: repo, Verifier: verifier, Rows: numericVerifyRows(rows),
 		Inputs: inputs, ToolVersion: toolVersion,
 		BlockerKind: blockerKind, BlockerRef: blockerRef, WakePredicate: predicate,
 		Deadline: deadline, RecheckReason: recheckReason,
@@ -519,12 +519,24 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		sum := sha256.Sum256(b)
 		return hex.EncodeToString(sum[:]), true
 	case strings.HasPrefix(input, InputKeyScopePrefix):
-		decl := strings.TrimPrefix(input, InputKeyScopePrefix)
-		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
-		if err != nil {
+		// Key on the declaration, not the key string: a legacy directory key and its
+		// slash form name the same declaration and read the same digest. A kind change
+		// changes the digest, so it wakes; it never reads as missing.
+		decl, _, ok := ParseScopeInputKey(input)
+		if !ok {
 			return "", false
 		}
-		return scope.Shapes[input], true
+		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		if err != nil || len(scope.Shapes) != 1 {
+			return "", false
+		}
+		for _, digest := range scope.Shapes {
+			if digest == "" {
+				return "", false
+			}
+			return digest, true
+		}
+		return "", false
 	default:
 		return "", false
 	}
@@ -711,4 +723,17 @@ func ReadBlocker(raw, defaultRepo string, src IssueStateSource) (BlockerState, s
 		why = "the issue-state read returned no state"
 	}
 	return BlockerCouldNotCheck, why
+}
+
+// numericVerifyRows keeps the existing constructor source-compatible with callers
+// holding numeric rows. Exact suffixed IDs can be supplied in WakeReceipt.Rows.
+func numericVerifyRows(rows []int) []VerifyRowID {
+	if rows == nil {
+		return nil
+	}
+	ids := make([]VerifyRowID, len(rows))
+	for i, row := range rows {
+		ids[i] = VerifyRowID(strconv.Itoa(row))
+	}
+	return ids
 }

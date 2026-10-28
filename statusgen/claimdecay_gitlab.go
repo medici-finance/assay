@@ -297,6 +297,7 @@ func (a gitlabAPI) getMRPage(endpoint string) ([]gitlabMR, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set(a.header, a.token)
+	perfCountHTTP()
 	resp, err := gitlabHTTPDoer.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GitLab API transport error: %v", err)

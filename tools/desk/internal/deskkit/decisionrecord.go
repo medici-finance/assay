@@ -920,7 +920,7 @@ func AppendDecisionRecord(line []byte) error {
 }
 
 // decisionToolSHA is the build's source SHA — the value every audit Entry carries
-// ("unpinned" for an unstamped build).
+// ("unpinned" for a build with neither a link-time stamp nor VCS information).
 func decisionToolSHA() string {
 	s, _ := Version()
 	return s

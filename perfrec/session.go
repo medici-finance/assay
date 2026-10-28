@@ -111,13 +111,15 @@ type Session struct {
 	start  Mark
 	phases []string // bounded, label-shaped, de-duplicated roster
 
-	mu       sync.Mutex
-	phaseN   []int64 // len(phases)+1; the last slot is "other"
-	phaseNs  []int64
-	open     int
-	overlap  bool
-	counts   [len(counterRosterArr)]int64
-	measured [len(counterRosterArr)]bool
+	v3         *V3Data
+	contextSet bool
+	mu         sync.Mutex
+	phaseN     []int64 // len(phases)+1; the last slot is "other"
+	phaseNs    []int64
+	open       int
+	overlap    bool
+	counts     [len(counterRosterArr)]int64
+	measured   [len(counterRosterArr)]bool
 }
 
 // counterRosterArr sizes the per-session counter arrays at compile time.
@@ -297,6 +299,14 @@ func (s *Session) Finish(tool, verb, role string, exit int, sha string) Record {
 			rec.Counters[c] = s.counts[i]
 		} else {
 			rec.Unavailable = append(rec.Unavailable, c)
+		}
+	}
+	if s.v3 != nil {
+		rec.Schema = SchemaV3
+		rec.V3 = cloneV3(s.v3)
+		rec.Role = rec.V3.Attribution.Role
+		if rec.Role == "" {
+			rec.Role = RoleNone
 		}
 	}
 	return rec

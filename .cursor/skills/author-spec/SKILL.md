@@ -2,7 +2,8 @@
 name: author-spec
 description: >-
   Create, adopt, or revise a specification or scoping document before decomposing work
-  into briefs. Use for requirements, system design, architecture proposals, and reviewing
+  into briefs, including useful delivery milestones and their acceptance criteria.
+  Use for requirements, system design, architecture proposals, and reviewing
   an existing spec for decision readiness. Use author-brief for execution decomposition.
 ---
 <!-- GENERATED from plugins/assay/skills/author-spec/SKILL.md by deskinstall --harness cursor. Do not edit. -->
@@ -14,6 +15,16 @@ Specify outcomes, boundaries and consequential decisions; leave execution schedu
 `author-brief`. This skill chooses no product architecture, taxonomy or technology for an
 adopter. Read applicable project guidance for preferred techniques and actual constraints;
 an absent local profile is valid. Do not turn a preference into a binding constraint.
+
+## Bind implementation pickup to current context
+
+Read the [implementation pickup procedure](../../references/implementation-pickup.md).
+Specs and briefs identify the selected target/transition, semantic contracts and
+applicable project engineering guidelines by canonical pointer. Include their
+pickup/resume assessment in the implementation handoff; record revisions, coverage
+and continue/adapt/hold rather than assume the authoring snapshot is still current.
+Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Do not rewrite completed Evidence or let a draft proposal veto approved work.
 
 ## Start from the controlling source
 
@@ -44,6 +55,20 @@ made explicit; or proceed with a reason and residual risk when evidence does not
 expansion. Touching a file is not blanket authority to refactor it. For included work,
 name the expected improvement, behaviour to preserve, and an observable acceptance check.
 Judge safer delivery and reduced recurring complexity, not a lower score in isolation.
+
+## Capture delivery milestones
+
+For stream scoping, staged delivery or a requested milestone revision, read the
+[shared milestone authoring procedure](../../references/milestone-authoring.md),
+including its support check and **Author-spec** section. Capture useful outcomes as
+`<cell>:<repo>:<stream>:m-<NN>`; identify proposed briefs as
+`<cell>:<repo>:<stream>:b-<NN>` per brief
+§3.8, allowing `:b-<NN>@<version>` references and preserving legacy aliases
+and reader compatibility. Full record IDs include cell/repo; colon elisions use context. Capture supported scope, acceptance criteria/evidence and authority,
+versioned prerequisite capabilities and open decisions. Preserve existing promises;
+do not infer milestone order from wave numbers or decompose the execution work here.
+Carry these records into the brief-authoring handoff. While readers lack support,
+capture proposals in the scoping document rather than operational milestone YAML.
 
 ## Resolve the consequential questions
 

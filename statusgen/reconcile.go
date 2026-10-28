@@ -104,7 +104,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
 	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports the rows --apply would write (JSON: wouldApply, present only when the run could look) and writes no stream README; it writes the drift report file only when --report is also given")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
-	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written; with --backfill the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
+	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written and PR admission reads cover only todo/in-progress rows (other rows report unknown/outside scope); with --backfill all rows are audited and the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
 	regenerate := fs.Bool("regenerate", false, "opt-in, with --apply or --backfill: a witnessed move on a driven stream whose only added PROBLEM is the drive-snapshot region it changes is judged with that region re-rendered, listed under the row's `generated`, and --apply also writes the docs/roadmap/drives/<slug>.md page beside the stream README. Off by default: such a row is held, and --apply writes stream READMEs only (what the scheduled reconcile job and deskreconcile commit)")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -132,6 +132,14 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 
 	in := LifecycleInput{Briefs: idents}
+	var writerKeys map[string]bool
+	if *apply && !*backfill {
+		writerKeys, err = trailerWriterKeys(*root)
+		if err != nil {
+			fmt.Fprintf(stderr, "could-not-check trailer-writer scope: %v\n", err)
+			return reconcileUsageErr
+		}
+	}
 	var client *ghClient
 	var classifier *authoringClassifier
 	var authoringUndecided map[string]string
@@ -161,6 +169,9 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		allPulls, allPullsLookedAt, allPullsReason = client.fetchAllPulls(*repo)
 		if allPullsLookedAt {
 			in.PRs = prRecordsFromPulls(allPulls)
+			if writerKeys != nil {
+				in.PRs = trailerWriterPRs(in.PRs, writerKeys)
+			}
 		}
 		in.LookedAt = allPullsLookedAt
 		in.Reason = allPullsReason
@@ -182,6 +193,9 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 
 	cells := DeriveLifecycle(in)
+	if writerKeys != nil && in.LookedAt {
+		markOutsideWriterScope(cells, writerKeys)
+	}
 
 	var lookup handSaidLookup
 	pullsUnread := ""
@@ -279,6 +293,9 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		Held:        held,
 		Unread:      unread,
 		applyRun:    *apply,
+	}
+	if writerKeys != nil && in.LookedAt {
+		res.Reason = "trailer-writer scope: only todo/in-progress rows requested; other rows are unknown, not audited"
 	}
 
 	if *report {
@@ -405,6 +422,9 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		fmt.Fprintf(w, "reconcile: could-not-check — %s\n", res.Reason)
 	} else {
 		fmt.Fprintf(w, "reconcile: %s (%d brief(s))\n", res.Repo, len(res.Briefs))
+		if res.Reason != "" {
+			fmt.Fprintf(w, "reconcile: %s\n", res.Reason)
+		}
 	}
 	for _, b := range res.Briefs {
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, reconcileDetail(b))

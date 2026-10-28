@@ -14,3 +14,20 @@ func (c *Cell) telemetryValue() string {
 func (c *Cell) telemetryEnv(env []string) []string {
 	return envSet(env, envAssayTelemetry, c.telemetryValue())
 }
+
+// The desk launcher owns the assigned function, independent of DESK_LOOP's authority.
+func perfDeskFunction(role string) string {
+	switch role {
+	case "the-desk":
+		return "coordinate"
+	case "worker-desk":
+		return "implement"
+	case "pr-review-desk":
+		return "review"
+	case "verify-desk":
+		return "verify"
+	case "intake-desk":
+		return "triage"
+	}
+	return "other"
+}

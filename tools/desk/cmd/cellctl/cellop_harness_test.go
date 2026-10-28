@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
@@ -47,7 +48,7 @@ func cellopFixtureBinary(t *testing.T) string {
 		out := filepath.Join(tmp, "cellctl")
 		cmd := exec.Command("go", "build", "-tags", "cellopfixture", "-o", out, "./cmd/cellctl")
 		cmd.Dir = filepath.Join(wd, "..", "..")
-		if b, err := cmd.CombinedOutput(); err != nil {
+		if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 			fixtureBinErr = fmt.Errorf("go build -tags cellopfixture ./cmd/cellctl: %v\n%s", err, b)
 			return
 		}

@@ -202,6 +202,7 @@ func omissionNamed(p packet.Packet, name string) (packet.Omission, bool) {
 
 // TestReviewPacketContents: one packet carries everything the review brief asks for, in
 // order, with the head recorded and every piece of other people's text inside the boundary.
+// regression: medici-finance/assay#3755
 func TestReviewPacketContents(t *testing.T) {
 	briefFile := filepath.Join(t.TempDir(), "07-widget.md")
 	if err := os.WriteFile(briefFile, []byte("# Brief 07\n\nBRIEF-TEXT build the widget.\n"), 0o600); err != nil {
@@ -254,7 +255,9 @@ func TestReviewPacketContents(t *testing.T) {
 	fenced := func(sec, label, body string) {
 		t.Helper()
 		s := packetSection(t, text, sec)
-		i := strings.Index(s, open+"`"+label+"` — ")
+		// A label can hold a temp-directory path that a long TMPDIR pushes past the 240-character
+		// value cap: want it as the code-span renderer writes it, cut stated.
+		i := strings.Index(s, open+packet.Code(label)+" — ")
 		if i < 0 {
 			t.Errorf("%s: no boundary opened for %q:\n%s", sec, label, s)
 			return

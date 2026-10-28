@@ -1,0 +1,23 @@
+{
+  "test": "go test -count=1 -timeout=300s -run '^TestReleaseScanPlantedHits$|^TestReleaseBinariesScanClean$' ./internal/regression",
+  "control": {
+    "name": "CONTROL — a flag literal ending in an sk- run sits before alphanumeric data (the v1.0.53 packing, made deterministic)",
+    "file": "internal/cli/performance.go",
+    "old": "\"perf-parent-invocation-id\", \"perf-loop-role\", \"perf-role\"",
+    "new": "\"perf-parent-invocation-id\", \"perf-de\" + \"sk-role\" + \"userArenaStateGC\", \"perf-role\""
+  },
+  "mutations": [
+    {
+      "name": "revert the rename: the shipped flag literal is perf-desk-role again",
+      "file": "internal/cli/performance.go",
+      "old": "\"perf-parent-invocation-id\", \"perf-loop-role\", \"perf-role\"",
+      "new": "\"perf-parent-invocation-id\", \"perf-desk-role\", \"perf-role\""
+    },
+    {
+      "name": "a second, unrelated flag literal in another binary is packed the same way",
+      "file": "cmd/deskperf/report.go",
+      "old": "fs.String(\"desk-role\", \"\", \"v3 workflow originating desk filter\")",
+      "new": "fs.String(\"de\"+\"sk-role\"+\"userArenaStateGC\", \"\", \"v3 workflow originating desk filter\")"
+    }
+  ]
+}

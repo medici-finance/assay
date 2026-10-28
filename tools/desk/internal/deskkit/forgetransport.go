@@ -42,9 +42,10 @@ func githubSeamClient() *http.Client {
 	return &http.Client{Transport: countedTransport{next: githubTransportWrapper(countRoundTrips(http.DefaultTransport))}}
 }
 
-// countingTransport counts each HTTP round-trip for the opt-in local perf record
-// (perf.go) and delegates. It never inspects, buffers, logs or modifies a
-// request or a response: one atomic add, then the wrapped transport's own answer verbatim.
+// countingTransport counts each actual HTTP round-trip for the local perf record
+// (perf.go) and delegates. An explicitly supplied invocation observer additionally
+// wraps response-body lifetime without reading ahead, buffering or changing its
+// bytes/errors. No observer retains the existing count-and-delegate path.
 // It lives here, beside the transport seam, so the perf files themselves import no network
 // package at all.
 // countedTransport marks a composed adapter whose leaf already counts attempts.
@@ -59,7 +60,7 @@ type countingTransport struct{ next http.RoundTripper }
 
 func (c countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	perfCountForgeCall()
-	return c.next.RoundTrip(req)
+	return observeRoundTrip(c.next, req)
 }
 
 // countRoundTrips wraps rt (http.DefaultTransport when nil) in the counting transport. A

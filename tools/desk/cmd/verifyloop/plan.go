@@ -317,6 +317,8 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 			return nil, rerr
 		}
 		doc.configured = len(roots)
+		// A reused loop cannot carry an earlier pass's admitted roots forward.
+		v.Roots = nil
 		for _, rc := range roots {
 			pr := planRoot{Repo: rc.Repo, Queue: baseOff}
 			abs, err := deskkit.ResolveRoot(rc)
@@ -327,7 +329,10 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 				continue
 			}
 			pr.Path = abs
-			if err := preflightRoot(abs); err != nil {
+			stop := v.performance.phase("preflight")
+			err = preflightRoot(abs)
+			stop()
+			if err != nil {
 				pr.State, pr.Reason = rootSkipped, err.Error()
 				doc.Skipped++
 				doc.Roots = append(doc.Roots, pr)
@@ -347,15 +352,23 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 				r.Queue, r.QueueReason = baseUnreadable, "root not read: "+r.State
 				continue
 			}
+			stop := v.performance.phase("base-queue")
 			b := readBase(r.Path)
+			stop()
 			bases[r.Path] = &b
 			r.Queue, r.QueueReason = b.state, b.reason
 		}
 	}
 
-	items, err := v.SelectQueue()
-	if err != nil {
-		return nil, deskkit.Unverifiable("cannot read the Awaiting queue", err)
+	var items []loopengine.Item
+	// An empty admitted multi-root set is not the legacy single-root mode.
+	// Keep its coverage gaps, but do no queue/source/provider work for it.
+	if !o.multi || len(v.Roots) > 0 {
+		var err error
+		items, err = v.SelectQueue()
+		if err != nil {
+			return nil, deskkit.Unverifiable("cannot read the Awaiting queue", err)
+		}
 	}
 	doc.Counts.Awaiting = len(items)
 
@@ -373,6 +386,8 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 		return &baseLookup{state: baseUnreadable, reason: "root not read"}
 	}
 
+	stopClassify := v.performance.phase("classify")
+	defer stopClassify()
 	for _, it := range items {
 		pi := planItem{ID: it.ID, Repo: payloadValue(it, "repo"), Root: payloadValue(it, "root"), Authority: authNone}
 		// author != runner is a STRUCTURAL engine guard, shown here for transparency.

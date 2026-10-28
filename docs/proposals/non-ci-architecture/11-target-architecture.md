@@ -1,6 +1,6 @@
 # Assay’s future architecture
 
-**Status: future architecture we are moving towards. Updated 16 October 2026.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
+**Status: future architecture we are moving towards. Updated 21 October 2026; includes the requested extensible JSON amendment.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
 
 The target starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
 
@@ -429,7 +429,7 @@ Command breaks are allowed; authoritative state and historical evidence still re
 
 This design makes a cell service central to **online operation**, while keeping pure evaluation and offline authoring usable without it. That is a larger change than improving the existing CLIs. It adds a PostgreSQL service, explicit reconstruction and operating responsibility in exchange for removing repeated scans, divergent decisions and ad hoc recovery. The first implementation carries an [existing regression floor](15-regression-from-day-one.md).
 
-Preserve separate role authority, operator-only credential custody, pure library reuse and retirement after consumers move. A shared online coordination/API service and any unified operator CLI need precise amendments to existing command/process contracts; permission for command breaks does not approve pooling credentials. The [public library-first contract](https://github.com/medici-finance/assay/blob/f9327a5954d57e786464e244a8e9c06f695d980d/docs/library-first.md) keeps online statusgen reads behind `deskread`; replacing that particular command seam needs an explicit contract amendment before activation.
+Preserve separate role authority, operator-only credential custody, pure library reuse and retirement after consumers move. A shared online coordination/API service and any unified operator CLI need precise amendments to existing command/process contracts; permission for command breaks does not approve pooling credentials. The [public library-first contract](https://github.com/medici-finance/assay/blob/f9327a5954d57e786464e244a8e9c06f695d980d/docs/library-first.md) keeps online statusgen reads behind `deskread`; replacing that particular command seam needs an explicit contract amendment before activation. *(Amended 25 October 2026: that amendment exists. The driver's [ruling on #2395](https://github.com/medici-finance/assay/issues/2395#issuecomment-6404972196), recorded as `docs/streams/decisions/DR-forge-library.md`, supersedes `DR-forge-neutral-36`. One shared forge library for reads and writes replaces the `deskread` seam for statusgen's forge calls; it holds the role-and-repo credential in a private field with no ambient fallback, and it is a narrow package with named consumers, not deskkit exported wholesale. Activation stays behind the human gates of desktools-v2/75 and /77.)*
 
 Do not retain every old constraint by inertia, or erase it by implication. The [migration proposal](13-migration-and-decisions.md) names the decisions and affected plans to reconcile. The [future-state model](12-future-state-model.md) makes subsequent amendments discoverable and revision-bound.
 
@@ -453,6 +453,28 @@ profile; broker selection and stronger client identity are separate qualified ch
 This amends the catch-all communications disposition above, not the authority of other
 domains. The four comms-core extraction briefs are real prerequisites for their named
 consumers; they do not block every R1–R8 package or unrelated supported-path fixes.
+
+## Proposed assessment-profile alignment — 15 October 2026
+
+[Performance and architecture profiles](../../streams/review-profiles/spec.md) apply
+this direction to changed designs and enduring operational subjects. Architecture's
+lead question is whether the PR moves toward the applicable future state; performance
+asks whether equivalent results can use less work/contention or a better algorithm.
+The assessment binds to the exact target revision, approval status and migration stage;
+this addendum neither expands earlier ratification nor activates new review policy.
+
+Definitions live with reviewed planning/quality definitions; pure policy selects
+applicability; the existing runtime and future single cell controller own attempts,
+budgets and cadence. Isolated workers produce canonical evidence, existing review/
+decision owners judge it, and continuing operations evaluates later exposure/outcomes.
+Context packets use scoped revision manifests; forge reads can reuse exact-SHA source
+queries without caching mutable approval state indefinitely. Optional performance data
+is a separate, consented observation copy, never acceptance or budget authority.
+
+Local/manual calibration works before managed adoption. Later confirmed observations
+may feed deduplicated issues and bounded repair draft PRs through existing admission,
+effect custody, independent review/verification and post-exposure assessment. No new
+scheduler, finding ledger, autonomous merger or architecture-decision authority arises.
 
 ## Tool families and CI
 
@@ -496,3 +518,53 @@ The perf-v3 service measurements also cover the planned query/cache layer: calle
 logical requests and latency, per-handler/cache/coalescing work, and actual direct/passthrough
 or background provider requests/cost. Keep these observation kinds distinct and charge shared
 refreshes once; see the [boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries).
+
+## Local write policy — amendment, 18 October 2026
+
+The proposed [shared write-policy contract](../../write-policy.md) places deterministic
+write-isolation evaluation in `deskcore/writepolicy`, with writeguard retained as the
+command-hook adapter. Managed workspace owners supply validated allocation context;
+the harness/container still confines actual filesystem access. This adds no generic
+security service and merges no push, credential, process or cleanup authority.
+Delivery: desktools-v2/66, then managed consumer integration/qualification. This amendment is proposed, not part of an earlier ratification.
+
+Target-consumer clarification, 19 October 2026: graph-execution/22 directly consumes
+/66 for the local harness boundary and independent sandbox proof. desktools-v2/31's
+parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
+medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
+parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.
+
+## Extensible JSON contracts — requested amendment, 21 October 2026
+
+The future architecture uses a stable versioned core and independently versioned
+extensions for durable records, component APIs and machine-readable outputs. Optional
+observations can evolve without replacing an entire record; unsupported required
+capabilities, authority semantics and acceptance requirements still refuse. Strict
+producer validation, privacy bounds and immutable historical evidence remain mandatory.
+
+The [contract census and transition policy](29-extensible-json-contracts.md) names
+existing owners and affected JSON families, including precedents already supporting
+additive fields or optional extensions. Perf-v4 is the first concrete migration:
+retain v1/v2/v3 readers, qualify the new reader before selecting producers, and direct
+future performance upgrades to v4. This supersedes v3 as the *future format target*
+in the earlier performance amendment, not its completed implementation or evidence.
+
+## Shared candidate and priority planning — requested 23 October 2026
+
+The [existing efficiency specification](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+owns the candidate-observation plus explicit current-policy/time/capacity plan contract.
+Both prose and discrete desks consume the same role-qualified pure planner; existing
+work/policy evaluators retain their meanings. Runtime coordination consumes ordered
+proposals, rechecks admission and owns attempts; provider effects retain credential custody.
+No new scheduler, per-role independent ranker, universal replacement score or policy store.
+
+Use uncapped authorized source coverage, visible held/unknown/unmapped work, stable aliases
+and policy/evaluator revisions. A presentation cap is not a full candidate set. Slot refill
+and priority edits reevaluate supplied observations without automatically re-enumerating GH.
+R6 refreshes invalidated/due source observations once per admitted scope; final consequential
+checks stay fresh. Portfolio allocation remains advisory until its own qualified migration.
+
+Delivery reuses desk-tools/39–45 and /51, graph-execution/27, desktools-v2's existing typed
+query/custody boundaries and forge-neutral/37–43. Existing adopter role cutovers qualify
+same-input prose/discrete parity. The ranked request model and A11–A12 acceptance live in
+the efficiency spec; this pointer grants no new activation or revision-bound approval.

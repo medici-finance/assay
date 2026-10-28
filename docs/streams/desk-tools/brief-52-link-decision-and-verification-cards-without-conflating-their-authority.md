@@ -61,7 +61,9 @@ Options:
 2. Request corrections and keep the change pending.
 3. Hold the change.
 
-Default if no answer: hold.
+Default if no answer: none — blocks until answered.
+
+Hold the change.
 
 ## Task
 

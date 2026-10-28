@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestDoraJSON|TestChangeFailureRate' -count=1 -timeout 120s",
+  "test": "go test . -run 'TestDoraJSON|TestChangeFailureRate|TestCFR' -count=1 -timeout 120s",
   "control": {
     "name": "CONTROL — an uncomputed metric serializes a fabricated 0 instead of null (the headline honesty invariant: a blank DORA number must never publish as a measured zero)",
     "file": "dorajson.go",
@@ -10,8 +10,8 @@
     {
       "name": "aggregate double-counts a finding once per affected stream (findingsPerGroup's per-group semantics wrongly reused in a pooled ratio)",
       "file": "dorajson.go",
-      "old": "\t\tif !f.Resolved {\n\t\t\tunresolved++\n\t\t}",
-      "new": "\t\tif !f.Resolved {\n\t\t\tunresolved += len(f.Affects)\n\t\t}"
+      "old": "\t\tif findingInWindow(f, since, until) {\n\t\t\tdefects++\n\t\t}",
+      "new": "\t\tif findingInWindow(f, since, until) {\n\t\t\tdefects += len(f.Affects)\n\t\t}"
     },
     {
       "name": "the result cap truncates to the OLDEST records instead of the most recent (a capped delivery metric would report stale intervals)",
@@ -40,7 +40,7 @@
     {
       "name": "the unlinked proxy declares itself measured (a proxy published as a canonical DORA number)",
       "file": "dorajson.go",
-      "old": "\tneeds := []string{\n\t\t\"linkage between a change and the incident it caused; this is an unlinked proxy over completed work items, recorded reversions and open defect records\",\n\t}",
+      "old": "\tneeds := []string{\n\t\t\"linkage between a change and the incident it caused; this is an unlinked proxy over completed work items, recorded reversions and defect records dated in the stated window\",\n\t}",
       "new": "\tvar needs []string"
     },
     {
@@ -48,6 +48,36 @@
       "file": "dorajson.go",
       "old": "\t\tif !inWindow(ts, since, until) {\n\t\t\tcontinue\n\t\t}",
       "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "the numerator reverts to every currently-open finding, whatever its date (an all-time backlog over a windowed denominator: a ratio with no upper bound)",
+      "file": "dorajson.go",
+      "old": "\t\tif findingInWindow(f, since, until) {\n\t\t\tdefects++\n\t\t}",
+      "new": "\t\tif !f.Resolved {\n\t\t\tdefects++\n\t\t}"
+    },
+    {
+      "name": "a resolved in-window finding is dropped from the numerator (fixing a defect would un-fail the change that caused it)",
+      "file": "dorajson.go",
+      "old": "\t\tif findingInWindow(f, since, until) {\n\t\t\tdefects++\n\t\t}",
+      "new": "\t\tif findingInWindow(f, since, until) && !f.Resolved {\n\t\t\tdefects++\n\t\t}"
+    },
+    {
+      "name": "a finding dated on the since day is excluded (the window's start made exclusive)",
+      "file": "dorajson.go",
+      "old": "\treturn !opened.Before(since) && opened.Before(until)",
+      "new": "\treturn opened.After(since) && opened.Before(until)"
+    },
+    {
+      "name": "a finding dated on the until day is counted (the window's end made inclusive)",
+      "file": "dorajson.go",
+      "old": "\treturn !opened.Before(since) && opened.Before(until)",
+      "new": "\treturn !opened.Before(since) && !opened.After(until)"
+    },
+    {
+      "name": "an undated finding is counted as if it were in the window (an unplaceable record silently inflating the numerator)",
+      "file": "dorajson.go",
+      "old": "\tif !ok {\n\t\treturn false\n\t}",
+      "new": "\tif !ok {\n\t\treturn true\n\t}"
     }
   ]
 }

@@ -493,6 +493,9 @@ var obHex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // obAssertOverrideRow pins the override row's shape: the rule id and a digest, never the text.
 func obAssertOverrideRow(t *testing.T, row map[string]any, rule, span string) {
 	t.Helper()
+	if res, _ := row["result"].(string); res != ResultLocal {
+		t.Fatalf("outbound override row result = %q, want %q (a local receipt, not a charged write)", res, ResultLocal)
+	}
 	detail, _ := row["detail"].(string)
 	if !strings.Contains(detail, "rule="+rule) {
 		t.Fatalf("audit row does not name the rule %s: %q", rule, detail)
@@ -568,6 +571,7 @@ var obClass = map[string]string{
 	"CloseIssue": "notext", "CloseIssueTyped": "notext", "ReopenIssue": "notext",
 	"MarkReadyForReview": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
 	"OpenMergeHold": "notext", "RunWorkflow": "notext", "ApproveGate": "notext",
+	"RetryRun": "notext",
 
 	"GetPullRequest": "read", "GetIssue": "read", "GetIssueTyped": "read",
 	"OpenChangeForBranch": "read", "SearchIssues": "read", "ListLabels": "read",
@@ -580,7 +584,7 @@ var obClass = map[string]string{
 	"GetCommit": "read", "ListFileCommits": "read", "ListCommitChanges": "read",
 	"CompareRefs": "read", "SearchOpenChanges": "read", "ListWorkflowFiles": "read",
 	"ChangeDiff": "read", "RefExists": "read", "MatchingRefs": "read",
-	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read",
+	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read", "RunLog": "read",
 	"PushTransportHint": "read",
 	"ListIssues":        "read", "IssueStateEvents": "read", "ListChangeCommits": "read",
 	"RepoDefaultBranch": "read", "IssueLabelHistory": "read",

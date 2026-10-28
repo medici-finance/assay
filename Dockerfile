@@ -40,10 +40,10 @@
 # =============================================================================
 
 # ---- Builder --------------------------------------------------------------
-# golang:1.27.2 is the fleet's single Go toolchain and covers the `go 1.27.0`
+# golang:1.27.3 is the fleet's single Go toolchain and covers the `go 1.27.0`
 # line of every go.mod (#2918). Alpine base, CGO off -> fully static Linux binaries.
 ARG BINARY_STAGE=builder
-FROM golang:1.27.2-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 # Target GOOS/GOARCH. Defaulted so a plain `docker build` produces linux/amd64
 # without buildx; a buildx build would override these per platform.
@@ -70,6 +70,9 @@ COPY comms/ ./comms/
 # The perfrec module (the shared perf-v1 writer) is the same kind of stdlib-only sibling:
 # statusgen resolves it through `replace ../perfrec`, tools/desk through `replace ../../perfrec`.
 COPY perfrec/ ./perfrec/
+# Test-support replacement module required when loading either module graph.
+COPY gitquiet/ ./gitquiet/
+COPY deskcore ./deskcore/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

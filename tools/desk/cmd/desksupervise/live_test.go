@@ -181,3 +181,17 @@ func TestClaimListOptsUnlistedRepoIsCouldNotCheck(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d (Unverifiable): %v", code, deskkit.ExitUnverifiable, err)
 	}
 }
+
+// An ALIAS-HELD line describes a different claim: its owner= is never the key's holder.
+func TestWithoutAliasLinesKeepsOwnerOfTheKeyItself(t *testing.T) {
+	free := "dispatch-claim: FREE a--pr-5 (no ref)\n" +
+		"dispatch-claim: ALIAS-HELD b--pr-5 — owner=other state=claimed (same PR as a--pr-5)"
+	if got := claimShowField(claimOwnerFieldRe, withoutAliasLines(free)); got != "" {
+		t.Errorf("a FREE key took the alias's owner: %q", got)
+	}
+	held := "dispatch-claim: HELD a--pr-5 owner=me state=dispatched\n" +
+		"dispatch-claim: ALIAS-HELD b--pr-5 — owner=other (same PR as a--pr-5)"
+	if got := claimShowField(claimOwnerFieldRe, withoutAliasLines(held)); got != "me" {
+		t.Errorf("owner = %q, want me", got)
+	}
+}

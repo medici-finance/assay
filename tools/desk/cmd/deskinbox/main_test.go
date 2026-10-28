@@ -15,7 +15,9 @@ import (
 func withFetchDetail(t *testing.T, fn func(deskkit.ForgeRepo, int) issueDetail) {
 	t.Helper()
 	prev := fetchDetail
-	fetchDetail = fn
+	fetchDetail = func(repo deskkit.ForgeRepo, number int, _ ...deskkit.RequestObserver) issueDetail {
+		return fn(repo, number)
+	}
 	t.Cleanup(func() { fetchDetail = prev })
 }
 

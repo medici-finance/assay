@@ -15,7 +15,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 authored: 2026-09-23 by the-desk (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-09-23: examples for installing assay via Argo CD and Flux, aimed at helping adopters run it in their own clusters"
@@ -34,6 +34,8 @@ layering: "Flat config, no code: a Kustomize Component over brief 06's base. It 
 
 ## Context
 files:
+- `containers/k8s/check.sh` (planned) — unattended offline mode and negative fixtures
+- `containers/k8s/testdata/unattended/` (planned) — hostile overlay fixtures
 - `containers/k8s/components/unattended/kustomization.yaml` (planned) (new, `kind: Component`)
 - `containers/k8s/components/unattended/*.yaml` (new: one CronJob + one PVC per desk, or a generator the implementer picks)
 - `containers/k8s/overlays/unattended/kustomization.yaml` (planned) (new reference overlay: base + this component — the thing the Verify rows build)
@@ -63,6 +65,13 @@ facts:
 3. Add the "Unattended mode" subsection to `docs/docker.md`: what it is, how to include the component, schedule patching, the deadline relationship, the PVC hand-off note, and how to read a tick's result from the Job's logs (the summary line).
 4. Write the changelog fragment.
 
+## Offline validation amendment — 20 October 2026
+
+This brief owns extending /06's planned `containers/k8s/check.sh` (planned) with `--unattended` and
+negative overlay fixtures. Render and cached-schema validation are strictly offline;
+`kubectl apply --dry-run=client` is not used as an offline guarantee. Preserve the other
+existing Verify obligations. A missing pinned validator/schema reports could-not-check.
+
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
@@ -72,7 +81,7 @@ facts:
 | 4 | check | `kubectl kustomize containers/k8s/overlays/unattended \| grep -c 'concurrencyPolicy: Forbid'` | 5 |
 | 5 | check | `kubectl kustomize containers/k8s/overlays/unattended \| grep -c '/run/secrets/assay'` | ≥ 5 — every CronJob keeps the PEM mount |
 | 6 | check +neighbour | `kubectl kustomize containers/k8s/ \| grep -c '^kind: StatefulSet'` | 5 — the base without the component is unchanged |
-| 7 | check | `kubectl apply --dry-run=client -k containers/k8s/overlays/unattended` | exit 0 |
+| 7 | check | `sh containers/k8s/check.sh --unattended` | exit 0; pinned local render/cached-schema and structured validation of the unattended overlay, no API/discovery call |
 | 8 | check | `grep -c -e 'ghs_' -e 'ghp_' -e 'github_pat_' -e 'sk-ant-' -e 'PRIVATE KEY' $(find containers/k8s/components containers/k8s/overlays -name '*.yaml'); test $? -eq 1` | exit 0 — no credential-shaped value committed |
 | 9 | gate:model +flow | In a throwaway `kind` cluster: create the namespace and Secrets with obviously fake values, `kubectl apply -k containers/k8s/overlays/unattended`, then `kubectl -n <ns> create job --from=cronjob/worker-desk t1` and read the pod log | the pod runs the entrypoint, reaches its credential preflight and exits non-zero with the preflight's refusal naming the bad credential. This proves the mount, env and args wiring end to end without a real key. Record the log line. No docker → could-not-check, never pass. |
 | 10 | gate:model +dereference | Compare the CronJob's `activeDeadlineSeconds` and `ASSAY_TICK_DEADLINE` against the exit-reserve arithmetic in `plugins/assay/references/tick-contract.md` | deadline > tick deadline + reserve, with the numbers and the contract line quoted in Evidence |
@@ -85,3 +94,14 @@ Row 9 is the negative-path row: fake credentials must be refused by the entrypoi
 
 ## Review
 Gate: model (all four risk answers no — deployment templates with no credential values; nothing touches a shared cluster). The reviewer checks rows 3, 6 and 9 and that the base is unchanged when the component is not listed.
+
+## Interactive cohort routing — 20 October 2026
+
+[The current target](../../proposals/non-ci-architecture/28-interactive-kubernetes-desks.md)
+requires separately interactive standing desks. Tick-mode CronJobs remain an opt-in distinct
+profile, never the default or an additional writer for an interactive role binding. The
+interactive cohort does not depend on CronJob/GitOps examples. /27's CNPG packaging consumes
+/06's base directly; it must not require /12's component to exist. CNPG administration and
+restore terminal capabilities remain separate from the /28 operator and all desk identities.
+Existing tasks, migration gates, recovery obligations and Verify rows otherwise stand,
+except row 7 now uses the explicitly owned offline unattended checker above.

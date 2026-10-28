@@ -51,8 +51,7 @@ files:
 - `statusgen/evidenceactor.go` — the accepted-actor policy and the commit-address matcher.
 - `statusgen/verifyrun.go` — `executingRunner` and the witness `Runner` cell.
 - `statusgen/rosterconfig.go` — statusgen's own copy of the roster parser.
-- `docs/streams/forge-neutral/identity.md` (planned) — created by `forge-neutral/02`; this
-  brief adds statusgen's two consumers to its per-forge table.
+- `docs/streams/forge-neutral/identity.md` (planned) — created by `forge-neutral/02`; this brief adds statusgen's two consumers to its per-forge table.
 
 single-point-of-failure: the accepted-actor comparison is the one control standing between a
 self-attested Evidence row and a believed one. Two independent layers: the comparison itself

@@ -27,7 +27,7 @@ func (f *fakeForge) ListOpenIssues(deskkit.ForgeRepo) ([]deskkit.IssueSummary, e
 func withForge(t *testing.T, byRepo map[string]*fakeForge) {
 	t.Helper()
 	prev := forgeFor
-	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	forgeFor = func(repo string, _ ...deskkit.RequestObserver) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		owner, name, _ := splitRepo(repo)
 		fr := deskkit.ForgeRepo{Owner: owner, Name: name}
 		f, ok := byRepo[repo]

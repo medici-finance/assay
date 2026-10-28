@@ -9,12 +9,8 @@ func StampTimelineFor(f Forge, repo ForgeRepo, number int, kind TargetKind) (Sta
 	if kind == TargetIssue {
 		var issue *Issue
 		issue, err = f.GetIssueTyped(repo, number, TargetIssue)
-		if err == nil && issue == nil {
-			err = fmt.Errorf("missing issue")
-		}
 		if err == nil {
-			tl.Present = issue.Labels
-			tl.Events, err = f.ListIssueLabelEvents(repo, number)
+			return stampTimelineForIssue(f, repo, number, issue)
 		}
 	} else if kind == TargetChange {
 		var pr *PullRequest
@@ -29,6 +25,24 @@ func StampTimelineFor(f Forge, repo ForgeRepo, number int, kind TargetKind) (Sta
 	} else {
 		err = fmt.Errorf("unknown stamp target kind")
 	}
+	if err != nil {
+		return tl, Unverifiable("cannot read model stamp provenance", err)
+	}
+	return tl, nil
+}
+
+type issueLabelEventReader interface {
+	ListIssueLabelEvents(ForgeRepo, int) ([]LabelEvent, error)
+}
+
+// The caller supplies a typed issue observation; history still comes from the forge.
+func stampTimelineForIssue(f issueLabelEventReader, repo ForgeRepo, number int, issue *Issue) (StampTimeline, error) {
+	if issue == nil {
+		return StampTimeline{}, Unverifiable("cannot read model stamp provenance", fmt.Errorf("missing issue"))
+	}
+	tl := StampTimeline{Present: issue.Labels}
+	var err error
+	tl.Events, err = f.ListIssueLabelEvents(repo, number)
 	if err != nil {
 		return tl, Unverifiable("cannot read model stamp provenance", err)
 	}

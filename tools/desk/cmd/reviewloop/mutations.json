@@ -64,8 +64,8 @@
     {
       "name": "coalescing keys stop carrying the head — a PR that pushes a new head is never re-dispatched (the drain-ified failure)",
       "file": "internal/reviewflow/coalesce.go",
-      "old": "\t\t\tk := Key{Repo: r.Repo, PR: r.Number, Head: r.Head, Verb: r.Rule.Verb}",
-      "new": "\t\t\tk := Key{Repo: r.Repo, PR: r.Number, Head: \"\", Verb: r.Rule.Verb}"
+      "old": "\t\t\tk := Key{Provider: r.Provider, Host: r.Host, Repo: r.Repo, PR: r.Number, Head: r.Head, Verb: r.Rule.Verb}",
+      "new": "\t\t\tk := Key{Provider: r.Provider, Host: r.Host, Repo: r.Repo, PR: r.Number, Head: \"\", Verb: r.Rule.Verb}"
     },
     {
       "name": "coalescing stops collapsing repeat deltas — one PR at one head is dispatched once per sweep",
@@ -82,8 +82,8 @@
     {
       "name": "the planner regains a full-history decoder dependency instead of using board observations only",
       "file": "cmd/reviewloop/plan.go",
-      "old": "\tverbs := Coalesce([]*Board{board})",
-      "new": "\t_, _ = deskkit.LoadEntries()\n\tverbs := Coalesce([]*Board{board})"
+      "old": "\tverbs := planned.Verbs",
+      "new": "\t_, _ = deskkit.LoadEntries()\n\tverbs := planned.Verbs"
     },
     {
       "name": "MERGE-NOW acquires an outward verb — the review desk starts acting on a merge signal that is the human's",

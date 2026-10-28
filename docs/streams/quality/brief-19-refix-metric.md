@@ -41,8 +41,7 @@ files:
 - NEW `qualgen/regressionlink.go` (planned) + `regressionlink_test.go` (planned) — the
   pluggable `RegressionLinkage` seam and its reference adapter.
 - NEW `qualgen/refix.go` (planned) + `refix_test.go` (planned) — the re-fix join and metric.
-- `qualgen/report.go` — a `## Re-fix rate (regression-suite effectiveness)` section in
-  `renderReport`.
+- `qualgen/report.go` — a `## Re-fix rate (regression-suite effectiveness)` section in `renderReport`.
 - NEW `qualgen/testdata/refix/` (planned) — fixture DefectFix / DefectTrace records and
   brief files.
 - `changelog/<branch-slug>.md` — the per-PR fragment.
@@ -348,6 +347,25 @@ Verification-Attestation: medici-finance/assay#3507 run=eb01579337a1559a9e186d8c
 The substance is the by-hand Evidence block of 2026-10-15 at a39ad90497c1 (`a39ad90497c10cdc16413695c3ce9b74c2b098d6`), where all 7 rows passed by hand with 0 fail and the row 4 mutant was killed. This witness re-runs the same 7 Command cells network-off at the current source. Row 7's rendered output hashes to sha256 65f316141cb7, the same as the earlier darwin witnesses.
 
 **VERIFY: PASS** — all 7 Verify rows pass with 0 fail in the Linux network-off container witness (container-netns) at 3add8a9ae315, which covers the qualgen changes since the 2026-10-15 by-hand record; the #1800 environment hold is cleared by this witness.
+
+### Non-implementer verifier run — 2026-10-20 claude-opus-5-5 verifier at b73d90d774fc (receipt-bearing re-pass, Linux network-off container witness, 7/7)
+
+The runner is not the implementer. This is a receipt-bearing re-pass at the current merged main `b73d90d774fca8aec8974ef410da63ebcb10eece`. The latest prior Evidence on main is the 2026-10-19 container witness at 3add8a9ae315 above, landed by medici-finance/assay#3513. The witness below is a mechanical re-run of every Verify row by `statusgen verifyrun --sandbox container-netns`, not dry. It ran in a local docker container: image assay-verify:go1.27 (id sha256:955fd6c46c93, FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e, git 2.47), `--network none`, sandbox=container-netns, the engine's default seccomp profile, `GOPROXY=off`, `GOTOOLCHAIN=local` and `KUBECONFIG=/dev/null`. It used a throwaway clone of the verify worktree at that commit, and statusgen and the desk tools were built inside the container from the same tree. Admission came from `deskdispatch --check-verifier`. It exited 0 before the run and again after it, binding run 34aaf7807110 to this source, brief, model and tier (attestation issue medici-finance/assay#3640). The witness is offered under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). No commit under the qualgen directory lands between 3add8a9ae315 and this source, and the author-brief skill still carries `regression-of`, so the pickup precondition holds.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_RegressionOfLink_Counted$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_RegressionOfLink_Counted.out" 2>&1 && grep -F -e '--- PASS: TestRefix_RegressionOfLink_Counted' "${TMPDIR:-/tmp}/q19-TestRefix_RegressionOfLink_Counted.out"` | pass exit=0 sandbox=container-netns | sha256:0d8963f66123 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_SameDefectClass_Counted$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_SameDefectClass_Counted.out" 2>&1 && grep -F -e '--- PASS: TestRefix_SameDefectClass_Counted' "${TMPDIR:-/tmp}/q19-TestRefix_SameDefectClass_Counted.out"` | pass exit=0 sandbox=container-netns | sha256:1ef19648e219 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_EarlierFixAfterInducer_NotCounted$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_EarlierFixAfterInducer_NotCounted.out" 2>&1 && grep -F -e '--- PASS: TestRefix_EarlierFixAfterInducer_NotCounted' "${TMPDIR:-/tmp}/q19-TestRefix_EarlierFixAfterInducer_NotCounted.out"` | pass exit=0 sandbox=container-netns | sha256:e21bfa879efb | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestRefix_NoLinkageConfigured_CouldNotMeasure$' -v ./... > "${TMPDIR:-/tmp}/q19-TestRefix_NoLinkageConfigured_CouldNotMeasure.out" 2>&1 && grep -F -e '--- PASS: TestRefix_NoLinkageConfigured_CouldNotMeasure' "${TMPDIR:-/tmp}/q19-TestRefix_NoLinkageConfigured_CouldNotMeasure.out"` | pass exit=0 sandbox=container-netns | sha256:c4dbc2aaf6dc | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd qualgen && go test -count=1 -timeout 300s -run '^TestReport_RefixSection_Renders$' -v ./... > "${TMPDIR:-/tmp}/q19-TestReport_RefixSection_Renders.out" 2>&1 && grep -F -e '--- PASS: TestReport_RefixSection_Renders' "${TMPDIR:-/tmp}/q19-TestReport_RefixSection_Renders.out"` | pass exit=0 sandbox=container-netns | sha256:d6a3e04e9b69 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd qualgen && go build -o "${TMPDIR:-/tmp}/qualgen19" . && "${TMPDIR:-/tmp}/qualgen19" report --out .. > "${TMPDIR:-/tmp}/quality19.md" && grep -F 'Re-fix rate' "${TMPDIR:-/tmp}/quality19.md"` | pass exit=0 sandbox=container-netns | sha256:65f316141cb7 | 2026-10-20 | assay-verifier-app[bot] @ b73d90d774fc (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3640 run=34aaf7807110de95ad851cecfdd68ee2d44d654dfe1afe57909576856cde175c source=b73d90d774fca8aec8974ef410da63ebcb10eece brief=docs/streams/quality/brief-19-refix-metric.md model=claude-opus-5-5 tier=strong
+
+The substance is the by-hand Evidence block of 2026-10-15 at a39ad90497c1 (`a39ad90497c10cdc16413695c3ce9b74c2b098d6`), where all 7 rows passed by hand with 0 fail and the row 4 mutant was killed. This witness re-runs the same 7 Command cells network-off at the current source. Rows 1–5 and 7 reproduce the 2026-10-19 output hashes exactly. Row 6's captured output hash differs (d6a3e04e9b69 against caa5ce191da3), but the row's own PASS-line assertion held with exit 0 and its test source is unchanged since that record.
+
+**VERIFY: PASS** — all 7 Verify rows pass with 0 fail in the Linux network-off container witness (container-netns) at b73d90d774fc, and `statusgen verifyrun --check` reports 7 pass, 0 fail, 0 could-not-run.
 
 ## Review
 Gate: model — all four risk answers are no. It is a read-only metric over committed

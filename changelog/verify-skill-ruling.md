@@ -1,2 +1,0 @@
-### Changed
-- The `verify-desk` skill now states that a verdict judges the deliverable, not the hardening of the environment it ran in: a `gate: model` brief with no `risk: yes`, held only on where it could run, closes `verified` when every Verify row passes with 0 fail on a working runner, with a mechanical re-run witness that names the runner class actually used. A row whose own assertion is about the environment still runs where it can be exercised, and a failing or never-run row, `gate: human`, `risk: yes` and tool refusals stay held, asked as a one-line "does it work?".

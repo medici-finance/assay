@@ -95,10 +95,10 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
   # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl; the corroborate
   # job refuses any other tarball. Bump both together.
-  GO_LINUX_AMD64_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+  GO_LINUX_AMD64_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
 
 jobs:
   lint:
@@ -128,6 +128,7 @@ jobs:
       - name: statusgen --lint
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
@@ -229,10 +230,9 @@ jobs:
           parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
           rm -rf "${RUNNER_TEMP}/base"
           mkdir -p "${RUNNER_TEMP}/base"
-          # statusgen's go.mod replaces forgeread and perfrec with the siblings ../forgeread and
-          # ../perfrec, so the base tree needs those directories beside it. A base that predates
-          # a module has none.
-          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread perfrec) | tar -x -C "${RUNNER_TEMP}/base"
+          # statusgen's local replacements need their sibling modules beside it, all
+          # from the same trusted base commit. ls-tree omits modules absent at older bases.
+          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" deskcore forgeread gitquiet perfrec) | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.
@@ -323,12 +323,14 @@ jobs:
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
         env:
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           GH_TOKEN: ${{ github.token }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
       - name: Commit STATUS.md if it changed
         env:
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           # the retry loop re-runs statusgen against the new head
           GH_TOKEN: ${{ github.token }}

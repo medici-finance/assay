@@ -1397,6 +1397,7 @@ var (
 )
 
 func runCorroborate(prsArg string) int {
+	defer perfPhase("corroborate")()
 	if prsArg == "" {
 		fmt.Fprintln(os.Stderr, "statusgen: --corroborate requires at least one PR number (comma-separated)")
 		return 2

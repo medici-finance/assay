@@ -11,12 +11,12 @@ import (
 // preserves that caller's wire shape; detail, screen and flow stay with the caller.
 // A failed repo returns partial data AND exit 2, just as the shell did. The typed
 // listing refuses page overflow instead of silently losing the oldest issues.
-func discoveryJSON(out, stderr io.Writer, repos []string) int {
+func discoveryJSON(out, stderr io.Writer, repos []string, observers ...deskkit.RequestObserver) int {
 	if err := validateRepos(repos); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitRefused
 	}
-	rows, failures := fetchQueue(repos)
+	rows, failures := fetchQueue(repos, observers...)
 	type label struct {
 		Name string `json:"name"`
 	}

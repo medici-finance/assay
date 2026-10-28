@@ -92,8 +92,7 @@ files:
 - `tools/desk/cmd/deskfile/exec.go`, `tools/desk/cmd/deskfile/deskfile.go` — issue filing.
 - `tools/desk/cmd/deskclose/exec.go`, `tools/desk/cmd/deskclose/github.go`,
   `tools/desk/cmd/deskclose/authority.go` — issue/change closing and the authority read.
-- `tools/desk/cmd/deskevidence/github.go`, `tools/desk/cmd/deskevidence/deskevidence.go` —
-  the App mint and the Evidence write.
+- `tools/desk/cmd/deskevidence/github.go`, `tools/desk/cmd/deskevidence/deskevidence.go` — the App mint and the Evidence write.
 - `tools/desk/internal/forgeban/allowlist.go` — three permit rows removed, ceiling lowered.
 
 single-point-of-failure: for the three ambient-credential verbs the single control is WHICH

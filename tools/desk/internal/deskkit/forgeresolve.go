@@ -727,8 +727,8 @@ func checkCustodyFileMode(path string, links CustodyLinkPolicy) (string, error) 
 // is read for whichever forge resolution already determined. There is no parameter, flag,
 // or environment variable anywhere in this package by which a caller supplies the forge
 // itself (TestForgeForRejectsCallerSuppliedForge).
-func ForgeFor(repo ForgeRepo, role string) (Forge, error) {
-	f, _, err := ResolveForge(repo, role)
+func ForgeFor(repo ForgeRepo, role string, observers ...RequestObserver) (Forge, error) {
+	f, _, err := ResolveForge(repo, role, observers...)
 	return f, err
 }
 
@@ -740,7 +740,11 @@ func ForgeFor(repo ForgeRepo, role string) (Forge, error) {
 //
 // It is the same function as ForgeFor in every other respect, including that there is no
 // parameter, flag or environment variable by which a caller supplies the forge.
-func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
+func ResolveForge(repo ForgeRepo, role string, observers ...RequestObserver) (Forge, ForgeResolution, error) {
+	var observer RequestObserver
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
 	res, err := resolveForgeKind(repo)
 	if err != nil {
 		return nil, ForgeResolution{}, err
@@ -762,9 +766,9 @@ func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
 	// TestForgeSingleConstructionSite pins that each literal is OutboundChecked's argument.
 	switch res.Kind {
 	case ForgeGitHub:
-		return OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, role), res, nil
+		return OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient(), Observer: observer}, role), res, nil
 	case ForgeGitLab:
-		return OutboundChecked(&GitLabForge{Token: tok, BaseURL: base}, role), res, nil
+		return OutboundChecked(&GitLabForge{Token: tok, BaseURL: base, Observer: observer}, role), res, nil
 	default:
 		// Unreachable given resolveForgeKind only ever returns a value from
 		// wellKnownForgeHosts or cfg.RepoForges (both constrained to the two known kinds

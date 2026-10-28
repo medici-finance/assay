@@ -79,7 +79,9 @@ Options:
    compatibility; grant no new credential, role, endpoint or deployment authority.
 2. **Hold or narrow the change** — identify the unsupported boundary and revise it before acceptance.
 
-Default if no answer: none — acceptance remains pending. The implementer presents the concrete
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. The implementer presents the concrete
 compatibility and negative-path results before this decision; authoring and offline fixtures
 do not activate the change.
 

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -195,29 +196,93 @@ func TestChangeFailureRateCountsAMultiStreamFindingOnce(t *testing.T) {
 		doneEntry("d/01", "2026-08-08T00:00:00Z"),
 	}
 	findings := []Finding{
-		{ID: "F-01", Affects: []string{"a", "b", "c"}, Resolved: false},
+		{ID: "F-01", Date: "2026-08-06", Affects: []string{"a", "b", "c"}, Resolved: false},
 	}
 	feed := computeDoraJSONFeed(nil, history, findings, since, until, now, defaultDoraJSONLimit)
 
 	cf := feed.Metrics[doraChangeFail]
-	if got := cf.Sample["open_defect_notes"]; got != 1 {
-		t.Fatalf("open_defect_notes = %v, want 1 — one finding is one signal however many streams it affects", got)
+	if got := cf.Sample["defect_notes_in_window"]; got != 1 {
+		t.Fatalf("defect_notes_in_window = %v, want 1 — one finding is one signal however many streams it affects", got)
 	}
 	if cf.Value == nil || *cf.Value != 0.25 {
 		t.Fatalf("change_failure_rate = %v, want 0.25 (1 finding / 4 completed)", cf.Value)
 	}
 }
 
-func TestChangeFailureRateExcludesResolvedFindings(t *testing.T) {
+// cfrDefects runs the feed over one completed item plus the given findings and
+// returns the change_failure_rate metric: one denominator, so the numerator is
+// exactly the findings counted.
+func cfrDefects(t *testing.T, findings []Finding) doraJSONMetric {
+	t.Helper()
 	since, until, now := djWindow(t)
 	history := []HistoryEntry{doneEntry("a/01", "2026-08-05T00:00:00Z")}
-	findings := []Finding{
-		{ID: "F-01", Affects: []string{"a"}, Resolved: true},
-		{ID: "F-02", Affects: []string{"a"}, Resolved: false},
-	}
 	feed := computeDoraJSONFeed(nil, history, findings, since, until, now, defaultDoraJSONLimit)
-	if got := feed.Metrics[doraChangeFail].Sample["open_defect_notes"]; got != 1 {
-		t.Errorf("open_defect_notes = %v, want 1 — a resolved finding is not an open defect", got)
+	return feed.Metrics[doraChangeFail]
+}
+
+// cfrValue renders a metric's value for a failure message: "null" when it is
+// uncomputed, otherwise the number itself rather than a pointer address.
+func cfrValue(m doraJSONMetric) string {
+	if m.Value == nil {
+		return "null"
+	}
+	return strconv.FormatFloat(*m.Value, 'g', -1, 64)
+}
+
+// The numerator is windowed like the denominator: a finding still open but
+// recorded before the window says nothing about the window's changes. Counting
+// it made the ratio grow with the open backlog instead of with failures.
+//
+// regression: #3854
+func TestCFROldOpenFindingExcluded(t *testing.T) {
+	cf := cfrDefects(t, []Finding{
+		{ID: "F-01", Date: "2026-07-15", Affects: []string{"a"}, Resolved: false},
+	})
+	if got := cf.Sample["defect_notes_in_window"]; got != 0 {
+		t.Errorf("defect_notes_in_window = %v, want 0 — a finding dated before the window is not a failure of the window's work", got)
+	}
+	if got := cfrValue(cf); got != "0" {
+		t.Errorf("change_failure_rate = %s, want 0 (0 in-window findings / 1 completed)", got)
+	}
+}
+
+// A finding recorded inside the window is a failure signal for that window's
+// work whether or not it has been fixed since: resolving it does not un-fail
+// the change that caused it.
+//
+// regression: #3854
+func TestCFRResolvedInWindowCounts(t *testing.T) {
+	cf := cfrDefects(t, []Finding{
+		{ID: "F-01", Date: "2026-08-10", Affects: []string{"a"}, Resolved: true},
+		{ID: "F-02", Date: "2026-08-11", Affects: []string{"a"}, Resolved: false},
+	})
+	if got := cf.Sample["defect_notes_in_window"]; got != 2 {
+		t.Errorf("defect_notes_in_window = %v, want 2 — resolved and open in-window findings both count", got)
+	}
+	if got := cfrValue(cf); got != "2" {
+		t.Errorf("change_failure_rate = %s, want 2 (2 in-window findings / 1 completed)", got)
+	}
+}
+
+// The window is [since, until): a finding dated on the since day counts, one
+// dated on the until day does not, and the last day inside the window counts.
+//
+// regression: #3854
+func TestCFRFindingWindowBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		date string
+		want float64
+	}{
+		{"2026-07-31", 0}, // the day before since
+		{"2026-08-01", 1}, // since itself: inclusive
+		{"2026-08-31", 1}, // the last day inside the window
+		{"2026-09-01", 0}, // until itself: exclusive
+		{"", 0},           // undated: cannot be placed, never counted
+	} {
+		cf := cfrDefects(t, []Finding{{ID: "F-01", Date: tc.date, Affects: []string{"a"}}})
+		if got := cf.Sample["defect_notes_in_window"]; got != tc.want {
+			t.Errorf("finding dated %q: defect_notes_in_window = %v, want %v", tc.date, got, tc.want)
+		}
 	}
 }
 
@@ -242,7 +307,7 @@ func TestChangeFailureRateCountsReversions(t *testing.T) {
 // 0% — "nothing was completed" must never publish as "nothing ever failed".
 func TestChangeFailureRateWithNoDenominatorIsCouldNotCheck(t *testing.T) {
 	since, until, now := djWindow(t)
-	findings := []Finding{{ID: "F-01", Affects: []string{"a"}, Resolved: false}}
+	findings := []Finding{{ID: "F-01", Date: "2026-08-10", Affects: []string{"a"}, Resolved: false}}
 	feed := computeDoraJSONFeed(nil, nil, findings, since, until, now, defaultDoraJSONLimit)
 
 	cf := feed.Metrics[doraChangeFail]

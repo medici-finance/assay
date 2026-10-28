@@ -1,69 +1,69 @@
 {
-  "test": "go test ./cmd/desktoken/... -count=1",
+  "test": "go test ./cmd/desktoken/... ./internal/credential/... -count=1",
   "control": {
     "name": "CONTROL — invert the 0600 custody-mode check on the token cache (a 0600 cache becomes the only UNACCEPTABLE one)",
-    "file": "cmd/desktoken/desktoken.go",
+    "file": "internal/credential/github.go",
     "old": "\t\tif fi.Mode().Perm() != 0o600 {",
     "new": "\t\tif fi.Mode().Perm() == 0o600 {"
   },
   "mutations": [
     {
       "name": "grant the per-role rotation lock unconditionally (concurrent mints for one role stop being serialised and race for the credential again)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\t\tlerr := deskkit.TryLockExclusive(f)\n\t\tif lerr == nil {",
-      "new": "\t\tlerr := deskkit.TryLockExclusive(f)\n\t\tif true {"
+      "file": "internal/credential/gitlab.go",
+      "old": "\t\tlerr := lk.TryLock(f)\n\t\tif lerr == nil {",
+      "new": "\t\tlerr := lk.TryLock(f)\n\t\tif true {"
     },
     {
       "name": "drop the lock acquisition from the rotate path entirely (read-rotate-write runs unserialised)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tlock, lerr := acquireGitLabRotateLock(role, path)\n\tif lerr != nil {\n\t\treturn lerr\n\t}\n\tdefer lock.release()",
+      "file": "internal/credential/gitlab.go",
+      "old": "\tlock, lerr := acquireGitLabRotateLock(ad.Lock, req.LockWait, role, path)\n\tif lerr != nil {\n\t\treturn Credential{}, \"\", lerr\n\t}\n\tdefer lock.release()",
       "new": "\t_ = acquireGitLabRotateLock"
     },
     {
       "name": "ignore --no-rotate and rotate anyway (a read-only/dry-run lookup resumes spending a destructive rotation)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tif !rotate {\n\t\t// The custody VALUE is read only to assert",
-      "new": "\tif false {\n\t\t// The custody VALUE is read only to assert"
+      "file": "internal/credential/gitlab.go",
+      "old": "\tif !req.Rotate {\n\t\tcur, cerr := readGitLabCustody(target)",
+      "new": "\tif false {\n\t\tcur, cerr := readGitLabCustody(target)"
     },
     {
       "name": "log a --no-rotate lookup as a rotation (the audit trail records rotations that never happened)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tac.verb = \"rotate\"\n\tif !rotate {\n\t\tac.verb = \"custody-read\"\n\t}",
-      "new": "\tac.verb = \"rotate\""
+      "file": "internal/credential/gitlab.go",
+      "old": "\tverb := \"rotate\"\n\tif !req.Rotate {\n\t\tverb = \"custody-read\"\n\t}",
+      "new": "\tverb := \"rotate\""
     },
     {
       "name": "print the rotated token beside the path on the success route (the leak assertion must fire, with --forge still wired)",
       "file": "cmd/desktoken/gitlab.go",
-      "old": "\tfmt.Println(path)\n\texp := result.ExpiresAt",
-      "new": "\tfmt.Println(path, result.Token)\n\texp := result.ExpiresAt"
+      "old": "\tfmt.Println(cred.Path)\n\treturn nil",
+      "new": "\tfmt.Println(cred.Path, cred.Secret.Reveal())\n\treturn nil"
     },
     {
       "name": "rename the rotated token over the custody PATH instead of the link's resolved target (a symlinked custody layout is replaced by a regular file and the provisioned file is stranded holding the invalidated token)",
-      "file": "cmd/desktoken/gitlab.go",
+      "file": "internal/credential/gitlab.go",
       "old": "\tif err := os.Rename(tmpName, target); err != nil {",
       "new": "\ttarget = path\n\tif err := os.Rename(tmpName, target); err != nil {"
     },
     {
       "name": "make the write-target resolver report every custody as unlinked (a symlinked layout is written over instead of through)",
-      "file": "cmd/desktoken/gitlab.go",
+      "file": "internal/credential/gitlab.go",
       "old": "\tif fi.Mode()&os.ModeSymlink == 0 {\n\t\treturn path, false, nil\n\t}",
       "new": "\tif fi.Mode()&os.ModeSymlink == 0 || true {\n\t\treturn path, false, nil\n\t}"
     },
     {
       "name": "leak the new token as a recovery hint on the LOCKOUT route (persistence failed, so the operator is 'helpfully' handed the value)",
-      "file": "cmd/desktoken/gitlab.go",
+      "file": "internal/credential/gitlab.go",
       "old": "\tif werr := writeVerifyGitLabToken(path, result.Token); werr != nil {",
       "new": "\tif werr := writeVerifyGitLabToken(path, result.Token); werr != nil {\n\t\tfmt.Fprintln(os.Stderr, \"recovery hint:\", result.Token)"
     },
     {
       "name": "drop the LOCKOUT message's not-printed assurance (the branch that promises no token reaches output)",
-      "file": "cmd/desktoken/gitlab.go",
+      "file": "internal/credential/gitlab.go",
       "old": "\t\t\t\t\"is NOT printed.\", path, werr, path), nil)",
       "new": "\t\t\t\t\"is withheld.\", path, werr, path), nil)"
     },
     {
       "name": "put the caller's live token in the rotate HTTP error (an error string stops being safe to print)",
-      "file": "cmd/desktoken/gitlab.go",
+      "file": "internal/credential/gitlab.go",
       "old": "\t\treturn nil, fmt.Errorf(\"rotate HTTP %d: %s\", resp.StatusCode, strings.TrimSpace(string(body)))",
       "new": "\t\treturn nil, fmt.Errorf(\"rotate HTTP %d (sent %s): %s\", resp.StatusCode, current, strings.TrimSpace(string(body)))"
     },
@@ -75,51 +75,51 @@
     },
     {
       "name": "skip the post-rotation self-check (a rotated token the forge does not yet accept is returned as good, the first-read 401 comes back)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {",
-      "new": "\tstatus, serr := 200, error(nil)\n\tif serr != nil {"
+      "file": "internal/credential/gitlab.go",
+      "old": "\tstatus, scerr := GitLabSelfCheck(ad.HTTP, base, result.Token)\n\tif scerr != nil {",
+      "new": "\tstatus, scerr := 200, error(nil)\n\tif scerr != nil {"
     },
     {
       "name": "accept any self-check status as verified (a 401 on the new token still prints the path as good)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tif status != 200 {\n\t\treturn gitlabSelfCheckFailure(role, base, path, current, status)\n\t}",
-      "new": "\tif status != 200 && false {\n\t\treturn gitlabSelfCheckFailure(role, base, path, current, status)\n\t}"
+      "file": "internal/credential/gitlab.go",
+      "old": "\tif status != 200 {\n\t\treturn Credential{}, \"\", gitlabSelfCheckFailure(",
+      "new": "\tif status != 200 && false {\n\t\treturn Credential{}, \"\", gitlabSelfCheckFailure("
     },
     {
       "name": "treat a self-check the transport could not make as a pass (an unreachable forge returns the path as good)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {",
-      "new": "\tstatus, serr := gitlabSelfCheck(base, result.Token)\n\tif serr != nil {\n\t\tstatus, serr = 200, nil\n\t}\n\tif serr != nil {"
+      "file": "internal/credential/gitlab.go",
+      "old": "\tstatus, scerr := GitLabSelfCheck(ad.HTTP, base, result.Token)\n\tif scerr != nil {",
+      "new": "\tstatus, scerr := GitLabSelfCheck(ad.HTTP, base, result.Token)\n\tif scerr != nil {\n\t\tstatus, scerr = 200, nil\n\t}\n\tif scerr != nil {"
     },
     {
       "name": "drop the group/other-WRITE refusal from the private-key mode rule (a 0660/0620 key becomes acceptable)",
-      "file": "cmd/desktoken/desktoken.go",
+      "file": "internal/credential/github.go",
       "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
       "new": "\treturn perm&0o004 == 0"
     },
     {
       "name": "drop the other-READ refusal from the private-key mode rule (a 0644/0604 key becomes acceptable)",
-      "file": "cmd/desktoken/desktoken.go",
+      "file": "internal/credential/github.go",
       "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
       "new": "\treturn perm&0o022 == 0"
     },
     {
       "name": "accept every private-key mode (the checker stops being a guard at all)",
-      "file": "cmd/desktoken/desktoken.go",
+      "file": "internal/credential/github.go",
       "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
       "new": "\treturn true"
     },
     {
       "name": "coverage: a failed repository page becomes a SHORT list read as complete (drop the exit-6 refusal; return the partial list)",
       "file": "cmd/desktoken/coverage.go",
-      "old": "\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif rerr != nil {",
-      "new": "\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif false && rerr != nil {"
+      "old": "\t\trepos, rerr := listInstallationRepos(tok.Token, authClient)\n\t\tif rerr != nil {",
+      "new": "\t\trepos, rerr := listInstallationRepos(tok.Token, authClient)\n\t\tif false && rerr != nil {"
     },
     {
       "name": "coverage: print the enumeration token beside the installation header (the no-token-leak assertion must fire)",
       "file": "cmd/desktoken/coverage.go",
-      "old": "\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif rerr != nil {\n\t\t\t// A page read that failed",
-      "new": "\t\tfmt.Println(tok.Token)\n\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif rerr != nil {\n\t\t\t// A page read that failed"
+      "old": "\t\trepos, rerr := listInstallationRepos(tok.Token, authClient)\n\t\tif rerr != nil {\n\t\t\t// A page read that failed",
+      "new": "\t\tfmt.Println(tok.Token)\n\t\trepos, rerr := listInstallationRepos(tok.Token, authClient)\n\t\tif rerr != nil {\n\t\t\t// A page read that failed"
     },
     {
       "name": "coverage: --repo matches on the bare name, not full_name (a same-named repo in another org matches the wrong installation)",
@@ -147,63 +147,123 @@
     },
     {
       "name": "drop the App-name half of the owner-sidecar comparison (two Apps on one account start sharing a token cache file)",
-      "file": "cmd/desktoken/installidcache.go",
+      "file": "internal/credential/installid.go",
       "old": "\treturn a == appName && strings.EqualFold(o, owner)",
       "new": "\treturn strings.EqualFold(o, owner)"
     },
     {
       "name": "relax the cache probe's single-match rule to first-match (two distinct fresh candidates stop being ambiguous and one is picked)",
-      "file": "cmd/desktoken/installidcache.go",
+      "file": "internal/credential/installid.go",
       "old": "\tif len(found) != 1 {",
       "new": "\tif len(found) == 0 {"
     },
     {
       "name": "drop the 0600 custody check on a probe candidate (a world-readable token file becomes reusable)",
-      "file": "cmd/desktoken/installidcache.go",
+      "file": "internal/credential/installid.go",
       "old": "\t\t\tif serr != nil || fi.IsDir() || fi.Mode().Perm() != 0o600 {",
       "new": "\t\t\tif serr != nil || fi.IsDir() {"
     },
     {
       "name": "drop the reuse-window check on a probe candidate (a token past its 50-minute window is adopted)",
-      "file": "cmd/desktoken/installidcache.go",
-      "old": "\t\t\tif time.Since(fi.ModTime()) >= cacheMaxAge {",
+      "file": "internal/credential/installid.go",
+      "old": "\t\t\tif now.Sub(fi.ModTime()) >= ReuseWindow {",
       "new": "\t\t\tif false {"
     },
     {
       "name": "remove the account character-set check (a malformed account name is interpolated into a cache path)",
-      "file": "cmd/desktoken/installidcache.go",
+      "file": "internal/credential/installid.go",
       "old": "\t\tdefault:\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
       "new": "\t\tdefault:\n\t\t}\n\t}\n\treturn true\n}"
     },
     {
       "name": "widen the install-id cache TTL tenfold (a stale installation id is trusted for ten days)",
-      "file": "cmd/desktoken/installidcache.go",
+      "file": "internal/credential/installid.go",
       "old": "const installIDMaxAge = 24 * time.Hour",
       "new": "const installIDMaxAge = 240 * time.Hour"
     },
     {
       "name": "let --fresh honour the caches (a re-mint after a permission change becomes a no-op for the rest of the reuse window)",
-      "file": "cmd/desktoken/desktoken.go",
-      "old": "\t\tif !*fresh {\n\t\t\tif id, ok := probeCachedInstallID(role, appName, owner); ok {",
-      "new": "\t\tif true {\n\t\t\tif id, ok := probeCachedInstallID(role, appName, owner); ok {"
+      "file": "internal/credential/github.go",
+      "old": "\t\tif !req.Fresh {\n\t\t\tif id, ok := probeCachedInstallID(req.Paths, ad.Now(), role, appName, owner); ok {",
+      "new": "\t\tif true {\n\t\t\tif id, ok := probeCachedInstallID(req.Paths, ad.Now(), role, appName, owner); ok {"
     },
     {
       "name": "drop the 404 invalidation route (a stale cached installation id fails every call for its whole TTL)",
-      "file": "cmd/desktoken/desktoken.go",
-      "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
-      "new": "\t\tif false && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+      "file": "internal/credential/github.go",
+      "old": "\t\tif installIDFromCache && errors.Is(xerr, ErrInstallationGone) && owner != \"\" {",
+      "new": "\t\tif false && errors.Is(xerr, ErrInstallationGone) && owner != \"\" {"
     },
     {
       "name": "unscope the 404 invalidation from cached ids (an operator's <PREFIX>_INSTALL_ID failure deletes a cache it never used)",
-      "file": "cmd/desktoken/desktoken.go",
-      "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
-      "new": "\t\tif errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+      "file": "internal/credential/github.go",
+      "old": "\t\tif installIDFromCache && errors.Is(xerr, ErrInstallationGone) && owner != \"\" {",
+      "new": "\t\tif errors.Is(xerr, ErrInstallationGone) && owner != \"\" {"
+    },
+    {
+      "name": "review SEC-1 — desktoken's GitLab calls follow redirects again (rotation and self-check forward PRIVATE-TOKEN)",
+      "file": "internal/credential/gitlab.go",
+      "old": "\tcp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }\n\treturn &cp",
+      "new": "\treturn &cp"
     },
     {
       "name": "publish the token cache in place instead of by temp-file rename (a concurrent reader can see an empty or partial token and fall back to the ambient login)",
-      "file": "cmd/desktoken/desktoken.go",
-      "old": "\tif beforeTokenCacheRename != nil {\n\t\tbeforeTokenCacheRename()\n\t}\n\tif err := os.Rename(tmpName, path); err != nil {\n\t\treturn fmt.Errorf(\"rename temp over %s: %w\", path, err)\n\t}",
-      "new": "\tif err := os.WriteFile(path, []byte(token), 0o600); err != nil {\n\t\treturn fmt.Errorf(\"write in place %s: %w\", path, err)\n\t}\n\tif beforeTokenCacheRename != nil {\n\t\tbeforeTokenCacheRename()\n\t}"
+      "file": "internal/credential/github.go",
+      "old": "\tif beforeRename != nil {\n\t\tbeforeRename()\n\t}\n\tif err := os.Rename(tmpName, path); err != nil {\n\t\treturn fmt.Errorf(\"rename temp over %s: %w\", path, err)\n\t}",
+      "new": "\tif err := os.WriteFile(path, []byte(token), 0o600); err != nil {\n\t\treturn fmt.Errorf(\"write in place %s: %w\", path, err)\n\t}\n\tif beforeRename != nil {\n\t\tbeforeRename()\n\t}"
+    },
+    {
+      "name": "record a cache reuse (every reuse writes a ledger row; the reuse-writes-nothing rule breaks)",
+      "file": "internal/credential/github.go",
+      "old": "}, detail, true, nil // no network call, no mint, nothing changed — no record",
+      "new": "}, detail, false, nil // no network call, no mint, nothing changed — no record"
+    },
+    {
+      "name": "admit any host at the lower boundary (an App JWT may be sent to a non-GitHub host)",
+      "file": "internal/credential/github.go",
+      "old": "\tif req.Host != GitHubHost {",
+      "new": "\tif false && req.Host != GitHubHost {"
+    },
+    {
+      "name": "admit any scope at the lower boundary (a narrowed or widened token passes as the installation grant)",
+      "file": "internal/credential/github.go",
+      "old": "\tif req.Scope != \"\" && req.Scope != ScopeInstallation {",
+      "new": "\tif false && req.Scope != \"\" && req.Scope != ScopeInstallation {"
+    },
+    {
+      "name": "stop requiring the Guard adapter (a caller with no guard mints with no kill-switch)",
+      "file": "internal/credential/credential.go",
+      "old": "\tcase a.Guard == nil:",
+      "new": "\tcase false:"
+    },
+    {
+      "name": "skip the live guard in the GitHub operation (STOP no longer refuses a mint)",
+      "file": "internal/credential/github.go",
+      "old": "\tif gerr := ad.Guard(); gerr != nil {\n\t\treturn Credential{}, gerr // the guard recorded its own refusal",
+      "new": "\tif gerr := ad.Guard(); false && gerr != nil {\n\t\treturn Credential{}, gerr // the guard recorded its own refusal"
+    },
+    {
+      "name": "stop refusing foreign GitLab custody (another role's PAT is read through a link)",
+      "file": "internal/credential/gitlab.go",
+      "old": "\tif e := refuseForeignCustody(role, path, target); e != nil {",
+      "new": "\tif e := refuseForeignCustody(role, path, target); false && e != nil {"
+    },
+    {
+      "name": "ignore the recorded expiry on reuse (an expired cache inside the 50-minute window is handed out)",
+      "file": "internal/credential/github.go",
+      "old": "\t\tif age < ReuseWindow && (!recorded || now.Before(expires)) {",
+      "new": "\t\tif age < ReuseWindow && (recorded || !recorded) {"
+    },
+    {
+      "name": "write the owner sidecar in place (a link at .owner is written through, a wider existing mode is kept)",
+      "file": "internal/credential/installid.go",
+      "old": "\t_ = WriteTokenCache(OwnerSidecarPath(tokenPath), appName+\" \"+owner+\"\\n\", nil)",
+      "new": "\t_ = os.WriteFile(OwnerSidecarPath(tokenPath), []byte(appName+\" \"+owner+\"\\n\"), 0o600)"
+    },
+    {
+      "name": "write the perms sidecar in place (a link at .perms is written through, a wider existing mode is kept)",
+      "file": "internal/credential/github.go",
+      "old": "\t_ = WriteTokenCache(PermsPath(tokenPath), b.String(), nil)",
+      "new": "\t_ = os.WriteFile(PermsPath(tokenPath), []byte(b.String()), 0o600)"
     }
   ]
 }

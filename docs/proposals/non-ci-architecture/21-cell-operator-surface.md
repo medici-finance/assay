@@ -1,5 +1,25 @@
 # Cell operator surface
 
+**Status:** approved
+**Routes-to:** docs/streams/cell-api/
+
+Approval provenance: the maintainer merged medici-finance/assay#2890 on 14 October 2026
+at 20:35:08 UTC (merge `716a74574ffe5d404f727dcac7c98a1e6b1bd5b3`), the ratification
+venue specified below. This header records that existing ratification; it adds no
+requirement or mechanism. Everything below this header is the text that merge ratified,
+unchanged. Its "proposed", "pending ratification", "relayed" and "parked" wording (the R7
+allocation, the `send` row of the verb classification, authentication requirement 4, the
+recorded preferences and the ratification section) is the historical pre-merge account,
+not evidence that ratification is outstanding. The approval covers option 1's scope only:
+it selects no concrete issuer, credential or caller mechanism, which stays human-gated in
+the `cell-api` briefs.
+
+Current scheduling — a post-ratification note, not part of what that merge ratified.
+The maintainer's own unpark request (20 October 2026): https://github.com/medici-finance/assay/issues/3669#issuecomment-6302690781
+The `cell-api` stream is active for implementation; the parked-at-creation allocation
+in the body below is history. Individual dependencies, design decisions,
+R5/R6 runtime qualification and approval-based-apply gates retain their scope.
+
 **Architectural amendment, 14 October 2026, proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer.** Extends the [target](11-target-architecture.md), [delivery sequence](16-delivery-sequence.md) and [amendment manifest](20-amendment-manifest.md). It classifies a set of cell-level operator verbs as either interim bridges on today's tools or target-owned capabilities, defines the runner-lifecycle states and transitions they need, and records requirements for the Cell API. It implements nothing and activates nothing. It allocates one owner: R7 goes to a new, parked `cell-api` stream, which is the manifest's own new-stream option. Future-architecture changes need the maintainer's own revision-bound ratification (see [Ratification](#human-decision-and-ratification)).
 
 ## Outcome and architectural delta

@@ -63,7 +63,7 @@ image.
 
 ## How it's built and published
 
-- `Dockerfile` (repo root) is a multi-stage build: a `golang:1.27.2-alpine`
+- `Dockerfile` (repo root) is a multi-stage build: a `golang:1.27.3-alpine`
   builder compiles every binary `CGO_ENABLED=0` (static) with the same version
   stamps the release workflows use, and a small `alpine` final stage carries
   the binaries plus `git`, `gh`, and `ca-certificates` under a non-root user.
@@ -95,8 +95,8 @@ the assay plugin on hand) uses a separate family of images under
   `/opt/assay/plugin`;
 - a first-run installer for the **interactive agent CLI** (installed into the
   persistent volume rather than baked — see `containers/README.md`);
-- a **non-root `desk` user** and a declared **`VOLUME /work`** for persistent
-  working state.
+- a **non-root `desk` user** (UID/GID pinned to 999) and a declared
+  **`VOLUME /work`** for persistent working state.
 
 It is a **glibc** base (`debian:bookworm-slim`), not Alpine, because the agent
 CLI and Python wheels need glibc; the reused desk-tools binaries are static and
@@ -184,3 +184,99 @@ umbrella version), and runs `containers/scripts/layer-secret-scan.sh` against al
 six images before any push. A hit stops image and GitHub release publication.
 Build them locally with the commands in
 [`containers/README.md`](../containers/README.md).
+
+## Kubernetes compatibility profile
+
+[`containers/k8s/`](../containers/k8s/README.md) packages the same five desk
+images as separate interactive StatefulSets. Each role has its own Pod, named
+container, App-PEM/model Secret references and retained `/work` PVC. Images are
+pinned by digest, each checked against the releasing build's own
+`release-images.json` kept in the package, agent service-account token
+mounting is disabled, ingress is denied, and no Service or Ingress exposes a terminal. Storage class and deployment
+values belong in an adopter overlay. The package requires no Windows host,
+compose stack, CronJob, workflow controller or desktop multiplexer.
+
+This is the **compatibility** credential profile under
+[`containers/secrets.md`](../containers/secrets.md), whose /02 human acceptance
+remains separate. Terminal users can read the mounted App PEM and model
+credentials: terminal access is transitive key custody. Each desk's container log
+is also its session transcript: the TTY output stream includes echoed input and
+anything commands print, and Kubernetes captures it in the runtime log. The
+[Kubernetes logging architecture](https://kubernetes.io/docs/concepts/cluster-administration/logging/)
+exposes container logs through `pods/log` and node log collection. Restrict
+`pods/log` alongside `pods/attach`, `pods/exec` and `pods/ephemeralcontainers` on
+`assay-desks` to principals authorized for that role's key custody. Protect node
+log files and their readers accordingly. Exclude the namespace from node log
+shipping, or treat every downstream collector, log store, export/backup and reader
+as part of the same custody boundary, with appropriate retention and access
+controls. Do not send desk transcripts to a generic shared logging service whose
+readers lack that custody authority. The installation operator must qualify these
+paths before admitting the profile; neither NetworkPolicy nor offline rendering
+proves log isolation. Legacy images do not
+satisfy the managed target's isolation. Agent-execution/09 owns managed boot;
+[desk-containers/28](streams/desk-containers/brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md)
+will provide the separate in-cluster `cellctl` operator and must refuse this
+compatibility binding. A Running Pod is not an admitted role owner.
+
+An installation operator first provisions ten **distinct** role credential
+Secrets out of band, selects persistent storage and capacity, pre-provisions the
+approved agent CLI/work inputs, and reviews an overlay. Model credentials,
+endpoint and model selection come from each role's runtime model Secret. The
+empty Secret skeletons in `secrets.example.yaml` are excluded from Kustomize,
+are not deployable and must never be applied. Required key names are comments;
+provision their values out of band and never add them to the repository. See the package README for
+non-root volume permissions and file-based credential profile limits.
+
+The base allows only selected DNS egress; it deliberately cannot reach the
+Internet until the operator qualifies and adds exact forge/model endpoints.
+NetworkPolicy addresses are not hostname filters. The adopter must maintain
+endpoint IPs or qualify a restrictive egress gateway, check the DNS selector,
+and verify its CNI enforces the policy. There is no blanket Internet exception
+for installing tools. These choices and effective isolation remain operator
+qualification work, not a claim made by a successful offline render.
+
+The following is an **operator-installed workflow**, not a command the offline
+checker runs. Substitute the operator's explicit kubeconfig/context and reviewed
+local overlay. Inspect the complete render before the live installation step:
+
+```sh
+# Offline, from the pinned repository checkout, using the documented tool versions:
+sh containers/k8s/check.sh --base --self-test
+sh containers/k8s/check.sh --source-secrets --self-test
+kustomize build /operator/desk-overlay > /operator/desks.rendered.yaml
+kubeconform -strict -summary -kubernetes-version 1.34.1 \
+  -schema-location 'containers/k8s/schemas/{{.ResourceKind}}{{.KindSuffix}}.json' \
+  /operator/desks.rendered.yaml
+
+# Live installation: the authorized installation operator performs these steps.
+kubectl --kubeconfig /operator/cluster.conf --context approved-cluster \
+  apply -f /operator/desks.rendered.yaml
+kubectl --kubeconfig /operator/cluster.conf --context approved-cluster \
+  -n assay-desks get pod worker-desk-0 -o jsonpath='{.metadata.uid}'
+kubectl --kubeconfig /operator/cluster.conf --context approved-cluster \
+  -n assay-desks attach pod/worker-desk-0 -c worker-desk -i -t
+```
+
+Apply uses the installer's existing approved privileges; this package creates no
+operator RoleBinding. Select the exact namespace, Pod and container on each
+attachment and verify the current Pod UID. For the other roles, substitute
+`intake-desk-0`/`intake-desk`, `pr-review-desk-0`/`pr-review-desk`,
+`verify-desk-0`/`verify-desk` or `the-desk-0`/`the-desk`. This direct compatibility
+access must remain with principals already authorized for key custody.
+
+`attach` connects to the existing shell/session. It does not create a process or
+start a model request; starting an agent from that shell is a separate explicit
+act. `exec` would create another process and is not a reconnect substitute.
+`stdin: true`, `stdinOnce: false` and `tty: true` retain interactive input across
+attachments. Disconnect the client without sending `exit`, EOF or an interrupt
+to the session. A connection loss does not request a restart; sending a signal or
+ending the shell can terminate it. The manifest alone does not prove every CLI's
+disconnect behavior, which remains a real-profile acceptance check.
+
+A Pod restart/reschedule starts a new process and execution identity. The PVC
+retains files, not a running process or guaranteed conversation continuity.
+Confirm the previous execution stopped before admitting a replacement role;
+/09 and the existing supervisor own that lifecycle. StatefulSet deletion/scale-down
+retains claims, but namespace/PVC deletion and storage-provider policy still
+require separate backup/recovery planning. Neither offline schema validation nor
+an attach connection establishes safe recovery or a qualified managed cell.

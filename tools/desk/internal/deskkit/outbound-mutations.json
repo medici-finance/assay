@@ -10,14 +10,14 @@
     {
       "name": "the decorator removed from ResolveForge's GitHub return (a verb holds an unchecked backend)",
       "file": "internal/deskkit/forgeresolve.go",
-      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, role), res, nil",
-      "new": "\t\treturn &GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, res, nil"
+      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient(), Observer: observer}, role), res, nil",
+      "new": "\t\treturn &GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient(), Observer: observer}, res, nil"
     },
     {
       "name": "the decorator removed from ResolveForge's GitLab return",
       "file": "internal/deskkit/forgeresolve.go",
-      "old": "\t\treturn OutboundChecked(&GitLabForge{Token: tok, BaseURL: base}, role), res, nil",
-      "new": "\t\treturn &GitLabForge{Token: tok, BaseURL: base}, res, nil"
+      "old": "\t\treturn OutboundChecked(&GitLabForge{Token: tok, BaseURL: base, Observer: observer}, role), res, nil",
+      "new": "\t\treturn &GitLabForge{Token: tok, BaseURL: base, Observer: observer}, res, nil"
     },
     {
       "name": "one text-carrying method dropped from the decorator (PostReview falls through to the backend unchecked)",

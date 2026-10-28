@@ -52,9 +52,7 @@ files:
 - `tools/desk/internal/deskkit/rosterconfig.go` — the entry parser and the accepted-login set.
 - `tools/desk/internal/deskkit/preflight.go` — the commit-identity check.
 - `tools/desk/cmd/deskwt/roleinit.go` — builds the bot commit identity from the roster entry.
-- `docs/streams/forge-neutral/identity.md` (planned) — the grammar, the per-forge rendering
-  table, and the corroboration rule, written once so brief 07, 08, 09 and 11 cite rather than
-  restate it.
+- `docs/streams/forge-neutral/identity.md` (planned) — the grammar, the per-forge rendering table, and the corroboration rule, written once so brief 07, 08, 09 and 11 cite rather than restate it.
 
 single-point-of-failure: the roster is the one source of "which identities may be believed",
 so a permissive grammar is a single control failing open. Two independent layers back it: the

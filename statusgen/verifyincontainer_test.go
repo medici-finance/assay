@@ -79,7 +79,7 @@ func TestVICComposePosix(t *testing.T) {
 		root:     "/home/me/checkout",
 		briefRel: "docs/streams/windows-port/brief-10.md",
 		envFile:  "/tmp/role.env",
-		inner:    buildInnerCommand("docs/streams/windows-port/brief-10.md", false, false, false, ""),
+		inner:    buildInnerCommand("docs/streams/windows-port/brief-10.md", false, false, false, "", ""),
 		uid:      1000,
 		gid:      1000,
 	}
@@ -130,7 +130,7 @@ func TestVICComposeWin(t *testing.T) {
 		pin:      testPin(),
 		root:     `C:\src\checkout`,
 		briefRel: "docs/streams/windows-port/brief-10.md",
-		inner:    buildInnerCommand("docs/streams/windows-port/brief-10.md", false, false, false, ""),
+		inner:    buildInnerCommand("docs/streams/windows-port/brief-10.md", false, false, false, "", ""),
 		uid:      -1,
 		gid:      -1,
 	}
@@ -150,7 +150,7 @@ func TestVICComposeSafeDirectory(t *testing.T) {
 		pin:      testPin(),
 		root:     "/home/me/checkout",
 		briefRel: "b.md",
-		inner:    buildInnerCommand("b.md", false, false, false, ""),
+		inner:    buildInnerCommand("b.md", false, false, false, "", ""),
 		uid:      1000, gid: 1000,
 	}
 	argv := composeDockerArgs(inv)
@@ -182,7 +182,7 @@ func TestVICComposeNoEnv(t *testing.T) {
 		root:     "/r",
 		briefRel: "b.md",
 		envFile:  "",
-		inner:    buildInnerCommand("b.md", false, false, false, ""),
+		inner:    buildInnerCommand("b.md", false, false, false, "", ""),
 		uid:      1000, gid: 1000,
 	}
 	if indexOf(composeDockerArgs(inv), "--env-file") >= 0 {
@@ -200,7 +200,7 @@ func TestVICComposeAttribEnv(t *testing.T) {
 		pin:      testPin(),
 		root:     "/r",
 		briefRel: "b.md",
-		inner:    buildInnerCommand("b.md", false, false, false, ""),
+		inner:    buildInnerCommand("b.md", false, false, false, "", ""),
 		uid:      1000, gid: 1000,
 	}
 	argv := composeDockerArgs(inv)
@@ -487,7 +487,7 @@ func runnerEnvReads(t *testing.T, src []byte) ([]string, error) {
 }
 
 func TestVICInnerFlags(t *testing.T) {
-	inner := buildInnerCommand("b.md", true, true, true, "30s")
+	inner := buildInnerCommand("b.md", true, true, true, "30s", "")
 	joined := strings.Join(inner, " ")
 	for _, want := range []string{"--check", "--dry-run", "--ci", "--timeout 30s"} {
 		if !strings.Contains(joined, want) {
@@ -544,7 +544,7 @@ func TestVICRunDocker(t *testing.T) {
 	writeStubBinWP10(t, bin, "docker", "#!/bin/sh\nprintf '%s\\n' \"$@\" > '"+argvFile+"'\nexit 0\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	code := runInContainer(filepath.Join(root, briefRel), root, "", false, false, false, "", os.Stdout, os.Stderr)
+	code := runInContainer(filepath.Join(root, briefRel), root, "", false, false, false, "", "", os.Stdout, os.Stderr)
 	if code != verifyrunExitPass {
 		t.Fatalf("runInContainer exit = %d, want %d", code, verifyrunExitPass)
 	}
@@ -579,7 +579,7 @@ func TestVICRunRefusePlaceholder(t *testing.T) {
 	writeStubBinWP10(t, bin, "docker", "#!/bin/sh\nexit 0\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	code := runInContainer(filepath.Join(root, "b.md"), root, "", false, false, false, "", os.Stdout, os.Stderr)
+	code := runInContainer(filepath.Join(root, "b.md"), root, "", false, false, false, "", "", os.Stdout, os.Stderr)
 	if code == verifyrunExitPass {
 		t.Fatalf("runInContainer must REFUSE a placeholder digest, got pass")
 	}
@@ -594,7 +594,7 @@ func TestVICRunRefuseOutside(t *testing.T) {
 	writeStubBinWP10(t, bin, "docker", "#!/bin/sh\nexit 0\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	code := runInContainer(filepath.Join(other, "b.md"), root, "", false, false, false, "", os.Stdout, os.Stderr)
+	code := runInContainer(filepath.Join(other, "b.md"), root, "", false, false, false, "", "", os.Stdout, os.Stderr)
 	if code == verifyrunExitPass {
 		t.Fatalf("a brief outside the bind-mounted root must be refused, got pass")
 	}
@@ -686,7 +686,7 @@ func TestVICHostIdent(t *testing.T) {
 			vicFakeDocker(t, argvFile, envFile)
 			out, errOut := vicCapture(t), vicCapture(t)
 
-			code := runInContainer(filepath.Join(root, "b.md"), root, "", false, false, false, "", out, errOut)
+			code := runInContainer(filepath.Join(root, "b.md"), root, "", false, false, false, "", "", out, errOut)
 			stdout, stderr := vicRead(t, out), vicRead(t, errOut)
 			if code != tc.wantExit {
 				t.Fatalf("runInContainer exit = %d, want %d\nstdout: %s\nstderr: %s", code, tc.wantExit, stdout, stderr)

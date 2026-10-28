@@ -45,7 +45,9 @@ Options:
 2. **Shadow evaluation** — collect independent challenges without adding an admission gate; this measures feasibility and gaps, but cannot establish the effect of blocking dispatch.
 3. **Author-only baseline** — postpone the new review lane and capture the six dimensions plus outcomes first.
 
-Default if no answer: none — policy implementation blocks until answered.
+Default if no answer: none — blocks until answered.
+
+Policy implementation blocks until answered.
 
 ## Ground rules
 - Preserve human gates and capability minima. Stop at implemented; a non-implementer verifies.

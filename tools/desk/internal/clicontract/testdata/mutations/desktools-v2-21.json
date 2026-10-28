@@ -34,26 +34,26 @@
     {
       "name": "activation discovery runs before help",
       "file": "cmd/deskdispatch/main.go",
-      "old": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {",
-      "new": "deskkit.CheckVerbActivation(os.Stderr)\n\tos.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {"
+      "old": "os.Exit(deskkit.PerfRunMeasured(\"deskdispatch\", perfVerbs, args, func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {",
+      "new": "deskkit.CheckVerbActivation(os.Stderr)\n\tos.Exit(deskkit.PerfRunMeasured(\"deskdispatch\", perfVerbs, args, func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {"
     },
     {
       "name": "measurement finalizer no longer wraps parsing",
       "file": "cmd/deskdispatch/main.go",
-      "old": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {",
-      "new": "os.Exit(func(run func([]string) int) int { return run(args) }(func(a []string) int {"
+      "old": "os.Exit(deskkit.PerfRunMeasured(\"deskdispatch\", perfVerbs, args, func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {",
+      "new": "os.Exit(func(run func([]string, *perfrec.Session) (int, perfrec.Context)) int { code, _ := run(args, nil); return code }(func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {"
     },
     {
       "name": "help path starts a child process outside the PATH shims",
       "file": "cmd/deskdispatch/main.go",
-      "old": "return parseDispatchCLI(a, env,",
-      "new": "_ = deskkit.Run(deskkit.ToolCall{Name: \"/nonexistent/cli-plant\"})\n\t\treturn parseDispatchCLI(a, env,"
+      "old": "code := parseDispatchCLI(a, env,",
+      "new": "_ = deskkit.Run(deskkit.ToolCall{Name: \"/nonexistent/cli-plant\"})\n\t\tcode := parseDispatchCLI(a, env,"
     },
     {
       "name": "help path makes a counted forge call",
       "file": "internal/deskkit/perf.go",
-      "old": "\tcode := run(args)\n\tchildren, childWall, forge",
-      "new": "\tperfCountForgeCall()\n\tcode := run(args)\n\tchildren, childWall, forge"
+      "old": "\tcode, ctx := run(args, sess)",
+      "new": "\tperfCountForgeCall()\n\tcode, ctx := run(args, sess)"
     },
     {
       "name": "perf-v2 record omits the subprocess counter",

@@ -50,10 +50,8 @@ consumers:
 ## Context
 
 files:
-- **edit** `tools/desk/cmd/deskevidence/` — add `batch.go` (planned) + `batch_test.go` (planned); the
-  usage text in `main.go`.
-- **edit** `tools/desk/internal/deskkit/` — a multi-file commit on the `Forge` interface and its
-  GitHub and GitLab implementations, with golden tests beside the existing forge goldens.
+- **edit** `tools/desk/cmd/deskevidence/` — add `batch.go` (planned) + `batch_test.go` (planned); the usage text in `main.go`.
+- **edit** `tools/desk/internal/deskkit/` — a multi-file commit on the `Forge` interface and its GitHub and GitLab implementations, with golden tests beside the existing forge goldens.
 - **edit** `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`,
   `tools/desk/README.md`.
 - **add** a test in `tools/desk/cmd/deskflip/` pinning that a batch holding a flagged entry cannot

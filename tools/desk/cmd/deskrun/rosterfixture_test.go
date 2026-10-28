@@ -9,6 +9,7 @@ package main
 //	example-org/tracker    release-runner                 → proceeds
 //	example-org/platform   release-runner+manual-job      → proceeds, GitLab gate shape declared
 //	example-org/console    human:ada                      → refused (exit 5)
+//	example-org/ledger     human:ada (a GitLab repo)      → refused (exit 5)
 //	example-org/agents     (no entry)                     → could-not-check (exit 6)
 
 import (
@@ -23,10 +24,10 @@ const fixtureRoster = `# Test-fixture roster.
 ASSAY_BLESS_LOGIN=ada:2001
 ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006,release-runner=example-release-runner-app:300000009
-ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/console:ci:private,example-org/platform:ci:private
+ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/console:ci:private,example-org/platform:ci:private,example-org/ledger:ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
-ASSAY_REPO_FORGES=example-org/tracker=github,example-org/agents=github,example-org/console=github,example-org/platform=gitlab
-ASSAY_RUN_CREDENTIALS=example-org/tracker=release-runner,example-org/platform=release-runner+manual-job,example-org/console=human:ada
+ASSAY_REPO_FORGES=example-org/tracker=github,example-org/agents=github,example-org/console=github,example-org/platform=gitlab,example-org/ledger=gitlab
+ASSAY_RUN_CREDENTIALS=example-org/tracker=release-runner,example-org/platform=release-runner+manual-job,example-org/console=human:ada,example-org/ledger=human:ada
 `
 
 // plantFixtureRoster writes the fixture roster under home.

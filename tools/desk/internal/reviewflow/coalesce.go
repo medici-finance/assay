@@ -9,13 +9,21 @@ import (
 // It is not a completed-write key: review dispatch has no verdict or body yet,
 // and a prior ready attempt cannot override a board that still reports a draft.
 type Key struct {
-	Repo string
-	PR   int
-	Head string
-	Verb string
+	Provider string
+	Host     string
+	Repo     string
+	PR       int
+	Head     string
+	Verb     string
 }
 
-func (k Key) String() string { return fmt.Sprintf("%s#%d@%s:%s", k.Repo, k.PR, Short(k.Head), k.Verb) }
+func (k Key) String() string {
+	prefix := ""
+	if k.Provider != "" || k.Host != "" {
+		prefix = k.Provider + "://" + k.Host + "/"
+	}
+	return fmt.Sprintf("%s%s#%d@%s:%s", prefix, k.Repo, k.PR, Short(k.Head), k.Verb)
+}
 
 // PlannedVerb is one coalesced outward action.
 type PlannedVerb struct {
@@ -57,7 +65,7 @@ func Coalesce(sweeps []*Board) []PlannedVerb {
 			if r.Rule.Verb == "" {
 				continue // WAIT / SURFACE / NO-OP rows carry no outward verb
 			}
-			k := Key{Repo: r.Repo, PR: r.Number, Head: r.Head, Verb: r.Rule.Verb}
+			k := Key{Provider: r.Provider, Host: r.Host, Repo: r.Repo, PR: r.Number, Head: r.Head, Verb: r.Rule.Verb}
 			if pv, ok := byKey[k]; ok {
 				pv.Observations++
 				pv.Row = r // the newest observation wins for display

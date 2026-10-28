@@ -218,6 +218,17 @@ detector's, not this one's. A partial claim whose alias cannot be resolved here
 (unknown, withheld, or no registry) makes the brief `unknown` and refuses
 `--apply`.
 
+Evidence-only and status-only PRs are excluded by the same diff classifier the
+approval/provenance resolver uses (`evidenceshape.go`): Evidence sections,
+verify-outcome records and status cells are bookkeeping, not implementation.
+A potentially Evidence-shaped change whose patch or head could not be read makes
+the brief `unknown` and refuses `--apply`. Every requested derived row passes
+admission, including completed rows in full audits and the drift comparator.
+Trailer-only apply explicitly scopes its observations to movable rows (below).
+File lists and additional shape reads are cached per
+PR for the run and shared with backfill. Ordinary code PRs and declared partials
+need no additional shape read. A VERIFY FAIL alone never removes a delivery.
+
 ```bash
 # Online: read the repo's PRs over the REST API and derive.
 statusgen reconcile --root . --repo medici-finance/assay --json
@@ -263,7 +274,12 @@ brief holds the write for the whole board, by design: a scheduled writer then
 writes nothing rather than a partial board. A passing witness with no merged PR on
 record is `unknown` too — the fold cannot settle that contradiction; under
 `--backfill` a branch/body-matched merged PR is that merge, and the cell is
-re-derived over it by the same overlay a trailer merge gets. The demotions
+re-derived over it by the same overlay a trailer merge gets. A branch/body match
+whose own link trailer points elsewhere (it names a different brief, is
+`Authors:` only, or is `Issue:` with no `Brief:`) is a mention, not this brief's
+delivery: the backfill walk passes it, under the same predicate the trailer fold
+uses, and takes the next older candidate. A trailerless match is never passed,
+and a candidate whose file list cannot be read ends the walk `unknown`. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
@@ -294,7 +310,21 @@ an absent `wouldApply` is not zero rows.
 
 `--apply` WITHOUT `--backfill` is trailer-only: it writes only rows witnessed by a
 merged PR's trailer, never a branch or body match — the mode the scheduled
-reconcile job runs. Either way, a row whose move would add a lint PROBLEM (a
+reconcile job runs. This mode requests PR admission and approval reads only for
+the `todo`/`in-progress` rows it can move. All other rows remain in the output as
+`unknown`, with an explicit "outside trailer-writer scope" reason and no witness
+or merged-PR provenance. This deliberate scope exclusion is not a failed read
+in `unread`; an actual failed requested read still holds the whole write. The
+run's `reason` and text output disclose the scope. Read-only reconcile, every
+`--backfill` run (including `--apply` and `--report`), and online regen drift
+continue to classify every derived row. Use those modes for a full audit.
+No persistent verdict cache or token-tier assumption is made: the writer's read
+set grows with eligible rows, not the history of completed rows. The synthetic
+687-candidate regression models 209 upstream requests for the writer and 1,589
+for the full audit, including their shared pull/issue pages; it is a fixture
+bound, not a universal API-budget guarantee or a live corpus measurement.
+
+Either way, a row whose move would add a lint PROBLEM (a
 risk-gated brief with no design record, say) is held: listed under `held` with the
 PROBLEM it would cause, never written. The read-only form reports the same `held`
 rows, decided the same way with nothing written. When the pulls cannot be read,
@@ -354,12 +384,20 @@ RELATIVE to `--root`, so the output carries no machine path.
 
 `statusgen brief --root . --check-verified <stream>/<NN>` additionally requires
 `verified` or `done`, a dated Verified stamp, and a passing execution witness for
-every applicable original Verify row. Protected-table supplemental rows use the
-immutable snapshot marker and receive no acceptance credit; see
+every applicable original Verify row. Risk-bearing rows must also carry a current
+fail-first witness that reds at an acceptable base, using the same per-brief
+validator as the flip lint gate. Missing Base cells, unproven or green base runs,
+stale witnesses and invalid base provenance refuse the closure. Protected-table
+supplemental rows use the immutable snapshot marker and receive no acceptance credit; see
 [recording closure after re-derivation](../docs/protected-paths.md#recording-closure-after-re-derivation).
 It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
-witnesses and does not replace `statusgen --lint`.
+witnesses or fail-first requirements and does not replace `statusgen --lint`. Both
+`brief --check-verified` and `verifyclosure` use `checkSelectedClosure`, including
+non-empty Verify rows and human stamps for `gate:human` rows. The sidecar check
+preserves its exit codes: 0 accepted, 1 refused, 2 could-not-check. Attribution
+remains the separate `--check-attribution` opt-in and landing authorization stays
+with the caller.
 
 Adding `--check-attribution` (requires `--check-verified`) also requires an accepted
 Evidence author under the same roster policy and Git blame judge as lint, without

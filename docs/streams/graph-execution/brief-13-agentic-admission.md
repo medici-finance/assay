@@ -62,7 +62,9 @@ Options:
 2. A stricter start: cap every category at supervised-agent until a bounded lane has been separately approved.
 3. Rework: name the values to change, and they come back as a revised policy before any activation.
 
-Default if no answer: nothing activates. The evaluator stays unconsulted, and no admission policy is adopted.
+Default if no answer: none — blocks until answered.
+
+Nothing activates. The evaluator stays unconsulted, and no admission policy is adopted.
 
 ## Read first
 

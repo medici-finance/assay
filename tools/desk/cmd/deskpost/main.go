@@ -58,7 +58,15 @@ func main() {
 	// file, not in a diff — so the RUN is the only place a change to them becomes
 	// visible, and a NARROWING has to be as visible as a widening. Logins and paths
 	// only; never a token or a credential path.
-	deskkit.EchoEffectiveConfig(os.Stderr)
+	//
+	// A help screen is not a run: it prints no configured value (medici-finance/assay#3754).
+	// deskpost OPTS IN with isHelpRequest, the SAME predicate run() answers with its usage
+	// screen before Guard, so the two cannot disagree about which invocation is help.
+	if isHelpRequest(os.Args[1:]) {
+		deskkit.EchoConfigHelpNotice(os.Stderr)
+	} else {
+		deskkit.EchoEffectiveConfig(os.Stderr)
+	}
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
@@ -78,18 +86,9 @@ func run(argv []string) int {
 		s, b := deskkit.Version()
 		fmt.Fprintf(stdout, "deskpost sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
 		return 0
-	case "help", "-h", "--help":
-		usage()
-		return 0
 	}
 
-	// TIER ONE of the help retrofit (deskkit/helprequest.go). A SUBCOMMAND help request —
-	// `deskpost <verb> --help` — is a request for a help screen, not an invocation of the
-	// verb, and it returns HERE, before Guard, writing no audit row. HelpOnly matches only
-	// the unambiguous single-token shape, so a `--help` that is another flag's VALUE cannot
-	// be mistaken for one; every wider spelling falls through to the verb's own parse, which
-	// hands flag.ErrHelp to parseFailCode (tier two): usage on stderr, exit 0, no audit row.
-	if deskkit.HelpOnly(argv) || (argv[0] == "finish" && deskkit.HelpOnly(argv[1:])) {
+	if isHelpRequest(argv) {
 		usage()
 		return 0
 	}
@@ -127,6 +126,20 @@ func run(argv []string) int {
 		usage()
 		return 2
 	}
+}
+
+// isHelpRequest reports whether argv is one of the help shapes deskpost answers with its usage
+// screen BEFORE Guard: a leading `help`, `-h` or `--help` (any arguments after it), and TIER ONE
+// of the help retrofit (deskkit/helprequest.go) — `deskpost <verb> --help`, plus the same form one
+// level down for `finish <lane> --help`. HelpOnly matches only the unambiguous single-token
+// shape, so a `--help` that is another flag's VALUE cannot be mistaken for one; every wider
+// spelling falls through to the verb's own parse, which hands flag.ErrHelp to parseFailCode
+// (tier two): usage on stderr, exit 0, no audit row.
+//
+// main() asks the same question to choose the config echo, so a help screen prints no
+// configured value (medici-finance/assay#3754).
+func isHelpRequest(argv []string) bool {
+	return deskkit.UsageHelp(argv) || (len(argv) > 0 && argv[0] == "finish" && deskkit.HelpOnly(argv[1:]))
 }
 
 func cmdReview(argv []string) int {
@@ -241,8 +254,8 @@ func parseVerdictArgs(verb, verdictValues string, argv []string, extra ...func(*
 // WHY THE TOOL EMITS IT (#197). `deskpost review --head` exists so a verdict
 // cannot be misattributed to a commit it did not assess. The sanctioned fallback,
 // `gh pr review`, has NO head-pinning flag: it attaches to whatever the head is AT POST
-// TIME. Observed on #195 — exit 4, re-posted via the install token, and a
-// CHANGES_REQUESTED written against `151ebe99` landed on `2bbf529c`, a commit that had
+// TIME. Observed once — exit 4, re-posted via the install token, and a
+// CHANGES_REQUESTED written against an earlier commit landed on a later one that had
 // already fixed two of its three findings. Both exit 0; nothing in the output signals it.
 // A stale CHANGES_REQUESTED blocks a flip on closed findings; a stale APPROVED certifies
 // a commit nobody reviewed.
@@ -386,8 +399,8 @@ func cmdComment(argv []string) int {
 	//
 	// When it IS given, it is enforced exactly as `review --head` is (#513,
 	// second defect). Without it the tool stamps whichever head is live at POST time into
-	// the audit ledger and the idempotency key — on #505 the reviewer examined
-	// f9c9ca94 and the recorded head was d7b2d1d3, because a merge landed mid-review. That
+	// the audit ledger and the idempotency key — on one review the reviewer examined
+	// one commit and the recorded head was a later one, because a merge landed mid-review. That
 	// one was a clean keep-current merge so the body's conclusions still held, but the tool
 	// guaranteed nothing: it would have stamped the new head identically had the push been
 	// real work, and a head-pinned claim recorded against a commit nobody read is the same

@@ -1,10 +1,13 @@
 package runner_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -556,21 +559,88 @@ func TestSchemaRefusesBlankTool(t *testing.T) {
 	}
 }
 
-// TestNoGraphDependency: the module builds without the workflow module, the
-// instance store or any other module.
+// TestNoGraphDependency retains graph/store isolation while admitting only the
+// existing credential-free local perfrec module, whose implementation is stdlib-only.
+// regression: desktools-v2/64
 func TestNoGraphDependency(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "go.mod"))
-	if err != nil {
+	if err := runnerModules(".."); err != nil {
 		t.Fatal(err)
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		if f := strings.Fields(line); len(f) > 0 && (f[0] == "require" || f[0] == "replace") {
-			t.Errorf("loopadmin must stay dependency-free, go.mod has %q", line)
-		}
 	}
 	if _, err := os.Stat(filepath.Join("..", "..", "go.work")); err == nil {
 		t.Error("the repository root must carry no go.work")
 	}
+	// Plant a second module through the SAME go-list boundary. No download or
+	// dependency installation occurs: both synthetic requirements have local homes.
+	root := t.TempDir()
+	for _, name := range []string{"perfrec", "forbidden", "runner"} {
+		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+		module := "github.com/medici-finance/assay/perfrec"
+		if name == "forbidden" {
+			module = "example.test/forbidden"
+		}
+		if err := os.WriteFile(filepath.Join(root, name, "go.mod"), []byte("module "+module+"\n\ngo 1.27.0\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := "module github.com/medici-finance/assay/loopadmin\n\ngo 1.27.0\n\nrequire github.com/medici-finance/assay/perfrec v0.0.0\nreplace github.com/medici-finance/assay/perfrec => ../perfrec\n"
+	site := filepath.Join(root, "runner")
+	mod := filepath.Join(site, "go.mod")
+	if err := os.WriteFile(mod, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runnerModules(site); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+	body += "\nrequire example.test/forbidden v0.0.0\nreplace example.test/forbidden => ../forbidden\n"
+	if err := os.WriteFile(mod, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runnerModules(site); err == nil {
+		t.Fatal("planted second dependency passed isolation check")
+	}
+}
+
+func runnerModules(dir string) error {
+	cmd := exec.Command("go", "list", "-m", "-json", "all")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off")
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("could not inspect runner module closure: %w", err)
+	}
+	seen := map[string]bool{}
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for {
+		var module struct {
+			Path    string
+			Main    bool
+			Replace *struct{ Path, Version string }
+		}
+		if err := dec.Decode(&module); err == io.EOF {
+			break
+		} else if err != nil {
+			return fmt.Errorf("invalid module closure output")
+		}
+		switch module.Path {
+		case "github.com/medici-finance/assay/loopadmin":
+			if !module.Main || module.Replace != nil {
+				return fmt.Errorf("runner main module was replaced")
+			}
+		case "github.com/medici-finance/assay/perfrec":
+			if module.Replace == nil || module.Replace.Path != "../perfrec" || module.Replace.Version != "" {
+				return fmt.Errorf("perfrec must use the exact admitted local edge")
+			}
+		default:
+			return fmt.Errorf("runner module closure includes an unadmitted dependency")
+		}
+		seen[module.Path] = true
+	}
+	if len(seen) != 2 {
+		return fmt.Errorf("runner module closure must contain only runner and local perfrec")
+	}
+	return nil
 }
 
 // firstRevisionCredentialKey is the key rule the first revision shipped, kept

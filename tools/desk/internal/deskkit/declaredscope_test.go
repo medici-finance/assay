@@ -19,6 +19,11 @@ func TestDeclaredReceiptForms(t *testing.T) {
 		"files:\n- `tools/a.go`: commentary `tools/not-declared.go`\n- tools/pkg/",
 		"files:\n- `tools/{a.go,pkg/}` — commentary `tools/not-declared.go`",
 		"files:\n- `tools/*.go` — the `plan` command\n- tools/pkg/*",
+		// regression: medici-finance/assay#3756 — annotation before a ':' description.
+		"files:\n- `tools/a.go` (new): commentary `tools/not-declared.go`\n- `tools/pkg/` (new): `one.go`, `sub/two.go` (x)",
+		// regression: #3817 — annotation inside the path's code span.
+		"files:\n- `tools/a.go (planned)`\n- `tools/pkg/ (new synthetic fixtures)`",
+		"files: `tools/a.go (new)`, `tools/pkg/ (planned)`: commentary `tools/not-declared.go`",
 	} {
 		t.Run(decl, func(t *testing.T) {
 			tree := wakeTestTree()
@@ -267,6 +272,112 @@ func TestScopeContinuationPositions(t *testing.T) {
 	paths, err = BriefDeclaredFiles("## Context\nfacts: no deliverables\n")
 	if err != nil || len(paths) != 0 {
 		t.Fatalf("legitimate absence refused: %v %v", paths, err)
+	}
+}
+
+// regression: medici-finance/assay#3756
+func TestScopeAnnotationThenColon(t *testing.T) {
+	for entry, want := range map[string]string{
+		// The reported shape: annotation, then a ':' description.
+		"- `tools/desk/cmd/deskapps/` (new): `main.go`, `server.go` (loopback HTTP), `manifest.go`": "tools/desk/cmd/deskapps",
+		"- `tools/a.go` (new) (edit): desc":            "tools/a.go",
+		"- tools/a.go (planned): NEW. desc":            "tools/a.go",
+		"- **edit** `tools/a.go` (new): desc":          "tools/a.go",
+		"- `tools/a.go` (new), `tools/b.go` (edit): x": "tools/a.go,tools/b.go",
+		// Sibling orderings that already parsed keep their scope.
+		"- `tools/a.go`: desc (x)":                 "tools/a.go",
+		"- `tools/a.go` (new) — desc `tools/b.go`": "tools/a.go",
+		"- `tools/a.go` (new) and tests":           "tools/a.go",
+		"- `tools/a.go` and tests (new),":          "tools/a.go",
+		// An annotation after "and tests" never turns the word into a path.
+		"- `tools/a.go` and tests (new)":               "tools/a.go",
+		"- `tools/a.go` and tests (new).":              "tools/a.go",
+		"- `tools/a.go` and tests (new), `tools/b.go`": "tools/a.go,tools/b.go",
+		"- `tools/a.go` and tests (new): desc":         "tools/a.go",
+		"- `tools/a.go` and tests.go":                  "tools/a.go,tests.go",
+		"- `tools/a.go` and tests/":                    "tools/a.go,tests",
+		// A glued annotation is not part of an unquoted path.
+		"- tools/a.go(planned)":             "tools/a.go",
+		"- tools/a.go(planned): desc":       "tools/a.go",
+		"- tools/{a,b}.go(new), tools/c.go": "tools/a.go,tools/b.go,tools/c.go",
+	} {
+		paths, err := BriefDeclaredFiles("## Context\nfiles:\n" + entry + "\nfacts: x\n")
+		if err != nil || strings.Join(paths, ",") != want {
+			t.Errorf("%q: got %v %v; want %s", entry, paths, err, want)
+		}
+	}
+	// Garbage around an annotation is still refused, never read as a description.
+	for _, entry := range []string{
+		"- `tools/a.go` (new) garbage",
+		"- `tools/a.go` (new) garbage: desc",
+		"- `tools/a.go` (new) `tools/b.go`: desc",
+		"- `tools/a.go` (x (y)): desc",
+		"- `tools/a.go` (new: desc",
+		"- `tools/a.go` and tests garbage",
+		"- `tools/a.go` and tests: desc",
+		// An annotation in path position is never itself a path.
+		"- (new)",
+		"- `tools/a.go`\n  (new)",
+		"- (new) `tools/a.go`",
+	} {
+		if paths, err := BriefDeclaredFiles("## Context\nfiles:\n" + entry + "\n"); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q: got %v %v; want refusal", entry, paths, err)
+		}
+	}
+}
+
+// regression: #3817
+func TestScopeAnnotationInSpan(t *testing.T) {
+	for entry, want := range map[string]string{
+		// The reported real shapes (desktools-v2/63, comms-core, desk-improvement).
+		"- `perfrec/context.go (planned)`":                                      "perfrec/context.go",
+		"- `comms/server (new)`":                                                "comms/server",
+		"- `comms/server/testdata (new legacy-state and host fixtures)`":        "comms/server/testdata",
+		"- `wf/testdata/evidence/ (planned synthetic/disposable fixtures)`":     "wf/testdata/evidence",
+		"- `schemas/b.json (planned binding manifest, not an event lifecycle)`": "schemas/b.json",
+		// Same rule at every other quoted position on the line.
+		"- `tools/a.go (new) (edit)`":                  "tools/a.go",
+		"- `tools/a.go (new)`: desc `tools/b.go`":      "tools/a.go",
+		"- `tools/a.go (new)` (edit): desc":            "tools/a.go",
+		"- `tools/a.go (new)` — desc `tools/b.go`":     "tools/a.go",
+		"- `tools/a.go (planned)`, `tools/b.go (new)`": "tools/a.go,tools/b.go",
+		"- `tools/a.go (new)` and tests":               "tools/a.go",
+		"- **edit** `tools/a.go (new)`":                "tools/a.go",
+		"- `tools/{a,b}.go (new)`":                     "tools/a.go,tools/b.go",
+		// The outside-the-quotes form keeps its scope.
+		"- `tools/a.go` (planned)": "tools/a.go",
+		// A glued or leading parenthetical is part of the literal path, even
+		// after a multibyte character whose last byte is 0x85 or 0xA0.
+		"- `tools/a.go(x)`": "tools/a.go(x)",
+		"- `tools/à(x)`":    "tools/à(x)",
+		"- `tools/Å(x)`":    "tools/Å(x)",
+		"- `(new)`":         "(new)",
+	} {
+		for _, content := range []string{"## Context\nfiles:\n" + entry + "\nfacts: x\n", "## Context\nfiles: " + strings.TrimPrefix(entry, "- ") + "\nfacts: x\n"} {
+			paths, err := BriefDeclaredFiles(content)
+			if err != nil || strings.Join(paths, ",") != want {
+				t.Errorf("%q: got %v %v; want %s", content, paths, err, want)
+			}
+		}
+	}
+	// Only a trailing, non-empty, unnested parenthetical after whitespace is an
+	// annotation; every other space inside the span is still refused.
+	for _, entry := range []string{
+		"- `tools/my dir/a.go (new)`",
+		"- `tools/a.go (new) trailing`",
+		"- `tools/a.go (new`",
+		"- `tools/a.go new)`",
+		"- `tools/a.go (x (y))`",
+		"- `tools/a.go (x) y)`",
+		"- `tools/a.go ()`",
+		"- `tools/a.go ( )`",
+		"- `tools/a.go (new) `",
+		"- ` (new)`",
+		"- `tools/a.go (new)` garbage",
+	} {
+		if paths, err := BriefDeclaredFiles("## Context\nfiles:\n" + entry + "\n"); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q: got %v %v; want refusal", entry, paths, err)
+		}
 	}
 }
 

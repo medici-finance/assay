@@ -13,6 +13,12 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
+delivery:
+  - {in: "assay#735", covers: partial, note: "statusgen fixes that unblock this repo's brief-v2 migration only; the rollout to other consumers, overlay re-stage and fallback retirement (Task 2-4) remain owed"}
+  - {in: "assay#736", covers: partial, note: "brief-v2 migration in this repo only; the rollout to other consumers, overlay re-stage and fallback retirement (Task 2-4) remain owed"}
+  - {in: "assay#945", covers: partial, note: "backfill capability and this repo's drift report only; Task 2-4 remain owed"}
+  - {in: "assay#1010", covers: partial, note: "the reconcile --apply write arm only; Task 2-4 remain owed"}
+  - {in: "assay#1194", covers: partial, note: "this repo's rollout slice and trailer join repair only; its scope keeps the brief in progress, with Task 2-4 still owed"}
 schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:

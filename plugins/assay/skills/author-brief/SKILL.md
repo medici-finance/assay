@@ -2,7 +2,7 @@
 name: author-brief
 description: >-
   Author and structure a phase plan as self-contained briefs organized into dependency
-  waves, with a critical path. Use this WHENEVER the user wants to plan multi-step work and split it
+  waves, with a critical path and mappings to delivery milestones. Use this WHENEVER the user wants to plan multi-step work and split it
   up: "break this into briefs and waves", "create a phase plan", "do for phase N what we did for
   phase 1", "this brief is too big, split it", "turn this into tasks with dependencies", or when
   scoping a body of work that several people/agents will pick up. Encodes a brief format
@@ -41,6 +41,33 @@ the whole plan, and the reader can see at a glance what blocks what. **Match the
 the repo — don't invent a new format.** If a project-level `author-brief` skill exists in the current
 repo (`.claude/skills/author-brief/SKILL.md`), read it after this skill and apply its specifics —
 paths, docs-regen commands, and local examples layer on top of this methodology.
+
+## Bind implementation pickup to current context
+
+Read the [implementation pickup procedure](../../references/implementation-pickup.md).
+Specs and briefs identify the selected target/transition, semantic contracts and
+applicable project engineering guidelines by canonical pointer. Include their
+pickup/resume assessment in the implementation handoff; record revisions, coverage
+and continue/adapt/hold rather than assume the authoring snapshot is still current.
+Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Do not rewrite completed Evidence or let a draft proposal veto approved work.
+
+## Map work to delivery milestones
+
+When the source defines delivery milestones or the request needs staged outcomes,
+read the [shared milestone authoring procedure](../../references/milestone-authoring.md),
+including its support check and **Author-brief** section. Map existing/new briefs to
+`<stream>:m-<NN>` outcomes and criteria; prefer `<stream>:b-<NN>` for new briefs
+with optional `@<brief-version>` on references; use full
+`<cell>:<repo>:<stream>:b-<NN>` IDs in brief definitions. Once the pinned generator
+and required readers support brief §3.8, write colon-only forms and preserve legacy
+aliases as compatibility reads. Until then use
+supported legacy IDs for executable briefs and `b-` labels in scoping proposals;
+disclose the limitation. Do not rewrite existing identities or Evidence. Membership is
+owned by the milestone, not a second brief field. Separate actual brief start needs
+from prerequisites for final outcome acceptance. If the source lacks a consequential
+outcome/scope decision, reconcile it with `author-spec` before committing affected work;
+continue independent authoring. Unsupported declarations remain proposals, not live YAML.
 
 ## The most important judgment call: find the REAL head of the critical path
 
@@ -96,9 +123,18 @@ author can otherwise get wrong. Run `statusgen newbrief --help` for the flags.
 
 ### Brief file template (data-first)
 
+Select the identifier/schema pair before writing. With negotiated prefixed-label
+support, write `brief: <cell>:<repo>:<stream>:b-<NN>` and keep the authored revision
+in `version:`. Dependency refs may use `:b-<NN>@<version>`; no suffix binds the selected
+source snapshot. Use that supporting schema for references
+and dependency fields. The template below shows the currently supported legacy
+`brief-v2` pair; do not combine its schema with an unsupported `b-` identifier.
+The unprefixed label is deprecated for new authoring after adoption, not invalid for
+legacy consumers. Existing canonical fullIds and filenames remain unchanged (brief §3.8).
+
 ```markdown
 ---
-brief: <stream>/<NN>                # typed ID, matches stream README table row
+brief: <cell>:<repo>:<stream>:<NN>   # current brief-v2 fullId; board label is <stream>/<NN>
 title: <one line>
 why: <prose>                        # REQUIRED for every NEW brief — one to three lines a non-engineer
                                     # could read and justify the work from. Not the WHAT (that's title
@@ -200,6 +236,8 @@ design-fit:                  # REQUIRED on every NEW brief; its two rules: brief
   weight: <signed delta per dimension: verbs, flags, refusals, rule-text lines>
   why-add: <required when any delta > 0: why it cannot live in the owner, and what
            removal was considered instead; n/a otherwise>
+oracle: docs/investigations/<file>  # ONLY on a design brief a brittle `redesign` raised: its refactor
+                                    # oracle, whose five §5 rows Verify copies. Such a brief without it is not authored
 
 ## Human decision
 <!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
@@ -383,12 +421,10 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
        end-to-end flows, sweeping a pattern across sites)?
    (c) Is it code where a subtle implementation error survives the brief's own tests (auth,
        funds, concurrency, safety plumbing)?
-   (d) Is this a design brief raised by an error-class trigger? (A recurring defect class, not
-       one symptom, has accrued enough counted instances or merged fixes to be owed a design.)
-   `strong` SHOULD carry a one-line `exec-tier-why` naming which question(s). `statusgen --lint`
-   PROBLEMs an unrecognized value, NOTICEs a missing `exec-tier-why`. **Honest limitation:**
-   statusgen never verifies which model actually ran — pickup-side compliance is honor-system
-   self-report; the enforced surface is desk dispatch + the review gate.
+   (d) Is this a design brief raised by an error-class trigger? (A recurring defect class, not one symptom, has accrued enough counted instances or merged fixes to be owed a design.)
+   `strong` SHOULD carry a one-line `exec-tier-why` naming the question(s) (lint: PROBLEM if unknown, NOTICE if missing).
+   **Honest limitation:** statusgen never verifies which model actually ran — pickup-side
+   compliance is honor-system self-report; the enforced surface is desk dispatch + the review gate.
 10. **Defense in depth is the DEFAULT design posture.** When a brief's Task has design
     alternatives, prefer the LAYERED one: no single control standing between a fault and the
     damage. **Mandatory for core-system briefs** — each project layer defines what "core system"
@@ -571,7 +607,7 @@ it is an authoring convention only.
 | `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
 | `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
-| `prose-led-command` | a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span | advisory |
+| `prose-led-command` | a Command cell whose lift — the `cmd:`-marked command, else the first code span — is not a command: a prose mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), a shell comment, or a shell no-op (`:`, a cmd.exe `REM` / `::` remark); verifyrun and the desk executors record the row could-not-run. Fix a mention by marking the real command with a `cmd:` code span; fix a comment or no-op, marked or not, by replacing it with the command that performs the check | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `runtime-resource-claim-without-principal` | a runtime resource claim (or a release of a claimed resource) not authorized by a human or organization principal, or ownership no succeeded claim backs | fatal |
 | `runtime-resource-credential-not-rotated` | a runtime resource claim with no recorded rotation of the agent credential, or a release with no recorded revocation | fatal |
@@ -756,7 +792,12 @@ could-not-check runs serial.
    move" and a warning if any tempting-but-wrong first step is a dead end.
 3. **Dependency waves** — `Wave 0: [..]  Wave 1: [..]←0  …`, plus the one-line critical path
    (`0→8→1→2→5`).
-4. (Optional) "Before starting" prereqs and "Shared conventions" the briefs inherit.
+4. **Delivery milestones when applicable** — link the canonical records and show outcome,
+   contributor wave span, remaining work, acceptance outstanding and prerequisite holds
+   per the shared procedure. Keep generated projections in their own supported region;
+   do not add milestone rows to the Briefs table or hand-edit generated cells. Until
+   supported, put the proposed mapping in the scoping document and link it from authored prose.
+5. (Optional) "Before starting" prereqs and "Shared conventions" the briefs inherit.
 
 ## When a spec is approved: file the authoring follow-on in the same motion
 
@@ -774,12 +815,17 @@ layer; the floor does not wait on one.)
 
 ## Working method
 
-1. **Inventory the work** — list the discrete units. Each becomes a brief; keep them roughly equal-
+1. **Reconcile outcomes and inventory the work** — preserve the source's milestone promises;
+   map criterion coverage to existing briefs before adding new units. Follow the shared
+   procedure for milestone dependencies, versions and reader support. Each new unit becomes
+   a brief; keep them roughly equal-
    sized (split anything too big — e.g. one brief doing two distinct roles becomes two).
 2. **Map dependencies** — for each unit, what must exist first (`Depends on`) and what it enables
    (`Unblocks`). This gives the waves (Wave 0 = no deps; Wave N = depends only on <N).
-3. **Derive + verify the critical path** — the longest dependency chain. Verify its head per the
-   judgment-call section above.
+3. **Derive + verify the critical path** — for each selected milestone, include its contributing
+   work, actual execution dependencies and final acceptance prerequisites. Validate mixed-graph
+   cycles and qualify paths with unknown root/evidence coverage. Verify the head per the
+   judgment-call section above; a wave summary alone is not readiness.
 4. **Write the README first** (table + path + waves), then the briefs. Cross-link both directions.
 5. **Convert relative dates to absolute** (e.g. "by next week" → the actual date) — these docs
    outlive the conversation.

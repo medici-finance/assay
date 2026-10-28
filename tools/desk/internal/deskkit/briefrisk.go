@@ -39,10 +39,11 @@ package deskkit
 //     WAIVES a gate another term set.
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -76,10 +77,8 @@ type BriefRisk struct {
 }
 
 // briefGateLine matches the top-level `gate:` frontmatter line.
-var briefGateLine = regexp.MustCompile(`(?m)^gate:\s*(.*)$`)
 
 // briefRiskKeys are the four canonical risk-answer keys, in the brief-v1 order.
-var briefRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
 
 // BriefRiskFromBody parses body for a `Brief:` trailer, resolves it to a brief file under
 // the repo's configured stream root, reads the brief frontmatter, and reports the owning
@@ -273,20 +272,25 @@ func RiskFromBriefContent(content string) (classed bool, reason string, hasFront
 // return, hasFrontmatter, is FALSE when the content carries no parseable `---` fence — the
 // caller treats that as unverifiable (a resolved brief with no readable frontmatter cannot
 // be called clean), distinct from a fence that parsed and positively answered non-risk.
-func briefFrontmatterRisk(content string) (classed bool, reason string, hasFrontmatter bool) {
-	block := briefFrontmatterFence(content)
-	if block == "" {
+func briefFrontmatterRisk(content string) (bool, string, bool) {
+	block, _, err := briefdoc.Split(content)
+	if err != nil || block == "" {
 		return false, "", false
 	}
-	if m := briefGateLine.FindStringSubmatch(block); m != nil {
-		if strings.EqualFold(strings.Trim(strings.TrimSpace(m[1]), `"'`), "human") {
-			return true, "owning brief is human-gated (gate: human)", true
-		}
+	f, err := briefdoc.ParseFields(block)
+	if err != nil {
+		return true, "owning brief frontmatter unreadable: " + err.Error(), false
 	}
-	for _, k := range briefRiskKeys {
-		re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(k) + `\s*:\s*yes`)
-		if re.MatchString(block) {
-			return true, "owning brief declares risk: " + k + " = yes", true
+	if strings.EqualFold(f.Values["gate"], "human") {
+		return true, "owning brief is human-gated (gate: human)", true
+	}
+	r := f.Risk
+	for _, kv := range []struct {
+		k string
+		v bool
+	}{{"regulatory", r.Regulatory}, {"customer", r.Customer}, {"irreversible", r.Irreversible}, {"sensitive-data", r.SensitiveData}} {
+		if kv.v {
+			return true, "owning brief declares risk: " + kv.k + " = yes", true
 		}
 	}
 	return false, "", true
@@ -295,18 +299,7 @@ func briefFrontmatterRisk(content string) (classed bool, reason string, hasFront
 // briefFrontmatterFence returns the text between the leading `---` fences, or "" when the
 // content does not open with one. Mirrors the small extractors verifyloop/deskdispatch
 // carry — deskkit keeps its own so it does not import a command package.
-func briefFrontmatterFence(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return ""
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return strings.Join(lines[1:i], "\n")
-		}
-	}
-	return ""
-}
+func briefFrontmatterFence(content string) string { return briefdoc.Frontmatter(content) }
 
 // splitBriefRef reduces the accepted `Brief:` trailer value forms to (stream, NN): the
 // slash form `<stream>/<NN>`, and the colon forms `<stream>:<NN>`, `<repo>:<stream>:<NN>`,

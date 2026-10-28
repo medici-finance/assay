@@ -1,0 +1,1 @@
+Adds internal/cellop/mutations.json to the mutation-gate matrix (#3292), so the cellctl plan/apply guards are re-mutated nightly; otherwise identical to .github/workflows/truth-suite.yml. Pending maintainer promotion over the live file (README Contents).

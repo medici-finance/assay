@@ -63,7 +63,9 @@ Options:
 2. **Approve the fallback pilot only** — move public `tools/claimguard`; import no adopter-held source.
 3. **Hold the cutover** — keep the supported implementation until the missing proof is supplied.
 
-Default if no answer: none — activation blocks until answered.
+Default if no answer: none — blocks until answered.
+
+Activation blocks until answered.
 
 ## Ground rules
 

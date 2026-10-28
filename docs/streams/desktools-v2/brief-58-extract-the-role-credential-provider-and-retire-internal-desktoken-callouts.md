@@ -4,14 +4,14 @@ title: "Extract the role credential provider and retire internal desktoken callo
 why: "Every Go caller starts another command to obtain a credential even when the credential is already cached. One internal provider lets the CLI and existing role-owned Go processes share the same custody, cache and mint implementation without repeating command startup or creating a second credential authority."
 wave: 1
 depends: []
-unblocks: ["desktools-v2/59", "desktools-v2/62", "desktools-v2/33", "forge-neutral/40"]
+unblocks: ["desktools-v2/59", "desktools-v2/62", "desktools-v2/33", "forge-neutral/40", "desktools-v2/75", "desktools-v2/77"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
 outcome: none
-version: 2
+version: 3
 id: 8c796b94-21a4-4f83-94a0-e1954671972b
 authored: 2026-10-16 by performance brief authoring
 sources:
@@ -90,7 +90,7 @@ Options:
    compatibility; grant no new credential, role, endpoint or deployment authority.
 2. **Hold or narrow the change** — identify the unsupported boundary and revise it before acceptance.
 
-Default if no answer: none — acceptance remains pending. The implementer presents the concrete
+Default if no answer: none — blocks until answered. The implementer presents the concrete
 compatibility and negative-path results before this decision; authoring and offline fixtures
 do not activate the change.
 

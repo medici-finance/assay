@@ -11,7 +11,9 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 outcome: none
-version: 2
+version: 3
+delivery:
+  - {in: "assay#3759", covers: partial, note: "sub-split (a); snapshot reuse, workloads and Verify 2 remain owed"}
 id: 34374f41-67cd-492a-9bb3-5d3353cf0559
 authored: 2026-10-16 by performance brief authoring
 sources:

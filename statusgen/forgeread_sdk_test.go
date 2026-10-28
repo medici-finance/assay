@@ -42,6 +42,7 @@ import (
 	"github.com/medici-finance/assay/forgeread/adapters"
 	ghadapter "github.com/medici-finance/assay/forgeread/adapters/github"
 	gladapter "github.com/medici-finance/assay/forgeread/adapters/gitlab"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 const parityDir = "../forgeread/testdata/parity"
@@ -418,7 +419,7 @@ func goList(t *testing.T, dir string, args ...string) string {
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := goquiet.Cmd(cmd).Output()
 	if err != nil {
 		t.Fatalf("go %v in %s: %v\n%s", args, dir, err, stderr.String())
 	}
@@ -427,7 +428,7 @@ func goList(t *testing.T, dir string, args ...string) string {
 
 // --- external consumer ------------------------------------------------------------------------
 
-const publishedVersion = "v1.0.0"
+const publishedVersion = "v1.1.0"
 const forgereadPath = "github.com/medici-finance/assay/forgeread"
 
 // publishToProxy writes the forgeread module into root as a GOPROXY=file:// layout.
@@ -518,7 +519,7 @@ func buildConsumer(t *testing.T, proxy string) (string, error) {
 			"GOWORK=off", "GOFLAGS=-mod=mod -modcacherw", "GOPROXY=file://"+proxy, "GOSUMDB=off",
 			"GONOSUMDB=*", "GOMODCACHE="+filepath.Join(dir, "modcache"),
 			"GOTOOLCHAIN=local", "GOPRIVATE=")
-		out, err := cmd.CombinedOutput()
+		out, err := goquiet.Cmd(cmd).CombinedOutput()
 		return string(out), err
 	}
 	if out, err := run("build", "-o", filepath.Join(dir, "consumer"), "."); err != nil {
@@ -541,7 +542,7 @@ func TestReaderSDKExternalConsumer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("external consumer failed: %v\n%s", err, out)
 		}
-		if strings.TrimSpace(out) != "1 1 1 1.0.0" {
+		if strings.TrimSpace(out) != "1 1 1 1.1.0" {
 			t.Errorf("consumer output = %q", out)
 		}
 	})

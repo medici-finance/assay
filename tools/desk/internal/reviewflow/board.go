@@ -102,6 +102,8 @@ type Board struct {
 
 // Row is one board row with its head joined in and its disposition resolved.
 type Row struct {
+	Provider    string // empty for the legacy single-forge wire
+	Host        string
 	Repo        string
 	Number      int
 	Title       string

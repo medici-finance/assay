@@ -52,8 +52,7 @@ id: adab60fb-cc64-4c4f-95bf-11739ca9d449
 ## Context
 files:
 - `tools/desk/internal/deskkit/claimstore_file.go` (planned), `claimstore_file_test.go` (planned)
-- `tools/desk/internal/deskkit/claimstore.go` (planned) — brief 21's resolver file, present once
-  that brief has landed; this brief adds the preconditions for `file` and the mixed-store check.
+- `tools/desk/internal/deskkit/claimstore.go` (planned) — brief 21's resolver file, present once that brief has landed; this brief adds the preconditions for `file` and the mixed-store check.
 - `tools/desk/internal/deskkit/mutations.json`; `tools/desk/README.md`;
   `changelog/<branch-slug>.md` (planned)
 

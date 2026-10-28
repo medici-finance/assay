@@ -1,0 +1,186 @@
+{
+  "root": ".",
+  "test": "go test ./cmd/verifyloop ./internal/deskkit ./internal/verifycmd -run '^Test(PartialWake|VerifyRowID|CommandColumnLiftsViaLift)' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL: repeat completed rows",
+    "file": "cmd/verifyloop/briefscan.go",
+    "old": "return runnableRemainder(remaining, passed), nil",
+    "new": "return remaining, nil"
+  },
+  "mutations": [
+    {
+      "name": "repeat-passed-rows",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "return runnableRemainder(remaining, passed), nil",
+      "new": "return remaining, nil"
+    },
+    {
+      "name": "count-only-churn",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "if rec.RowsPassed == len(remaining) {",
+      "new": "if false && rec.RowsPassed == len(remaining) {"
+    },
+    {
+      "name": "duplicate-result-trust",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "!known[rr.Row] || seen[rr.Row] || !deskkit.ValidRowResult(rr.Result)",
+      "new": "!known[rr.Row] || !deskkit.ValidRowResult(rr.Result)"
+    },
+    {
+      "name": "held-pass-trust",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "if held[rr.Row] {",
+      "new": "if false && held[rr.Row] {"
+    },
+    {
+      "name": "discard-lettered-identity",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "num, numErr := strconv.Atoi(rawID)",
+      "new": "num, numErr := strconv.Atoi(rawID)\n if exact && numErr != nil {id = deskkit.VerifyRowID(strconv.Itoa(num))}"
+    },
+    {
+      "name": "reuse-pass-after-input-change",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "fire(\"inputs changed: \" + strings.TrimPrefix(inWhy, \"changed \"))",
+      "new": "holdOrPartial(payload, rec, verifyRows, \"mutated stale reuse\")"
+    },
+    {
+      "name": "wake-pass-observation-omitted",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "if rows := payloadValue(it, \"wake_passed_rows\"); rows != \"\" {",
+      "new": "if rows := payloadValue(it, \"wake_passed_rows\"); false && rows != \"\" {"
+    },
+    {
+      "name": "count-bounds-weakening",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "rec.RowsTotal != len(all) || rec.RowsPassed < 0 || rec.RowsPassed > len(remaining)",
+      "new": "rec.RowsPassed < 0"
+    },
+    {
+      "name": "drop-malformed-latest-uncertainty",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "if oc.wakeError != \"\" && payload[\"could_not_check\"] == \"\" {",
+      "new": "if false && oc.wakeError != \"\" {"
+    },
+    {
+      "name": "writer-held-pass-overlap",
+      "file": "internal/deskkit/verifyoutcomejoin.go",
+      "old": "if heldRows[row] {",
+      "new": "if false && heldRows[row] {"
+    },
+    {
+      "name": "drop-noncanonical-inventory",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "if !exact {\n\t\t\t\t\tid = deskkit.VerifyRowID(rawID)",
+      "new": "if !exact {\n continue\n\t\t\t\t\tid = deskkit.VerifyRowID(rawID)"
+    },
+    {
+      "name": "ambiguous-partial-prompt",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "if payloadValue(it, \"wake_runnable_rows\") != \"\" {",
+      "new": "if false && payloadValue(it, \"wake_runnable_rows\") != \"\" {"
+    },
+    {
+      "name": "reader-lift-omitted",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "verifycmd.Lift(cell(cmdCol))",
+      "new": "cell(cmdCol)"
+    },
+    {
+      "name": "reader-raw-comment-check-omitted",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "verifycmd.Refused(cell(cmdCol))",
+      "new": "\"\""
+    },
+    {
+      "name": "execution-lettered-admission",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "if numErr != nil {\n\t\t\t\t\tcontinue",
+      "new": "if false && numErr != nil {\n\t\t\t\t\tcontinue"
+    },
+    {
+      "name": "unparseable-inventory-omitted",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "if !exact && rawID == \"\" {",
+      "new": "if !exact && numErr != nil {"
+    },
+    {
+      "name": "overwrite-earlier-uncertainty",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "if oc.wakeError != \"\" && payload[\"could_not_check\"] == \"\" {",
+      "new": "if oc.wakeError != \"\" {"
+    },
+    {
+      "name": "misleading-decode-reason",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "could not decode \u2014",
+      "new": "could not decode row identities \u2014"
+    },
+    {
+      "name": "deferred-row-dispatched",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "remaining = runnableRemainder(remaining, deferred)",
+      "new": "// omit deferred-row exclusion"
+    },
+    {
+      "name": "deferred-prompt-contradiction",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "UNRUN (not runnable offline): %s",
+      "new": "UNRUN (not runnable offline; run every other row): %s"
+    },
+    {
+      "name": "writer-case-rows-key",
+      "file": "internal/deskkit/verifyoutcomejoin.go",
+      "old": "\"rows\", \"row_results\", \"dispatch_ref\",",
+      "new": "\"row_results\", \"dispatch_ref\","
+    },
+    {
+      "name": "writer-count-overlap",
+      "file": "internal/deskkit/verifyoutcomejoin.go",
+      "old": "if hasPassed && hasTotal && passed > total-len(heldRows) {",
+      "new": "if false && hasPassed && hasTotal && passed > total-len(heldRows) {"
+    },
+    {
+      "name": "writer-held-inventory-subset",
+      "file": "internal/deskkit/verifyoutcomejoin.go",
+      "old": "if !seen[row] {",
+      "new": "if false && !seen[row] {"
+    },
+    {
+      "name": "writer-held-count-inventory",
+      "file": "internal/deskkit/verifyoutcomejoin.go",
+      "old": "if err != nil || n > total {",
+      "new": "if false && (err != nil || n > total) {"
+    },
+    {
+      "name": "pending-deferred-context-omitted",
+      "file": "cmd/verifyloop/pending.go",
+      "old": "deriveContentSignalsRows(&signals, parsedRows)",
+      "new": "// deferred context omitted"
+    },
+    {
+      "name": "producer-covered-rows-example",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "`{\"rows\":[2],\"rows_total\":3,\"rows_passed\":2,",
+      "new": "`{\"rows\":[1,2,\"6a\"],\"rows_total\":3,\"rows_passed\":2,"
+    },
+    {
+      "name": "writer-count-bound-off-by-one",
+      "file": "internal/deskkit/verifyoutcomejoin.go",
+      "old": "if err != nil || n > total {",
+      "new": "if err != nil || n > total+1 {"
+    },
+    {
+      "name": "producer-exact-results-optional",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results",
+      "new": "When rows is non-empty, row_results is optional for ALL original Verify IDs and their observed results"
+    },
+    {
+      "name": "producer-gapped-results-omitted",
+      "file": "cmd/verifyloop/dispatch.go",
+      "old": "{\"rows\":[10],\"rows_total\":9,\"rows_passed\":8,\"row_results\":[{\"row\":1,\"result\":\"pass\"},{\"row\":2,\"result\":\"pass\"},{\"row\":3,\"result\":\"pass\"},{\"row\":4,\"result\":\"pass\"},{\"row\":5,\"result\":\"pass\"},{\"row\":6,\"result\":\"pass\"},{\"row\":7,\"result\":\"pass\"},{\"row\":8,\"result\":\"pass\"},{\"row\":10,\"result\":\"could-not-run\"}]}",
+      "new": "{\"rows\":[10],\"rows_total\":9,\"rows_passed\":8}"
+    }
+  ]
+}

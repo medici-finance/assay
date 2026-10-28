@@ -1,8 +1,8 @@
 ---
 brief: assay:assay:desk-containers:07
-title: multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config
-wave: 4
-depends: ["desk-containers/04"]
+title: Optional Linux operator terminal layout over the shared desk attach path
+wave: 11
+depends: ["desk-containers/28"]
 unblocks: []
 effort: M
 gate: model
@@ -13,95 +13,95 @@ authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#64 — the request (tmux and equivalents as a cheap way to control all the desks; win32 as well as mac; the aim is to fire up the docker/k8s pods)"
   - "docs/streams/desk-containers/spec.md — multi-desk control layer section + open question 8"
-  - "containers/desk-run.sh (brief 04) — the per-desk launch path each pane invokes"
-  - "freshness-checked 2026-08-22 @ b3a2067 — no control/multiplexer config exists in the tree"
-why: >-
-  Five desks means five terminals to start, find, and re-attach by hand. One
-  multiplexer session naming a pane per desk turns "fire up the fleet" into a single
-  command and gives one place to see every desk — cheaply, on macOS and Windows alike.
-version: 1
+  - "docs/streams/desk-containers/brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md — single attach path"
+  - "docs/proposals/non-ci-architecture/28-interactive-kubernetes-desks.md — Linux operator cohort"
+  - "freshness-checked 2026-10-20 @ 65f16f4a6b94 (fetched main; layout remains planned)"
+why: A single Linux operator terminal should expose five independent desk sessions without requiring native Windows or adding another launcher.
+version: 4
 id: cbf80c98-0c5e-4309-836b-89bced9ffae5
+exec-tier: strong
+exec-tier-why: Terminal presentation must preserve remote session and lifecycle ownership.
+consumers:
+  - "containers/control/: follow-up desk-containers/07"
+  - "docs/docker.md: follow-up desk-containers/07"
+outcome: none
+
 ---
 
-# Brief 07 — multi-desk control layer
+# Brief 07 — Optional Linux operator terminal layout
 
 ## Context
 
-files:
-- `containers/control/EVALUATION.md` (planned) — the tmux/tmuxinator vs equivalents
-  evaluation, with ONE recommendation per platform.
-- `containers/control/desks.yaml` (planned) — declarative session definition
-  (tmuxinator-style: one pane per desk running the launch script), or the recommended
-  tool's equivalent layout file.
-- `containers/control/desk-grid.sh` (planned) — fallback plain-tmux launcher (no
-  tmuxinator dependency): builds the session with a pane per desk; `--dry-run` prints
-  the per-pane commands.
-- Win32 deliverable per the evaluation's recommendation (planned): a native config
-  (Windows Terminal `wt` fragment / wezterm Lua / zellij layout) or a documented WSL2
-  recipe in `containers/control/EVALUATION.md` (planned) — one committed, working answer.
-- `docs/docker.md` — add the "control all desks at once" section.
+files: `containers/control/EVALUATION.md` (planned), `containers/control/desks.yaml` (planned), `containers/control/check.sh` (planned), `docs/docker.md`, `changelog/linux-operator-layout.md` (planned).
 
-facts:
-- Candidates to evaluate (minimum): tmux, tmux+tmuxinator, zellij, wezterm, Windows
-  Terminal panes. tmux does not run natively on win32; WSL2 changes that — the
-  evaluation must state which host model (native win32 vs WSL2 + docker) the
-  recommendation assumes (spec open question 8) and give the answer for BOTH mac and
-  win32, choosing exactly one recommendation each.
-- Every pane runs the brief-04 launch path (`containers/desk-run.sh <desk-name>` or its
-  re-attach mode) — the control layer NEVER composes docker flags itself and NEVER
-  reads or holds a credential; it inherits fail-closed behaviour from the script.
-- Pane/window names are exactly the five desk names: intake-desk, worker-desk,
-  pr-review-desk, verify-desk, the-desk.
-- Detach/re-attach of the whole fleet must survive a terminal close (multiplexer
-  session persistence) — that property is part of why a multiplexer beats five
-  terminal tabs, and the evaluation must verify it per recommended tool.
-- The evaluation is a factual deliverable: each claim about a tool (platform support,
-  licence, config mechanism) carries the tool's version checked and the command used to
-  check it, so a reviewer can re-run the check rather than trust the prose.
+facts: The 20 October 2026 direction permits cellctl inside Kubernetes and removes Windows
+from this target. /28 is the single operator path. A multiplexer is optional presentation;
+its absence cannot block start/attach/reconnect or require five models to stay active.
+The original macOS/Windows evaluation is historical context, not a current delivery gate.
+
+layering: A terminal layout calls /28's existing attach interface; no container flags,
+credential reads, lifecycle logic or second launcher in layout scripts.
+
+design-fit:
+  owner: operator terminal presentation; execution remains loopadmin
+  contract: existing cell-operation/attach boundary
+  retires: [required cross-platform multiplexer evaluation for this Linux cohort]
+  weight: verbs +0, flags +0 runtime, refusals +0, layout files +3
+  why-add: A convenience layout can expose the five sessions without granting new authority; direct cellctl attachment remains sufficient.
+
+## Read first
+
+[Current target](../../proposals/non-ci-architecture/28-interactive-kubernetes-desks.md)
+and [operator profile](brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md).
 
 ## Ground rules
-- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
-- NEVER git push to main / trigger workflows / run mutating infra commands. Feature
-  branch + draft PR only.
-- Stop at `implemented` — you do not set verified/done.
-- NEVER commit `STATUS.md` on a branch (single writer = main's CI).
-- If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
+
+Branch/draft PR only; no live API, model call, deployment or workflow. No credentials in
+layout or output. Independent verification owns Evidence.
 
 ## Task
-1. Write `containers/control/EVALUATION.md` (planned): the candidate table (platforms,
-   install cost, config style, session persistence, licence), the mac recommendation,
-   the win32 recommendation (native tool or WSL2 recipe), and the host-model assumption
-   — each factual claim with its version-checked command.
-2. Implement the recommended mac path: `containers/control/desks.yaml` (planned) +
-   `containers/control/desk-grid.sh` (planned) fallback, one pane per desk invoking the
-   brief-04 launch script, with `--dry-run` support in the script path.
-3. Implement the committed win32 answer per the recommendation (config file or
-   documented recipe).
-4. Document the fleet workflow in `docs/docker.md`: start all, detach, re-attach, kill.
 
-## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `grep -ci 'win32' containers/control/EVALUATION.md` | exit 0; count ≥ 1 — the win32 answer is present |
-| 2 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do grep -q "$d" containers/control/desks.yaml \|\| exit 1; done` | exit 0 — every desk has a pane in the session definition |
-| 3 | `shellcheck containers/control/desk-grid.sh` | exit 0 |
-| 4 | `sh containers/control/desk-grid.sh --dry-run` | exit 0; prints exactly five launch lines, each containing `desk-run.sh` and one desk name (dereferencing row: the config drives the real launch path, not a parallel one) |
-| 5 | `sh containers/control/desk-grid.sh --dry-run \| grep -ci -e pem -e 'sk-ant-' -e ghs_; test $? -eq 1` | exit 0 — the control layer surfaces no credential material; injection stays inside the launch script |
-| 6 | `tmux -V` (or the recommended tool's version command, per EVALUATION.md) | exit 0; version printed matches the version recorded in EVALUATION.md (dereferencing row for the evaluation's platform claims on the runner's own platform) |
+1. Evaluate the smallest supported Linux terminal layout inside the operator image. Record
+   actual tool/version and observed attach/detach behavior; direct one-role cellctl attachment
+   remains the baseline. Do not implement native Windows, Docker orchestration or a service.
+   `check.sh --version-evidence` (planned) invokes the actual selected tool's version and
+   required local capabilities with literal argv, compares them to the recorded version/
+   capability manifest, and fails on a missing tool, mismatch or unsupported capability.
+   Include a mutation changing the recorded version and require the comparison to fail.
+2. Expose five named role attachments through /28, using configured role aliases. Closing a
+   pane/session never terminates its desk or starts a replacement; reconnect is idempotent.
+   The layout composes no Pod specs and knows no Secret or credential values.
+3. Add an offline fixture that replays actual layout calls against /28's fake stream backend,
+   counting launches and owners. Update docs/docker.md with direct and optional layout use,
+   checked versions and the distinction between disconnect and explicit lifecycle stop.
 
-## Definition of Done
-- Verify rows green, recorded in Evidence by a non-implementer.
-- One recommendation per platform (macOS, win32), committed and working — not a list of
-  maybes; the host-model assumption stated.
-- The control layer holds no credential and composes no docker flags — every pane goes
-  through the brief-04 launch script, so **no secret in any image layer** and the
-  brief-02 runtime-injection contract remain untouched by this layer (row 5).
-- `docs/docker.md` regenerated with the fleet-control section (docs-regen item).
+## Verify
+
+For the consumer row, the independent verifier obtains the actual implementation delivery
+from the merged PR, records its full immutable SHA in `ASSAY_DELIVERY_SHA`, and records that
+commit's actual first-parent SHA in `ASSAY_DELIVERY_BASE_SHA`. Neither value defaults to
+HEAD, origin/main or this authoring PR. Both commits must be available in the verification
+checkout; absent/unknown provenance fails closed. Retain exact consumer result counts and
+resolve unchecked required consumers separately; zero disproofs alone is not complete flow
+coverage. These inputs are future implementation-verification evidence, not claims made here.
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check +flow +dereference | `sh containers/control/check.sh --offline` | exit 0; five role panes call the single attach path; closing/reopening the layout produces zero new model invocations or duplicate role owners |
+| 2 | check +mutation | `sh containers/control/check.sh --offline --self-test` | exit 0; planted start-on-attach, stop-on-pane-close and credential read all fail the fixture; no cluster contact |
+| 3 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/07 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
+| 4 | check +dereference +mutation | `sh containers/control/check.sh --version-evidence --self-test` | exit 0; real selected tool version and local capabilities match EVALUATION.md; changed recorded version/capability fails; missing tool is could-not-check |
+
+## Pre-mortem
+
+Terminal becomes launch/lifetime owner: rows 1–2. A credentials-owning parallel launcher:
+row 2. Tool/version claims require a reviewer to dereference actual recorded tool output;
+real stream behavior is independently qualified in /29, not inferred from layout existence.
 
 ## Evidence
-<!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+
+<!-- Independent verifier records command, version and observed behavior. -->
 
 ## Review
-Gate: model (all four risk answers no — a layout/orchestration layer over the existing
-launch script, holding no credentials and adding no privilege). Reviewer re-runs the
-evaluation's version-check commands on at least one platform and confirms rows 4-5.
+
+Gate: model; presentation adds no privilege. Native Windows is optional separate work.

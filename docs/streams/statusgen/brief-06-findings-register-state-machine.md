@@ -10,6 +10,7 @@ risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
 schema: brief-v2
 decision-issue: 2012
+ruling: "https://github.com/medici-finance/assay/issues/2012#issuecomment-5977123755"
 authored: 2026-08-20 (authored clean for the statusgen board)
 exec-tier: strong
 exec-tier-why: >-
@@ -25,6 +26,7 @@ sources:
   - "The precedent that anti-falsification / integrity-check changes are a human-gate decision, not a correctness rejection"
   - "The ISA-18.2 / EEMUA-191 alarm-rationalization lineage the design cites (bounded shelving = a snooze, not a mute)"
   - "The invariant that orient integrity is paramount"
+  - "The decision-gate recommendation the 2026-10-04 ruling approved as written: https://github.com/medici-finance/assay/issues/2012#issuecomment-5977069464"
   - "The non-self-writable lifecycle + the tombstone/deletion guard this corroboration machinery extends"
 gate-why: >-
   This brief modifies statusgen's anti-falsification / integrity-check logic — the corroboration
@@ -90,9 +92,7 @@ facts:
 ## Human decision
 
 **2026-10-04 — ruled: option 2, approve with changes**
-([ruling](https://github.com/medici-finance/assay/issues/2012#issuecomment-5977123755) on the
-decision gate #2012, approving the
-[recommendation](https://github.com/medici-finance/assay/issues/2012#issuecomment-5977069464) as
+(ruling comment on the decision gate #2012, approving the recommendation comment on that issue as
 written). The changes, folded into the design and Task below:
 
 1. **Bounded park horizon.** `parked-until` may be at most **90 days** after the date of the commit
@@ -111,6 +111,8 @@ written). The changes, folded into the design and Task below:
 
 Left as is: the definition of "acted on the PR" stays the stamp lane's existing one; any change to it
 is its own item.
+
+Default if no answer: none — blocks until answered.
 
 ## Ground rules
 - NEVER git push / trigger workflows. Feature branch + draft PR only.

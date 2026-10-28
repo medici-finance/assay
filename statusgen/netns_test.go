@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // netProbeEnv selects a network probe mode for the test binary (TestMain →
@@ -232,7 +234,7 @@ func TestNetnsBinaryDispatchesHelper(t *testing.T) {
 		t.Skip("SKIP (could-not-check, not a pass): go toolchain unavailable to build statusgen")
 	}
 	bin := filepath.Join(t.TempDir(), "statusgen")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	callerNS := "net:[unread-off-linux]"

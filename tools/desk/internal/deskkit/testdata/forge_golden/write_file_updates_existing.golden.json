@@ -6,6 +6,19 @@
       "query": "ref=feat%2Fx"
     },
     {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query FileEntryMode($owner:String!,$name:String!,$rev:String!,$file:String!){\n repository(owner:$owner,name:$name){\n  object(expression:$rev){__typename\n   ... on Commit{file(path:$file){mode oid}}\n   ... on Tag{target{__typename ... on Commit{file(path:$file){mode oid}}}}\n  }\n }\n}",
+        "variables": {
+          "file": "EVIDENCE.md",
+          "name": "assay",
+          "owner": "medici-finance",
+          "rev": "feat/x"
+        }
+      }
+    },
+    {
       "method": "PUT",
       "path": "/repos/medici-finance/assay/contents/EVIDENCE.md",
       "body": {

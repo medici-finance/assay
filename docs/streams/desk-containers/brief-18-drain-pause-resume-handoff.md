@@ -12,7 +12,7 @@ why: >-
   meaning when the lifecycle contract replaces the mechanism underneath.
 wave: 9
 depends: ["desk-containers/15", "desk-containers/16", "desk-containers/17"]
-unblocks: ["desk-containers/19", "desk-containers/21", "desk-containers/22"]
+unblocks: ["desk-containers/19", "desk-containers/21", "desk-containers/22", "desk-containers/29"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

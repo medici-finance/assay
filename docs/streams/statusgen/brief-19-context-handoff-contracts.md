@@ -35,10 +35,7 @@ id: ce32913b-bf75-409f-8781-6fe845260a68
 
 ## Context
 
-files: `spec/context-handoff-v1.md` (planned), `schemas/context-handoff-v1.json` (planned),
-`schemas/amendment-manifest-v1.json` (planned), `statusgen/contexthandoff/` (planned) (new pure package and
-tests), `statusgen/testdata/contexthandoff/` (planned), `docs/contracts.md` (one new owner row),
-`changelog/statusgen-19-context-handoff-contracts.md` (planned).
+files: `spec/context-handoff-v1.md` (planned), `schemas/context-handoff-v1.json` (planned), `schemas/amendment-manifest-v1.json` (planned), `statusgen/contexthandoff/` (planned) (new pure package and tests), `statusgen/testdata/contexthandoff/` (planned), `docs/contracts.md` (one new owner row), `changelog/statusgen-19-context-handoff-contracts.md` (planned).
 
 facts (a435badbd, 2026-10-13):
 - The handoff records named by the ratified target are: target and intent, discovery receipt,
@@ -177,6 +174,26 @@ Verification-Attestation: medici-finance/assay#3494 run=ced3c60168b4c27a466c71ee
 The substance is the by-hand non-implementer run recorded above (2026-10-14, source 56132c5ffb27b5c614a9be2111121c525a7afb50: 7/7 rows pass, every Expect-cell mutation caught); this witness re-executes the same seven commands at the later source.
 
 **VERIFY: PASS** — the 2026-10-14 by-hand run passed all 7 rows with 0 fail, and the container witness at 4b15482af5c6 passed all 7 rows (exit 0, 0 fail, 0 could-not-run).
+
+### Receipt-bearing container witness — 2026-10-20 claude-opus-5-5 verifier at 742839555dcd (7/7 rows pass)
+
+Container execution witness, 2026-10-20, under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker): `statusgen verifyrun` ran all seven rows non-dry at source 742839555dcd1731139b15a295cf78cdbad9dc91 inside a local docker container (image assay-verify:go1.27, built from golang:1.27.2-trixie, git 2.47) started with `--network none`, sandbox=container-netns, with the engine's default seccomp profile, admitted by `deskdispatch --check-verifier` (rc 0) under the attestation below. This is a fresh receipt-bearing pass at current main; the latest prior Evidence on main is the 2026-10-19 container witness at 4b15482af5c6 directly above, landed by medici-finance/assay#3503.
+
+Verification-Attestation: medici-finance/assay#3648 run=14ca283a9faba278c38d348ab990393e1ce48a025227803e6d0bb6c633c3d1d7 source=742839555dcd1731139b15a295cf78cdbad9dc91 brief=docs/streams/statusgen/brief-19-context-handoff-contracts.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffAmendWithoutPatchFails$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffAmendWithoutPatchFails " "$out")` | pass exit=0 sandbox=container-netns | sha256:d960a6903590 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCoverageGapRequired$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCoverageGapRequired " "$out")` | pass exit=0 sandbox=container-netns | sha256:e41a75e96928 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffDraftIsNotApproved$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffDraftIsNotApproved " "$out")` | pass exit=0 sandbox=container-netns | sha256:ff5f135921e4 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCanonicalDigestStable$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCanonicalDigestStable " "$out")` | pass exit=0 sandbox=container-netns | sha256:85ac25386432 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffQualifiedIDsResolve$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffQualifiedIDsResolve " "$out")` | pass exit=0 sandbox=container-netns | sha256:370d3e55098f | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffSchemaFixtures$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffSchemaFixtures " "$out")` | pass exit=0 sandbox=container-netns | sha256:2b454af76929 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./contexthandoff/) && test "$name" = contexthandoff && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./contexthandoff/) && test -z "$bad")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+
+The substance is the by-hand non-implementer run recorded above (2026-10-14, source 56132c5ffb27b5c614a9be2111121c525a7afb50: 7/7 rows pass, every Expect-cell mutation caught); this witness re-executes the same seven commands at the current source.
+
+**VERIFY: PASS** — the 2026-10-14 by-hand run passed all 7 rows with 0 fail, and the container witness at 742839555dcd passed all 7 rows (exit 0, 0 fail, 0 could-not-run).
 
 ## Review
 

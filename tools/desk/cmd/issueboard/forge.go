@@ -47,7 +47,7 @@ func init() {
 // an ambient identity — a session with no resolvable role gets a refusal the caller surfaces
 // as could-not-check, never a silent ambient read. It is a package var so a test can inject a
 // recorded backend without a network or a minted credential.
-var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+var forgeFor = func(repo string, observers ...deskkit.RequestObserver) (deskkit.Forge, deskkit.ForgeRepo, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
 		return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable("bad repo "+repo, nil)
@@ -58,9 +58,39 @@ var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return nil, fr, deskkit.Unverifiable("cannot resolve the issueboard App role to read "+repo+
 			" — the read path authenticates as a minted App token, never an ambient gh identity", err)
 	}
-	f, ferr := deskkit.ForgeFor(fr, role)
+	f, ferr := deskkit.ForgeFor(fr, role, observers...)
 	if ferr != nil {
 		return nil, fr, ferr
 	}
 	return f, fr, nil
+}
+
+// issueReadForge is the collection's read-only capability. The original wrapped
+// Forge is retained: no unwrapping, alternate identity or new request path.
+type issueReadForge interface {
+	ListOpenIssues(deskkit.ForgeRepo) ([]deskkit.IssueSummary, error)
+	GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error)
+	IssueTrustEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error)
+	IssueContentEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error)
+	IssueLabelHistory(deskkit.ForgeRepo, int) (*deskkit.LabelHistory, error)
+}
+
+// issueReader belongs to ONE repository in ONE collection invocation. Admitted
+// setup and bounded read-ahead results stay within that collection; required
+// observations are consumed in issue order. The next invocation resolves and
+// reads anew, and opaque readers retain their original individual operations.
+type issueReader struct {
+	forge         issueReadForge
+	repo          deskkit.ForgeRepo
+	eventNumbers  []int
+	eventNext     int
+	eventPayloads map[int]*deskkit.TrustPayload
+}
+
+func newIssueReader(repo string, observers ...deskkit.RequestObserver) (*issueReader, error) {
+	f, fr, err := forgeFor(repo, observers...)
+	if err != nil {
+		return nil, err
+	}
+	return &issueReader{forge: f, repo: fr}, nil
 }

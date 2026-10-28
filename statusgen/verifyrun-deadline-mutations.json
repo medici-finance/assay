@@ -1,0 +1,71 @@
+{
+  "test": "go test . -run '^TestVerifyrun(Deadline|Signal)' -count=1 -timeout 150s",
+  "control": {
+    "name": "CONTROL — a deadline kill is recorded as a row failure instead of could-not-run",
+    "file": "verifyrun.go",
+    "old": "\tif ctx.Err() == context.DeadlineExceeded {\n\t\treturn runResult{exit: -1, output: out, couldNotRun: true,",
+    "new": "\tif false && ctx.Err() == context.DeadlineExceeded {\n\t\treturn runResult{exit: -1, output: out, couldNotRun: true,"
+  },
+  "mutations": [
+    {
+      "name": "ordinary row cancellation no longer owns the process group",
+      "file": "verifyrun.go",
+      "old": "\tkillWholeProcessGroup(cmd)\n\tcmd.Dir = root\n",
+      "new": "\tcmd.Dir = root\n"
+    },
+    {
+      "name": "the Unix cancellation helper targets the direct shell only",
+      "file": "procgroup_unix.go",
+      "old": "\t\treturn syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)\n",
+      "new": "\t\treturn syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)\n"
+    },
+    {
+      "name": "the caller's original row deadline is replaced by a larger budget",
+      "file": "verifyrun.go",
+      "old": "\tctx, cancel := context.WithTimeout(plan.rowParent(), timeout)\n",
+      "new": "\tctx, cancel := context.WithTimeout(plan.rowParent(), 2*time.Minute)\n"
+    },
+    {
+      "name": "the group kill is left to exec's Cancel, which skips a reaped shell",
+      "file": "verifyrun.go",
+      "old": "\t\tstopGroupKill := context.AfterFunc(ctx, func() { _ = cmd.Cancel() })\n",
+      "new": "\t\tstopGroupKill := func() bool { return false }\n"
+    },
+    {
+      "name": "a stop signal no longer cancels the run's rows",
+      "file": "verifyrun.go",
+      "old": "\tplan.stop = stop\n",
+      "new": "\t_ = stop\n"
+    },
+    {
+      "name": "a row killed by the interrupt falls through to a verdict",
+      "file": "verifyrun.go",
+      "old": "\tif why := plan.interruption(); why != \"\" {\n\t\treturn runResult{",
+      "new": "\tif why := plan.interruption(); false && why != \"\" {\n\t\treturn runResult{"
+    },
+    {
+      "name": "a later row still starts after the interrupt",
+      "file": "verifyrun.go",
+      "old": "\t\tcase plan.interruption() != \"\":\n",
+      "new": "\t\tcase false:\n"
+    },
+    {
+      "name": "an interrupted run goes on to write its witness",
+      "file": "verifyrun.go",
+      "old": "\tif why := plan.interruption(); why != \"\" {\n\t\tfmt.Fprintf(stderr,",
+      "new": "\tif why := plan.interruption(); false && why != \"\" {\n\t\tfmt.Fprintf(stderr,"
+    },
+    {
+      "name": "a signal ignored at start is caught anyway",
+      "file": "verifyinterrupt.go",
+      "old": "\t\tif !signal.Ignored(s) {\n",
+      "new": "\t\tif true {\n"
+    },
+    {
+      "name": "the watch keeps catching after the first signal",
+      "file": "verifyinterrupt.go",
+      "old": "\t\tcase s := <-ch:\n\t\t\tsignal.Stop(ch)\n",
+      "new": "\t\tcase s := <-ch:\n"
+    }
+  ]
+}

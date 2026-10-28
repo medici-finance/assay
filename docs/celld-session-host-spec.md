@@ -38,7 +38,7 @@ This revision is reconciled against the architecture on main (`origin/main`
 and [23: runtime contract alignment](proposals/non-ci-architecture/23-runtime-contract-alignment.md).
 
 - **Cell API (R7).** Doc 21 allocates R7, the public Cell API and thin cockpit, to the
-  parked `cell-api` stream and makes the Cell API the only operator ingress. `celld` is
+  active `cell-api` stream and makes the Cell API the only operator ingress. `celld` is
   **not** that API and adds no ingress of its own. Operator clients, including `cellctl`,
   reach `celld` only through the Cell API; its authenticated control endpoint serves
   the Cell API and runner registration. Whether `celld`
@@ -416,7 +416,7 @@ The human driver owns these consequential decisions:
   capability-specific adapters. Do not require every harness to expose identical
   services, and do not add live migration or automatic cross-host failover.
 - **D4 — Cell API relation:** recommend that `celld` exposes no operator ingress and is
-  reached only through the R7 Cell API owned by the parked `cell-api` stream. The R7
+  reached only through the R7 Cell API owned by the active `cell-api` stream. The R7
   owner decides whether `celld` is packaged inside or behind that API. Until then this
   spec adds no listener for operators or external callers.
 
@@ -561,7 +561,7 @@ each as follows:
 
 | Owner | Relation of `celld` |
 | --- | --- |
-| R7 Cell API and thin cockpit (doc 21; parked `cell-api` stream; doc 23 owner table) | `celld` is not the Cell API and has no operator ingress of its own. The Cell API is the only ingress; `celld` serves it and registered runners (D4) |
+| R7 Cell API and thin cockpit (doc 21; active `cell-api` stream; doc 23 owner table) | `celld` is not the Cell API and has no operator ingress of its own. The Cell API is the only ingress; `celld` serves it and registered runners (D4) |
 | R2 coordination and R3 isolated runner (doc 21 lifecycle; doc 23 owner table) | `celld` packages the execution-host side. R2 records a requested transition, R3 executes it; section 4 maps every operation onto doc 21 and adds no transition |
 | [desk-containers 15-24](streams/desk-containers/README.md) (doc 21 interim verbs) | The interim `up`, `down`, `status`, `logs` and per-role stop keep their meaning. A `celld` mode is an adapter behind them, not a replacement |
 | R4 role executors and R6 forge service (doc 23) | Effect credentials and provider effects stay with them; `celld` hosts sessions, not effects |

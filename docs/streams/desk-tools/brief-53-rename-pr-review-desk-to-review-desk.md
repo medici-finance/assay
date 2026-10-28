@@ -131,7 +131,9 @@ Options:
 
 Recommendation: option 1. It changes nothing that live windows or adopters depend on, and it leaves the image decision to whoever owns the release contract.
 
-Default if no answer: hold.
+Default if no answer: none — blocks until answered.
+
+Hold the change.
 
 ## Task
 

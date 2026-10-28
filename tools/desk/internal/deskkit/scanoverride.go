@@ -116,7 +116,7 @@ func LogScanOverride(o ScanOverride) error {
 	if err := Log(Entry{
 		Tool:       o.Tool,
 		Verb:       ScanOverrideVerb,
-		Result:     ResultOK,
+		Result:     ResultLocal,
 		Detail:     StripControl(detail),
 		Repo:       o.Repo,
 		PR:         o.PR,

@@ -110,12 +110,20 @@ func Idle(b *Board, now time.Time) IdleVerdict {
 				b.Popn.Cap, strings.Join(b.Popn.TruncatedRepos, ", ")))
 	}
 
-	v.NeedsReview = b.CountAction("NEEDS-REVIEW")
-	v.ReReview = b.CountAction("RE-REVIEW")
+	counts := idleCounts(b)
+	v.NeedsReview, v.ReReview = counts.NeedsReview, counts.ReReview
 
 	if len(v.BlindReasons) > 0 {
 		return v // could-not-check outranks any count read off an untrusted board
 	}
+	return counts
+}
+
+// idleCounts is shared after the caller has positively checked scope, coverage and freshness.
+func idleCounts(b *Board) IdleVerdict {
+	v := IdleVerdict{}
+	v.NeedsReview = b.CountAction("NEEDS-REVIEW")
+	v.ReReview = b.CountAction("RE-REVIEW")
 	if v.NeedsReview > 0 || v.ReReview > 0 {
 		v.State = IdleNo
 		return v

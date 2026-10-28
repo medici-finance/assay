@@ -83,6 +83,24 @@ func HelpOnly(args []string) bool {
 	return helpTokens[args[1]]
 }
 
+// UsageHelp reports whether args, a verb's whole argument list (os.Args[1:]), is a help request
+// in the shapes a verb answers with its usage screen before it does any work: a LEADING `help`,
+// `-h` or `--help` (any arguments after it), or HelpOnly's subcommand form. It is the predicate a
+// verb tests before EchoConfigHelpNotice (configecho.go) when, and only when, its own dispatch answers
+// exactly these shapes with its usage first (medici-finance/assay#3754). A verb that reads argv
+// differently, or not at all, never calls it: a false positive there would hide the echo from a
+// run that acts.
+func UsageHelp(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		return true
+	}
+	return HelpOnly(args)
+}
+
 // ErrHelpRequested is the sentinel a verb returns from its subcommand when `fs.Parse`
 // reported `flag.ErrHelp`. It carries ExitOK — a help screen is a successful read, not a
 // refusal — and verbs test for it with IsHelpRequest before writing any audit row.

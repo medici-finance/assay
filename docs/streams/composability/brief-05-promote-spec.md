@@ -29,18 +29,10 @@ id: 8434eb43-806c-4a54-b5a5-6c3c2e88c0bf
 ## Context
 
 files:
-- **create** `spec/component-v1.md` (planned) — from `component-model.md`, restructured to the shape of
-  the three existing spec documents: version line, status line, "Describes reference
-  implementation" line, scope, terminology, normative sections, conformance, known
-  divergences.
-- **edit** `spec/README.md` — add the fourth row to the document table; bump the
-  specification-as-a-whole version per its policy.
-- **edit** `docs/adopting-assay.md` — §2 Component inventory becomes a pointer to
-  `components/KEYS.md` (planned) and the manifests; §3 gains "Removing a component" (the `deskdisable`
-  path, the ledger, what stays for a human); the install scenario steps cite the record.
-- **edit** `docs/streams/composability/component-model.md` — replace the body with a
-  two-line pointer to `spec/component-v1.md` (planned) (the stream keeps the provenance; the spec keeps
-  the text).
+- **create** `spec/component-v1.md` (planned) — from `component-model.md`, restructured to the shape of the three existing spec documents: version line, status line, "Describes reference implementation" line, scope, terminology, normative sections, conformance, known divergences.
+- **edit** `spec/README.md` — add the fourth row to the document table; bump the specification-as-a-whole version per its policy.
+- **edit** `docs/adopting-assay.md` — §2 Component inventory becomes a pointer to `components/KEYS.md` (planned) and the manifests; §3 gains "Removing a component" (the `deskdisable` path, the ledger, what stays for a human); the install scenario steps cite the record.
+- **edit** `docs/streams/composability/component-model.md` — replace the body with a two-line pointer to `spec/component-v1.md` (planned) (the stream keeps the provenance; the spec keeps the text).
 - **edit** `docs/distribution.md` — link the record and the reconcile engine.
 
 facts:

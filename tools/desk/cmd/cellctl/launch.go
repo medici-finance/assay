@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"golang.org/x/term"
 )
@@ -35,10 +36,10 @@ func (c *Cell) repairAdmissionValue() string {
 //
 // Every process here goes through os/exec — no syscall, no shell — so the Windows consequence
 // this brief names is not made worse.
-func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution) {
+func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution, performance ...perfrec.Context) {
 	// Refuse storage-heavy boot work before fetch/worktree creation as well as
 	// atomically rechecking at child enrollment in the process supervisor.
-	if err := launchStep("launch-storage-admission", c.cacheAdmission); err != nil {
+	if err := launchStep("launch-storage-admission", func() error { _, err := c.prepareLaunch(); return err }); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		exitWith(6)
 	}
@@ -100,7 +101,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.ensureCodexResidentRules(wt)
 	}
 	if c.Kind == "scrubbed" {
-		c.scrubbedDeskLaunch(role, harness, model, session, wt)
+		c.scrubbedDeskLaunchWithOptions(role, harness, model, session, wt, provider, cockpit, performance...)
 		return
 	}
 	// The worktree now exists (created, or merged up to main), so its own .claude settings —
@@ -124,9 +125,17 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
 	env := c.telemetryEnv(c.cacheEnv(os.Environ()))
+	if len(performance) > 0 {
+		child := deskkit.PerfAgentContext(performance[0], perfDeskFunction(role), nil, nil)
+		env = deskkit.PerfContextEnv(env, child, false)
+	}
 	if harness != "codex" {
 		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
 	}
+	// The pinned desk-tools directory the shims above were generated against (genShims reads
+	// the same deskToolsBin), so deskboot's binary-pin step classifies them against the SAME
+	// directory, including one set only in defaults.env or cell.env.
+	env = envSet(env, deskkit.DeskToolsBinEnv, deskToolsBin(c.Env))
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
 	env = envSet(env, "ASSAY_SOURCE_REVISION", sha)
@@ -267,7 +276,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 // PRIVATE SOCKET. `env -i` inside that pane discards whatever ambient environment the private
 // tmux SERVER itself was started with, so nothing of the launching shell reaches the harness
 // regardless of what launched the socket.
-func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string) {
+func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string, performance ...perfrec.Context) {
+	c.scrubbedDeskLaunchWithOptions(role, harness, model, session, wt, "", cockpitResolution{Cockpit: "tmux"}, performance...)
+}
+
+func (c *Cell) scrubbedDeskLaunchWithOptions(role, harness, model, session, wt, provider string, cockpit cockpitResolution, performance ...perfrec.Context) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		die("desk: tmux is required for a scrubbed cell (the private-socket session) and is not on PATH")
 	}
@@ -284,8 +297,12 @@ func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string) {
 		_ = os.RemoveAll(lockdir)
 		die("desk: session %s is already running on the private socket (%s) — cellctl down %s to release", sessname, sockpath, c.Name)
 	}
-	env := c.scrubbedComposeEnv(role, harness, session)
-	argv := harnessArgv(harness, role, model, session, wt)
+	env := scrubbedDisplayEnv(c.scrubbedComposeEnv(role, harness, session), cockpit.Cockpit)
+	if len(performance) > 0 {
+		child := deskkit.PerfAgentContext(performance[0], perfDeskFunction(role), nil, nil)
+		env.Pairs = deskkit.PerfContextEnv(env.Pairs, child, false)
+	}
+	argv := c.scrubbedLaunchArgv(role, harness, model, session, wt, provider)
 	if p, err := c.cachePolicy(); err != nil {
 		die("Go cache policy: %v", err)
 	} else if p != nil {
@@ -303,11 +320,20 @@ func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string) {
 	}
 	fmt.Printf("[launch] %s/%s kind=scrubbed model=%s harness=%s session=%s cwd=%s (env -i composed — see docs/cellctl.md Scrubbed cells)\n",
 		c.Name, role, model, harness, sessname, wt)
-	_ = exec.Command("tmux", "-S", sockpath, "new-session", "-d", "-s", sessname, "-c", wt, cmdline.String()).Run()
+	if err := exec.Command("tmux", "-S", sockpath, "new-session", "-d", "-s", sessname, "-c", wt, cmdline.String()).Run(); err != nil {
+		_ = os.RemoveAll(lockdir)
+		die("scrubbed session launch failed: %v", err)
+	}
 	if out, err := exec.Command("tmux", "-S", sockpath, "list-panes", "-t", sessname, "-F", "#{pane_pid}").Output(); err == nil {
 		if pane := firstLine(string(out)); pane != "" {
 			writePid(lockdir, pane)
 		}
+	}
+	if cockpit.Cockpit == "herdr" {
+		if err := c.scrubbedHerdrAttach(sockpath, sessname); err != nil {
+			die("scrubbed Herdr attach failed: %v; private session remains running — inspect status/down", err)
+		}
+		return
 	}
 	if isTTY(os.Stdin) {
 		runForeground([]string{"tmux", "-S", sockpath, "attach", "-t", sessname}, os.Environ(), "")

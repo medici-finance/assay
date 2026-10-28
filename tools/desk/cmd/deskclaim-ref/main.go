@@ -80,6 +80,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/medici-finance/assay/perfrec"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -134,12 +136,22 @@ Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it
 7 partial (list only: some claims listed, some refs unreadable — incomplete, never idle).`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskclaim-ref", nil, os.Args[1:], func([]string) int {
-		return run(os.Args[1:])
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+
+	os.Exit(deskkit.PerfRunMeasured("deskclaim-ref", nil, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		sink := func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
+		return runSelected(a, sink), selected
 	}))
 }
 
-func run(args []string) int {
+func run(args []string) int { return runSelected(args, nil) }
+
+func runSelected(args []string, sink func(perfrec.Context)) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
 		fmt.Fprintf(out, "deskclaim-ref sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
@@ -152,5 +164,5 @@ func run(args []string) int {
 		}
 		return deskkit.ExitOK
 	}
-	return dispatchVerb(args)
+	return dispatchVerb(args, sink)
 }

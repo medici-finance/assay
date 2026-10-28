@@ -31,6 +31,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/medici-finance/assay/perfrec"
+
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
@@ -88,9 +90,15 @@ Exit codes: 0 ok · 3 disabled · 5 refused (bad arguments) · 6 unverifiable.`
 var perfVerbs = []string{"board", "issues", "intake", "version", "--version", "help", "--help", "-h"}
 
 func main() {
-	os.Exit(deskkit.PerfRun("issueboard", perfVerbs, os.Args[1:], func([]string) int {
-		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
-	}))
+	os.Exit(deskkit.PerfRunMeasured("issueboard", perfVerbs, os.Args[1:], performanceCallback(os.Stdout, os.Stderr, startup)))
+}
+
+func performanceCallback(stdout, stderr io.Writer, pre func(io.Writer) int) func([]string, *perfrec.Session) (int, perfrec.Context) {
+	return func(a []string, session *perfrec.Session) (int, perfrec.Context) {
+		selected := perfrec.ResolveContext(perfrec.ContextInput{})
+		code := executeMeasured(a, stdout, stderr, pre, session, func(c perfrec.Context) { selected = c })
+		return code, selected
+	}
 }
 
 // startup is what every real run does first, after its command line parsed and its values
@@ -170,6 +178,12 @@ func bindings() []cli.Binding {
 // execute runs one invocation against a fresh command tree. pre is the process startup (nil in
 // the in-package tests, as run never did it).
 func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	return executeMeasured(args, stdout, stderr, pre, nil, nil)
+}
+
+func executeMeasured(args []string, stdout, stderr io.Writer, pre func(io.Writer) int, session *perfrec.Session, selected func(perfrec.Context)) int {
+	var observer deskkit.RequestObserver
+
 	build := func() *cobra.Command {
 		root := cli.NewRoot("issueboard", "read-only issue + intake board")
 		root.Long = helpLong
@@ -177,7 +191,7 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 		lane := func(sub string) func(*cobra.Command, []string) error {
 			return func(*cobra.Command, []string) error {
 				deskkit.PerfCommand(perfVerbs, sub)
-				return codeErr(runLane(sub, set, stdout, stderr, pre))
+				return codeErr(runLane(sub, set, stdout, stderr, pre, observer))
 			}
 		}
 		// An unknown lane word is a refusal before anything runs, never a guessed default.
@@ -210,12 +224,25 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 		VersionTemplate: "{{.Version}}\n",
 		// A parse error keeps the legacy refusal code (5), not the adapter's default.
 		UsageExit: deskkit.ExitRefused,
+		Performance: func(c perfrec.Context) {
+			if session != nil {
+				session.SelectContext(c)
+				// Every own forge read below uses the explicit native observer.
+				// Other lanes make zero requests; a new reader must extend this inventory.
+				// Credential-minter subprocess work remains child-owned.
+				session.ObserveRequests()
+			}
+			observer = deskkit.RequestObserverFor(c, session, perfrec.OriginDirect)
+			if selected != nil {
+				selected(c)
+			}
+		},
 	})
 }
 
 // runLane resolves and checks the settings, then runs the process startup, the kill switch and
 // the lane, in that order: a bad value is refused before anything is read or echoed.
-func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int, observers ...deskkit.RequestObserver) int {
 	v, err := set.Resolve(cli.Inputs{})
 	if err != nil {
 		fmt.Fprintln(stderr, "refused:", err)
@@ -258,9 +285,9 @@ func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Wri
 	now := time.Now().UTC()
 	var rep *Report
 	if projection == issueflow.Full {
-		rep, err = dispatchFn(sub, v.String("root"), now, slaDays, toFilter)
+		rep, err = dispatchFn(sub, v.String("root"), now, slaDays, toFilter, observers...)
 	} else {
-		rep, err = cmdProjection(v.String("root"), now, slaDays, toFilter, projection)
+		rep, err = cmdProjection(v.String("root"), now, slaDays, toFilter, projection, observers...)
 	}
 	if err != nil {
 		logRun(sub, resultFor(err), err.Error())
@@ -275,12 +302,12 @@ func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Wri
 
 // dispatch routes a subcommand to its handler. An unknown subcommand is a Refused
 // (exit 5), never a guessed default.
-func dispatch(sub, root string, now time.Time, slaDays int, toFilter string) (*Report, error) {
+func dispatch(sub, root string, now time.Time, slaDays int, toFilter string, observers ...deskkit.RequestObserver) (*Report, error) {
 	switch sub {
 	case "board":
-		return cmdBoard(root, now, slaDays)
+		return cmdBoard(root, now, slaDays, observers...)
 	case "issues":
-		return cmdIssues(root, now, slaDays, toFilter)
+		return cmdIssues(root, now, slaDays, toFilter, observers...)
 	case "intake":
 		return cmdIntake(root, now)
 	default:

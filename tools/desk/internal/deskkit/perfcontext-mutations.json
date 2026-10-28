@@ -1,0 +1,71 @@
+{
+  "test": "go test -timeout=120s -count=1 -run '^TestPerfV3LauncherChildFlow$|^TestPerfV3CLIContextPrecedence$|^TestPerfRunnerCI$|^TestPerfV3RealDeskLaunch$|^TestPerfUntypedClaimChildParent$' ./internal/deskkit ./internal/clicontract ./cmd/cellctl ./cmd/deskdispatch",
+  "control": {
+    "name": "do not propagate typed child context",
+    "file": "internal/deskkit/runtool.go",
+    "old": "env = PerfContextEnv(env, pc, true)",
+    "new": "_ = pc"
+  },
+  "mutations": [
+    {
+      "name": "inherit parent agent identity",
+      "file": "../../perfrec/lifecycle.go",
+      "old": "agent, _ = NewID()",
+      "new": "agent = p.AgentID"
+    },
+    {
+      "name": "reuse child invocation as parent",
+      "file": "../../perfrec/lifecycle.go",
+      "old": "parent = c.InvocationID()",
+      "new": "parent = \"\""
+    },
+    {
+      "name": "manufacture child opt-in",
+      "file": "../../perfrec/lifecycle.go",
+      "old": "if c.Profile() == \"\" {",
+      "new": "out = append(out, \"ASSAY_TELEMETRY=1\")\n if c.Profile() == \"\" {"
+    },
+    {
+      "name": "drop current Go parser selection",
+      "file": "internal/cli/performance.go",
+      "old": "sink(perfrec.ResolveContext(*in))",
+      "new": "_ = in"
+    },
+    {
+      "name": "drop present empty flag",
+      "file": "internal/cli/performance.go",
+      "old": "if f == nil || !f.Changed {",
+      "new": "if f == nil || !f.Changed || f.Value.String()==\"\" {"
+    },
+    {
+      "name": "read nil parser context before selection",
+      "file": "internal/cli/performance.go",
+      "old": "if cmd.Context() == nil {",
+      "new": "if false {"
+    },
+    {
+      "name": "remove runner suite from CI execution",
+      "file": "../../.github/workflows/ci.yml",
+      "old": "*/loopadmin|loopadmin) extra=\"GOWORK=off go test ./...\" ;;",
+      "new": "*/loopadmin|loopadmin) extra=true ;;"
+    },
+    {
+      "name": "let attribution override operational desk authority",
+      "file": "../../perfrec/lifecycle.go",
+      "old": "d := c.Data()",
+      "new": "d := c.Data(); out = append(out, \"DESK_LOOP=\"+d.DeskRole)"
+    },
+    {
+      "name": "resolve a second unrecorded launcher invocation",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "in.Performance, _ = cli.PerformanceContext(cmd)",
+      "new": "in.Performance = perfrec.ResolveContext(cli.PerformanceInput(cmd))"
+    },
+    {
+      "name": "forward an inherited grandparent through an untyped tool boundary",
+      "file": "internal/deskkit/runtool.go",
+      "old": "env = unknownPerfParentEnv(env)",
+      "new": "_ = env"
+    }
+  ]
+}

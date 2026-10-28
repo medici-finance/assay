@@ -128,7 +128,16 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
     unset state is also the rollback. A raw harness launch that does not go through `deskdispatch`
     is outside this enforcement, exactly as it is outside the durable claim.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
-  NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
+  NEEDS_CONTEXT), before refilling run `deskusage record --claim-key <the claim key the dispatch used>`
+  with `--repo`, `--item`, `--tier` (the dispatched tier), and only the usage counts the completion
+  notification itself reports (`--input-tokens`, `--output-tokens`, `--total-tokens`, `--cost-micros`,
+  `--wall-seconds`); omit absent counts. Never read, quote or pass worker transcript, prompt or tool
+  output. Token flags take integer token counts, `--cost-micros` takes integer millionths of the
+  currency unit, and `--wall-seconds` takes integer seconds. Omit a figure unless the notification
+  reports it in that exact unit; never relabel milliseconds as seconds or currency units as micros.
+  These figures are not for ranking agents or people. Log a refusal verbatim and continue the refill;
+  never re-attempt the record another way.
+  Then dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
   not a state of the queue: re-sweep §Sources of work with each source's own instrument. Where every
   visible row really is claimed, in flight or capped, §WIP-capped — re-check, never stop applies. The
@@ -301,7 +310,7 @@ Before selecting a projection, run `issueboard --version` locally and require it
 an older binary uses the legacy `issueboard issues` sweep with the same manual
 work-readiness checks below until the pin is deliberately upgraded. Do not retry a
 failed projected sweep through a broad read. Reverting the plugin and producer pins
-restores the old sweep. See [the compatibility matrix](../../../../docs/issue-projections.md).
+restores the old sweep. See [the compatibility matrix](https://github.com/medici-finance/assay/blob/main/docs/issue-projections.md).
 An empty work-ready observation covers only unrepresented issue candidates; intake,
 addressed inbox, representation/PR checks and watcher health still need their own reads.
 
@@ -455,10 +464,17 @@ window stops, hands back, or asks the driver for direction.
    (`ratelimit.go`, `BreakerTrip = 5`, 15-minute cooldown) — so an idempotent write on five quiet
    ticks in a row opens the breaker with nothing having failed. Read freely; write only what a real
    change earns.
-4. **Refills stay inside the write budgets.** `deskpr create` and `deskfile new` share one repo-wide
+4. **Refills stay inside the write budgets.** `deskpr create` and an unbound `deskfile new` share one repo-wide
    ceiling of 20 per rolling hour, so a full 8-slot refill each half hour already spends most of it on
    one repo and leaves little for rework pushes on the same repo. Pace refills against that; exit 4
-   names a `RetryAfter` — sleep it and attempt ONCE, never retry-loop.
+   names a `RetryAfter` — sleep it and attempt ONCE, never retry-loop. A workflow-bound filing
+   (`deskfile new --for-pr <owner>/<repo>#<N> --brief <id>`, an issue an open PR's review or
+   verification requires) is not counted by the per-session filing budget, so a spent budget never
+   defers it, and it does not spend the fixed ceiling above: it meets the per-PR outward-write tier
+   (two writes per filing, with the back-link), a separate repo-wide backstop of its own
+   (`write.bound.repo_hour`, 60 per repository per hour by default, never off; `deskfile attach
+   --kind mr` replies are held by it too) and a per-role, per-PR cap when one is configured (off by
+   default).
 5. **The tick still reports.** One line per §Output contract, and the sweep obligations of the HARD
    GATE are unaffected by a quiet queue.
 
@@ -969,7 +985,11 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+relay onto the tracker, nor does a durable escalation ride the lane alone. A filing that an open
+PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
+`deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
+count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
@@ -1030,3 +1050,25 @@ worker-desk's own.
 - **A tick that did not happen is could-not-check, never idle.** Two ticks with no successful sweep is
   the silent-board-freeze class — re-arm, and if it does not clear, file it (§Output contract,
   detected blindness).
+
+
+## Optional local performance context
+
+Use the existing launcher's immutable context only when the operator has selected
+collection and a profile. Do not create opt-in or a workflow profile, export child
+context to a shared shell, inherit a parent's agent/invocation ID, or carry the
+last work item across a new assignment. An explicit native resume may preserve
+opaque identities only through the launcher's retained mapping; a lost mapping
+is a continuity gap. Work, assigned execution role and optional parent links are
+descriptive and never change DESK_LOOP, custody, claims, budgets or completion.
+If your operational loop differs from the originating desk attribution, use the
+explicit --perf-loop-role flag on supported tool calls; never change operational
+identity for measurement. Keep local workflow references and handoffs private.
+See [desk-shell mechanics](../../references/desk-shell.md#optional-local-performance-context)
+and the [Assay source entrypoint inventory](https://github.com/medici-finance/assay/blob/main/docs/performance-entrypoints.json) for supported boundaries; an
+unsupported boundary stays unknown.
+
+Apply validated handoff entries to each tool call with per-command `env KEY=value
+... tool ...` arguments or that tool's supported `--perf-*` flags. Quote values;
+never evaluate the handoff as shell code or export it into a persistent shell.
+Use `--perf-loop-role` for descriptive desk attribution; never alter `DESK_LOOP`.

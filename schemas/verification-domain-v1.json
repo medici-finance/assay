@@ -1,0 +1,387 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assay.dev/schemas/verification-domain-v1.json",
+  "title": "Verification domain v1",
+  "description": "Pure normalized records. Candidate/instance equality, required-fact uniqueness, generation currency and state consistency additionally require domain validation. No authority is granted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "requires",
+    "work",
+    "candidate",
+    "facts",
+    "generation",
+    "progress"
+  ],
+  "properties": {
+    "schema": {
+      "const": "verification-domain-v1"
+    },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*@[1-9][0-9]*$"
+      }
+    },
+    "work": {
+      "$ref": "#/$defs/work-identity"
+    },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
+    "acceptance": {
+      "$ref": "#/$defs/acceptance-binding"
+    },
+    "facts": {
+      "$ref": "#/$defs/fact-set"
+    },
+    "generation": {
+      "$ref": "#/$defs/reevaluation-generation"
+    },
+    "progress": {
+      "$ref": "#/$defs/progress"
+    }
+  },
+  "$defs": {
+    "work-identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief",
+        "instance",
+        "node",
+        "attempt"
+      ],
+      "properties": {
+        "brief": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[0-9]{2,4}[a-z]?$"
+        },
+        "instance": {
+          "type": "string",
+          "pattern": "^inst-[a-z0-9][a-z0-9-]{2,62}$"
+        },
+        "node": {
+          "type": "string",
+          "pattern": "^inst-[a-z0-9][a-z0-9-]{2,62}\\.[a-z0-9][a-z0-9-]*$"
+        },
+        "attempt": {
+          "type": "string",
+          "pattern": "^inst-[a-z0-9][a-z0-9-]{2,62}\\.[a-z0-9][a-z0-9-]*\\.a[1-9][0-9]*$"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "base-commit",
+        "base-tree",
+        "commit",
+        "tree",
+        "manifest-digest"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "base-commit": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "base-tree": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "manifest-digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "acceptance-binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "digest",
+        "candidate",
+        "required-facts"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "required-facts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "present",
+            "missing",
+            "could-not-check"
+          ]
+        }
+      }
+    },
+    "fact-set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed-at",
+        "entries"
+      ],
+      "properties": {
+        "observed-at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fact"
+          }
+        }
+      }
+    },
+    "reevaluation-generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "recorded"
+      ],
+      "properties": {
+        "requested": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recorded": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "component-state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "complete",
+        "held",
+        "cancelled",
+        "could-not-check"
+      ]
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bind",
+        "admit",
+        "execute",
+        "assess",
+        "decide",
+        "publish"
+      ],
+      "properties": {
+        "bind": {
+          "$ref": "#/$defs/component-state"
+        },
+        "admit": {
+          "$ref": "#/$defs/component-state"
+        },
+        "execute": {
+          "$ref": "#/$defs/component-state"
+        },
+        "assess": {
+          "$ref": "#/$defs/component-state"
+        },
+        "decide": {
+          "$ref": "#/$defs/component-state"
+        },
+        "publish": {
+          "$ref": "#/$defs/component-state"
+        }
+      }
+    },
+    "execution-state": {
+      "type": "string",
+      "enum": [
+        "not-started",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "could-not-check"
+      ]
+    },
+    "acceptance-state": {
+      "type": "string",
+      "enum": [
+        "unaccepted",
+        "held",
+        "repair-required",
+        "accepted"
+      ]
+    },
+    "publication-state": {
+      "type": "string",
+      "enum": [
+        "not-requested",
+        "pending",
+        "confirmed",
+        "unknown"
+      ]
+    },
+    "retirement-state": {
+      "type": "string",
+      "enum": [
+        "not-requested",
+        "pending",
+        "held",
+        "retired"
+      ]
+    },
+    "stage-state": {
+      "type": "string",
+      "enum": [
+        "received",
+        "bound",
+        "admitted",
+        "executing",
+        "assessing",
+        "decided",
+        "publishing",
+        "reconciling",
+        "complete",
+        "held",
+        "cancelled",
+        "superseded"
+      ]
+    },
+    "hold-kind": {
+      "type": "string",
+      "enum": [
+        "fact",
+        "eligibility",
+        "coverage",
+        "authority",
+        "human",
+        "environment",
+        "publication",
+        "retirement"
+      ]
+    },
+    "hold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "owner",
+        "required",
+        "observed-at"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/hold-kind"
+        },
+        "owner": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "required": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "observed-at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      }
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "components",
+        "execution",
+        "acceptance",
+        "publication",
+        "retirement",
+        "observed-at",
+        "holds"
+      ],
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/stage-state"
+        },
+        "components": {
+          "$ref": "#/$defs/components"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution-state"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/acceptance-state"
+        },
+        "publication": {
+          "$ref": "#/$defs/publication-state"
+        },
+        "retirement": {
+          "$ref": "#/$defs/retirement-state"
+        },
+        "observed-at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "holds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hold"
+          }
+        }
+      }
+    }
+  }
+}

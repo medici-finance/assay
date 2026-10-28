@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -23,6 +24,8 @@ const holderHelperEnv = "DESKKIT_LOCK_HOLDER_HELPER"
 // TestLockHolderHelper is the holder process: it takes dir/owner.lock as cellctl
 // would, records a role child, prints "ready" and then waits to be ended.
 // mode "wedged" lets the recorded child exit; mode "current" keeps it alive.
+//
+// regression: #3608
 func TestLockHolderHelper(t *testing.T) {
 	mode := os.Getenv(holderHelperEnv)
 	if mode == "" {
@@ -41,12 +44,16 @@ func TestLockHolderHelper(t *testing.T) {
 	if err != nil {
 		os.Exit(3)
 	}
+	// Keep custody until the helper exits; GC must not unlock a live holder.
+	defer h.Release()
 	// The role child reads stdin until this process goes away.
 	child := exec.Command("/bin/sh", "-c", "read x")
 	in, err := child.StdinPipe()
 	if err != nil || child.Start() != nil {
 		os.Exit(4)
 	}
+	// Keep stdin open for the current child even after its last explicit use.
+	defer in.Close()
 	if h.RecordChild(child.Process.Pid) != nil {
 		os.Exit(5)
 	}
@@ -54,6 +61,10 @@ func TestLockHolderHelper(t *testing.T) {
 		in.Close()
 		child.Wait()
 	}
+	// Every holder case must survive collection before its waiter observes it.
+	// Without the deferred ownership above, GC can unlock the file or end the
+	// current child with EOF while this helper is still alive.
+	runtime.GC()
 	os.Stdout.WriteString("ready\n")
 	for { // until SIGTERM or the test ends it; a sleeping timer is not a deadlock
 		time.Sleep(time.Hour)

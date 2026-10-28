@@ -9,12 +9,38 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/runnercmds"
 )
+
+// Planning has a pass-local reader. Dispatch deliberately keeps the original
+// fresh Git checks (including their config scope); no scan reader is retained.
+type verifierAssociationReader interface {
+	Head(string) (string, string, error)
+	Snapshot(string) (string, string, error)
+	Deliverables(string, string, string) ([]string, error)
+}
+
+type freshVerifierAssociation struct{}
+
+func (freshVerifierAssociation) Head(root string) (string, string, error) {
+	return deskkit.VerifierRepositoryHead(root)
+}
+func (freshVerifierAssociation) Snapshot(root string) (string, string, error) {
+	return deskkit.VerifierRepositorySnapshot(root)
+}
+func (freshVerifierAssociation) Deliverables(root, revision, brief string) ([]string, error) {
+	return deskkit.VerifierDeliverables(root, revision, brief)
+}
 
 // associateVerifierItem adds the source side of a declared cross-repository
 // item without changing its tracking identity. Plain legacy same-repo items
 // keep their existing representation. Dispatch rechecks this association.
 func associateVerifierItem(it loopengine.Item, root string) (loopengine.Item, error) {
+	// A fresh observation is mandatory outside the scanner, especially dispatch.
+	return associateVerifierItemIn(it, root, freshVerifierAssociation{})
+}
+
+func associateVerifierItemIn(it loopengine.Item, root string, pass verifierAssociationReader) (loopengine.Item, error) {
 	originalPayload := it.Payload
 	it.Payload = map[string]string{}
 	for k, v := range originalPayload {
@@ -36,11 +62,11 @@ func associateVerifierItem(it loopengine.Item, root string) (loopengine.Item, er
 	// the fetched-main gate. A same-repository brief (an alias tag or homed-in
 	// naming this repository) keeps its legacy representation even while the
 	// checkout lags fetched main; only a distinct deliverable needs the snapshot.
-	repo, head, err := deskkit.VerifierRepositoryHead(root)
+	repo, head, err := pass.Head(root)
 	if err != nil {
 		return it, err
 	}
-	repos, err := deskkit.VerifierDeliverables(root, head, it.BriefPath)
+	repos, err := pass.Deliverables(root, head, it.BriefPath)
 	if err != nil {
 		return it, err
 	}
@@ -50,7 +76,7 @@ func associateVerifierItem(it loopengine.Item, root string) (loopengine.Item, er
 	if len(repos) != 1 {
 		return it, deskkit.Unverifiable("verifier queue requires one unambiguous declared deliverable", nil)
 	}
-	_, trackingSHA, err := deskkit.VerifierRepositorySnapshot(root)
+	_, trackingSHA, err := pass.Snapshot(root)
 	if err != nil {
 		return it, err
 	}
@@ -58,7 +84,7 @@ func associateVerifierItem(it loopengine.Item, root string) (loopengine.Item, er
 	if sourceRoot == "" {
 		return it, deskkit.Unverifiable("verifier deliverable root is not configured", nil)
 	}
-	sourceRepo, sourceSHA, err := deskkit.VerifierRepositorySnapshot(sourceRoot)
+	sourceRepo, sourceSHA, err := pass.Snapshot(sourceRoot)
 	if err != nil {
 		return it, err
 	}
@@ -123,4 +149,20 @@ func verifierPromptPlan(text string) string {
 		return text[:at[0]]
 	}
 	return text
+}
+
+// itemWorldSpec reads what one item's run needs from its brief: the declared
+// sibling checkouts and the pinned instruments its runner-executed Verify rows
+// call. It reads the brief already materialized under root and nothing else.
+func itemWorldSpec(it loopengine.Item, root string) (deskkit.WorldSpec, error) {
+	spec := deskkit.WorldSpec{Root: root}
+	if strings.TrimSpace(it.BriefPath) == "" {
+		return spec, fmt.Errorf("item %s names no brief to read prerequisites from", it.ID)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, it.BriefPath))
+	if err != nil {
+		return spec, fmt.Errorf("cannot read the brief's prerequisites: %w", err)
+	}
+	// One derivation, shared with the dispatcher's prepare step.
+	return deskkit.WorldSpecFromBrief(root, string(raw), runnercmds.Commands(string(raw))), nil
 }

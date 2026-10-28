@@ -33,8 +33,10 @@ sources:
   - "statusgen/17 — adds `risk:high` to the label set that derives `gate: human`, and the intake-desk sentence this brief extends"
   - "freshness-checked 2026-10-08 @ 979e5453f (origin/main) — `planScan` skips an existing placeholder without reading its gate; no Go file compares a stored gate with the issue's labels; statusgen/17 is `todo`, so `risk:high` is not yet in `riskGateLabels` and its skill bullet is not yet in the tree; no open PR touches `statusgen/scanissues.go`"
 consumers:
-  - "statusgen/scanissues.go: follow-up statusgen/18 (this brief; the comparison at the existing-placeholder skip and the notice it appends)"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/18 (this brief; two sentences appended to the scored-triage bullet statusgen/17 adds)"
+  - "statusgen/scanissues.go: fixed-here (this brief; the comparison at the existing-placeholder skip and the notice it appends)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here (this brief; two sentences appended to the scored-triage bullet statusgen/17 adds)"
+  - ".cursor/skills/intake-desk/SKILL.md: fixed-here (canonical Cursor delivery of the intake-desk notice guidance)"
+  - ".cursor/assay-managed.json: fixed-here (canonical manifest digest for the regenerated intake-desk skill)"
   - "tools/desk/cmd/scanloop/lane.go: out-of-scope (the drain runs `statusgen --root . --scan-issues` and discards that command's output when it succeeds, so it does not show the notice; relaying it is not part of the answer on #2405 and is left open, see Context)"
   - "statusgen/transcribescan.go: out-of-scope (the same-repo transcriber has the same skip and prints its own notices under its own prefix; it ships inert and no workflow in this repo runs it, and the answer on #2405 names the scan)"
 ---
@@ -44,13 +46,11 @@ consumers:
 ## Context
 
 files:
-- `statusgen/scanissues.go` — in `planScan`, the comparison at the existing-placeholder skip
-  and the notice it appends.
+- `statusgen/scanissues.go` — in `planScan`, the comparison at the existing-placeholder skip and the notice it appends.
 - `statusgen/scanissues_test.go` — the two new tests named in Verify.
-- `plugins/assay/skills/intake-desk/SKILL.md` — two sentences appended to one bullet in the
-  scored-triage section.
-- `docs/streams/statusgen/brief-18-gate-mismatch-notice.md` — this brief's two `follow-up`
-  routings (Task 6).
+- `plugins/assay/skills/intake-desk/SKILL.md` — two sentences appended to one bullet in the scored-triage section.
+- `.cursor/skills/intake-desk/SKILL.md` and `.cursor/assay-managed.json` — canonical generated Cursor delivery of the changed skill (Task 8).
+- `docs/streams/statusgen/brief-18-gate-mismatch-notice.md` — this brief's consumer routings (Task 6).
 - `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
 
 single-point-of-failure: a person reading the notice and editing the placeholder. The notice
@@ -241,10 +241,14 @@ design-fit:
    statusgen/18` to `fixed-here`, keeping each site and its parenthesised note. Leave the two
    `out-of-scope` entries as they are. Verify row 7 refuses a leftover `follow-up`.
 7. Add the changelog fragment.
+8. Regenerate the Cursor skill twin and its tracked manifest with the canonical
+   `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay` placement.
+   Keep the generated delivery diff to the intake-desk skill and its manifest digest, and
+   declare both as `fixed-here` consumers. Do not edit the generated files by hand.
 
 ## Verify (executable — no prose-only DoD items)
 Every row that runs a named test anchors its selector, writes the output to a file and asserts
-that test's `--- PASS:` line, so a missing or renamed test fails the row. Rows 1–6 and 8 read
+that test's `--- PASS:` line, so a missing or renamed test fails the row. Rows 1–6, 8 and 9 read
 the tree and run the same before and after merge. Row 7 reads the implementing diff and is run
 on the implementing branch before merge; its Expect says what it does on merged main.
 
@@ -256,8 +260,9 @@ on the implementing branch before merge; its Expect says what it does on merged 
 | 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | exit 0; the whole package passes, so no existing scan test depended on a skipped placeholder producing no notice | check:ci |
 | 5 | `awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'in it by hand\. .statusgen --scan-issues. prints one .NOTICE. for each such item on every pass' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'naming the issue and the placeholder file, until the file reads .gate: human.' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'mechanical signal that this edit is still owed' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'scan drain does not show it; read it by running .statusgen --root \. --scan-issues --dry-run., which writes nothing\.' "${TMPDIR:-/tmp}/sg18-r5.txt"` | exit 0; the skill's scored-triage section, read with its lines joined so that re-wrapping does not matter, carries the new text directly after the sentence statusgen/17 added (the first pattern spans the two), and it says what is printed, what it names, when it stops, that the desk drain does not show it and how to read it. A `.` in a pattern stands for a backtick. Red when the text is absent, does not directly follow statusgen/17's sentence, or lacks a clause. The row does not pin that nothing follows the text in the bullet. The row reads the skill's text. Whether the scan prints what the text says is rows 2 and 3 | check:ci +dereference |
 | 6 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg18-skl" . && "${TMPDIR:-/tmp}/sg18-skl" --root ../..` | exit 0; the intake-desk skill still passes every skill check after the two-sentence edit, and no generated block drifted | check:ci |
-| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 2 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | exit 0, run on the implementing branch before merge: no `consumers:` entry still routes to this brief as a follow-up, and with the two rewritten to `fixed-here` the instrument corroborates both and disproves none. The two `out-of-scope` entries are unchanged from the base and are listed as unchecked. Red when the routings are left as authored (the first grep), and red when either `fixed-here` path is missing from the diff (the instrument reports `DISPROVED` and exits 1). On merged main the merge-base is HEAD and the brief is not in the diff, so the instrument exits 2, could-not-check, and the row does not pass there; a post-merge run checks out the delivering commit and passes its parent as `--base` | check |
+| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 4 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | exit 0, run on the implementing branch before merge: no `consumers:` entry still routes to this brief as a follow-up, and with the two source entries rewritten to `fixed-here` and both generated delivery entries declared the instrument corroborates all four and disproves none. The two `out-of-scope` entries are unchanged from the base and are listed as unchecked. Red when the routings are left as authored (the first grep), and red when any `fixed-here` path is missing from the diff (the instrument reports `DISPROVED` and exits 1). On merged main the merge-base is HEAD and the brief is not in the diff, so the instrument exits 2, could-not-check, and the row does not pass there; a post-merge run checks out the delivering commit and passes its parent as `--base` | check |
 | 8 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg18-r8.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg18-r8.out"` | exit 0; the scan-level test statusgen/17 adds still passes: an existing `gate: model` placeholder for a `risk:high` issue is neither re-planned nor re-read as `human`. The notice was added beside the derive-once rule and did not change it. Red when that test is absent, which means statusgen/17 has not landed | check:ci +neighbour |
+| 9 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | exit 0; the generated Cursor skill contains the same notice guidance and its manifest digest matches. Before canonical regeneration this check reports both paths as `content-differs` | check:ci +dereference |
 
 Pre-mortem — "this shipped and was wrong; what went wrong?":
 

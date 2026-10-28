@@ -1,0 +1,651 @@
+{
+  "$defs": {
+    "Applicability": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "checks": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "reviews": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "head",
+        "base",
+        "body",
+        "reviews",
+        "checks"
+      ],
+      "type": "object"
+    },
+    "ChangeFact": {
+      "additionalProperties": false,
+      "properties": {
+        "Body": {
+          "type": "string"
+        },
+        "Checks": {
+          "items": {
+            "$ref": "#/$defs/CheckFact"
+          },
+          "type": "array"
+        },
+        "IsDraft": {
+          "type": "boolean"
+        },
+        "Labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "MergeStateStatus": {
+          "type": "string"
+        },
+        "Title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Title",
+        "Body",
+        "MergeStateStatus",
+        "IsDraft",
+        "Labels",
+        "Checks"
+      ],
+      "type": "object"
+    },
+    "ChangeIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "baseUsed": {
+          "type": "boolean"
+        },
+        "head": {
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+          "type": "string"
+        },
+        "number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "repository": {
+          "$ref": "#/$defs/Repository"
+        }
+      },
+      "required": [
+        "repository",
+        "number",
+        "head",
+        "base",
+        "baseUsed"
+      ],
+      "type": "object"
+    },
+    "CheckFact": {
+      "additionalProperties": false,
+      "properties": {
+        "Conclusion": {
+          "type": "string"
+        },
+        "State": {
+          "type": "string"
+        },
+        "Status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Status",
+        "Conclusion",
+        "State"
+      ],
+      "type": "object"
+    },
+    "ClassificationFacts": {
+      "additionalProperties": false,
+      "properties": {
+        "change": {
+          "$ref": "#/$defs/ChangeFact"
+        },
+        "ciRequired": {
+          "type": "boolean"
+        },
+        "nonCommitResolution": {
+          "type": "boolean"
+        },
+        "nonCommitResolutionNote": {
+          "type": "string"
+        },
+        "ownFilesChanged": {
+          "type": "boolean"
+        },
+        "reviews": {
+          "$ref": "#/$defs/ReviewState"
+        },
+        "riskClassed": {
+          "type": "boolean"
+        },
+        "riskReason": {
+          "type": "string"
+        },
+        "zeroCI": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "change",
+        "reviews",
+        "ciRequired",
+        "zeroCI",
+        "ownFilesChanged",
+        "riskClassed",
+        "riskReason",
+        "nonCommitResolution",
+        "nonCommitResolutionNote"
+      ],
+      "type": "object"
+    },
+    "CollectionInterval": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "InputProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "const": true,
+          "type": "boolean"
+        },
+        "freshness": {
+          "const": "fresh",
+          "type": "string"
+        },
+        "observedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "version",
+        "revision",
+        "observedAt",
+        "freshness",
+        "complete"
+      ],
+      "type": "object"
+    },
+    "LaneConclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "appliesTo": {
+          "$ref": "#/$defs/Applicability"
+        },
+        "name": {
+          "enum": [
+            "correctness",
+            "security"
+          ],
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "approved",
+            "blocked",
+            "missing",
+            "stale",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "state",
+        "appliesTo"
+      ],
+      "type": "object"
+    },
+    "Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "$ref": "#/$defs/ObservationInputs"
+        },
+        "result": {
+          "$ref": "#/$defs/ObservationResult"
+        },
+        "schema": {
+          "const": "review-observation-v1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "inputs",
+        "result"
+      ],
+      "type": "object"
+    },
+    "ObservationDepths": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "cutoff": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "dispositions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cutoff",
+        "total",
+        "actions",
+        "dispositions"
+      ],
+      "type": "object"
+    },
+    "ObservationInputs": {
+      "additionalProperties": false,
+      "properties": {
+        "admitted": {
+          "items": {
+            "$ref": "#/$defs/Repository"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ObservedChange"
+          },
+          "type": "array"
+        },
+        "collection": {
+          "$ref": "#/$defs/CollectionInterval"
+        },
+        "evaluator": {
+          "const": "reviewflow-v1",
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "population": {
+          "items": {
+            "$ref": "#/$defs/PopulationCoverage"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "requested": {
+          "items": {
+            "$ref": "#/$defs/Repository"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "reviewerDisplay": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "evaluator",
+        "policy",
+        "reviewerDisplay",
+        "requested",
+        "admitted",
+        "collection",
+        "population",
+        "changes"
+      ],
+      "type": "object"
+    },
+    "ObservationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "depths": {
+          "$ref": "#/$defs/ObservationDepths"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/ObservationRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "rows",
+        "depths"
+      ],
+      "type": "object"
+    },
+    "ObservationRow": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "BLOCKED",
+            "CHECK",
+            "CI-NEVER-RAN",
+            "CI-RED",
+            "CI-UNKNOWN",
+            "CI-UNVERIFIED",
+            "CONFLICT",
+            "EXTERNAL-PREREQ-REVIEW",
+            "FLIP",
+            "HUMAN-GATE",
+            "MERGE-BEHIND",
+            "MERGE-CURR",
+            "MERGE-NOW",
+            "MERGE-STATE-UNKNOWN",
+            "NEEDS-REVIEW",
+            "RE-REVIEW",
+            "READY",
+            "SECURITY-REVIEW-REQUIRED",
+            "SUSPECT-APPROVAL",
+            "WAIT-CI"
+          ],
+          "type": "string"
+        },
+        "appliesTo": {
+          "$ref": "#/$defs/Applicability"
+        },
+        "disposition": {
+          "enum": [
+            "DISPATCH",
+            "FLIP-VERB",
+            "SURFACE",
+            "WAIT",
+            "NO-OP"
+          ],
+          "type": "string"
+        },
+        "holds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "identity": {
+          "$ref": "#/$defs/ChangeIdentity"
+        },
+        "lanes": {
+          "items": {
+            "$ref": "#/$defs/ReviewLane"
+          },
+          "type": "array"
+        },
+        "note": {
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "score": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "appliesTo",
+        "title",
+        "action",
+        "disposition",
+        "note",
+        "score",
+        "rank",
+        "lanes",
+        "holds"
+      ],
+      "type": "object"
+    },
+    "ObservedChange": {
+      "additionalProperties": false,
+      "properties": {
+        "appliesTo": {
+          "$ref": "#/$defs/Applicability"
+        },
+        "facts": {
+          "$ref": "#/$defs/ClassificationFacts"
+        },
+        "identity": {
+          "$ref": "#/$defs/ChangeIdentity"
+        },
+        "inputs": {
+          "$ref": "#/$defs/ReviewInputs"
+        },
+        "lanes": {
+          "items": {
+            "$ref": "#/$defs/LaneConclusion"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lanes",
+        "identity",
+        "inputs",
+        "appliesTo",
+        "facts",
+        "score"
+      ],
+      "type": "object"
+    },
+    "PopulationCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input": {
+          "$ref": "#/$defs/InputProvenance"
+        },
+        "repository": {
+          "$ref": "#/$defs/Repository"
+        }
+      },
+      "required": [
+        "repository",
+        "input",
+        "count"
+      ],
+      "type": "object"
+    },
+    "Repository": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$",
+          "type": "string"
+        },
+        "provider": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "repository": {
+          "pattern": "^[a-z0-9_.-]+(/[a-z0-9_.-]+)+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "host",
+        "repository"
+      ],
+      "type": "object"
+    },
+    "ReviewInputs": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/InputProvenance"
+        },
+        "checks": {
+          "$ref": "#/$defs/InputProvenance"
+        },
+        "enrichment": {
+          "$ref": "#/$defs/InputProvenance"
+        },
+        "reviews": {
+          "$ref": "#/$defs/InputProvenance"
+        },
+        "subject": {
+          "$ref": "#/$defs/InputProvenance"
+        }
+      },
+      "required": [
+        "subject",
+        "body",
+        "reviews",
+        "checks",
+        "enrichment"
+      ],
+      "type": "object"
+    },
+    "ReviewLane": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "satisfied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "required",
+        "satisfied"
+      ],
+      "type": "object"
+    },
+    "ReviewState": {
+      "additionalProperties": false,
+      "properties": {
+        "Approved": {
+          "type": "boolean"
+        },
+        "ApprovedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "AtHead": {
+          "type": "boolean"
+        },
+        "Blocking": {
+          "type": "boolean"
+        },
+        "BodyEditReverified": {
+          "type": "boolean"
+        },
+        "Ever": {
+          "type": "boolean"
+        },
+        "ExternalPrereqDeclared": {
+          "type": "boolean"
+        },
+        "LastReviewAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "LastSHA": {
+          "type": "string"
+        },
+        "SecurityPass": {
+          "type": "boolean"
+        },
+        "SuspectNoOp": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "Ever",
+        "AtHead",
+        "Blocking",
+        "Approved",
+        "LastSHA",
+        "SecurityPass",
+        "ApprovedAt",
+        "LastReviewAt",
+        "SuspectNoOp",
+        "ExternalPrereqDeclared",
+        "BodyEditReverified"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/medici-finance/assay/schemas/review-observation-v1.json",
+  "$ref": "#/$defs/Observation",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Closed wire shape. PlanObservation additionally verifies identity, scope coverage, applicability, policy freshness, contradictions, and recomputed rows/depths. Not authority to act.",
+  "title": "Complete advisory review observation v1"
+}

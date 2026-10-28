@@ -222,6 +222,25 @@ Verification-Attestation: medici-finance/assay#3495 run=a5ecfd327e5254f8189babb2
 
 **VERIFY: PASS** — all 6 Verify rows pass in the container-netns execution witness at 4b15482af5c6 (verifyrun rc 0, check 6 pass 0 fail), which closes the environment hold on the 2026-10-18 by-hand PASS.
 
+### Execution witness (receipt-bearing re-pass) — 2026-10-20, merged main 742839555dcd1731139b15a295cf78cdbad9dc91
+
+The table below is a statusgen verifyrun execution witness, run non-dry at merged main 742839555dcd1731139b15a295cf78cdbad9dc91 under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). The runner is a local Linux docker container, image assay-verify:go1.27 (id sha256:955fd6c46c93, built from golang:1.27.2-trixie, git 2.47), started with --network none, using verifyrun --sandbox container-netns under the container engine's default seccomp profile, with GOPROXY=off and GOTOOLCHAIN=local, and statusgen built from this tree inside the container. Admission is the dispatcher attestation medici-finance/assay#3647 (run c60085ef6d0e, source 742839555dcd, tier strong). verifyrun exited 0; its check reads 6 pass, 0 fail, 0 could-not-run or missing of 6 Verify rows. The latest prior Evidence on main is the 2026-10-19 execution witness above at 4b15482af5c6, landed by medici-finance/assay#3505; this re-pass exists to carry an outcome receipt at the current source.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstance" ./...` | pass exit=0 sandbox=container-netns | sha256:4518948299dd | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstanceCrossCellDenied" ./...` | pass exit=0 sandbox=container-netns | sha256:5772f02f9495 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstanceRoundTripIdentity" ./...` | pass exit=0 sandbox=container-netns | sha256:9ec14a1599c3 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestInstancePacketViewProvenance.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestInstancePacketViewProvenance$" ./... > "$wi_out" && grep -q -- "--- PASS: TestInstancePacketViewProvenance " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestInstancePacketChangedDependency.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestInstancePacketChangedDependency$" ./... > "$wi_out" && grep -q -- "--- PASS: TestInstancePacketChangedDependency " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestInstanceBackendRoundTrip$" ./... > "$routing_out" && grep -q -- "--- PASS: TestInstanceBackendRoundTrip " "$routing_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+
+The substance of this verification is the by-hand Evidence block above dated 2026-10-18 at merged main 6dfb616ef5463fa886e89ab7b07803d30006c58a (6/6 rows exit 0 under a proven network-off sandbox, 25/25 declared mutations killed, risk-bearing values enumerated); the instance surface (statusgen instance.go, instance_test.go, instance-mutations.json, both workflow-instance-v1 schema copies and the instance testdata) has an empty git diff between that commit and 742839555dcd, and this witness adds only the Linux network-off execution of each row at the current source.
+
+Verification-Attestation: medici-finance/assay#3647 run=c60085ef6d0e950e7b23d4a66d1ae02433bff47f68845db059bfb7a05a04df4e source=742839555dcd1731139b15a295cf78cdbad9dc91 brief=docs/streams/graph-execution/brief-09-instance-contract.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: PASS** — all 6 Verify rows pass in the container-netns execution witness at 742839555dcd (verifyrun rc 0, check 6 pass 0 fail), on an instance surface byte-unchanged since the 2026-10-18 by-hand PASS.
+
 
 ## Review
 

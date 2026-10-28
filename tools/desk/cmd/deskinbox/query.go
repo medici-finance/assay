@@ -20,6 +20,7 @@ package main
 // deliberate, bounded divergence.
 
 import (
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"sort"
 	"strconv"
@@ -66,12 +67,12 @@ type queryFailure struct {
 // first within the same rank) — the oracle's ONE ordering every renderer reads from
 // (assay-inbox.sh:364-386). A repo whose read failed is counted in `failures` and excluded
 // from the queue, never silently treated as empty.
-func fetchQueue(repos []string) (sorted []item, failures []queryFailure) {
+func fetchQueue(repos []string, observers ...deskkit.RequestObserver) (sorted []item, failures []queryFailure) {
 	for _, repo := range repos {
 		if strings.TrimSpace(repo) == "" {
 			continue
 		}
-		f, fr, ferr := forgeFor(repo)
+		f, fr, ferr := forgeFor(repo, observers...)
 		if ferr != nil {
 			failures = append(failures, queryFailure{Repo: repo, Err: ferr})
 			continue

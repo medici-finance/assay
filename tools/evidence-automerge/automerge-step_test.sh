@@ -124,14 +124,14 @@ run_step() {
 expect_case() {
   local script="$1" mode="$3" rollup="$4" want="$5" re="$6"
   run_step "$script" "$mode" "$rollup"
-  [ "$STEP_RC" = "$want" ] && printf '%s' "$STEP_LOG" | grep -Eq -- "$re"
+  [ "$STEP_RC" = "$want" ] && grep -Eq -- "$re" <<<"$STEP_LOG"
 }
 
 # fail_rec <label> -> one failure record on fd 3: the label, the step's exit status
 # and what it printed (empty output is the signature of the defect).
 fail_rec() {
   local first
-  first="$(printf '%s' "$STEP_LOG" | head -1)"
+  first="$(sed -n 1p <<<"$STEP_LOG")"
   echo "$1 -> step exit $STEP_RC, output: ${first:-<none>}" >&3
 }
 
@@ -433,11 +433,11 @@ planted_must=('Some other step' 'Bare command capture' 'Same line bare capture'
   'Commented capture' 'Exported capture' 'Commented block header' 'Sh errexit capture')
 planted_missed=()
 for want in "${planted_must[@]}"; do
-  printf '%s' "$planted_out" | grep -qF "step '$want'" || planted_missed+=("$want")
+  grep -qF "step '$want'" <<<"$planted_out" || planted_missed+=("$want")
 done
 planted_safe='Scoped capture|Or-list capture|Explicit shell capture is fine|Bare scoped capture|Inline scoped capture|Bare or-list|Explicit shell before|is fine'
 if [ "$planted_rc" = 1 ] && [ "${#planted_missed[@]}" = 0 ] \
-   && ! printf '%s' "$planted_out" | grep -Eq "$planted_safe"; then
+   && ! grep -Eq "$planted_safe" <<<"$planted_out"; then
   ok "POSITIVE CONTROL: flags ${#planted_must[@]} planted capture shapes (any step-first key, long-form errexit, comments, export, sh); passes explicit shell, scoped and OR-list controls"
 else
   bad "POSITIVE CONTROL: guard did not flag exactly the planted instances (exit $planted_rc; missed: ${planted_missed[*]:-none}): $planted_out"
@@ -451,7 +451,7 @@ mut, n = re.subn(r'(\)"|\))\s*&&\s*rc=0\s*\|\|\s*rc=\$\?', lambda m: m.group(1) 
 open(sys.argv[2], "w").write(mut if n else src)
 PY
 rev_out="$(python3 "$WORK/guard.py" "$WORK/reverted.yml" 2>&1)"; rev_rc=$?
-if [ "$rev_rc" = 1 ] && printf '%s' "$rev_out" | grep -q "step 'Request auto-merge'"; then
+if [ "$rev_rc" = 1 ] && grep -q "step 'Request auto-merge'" <<<"$rev_out"; then
   ok "POSITIVE CONTROL: guard flags the reverted fix in the real workflow text"
 else
   bad "POSITIVE CONTROL: guard missed the reverted fix (exit $rev_rc): $rev_out"

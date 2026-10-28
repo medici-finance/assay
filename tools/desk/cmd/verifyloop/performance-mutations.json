@@ -1,0 +1,95 @@
+{
+  "test": "go test ./cmd/verifyloop -run '^TestVerifyPerformance' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL: omit the scheduling request observer",
+    "file": "cmd/verifyloop/main.go",
+    "old": "source.observer = deskkit.RequestObserverFor(performance.context, performance.session, perfrec.OriginDirect)",
+    "new": "source.observer = deskkit.RequestObserver{}"
+  },
+  "mutations": [
+    {
+      "name": "drop the supplied phase roster at the shared recorder boundary",
+      "file": "internal/deskkit/perf.go",
+      "old": "perfrec.Begin(perfProbe(), perfEntry(), phases)",
+      "new": "perfrec.Begin(perfProbe(), perfEntry(), nil)"
+    },
+    {
+      "name": "attribute dry-run verdicts to planning",
+      "file": "cmd/verifyloop/main.go",
+      "old": "deskkit.PerfCommand(verifyPerfVerbs, \"verdict\")",
+      "new": "deskkit.PerfCommand(verifyPerfVerbs, \"plan\")"
+    },
+    {
+      "name": "A: default factory drops the invocation observer",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "return resolveForge(repo, s.observer)",
+      "new": "return resolveForge(repo, deskkit.RequestObserver{})"
+    },
+    {
+      "name": "B: resolver drops the invocation observer",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "return deskkit.ForgeFor(repo, verifyloopRole, observer)",
+      "new": "return deskkit.ForgeFor(repo, verifyloopRole)"
+    },
+    {
+      "name": "C: main drops the phase roster",
+      "file": "cmd/verifyloop/main.go",
+      "old": "performanceCallback(ctx, startVerifyloop), verifyPerfPhases...)",
+      "new": "performanceCallback(ctx, startVerifyloop))"
+    },
+    {
+      "name": "D: callback omits early context selection",
+      "file": "cmd/verifyloop/main.go",
+      "old": "session.SelectContext(ctx)",
+      "new": "// omit early context selection"
+    },
+    {
+      "name": "E: main drops operation attribution",
+      "file": "cmd/verifyloop/main.go",
+      "old": "PerfRunMeasured(\"verifyloop\", verifyPerfVerbs, os.Args[1:]",
+      "new": "PerfRunMeasured(\"verifyloop\", nil, os.Args[1:]"
+    },
+    {
+      "name": "F: callback bypasses the measured command path",
+      "file": "cmd/verifyloop/main.go",
+      "old": "return runMeasured(args, performance), ctx",
+      "new": "return run(args), ctx"
+    },
+    {
+      "name": "A1: startup phase renamed",
+      "file": "cmd/verifyloop/main.go",
+      "old": "performance.phase(\"startup\")",
+      "new": "performance.phase(\"other\")"
+    },
+    {
+      "name": "A1: blocker phase renamed",
+      "file": "cmd/verifyloop/blockerread.go",
+      "old": "s.performance.phase(\"blocker\")",
+      "new": "s.performance.phase(\"other\")"
+    },
+    {
+      "name": "A1: base queue phase renamed",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "v.performance.phase(\"base-queue\")",
+      "new": "v.performance.phase(\"other\")"
+    },
+    {
+      "name": "A1: per-root preflight phase renamed",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "v.performance.phase(\"preflight\")",
+      "new": "v.performance.phase(\"other\")"
+    },
+    {
+      "name": "A1: unsigned row phase renamed",
+      "file": "cmd/verifyloop/verdictrun.go",
+      "old": "for _, it := range items {\n\t\tstop := cfg.performance.phase(\"rows\")",
+      "new": "for _, it := range items {\n\t\tstop := cfg.performance.phase(\"other\")"
+    },
+    {
+      "name": "SA1: fixture git inherits caller repository redirects",
+      "file": "cmd/verifyloop/durablepush_test.go",
+      "old": "cmd.Env = regression.FixtureEnv(\"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t), \"GIT_CONFIG_NOSYSTEM=1\", \"GIT_CONFIG_GLOBAL=\"+os.DevNull)",
+      "new": "cmd.Env = append(os.Environ(), \"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t))\n\t_ = regression.FixtureEnv"
+    }
+  ]
+}

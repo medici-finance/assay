@@ -61,10 +61,7 @@ id: b394892e-6e4b-48aa-94f0-1167f195cd86
 ## Context
 
 files:
-- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — make the `--kind house` + `DESKD=1` path first-class: stand the
-  local deskd (the existing `cellctl deskd` path applied to a house cell) and have
-  `check_house` PROVE (not report n/a) that the deskd is up and supervising the cell's desks
-  when `DESKD=1`.
+- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — make the `--kind house` + `DESKD=1` path first-class: stand the local deskd (the existing `cellctl deskd` path applied to a house cell) and have `check_house` PROVE (not report n/a) that the deskd is up and supervising the cell's desks when `DESKD=1`.
 - `tools/cellctl/tests/house-cell.test.sh` — a `DESKD=1` case.
 - `schemas/desksupervise-aggregate-v1.json` (new) — the aggregation contract.
 - `tools/desk/cmd/desksupervise/aggregate.go` (new) — the reference emitter + `aggregate` verb.

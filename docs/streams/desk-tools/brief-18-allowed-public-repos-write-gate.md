@@ -62,8 +62,7 @@ reads the other's decision.
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/repovis.go` (`PublicRepoGate` rewritten; `RepoInfoFetcher`
-  narrowed; `Reaction` / `ReactionUser` and the reactions HTTP call removed)
+- `tools/desk/internal/deskkit/repovis.go` (`PublicRepoGate` rewritten; `RepoInfoFetcher` narrowed; `Reaction` / `ReactionUser` and the reactions HTTP call removed)
 - tools/desk/internal/deskkit/publicbless.go (retired — deleted by this brief) and its test
 - `tools/desk/internal/deskkit/repovis_test.go` (or the package's gate tests)
 - the call sites listed in `consumers:` (signature update only)

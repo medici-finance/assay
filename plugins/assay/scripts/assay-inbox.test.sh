@@ -2154,7 +2154,11 @@ cat > "$w/deskinbox" <<'PRODUCER'
 printf '%s\n' "$*" >> "$0.argv"
 if [[ "$1" == --version ]]; then echo "deskinbox issue-discovery-v1"; exit 0; fi
 if [[ "$1" != discovery || "$2" != example-org/tracker ]]; then exit 5; fi
+if [[ -n "${FIXTURE_DISCOVERY_FILE:-}" ]]; then
+  cat "$FIXTURE_DISCOVERY_FILE"
+else
 printf '%s' '[{"repo":"example-org/tracker","number":100,"title":"issue 0","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://github.com/o/r/issues/100"}]'
+fi
 exit "${FIXTURE_DISCOVERY_EXIT:-0}"
 PRODUCER
 chmod +x "$w/deskinbox"
@@ -2177,6 +2181,84 @@ check "$([[ "$RC" -eq 1 && "$(cat "$w/older.argv")" == --version && ! -s "$w/arg
 ASSAY_INBOX_READER=legacy ASSAY_DESKINBOX="$w/older" run_case "$w" --no-screen example-org/tracker
 check "$([[ "$RC" -eq 0 && "$OUT" == "$legacy_out" && -s "$w/argv.log" ]] && echo 0 || echo 1)" \
   "explicit rollback restores the legacy caller" "exit=$RC stderr=$ERR"
+
+# Review regressions: identity selection precedes collection, typed rows stay in scope,
+# and typed discovery still passes through the existing trust screen.
+: > "$w/deskinbox.argv"
+: > "$w/argv.log"
+DESK_LOOP= ASSAY_INBOX_READER=auto ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 6 && "$ERR" == *"loop identity"* && ! -s "$w/deskinbox.argv" && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "auto without loop identity refuses before typed or ambient discovery" "exit=$RC stdout=$OUT stderr=$ERR"
+
+# Flow's exemption must not expand to walk or decision HTML. Every refusal
+# precedes producer probing, ambient reads and HTML output creation.
+for missing_identity in '' '   '; do
+  for discovery_format in walk walk-item html; do
+    : > "$w/deskinbox.argv"
+    : > "$w/argv.log"
+    rm -f "$w/refused.html"
+    discovery_args=(--walk)
+    [[ "$discovery_format" == walk-item ]] && discovery_args=(--walk --item 1)
+    [[ "$discovery_format" == html ]] && discovery_args=(--html "$w/refused.html")
+    DESK_LOOP="$missing_identity" ASSAY_INBOX_READER=auto ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" "${discovery_args[@]}" example-org/tracker
+    check "$([[ "$RC" -eq 6 && "$ERR" == *"loop identity"* && ! -s "$w/deskinbox.argv" && ! -s "$w/argv.log" && ! -e "$w/refused.html" ]] && echo 0 || echo 1)" \
+      "auto $discovery_format identity length ${#missing_identity} refuses before discovery and output" "exit=$RC stdout=$OUT stderr=$ERR"
+  done
+done
+
+DESK_LOOP='   ' ASSAY_INBOX_READER=auto ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 6 && ! -s "$w/deskinbox.argv" && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "whitespace loop identity refuses before collection" "exit=$RC stderr=$ERR"
+DESK_LOOP= ASSAY_INBOX_READER=legacy ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 0 && "$OUT" == "$legacy_out" && -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "explicit legacy remains the only ambient read without a loop identity" "exit=$RC stderr=$ERR"
+
+: > "$w/argv.log"
+DESK_LOOP=worker-desk ASSAY_INBOX_READER=auto ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 0 && "$OUT" == "$legacy_out" && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "desk auto mode selects the capable typed reader before discovery" "exit=$RC stdout=$OUT stderr=$ERR"
+
+for malformed in '.repo="example-org/other"' '.title=12' '.createdAt=null' '.labels=[{name:12}]'; do
+  printf '%s' '[{"repo":"example-org/tracker","number":100,"title":"issue 0","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://github.com/example-org/tracker/issues/100"}]' | jq "map($malformed)" > "$w/bad.json"
+  : > "$w/argv.log"
+  FIXTURE_DISCOVERY_FILE="$w/bad.json" ASSAY_INBOX_READER=typed ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --walk example-org/tracker
+  check "$([[ "$RC" -eq 2 && "$ERR" == *"invalid typed discovery output"* && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+    "malformed or foreign typed row refuses before detail: $malformed" "exit=$RC stdout=$OUT stderr=$ERR"
+done
+screen_gh "$w" '[]' "$BODY_REVDEFAULT_B" "$STRANGER_AUTHOR"
+roster_on
+ASSAY_INBOX_READER=typed ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --walk example-org/tracker
+roster_off
+check "$([[ "$RC" -eq 0 && "$OUT" == *"example-org/tracker#100 — question 1 of 1"* && "$OUT" == *"0 reversible-default"* ]] && echo 0 || echo 1)" \
+  "typed discovery retains the trust screen for an untrusted author's reversible-default claim" "exit=$RC stdout=$OUT stderr=$ERR"
+
+# regression: class flow-without-issue-discovery
+# Flow has no issue population: neither reader selection nor issue credentials apply.
+w="$TMPROOT/flow-no-identity"
+make_flow_tools "$w"
+mkdir -p "$w/alpha"
+board_fixture "$w" alpha 7 3 11 2 40
+flow_cell_fixtures "$w" alpha
+throughput_fixture "$w" review
+for program in gh deskinbox; do
+  cat > "$w/$program" <<'NO_DISCOVERY'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$0.argv"
+exit 91
+NO_DISCOVERY
+  chmod +x "$w/$program"
+done
+for format in table html; do
+  flow_args=(--flow --root "$w/alpha")
+  if [[ "$format" == html ]]; then flow_args+=(--html "$w/flow.html"); fi
+  OUT=$(unset DESK_LOOP ASSAY_INBOX_READER; PATH="$w:$PATH" ASSAY_DESKINBOX="$w/deskinbox" bash "$SCRIPT" "${flow_args[@]}" 2>"$w/stderr")
+  RC=$?
+  ERR=$(cat "$w/stderr")
+  check "$([[ "$RC" -eq 0 && ! -s "$w/gh.argv" && ! -s "$w/deskinbox.argv" ]] && echo 0 || echo 1)" \
+    "flow $format without identity or reader selection never probes discovery" "exit=$RC stderr=$ERR"
+done
+check "$([[ -s "$w/flow.html" ]] && echo 0 || echo 1)" \
+  "identity-free flow HTML writes its actual reader-backed output" "flow HTML missing"
 
 # ------------------------------------------------------------------ done ----
 echo

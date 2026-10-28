@@ -1,6 +1,8 @@
-# Attributed local performance — perf-v3
+# Attributed local performance — perf-v3 and extensible perf-v4
 
-**Status:** draft — implementation contract requested 19 October 2026.
+**Status:** draft — v3 contract requested 19 October 2026; extensible v4 successor requested 21 October 2026.
+
+**Future writer target:** [perf-v4](#perf-v4-successor--requested-21-october-2026). Earlier sections preserve the v3 contract and source account; the dated successor defines the reader-first migration, not an assertion of deployment.
 **Routes-to:** desktools-v2/63–65, amended desktools-v2/62, statusgen/26 and
 performance-collection/01–09. Authoring does not activate collection or upload.
 
@@ -94,7 +96,7 @@ deskkit stays internal. The shared CLI adapter binds values; it does not own the
 | `--perf-agent-id` | `ASSAY_PERF_AGENT_ID` |
 | `--perf-parent-agent-id` | `ASSAY_PERF_PARENT_AGENT_ID` |
 | `--perf-parent-invocation-id` | `ASSAY_PERF_PARENT_INVOCATION_ID` |
-| `--perf-desk-role` | existing `DESK_LOOP` (attribution only; a flag never changes authorization role) |
+| `--perf-loop-role` | existing `DESK_LOOP` (attribution only; a flag never changes authorization role) |
 | `--perf-role` | `ASSAY_PERF_ROLE` |
 | repeatable `--perf-work` | `ASSAY_PERF_WORK`, one bounded JSON array of the same typed references |
 
@@ -282,3 +284,157 @@ no new universal budget is invented. Optional writer errors and malformed contex
 the underlying stdout/stderr, exit, audit and required accounting. Implementation human gates
 review concrete local disclosure and propagation evidence; deployment and remote activation
 retain their existing separate operator controls.
+
+## Perf-v4 successor — requested 21 October 2026
+
+This dated amendment selects **perf-v4** for future selected-profile production,
+replacing the earlier future-v3 writer direction after compatible readers ship.
+It preserves the historical v3 specification, its implementation and all evidence.
+The [future JSON architecture](proposals/non-ci-architecture/29-extensible-json-contracts.md)
+applies the same compatibility pattern to the other owning domains. Delivery is
+split into desktools-v2/67 (codec/readers) and /68 (producer cutover); /69 delivers
+this design and the architecture census, not the runtime changes.
+
+### Stable core and extension roster
+
+The core marker is `schema: "perf-v4"`. Keep existing JSON spellings and semantics
+for `ts`, `tool`, `verb`, `boundary`, `wallMs`, `cpu`, optional `cpuMs`,
+`exit`, `result`, `sourceSHA`, `install`. Add mandatory `profile` (`tool` or
+`workflow`), `observationKind` (the existing four-kind roster), `invocationId`
+(the existing random ID grammar), and `extensions` (an object). All core fields
+except `cpuMs` are required, exact-case and non-null; keep existing field-specific
+validation. v1 process-lifetime CPU and v2 interval CPU retain separate meanings.
+Core `role` is mandatory and follows v3 assigned-execution semantics, not the v1/v2 desk-role meaning:
+tool profile requires the literal `none`; workflow profile carries the validated
+assigned execution role (`coordinate`, `implement`, `review`, `verify`, `triage`,
+`investigate`, `other`), or `none` when no assigned role is present. With supported
+attribution version 1, its assigned `role` must equal the core value; an absent
+attribution role requires core `none`. `deskRole` remains a distinct attribution
+field and is never emitted by a tool-profile writer. An absent or unsupported
+attribution extension cannot supply workflow filtering coverage from the core
+role alone. No extension may change timing units, process boundaries or identity.
+
+Each extension is `{ "version": 1, "data": { ... } }`. Exact registered names and
+version-1 payloads are:
+
+| Name | Payload and reuse |
+|---|---|
+| `process` | `phases`, `phaseOverlap`, `counters`, `unavailable` from the v2 wire shape with identical bounds, enums and measured/unavailable distinction |
+| `attribution` | Existing `Attribution` payload except `invocationId`, which moves to the core; retain session/agent/parent/work fields, field coverage, MaxWork and MaxWorkBytes |
+| `requests` | `requests` array of existing `RequestStats`, `requestDrops` and `requestCoverage`; retain group limits, bins, sampled-byte/point counts and coverage validation from v3 |
+| `query` | `query`: optional existing `QueryObservation`; absence means unavailable, not a fabricated coverage field. Preserve its providerCoverage and exact query/source/coalescing vocabularies; no raw query, URL or error data |
+
+The /67 machine-readable schema must enumerate every version-1 member from the
+pinned v3/v2 reference structs and validation tables; this prose does not authorize
+inventing a second observation model or weakening a field's constraints. Share the
+canonical observation/reduction types and validation with historical decoders.
+
+The selected writer always emits `process` and `requests` version 1, retaining
+their explicit unavailable coverage when a seam cannot measure. It also emits
+`query` version 1: a `query` observation is permitted only for service-client and
+service-handler kinds. For process-summary and provider-work, an empty query
+extension payload means **not applicable**; for a client or handler, the absence
+of a query observation means **unavailable**, never an observed zero. The reader
+uses the core observation kind to distinguish these cases; there is no invented
+query coverage field and no fabricated observation to populate the extension. It emits
+`attribution` version 1 only for workflow profile. A tool-profile writer has no
+workflow linkage payload. Version-1 attribution must not repeat invocationId or
+supply another profile. Every returned record remains per-process; the same
+measurement is never dual-written in both v3 and v4.
+
+Readers accept an absent known optional extension as unavailable. Unknown names
+and unsupported versions are structurally checked, counted as unsupported and
+skipped. This permits a future writer to evolve attribution while an older v4
+reader still reports core timings. That reader cannot group/filter by skipped
+attribution, charge unknown request points, or call absent process counters zero.
+Known supported payloads with invalid fields invalidate the record; do not downgrade
+malformed known data to an ignored extension. Invalid core/profile or workflow
+linkage in a supported tool-profile payload also invalidates the record.
+
+### Bounds, ownership and privacy
+
+Proposed v4 limits are a JSON line smaller than 1 MiB including newline (matching
+the existing reader scanner ceiling), at most eight extensions (four initial groups
+plus room for additive groups), names matching `[a-z][a-z0-9-]{0,31}`, positive
+integer versions no greater than 2147483647, and maximum JSON nesting depth 32.
+The depth ceiling leaves ample room above the bounded context/request structures
+while preventing attacker-controlled recursive decode. /67 tests must exercise the
+largest legal typed record and every bound's boundary. If the inherited payload
+roster cannot fit, revise this design and its tests together before writer cutover;
+never truncate a record and report complete measurement.
+
+Reject duplicate object keys at every depth, case-variant core/known-payload keys,
+trailing JSON values, null version/data and non-object data. Unknown payloads are
+bounded and discarded without echoing key names or data in diagnostics. Readers
+may expose aggregate unsupported counts; they must not expose a generic raw extension
+map. Perfrec is an observational reducer, not a lossless signed-record relay.
+
+Keep a closed typed producer registry. A caller cannot write arbitrary extension
+names, future versions, strings, paths or bytes through a public RawMessage API.
+The local opt-in/profile, restrictive file permissions, seven-UTC-day retention,
+identifier rules and export alias boundary remain unchanged. Reader tolerance is
+not permission to persist new data. Future extensions need owned schemas, coverage
+semantics, privacy review and conformance fixtures before producer registration.
+
+### Compatibility and rollout
+
+| Writer / data | New reader behavior |
+|---|---|
+| v1/v2/v3 historical line | Existing decoder, units, rejection behavior and report meanings remain unchanged |
+| v4 with supported version-1 extensions | Strict typed decode into the shared observation model; usable core and supported facets |
+| v4 with absent/unsupported optional extension | Usable independent core and supported facets; unavailable facet and aggregate unsupported coverage |
+| v4 malformed supported extension, ambiguous keys, unknown core field or major | Reject line, count invalid/skipped with bounded diagnostics; never silently reinterpret |
+| v4 consumed by a pre-v4 binary | May be rejected; distribute qualified readers before selecting the writer |
+
+`deskperf` keeps legacy JSON groups and adds a distinct `perfV4` result only when
+v4 observations are present. Mixed-history totals must not double-count process,
+client, handler, provider or boot-step observations. An attribution filter requires
+supported matching attribution; unavailable context cannot match or leak values.
+Explicitly test conflict handling and same-install/invocation duplicate identities.
+
+Legacy `--role` keeps its v1/v2 desk-role meaning and excludes all v3/v4 records,
+including a v4 record whose core role happens to equal the filter. `--assigned-role`
+uses the workflow-aware v3/v4 reducers and requires supported matching attribution
+under workflow-profile permission; it never reinterprets a legacy desk role or
+matches a v4 core role without usable attribution. A supplied legacy `--role`
+therefore excludes v4 even when combined with `--assigned-role`. Mixed-history
+fixtures must exercise both filters, both profiles, missing/unsupported attribution
+and query not-applicable/unavailable cases without changing old report meanings.
+
+First land the reader. Then qualify desktoken and verifyloop, the two tools observed
+with retained local v3 records, through their real compiled producer/report paths.
+The source census is broader: 68 desk producer entrypoints plus statusgen share the
+recorder. /68 enumerates their current wrappers independently from the maintained
+inventory, and changes the single shared selected-profile schema choice to v4.
+Do not imply that only two source tools need compatibility or bypass other producer
+adapters. Local record history is not an installed-fleet count.
+
+No telemetry opt-in writes nothing. `ASSAY_TELEMETRY=1` without a selected profile
+keeps existing default v2 behavior; explicit `tool|workflow` selects v4 after cutover.
+Inherited identity alone does not select it. Preserve old-schema fixture construction
+for compatibility tests. No production dual-write or silent downgrade is introduced.
+Invalid explicit context retains existing redacted coverage handling without changing
+the underlying tool result. Publish through ordinary release/checksum pins, with
+reader capability established before consumer selection. No special release,
+workflow dispatch, local binary install, network upload or performance-collection activation
+is part of this delivery. Future collection explicitly adds v4 alongside legacy reads.
+
+### Proof and reconciliation
+
+/67 must test historical fixture stability, unknown optional versions with useful
+core reporting, malformed known payload rejection, duplicate/bounds/privacy mutations,
+and the actual writer → line reader → reducer → CLI JSON flow. An external Go consumer
+must use the public codec without importing a desk internal package. /68 must test
+compiled desktoken/verifyloop plus statusgen success/refusal/early-exit paths, child
+recorder isolation, tool/workflow opt-in, disabled behavior and full producer census.
+Use matched cold/warm fixtures to report p50/p95 and measurement counters; process-local
+reuse is not cross-process startup savings and no overhead number is promised here.
+
+Statusgen/26 retains its original Task 3 snapshot-reuse inventory and
+TestInvocationSnapshotReuseParity, and Task 4 workloads/benchmarks. Desktools-v2/62
+retains its integration and /58–65 prerequisites. Their unfinished format tasks need
+explicit dated v4 amendments and reader capability dependencies before dispatch;
+this design is not their implementation or verification. Completed /63–65 evidence
+stays immutable. /68 additionally waits for /64 and /65 eligibility: a new format
+cannot erase their outstanding verification obligations. Existing /60 merged source
+and its independent verification requirement are also preserved.

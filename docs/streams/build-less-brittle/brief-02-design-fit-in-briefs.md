@@ -38,11 +38,9 @@ consumers:
 ## Context
 
 files:
-- `spec/brief-v1.md`: §4.1 (Context section) gains the `design-fit:` block. §3.2's
-  `exec-tier` row gains question (d).
+- `spec/brief-v1.md`: §4.1 (Context section) gains the `design-fit:` block. §3.2's `exec-tier` row gains question (d).
 - `docs/brief-template.md`: the Context block gains `design-fit:`.
-- `plugins/assay/skills/author-brief/SKILL.md`: the template block, rule 9 (d), and the dispatch
-  checklist.
+- `plugins/assay/skills/author-brief/SKILL.md`: the template block, rule 9 (d), and the dispatch checklist.
 - `changelog/build-less-brittle-02.md` (planned)
 
 facts:

@@ -70,8 +70,7 @@ failing for a different reason in a different component:
   layer (the forge's own authorization check) than any of them.
 
 files:
-- `tools/autotriage/` — the mechanical responder (a subcommand/entry over brief 01's
-  `Classify`), plus tests and fixtures.
+- `tools/autotriage/` — the mechanical responder (a subcommand/entry over brief 01's `Classify`), plus tests and fixtures.
 - `tools/autotriage/testdata/` — mechanical, judgement, and leak-sweep culprit fixtures.
 
 facts:

@@ -14,6 +14,7 @@ unblocks:
 - graph-execution/24
 - agent-execution/04
 - "agent-execution/08"
+- "cell-api/02"
 effort: M
 gate: human
 risk:

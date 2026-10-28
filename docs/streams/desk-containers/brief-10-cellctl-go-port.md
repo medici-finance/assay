@@ -74,16 +74,10 @@ files:
   `CELLCTL_PARITY_MUTATE` code carrying `//go:build parity` so a release build omits it,
   `*_test.go` beside each.
 - `tools/cellctl/tests/parity.test.sh` (planned) — the parity harness; §Parity below.
-- `tools/cellctl/tests/*.test.sh` — each gains `CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"` so the
-  suite runs against either implementation.
-- `.github/workflows/release.yml` — remove the packaging exception (:1133-1152): cellctl is now
-  one of the `cmd/*/` builds. **This file needs the `workflows` scope the worker App lacks** —
-  stage the hunk as its own commit, name it in the PR body as `BLOCKED-ON-HUMAN: push
-  release.yml hunk`, and leave the rest of the PR reviewable without it.
-- `Makefile` — `CELLCTL_SRC` → the built binary; `make desk-install` installs it like the
-  others.
-- `docs/cellctl.md` — §Install rewritten (Go binary, per-platform, `--version` from ldflags);
-  a §*Parity with the shell oracle* subsection naming the harness and the matrix.
+- `tools/cellctl/tests/*.test.sh` — each gains `CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"` so the suite runs against either implementation.
+- `.github/workflows/release.yml` — remove the packaging exception (:1133-1152): cellctl is now one of the `cmd/*/` builds. **This file needs the `workflows` scope the worker App lacks** — stage the hunk as its own commit, name it in the PR body as `BLOCKED-ON-HUMAN: push release.yml hunk`, and leave the rest of the PR reviewable without it.
+- `Makefile` — `CELLCTL_SRC` → the built binary; `make desk-install` installs it like the others.
+- `docs/cellctl.md` — §Install rewritten (Go binary, per-platform, `--version` from ldflags); a §*Parity with the shell oracle* subsection naming the harness and the matrix.
 - `changelog/desk-containers-10-cellctl-go.md` (planned) — one `### Changed` bullet.
 
 facts:

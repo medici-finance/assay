@@ -79,7 +79,9 @@ Options:
 2. **Keep report-only provenance** — retain current gates and block consumers from claiming
    the stronger independence guarantee until a later qualified profile exists.
 
-Default if no answer: no activation or new independence claim; contract/tests may be reviewed.
+Default if no answer: none — blocks until answered.
+
+No activation or new independence claim; contract/tests may be reviewed.
 
 ## Read first
 

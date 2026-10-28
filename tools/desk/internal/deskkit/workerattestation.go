@@ -17,6 +17,8 @@ package deskkit
 // model is never inferred from the record. The record carries no claim of execution surveillance.
 
 import (
+	"github.com/medici-finance/assay/deskcore/attestation"
+
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -262,14 +264,33 @@ func attestationRecord(f Forge, repo ForgeRepo, n int, title, body string, autho
 	if err != nil {
 		return nil, Unverifiable("cannot read "+what+" attestation target", err)
 	}
-	if issue == nil || issue.IsPullRequest || !authority(issue.Author.Login) || issue.Title != title || issue.Body != body {
-		return nil, Refused(what + " target is not the exact dispatcher-authored run record")
+	return attestationRecordObserved(f, repo, n, issue, title, body, authority, what)
+}
+
+// attestationTarget checks a typed observation without silently fetching a different one.
+func attestationTarget(issue *Issue, title, body string, authority func(string) bool, what string) error {
+	if issue == nil {
+		return Refused(what + " target is not the exact dispatcher-authored run record")
+	}
+	if why := attestation.TargetProblem(true, issue.IsPullRequest, authority(issue.Author.Login), issue.Title, issue.Body, title, body); why != "" {
+		return Refused(what + " target is not the exact dispatcher-authored run record")
+	}
+	return nil
+}
+
+type attestationRecordReader interface {
+	IssueTrustEvents(ForgeRepo, int) (*TrustPayload, error)
+}
+
+func attestationRecordObserved(f attestationRecordReader, repo ForgeRepo, n int, issue *Issue, title, body string, authority func(string) bool, what string) (*Issue, error) {
+	if err := attestationTarget(issue, title, body, authority, what); err != nil {
+		return nil, err
 	}
 	trust, err := f.IssueTrustEvents(repo, n)
 	if err != nil {
 		return nil, Unverifiable("cannot establish immutable "+what+" record", err)
 	}
-	if trust == nil || !trust.BodyHistoryKnown || !trust.Complete || !trust.BodyEdited.IsZero() {
+	if trust == nil || attestation.HistoryProblem(trust.BodyHistoryKnown, trust.Complete, !trust.BodyEdited.IsZero()) != "" {
 		return nil, Refused(what + " record edited or its history is incomplete")
 	}
 	return issue, nil

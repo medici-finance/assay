@@ -20,8 +20,9 @@ package main
 //     given, the declared backfill branch/body match (Source "backfill").
 //     Without --backfill the write is trailer-only — the mode the scheduled
 //     reconcile job runs, because a branch/body match also catches PRs that
-//     merely author or mention a brief. A trailer witness the board should
-//     not take is fixed at the trailer (spec §2), not by closing the job's PR.
+//     merely mention a brief. Admission removes authoring/Evidence-only PRs
+//     and reads partial delivery claims from the brief (briefdelivery.go).
+//     Repair unsuitable inputs there; closing the generated PR cannot fix them.
 //     The backfill's OTHER Source=="backfill"
 //     shape — a hand-asserted implemented/verified/done with no PR at all —
 //     derives `unknown`, not `implemented`, so it is already excluded by the

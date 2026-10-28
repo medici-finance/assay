@@ -96,7 +96,9 @@ Options:
 1. **Accept the bounded implementation** — accept only the demonstrated field, failure and isolation contract; keep live activation separately controlled.
 2. **Hold for correction** — name the unsupported claim or boundary and revise the implementation before acceptance.
 
-Default if no answer: none — acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
 
 ## Ground rules
 
@@ -136,7 +138,9 @@ existing selected profile; tool-only profiles cannot smuggle workflow identity. 
 summary plus child-event double counting and never sum overlapping wall intervals as elapsed time.
 Preserve perf-v1/telemetry-v1 and existing privacy, seven-day policy, optional-sink isolation and
 schema/version rules. This remains one event/spool/report owner, not a parallel profiler. No DB/API
-is needed for local tests and the stream remains parked. Bound implementation to this schema/reducer
+is needed for local tests.
+Stream implementation is admitted by the full-scope approval ruling of 21 October 2026: https://github.com/medici-finance/assay/pull/3381#issuecomment-6322683460
+Collection and transmission still require their existing explicit consent. Bound implementation to this schema/reducer
 contract; defer extra producer integrations to /02.
 
 This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify

@@ -60,8 +60,7 @@ independent of both).
 
 files:
 - `tools/autotriage/` — the judgement router (over brief 01's `Classify`), plus tests.
-- `tools/autotriage/testdata/` — judgement (#612 flake, #536 duplication) and leak-sweep
-  culprit fixtures.
+- `tools/autotriage/testdata/` — judgement (#612 flake, #536 duplication) and leak-sweep culprit fixtures.
 
 facts:
 - Input: a `Culprit` from brief 01 with `class == judgement`, OR any culprit brief 02 routed

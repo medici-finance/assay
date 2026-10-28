@@ -370,3 +370,27 @@ including skipping `poll` while explicitly config-off and continuing the work-qu
 Absent identity or gateway configuration alone is not evidence that this branch applies;
 a failed enabled lane never permits fallback. Unknown or conflicting state stops comms only, not
 the work-queue sweep; the block names where the record is read and how an absent key reads.
+
+
+## Optional local performance context
+
+Operator-selected local collection uses the existing perfrec instrument.
+Launchers never create opt-in; explicit workflow consent permits bounded local
+work linkage. Keep immutable context per launch: new agents get new opaque
+session/agent identities, ordinary tool children get fresh invocation identities,
+and work is selected for each assignment. A typed child runner passes its own
+invocation only as the child's parent. Explicit resume uses the existing
+launcher's retained private native-ID mapping or reports a continuity gap.
+Do not place this data in a shared global shell or public workpad.
+
+The canonical flag/environment table is in the attribution specification.
+Use the shared parser bindings and public perfrec resolver, including empty
+clears and replacement work lists. Attribution never changes the operational
+DESK_LOOP. When a child needs a different operational loop, preserve originating
+desk attribution through --perf-loop-role on supported tool calls. Unsupported
+adapters remain explicit gaps; optional writer failure cannot block the operation.
+
+Apply validated handoff entries to each tool call with per-command `env KEY=value
+... tool ...` arguments or that tool's supported `--perf-*` flags. Quote values;
+never evaluate the handoff as shell code or export it into a persistent shell.
+Use `--perf-loop-role` for descriptive desk attribution; never alter `DESK_LOOP`.

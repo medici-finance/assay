@@ -31,13 +31,13 @@ func TestIssueProjectionFlow(t *testing.T) {
 			}
 		}
 	}
-	inboxMutant := buildMutant(t, "deskinbox", "internal/issueflow/selection.go", "return best", "_ = best; return 99")
+	inboxMutant := buildMutant(t, "deskinbox", "../../deskcore/issueflow/selection.go", "return best", "_ = best; return 99")
 	if log, e := projectionTests(t, inboxMutant, "deskinbox", "TestDiscoveryJourney"); e == nil || !strings.Contains(log, "human inbox selection") {
 		t.Fatalf("human inbox mutation survived: %v %s", e, log)
 	}
 	// Mutate the actual selector, not an expected-value comparator. The production
 	// journey must reject extra histories/unrelated rows when narrowing is removed.
-	mutant := buildMutant(t, "issueboard", "internal/issueflow/selection.go", "return !c.HasPlaceholder && !c.Excluded && !c.DecisionOwed && !c.Addressed && !c.HelpWanted", "return true")
+	mutant := buildMutant(t, "issueboard", "../../deskcore/issueflow/selection.go", "return !c.HasPlaceholder && !c.Excluded && !c.DecisionOwed && !c.Addressed && !c.AddressUnknown && !c.HelpWanted", "return true")
 	if log, e := projectionTests(t, mutant, "issueboard", "TestProjectionJourney"); e == nil || !strings.Contains(log, "unselected") {
 		t.Fatalf("removed selection survived: %v %s", e, log)
 	}
@@ -46,7 +46,7 @@ func TestIssueProjectionFlow(t *testing.T) {
 // regression: class issue-projection
 func TestIssueProjectionFaults(t *testing.T) {
 	bin := build(t)
-	pattern := "TestProjectionFailures|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestTrustGate_CommentsUnreadable_Exit6|TestEscalate_LongThread_BoardRenders|TestPartialListing_NeverRetires|TestPositiveClosedRead_StillRetires|TestAddressedEscalate|TestBoardLabelHistoryHold"
+	pattern := "TestProjectionFailures|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestTrustGate_CommentsUnreadable_Exit6|TestEscalate_LongThread_BoardRenders|TestPartialListing_NeverRetires|TestPositiveClosedRead_StillRetires|TestPositiveClosedRead_RetainsUnclassified|TestAddressedEscalate|TestBoardLabelHistoryHold"
 	log, e := projectionTests(t, bin, "issueboard", pattern)
 	if e != nil {
 		t.Fatalf("production faults: %v\n%s", e, log)
@@ -105,5 +105,33 @@ func TestIssuePerfIntegration(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// regression: class issue-projection-v3-composition
+func TestIssueV3Composition(t *testing.T) {
+	bin := build(t)
+	for _, c := range []struct{ tool, pattern string }{
+		{"issueboard", "TestProjectionV3ActualRecorder"},
+		{"deskinbox", "TestDiscoveryV3ActualRecorder"},
+	} {
+		if log, e := projectionTests(t, bin, c.tool, c.pattern); e != nil {
+			t.Fatalf("actual native->record/report %s: %v\n%s", c.tool, e, log)
+		}
+		for _, m := range []struct{ file, old, new string }{
+			{"forge.go", "deskkit.ForgeFor(fr, role, observers...)", "deskkit.ForgeFor(fr, role)"},
+			{"main.go", "session.SelectContext(c)", "_ = c"},
+		} {
+			mutant := buildMutant(t, c.tool, "cmd/"+c.tool+"/"+m.file, m.old, m.new)
+			if log, e := projectionTests(t, mutant, c.tool, c.pattern); e == nil || !strings.Contains(log, "--- FAIL: "+c.pattern) {
+				t.Fatalf("missing invocation composition survived %s/%s: %v\n%s", c.tool, m.file, e, log)
+			}
+		}
+	}
+	// Marking raw-detail modes complete would manufacture coverage across the
+	// unchanged unobserved comments reader, despite correctly observed GetIssue.
+	mutant := buildMutant(t, "deskinbox", "cmd/deskinbox/main.go", "session.SelectContext(c)", "session.SelectContext(c); session.ObserveRequests()")
+	if log, e := projectionTests(t, mutant, "deskinbox", "TestDiscoveryV3ActualRecorder"); e == nil || !strings.Contains(log, "raw gap lost") {
+		t.Fatalf("raw coverage mutation survived: %v\n%s", e, log)
 	}
 }

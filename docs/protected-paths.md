@@ -122,6 +122,28 @@ override this accounting. The execution command does not automatically rewrite a
 current-table run into a re-derived run: the verifier must retain the original
 commands and results before producing the closure record.
 
+When the delivery added supplemental rows but changed no original row, the
+independent verifier records that run with a protected record: a file holding
+only the `Verification-Table:` line above, passed as `--acceptance-record` (host
+execution and same-repository admission only; no `--acceptance-forge`, since it
+reads no approval):
+
+```sh
+statusgen verifyrun --root . --brief docs/streams/example/brief-01-example.md \
+  --acceptance-record record.txt
+```
+
+It refuses before any row runs unless the current Verify section equals the
+delivered one and every original row's delivered definition (command, Expect,
+class) equals its original definition; a changed original row is an acceptance
+transition (below) with its own approval. Which rows are supplemental is derived
+from git at the recorded coordinates, never read from the record, and a record
+with any other line refuses. The run writes the marker, witnesses the original
+rows on their delivered (and original) commands, and labels every supplemental
+row `author-added; … no acceptance credit`. The audit above then applies unchanged:
+original credit still needs a fresh passing witness of each original row, and a
+supplemental witness reworded as a pass, or a run without the marker, does not close.
+
 `verifyrun --check`, `brief --check-verified`, `verifyclosure`, the verified flip,
 the reconciliation fold and lint use the same protected-table evaluator. Lint's
 fail-first and row-strength checks retain the original acceptance table. Human row
@@ -209,7 +231,7 @@ GitHub HTTPS, SCP-style SSH and SSH URL origins remain supported.
 Missing, edited, stale, bot-authored, cross-brief or unverifiable approval refuses.
 The human approves a specific immutable amendment, not arbitrary future changes.
 
-A coordinate-only descriptor contains these two literal lines:
+A coordinate-only transition descriptor contains these two literal lines:
 
 ```text
 Verification-Table: delivery=<sha> base=<sha> original=<sha>

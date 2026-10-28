@@ -3,7 +3,10 @@ package main
 import (
 	"os"
 	"strings"
+	"sync"
 
+	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -17,7 +20,17 @@ var buildStore = newForgeStore
 // positional <id> (anything not starting with "-") then flags, and routes to the verb.
 // It preserves the script's refusal/ordering exactly — repo resolution and the forge/credential
 // setup are checked before the verb runs, and an unknown flag or verb is a refusal (exit 5).
-func dispatchVerb(args []string) int {
+func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
+	var pc perfrec.ContextInput
+	var once sync.Once
+	selectContext := func() {
+		once.Do(func() {
+			if len(sinks) > 0 && sinks[0] != nil {
+				sinks[0](perfrec.ResolveContext(pc))
+			}
+		})
+	}
+	defer selectContext()
 	verb := args[0]
 	rest := args[1:]
 
@@ -42,11 +55,15 @@ func dispatchVerb(args []string) int {
 		case "-h", "--help":
 			return dieUsage()
 		default:
+			if cli.ManualPerformance(&pc, rest[i], func() string { v, j := next(rest, i); i = j; return v }) {
+				continue
+			}
 			errf("refused: unknown flag %s", rest[i])
 			return exitRefused
 		}
 	}
 
+	selectContext()
 	repo := resolveRepo(repoFlag)
 	if repo == "" {
 		errf("unverifiable: could not resolve the target repo (pass --repo owner/name)")

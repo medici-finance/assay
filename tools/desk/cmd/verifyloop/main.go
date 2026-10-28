@@ -26,33 +26,46 @@ import (
 	"os"
 	"strings"
 
+	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
 func main() {
-	os.Exit(deskkit.PerfRun("verifyloop", nil, os.Args[1:], func([]string) int {
-		// The roster class is an EXPLICIT declaration, never the zero value by accident
-		// (correctness review finding: SetToolClass had no caller anywhere
-		// in the tree, so every tool was ClassWrite only because nothing ever set it).
-		// This tool ACTS on the roster, so ciEligible=false: config-home file only, never
-		// the environment, in CI as well as locally.
-		deskkit.SetToolClass(deskkit.ClassForTool(false))
-		// Every run echoes the EFFECTIVE trust/authority
-		// configuration to stderr before it does anything. The roster, the allowed-repo
-		// set and the risk-path additions live in repository settings or a config-home
-		// file, not in a diff — so the RUN is the only place a change to them becomes
-		// visible, and a NARROWING has to be as visible as a widening. Logins and paths
-		// only; never a token or a credential path.
-		deskkit.EchoEffectiveConfig(os.Stderr)
-		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
+	ctx := perfrec.ResolveContext(perfrec.ContextInput{})
+	os.Exit(deskkit.PerfRunMeasured("verifyloop", verifyPerfVerbs, os.Args[1:], performanceCallback(ctx, startVerifyloop), verifyPerfPhases...))
+}
+
+// Share the production callback with offline tests. Startup is the existing
+// activation boundary; it does not replace command or observer composition.
+func performanceCallback(ctx perfrec.Context, startup func() bool) func([]string, *perfrec.Session) (int, perfrec.Context) {
+	return func(args []string, session *perfrec.Session) (int, perfrec.Context) {
+		if session != nil {
+			session.SelectContext(ctx)
 		}
-		return run(os.Args[1:])
-	}))
+		performance := verifyPerformance{session: session, context: ctx}
+		stop := performance.phase("startup")
+		active := startup()
+		stop()
+		if !active {
+			return deskkit.ExitUnverifiable, ctx
+		}
+		return runMeasured(args, performance), ctx
+	}
+}
+
+func startVerifyloop() bool {
+	// This tool acts on the roster: config-home file only, never the CI environment.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(os.Stderr)
+	return deskkit.CheckVerbActivation(os.Stderr)
 }
 
 func run(args []string) int {
+	return runMeasured(args, verifyPerformance{})
+}
+
+func runMeasured(args []string, performance verifyPerformance) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
 		fmt.Printf("verifyloop sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
@@ -67,7 +80,10 @@ func run(args []string) int {
 	}
 
 	// Guard (kill switch + stop flags) is the FIRST action, before any board read.
-	if err := deskkit.Guard(); err != nil {
+	stopGuard := performance.phase("guard")
+	err := deskkit.Guard()
+	stopGuard()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
@@ -76,24 +92,30 @@ func run(args []string) int {
 	// `verifyloop --dry-run [--root .]` is shorthand for `verifyloop verdict --dry-run …`:
 	// the deterministic runner's CI-testable surface (compose + sign + print, no filing).
 	if args[0] == "--dry-run" || args[0] == "-dry-run" {
-		return cmdVerdict(args)
+		deskkit.PerfCommand(verifyPerfVerbs, "verdict")
+		return cmdVerdictMeasured(args, performance)
 	}
 
 	switch args[0] {
 	case "verdict":
 		// The deterministic runner: run check/check:ci rows, batch ~5 min, sign, print the
 		// would-be verify-verdict issue body. Filing is BLOCKED-ON-HUMAN (autonomous cutover).
-		return cmdVerdict(args[1:])
+		return cmdVerdictMeasured(args[1:], performance)
 	case "plan":
 		// The OPERATING-ENVELOPE preflight runs at BOOT, before the queue is even
 		// read. A red envelope is could-not-run for the WHOLE pass: one summary
 		// line and exit — no queue read, no claim, no dispatch, and no issue filed
 		// about the desk's own envelope.
-		if err := preflightBoot(args[1:]); err != nil {
+		stop := performance.phase("preflight")
+		err := preflightBoot(args[1:])
+		stop()
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return deskkit.ExitCodeOf(err)
 		}
-		return loopengine.ExitCodeOf(cmdPlan(args[1:]))
+		// The boot just admitted each root's prerequisite record, so this pass binds every
+		// run to one (example-stream/50). A plan entered without the boot has no record to bind.
+		return loopengine.ExitCodeOf(cmdPlanWorld(args[1:], performance, planWorldGate()))
 	default:
 		fmt.Fprintf(os.Stderr, "verifyloop: unknown subcommand %q\n\n%s", args[0], usage)
 		return deskkit.ExitRefused
@@ -101,6 +123,18 @@ func run(args []string) int {
 }
 
 func cmdPlan(args []string) error {
+	return cmdPlanMeasured(args, verifyPerformance{})
+}
+
+// planWorldGate builds the booted plan's prerequisite gate. It is a package var ONLY as
+// the test seam beside preflightRoot: a stubbed envelope admits no record to gate on.
+var planWorldGate = newWorldGate
+
+func cmdPlanMeasured(args []string, performance verifyPerformance) error {
+	return cmdPlanWorld(args, performance, nil)
+}
+
+func cmdPlanWorld(args []string, performance verifyPerformance, world *worldGate) error {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
 	sha := fs.String("sha", "", "merged-main target SHA verifiers run against")
@@ -112,9 +146,14 @@ func cmdPlan(args []string) error {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
 
-	v := &VerifyLoop{Root: *root, TargetSHA: *sha, RunnerID: *runner, RootRepo: deskkit.RepoSlugForDir(*root)}
+	v := &VerifyLoop{performance: performance, Root: *root, TargetSHA: *sha, RunnerID: *runner, RootRepo: deskkit.RepoSlugForDir(*root),
+		World: world}
 	if !*noForge {
 		v.Issues = issueSourceFn()
+		if source, ok := v.Issues.(*forgeIssueSource); ok {
+			source.performance = performance
+			source.observer = deskkit.RequestObserverFor(performance.context, performance.session, perfrec.OriginDirect)
+		}
 	} else {
 		v.Issues = offlineScheduling{}
 	}
@@ -130,6 +169,8 @@ func cmdPlan(args []string) error {
 	if err != nil {
 		return err
 	}
+	stopRender := performance.phase("render")
+	defer stopRender()
 	if *asJSON {
 		// stdout carries the JSON document and nothing else; the human-readable summary of
 		// what the plan could not cover goes to stderr.

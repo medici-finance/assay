@@ -151,6 +151,20 @@ var (
 	claimBranchFieldRe = regexp.MustCompile(`branch=(\S+)`)
 )
 
+// withoutAliasLines drops the ALIAS-HELD lines `show` appends for another spelling of the same PR
+// (medici-finance/assay#3700). Those describe a DIFFERENT claim, so a field read for the key
+// itself (owner=) must not take its value from them: on `FREE <key>` + `ALIAS-HELD ...` the FREE
+// line carries no owner=, and the alias's would otherwise read as the key's holder.
+func withoutAliasLines(s string) string {
+	var kept []string
+	for _, line := range strings.Split(s, "\n") {
+		if !strings.Contains(line, "ALIAS-HELD ") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
 func claimShowField(re *regexp.Regexp, s string) string {
 	m := re.FindStringSubmatch(s)
 	if m == nil {

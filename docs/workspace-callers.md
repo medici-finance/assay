@@ -119,16 +119,17 @@ A missing census or missing source tree is a skipped (could-not-check) run, neve
 | `tools/desk/cmd/deskpushguard/main.go` | `run` | prompt | temporary-compatibility | WS-10 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
 | `tools/desk/cmd/deskreconcile/reconcile.go` | `Run` | create | managed | WS-07 | scan and reconcile attempts run in managed workspaces; the inline worktree code is deleted |
 | `tools/desk/cmd/deskreconcile/reconcile.go` | `Run` | remove | managed | WS-07 | scan and reconcile attempts run in managed workspaces; the inline worktree code is deleted |
-| `tools/desk/cmd/deskwt/deskwt.go` | `cmdAdd` | create | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
-| `tools/desk/cmd/deskwt/deskwt.go` | `cmdAdd` | prompt | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
+| `tools/desk/cmd/deskwt/cli.go` | `pruneLong` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
+| `tools/desk/cmd/deskwt/cli.go` | `removeLong` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
+| `tools/desk/cmd/deskwt/deskwt.go` | `runAdd` | create | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
+| `tools/desk/cmd/deskwt/deskwt.go` | `runAdd` | prompt | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
 | `tools/desk/cmd/deskwt/deskwt.go` | `removeWorktreeTree` | rmtree | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/deskwt.go` | `strandedAfterDeregister` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/deskwt.go` | `strandedAfterDeregister` | prune | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
-| `tools/desk/cmd/deskwt/main.go` | `usage` | prompt | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
 | `tools/desk/cmd/deskwt/prune.go` | `bookkeepingPrune` | prune | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/prune.go` | `pruneSweep` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
-| `tools/desk/cmd/deskwt/roleinit.go` | `cmdRoleInit` | create | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
-| `tools/desk/cmd/deskwt/roleinit.go` | `cmdRoleInit` | prompt | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
+| `tools/desk/cmd/deskwt/roleinit.go` | `runRoleInit` | create | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
+| `tools/desk/cmd/deskwt/roleinit.go` | `runRoleInit` | prompt | managed | WS-03 | the Git effect moves into the allocator's effect adapter; deskwt keeps only a facade that calls it |
 | `tools/desk/cmd/deskwt/stalereg.go` | `clearStaleRegistrations` | prompt | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/deskwt/stalereg.go` | `clearStaleRegistrations` | prune | managed | WS-04 | removal and pruning run through the allocator's retention and retirement rules; deskwt keeps only a facade |
 | `tools/desk/cmd/fanoutloop/dispatch.go` | `homeWorktreeClause` | prompt | temporary-compatibility | WS-06 | the dispatched prompt hands the agent the allocator-returned cwd instead of an isolate-yourself recipe |
@@ -141,7 +142,7 @@ A missing census or missing source tree is a skipped (could-not-check) run, neve
 | `tools/desk/cmd/verifyloop/dispatch_native.go` | `gitDetachedWorktree` | remove | managed | WS-08 | the detached check/verification worktree is a managed allocation retired by the allocator; the inline add/remove pair is deleted |
 | `tools/desk/cmd/verifyloop/dispatch_native.go` | `gitDetachedWorktree` | rmtree | managed | WS-08 | the detached check/verification worktree is a managed allocation retired by the allocator; the inline add/remove pair is deleted |
 | `tools/desk/cmd/writeguard/callout.go` | `Config.checkCallout` | prompt | temporary-compatibility | WS-10 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
-| `tools/desk/cmd/writeguard/guard.go` | `Config.block` | prompt | temporary-compatibility | WS-10 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
+| `tools/desk/cmd/writeguard/guard.go` | `Config.renderBlock` | prompt | temporary-compatibility | WS-10 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
 | `tools/desk/cmd/writeguard/guard.go` | `Config.sentinelBlock` | prompt | temporary-compatibility | WS-10 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
 | `tools/desk/internal/deskkit/preflight.go` | `checkSiblings` | prompt | temporary-compatibility | WS-10 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
 | `tools/desk/internal/deskkit/verifiercrossrepo.go` | `prepareVerifierCrossRepo` | create | managed | WS-06 | dispatch requests a worker/review/verify workspace for the exact subject and claim; no direct worktree or clone |

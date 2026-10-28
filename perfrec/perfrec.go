@@ -103,7 +103,13 @@ type Record struct {
 	SourceSHA   string `json:"sourceSHA"`
 	Install     string `json:"install"`
 
-	// perf-v2 only.
+	// perf-v3 only; legacy wire shapes never include it.
+	V3 *V3Data `json:"v3,omitempty"`
+	// V4 is a closed typed extension registry. Unsupported reader payloads are
+	// discarded; no raw extension names or values cross this API.
+	V4 *V4Data `json:"-"`
+
+	// perf-v2 and perf-v3 interval fields.
 	Boundary     string            `json:"boundary,omitempty"`
 	CPU          string            `json:"cpu,omitempty"`
 	Phases       []PhaseStat       `json:"phases,omitempty"`
@@ -336,9 +342,56 @@ func (w *Writer) Append(stateDir string, rec Record) { _ = w.Write(stateDir, rec
 // Write is Append's body with the error kept, for the tests that need to see WHY a write did
 // not land. Production callers go through Append, which discards it.
 func (w *Writer) Write(stateDir string, rec Record) error {
+	return w.WriteEnabled((rec.Schema != SchemaV3 && rec.Schema != SchemaV4) || Enabled(), stateDir, rec)
+}
+
+// WriteEnabled records with the application's resolved consent. Applications
+// that resolve configuration after process entry use the same writer and sink;
+// this value changes no retention, schema, redaction or observation contract.
+// V3 additionally requires the exact process-environment opt-in at the writer;
+// resolved application consent cannot extend the v3 consent boundary.
+func (w *Writer) WriteEnabled(enabled bool, stateDir string, rec Record) error {
+	if !enabled {
+		return errors.New("perfrec: recording is disabled")
+	}
+	if rec.Schema == SchemaV3 || rec.Schema == SchemaV4 {
+		if !Enabled() {
+			return errors.New("perfrec: v3 recording is disabled")
+		}
+		var err error
+		if rec.Schema == SchemaV4 {
+			err = validateV4(rec, true)
+		} else {
+			err = validV3(rec)
+		}
+		if err != nil {
+			return err
+		}
+	}
 	dir := Dir(stateDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
+	}
+	if rec.Schema == SchemaV3 || rec.Schema == SchemaV4 {
+		if info, err := os.Lstat(dir); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("perfrec: unsafe v3 directory")
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return err
+		}
+		for _, name := range []string{"install-id", w.now().UTC().Format("2006-01-02") + ".jsonl"} {
+			p := filepath.Join(dir, name)
+			if info, err := os.Lstat(p); err == nil {
+				if !info.Mode().IsRegular() {
+					return errors.New("perfrec: unsafe v3 file")
+				}
+				if err = os.Chmod(p, 0o600); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 	}
 	w.pruneOnce(dir)
 	id, err := InstallID(dir)

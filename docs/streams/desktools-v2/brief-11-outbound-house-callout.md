@@ -59,12 +59,12 @@ id: be893ed6-782f-4000-9675-c03ddff205b2
 
 files:
 - `tools/desk/internal/deskkit/outbound.go` (planned) — created by `desktools-v2/10`; this brief adds the consult step.
-- NEW `tools/desk/internal/deskkit/outboundcallout.go` (planned) + `_test.go`.
+- `tools/desk/internal/deskkit/outboundcallout.go` (planned) (new) + `tools/desk/internal/deskkit/outboundcallout_test.go` (planned) (new).
 - `tools/desk/internal/deskkit/callout.go` — an explicit-environment option.
 - `tools/desk/internal/deskkit/rosterconfig.go` — the new keys in the known set and the P3 echo.
 - `tools/desk/internal/deskkit/testdata/outbound-callout/` (planned) — stub executables.
 - `tools/desk/README.md` — the contract.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
+- `changelog/feat-desktools-v2-11.md` — the per-PR fragment this repository requires (the name the delivering change used).
 
 single-point-of-failure: for a deployment's own vocabulary the ONE control is this callout — by
 design nothing compiled knows those words. Two layers stand behind it. The compiled layer of
@@ -106,8 +106,8 @@ facts:
 - **Timeout: 5 s default, up to 60 s by configuration.** Measured, not assumed: a compiled
   token-map sweep over a 16 KiB body took 0.01 s, so the shared 5 s default has three orders of
   magnitude of headroom for body-sized text and stays the default. The `file` kind on the push
-  path can carry a multi-megabyte diff (the same sweeper over a whole repository of about 2,800
-  files took 11.8 s), and an interpreter-based or multi-engine sweeper was
+  path can carry a multi-megabyte diff (the same sweeper over a whole repository of about 2,800 files
+  took 11.8 s), and an interpreter-based or multi-engine sweeper was
   could-not-check, so the bound is configurable up to 60 s (the inbound scan's own ceiling, well
   under an agent watchdog) rather than raised for everyone. A timeout is a refusal.
 - **The callout receives text and nothing else.** It runs with an explicit environment —
@@ -258,6 +258,30 @@ Gate: this item is gate: human with risk sensitive-data: yes. This Evidence is f
 Verification-Attestation: medici-finance/assay#2529 run=833edec95be1d57610ce8fd0a5718b119bfd27a8f40ce399f13731094de7a7f1 source=a4bc0c0cfe0634bef4a4c52c1b7078f1b3f7fd3c brief=docs/streams/desktools-v2/brief-11-outbound-house-callout.md model=claude-opus-5-5 tier=any
 
 **VERIFY: PASS** — 11/11 rows observed passing at a4bc0c0cfe06; fail-first checks for rows 3 and 4 reddened as the brief states; row 11 is vacuous on a clean tree and its consumers claims were checked by hand. Routed to the human gate (sensitive-data), not flip-eligible.
+
+### Container execution witness — 2026-10-20, dispatched non-implementer verifier (verify-desk, assay-verifier-app[bot])
+
+Mechanical re-run of all eleven Verify rows at merged main 4fa40dd33e06c69298b4c437d71e13acb3f90e9c, under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Runner: local docker container, image assay-verify:go1.27 (id sha256:955fd6c46c93, built from golang:1.27.2-trixie, git 2.47), started with `--network none`; `statusgen verifyrun --sandbox container-netns` with the engine's default seccomp profile; statusgen and the desk tools built from this tree inside the container. Admission: `deskdispatch --check-verifier` exit 0 before the run and again after this edit. This pass does NOT supersede the standing 2026-10-13 fail verdict for this brief, recorded in the unmerged medici-finance/assay#2824. That run's fail-first witness, with Base cells taken at the delivery parent b7217d55004a, found rows 1-9 and 11 green at base (non-discriminating) and only row 10 red. It recorded risk-row fail-first acceptance as 1/11, on the check-definition blocker medici-finance/assay#2802, which is still open. This witness re-runs the head commands only and carries no Base cells, so it does not answer that blocker. Once medici-finance/assay#2824 lands, both blocks stand in date order. verifyrun exit 0: 11 pass, 0 fail, 0 could-not-run. For rows 2 to 9 the witness asserts exit status and records an output hash; the literal `--- PASS:` lines those rows name are carried by the by-hand substance below.
+
+The substance is the existing by-hand Evidence block above (Verify pass of 2026-10-11 at source a4bc0c0cfe0634bef4a4c52c1b7078f1b3f7fd3c), which observed every row passing with 0 fail, including the literal PASS lines and the fail-first mutations for rows 3 and 4. Its risk-value enumeration still holds at this source: outboundcallout.go is byte-identical between the two sources, and callout.go changed only its process-run call (RunProcess), leaving DefaultCalloutTimeout = 5s at callout.go:46 and maxCalloutOutput = 64 << 10 at callout.go:56 unchanged.
+
+Verification-Attestation: medici-finance/assay#3591 run=1c0ad25372163af3638976e01111aed6849778155760dab98af3ce57b50f0f07 source=4fa40dd33e06c69298b4c437d71e13acb3f90e9c brief=docs/streams/desktools-v2/brief-11-outbound-house-callout.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/ -run TestOutboundCalloutConformance -v` | pass exit=0 sandbox=container-netns | sha256:3e0deb5ec255 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestCalloutAllowCannotClearCompiledBlock -v` | pass exit=0 sandbox=container-netns | sha256:6c91f2e11980 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestBrokenCalloutBlocks -v` | pass exit=0 sandbox=container-netns | sha256:15b578fa6d00 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestRequiredCalloutAbsentRefusesPublicOnly -v` | pass exit=0 sandbox=container-netns | sha256:58b1b1b3ad70 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestOutboundCalloutEnvironmentCarriesNoToken -v` | pass exit=0 sandbox=container-netns | sha256:0df4082c5433 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run TestCalloutReasonNeverReachesForgeOrAudit -v` | pass exit=0 sandbox=container-netns | sha256:a7a1c75d2afe | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskfile/ ./cmd/deskpr/ -run 'TestHouseCallout' -v` | pass exit=0 sandbox=container-netns | sha256:7cf578fbc91a | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterRecognisesOutboundCalloutKeys -v` | pass exit=0 sandbox=container-netns | sha256:8290621b6b60 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c 'ASSAY_OUTBOUND_CALLOUT' tools/desk/README.md` | pass exit=0 sandbox=container-netns | sha256:06e9d52c1720 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --consumers --root .` | pass exit=0 sandbox=container-netns | sha256:05ccf73ce950 | 2026-10-20 | assay-verifier-app[bot] @ 4fa40dd33e06 (on-behalf-of human:ian) (forge-identity) |
+
+**VERIFY: BLOCKED** — check-definition (medici-finance/assay#2802). Head commands are 11/11 exit 0 in the container witness at 4fa40dd33e06, on top of the 2026-10-11 by-hand substance, but risk-row fail-first acceptance is still open. The 2026-10-13 FAIL in medici-finance/assay#2824 found rows 1-9 and 11 non-discriminating at base, and this witness has no Base cells, so a simulated verified flip at this source reds `statusgen --lint` (LINT: FAIL, a no-Base-cell PROBLEM on each of rows 1-11). This item is also gate: human with sensitive-data: yes, so it stays routed to the maintainer sign-off on medici-finance/assay#2775 and is not flip-eligible.
 
 ## Review
 Gate: human (sensitive-data: yes — a deployment-supplied executable receives the text of every

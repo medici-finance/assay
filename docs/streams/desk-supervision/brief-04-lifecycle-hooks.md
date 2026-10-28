@@ -50,13 +50,10 @@ id: 9896223f-e63f-4fe6-a7c9-f7e935a2e884
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/hooks.go` (new) — `LoadHooks()` from `<StateDir>/hooks.yaml`
-  only; `RunHook(name, env)` with timeout and the per-hook failure class.
+- `tools/desk/internal/deskkit/hooks.go` (new) — `LoadHooks()` from `<StateDir>/hooks.yaml` only; `RunHook(name, env)` with timeout and the per-hook failure class.
 - `tools/desk/internal/deskkit/hooks_test.go` (new).
-- `tools/desk/cmd/deskwt/main.go` — `add` runs `after_create` on a newly created path
-  only; `remove` and `prune` run `before_remove` before deletion.
-- `tools/desk/cmd/deskdispatch/main.go` — new step between worktree-create and
-  prompt-emit: `before_run`; failure ⇒ exit 6, no prompt emitted, claim released.
+- `tools/desk/cmd/deskwt/main.go` — `add` runs `after_create` on a newly created path only; `remove` and `prune` run `before_remove` before deletion.
+- `tools/desk/cmd/deskdispatch/main.go` — new step between worktree-create and prompt-emit: `before_run`; failure ⇒ exit 6, no prompt emitted, claim released.
 - `tools/desk/cmd/desksupervise/main.go` (planned) — `after_run` on release / land.
 - `tools/desk/hooks.example.yaml` (new) — the shipped defaults, documented.
 - `docs/desk-tools/` — a short hooks page; `tools/desk/README.md` row updates.

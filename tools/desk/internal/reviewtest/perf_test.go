@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -219,7 +220,7 @@ func mutationBinary(t *testing.T, tool, source, before, after string) string {
 	cmd := exec.Command("go", "test", "-overlay", overlayPath, "-c", "-o", filepath.Join(dir, tool+".test"), "./cmd/"+tool)
 	cmd.Dir = moduleRoot(t)
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
-	if log, err := cmd.CombinedOutput(); err != nil {
+	if log, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 		t.Fatalf("mutation build: %v\n%s", err, log)
 	}
 	return dir
@@ -319,13 +320,13 @@ func TestPerfCoverageFlow(t *testing.T) {
 		})
 	}
 	t.Run("mutation_skips_ordinary_work", func(t *testing.T) {
-		mutated := mutationBinary(t, "issueboard", "internal/deskkit/perf.go", "code := run(args)", "code := 0")
+		mutated := mutationBinary(t, "issueboard", "internal/deskkit/perf.go", "code, ctx := run(args, sess)", "code, ctx := 0, perfrec.ResolveContext(perfrec.ContextInput{})")
 		if err := preservationCase(t, mutated, "issueboard"); err == nil || !strings.Contains(err.Error(), "ordinary intake work missing") {
 			t.Fatalf("skipped production work accepted: %v", err)
 		}
 	})
 	t.Run("mutation_erases_budget_history", func(t *testing.T) {
-		mutated := mutationBinary(t, "deskdispatch", "internal/deskkit/perf.go", "\tperfAppend(rec)\n\treturn code", "\tif p, err := auditPath(); err == nil { _ = os.Truncate(p, 0) }\n\tperfAppend(rec)\n\treturn code")
+		mutated := mutationBinary(t, "deskdispatch", "internal/deskkit/perf.go", "\tperfAppendEnabled(enabled, rec)\n\treturn code", "\tif p, err := auditPath(); err == nil { _ = os.Truncate(p, 0) }\n\tperfAppendEnabled(enabled, rec)\n\treturn code")
 		if err := preservationCase(t, mutated, "deskdispatch"); err == nil || !strings.Contains(err.Error(), "seeded audit history changed") {
 			t.Fatalf("erased production budget history accepted: %v", err)
 		}
@@ -351,7 +352,7 @@ func TestPerfCoverageFlow(t *testing.T) {
 	cmd = exec.Command("go", "test", "-count=1", "-v", "-run", "^TestPerf(ProcessCoverage|AccountTransport)$", "./internal/deskkit")
 	cmd.Dir = moduleRoot(t)
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
-	log, err = cmd.CombinedOutput()
+	log, err = goquiet.Cmd(cmd).CombinedOutput()
 	if err != nil || !strings.Contains(string(log), "--- PASS: TestPerfProcessCoverage ") || !strings.Contains(string(log), "--- PASS: TestPerfAccountTransport ") {
 		t.Fatalf("production process paths: %v\n%s", err, log)
 	}

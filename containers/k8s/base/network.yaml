@@ -1,0 +1,34 @@
+# All desk Pods have ingress denied, and external egress is closed until an
+# adopter adds ONLY its qualified forge/model endpoint addresses in an overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: desk-default-deny
+  namespace: assay-desks
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: desk-dns
+  namespace: assay-desks
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: assay-desks
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}

@@ -1,18 +1,19 @@
 package main
 
+// desktoken.go — the desktoken CLI: a thin, path-printing adapter over the role-credential
+// provider (internal/credential).
+//
+// The mint-or-reuse logic, the install-id caches, the JWT, the token-cache custody checks and
+// the GitLab rotation all live in the provider, which the in-process lookup
+// (deskkit.RoleTokenForOwner) runs too. This file parses the command line, builds the request
+// from the SAME deskkit snapshot builder the in-process caller uses, prints the PATH the
+// provider returns (never the value), and writes the invocation's one audit row exactly as it
+// always has. Nothing here re-implements a check the provider makes.
+
 import (
-	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/json"
-	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,42 +21,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
+	"github.com/medici-finance/assay/tools/desk/internal/credential"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// validRoles is the fixed set of desk roles. A role's config is parameterised
-// by the role name: ~/.config/assay/<role>-app.pem, <ROLE>_APP_ID, etc.
-// cell-issues is the write-issues App identity — selectable only by name, never a loop's
-// default. auditor (the forge-gitlab guard-read-custody brief) is a dedicated READ-ONLY identity for
-// cmd/repohardenguard's hardening reads — it carries no write permission of any kind on
-// either forge and is never bound in ASSAY_TRUSTED_BOT_SLUGS/`--raised-by` (it never posts,
-// files, or writes anything), so its custody is minted/read through the SAME
-// role-parameterised paths as every other role with no further change.
-var validRoles = map[string]bool{
-	"reviewer":    true,
-	"verifier":    true,
-	"worker":      true,
-	"desk":        true,
-	"issue-loop":  true,
-	"intake-loop": true,
-	"cell-issues": true,
-	"auditor":     true,
-	// release-runner (forge-neutral brief 14) is the dedicated run credential deskrun starts
-	// workflow runs with — its own App on GitHub (dispatch needs Actions: write, which no
-	// desk role's App may carry; approving a required-reviewer gate is not possible for any
-	// App), a pipeline trigger token on GitLab. Like cell-issues it is selectable only by name, never a loop's default.
-	"release-runner": true,
-}
-
-const (
-	// cacheMaxAge is the threshold for reusing a cached installation token.
-	// GitHub App installation tokens live ~60 min; we reuse if < 50 min old.
-	cacheMaxAge = 50 * time.Minute
-	// tokenExpiry is the lifetime of the installation token we mint; the JWT
-	// that authenticates the mint is short-lived (9 min), but the token itself
-	// from GitHub lives ~60 min.
-	tokenExpiryMinutes = 60
-)
+// validRoles is the fixed set of desk roles, owned by the provider (credential.KnownRoles):
+// a role's custody is parameterised by its name, so the CLI and the in-process lookup admit
+// exactly the same set. cell-issues and release-runner are selectable only by name, never a
+// loop's default; auditor is the read-only hardening identity.
+var validRoles = credential.KnownRoles()
 
 // auditCtx accumulates fields for ONE audit line per invocation.
 // finalize is deferred so exactly one line is written.
@@ -79,6 +55,12 @@ type auditCtx struct {
 	// input. Per-invocation visibility, reuses included, is what brief 23's opt-in local
 	// perf record is for.
 	suppress bool
+	// recorded is set when the provider handed this invocation its record (a mint, a
+	// rotation, a custody read, or a refusal past the guard). A provider failure with no
+	// record is the provider's own guard refusing, which wrote its own row — so finalize
+	// skips (skip), exactly as a refusal by run()'s guard writes no desktoken row.
+	recorded bool
+	skip     bool
 }
 
 func (a *auditCtx) log(result, detail string) {
@@ -97,7 +79,7 @@ func (a *auditCtx) finalize(err error) {
 	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
 	// would land in is append-only, never rotated, and counted per tool for the write budget
 	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
-	if deskkit.IsHelpRequest(err) {
+	if deskkit.IsHelpRequest(err) || a.skip {
 		return
 	}
 	if err == nil {
@@ -121,6 +103,32 @@ func (a *auditCtx) finalize(err error) {
 	a.log(result, err.Error())
 }
 
+// adapters wires the provider to this invocation: deskkit's controls (the same ones the
+// in-process lookup gets), the transport, and an Audit adapter that FOLDS the provider's
+// record into this invocation's one row instead of writing a second one. The row itself is
+// still written by finalize, so its tool, verb, digest and result are unchanged.
+func (a *auditCtx) adapters(client *http.Client) credential.Adapters {
+	return deskkit.CredentialAdapters(func(r credential.Record) {
+		a.recorded = true
+		if r.Verb != "" {
+			a.verb = r.Verb
+		}
+		if r.Err == nil {
+			a.detail = r.Detail
+		}
+	}, client)
+}
+
+// providerFailed returns the provider's failure as the desk-tools error the CLI has always
+// returned, marking the row skipped when the failure carried no record (the provider's guard
+// refused and recorded itself).
+func (a *auditCtx) providerFailed(err error) error {
+	if !a.recorded {
+		a.skip = true
+	}
+	return deskkit.CredentialError(err)
+}
+
 // httpClient is a test hook — production code uses http.DefaultClient.
 var httpClient = http.DefaultClient
 
@@ -136,10 +144,6 @@ func roleEnvPrefix(role string) string {
 // that lets N roles mint with M<N Apps without a symlink or a copied
 // key. It is the stem for the PEM file (`<app-name>.pem`), the App ID key and the install
 // ID key. Absent a binding it is `<role>-app`, byte-identical to the pre-binding layout.
-//
-// Removing this indirection (returning `role + "-app"` unconditionally) is mutations.json's
-// removed-binding mutant: the --version bindings echo (Verify row 2) reddens on it, because
-// a bound App-name would then resolve back to the role's own default.
 func appNameFor(role string) string {
 	return deskkit.AppBinding(role)
 }
@@ -179,68 +183,11 @@ func home(p string) string {
 	return p
 }
 
-// b64url returns the base64-url-encoded, no-padding form of b.
-func b64url(b []byte) string {
-	return base64.RawURLEncoding.EncodeToString(b)
-}
+// installationInfo is the relevant fields from GET /app/installations (the provider's type).
+type installationInfo = credential.InstallationInfo
 
-// envOr returns the env var value for key, or def if unset/empty.
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-// installationInfo is the relevant fields from GET /app/installations.
-type installationInfo struct {
-	ID      int64 `json:"id"`
-	Account struct {
-		Login string `json:"login"`
-	} `json:"account"`
-}
-
-// resolveInstallID queries the GitHub App installations endpoint with the
-// signed JWT and returns the installation ID whose account.login matches
-// owner. Returns an error if no match is found — fails closed on any
-// ambiguity.
-func resolveInstallID(jwt, owner string) (string, error) {
-	url := deskkit.GitHubAPIBase + "/app/installations"
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+jwt)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("GET installations: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read installations response: %w", err)
-	}
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("installations HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	var installs []installationInfo
-	if err := json.Unmarshal(body, &installs); err != nil {
-		return "", fmt.Errorf("parse installations response: %w", err)
-	}
-
-	for _, inst := range installs {
-		if strings.EqualFold(inst.Account.Login, owner) {
-			return fmt.Sprintf("%d", inst.ID), nil
-		}
-	}
-
-	return "", fmt.Errorf("no installation found for owner %q", owner)
-}
+// tokenResult is the relevant fields of the access_tokens response (the provider's type).
+type tokenResult = credential.TokenResult
 
 // parseOwner extracts the owner from a repo slug (owner/name) or uses the raw
 // string as the owner if there's no slash.
@@ -313,114 +260,31 @@ func resolveMintOwner(repo string) (string, error) {
 	}
 }
 
-// --- key parsing ----------------------------------------------------------------
+// --- provider primitives the coverage verb reuses ---------------------------------
 
 // parsePrivateKey tries PKCS1 then PKCS8 decoding of a PEM-encoded RSA key.
 func parsePrivateKey(pemData []byte) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode(pemData)
-	if block == nil {
-		return nil, fmt.Errorf("no PEM block found")
-	}
-	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-		return k, nil
-	}
-	if k8, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
-		key, ok := k8.(*rsa.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("PKCS8 key is not RSA")
-		}
-		return key, nil
-	}
-	return nil, fmt.Errorf("parse RSA private key (tried PKCS1 and PKCS8)")
+	return credential.ParsePrivateKey(pemData)
 }
 
-// --- JWT signing ----------------------------------------------------------------
-
-// buildJWT constructs an RS256-signed App JWT valid for 9 minutes, with iat
-// skewed 60 s into the past for clock drift.
+// buildJWT constructs an RS256-signed App JWT valid for 9 minutes.
 func buildJWT(appID string, now time.Time, key *rsa.PrivateKey) (string, error) {
-	header := b64url([]byte(`{"alg":"RS256","typ":"JWT"}`))
-	claims := fmt.Sprintf(`{"iat":%d,"exp":%d,"iss":"%s"}`,
-		now.Add(-60*time.Second).Unix(),
-		now.Add(9*time.Minute).Unix(),
-		appID,
-	)
-	payload := b64url([]byte(claims))
-	signingInput := header + "." + payload
-	sum := sha256.Sum256([]byte(signingInput))
-	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
-	if err != nil {
-		return "", fmt.Errorf("sign JWT: %w", err)
-	}
-	return signingInput + "." + b64url(sig), nil
+	return credential.BuildJWT(appID, now, key)
 }
 
-// --- GitHub API exchange --------------------------------------------------------
-
-// tokenResult is the relevant fields from the GitHub API response.
-type tokenResult struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
-	// Permissions is what GitHub actually GRANTED this installation token. It is
-	// the only place the grant is observable, and #571 was a scope gap discovered
-	// three quarters of the way through a pass — so it is recorded (writePerms)
-	// for `deskroster preflight` to check against the role's duties at boot.
-	Permissions map[string]string `json:"permissions"`
-}
-
-// errInstallationGone is the sentinel wrapped into a 404 from the access-tokens exchange:
-// the installation id this run used names an installation GitHub no longer has. It exists
-// so the one caller that may have supplied that id from a local cache can invalidate the
-// cache — and so that every other failure keeps its existing, untyped shape.
-var errInstallationGone = errors.New("installation not found")
-
-// exchangeJWT POSTs the signed JWT to GitHub's installation access_tokens
-// endpoint and returns the result. The token value is the response's `token`
-// field; it is written to the cache file and never printed.
-func exchangeJWT(jwt, installID string) (*tokenResult, error) {
-	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", deskkit.GitHubAPIBase, installID)
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+jwt)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("POST access_tokens: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode == 404 {
-		// Typed so a CACHED installation id can be told from a wrong one: 404 here means
-		// the installation this id names is gone, which is the only way one of the local
-		// caches can be wrong. Every other status stays a plain error.
-		return nil, fmt.Errorf("%w: access_tokens HTTP %d: %s", errInstallationGone, resp.StatusCode, string(body))
-	}
-	if resp.StatusCode != 201 {
-		return nil, fmt.Errorf("access_tokens HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result tokenResult
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("parse token response: %w", err)
-	}
-	if result.Token == "" {
-		return nil, fmt.Errorf("empty token in response")
-	}
-	return &result, nil
+// exchangeJWT POSTs the signed JWT to GitHub's installation access_tokens endpoint through
+// the provider's one implementation of that call.
+func exchangeJWT(jwt, installID string, clients ...*http.Client) (*tokenResult, error) {
+	return credential.ExchangeJWT(authHTTP(clients), jwt, installID)
 }
 
 // --- TTL reporting --------------------------------------------------------------
 
-// printTTL reports the age of the cached token and returns an error if no
-// cache file exists.
+// printTTL reports the remaining life and age of the cached token and returns an error if
+// no cache file exists. The remaining life is measured to the cache's ACTUAL expiry — the
+// forge's own expires_at, recorded at mint (`expiry=recorded`) — or, for a cache minted
+// before expiry was recorded, to the conservative reuse bound mtime + 50m (`expiry=bound`),
+// never to a lifetime nobody observed.
 func printTTL(tokenPath string) error {
 	fi, err := os.Stat(tokenPath)
 	if err != nil {
@@ -429,12 +293,21 @@ func printTTL(tokenPath string) error {
 		}
 		return deskkit.Unverifiable("cannot stat cached token", err)
 	}
-	age := time.Since(fi.ModTime())
-	remaining := tokenExpiryMinutes - int(age.Minutes())
+	expires, recorded, eerr := credential.CacheExpiry(tokenPath)
+	if eerr != nil {
+		return deskkit.Unverifiable("cannot read cached token expiry", eerr)
+	}
+	now := time.Now()
+	age := now.Sub(fi.ModTime())
+	remaining := int(expires.Sub(now).Minutes())
 	if remaining < 0 {
 		remaining = 0
 	}
-	fmt.Printf("TTL=%dm age=%dm path=%s\n", remaining, int(age.Minutes()), tokenPath)
+	source := "bound"
+	if recorded {
+		source = "recorded"
+	}
+	fmt.Printf("TTL=%dm age=%dm path=%s expiry=%s\n", remaining, int(age.Minutes()), tokenPath, source)
 	return nil
 }
 
@@ -461,63 +334,17 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 
 // --- key-path resolution (#794) --------------------------------------------------
 
-// provisioningDoc names the walkthrough that records where THIS deployment
-// provisions its role pems and apps.env.
-//
-// It is a DOC REFERENCE, not the directory itself, and that is the settled
-// ruling — settled by the tooling, not by argument. #794 asks for the house
-// directory to be named; `leaksweep run --tree` refuses it: the literal path is
-// a registered house-local token and this file ships in the publication tree, so
-// a build carrying it fails the tree sweep. Both constraints are satisfiable at
-// once: the tool ships the search-path MECHANISM (deskkit.EnvConfigHome), the
-// deployment supplies the VALUE, and the refusal points at the withheld doc that
-// records it. The reader still closes the gap in one move; the public tree stays
-// clean.
-const provisioningDoc = "docs/github-apps-setup.md"
-
-// resolvePEMPath finds the App private key for an App-NAME (the role→App binding's stem;
-// `<role>-app` when the role is unbound, so an unconfigured deployment resolves exactly
-// `<role>-app.pem` as before).
-//
-// Order: an explicit <PREFIX>_PEM override wins verbatim; otherwise the first
-// existing <app-name>.pem across the App-credential search path
-// (ASSAY_CONFIG_HOME, then the shipped ~/.config/assay).
-//
-// It returns BOTH a path and a deferred not-found error. The error is deliberately
-// NOT raised here: it is raised at the point the key is actually READ, so the
-// order in which desktoken reports its preconditions is unchanged (a missing App
-// ID still reports as a missing App ID, not as a missing key). The path returned
-// alongside a not-found error is the head-of-search-path candidate, so every
-// downstream message still names a concrete file.
-//
-// The refusal names EVERY directory searched, the knob that adds one, and the
-// walkthrough that records where this deployment provisions keys. The #794
-// symptom was a bare "private key not found at <one path>" that named none of
-// the three, so a fresh-shell mint failure read as a broken tool.
+// resolvePEMPath finds the App private key for an App-NAME. It is deskkit's resolver — the
+// same one the provider's request snapshot uses — so the coverage verb and the mint can never
+// look for a key in different places. See deskkit.ResolveAppPEMPath for the order and the
+// deferred not-found error.
 func resolvePEMPath(appName, prefix string) (string, error) {
-	if override := strings.TrimSpace(os.Getenv(prefix + "_PEM")); override != "" {
-		return home(override), nil
-	}
-	name := appName + ".pem"
-	path, searched, found := deskkit.FindConfigFile(name)
-	if found {
-		return path, nil
-	}
-	return path, deskkit.Unverifiable(fmt.Sprintf(
-		"private key not found: no %s on the App-credential search path. Searched: %s. If this "+
-			"deployment provisions role pems and apps.env elsewhere (its walkthrough records where: %s), "+
-			"set %s to that directory, or set %s_PEM to the key path. A fresh shell cannot mint any App "+
-			"token until this is closed (#794).",
-		name, strings.Join(searched, ", "), provisioningDoc,
-		deskkit.EnvConfigHome, prefix), nil)
+	return deskkit.ResolveAppPEMPath(appName, prefix)
 }
 
-// permsPath is the sidecar recording what GitHub GRANTED the installation the
-// token was minted for. The grant is visible ONLY in the access-token response,
-// so the minter is the only component that can observe it; recording it here is
-// what lets `deskroster preflight` check the App's scopes against the role's
-// duties (#571) without a second JWT-signing implementation.
-func permsPath(tokenPath string) string { return tokenPath + ".perms" }
+// permsPath is the sidecar recording what GitHub GRANTED the installation the token was
+// minted for (#571).
+func permsPath(tokenPath string) string { return credential.PermsPath(tokenPath) }
 
 // tokenPathNotice is the one-line NOTICE that accompanies every token path this tool prints.
 //
@@ -543,123 +370,41 @@ func printTokenPath(path string) {
 	fmt.Fprintln(os.Stderr, tokenPathNotice)
 }
 
-// beforeTokenCacheRename is a test seam: when set, writeTokenCacheAtomic calls it after the
-// new token is fully written and synced to the temp file and before the rename that publishes
-// it, so a test can observe the cache path at the one instant a torn write would be visible.
+// beforeTokenCacheRename is a test seam: when set, the provider's cache write calls it after
+// the new token is fully written and synced to the temp file and before the rename that
+// publishes it, so a test can observe the cache path at the one instant a torn write would be
+// visible.
 var beforeTokenCacheRename func()
 
 // writeTokenCacheAtomic publishes token at path (0600) so a concurrent reader sees either the
-// previous contents or the new token, never an empty or partial file.
-//
-// The cache path is shared by every process minting for the same role and installation on the
-// host, and consumers read it with `cat "$(desktoken ...)"` and hand the result to a client as
-// its token. A truncate-then-write publishes an empty file in between, and an empty token makes
-// that client fall back to the host's stored login, so the read runs under the wrong identity
-// instead of failing. The token is therefore written to a temp file in the SAME directory
-// (rename is atomic only within one filesystem), synced, and renamed over the path — the same
-// shape writeVerifyGitLabToken uses for the GitLab custody file. A symlink at path is replaced,
-// not written through; the cache is desktoken's own regular file and the reuse check already
-// refuses a link there.
+// previous contents or the new token, never an empty or partial file. It is the provider's
+// write (credential.WriteTokenCache) with this package's test seam.
 func writeTokenCacheAtomic(path, token string) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp in %s: %w", dir, err)
-	}
-	tmpName := tmp.Name()
-	// Best-effort cleanup of the temp if we bail before the rename lands (a no-op after it).
-	defer func() { _ = os.Remove(tmpName) }()
-
-	if _, err := tmp.Write([]byte(token)); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write temp: %w", err)
-	}
-	// os.CreateTemp already makes the file 0600; assert it before it becomes the credential.
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("chmod temp: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("sync temp: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp: %w", err)
-	}
-	if beforeTokenCacheRename != nil {
-		beforeTokenCacheRename()
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("rename temp over %s: %w", path, err)
-	}
-	syncDir(dir)
-	return nil
+	return credential.WriteTokenCache(path, token, beforeTokenCacheRename)
 }
 
-// writePerms records the granted permission map next to the token cache, 0600
-// (it names an App's capability surface — not a secret, but not world-readable
-// either). A failure to record is NOT fatal to the mint: the token is the
-// deliverable, and preflight reads a missing sidecar as could-not-check rather
-// than as a pass.
-func writePerms(tokenPath string, perms map[string]string) {
-	if len(perms) == 0 {
-		return
-	}
-	keys := make([]string, 0, len(perms))
-	for k := range perms {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteString("{")
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteString(",")
-		}
-		fmt.Fprintf(&b, "%q:%q", k, perms[k])
-	}
-	b.WriteString("}")
-	_ = os.WriteFile(permsPath(tokenPath), []byte(b.String()), 0o600)
-}
+// privateKeyModeOK reports whether a private-key file's mode keeps the key away from OTHER
+// principals (the provider's rule: no other-read, no group/other write; group-read admitted
+// for a Kubernetes Secret volume read through fsGroup).
+func privateKeyModeOK(mode os.FileMode) bool { return credential.PrivateKeyModeOK(mode) }
 
-// privateKeyModeOK reports whether a private-key file's mode keeps the key away
-// from OTHER principals. The rule is expressed as bits, not an exact mode:
-//
-//   - reject if readable by others (mode & 0o004), or writable by group or
-//     others (mode & 0o022);
-//   - allow otherwise.
-//
-// So owner-only 0600/0400 AND group-read 0440/0640 pass; 0644, 0660, 0666,
-// 0604 and 0620 fail. Group-read is admitted deliberately: a Kubernetes
-// Secret volume is materialised by the kubelet root-owned, and a pod running as
-// a non-root user reads it through securityContext.fsGroup — group-read — so
-// the key in that pod is necessarily 0440 (root:<fsGroup>). An exact-0600 rule
-// is unsatisfiable there (0600/0400 would be owner-root-only and unreadable by
-// the pod), and the mint would fail closed on every tick. Group-read does not
-// widen exposure beyond the pod's own group; other-read and any group/other
-// write are still refused. This checker is for the App PRIVATE KEY only; the
-// token cache and the GitLab PAT custody file are written by this tool at 0600
-// and keep their exact-mode checks.
-func privateKeyModeOK(mode os.FileMode) bool {
-	perm := mode.Perm()
-	return perm&0o004 == 0 && perm&0o022 == 0
-}
-
-// checkPrivateKeyMode is the fail-closed wrapper over privateKeyModeOK: it
-// returns the exit-6 refusal naming the rule and the observed mode, or nil.
+// checkPrivateKeyMode is the fail-closed wrapper over privateKeyModeOK: it returns the exit-6
+// refusal naming the rule and the observed mode, or nil.
 func checkPrivateKeyMode(pemPath string, mode os.FileMode) error {
-	if privateKeyModeOK(mode) {
-		return nil
+	if e := credential.CheckPrivateKeyMode(pemPath, mode); e != nil {
+		return deskkit.CredentialError(e)
 	}
-	return deskkit.Unverifiable(
-		fmt.Sprintf("private key at %s has permissions %04o; must not be readable by others or writable by group/others "+
-			"(0600, 0400, 0440 and 0640 are accepted) — run: chmod 600 %s", pemPath, mode.Perm(), pemPath), nil)
+	return nil
 }
 
 // --- main entry point -----------------------------------------------------------
 
 // run is the CLI entry point. It returns an exit code.
-func run(args []string) int {
+func run(args []string) int { return runSelected(args, nil) }
+
+func runSelected(args []string, sink func(perfrec.Context)) int { return runMeasured(args, sink, nil) }
+
+func runMeasured(args []string, sink func(perfrec.Context), measurement *perfrec.Session) int {
 	// The global diagnostic switch, taken BEFORE any flag parsing so `--trace` works
 	// alongside this verb's bare-role-name positional grammar (which would otherwise refuse
 	// it as an undefined flag) and is invisible to the FlagSets below.
@@ -712,7 +457,7 @@ func run(args []string) int {
 	// installations can see). No role is named "coverage", so the dispatch is
 	// unambiguous.
 	if args[0] == "coverage" {
-		cerr := cmdCoverage(args[1:])
+		cerr := cmdCoverageMeasured(args[1:], measurement, sink)
 		if deskkit.IsHelpRequest(cerr) {
 			fmt.Fprintln(os.Stderr, usage)
 			return deskkit.ExitOK
@@ -721,7 +466,7 @@ func run(args []string) int {
 		return deskkit.ExitCodeOf(cerr)
 	}
 
-	err := cmdToken(args)
+	err := cmdTokenMeasured(args, measurement, sink)
 	if deskkit.IsHelpRequest(err) {
 		// TIER TWO terminus: print the help screen the operator asked for, exit 0.
 		fmt.Fprintln(os.Stderr, usage)
@@ -734,11 +479,28 @@ func run(args []string) int {
 }
 
 // cmdToken implements the mint-or-reuse logic.
-func cmdToken(args []string) (err error) {
+func cmdToken(args []string, sinks ...func(perfrec.Context)) error {
+	return cmdTokenMeasured(args, nil, sinks...)
+}
+
+func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func(perfrec.Context)) (err error) {
 	ac := &auditCtx{verb: "mint", argsDigest: deskkit.ArgsDigest(os.Args[1:])}
 	defer func() { ac.finalize(err) }()
 
 	fs := flag.NewFlagSet("desktoken", flag.ContinueOnError)
+	var context perfrec.Context
+	selected := cli.GoPerformance(fs, func(c perfrec.Context) {
+		context = c
+		if measurement != nil {
+			measurement.SelectContext(c)
+		}
+		for _, sink := range sinks {
+			if sink != nil {
+				sink(c)
+			}
+		}
+	})
+	defer selected()
 	fs.SetOutput(new(strings.Builder))
 	repo := fs.String("repo", "", "repo slug (owner/name) for install auto-pick")
 	forge := fs.String("forge", "", "forge backend: empty/github (default) mints a GitHub App installation token; gitlab rotates the role's PAT in place (rotate-on-mint custody)")
@@ -747,6 +509,8 @@ func cmdToken(args []string) (err error) {
 	noRotate := fs.Bool("no-rotate", false, "read-only credential lookup: verify the role's existing custody and print its PATH without performing a destructive rotation. GitLab: skips the self-rotation (and its network contact) entirely — the shape a read-only or dry-run verb asks for. GitHub: no effect, the App mint is cached and non-destructive already, so the flag is accepted for callers that do not know the forge before they ask")
 
 	positionals, perr := parseInterspersed(fs, args)
+	selected()
+	authClient := measuredAuth(context, measurement)
 	if perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches the parser as flag.ErrHelp. A help
 		// screen is not a refusal and writes no audit row (deskkit/helprequest.go).
@@ -787,289 +551,61 @@ func cmdToken(args []string) (err error) {
 	switch strings.ToLower(strings.TrimSpace(*forge)) {
 	case "":
 		if gitlabRepoResolved(*repo) {
-			return cmdGitLabRotate(role, ac, !*noRotate)
+			return cmdGitLabRotate(role, ac, !*noRotate, authClient)
 		}
 		// fall through to the GitHub App-token mint path.
 	case "github":
 		// fall through to the GitHub App-token mint path.
 	case "gitlab":
-		return cmdGitLabRotate(role, ac, !*noRotate)
+		return cmdGitLabRotate(role, ac, !*noRotate, authClient)
 	default:
 		return deskkit.Refused("unknown --forge " + *forge + "; valid: github (default), gitlab")
 	}
 
-	// Resolve the App this role mints as. The binding is the ONE
-	// indirection read FIRST — before the PEM, App ID and install ID lookups, which all
-	// take the App-name as their stem. Unbound, the App-name is <role>-app and every
-	// lookup below resolves exactly the pre-binding file/key.
-	appName := appNameFor(role)
-	ac.appName = appName
-	prefix := deskkit.AppEnvPrefix(appName)
-
-	// Resolve PEM path across the App-credential search path (#794). A not-found
-	// error is DEFERRED to the point the key is read (see resolvePEMPath), so the
-	// existing precondition-reporting order is unchanged.
-	pemPath, pemErr := resolvePEMPath(appName, prefix)
-
-	// Resolve App ID: env <PREFIX>_APP_ID, else ~/.config/assay/apps.env (no source default —
-	// a fresh invocation works with no shell sourcing). <PREFIX> is the bound App's prefix.
-	appID, err := deskkit.AppIDForApp(appName)
-	if err != nil {
-		return deskkit.Unverifiable(err.Error(), nil)
+	// GitHub App installation token: build the request from the SAME snapshot builder the
+	// in-process lookup uses (deskkit.GitHubCredentialRequest — the role→App binding, the key
+	// path with its deferred not-found, the App ID, the <PREFIX>_INSTALL_ID and <PREFIX>_TOKEN
+	// overrides, the search path), then run the provider. Every cache, custody, key and
+	// exchange step — and every refusal message — is the provider's (internal/credential).
+	req, rerr := deskkit.GitHubCredentialRequest(role)
+	if rerr != nil {
+		return rerr
 	}
-	ac.appID = appID
+	ac.appName = req.AppName
+	ac.appID = req.AppID
 
-	// Resolve install ID: env override takes priority; otherwise resolve at
-	// runtime by signing a JWT and querying GET /app/installations, matching
-	// account.login against the repo owner. When --repo is absent the owner is
-	// resolved from the configured roster (see resolveMintOwner) rather than
-	// defaulting to the shipped placeholder account.
-	// This is attribution (which App name appears), not authorization (which
-	// session is permitted to act as the role) — the caller holds the key and
-	// controls the env, so every key is readable by any session of the same OS
-	// user. The tool provides audit trail, not access control.
-	var installID string
-	var prebuiltJWT string
-	// mintOwner is the account this mint is for, "" when it could not be resolved. It is
-	// carried past the resolution block so the owner sidecar and the install-id cache can
-	// be written and invalidated by the same (App, account) key the probe reads.
-	var mintOwner string
-	// installIDFromCache records that the id below came from one of the two caches rather
-	// than from the installations endpoint or the environment. It scopes the 404
-	// invalidation route: only a CACHED id is removed when the exchange rejects it.
-	var installIDFromCache bool
-
-	if override := os.Getenv(prefix + "_INSTALL_ID"); override != "" {
-		installID = override
-		// The override answers WHICH installation; the account is still resolved (a local
-		// read, no network) so the owner sidecar can be recorded beside the cache. A
-		// failure here is not fatal to an override mint — it only means no sidecar.
-		if o, oerr := resolveMintOwner(*repo); oerr == nil {
-			mintOwner = o
-		}
-	} else {
-		// Resolve install ID at runtime: build JWT, query GitHub
-		// /app/installations, match account.login against repo owner. With --repo
-		// absent the owner comes from the configured allowed-repo roster; an
-		// unresolvable owner fails closed here rather than minting against the
-		// placeholder.
-		owner, oerr := resolveMintOwner(*repo)
-		if oerr != nil {
+	// The account this mint is for. With --repo absent it is resolved from the configured
+	// roster (resolveMintOwner) rather than defaulting to the shipped placeholder; an
+	// unresolvable owner fails closed — unless an explicit <PREFIX>_INSTALL_ID already answers
+	// WHICH installation, in which case the account only feeds the owner sidecar and its
+	// absence costs one installations call next time, never a wrong answer.
+	owner, oerr := resolveMintOwner(*repo)
+	if oerr != nil {
+		if req.InstallID == "" {
 			return oerr
 		}
-		mintOwner = owner
-
-		// CACHE BEFORE RESOLUTION (#1036). Until this block existed, every call below —
-		// including one whose only outcome was "the token on disk is 5 minutes old, reuse
-		// it" — read the App key, signed a JWT and spent a GET /app/installations round
-		// trip, because the cache path is keyed by the id that call returns. Both probes
-		// are local, both are positive identity matches on (App, account), and both fall
-		// through to the unchanged resolution below on any doubt.
-		//
-		// --fresh skips both. It means "the App or its permissions may have changed", and
-		// a fast path that honoured a cache would make it a no-op for the rest of the
-		// reuse window — the exact defect --fresh was added to fix for the token cache.
-		if !*fresh {
-			if id, ok := probeCachedInstallID(role, appName, owner); ok {
-				installID, installIDFromCache = id, true
-			} else if id, ok := readInstallIDCache(appName, owner); ok {
-				installID, installIDFromCache = id, true
-			}
-		}
+		owner = ""
 	}
+	req.Owner = owner
+	req.Fresh = *fresh
+	req.PathOnly = *ttl
+	req.BeforeRename = beforeTokenCacheRename
 
-	if installID == "" {
-		owner := mintOwner
-
-		// Must read PEM, sign JWT before we know the install ID.
-		// The key is READ here, so a deferred not-found from resolvePEMPath is
-		// raised here — naming every directory searched (#794).
-		if pemErr != nil {
-			return pemErr
-		}
-		fi, perr := os.Stat(pemPath)
-		if perr != nil {
-			if os.IsNotExist(perr) {
-				return deskkit.Unverifiable("private key not found at "+pemPath, perr)
-			}
-			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
-		}
-		if merr := checkPrivateKeyMode(pemPath, fi.Mode()); merr != nil {
-			return merr
-		}
-
-		keyPEM, rerr := os.ReadFile(pemPath)
-		if rerr != nil {
-			return deskkit.Unverifiable("cannot read private key at "+pemPath, rerr)
-		}
-		key, kerr := parsePrivateKey(keyPEM)
-		if kerr != nil {
-			return deskkit.Unverifiable("parse private key from "+pemPath, kerr)
-		}
-
-		now := time.Now()
-		jwt, jerr := buildJWT(appID, now, key)
-		if jerr != nil {
-			return deskkit.Unverifiable("sign JWT", jerr)
-		}
-		prebuiltJWT = jwt
-
-		resolvedID, rerr := resolveInstallID(jwt, owner)
-		if rerr != nil {
-			return deskkit.Unverifiable("resolve installation for owner "+owner, rerr)
-		}
-		installID = resolvedID
-		// Record the answer so the NEXT cold token cache costs no installations call.
-		writeInstallIDCache(appName, owner, installID)
+	cred, gerr := credential.GitHub(req, ac.adapters(authHTTP([]*http.Client{authClient})))
+	if gerr != nil {
+		return ac.providerFailed(gerr)
 	}
-	ac.installID = installID
+	ac.installID = cred.InstallID
 
-	// Per-install token cache path: always suffixed with the install ID so
-	// different Apps' installations on the same account do not share a file.
-	// The reviewer App's example-org install (100000002) also gets the suffix, and
-	// each App manages its own cache independently via the same
-	// shared conventions.
-	// The cache is WRITTEN to the head of the App-credential search path, so a
-	// deployment that points ASSAY_CONFIG_HOME at its provisioning directory
-	// reads its key and writes its cache in the SAME place. #794's closing line:
-	// "the key-lookup dir, the cache dir, the apps.env dir and the provisioning
-	// dir must be the same one."
-	defaultToken := deskkit.ConfigHomeWritePath(fmt.Sprintf("%s-token-%s", role, installID))
-	tokenPath := home(envOr(prefix+"_TOKEN", defaultToken))
-
-	// --ttl: report cached token age and exit (no mint).
+	// --ttl: report cached token age and expiry and exit (no mint).
 	if *ttl {
-		return printTTL(tokenPath)
-	}
-
-	// --fresh: drop any cached token AND its .perms sidecar before the reuse check, so a mint
-	// that follows a GitHub-App permission change cannot be short-circuited by the up-to-50-min
-	// cache-reuse window below, and so the grant sidecar (writePerms) is rewritten with the NEW
-	// scope. Without this, "re-mint" after a permission change is a NO-OP for the rest of the
-	// reuse window: the cached token is returned and its stale .perms is what `deskroster
-	// preflight` reads for the app-scopes check (#571). Idempotent — a missing file is fine.
-	if *fresh {
-		if rmErr := os.Remove(tokenPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			return deskkit.Unverifiable("cannot remove cached token for --fresh: "+tokenPath, rmErr)
-		}
-		if rmErr := os.Remove(permsPath(tokenPath)); rmErr != nil && !os.IsNotExist(rmErr) {
-			return deskkit.Unverifiable("cannot remove token .perms sidecar for --fresh: "+permsPath(tokenPath), rmErr)
-		}
-		// The owner sidecar goes with the token it describes: leaving it behind would
-		// leave the cache probe naming a file that no longer exists.
-		if rmErr := os.Remove(ownerSidecarPath(tokenPath)); rmErr != nil && !os.IsNotExist(rmErr) {
-			return deskkit.Unverifiable("cannot remove token .owner sidecar for --fresh: "+ownerSidecarPath(tokenPath), rmErr)
-		}
-	}
-
-	// Reuse cached token if < 50 min old. Lstat, not Stat: the cache is desktoken's own
-	// regular file, so a symlink here is refused — never handed out as the role's token, and
-	// never written through by the mint below.
-	if _, fi, serr := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks); serr == nil {
-		if fi.Mode().Perm() != 0o600 {
-			return deskkit.Unverifiable(
-				fmt.Sprintf("token cache at %s has permissions %o; must be 0600", tokenPath, fi.Mode().Perm()), nil)
-		}
-		age := time.Since(fi.ModTime())
-		if age < cacheMaxAge {
-			// ADOPT this cache file for the probe, if it is not adopted already. Writing a
-			// separate file does not touch the token's own mtime, so adopting a cache
-			// never extends its life by a second — it only means the NEXT invocation can
-			// recognise it without resolving an installation id first. This is what lets
-			// a cache minted before the sidecar existed join the fast path.
-			if mintOwner != "" && !sidecarMatches(tokenPath, appName, mintOwner) {
-				writeOwnerSidecar(tokenPath, appName, mintOwner)
-			}
-			// Output only the token file path — never the token value.
-			printTokenPath(tokenPath)
-			ac.detail = fmt.Sprintf("reused cached %s token [app=%s install %s] (%dm old)", role, appName, installID, int(age.Minutes()))
-			ac.suppress = true // no network call, no mint, nothing changed — no audit row
-			return nil
-		}
-	} else if _, isLink := serr.(*deskkit.CustodyLinkError); isLink {
-		return deskkit.Unverifiable(serr.Error(), nil)
-	} else if !os.IsNotExist(serr) {
-		return deskkit.Unverifiable("cannot stat token cache: "+tokenPath, serr)
-	}
-
-	// --- Mint new token ---
-	var jwt string
-	if prebuiltJWT != "" {
-		jwt = prebuiltJWT
-	} else {
-		// Read the App private key. Check file permissions — see checkPrivateKeyMode.
-		// The key is READ here, so a deferred not-found from resolvePEMPath is
-		// raised here — naming every directory searched (#794).
-		if pemErr != nil {
-			return pemErr
-		}
-		fi, perr := os.Stat(pemPath)
-		if perr != nil {
-			if os.IsNotExist(perr) {
-				return deskkit.Unverifiable("private key not found at "+pemPath, perr)
-			}
-			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
-		}
-		if merr := checkPrivateKeyMode(pemPath, fi.Mode()); merr != nil {
-			return merr
-		}
-
-		keyPEM, rerr := os.ReadFile(pemPath)
-		if rerr != nil {
-			return deskkit.Unverifiable("cannot read private key at "+pemPath, rerr)
-		}
-
-		key, kerr := parsePrivateKey(keyPEM)
-		if kerr != nil {
-			return deskkit.Unverifiable("parse private key from "+pemPath, kerr)
-		}
-
-		// Build and sign the App JWT.
-		now := time.Now()
-		var jerr error
-		jwt, jerr = buildJWT(appID, now, key)
-		if jerr != nil {
-			return deskkit.Unverifiable("sign JWT", jerr)
-		}
-	}
-
-	// Exchange for an installation access token.
-	result, xerr := exchangeJWT(jwt, installID)
-	if xerr != nil {
-		// A 404 on an id that came from a CACHE is the one failure the caches can cause:
-		// the installation was removed or replaced while an entry still named it. Drop the
-		// entry and say so, rather than leaving every call for the rest of the TTL to fail
-		// the same way. Only a cached id is invalidated — an id from <PREFIX>_INSTALL_ID is
-		// the operator's own statement and is never second-guessed here.
-		if installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != "" {
-			invalidateInstallIDCache(appName, mintOwner)
-			return deskkit.Unverifiable(fmt.Sprintf(
-				"installation %s (cached for app=%s owner=%s) is no longer valid: %v. The cached "+
-					"installation id has been removed; re-run and it will be resolved again.",
-				installID, appName, mintOwner, xerr), xerr)
-		}
-		return deskkit.Unverifiable("exchange JWT for installation token", xerr)
-	}
-
-	// Write the token to the cache file (0600).
-	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
-		return deskkit.Unverifiable("mkdir token dir", err)
-	}
-	if err := os.Chmod(filepath.Dir(tokenPath), 0o700); err != nil {
-		return deskkit.Unverifiable("chmod token dir", err)
-	}
-	if err := writeTokenCacheAtomic(tokenPath, result.Token); err != nil {
-		return deskkit.Unverifiable("write token to "+tokenPath, err)
-	}
-	writePerms(tokenPath, result.Permissions)
-	// Record WHICH App and WHICH account this file belongs to, so the next invocation can
-	// find it without resolving an installation id first (#1036).
-	if mintOwner != "" {
-		writeOwnerSidecar(tokenPath, appName, mintOwner)
+		return printTTL(cred.Path)
 	}
 
 	// Output only the token file path — never the token value.
-	printTokenPath(tokenPath)
-	ac.detail = fmt.Sprintf("minted new %s token [app=%s install %s] (expires %s)", role, appName, installID, result.ExpiresAt)
+	printTokenPath(cred.Path)
+	if cred.Outcome == credential.OutcomeReused {
+		ac.suppress = true // no network call, no mint, nothing changed — no audit row
+	}
 	return nil
 }

@@ -49,7 +49,7 @@ consumers:
   - "docs/contributor-trust.md: fixed-here (the published tier model)"
   - "the identity predicate contributor-trust/09 asks 'is this author external?' through: follow-up contributor-trust/09 (the release-note credit resolver reuses this reader rather than re-deriving the answer from the raw roster)"
   - "tools/desk/internal/deskkit/trust.go (the existing binary bar): out-of-scope (this brief ADDS a tier resolver beside it and changes no existing predicate; every current caller keeps its current answer, which is what makes the change inert until a row is written)"
-version: 1
+version: 2
 ---
 
 # Brief 02 — Trust tiers and the contributor ledger
@@ -57,16 +57,11 @@ version: 1
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/trusttier.go` (new) — the tier type, the ledger reader, and
-  `ResolveTier(repo, login string, id int64) (Tier, Provenance)`; pure over an injected
-  loader so it tests offline.
+- `tools/desk/internal/deskkit/trusttier.go` (new) — the tier type, the ledger reader, and `ResolveTier(repo, login string, id int64) (Tier, Provenance)`; pure over an injected loader so it tests offline.
 - `tools/desk/internal/deskkit/trusttier_test.go` (new).
-- `tools/desk/internal/deskkit/rosterconfig.go` — one new roster key naming the ledger's path;
-  read exactly like every other roster key (environment over roster file, per class).
-- `statusgen/rosterconfig.go` — the documented-duplicate twin gains the same key, and the
-  existing cross-tree coupling test is extended to cover it.
-- `docs/contributor-trust.md` (planned) (new) — the published tier model: the four names, what each
-  unlocks, how an identity moves, and the explicit statement that the rows are not published.
+- `tools/desk/internal/deskkit/rosterconfig.go` — one new roster key naming the ledger's path; read exactly like every other roster key (environment over roster file, per class).
+- `statusgen/rosterconfig.go` — the documented-duplicate twin gains the same key, and the existing cross-tree coupling test is extended to cover it.
+- `docs/contributor-trust.md` (planned) (new) — the published tier model: the four names, what each unlocks, how an identity moves, and the explicit statement that the rows are not published.
 - `changelog/contributor-trust-tiers.md` (new).
 
 single-point-of-failure: the ledger read. Behind it, two independent layers — the resolver's
@@ -176,7 +171,7 @@ Default if no answer: none — blocks until answered. Everything downstream keys
 | 8 | `git -C . grep -n -E 'unknown.*blessed-once.*contributor.*maintainer' -- docs/contributor-trust.md` | exit 0; at least one matching line (the four tiers are named in order in the published model) | check |
 | 9 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | exit 0 | check:ci |
 | 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierPublishedModelMatchesTable' -count=1 -v` | exit 0; output contains `PASS` (the test parses the tier and capability names out of `docs/contributor-trust.md` (planned) and compares them to the capability table in code, so a published model that claims a capability the code does not grant fails) | check +dereference |
-| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:02` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
+| 11 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief assay:assay:contributor-trust:02 --delivery 849f93e5f50687aab773330669abaad8f9566bcc --base 0ac980f40ae84ff548da68cf8d492b4b896f0827 > "$o" && cat "$o" && grep -Fxq 'summary: 5 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The ledger is absent on a fresh machine and every external
 identity silently becomes a contributor" is caught by row 2. "A corrupt or half-written ledger

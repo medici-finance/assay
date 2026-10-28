@@ -1,0 +1,65 @@
+{
+  "test": "go test ./internal/gitmaintenance ./cmd/deskwt -run '^(TestIndex|TestLegacy)' -count=1 -timeout=40s",
+  "control": {
+    "name": "CONTROL omit legacy durable custody marker",
+    "file": "internal/gitmaintenance/indexes.go",
+    "old": "if err := beginActive(common); err != nil {",
+    "new": "if err := error(nil); err != nil {"
+  },
+  "mutations": [
+    {
+      "name": "durable marker must precede the first child",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if err := beginActive(common); err != nil {",
+      "new": "if err := error(nil); err != nil {"
+    },
+    {
+      "name": "unconfirmed cleanup must retain durable custody",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "clean = false",
+      "new": "clean = true"
+    },
+    {
+      "name": "unknown cleanup cannot report completed",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if uncertain {",
+      "new": "if false && uncertain {"
+    },
+    {
+      "name": "confirmed cleanup must release active custody",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if clean {",
+      "new": "if false && clean {"
+    },
+    {
+      "name": "write stderr must demote completion",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if runErr != nil || code != 0 || stderr.Len() != 0 {",
+      "new": "if runErr != nil || code != 0 {"
+    },
+    {
+      "name": "nonzero exit must demote completion",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if runErr != nil || code != 0 || stderr.Len() != 0 {",
+      "new": "if runErr != nil || stderr.Len() != 0 {"
+    },
+    {
+      "name": "ambient Git overrides must be stripped",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if !strings.HasPrefix(strings.ToUpper(pair), \"GIT_\") {",
+      "new": "if true {"
+    },
+    {
+      "name": "transport denial and lazy-fetch prohibition must remain",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "\"GIT_NO_LAZY_FETCH=1\", \"GIT_ALLOW_PROTOCOL=\",",
+      "new": ""
+    },
+    {
+      "name": "legacy child descendants must stay inside owned process tree",
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "indexProcess(ctx, launch, indexEnv(os.Environ()), repo, &stdout, &stderr)",
+      "new": "func() (int, bool, error) { cmd := exec.CommandContext(ctx, launch[0], launch[1:]...); cmd.Env = indexEnv(os.Environ()); cmd.Dir = repo; cmd.Stdout = &stdout; cmd.Stderr = &stderr; cmd.WaitDelay = time.Second; return 0, false, cmd.Run() }()"
+    }
+  ]
+}

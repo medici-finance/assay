@@ -7,7 +7,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/url"
@@ -103,58 +102,58 @@ func ensureLabels(b labelBackend, out io.Writer, fail func(string, ...any)) {
 	}
 }
 
-func cmdLabels(args []string, e *env) int {
-	fs := flag.NewFlagSet("deskfleet labels", flag.ContinueOnError)
-	fs.SetOutput(e.stderr)
-	forge := fs.String("forge", "", "github | gitlab")
-	repo := fs.String("repo", "", "GitHub repository owner/name (--forge github)")
-	project := fs.String("project", "", "GitLab project path or id (--forge gitlab)")
-	tokenFile := fs.String("token-file", "", "FILE holding a credential allowed to create labels")
-	dry := fs.Bool("dry-run", false, "enumerate the labels; make zero network calls")
-	if err := fs.Parse(args); err != nil {
-		return exitUsage
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(e.stderr, "deskfleet labels: unexpected argument %q\n", fs.Arg(0))
-		return exitUsage
-	}
-	var target string
-	switch *forge {
-	case "github":
-		parts := strings.Split(*repo, "/")
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" || *project != "" {
-			fmt.Fprintln(e.stderr, "deskfleet labels: --forge github takes --repo <owner/name> (and no --project)")
-			return exitUsage
-		}
-		target = *repo
-	case "gitlab":
-		if *project == "" || *repo != "" {
-			fmt.Fprintln(e.stderr, "deskfleet labels: --forge gitlab takes --project <path-or-id> (and no --repo)")
-			return exitUsage
-		}
-		target = *project
-	default:
-		fmt.Fprintln(e.stderr, "deskfleet labels: --forge must be github or gitlab")
-		return exitUsage
-	}
+// labelsOpts are one `labels` run's settings, typed by the command tree.
+type labelsOpts struct {
+	forge, repo, project string
+	tokenFile            string
+	dryRun               bool
+	// apiBase is GITLAB_API_BASE as the verb resolved it (environment only; --forge gitlab).
+	apiBase string
+	// target is the validated repo (github) or project (gitlab); validateLabels sets it.
+	target string
+}
 
-	if *dry {
+// validateLabels is the domain check on the typed options, in the order and with the
+// messages the Go flag parser's checks had. It reads nothing and touches nothing.
+func validateLabels(o *labelsOpts) error {
+	switch o.forge {
+	case "github":
+		parts := strings.Split(o.repo, "/")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" || o.project != "" {
+			return errors.New("--forge github takes --repo <owner/name> (and no --project)")
+		}
+		o.target = o.repo
+	case "gitlab":
+		if o.project == "" || o.repo != "" {
+			return errors.New("--forge gitlab takes --project <path-or-id> (and no --repo)")
+		}
+		o.target = o.project
+	default:
+		return errors.New("--forge must be github or gitlab")
+	}
+	return nil
+}
+
+// runLabels is the `labels` handler: the command tree has parsed and validated o.
+func runLabels(o labelsOpts, e *env) int {
+	target := o.target
+	if o.dryRun {
 		for _, l := range fleetLabels {
-			fmt.Fprintf(e.stdout, "[dry-run] would create %s label '%s' (#%s) on %s (idempotent)\n", *forge, l.Name, l.Color, target)
+			fmt.Fprintf(e.stdout, "[dry-run] would create %s label '%s' (#%s) on %s (idempotent)\n", o.forge, l.Name, l.Color, target)
 		}
 		return exitOK
 	}
 
 	var b labelBackend
 	var base string
-	switch *forge {
+	switch o.forge {
 	case "github":
 		base = strings.TrimRight(e.githubAPIBase, "/")
 		if err := validateAPIBase("GitHub API base", base); err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		tok, err := readCredentialFile("--token-file", *tokenFile, operatorNamedFile)
+		tok, err := readCredentialFile("--token-file", o.tokenFile, operatorNamedFile)
 		if err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
@@ -162,12 +161,12 @@ func cmdLabels(args []string, e *env) int {
 		b = &githubLabels{c: newGitHubClient(base, e.http, tok), repo: target}
 	case "gitlab":
 		var err error
-		base, err = gitlabAPIBase(e)
+		base, err = gitlabAPIBase(o.apiBase)
 		if err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
 		}
-		tok, err := readCredentialFile("--token-file", *tokenFile, operatorNamedFile)
+		tok, err := readCredentialFile("--token-file", o.tokenFile, operatorNamedFile)
 		if err != nil {
 			fmt.Fprintf(e.stderr, "refused: %v\n", err)
 			return exitRefused
@@ -176,7 +175,7 @@ func cmdLabels(args []string, e *env) int {
 	}
 	// Name the target BEFORE the first request, as provision does: a network-reaching mode
 	// says where it is about to write before it writes there.
-	fmt.Fprintf(e.stdout, "target: %s %s %s\n", base, *forge, target)
+	fmt.Fprintf(e.stdout, "target: %s %s %s\n", base, o.forge, target)
 
 	failed := 0
 	ensureLabels(b, e.stdout, func(format string, a ...any) {

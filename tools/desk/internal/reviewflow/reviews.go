@@ -11,8 +11,8 @@ type ReviewFact struct {
 type SecurityVerdict int
 
 // SecurityPassMarker is the literal line an App security-review verdict must carry for a
-// risk-classed PR to be flip-eligible (#216). It has one owner: the classifier's
-// SECURITY-REVIEW-REQUIRED notes and the commands that read the marker both reference it.
+// risk-classed PR to be flip-eligible (#216). This constant supplies classifier
+// notes; operational marker parsing remains with deskkit.
 const SecurityPassMarker = "Security-Review: pass"
 
 const (
@@ -177,4 +177,14 @@ func ReduceReviews(reviews []ReviewFact, head string) ReviewState {
 		}
 	}
 	return st
+}
+
+// BodyEditReverificationNote annotates the canonical owner's resolved exemption;
+// it does not evaluate or grant that exemption.
+func BodyEditReverificationNote(reverified bool) string {
+	if !reverified {
+		return ""
+	}
+	return " — same-head APPROVE accepted under the documented body-edit re-verification class " +
+		"(deskflip re-verifies it at the gate)"
 }

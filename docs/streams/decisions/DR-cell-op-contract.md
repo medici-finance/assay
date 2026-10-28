@@ -42,4 +42,6 @@ then run. Applying a plan stays an interactive confirmation at the operator's ow
   own rows.
 - The approval design itself (operator key, registry, enrollment, signed payload) and when the
   five properties are met: owned by R7/R3.
-- The Cell API: stream `cell-api`, parked.
+- The Cell API: stream `cell-api`, active for implementation from 20 October 2026.
+  The maintainer's own unpark request: https://github.com/medici-finance/assay/issues/3669#issuecomment-6302690781
+  Its scheduling does not ratify this separate cell-operation decision record.

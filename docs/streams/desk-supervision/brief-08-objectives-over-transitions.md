@@ -16,6 +16,9 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
+delivery:
+  - {in: "assay#1266", covers: partial, note: "kit, fixtures and both arms' run artifacts only; the arms carry no observer log, so Task 3's wedge counts and Task 4's decision line remain owed (tracked in assay#2816)"}
+  - {in: "assay#3239", covers: partial, note: "repairs the Verify commands and withdraws the unsupported wedge counts and adoption conclusion; Task 3 and Task 4 remain owed until observer-backed runs exist"}
 schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
@@ -42,24 +45,14 @@ id: eb82d786-ffc7-46d0-ae5e-98172a4b78f9
 ## Context
 
 files:
-- `tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md` (new) — the
-  alternative kit: objective, tools available, the status map (draft PR → review → rework
-  → ready is the review desk's; the worker's states are `working`, `blocked`,
-  `handed-off`), the workpad rule, the blocked-access escape hatch, and the common clauses
-  included verbatim.
+- `tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md` (new) — the alternative kit: objective, tools available, the status map (draft PR → review → rework → ready is the review desk's; the worker's states are `working`, `blocked`, `handed-off`), the workpad rule, the blocked-access escape hatch, and the common clauses included verbatim.
 - `tools/desk/cmd/deskdispatch/main.go` — register the kit under `--kit worker-objective`.
-- `tools/skillbench/fixtures/worker-kit/` (new) — the task set: five briefs from this
-  repo's own closed streams, re-runnable offline, each with a deterministic `check`.
-- `docs/streams/desk-supervision/08-report.md` — the stored skillbench reduction and
-  the observer-dependent decision, with missing evidence reported as could-not-check.
-- `docs/streams/desk-supervision/verify.d/08-reduction.sh` — rerun the reducer with a
-  scratch output path and check its report-file oracle.
-- `docs/streams/desk-supervision/verify.d/08-consumers.py` — corroborate all three
-  consumer routes against the exact historical delivery diff.
-- `docs/streams/desk-supervision/verify.d/08-mutations.py` — plant a failed task
-  result and an additional consumer in scratch; require each oracle to reject it.
-- `docs/streams/desktools-v2/cli-migration.json` — classify these three source-only
-  acceptance instruments as tests, using exact-path entries.
+- `tools/skillbench/fixtures/worker-kit/` (new) — the task set: five briefs from this repo's own closed streams, re-runnable offline, each with a deterministic `check`.
+- `docs/streams/desk-supervision/08-report.md` — the stored skillbench reduction and the observer-dependent decision, with missing evidence reported as could-not-check.
+- `docs/streams/desk-supervision/verify.d/08-reduction.sh` — rerun the reducer with a scratch output path and check its report-file oracle.
+- `docs/streams/desk-supervision/verify.d/08-consumers.py` — corroborate all three consumer routes against the exact historical delivery diff.
+- `docs/streams/desk-supervision/verify.d/08-mutations.py` — plant a failed task result and an additional consumer in scratch; require each oracle to reject it.
+- `docs/streams/desktools-v2/cli-migration.json` — classify these three source-only acceptance instruments as tests, using exact-path entries.
 
 single-point-of-failure: the task set — if the five tasks do not exercise a state the
 procedural kit anticipates and the objective kit must discover, the comparison measures
@@ -368,6 +361,98 @@ Findings:
 Status stays implemented. Re-running this item before rows 2, 5 and 9 are re-specified will reproduce this result.
 
 **VERIFY: FAIL** — 6/9 pass; rows 2 and 5 fail as written and row 9 is could-not-check on merged main. All three are check-definition defects tracked at #1363. No deliverable property is failing.
+
+### Non-implementer verifier re-run: 2026-10-22, assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main 05dc9fbc88f2b1b23cd78bebc8634c564327eca4
+
+Pre-work admission: deskdispatch --check-verifier exited 0 for this home and brief before any row (binding run 88254e933a8f, source 05dc9fbc88f2, model claude-opus-5-5, tier strong; attestation issue medici-finance/assay#4024). This is the first run against the reworked 10-row Verify table delivered by #3239 (repair commit 75e338ca0); the original delivery is #1266 (merge commit badd7b58c). The execution witness below was written by statusgen verifyrun v1.0.54 in write mode from the admitted home at the source sha on a clean tree; its stamps and attestation line are exactly as the tool wrote them. Every row was then also run by hand from the same home, offline (KUBECONFIG=/dev/null; rows 2 and 5 carry GOPROXY=off themselves), with TMPDIR, GOCACHE and XDG_CACHE_HOME in a scratch directory outside the home; row 5's reducer report went to that scratch directory, never into the tree. No row reads a sibling checkout. The table has no check:ci rows; at write time the witness ran all ten rows (8 pass, 2 fail), and its later audit marks row 3 could-not-run through the parser issue noted under row 3 below.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | pass exit=0 | sha256:62a34e5296d6 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | pass exit=0 | sha256:d73b08998027 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | pass exit=0 | sha256:b45ebfe2696b | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | pass exit=0 | sha256:9be9b418f3b8 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | fail exit=0 | sha256:06e9d52c1720 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | pass exit=0 | sha256:5cffef493b51 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | pass exit=0 | sha256:fe939745f9de | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4024 run=88254e933a8f44f1d3ed223f932e3f6ecb4103450a048054ae774a7bcdd24fe6 source=05dc9fbc88f2b1b23cd78bebc8634c564327eca4 brief=docs/streams/desk-supervision/brief-08-objectives-over-transitions.md model=claude-opus-5-5 tier=strong
+
+Observed output from the hand runs (the same commands, same home, same source, run by assay-verifier-app[bot] @ 05dc9fbc88f2b1b23cd78bebc8634c564327eca4 (claude-opus-5-5 verifier) on 2026-10-22). These are prose observations next to the witness, not a second Evidence table:
+
+- Row 1: PASS. Exit 0; the kit list is review, verifier, worker, worker-objective.
+- Row 2: PASS. Exit 0; the dry run prints "deskdispatch: PLAN (dry run — nothing touched) item=assay/desk-supervision/08 repo=medici-finance/assay tier=any kit=worker-objective" and the emitted prompt contains the KUBECONFIG=/dev/null clause.
+- Row 3: PASS. diff exit 0 with empty output (objective kit 661 lines, common clauses 120 lines). The witness audit (statusgen verifyrun --check) reports this row could-not-run because it reads the recorded command as different from the row; that is the witness parser issue the rework boundary tracks at #2679, and the byte comparison itself is clean.
+- Row 4: PASS. Exit 0; 5 (01-observable-probe, 02-run-stop-signal, 03-eligibility-reconcile, 05-per-class-caps, 06-workpad-upsert).
+- Row 5: PASS. Exit 0; stdout "- Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%"; the report went to a scratch temp file.
+- Row 6: PASS. Exit 0; 15 and 15.
+- Row 7: FAIL. Exit 1, no output. The report's only decision line (line 96) is "decision: could-not-check — check_pass_rate 100%/15 vs 100%/15; wedges could-not-check in both arms (observer logs absent)", so neither adopt-candidate nor reject is present.
+- Row 8: PASS. Exit 0; count 6. The witness marks this row fail with "no output line equals 1" because its expectation parser reads "1 or more" as an exact match; the direct run meets the row as written.
+- Row 9: PASS. Exit 0; "CORROBORATED: 3 consumer routes; common-clause change is markers only; no guard prose changed".
+- Row 10: PASS. Exit 0; "rejected planted failed task result", "rejected planted additional consumer route", "2 planted defects rejected".
+
+Risk-bearing values: the frontmatter carries all four risk fields as no (irreversible: no), and the rework diff touches only verification scripts, the report and a CLI classification file, so the fail-safe trigger does not fire. Enumeration over the rework commit's verification scripts and the brief's Deliverables, for the record: date = 2026-09-17 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:9; expected floor matches = 2 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:11; DELIVERY = badd7b58c0e1ed6f344384a72e3eb7381fb42d6a @ docs/streams/desk-supervision/verify.d/08-consumers.py:14; route count = 3 @ docs/streams/desk-supervision/verify.d/08-consumers.py:31; subprocess timeouts 20 and 90 seconds @ docs/streams/desk-supervision/verify.d/08-mutations.py:17 and :25. All are reversible check-definition knobs.
+RISK-VALUE: NAMED, NOT DERIVED — task-count = 5 @ docs/streams/desk-supervision/08-report.md:6 (five task dirs under tools/skillbench/fixtures/worker-kit) — missing: a derivation that these five tasks cover the states the procedural kit anticipates; the brief assigns representativeness to review only. Reversible.
+RISK-VALUE: DERIVED — runs-per-task-per-arm = 3 @ docs/streams/desk-supervision/08-report.md:9 — the brief's facts pre-register at least 3 runs per task per arm; 3 is the smallest value meeting that floor, and row 6 observes 15 = 5 x 3 per arm. Reversible.
+RISK-VALUE: DERIVED — DELIVERY = badd7b58c0e1ed6f344384a72e3eb7381fb42d6a @ docs/streams/desk-supervision/verify.d/08-consumers.py:14 — it is the #1266 merge commit named in the rework boundary, and row 9 reads only its first-parent diff, so later edits cannot be misattributed to this item. Reversible.
+
+Findings:
+- The rework fixed the three check-definition defects from earlier runs. Rows 2, 5 and 9 now pass as written, and row 10's positive controls show that the reduction and consumer oracles reject planted defects.
+- Row 7 fails as the brief's own rework boundary predicts. The stored arms carry no observer log, so wedges and the adoption decision are could-not-check, and the report says so honestly instead of claiming a winner. This is the acceptance blocker already tracked at #2816; Task 3 and Task 4 remain owed until observer-backed runs exist. No new defect was observed.
+- The objective kit is now 661 lines; the measured comparison describes an earlier revision of it, as noted in earlier runs.
+
+Status stays implemented.
+
+**VERIFY: FAIL** — 9/10 pass; row 7 fails (no adopt-candidate or reject decision line; observer logs absent, tracked at #2816). Row 8 is red in the witness only through its "1 or more" parse; the direct run passes.
+### Non-implementer verifier re-run: 2026-10-27, assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main dda6c8c67d3bbdb185c16428609e6e11678ca63a
+
+Pre-work admission: deskdispatch --check-verifier exited 0 for this home and brief before any row (binding run 56c8c51a290e, source dda6c8c67d3b, model claude-opus-5-5, tier strong; attestation issue medici-finance/assay#4650). The Verify table is the 10-row table from the #3239 rework, unchanged since the 2026-10-22 run. The original delivery is #1266 (merge commit badd7b58c). Since the 2026-10-22 run (source 05dc9fbc88f2), the only change to a deliverable is #4481: it rewords the changelog-fragment paragraph of the objective kit (slug with every / replaced by -, one flat file), outside the common-clauses block. The objective kit is now 664 lines. skillbench, the fixtures, the arms directory, the report, the verify.d scripts and the common clauses did not change. The execution witness below was written by statusgen verifyrun v1.0.63 in write mode, from the admitted home at the source sha on a clean tree. Its stamps and attestation line are exactly as the tool wrote them. verifyrun runs its own admission check, which needs the verifier App credential, so the witness run used the operator's normal home directory; a throwaway home holding only the roster copy was refused before any row ran ("cannot obtain the verifier GitHub App installation token"). Every row was then also run by hand from the same home, offline (KUBECONFIG=/dev/null; rows 2 and 5 carry GOPROXY=off themselves), with TMPDIR in a scratch directory outside the home. Row 5's reducer report went to that scratch directory, never into the tree. No row reads a sibling checkout. The table has no check:ci rows. No row is risk-bearing for fail-first: the brief's four risk fields are all no, and no row carries a risk-bearing, live, mutating or end-to-end tag. At write time the witness ran all ten rows, with 8 pass and 2 fail.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | pass exit=0 | sha256:62a34e5296d6 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | pass exit=0 | sha256:20fc51262c8d | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | pass exit=0 | sha256:7c04138450e6 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | pass exit=0 | sha256:9be9b418f3b8 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | fail exit=0 | sha256:06e9d52c1720 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | pass exit=0 | sha256:5cffef493b51 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | pass exit=0 | sha256:fe939745f9de | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4650 run=56c8c51a290ec5121e2389a4c6dcb5757deeeed94008868a326e693e942c2841 source=dda6c8c67d3bbdb185c16428609e6e11678ca63a brief=docs/streams/desk-supervision/brief-08-objectives-over-transitions.md model=claude-opus-5-5 tier=strong
+
+
+Observed output from the hand runs (same commands, home and source sha, run by assay-verifier-app[bot] (claude-opus-5-5 verifier) on 2026-10-27). These are prose observations next to the witness, not a second Evidence table:
+
+- Row 1: PASS. Exit 0. The kit list is review, verifier, worker, worker-objective.
+- Row 2: PASS. Exit 0. The dry run prints "deskdispatch: PLAN (dry run — nothing touched) item=assay/desk-supervision/08 repo=medici-finance/assay tier=any kit=worker-objective branch=feat/assay-desk-supervision-08", and the emitted prompt contains the KUBECONFIG=/dev/null clause.
+- Row 3: PASS. diff exits 0 with empty output (objective kit 664 lines, common clauses 120 lines). statusgen verifyrun --check reports this row could-not-run because it reads the recorded command as different from the row. That is the witness parser issue tracked at #2679 (literal HTML-comment tokens inside a command), which is still open. The byte comparison itself is clean.
+- Row 4: PASS. Exit 0; output 5 (01-observable-probe, 02-run-stop-signal, 03-eligibility-reconcile, 05-per-class-caps, 06-workpad-upsert).
+- Row 5: PASS. Exit 0. stdout is "- Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%". The report went to a scratch temp file.
+- Row 6: PASS. Exit 0; 15 and 15.
+- Row 7: FAIL. Exit 1, no output. The report's only decision line (line 96) is "decision: could-not-check — check_pass_rate 100%/15 vs 100%/15; wedges could-not-check in both arms (observer logs absent)". It has neither adopt-candidate nor reject.
+- Row 8: PASS on the direct run. Exit 0; count 6. The witness marks this row fail with "no output line equals 1" because its expectation parser reads "1 or more" as an exact match. That is the same row-wording parse class recorded at #1702. The direct run meets the row as written.
+- Row 9: PASS. Exit 0. "CORROBORATED: 3 consumer routes; common-clause change is markers only; no guard prose changed".
+- Row 10: PASS. Exit 0. "rejected planted failed task result", "rejected planted additional consumer route", "2 planted defects rejected".
+
+statusgen verifyrun --check on this brief, after the witness was written: "7 pass, 2 fail, 1 could-not-run/missing (of 10 Verify rows); 0 author-added with no acceptance credit" (exit 2).
+
+Risk-bearing values: the frontmatter marks all four risk fields no (irreversible: no), so the fail-safe trigger does not fire. Enumeration, for the record, covers the #4481 change to the objective kit, the rework's verification scripts and the brief's Deliverables. The #4481 change adds no numeric literal; its one rule is a character substitution in a slug. The rework literals are the same as on 2026-10-22: date = 2026-09-17 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:9; expected floor matches = 2 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:11; DELIVERY = badd7b58c0e1ed6f344384a72e3eb7381fb42d6a @ docs/streams/desk-supervision/verify.d/08-consumers.py:14; subprocess timeouts of 20 and 90 seconds @ docs/streams/desk-supervision/verify.d/08-mutations.py:17 and :25. All of them are reversible check-definition knobs.
+RISK-VALUE: NAMED, NOT DERIVED — task-count = 5 @ docs/streams/desk-supervision/08-report.md:6 (five task dirs under tools/skillbench/fixtures/worker-kit) — missing: a derivation that these five tasks cover the states the procedural kit anticipates; the brief assigns representativeness to review only. Reversible.
+RISK-VALUE: DERIVED — runs-per-task-per-arm = 3 @ docs/streams/desk-supervision/08-report.md:9 — the brief's facts pre-register at least 3 runs per task per arm; 3 is the smallest value meeting that floor, and row 6 observes 15 = 5 x 3 per arm. Reversible.
+RISK-VALUE: DERIVED — DELIVERY = badd7b58c0e1ed6f344384a72e3eb7381fb42d6a @ docs/streams/desk-supervision/verify.d/08-consumers.py:14 — it is the #1266 merge commit named in the rework boundary, and row 9 reads only its first-parent diff, so later edits (including #4481) cannot be misattributed to this item. Reversible.
+
+Findings:
+- This run gets the same result as 2026-10-22. Row 7 fails as the brief's own rework boundary predicts: the stored arms carry no observer log, so wedges and the adoption decision are could-not-check. The report says so instead of declaring a winner. This is the acceptance blocker tracked at #2816 (open). Task 3 and Task 4 remain owed until observer-backed runs exist.
+- The #4481 rewording leaves the common-clauses block byte-identical (row 3). The measured comparison still describes an earlier revision of the kit.
+- No new deliverable defect was observed.
+
+Status stays implemented.
+
+**VERIFY: FAIL** — 9/10 rows meet their Expect on direct run. Row 7 fails: there is no adopt-candidate or reject decision line, because observer logs are absent (tracked at #2816). In the witness audit, row 8 also reads fail through its "1 or more" parse (#1702 class), and row 3 reads could-not-run through the parser issue tracked at #2679.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -27,6 +29,7 @@ const (
 	stepBoardFetch      = "board-fetch"
 	stepWorktreeCurrent = "worktree-current"
 	stepFirstSweep      = "first-sweep-prereqs"
+	stepBinaryPin       = "binary-pin"
 )
 
 // bootSteps is the ordered step list, used for the plan output and pinned by a test so a
@@ -48,6 +51,7 @@ var bootSteps = []string{
 	stepBoardFetch,
 	stepWorktreeCurrent,
 	stepFirstSweep,
+	stepBinaryPin,
 }
 
 // loopToTokenRole maps a desk LOOP name (what a session presents in $DESK_LOOP, and what
@@ -94,8 +98,10 @@ type bootOpts struct {
 	dryRun bool
 }
 
-func cmdBoot(args []string) error {
+func cmdBoot(args []string, sinks ...func(perfrec.Context)) error {
 	fs := flag.NewFlagSet("deskboot", flag.ContinueOnError)
+	selected := cli.GoPerformanceSink(fs, sinks...)
+	defer selected()
 	fs.SetOutput(new(strings.Builder))
 	root := fs.String("root", ".", "repo root this desk operates from (its own worktree)")
 	repo := fs.String("repo", "", "owner/name whose INSTALLATION the token mints against (default: derived from the root's origin)")
@@ -115,6 +121,7 @@ func cmdBoot(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return deskkit.Refused("deskboot: bad flags: " + err.Error())
 	}
+	selected()
 	if fs.NArg() != 0 {
 		return deskkit.Refused("deskboot: unexpected extra arguments after <role>: " + strings.Join(fs.Args(), " "))
 	}
@@ -242,6 +249,13 @@ func boot(o bootOpts) error {
 		return err
 	}
 	o.say("%s OK: %s", stepFirstSweep, prereqs)
+
+	// 10 — the binary marker (local hotfix overlay, layer 3). Every cell shim is classified by
+	// the path it execs; a hotfix is printed at every boot and re-checked here, so a hotfix
+	// that outlived its pin, its expiry or the ruling is a refusal, not a silent run.
+	if err := binaryPinStep(o); err != nil {
+		return err
+	}
 
 	fmt.Printf("deskboot: BOOT COMPLETE — role=%s token-role=%s root=%s (%d/%d steps)\n",
 		o.role, tokenRole, o.root, len(bootSteps), len(bootSteps))

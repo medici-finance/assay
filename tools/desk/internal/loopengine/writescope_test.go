@@ -31,6 +31,27 @@ func TestDeriveWriteScopes_FromContextFiles(t *testing.T) {
 	}
 }
 
+// regression: #3817
+func TestWriteScopeInSpanAnnotation(t *testing.T) {
+	brief := "---\nbrief: x/01\n---\n\n## Context\n\nfiles:\n" +
+		"- `comms/server (new)` — the server\n" +
+		"- `perfrec/context.go (planned)`\n" +
+		"- `qualgen/dq/testdata/replay/ (planned synthetic vectors)`\n\n## Task\ndo\n"
+	got := DeriveWriteScopes(brief)
+	want := []WriteScope{{Prefix: "comms/server"}, {Prefix: "perfrec/context.go"}, {Prefix: "qualgen/dq/testdata/replay/"}}
+	if !got.Derivable || !reflect.DeepEqual(got.Scopes, want) {
+		t.Fatalf("scopes:\n got %+v\nwant %+v", got.Scopes, want)
+	}
+	inline := DeriveWriteScopes("## Context\nfiles: `comms/server (new)`, `perfrec/context.go (planned)`\n")
+	if !reflect.DeepEqual(inline.Scopes, want[:2]) {
+		t.Fatalf("inline scopes: got %+v want %+v", inline.Scopes, want[:2])
+	}
+	other := WriteScopeSet{Derivable: true, Scopes: []WriteScope{{Prefix: "perfrec/context.go"}}}
+	if ov := got.Overlap(other); !reflect.DeepEqual(ov, []string{"perfrec/context.go"}) {
+		t.Fatalf("annotated entry missed a same-file overlap: %v", ov)
+	}
+}
+
 // TestDeriveWriteScopes_InlineFilesForm covers the single-line `files: cmd/fanoutloop/` shape
 // that the existing board fixtures use.
 func TestDeriveWriteScopes_InlineFilesForm(t *testing.T) {

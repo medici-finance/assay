@@ -1,0 +1,51 @@
+# Verify row 12 fixture (the service contract Task 9, the authorization contract): the GREEN
+# side of the gate, and the two-cells-in-one-process shape row 12 turns on.
+#
+#   go run ./cmd/cellsvalidate config/testdata/peruseridentity/proving-cell-opt-in.yaml
+#
+# Exit 0. The `assay` cell is the proving cell (toolkit 1963, fork 3):
+# private, declares a dev environment, and carries the opt-in. The second cell
+# is private with NO opt-in and stays OFF in the same file — so a deskd started
+# on this config serves the per-user path on one cell and not the other.
+#
+# This is a FIXTURE, not the deployed config. Setting the opt-in on the real
+# config/cells.yaml is the human's own edit after the dev-cell rows pass; this
+# PR deliberately does not make it.
+cells:
+  - name: assay
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [glm-5.3, deepseek-chat]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    per_user_identity: enabled
+    environments:
+      - name: tracker-dev-app
+        kind: k8s
+        tier: dev
+        cluster: fixture-cluster
+        namespaces: [example-dev-app]
+        access: [read]
+        runner_pool: example-verify-tracker
+  - name: tracker
+    repos:
+      - example-other/tracker
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [glm-5.3, deepseek-chat]
+        app: tracker-assay-reviewer
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none

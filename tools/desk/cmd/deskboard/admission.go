@@ -67,6 +67,43 @@ func briefFileFor(row dispatchRow) string {
 	return matches[0]
 }
 
+// admissionResult is one row's observation. Workers never mutate the report;
+// the final fold preserves row, hold and unknown ordering from the input queue.
+type admissionResult struct {
+	row      dispatchRow
+	brief    deskkit.BriefAdmission
+	held     string
+	tierHeld bool
+	unknown  []string
+}
+
+func prepareBriefAdmission(row dispatchRow, tier string) admissionResult {
+	r := admissionResult{row: row}
+	path := briefFileFor(row)
+	if path == "" {
+		r.unknown = append(r.unknown, "brief file not found under docs/streams — exec-tier and decision not checked")
+		return r
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		r.unknown = append(r.unknown, "brief file unreadable — exec-tier and decision not checked")
+		return r
+	}
+	r.brief = deskkit.ParseBriefAdmission(string(raw))
+	r.row.ExecTier = r.brief.ExecTier
+	if tier != "" {
+		covers, err := deskkit.TierCovers(tier, r.brief.ExecTier)
+		switch {
+		case err != nil:
+			r.unknown = append(r.unknown, err.Error())
+		case !covers:
+			r.tierHeld = true
+			r.held = fmt.Sprintf("exec-tier: %s is stricter than --tier %s", r.brief.ExecTier, tier)
+		}
+	}
+	return r
+}
+
 // applyBriefAdmission drops the rows a dispatch at tier (or "" for no tier) would refuse,
 // counting each by reason. It runs on the merged queue, after every cap.
 func applyBriefAdmission(rep *dispatchReport, tier string) {
@@ -75,62 +112,58 @@ func applyBriefAdmission(rep *dispatchReport, tier string) {
 	if !haveRatifier {
 		ratifier = nil
 	}
-	unknown := func(row dispatchRow, why string) {
-		rep.AdmissionUnknown = append(rep.AdmissionUnknown, dispatchDegraded{
-			Repo: row.Repo, Root: row.Root, Reason: row.Brief + ": " + why,
-		})
+	results := make([]admissionResult, len(rep.Rows))
+	sweeps := map[string]*deskkit.DecisionSweep{}
+	repos := map[string]deskkit.ForgeRepo{}
+	for i, row := range rep.Rows {
+		results[i] = prepareBriefAdmission(row, tier)
+		if results[i].held != "" || !results[i].brief.GatesHuman() {
+			continue
+		}
+		if _, resolved := sweeps[row.Repo]; resolved {
+			continue
+		}
+		f, fr, err := decisionForgeFor(row.Repo)
+		sweeps[row.Repo] = nil // failed resolution is shared as unknown, never retried per row
+		if err == nil && f != nil {
+			sweeps[row.Repo] = deskkit.NewDecisionSweep(f, fr, ratifier)
+			repos[row.Repo] = fr
+		}
 	}
+	// One global pool: no nested per-repo fanout multiplies the read burst bound.
+	results, _ = sweepConcurrent(results, sweepConcurrency, func(r admissionResult) (admissionResult, error) {
+		if r.held != "" || !r.brief.GatesHuman() {
+			return r, nil
+		}
+		sweep := sweeps[r.row.Repo]
+		if sweep == nil {
+			r.unknown = append(r.unknown, "gate: human — the forge for its decision issue could not be resolved")
+			return r, nil
+		}
+		w := sweep.Wait(r.brief)
+		switch {
+		case w.Unknown != "":
+			r.unknown = append(r.unknown, "gate: human — "+w.Unknown)
+		case w.Waiting:
+			r.held = fmt.Sprintf("gate: human — decision issue %s#%d is open with no ruling recorded", repos[r.row.Repo].Slug(), w.Issue)
+		}
+		return r, nil
+	})
 	kept := make([]dispatchRow, 0, len(rep.Rows))
-	for _, row := range rep.Rows {
-		path := briefFileFor(row)
-		if path == "" {
-			unknown(row, "brief file not found under docs/streams — exec-tier and decision not checked")
-			kept = append(kept, row)
-			continue
+	for _, r := range results {
+		for _, why := range r.unknown {
+			rep.AdmissionUnknown = append(rep.AdmissionUnknown, dispatchDegraded{Repo: r.row.Repo, Root: r.row.Root, Reason: r.row.Brief + ": " + why})
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			unknown(row, "brief file unreadable — exec-tier and decision not checked")
-			kept = append(kept, row)
-			continue
-		}
-		b := deskkit.ParseBriefAdmission(string(raw))
-		row.ExecTier = b.ExecTier
-		if tier != "" {
-			covers, terr := deskkit.TierCovers(tier, b.ExecTier)
-			switch {
-			case terr != nil:
-				unknown(row, terr.Error())
-			case !covers:
+		if r.held != "" {
+			if r.tierHeld {
 				rep.HeldByExecTier++
-				rep.AdmissionHeld = append(rep.AdmissionHeld, dispatchAdmissionHeld{
-					Repo: row.Repo, Brief: row.Brief,
-					Reason: fmt.Sprintf("exec-tier: %s is stricter than --tier %s", b.ExecTier, tier),
-				})
-				continue
-			}
-		}
-		if b.GatesHuman() {
-			f, fr, ferr := decisionForgeFor(row.Repo)
-			if ferr != nil || f == nil {
-				unknown(row, "gate: human — the forge for its decision issue could not be resolved")
-				kept = append(kept, row)
-				continue
-			}
-			w := deskkit.BriefDecisionWait(f, fr, b, ratifier)
-			switch {
-			case w.Unknown != "":
-				unknown(row, "gate: human — "+w.Unknown)
-			case w.Waiting:
+			} else {
 				rep.HeldByDecision++
-				rep.AdmissionHeld = append(rep.AdmissionHeld, dispatchAdmissionHeld{
-					Repo: row.Repo, Brief: row.Brief,
-					Reason: fmt.Sprintf("gate: human — decision issue %s#%d is open with no ruling recorded", fr.Slug(), w.Issue),
-				})
-				continue
 			}
+			rep.AdmissionHeld = append(rep.AdmissionHeld, dispatchAdmissionHeld{Repo: r.row.Repo, Brief: r.row.Brief, Reason: r.held})
+			continue
 		}
-		kept = append(kept, row)
+		kept = append(kept, r.row)
 	}
 	rep.Rows = kept
 }

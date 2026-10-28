@@ -8,6 +8,7 @@ authorized brief authoring on 17 October 2026. Approved source head:
 `7504e6dbbaaba3faab6bf64b1c987fb756b4a980`; merge:
 `067c7f02bd39997d719d0f64d8576efbc6f55bcc`. Approval authorizes the design and its
 decomposition; caller switches, retirement and collection retain their delivery gates.
+**Requested amendments:** §2.1 and A11–A12 are outside that earlier approval.
 **Approved delivery routing:** existing desk-tools, desktools-v2, forge-neutral and
 performance-collection owners, with adopter cutover and retirement owners. The
 [change map](desk-workflow-efficiency-change-map.md) distinguishes reuse, amendments and gaps.
@@ -73,6 +74,57 @@ Preserve the existing [library boundaries](library-first.md),
 [refactor-oracle procedure](streams/build-less-brittle/spec.md). Missing data cannot become
 empty, green, idle or acceptance. An observation never grants a claim or permission to write.
 Keep independent review, exact-subject verdicts, ready ownership and human merge unchanged.
+
+## 2.1 Candidate-plus-priority planner — requested amendment, 23 October 2026
+
+This bounded planning amendment extends the routed baseline at the operator's request;
+it does not extend the earlier revision-bound approval, activate a desk, or rebind an
+in-flight assignment. Source inspected on App-fetched main `9c4307a19`; the call-path audit
+used release v1.0.57. Recheck versions, active work and affected-context applicability at pickup.
+
+Both a prose/skill desk and its discrete client must consume the **same role-qualified
+planner implementation**. There are two explicit inputs: (1) the complete authorized
+candidate observation and (2) current approved priority/selection policy, with explicit time
+and capacity. Composition delegates to the existing role/domain evaluators; it is not a
+universal replacement score or another scheduler. The role's pure planner returns the same
+ordered proposals and held/unknown/watch dispositions for identical inputs on both paths.
+
+- Observation includes qualified identity, brief/issue/PR aliases, exact subject revision,
+  all source lanes, provenance, freshness and coverage. Union and deduplicate the relevant
+  lanes before scheduling selection. A display/span cap is not a complete candidate universe;
+  retain held-back rows/counts and distinguish unknown coverage from an empty queue.
+- Policy input names its approving owner and revision and carries existing lane precedence,
+  drive priority, scores, dependency and reservation/cap semantics. Unmapped work follows an
+  explicit existing default or is surfaced; an inner join must not silently drop it. A priority
+  entry with no observed candidate remains not-observed/coverage-gap. Portfolio shares remain
+  advisory until their separately approved policy integration; no filler work or new floors.
+- The plan binds role, observation and policy/evaluator revisions, time/capacity, order,
+  selected lane/head and explanatory reasons. Review's operation-key coalescing order must not
+  accidentally become reviewer-slot priority. Keep access/trust, hard holds and eligibility
+  independent of score; a high rank grants no claim, write or acceptance authority.
+- Planning reads no provider, filesystem, process, credential or mutable global state. Priority
+  changes and slot completions rerun this function on applicable observations. Collection has
+  its own due/invalidation contract; a SelectQueue/refill call does not inherently require a
+  fleet refresh. Source change, access change, expiry or incomplete coverage triggers the
+  existing bounded refresh/hold behavior, never an invented global TTL.
+- Prose explains and executes this plan instead of hand-ranking a second queue; discrete
+  clients adapt the same result to the existing Loop/reactor interfaces. Claim, admission,
+  exact-head/current-state and effect rechecks remain at their existing boundaries. Coordinator
+  and intake judgment remain bounded model work; review remains reactive rather than a
+  drain-once queue. No seventh Loop method, new daemon, policy register or credential owner.
+
+Current reference plans are not complete prose replacements: worker's shown board is already
+capped and its orphan source can be unwired; verify also owes an Evidence-PR repair sweep;
+intake events do not include all persistent issue/raw-intake debt. Migration must demonstrate
+source coverage as well as identical ranking. Missing facts hold the affected scope.
+
+Delivery reuses desk-tools/39–40 for review observation/pure planning, /42 for issue projections,
+/43 for actual caller adoption and /44 for cost/parity/retirement qualification; /45 and /51 own
+verification queue and skill integration. graph-execution/27 owns the existing five-role
+composition/driver adapter, consuming those contracts through legal module boundaries.
+statusgen/evaluation and the declared domain owners retain eligibility/coverage meanings.
+The direct-reader bridge can ship before R6. Cross-window reuse belongs to forge-neutral/37–43;
+desktools-v2/09's verified typed snapshots and existing batches/caches are reused, not redone.
 
 ## 3. Better review operations
 
@@ -312,3 +364,83 @@ performance-collection and forge-neutral owners. The authoring PR proposes these
 its merge completes routing, not implementation. Preserve completed briefs and Evidence.
 The active CLI ports and pending supervision/improvement proposals have explicit pickup
 checkpoints. No implementation is declared complete by these amendments.
+
+## Proposed verification extension — 20 October 2026
+
+[Verification planning performance and diagnostics](verifyloop-performance-spec.md) proposes
+applying this observation/evaluation and matched-cost method to verification. It reuses the
+existing recorder/provider adapters and separates local read reuse from R5/R6 service work.
+It is a draft extension, not an enlargement of this document's revision-bound approval or
+an amendment to the review-only briefs. The accompanying verifyloop diagnostic integration
+is explicitly requested; behavioral optimizations retain their own approval and qualification.
+
+## Ranked provider-call reductions — planning estimates, 23 October 2026
+
+Rank by expected fleet request savings for repeated mostly unchanged work. These alternatives
+overlap; percentages must not be added. R=repositories, P=open PRs, I=open issues,
+T=selection passes, C=full discovery cost, g=required targeted rechecks, M=complete producer
+reconciliations during the same interval. Count actual HTTP attempts, including 304, separately
+from GraphQL points, quota, CPU and wall time. Git transport and local I/O are separate.
+
+| Rank | Existing delivery owner and change | Before -> after requests | O() and qualification |
+|---|---|---|---|
+| 1 | forge-neutral/37–43: shared ingestion/mirror, one authorized scope owner | Sum of independent caller scans -> one producer refresh stream + changed facts + g | O(T*C) -> O(M*C + changed facts + g); M normally smaller than T. Producer and full repair inventory are never free; routine client reads add no GH calls. |
+| 2 | graph-execution/27 with desk-tools/39–43: separate collection from refill/priority selection | T*C -> one applicable observation + invalidated fact refresh + g | In one-full-refresh window O(T*(R+P+I)) -> O(R+P+I+total changed items+g), restoring page/history factors. Mere timer/completion events do not require provider enumeration. |
+| 3 | Existing typed snapshot plus graph-execution/27 worker binding: share orphan/disposition/stalled observations | PR component 6R+drafts+2*blocked-drafts+stale-drafts -> 4R+2*blocked-drafts+stale-drafts | Saves 2R+drafts in ordinary one-page conditions; usually still O(R+P). Keep commit/comment/supersession/claim guards and separate issue/recent-merged discovery. |
+| 4 | desk-tools/42 and forge-neutral/37–38: projection-before-enrichment and qualified issue batching | L+U+E+H+A -> L+b(U)+b(E)+b(H)+b(A)+overflow | b(X)=sum per repo ceil(X/32), proposed batch size for comparison, not an installed contract. Fixed batching remains O(R+I+pages). Preserve complete histories/trust/closure and provider point budgets. |
+| 5 | desk-tools/39–40,43: complete review observation and watcher handoff | Foreground 6R+2*changed-PRs -> 5R+2*changed-PRs; reuse a same-cutoff watcher observation instead of another foreground scan | Saves R for the head inventory; removing a coincident second classification saves its actual measured collection. Cold O(R+P) unchanged, repeated pure selection makes zero GH requests. |
+| 6 | desk-tools/45,47,51: one complete multi-root verify plan and shared repair observations | Common-blocker reads sum per-root Q -> distinct Q; planner V + repair Y -> V+Y-proven overlap | Repeated common blockers O(B*Q) -> O(Q) across B separate root plans. Existing 32-target PR/receipt batches remain. Name the repair reader before assigning a numeric overlap coefficient; retain final held-head checks. |
+| 7 | Existing zero-CI and exact-source owners through graph-execution/27 and forge-neutral/42 | Probe reaching both CI reads: about 4Z -> 2Z; immutable workflow reads reused by exact SHA | Fresh CI remains O(T*Z); repeated immutable workflow bytes can fall O(T*Z*W) -> O(Z*W). Share equivalent observations without caching mutable green/ready conclusions. |
+
+L is actual listing pages; U=selected untrusted issues; E=response-clock issues; H=label-history
+placeholder candidates; A=absent unfinished placeholders needing positive closure evidence.
+For current REST issue enumeration, open PRs also occupy pages before filtering: ordinary
+complete pages cost sum(floor((I_r+P_r)/100)+1), including the terminal exact-boundary request.
+The compatibility monitor can use a different query/paging shape. Histories, snapshots hitting
+caps, zero-CI probes, auth, retries and overflow fallback require separately recorded counts.
+
+Synthetic examples, not live measurements: four repos/20 ordinary trusted PRs give review
+foreground 64->60 cold requests; four repos with 20 drafts, five blocked and three stale give
+worker PR component 57->29; 64 short-history issues evenly split across four repos into 32
+response-clock and 32 placeholder candidates give 68->12 under the proposed batching. Four
+root plans sharing ten blocker issues give 40->10 blocker reads with one multi-root plan.
+A warm review/coordinator/watcher slice can fall 68->20 only when one qualified shared
+classification replaces the duplicate readers and the retained producer is charged once.
+None of these excludes legitimate final g or proves the benefit of an unbuilt mirror.
+
+A11: same observation/policy/time/capacity must yield identical coverage, ordered decisions,
+selected lane/head and hold reasons in prose and discrete production adapters for all five
+roles. Negative controls include second-root-only work, capped/hidden candidates, unmapped
+priorities, a priority change with unchanged source, key-sort versus policy order, shared
+blockers, partial/denied inputs and moved heads at admission. Missing actual role adapters
+is could-not-check, not parity via a mocked second planner.
+
+A12: qualify call growth at R/P/I/T sizes 1, 4 and a larger bounded cohort under cold, warm,
+changed and error states. Count provider attempts at the transport; repeated pure planning
+must issue zero GH calls, collector and consequential reads remain visible, and no savings
+may come from omitted sources or weaker gates. The existing /37 oracle and /44 qualification
+own the review/issue cohort and common cost format. graph-execution/27 and /51 append actual
+role/repair coverage without becoming prerequisites to the early review bridge. These are
+added implementation criteria, not new executed Evidence or consent.
+
+### Per-desk request accounting for the ranked changes
+
+These are conditional successful one-page estimates, not additive fleet totals. Restore
+history/file pages, zero-CI/trust probes, auth/retries and coverage caps; P means admitted
+open PRs for changed-file enrichment, while I is the issue population before projections.
+
+| Desk | Before -> after | Scaling and retained work |
+|---|---|---|
+| Coordinator | Independent review depth about 5R+2*changed-PRs plus issue-register reads -> zero duplicate bulk reads when an applicable already-produced scope observation exists, plus g | Role bulk O(R+P+issue pages) can move to shared producer; producer still pays once. A standalone coordinator cannot claim this saving without another required collector. |
+| Intake | L+U+E+H+A -> L+b(U)+b(E)+b(H)+b(A)+overflow; separate poll remains until qualified shared ingestion | Fixed batches remain O(R+I+pages). Changed-event author/trust reads and positive closure evidence remain; no-event does not mean no backlog. |
+| Worker | 6R+drafts+2*blocked-drafts+stale-drafts+issue/recent-merged discovery -> 4R+2*blocked-drafts+stale-drafts+the same other discovery | Usually O(R+P+I+recent-merged pages); saving 2R+drafts is not removal of source coverage or final claims. |
+| Review | Foreground 6R+2*changed-PRs -> 5R+2*changed-PRs; compatible watcher handoff avoids a second full classification | Cold O(R+P) remains; T pure plan/refill calls add zero GH attempts. Head/body/review/check applicability still invalidates as required. |
+| Verify | V+Y -> V+Y-proven overlap; per-root shared blockers sum(Q_root) -> distinct Q in one multi-root pass | V is approximately 2R_t+2b(P_e)+4b(A_receipts)+Q+F+J on the supported batch path; Y is the separate owned-Evidence repair sweep. Existing batches/cache are baseline; keep final J and name Y before claiming a coefficient. |
+
+For verify, P_e is all listed verifier-authored PR candidates before detailed admission;
+A_receipts is the distinct eagerly prepared attestation references; F is exact-head GitHub
+content reads; J is proposed holds requiring final head checks. File/label overflow can
+repeat the full native walk, not only its missing tail. Separate root plans can multiply
+shared blocker reads O(BQ); one full-root pass keeps O(Q). Mirror adoption then removes
+routine client bulk GH calls while the shared reconciliation/refresh and consequential g
+remain counted at their actual owners.

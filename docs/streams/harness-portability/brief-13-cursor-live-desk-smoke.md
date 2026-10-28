@@ -23,6 +23,9 @@ gate-why: >-
   in-repo command can corroborate.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
+delivery:
+  - {in: "assay#621", covers: partial, note: "adopting-assay reference and the README row only; the bundle PARITY/RELEASE-NOTES record (Task 3) and the first live run with its committed log (Task 4) remain owed"}
+  - {in: "assay#3705", covers: partial, note: "protocol, run-log scaffold and the adopting-assay link only; it claims no live run, so Task 3 and Task 4 remain owed"}
 schema: brief-v2
 authored: 2026-09-01 by harness-portability gap-check dispatch (assay-worker-app)
 sources: ["brief-12-cursor-third-column.md §\"The one gate:model open item + the gate:human acceptance step\": \"The parity acceptance is a live session on Cursor ... exactly the posture the Codex stream held for its live smoke (HP/07)\" — read in full 2026-09-01, no owning brief exists for that acceptance step", "brief-12's own 11-row Verify table (read in full 2026-09-01): every row is offline/structural (go test, harnessgen --check, mutation tests, freshness) — none executes a live Cursor session or a desk-loop dispatch; row 10 only checks that live-only capability rows STAY FLAGGED, not that they were confirmed", "brief-07-adoption-live-smoke.md (read in full 2026-09-01): the precedent this brief mirrors — protocol doc + adoption-docs runbook + a committed, evidence-bearing run log, gate:human, live-run row explicitly BLOCKED until the human runs it", "docs/adopting-assay.md (read 2026-09-01, ~L773-828): the Cursor section already ends in one unlinked line — \"The one acceptance step is a live smoke run on a Cursor install...\" — this brief is what makes that sentence true", "docs/streams/harness-portability/README.md cross-repo table: \"Live Cursor environment (install) | Head for 12 | Blocks 12's live-confirm rows and its parity smoke; Ian provides\" — the parity-smoke dependency is named but had no owning brief before this one", "freshness-checked 2026-09-01 @ current branch tip: no docs/cursor-smoke-protocol.md, no docs/cursor-smoke-runs/, no PARITY.md/RELEASE-NOTES.md Cursor-smoke entry exist anywhere in the repo (grep + find, clean)"]
@@ -50,22 +53,12 @@ id: ab8934e7-cfe3-4a52-bb3e-679ceb33a414
 ## Context
 
 files:
-- **create** `docs/cursor-smoke-protocol.md` (planned) — de-housed, see note above — the
-  scripted live-harness checklist, numbered steps each with a literal action and an
-  `Expect:` line, mirroring HP/07's shape and minimum coverage, adapted to Cursor's ruled
-  two-surface posture (headless `cursor-agent` primary, in-editor IDE agent secondary) and
-  extended with the step this brief exists to add: an actual **full desk loop**, not only
-  per-skill invocation.
-- **amend** `docs/adopting-assay.md` (~L773–828, the "Running Assay on Cursor" section) —
-  replace the current unlinked sentence ("The one acceptance step is a live smoke run on a
-  Cursor install...") with a concrete reference to the protocol doc, matching the fuller
-  runbook treatment the Codex path already gets in the same file.
+- **create** `docs/cursor-smoke-protocol.md` (planned) — de-housed, see note above — the scripted live-harness checklist, numbered steps each with a literal action and an `Expect:` line, mirroring HP/07's shape and minimum coverage, adapted to Cursor's ruled two-surface posture (headless `cursor-agent` primary, in-editor IDE agent secondary) and extended with the step this brief exists to add: an actual **full desk loop**, not only per-skill invocation.
+- **amend** `docs/adopting-assay.md` (~L773–828, the "Running Assay on Cursor" section) — replace the current unlinked sentence ("The one acceptance step is a live smoke run on a Cursor install...") with a concrete reference to the protocol doc, matching the fuller runbook treatment the Codex path already gets in the same file.
 - **amend** (planned; de-housed) the bundle's `PARITY.md` / `RELEASE-NOTES.md` — version
   bump recording the Cursor live-desk-smoke as the third-harness parity milestone (mirrors
   HP/07 task 4, one harness later).
-- **amend** `docs/streams/harness-portability/README.md` — this brief's status-table row
-  (wave 6, depends on 12), the gate-distribution line, the cross-repo dependency table's
-  Cursor-environment row, and a "Note on 13" paragraph beside the existing "Note on 07".
+- **amend** `docs/streams/harness-portability/README.md` — this brief's status-table row (wave 6, depends on 12), the gate-distribution line, the cross-repo dependency table's Cursor-environment row, and a "Note on 13" paragraph beside the existing "Note on 07".
 
 out-of-repo files: none
 

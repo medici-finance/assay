@@ -35,8 +35,8 @@ component list, build/run topology, and open questions.
 | 03 | [per-desk images (named by desk) + build matrix + publish wiring](brief-03-desk-images-build-matrix.md) | 2 | M | done | 2026-09-16 verify-desk (desk-containers/03 dispatched verifier; row 5 now PASS given assay#1025, rows 1-4/7 could-not-check offline-docker-lane, risk-value NAMED-NOT-DERIVED filed assay#1218) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1220 @ c391ed99ccedc80dc426893c265dd8100c8f398f) |
 | 04 | [interactive desktop launch script (desk-run.sh)](brief-04-launch-script.md) | 3 | M | todo | — | — |
 | 05 | [docker-compose definition for the five desks](brief-05-docker-compose.md) | 3 | S | todo | — | — |
-| 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | todo | — | — |
-| 07 | [multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config](brief-07-desk-control-layer.md) | 4 | M | todo | — | — |
+| 06 | [Kubernetes manifests for the five desks](brief-06-k8s-manifests.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
+| 07 | [Optional Linux operator terminal layout over the shared desk attach path](brief-07-desk-control-layer.md) | 11 | M | todo | — | — |
 | 08 | [A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish](brief-08-tick-contract-for-desk-skills.md) | 3 | M | implemented | — | — |
 | 09 | [cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check`](brief-09-scrubbed-host-cell.md) | 0 | M | implemented | — | — |
 | 10 | [cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity](brief-10-cellctl-go-port.md) | 1 | L | implemented | — | — |
@@ -57,6 +57,11 @@ component list, build/run topology, and open questions.
 | 25 | [`cellctl desk --force` — diagnose a failed desk boot, repair what it can, ask before each destructive step, `-y` answers yes](brief-25-desk-force-repair.md) | 2 | M | todo | — | — |
 | 26 | [Local PostgreSQL in Docker for a multi-cell host — pinned image, one database and restricted role per cell, runtime credentials, backup and restore drill, and the `cell.env` keys a cell reads its DSN from](brief-26-local-docker-postgres.md) | 3 | M | todo | — | — |
 | 27 | [PostgreSQL on Kubernetes with CloudNativePG — a Kustomize component with one Cluster, a database and role per cell, out-of-band Secrets, object-store backups, and the explicit local-to-CNPG migration procedure](brief-27-cnpg-kubernetes-postgres.md) | 4 | L | todo | — | — |
+| 28 | [Package in-cluster cellctl and bind the interactive desk profile](brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md) | 10 | M | todo | — | — |
+| 29 | [Qualify the Kubernetes desk cell and operator recovery end to end](brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md) | 11 | M | todo | — | — |
+| 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | todo | — | — |
+| 31 | [Operate trusted compatibility Kubernetes desks through cellctl](brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md) | 8 | M | todo | — | — |
+| 32 | [Qualify the compatibility Kubernetes desk cell](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | 9 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -235,6 +240,25 @@ Tempting-but-wrong first step: building `restart` straight on `down`/`up`. Witho
 aimed stop and 18's wait for in-flight work, a restart is today's hand-close with extra
 steps, and it leaves the same unfinished checkpoints behind.
 
+### Role instructions beyond Claude windows — `30` (added 2026-10-24)
+
+A standalone brief in the host launcher, outside every chain above. `CELL_ROLE_CONTEXT`
+(issue #2438) gives each Claude Code role window its own instruction file. It refuses a Codex
+role, and it never reaches the agents a window dispatches. `desk-containers/30` closes both
+gaps: an argv-only Codex binding for `instructions`, and a `dispatch_instructions` key that
+deskdispatch quotes verbatim, digest-checked, into every prompt of the named kit. It depends
+on nothing here; a project that moves role rules out of its shared instruction file needs it
+first.
+
+- **Wave 0** — `desk-containers/30` (no dependencies; exec-tier strong). The Codex half
+  probes the installed Codex at pickup; the dispatch half needs no probe.
+
+The head was checked: on `main` the role-context binding exists for Claude Code only, and
+deskdispatch reads no role-context value, so nothing else has to land first.
+Harness facts for the Codex half come from the `harness-portability` stream's capability
+survey; that stream's resident-rules fragment is not reused, because it writes into a
+session-writable worktree file.
+
 ## Shared conventions
 
 - All container assets live under `containers/`; docs land in `docs/docker.md`
@@ -249,3 +273,123 @@ steps, and it leaves the same unfinished checkpoints behind.
   is an interactive-terminal confirm only (typed confirm code, then re-measure, then atomic
   consume before any effect). It is a convenience, not an authorization control.
   Approval-based apply is deferred (amendment 21). No verb defines a blanket `--yes`.
+
+## Current Kubernetes-first path — 20 October 2026
+
+Read [amendment 28](../../proposals/non-ci-architecture/28-interactive-kubernetes-desks.md).
+It supersedes the historical desktop-first critical path above for this cohort. One desk
+per interactive Pod/PVC; cellctl runs in a separate Linux operator Pod. Native Windows,
+desktop Docker, CronJobs, GitOps examples and a workflow controller are not required.
+
+- Packaging head: /06, with existing /02 credential acceptance still owed.
+- Managed runtime: graph-execution/26 + /22 -> /27, plus agent-execution/01–03 -> new /09.
+- Operator: /06 + /15 + agent-execution/09 -> new /28.
+- Qualification: /28 + /27 (CNPG) + /18 (lifecycle) + /20 (inventory) -> new /29.
+- Optional Linux layout: /28 -> revised /07; it is not a qualification gate.
+
+The new branch has waves /09=9, /28=10, /29=11; /07=11. These are dependency depths,
+not promises that external admission/security prerequisites have passed. All reusable
+specs, briefs, code, profiles and generic migration/qualification live in Assay. Preserve
+historical facts and old gates; the managed path cannot claim the legacy PEM profile as
+candidate isolation. No cluster was contacted or profile activated by this amendment.
+
+
+## Small interactive Kubernetes compatibility milestone
+
+**Status:** proposed scoped transition, requested by the maintainer on 28 October 2026.
+This section is the controlling source for the two bounded compatibility deliverables.
+It preserves the managed outcome in amendment 28 and existing briefs 28–29; it does not
+withdraw, weaken or reclassify them, activate a cluster or approve new credential custody.
+The earlier Kubernetes-first path above continues to describe the stronger managed profile.
+
+### Useful outcome and boundary
+
+A trusted operator uses cellctl to bring up the five existing desk roles as actual interactive
+agents in separate Kubernetes containers/PVCs, reconnect without creating another agent,
+and perform a reconciled controlled stop followed by a new start. Files survive the qualified
+PVC lifecycle. Conversation and process continuation are reported separately and are not
+implied by retained files. A disconnected terminal is presentation loss, not a scheduler event.
+
+This first outcome retains the current credential-bearing **compatibility** profile.
+Its terminal, session logs, node logs and downstream collection remain inside each role's
+existing key-custody boundary. It is not an untrusted-candidate profile, and it does not use
+the credential-free managed operator component. Only a principal already authorized for a
+role's PEM, model credential and transcript can operate or attach to that role. Effective
+custody, workload policy and endpoint restrictions still need independent qualification.
+
+The transition reuses the existing image/credential/package and cell-op owners. Kubernetes
+is the workload controller; cellctl is an operator adapter, and existing role policies keep
+work selection, claims, stop checks and effect authority. No second general scheduler,
+workflow controller/store, graph progression, CNPG deployment, queue-policy migration or
+shared-supervisor migration is required merely to start this profile. Their stronger promises
+and existing work stay separately tracked. No latency, capacity, cost or recovery objective
+is invented; adopting operators set their workload and resource limits before qualification.
+
+### Checked head and delivery sequence
+
+Source checked at main 0a4c08b83b1c3a743d6bf1ce7b1f41b331d17125 on 28 October 2026,
+after an authenticated fetch. The five-role compatibility package and cell-op library exist.
+The package pins v1.0.52 images whose shared entrypoint executes its supplied default shell;
+that is not evidence of an automatically started agent. Actual k8s-kind cellctl launch still
+uses its local harness path. The real implementation head is the opt-in Kubernetes adapter,
+actual-agent boot command and digest-bound candidate image, rather than another image-shell
+or a workflow engine.
+
+- Existing prerequisites: desk-containers/06 supplies the package and /15 the cell-op contract.
+  Their retained verification and human acceptance remain distinct from code availability.
+- **Wave 8:** desk-containers/31 supplies the opt-in operator backend, bounded actual-agent
+  launcher and its independent failure controls. Its typed dependencies are /06 and /15.
+- **Wave 9:** [desk-containers/32](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md)
+  consumes /31's concrete implementation and checks all five roles, effective custody,
+  useful work and controlled recovery. Its sole implementation start dependency is /31,
+  with the reciprocal edge recorded there. It does not substitute the larger managed
+  qualification promise. Credential-contract acceptance is required before a real-profile
+  run and final adoption, rather than an artificial prerequisite to offline harness work.
+- Final adoption is a separately authorized operator act after complete independent evidence
+  and all inherited human acceptances. Authoring, a passing offline checker or a Running Pod
+  does not supply that act.
+
+The supported recovery is deliberately **controlled**. Quiesce and reconcile the existing
+role before stopping; unobserved busy work or external effects hold the operation. The exact
+Pod/container execution must be observed stopped, including its execution group, before a
+replacement acts. An accepted scale/delete request, a missing Pod, elapsed lease or
+Ready/NotReady state is insufficient. Lost identity, an unclean restart, partition or missing
+history remains held for the custodian. No forced deletion, automatic failover or history reset
+is a normal recovery path.
+
+The opt-in launcher independently records intent before launching one agent and records a
+controlled clean stop only after its complete execution group has stopped. Positively establish
+cold initialization; absent history on an existing volume is not proof of first boot.
+StatefulSet restartPolicy Always does not license another agent: same-Pod new-container
+execution or dirty/erased/corrupt lineage starts held without a model request. This local
+bookkeeping is not an authorization boundary or a replacement for existing role claims.
+
+### Proposed acceptance criteria and milestone mapping
+
+The milestone/colon-prefixed contract in spec/milestone-v1.md, spec/stream-v1.md and
+brief section 3.8 remains draft with no negotiated operational reader support at this
+source. The following is an authored **proposal**, outside operational milestone discovery;
+there is no milestone YAML, dispatch claim or automated acceptance assertion here.
+Executable briefs retain supported brief-v2 legacy IDs.
+
+Proposed promise: **assay:assay:desk-containers:m-01@1 — Trusted interactive Kubernetes desks**.
+Proposed contributing labels are **assay:assay:desk-containers:b-31@1** for integration and
+**assay:assay:desk-containers:b-32@1** for independent small-profile qualification;
+existing /02, /06 and /15 contribute their already-defined credential, package and CLI
+contracts without having their IDs, Evidence or lifecycle rewritten.
+
+| Criterion | Observable pass condition | Implementation / evidence owner |
+|---|---|---|
+| C1 — actual role execution | Five separate pinned agent executions use the configured roles and retained PVCs; a shell alone fails | existing /06 package; /31 boot/image binding; /32 Verify rows 1 and 4 |
+| C2 — reconnect | Terminal I/O/resize/detach/reconnect and operator-client recreation preserve the exact current execution and add no agent/model invocation | /31 native transport; /32 Verify rows 1, 2 and 4 |
+| C3 — controlled stop | Busy/unknown work holds; complete execution stop is observed before one new execution can act | /31 role/boot/identity controls; /32 Verify rows 2 and 4 |
+| C4 — uncertain lineage | Same-Pod container restart, lost acknowledgement, partition and erased/corrupt history hold without replacement | /31 lower boot layer and transport; /32 Verify rows 2 and 4 |
+| C5 — custody | Effective terminal/log/Secret/network access stays inside the current role custody, with agent API token disabled and unauthorized readers denied | existing /02; /31 package; /32 Verify rows 3–5 and human-authorized target acceptance |
+| C6 — useful work | Each role can carry out its bounded configured task while preserving its existing claims, STOP checks and human effect/acceptance gates | existing role policies; /32 Verify rows 1 and 4 |
+| C7 — honest recovery | Retained files, conversation restoration and process continuation are separately demonstrated or declared unsupported; no PVC-only continuity claim | /31 docs/interface; /32 Verify rows 2 and 4; adopting operator |
+
+Implementation work may use offline fake APIs, synthetic credentials and retained fixtures.
+Effective Kubernetes/CNI/log behavior and final acceptance require a separately authorized,
+run-owned disposable target with explicit server identity and no ambient context. No cluster
+was contacted by this authoring change. The proposed milestone is not accepted merely because
+all contributing briefs eventually read done.

@@ -56,7 +56,7 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 		if len(command) != 0 {
 			die("scratch sweep takes no command")
 		}
-		report, err := s.Sweep(policy, apply)
+		report, err := sweepScratch(s, policy, apply)
 		scratchJSON(report)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -83,9 +83,6 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 		abs, sha, err := cellscratch.SourceRevision(source, revision)
 		if err != nil {
 			die("scratch source: %v", err)
-		}
-		if _, err = s.Sweep(policy, true); err != nil {
-			die("scratch startup recovery: %v", err)
 		}
 		r, err := s.Begin(session, task, sha)
 		if err != nil {
@@ -121,20 +118,17 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 		if err = r.Finish(code, !uncertain); err != nil {
 			die("scratch finish: %v", err)
 		}
-		// Release before sweep; all destruction still flows through the same owner.
+		// Release ownership promptly; maintenance remains with the store.
 		if err = r.Close(); err != nil {
 			die("scratch release: %v", err)
 		}
-		report, sweepErr := s.Sweep(policy, true)
-		scratchJSON(report)
+		// Finalization retains the record and evidence. Explicit sweep owns all
+		// recursive accounting and reclamation, outside the task critical path.
 		if code < 0 {
 			code = 1
 		}
-		if code == 0 && (runErr != nil || sweepErr != nil || report.OverBudget) {
+		if code == 0 && runErr != nil {
 			code = 1
-		}
-		if sweepErr != nil {
-			fmt.Fprintln(os.Stderr, "scratch cleanup:", sweepErr)
 		}
 		exitWith(code)
 	default:
@@ -145,4 +139,9 @@ func scratchJSON(v any) {
 	if err := json.NewEncoder(os.Stdout).Encode(v); err != nil {
 		die("scratch output: %v", err)
 	}
+}
+
+// This explicit maintenance boundary is the only cellctl caller of Sweep.
+func sweepScratch(s *cellscratch.Store, p cellscratch.Policy, apply bool) (cellscratch.Report, error) {
+	return s.Sweep(p, apply)
 }

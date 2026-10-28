@@ -3,7 +3,7 @@ brief: assay:assay:agent-execution:08
 title: Qualify a Kubernetes verification runner through the existing supervisor
 why: "A Kubernetes runner must preserve the existing attempt, evidence and recovery contract so moving execution off a desk does not create another scheduler or publisher."
 wave: 12
-depends: ["agent-execution/03", "graph-execution/21", "graph-execution/25"]
+depends: ["agent-execution/03", "graph-execution/21", "graph-execution/25", "agent-execution/09"]
 unblocks: []
 effort: M
 gate: human
@@ -12,7 +12,7 @@ gate-why: "A wrong containment or credential profile can expose cluster authorit
 issues: []
 schema: brief-v2
 outcome: "none"
-version: 2
+version: 3
 authored: 2026-10-19 by statusgen newbrief
 sources:
   - docs/streams/graph-execution/verifier-migration.md
@@ -36,8 +36,10 @@ consumers:
 files: `loopadmin/adapters/kubernetes/` (planned), `loopadmin/adapters/kubernetes/testdata/` (planned), `loopadmin/supervisor/` (planned), `workflow/controller/` (planned), `docs/kubernetes-verifier-profile.md` (planned), `changelog/kubernetes-verifier-profile.md` (planned).
 
 facts: `loopadmin/runner` and its conformance kit exist at main `2b2383f8e`; the production
-supervisor/controller prerequisites are not qualified by this brief. The execution stream
-is parked pending its controlling amendment. Implementation dispatch waits for approval/admission of the controlling execution stream; authoring and review of this plan may proceed while it is parked. Before implementation, /03 must provide qualified-profile/readiness enforcement, /21 the durable controller and /25 the current-authority publication boundary. These outputs are required, not merely file names.
+supervisor/controller prerequisites are not qualified by this brief. At that authoring revision, the execution stream
+was parked. Admission of amendment 27 and the stream for implementation is proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes effect on the
+maintainer's merge of it; this supplies no profile activation or deployment approval. Before implementation, /03 must provide qualified-profile/readiness enforcement, /21 the durable controller and /25 the current-authority publication boundary. These outputs are required, not merely file names.
 
 This new profile does not replace /22's local
 harness adapter, create another process runner or require Kubernetes for interim verification.
@@ -64,7 +66,10 @@ design-fit:
 
 ## Human decision
 
-Decision-trigger: spec. Recommended: one namespace-scoped verification executor profile,
+Decision-trigger: spec
+
+<!-- Pickup-time guidance; the executor authors the decision after the design step.
+Recommended: one namespace-scoped verification executor profile,
 digest-pinned images and credential-free candidate Jobs, with only the existing supervisor
 holding the narrow Kubernetes API capability. Alternative: retain the qualified local runner
 until an adequate isolation/recovery profile is available. Before activation, the operator
@@ -72,6 +77,7 @@ selects concrete cluster/namespace, API permissions, service accounts, effective
 runtime isolation, storage retention and recovery objectives, after reviewing the disposable
 qualification evidence. No response means no activation. No permission is inferred from a
 manifest, API success or a published verdict. This brief does not choose a production target.
+-->
 
 ## Task
 
@@ -154,3 +160,13 @@ operator owns the real-profile evidence. Keep actual API outcomes distinct from 
 ## Review
 
 Human gate. Confirm profile boundary, lower-layer refusals and explicit deployment exclusion.
+
+## Shared Kubernetes transport — 20 October 2026
+
+Consume agent-execution/09's Kubernetes identity, explicit-target transport and unknown-outcome
+reconciliation primitives. That brief owns the first shared adapter package and standing
+profile; this brief adds only its bounded verifier Job profile after it. Keep the stricter
+candidate network/credential floor, controller/publication prerequisites and every current
+Verify obligation. Interactive attach capability is never inherited by verifier Jobs.
+No second Kubernetes runner, ambient kubeconfig discovery or operator credential in a Job.
+The managed standing-desk route does not wait for this verifier profile.

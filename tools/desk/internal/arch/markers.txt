@@ -6,10 +6,13 @@
 # duplicates column with a design-fit finding in the same change; lowering one when a
 # duplicate is folded into its owner locks in the gain.
 S-claim 1
+S-component-activation 2
 S-eligibility 1
 S-evidence-coverage 1
 S-exit-codes 1
 S-identity 2
 S-publication-scan 1
 S-review-verdict 3
+S-role-credential 2
 S-worktree 1
+S-write-policy 1

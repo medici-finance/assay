@@ -1,0 +1,269 @@
+{
+  "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs|TestFetchHookKeepsVerdict|TestFetchNoHookListVerdict|TestFetchCompletionWarning' -count=1 -timeout=120s",
+  "control": {
+    "name": "CONTROL invert producer completion proof",
+    "file": "internal/gitmaintenance/refs.go",
+    "old": "if !r.Complete {",
+    "new": "if r.Complete {"
+  },
+  "mutations": [
+    {
+      "name": "drop producer completion proof",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if !r.Complete {",
+      "new": "if false && !r.Complete {"
+    },
+    {
+      "name": "drop observed hash proof",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if r.Hash == \"\" || hash != r.Hash {",
+      "new": "if false && (r.Hash == \"\" || hash != r.Hash) {"
+    },
+    {
+      "name": "drop worktree HEAD holder protection",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if held {",
+      "new": "if false && held {"
+    },
+    {
+      "name": "adopt unregistered receipt owner",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "r.Owner == \"deskmerge\"",
+      "new": "true"
+    },
+    {
+      "name": "remove native expected hash compare",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "\"update-ref\", \"--no-deref\", \"-d\", name, expected}",
+      "new": "\"update-ref\", \"--no-deref\", \"-d\", name}"
+    },
+    {
+      "name": "reuse operation destination across producers",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "key := hex.EncodeToString(id[:])",
+      "new": "key := strings.Repeat(\"1\", len(hex.EncodeToString(id[:])))"
+    },
+    {
+      "name": "retain completed receipts forever",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "err := os.Remove(path)",
+      "new": "var err error"
+    },
+    {
+      "name": "expose ambient git config and reference hooks",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "env := append(refCASEnv(os.Environ()),",
+      "new": "env := append(os.Environ(),"
+    },
+    {
+      "name": "remove temporary namespace restriction",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "!strings.HasPrefix(name, \"refs/deskmerge/tmp/\") || ref.Validate() != nil",
+      "new": "false && !strings.HasPrefix(name, \"refs/deskmerge/tmp/\") || ref.Validate() != nil"
+    },
+    {
+      "name": "accept symbolic aliases as observed hash references",
+      "file": "internal/gitcore/refread.go",
+      "old": "if ref.Type() != plumbing.HashReference {",
+      "new": "if false && ref.Type() != plumbing.HashReference {"
+    },
+    {
+      "name": "permit a second unregistered producer",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if owner != \"deskmerge\" {",
+      "new": "if false && owner != \"deskmerge\" {"
+    },
+    {
+      "name": "retain partial failed fetch destinations",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "if !observed {",
+      "new": "if false && !observed {"
+    },
+    {
+      "name": "suppress effective hook configuration",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "\"protocol.allow=never\", \"update-ref\"",
+      "new": "\"protocol.allow=never\", \"-c\", \"core.hooksPath=\"+os.DevNull, \"update-ref\""
+    },
+    {
+      "name": "ignore transaction hook refusal policy",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "if err := CheckHooks(ctx, dir); err != nil {",
+      "new": "if err := CheckHooks(ctx, dir); false && err != nil {"
+    },
+    {
+      "name": "discard child tree cleanup uncertainty",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "if uncertain {",
+      "new": "if false && uncertain {"
+    },
+    {
+      "name": "discard native diagnostic uncertainty",
+      "file": "internal/gitmaintenance/refdelete.go",
+      "old": "if stderr.Len() != 0 {",
+      "new": "if false && stderr.Len() != 0 {"
+    },
+    {
+      "name": "follow a symbolic state receipt",
+      "file": "internal/gitmaintenance/maintenanceread_unix.go",
+      "old": "unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC",
+      "new": "unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC"
+    },
+    {
+      "name": "block on replaced FIFO state receipt",
+      "file": "internal/gitmaintenance/maintenanceread_unix.go",
+      "old": "unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC",
+      "new": "unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC"
+    },
+    {
+      "name": "grant write capability to state inspection",
+      "file": "internal/gitmaintenance/maintenanceread_unix.go",
+      "old": "unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC",
+      "new": "unix.O_RDWR|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC"
+    },
+    {
+      "name": "start CAS before durable pending custody",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "r.CleanupPending = true",
+      "new": "r.CleanupPending = false"
+    },
+    {
+      "name": "discard uncertain receipt custody",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if errors.Is(err, errCleanupUnknown) {",
+      "new": "if false && errors.Is(err, errCleanupUnknown) {"
+    },
+    {
+      "name": "retain pending after confirmed stopped child",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "r.CleanupPending = false",
+      "new": "r.CleanupPending = true"
+    },
+    {
+      "name": "plan cleanup for uncertain pending custody",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if r.CleanupPending {",
+      "new": "if false && r.CleanupPending {"
+    },
+    {
+      "name": "bypass the shared temporary cleanup lock",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := deskkit.TryLockExclusive(f); err != nil {",
+      "new": "if err := deskkit.TryLockExclusive(f); false && err != nil {"
+    },
+    {
+      "name": "trust stale pre-lock completion snapshot",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "return cleanTempReceiptLocked(ctx, root, path, fresh, false)",
+      "new": "return cleanTempReceiptLocked(ctx, root, path, r, false)"
+    },
+    {
+      "name": "overwrite receipt after producer completion",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if t.receipt.Complete {",
+      "new": "if false && t.receipt.Complete {"
+    },
+    {
+      "name": "infer diagnostic success from absent ref",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if errors.Is(err, ErrRefDiagnostic) {",
+      "new": "if false && errors.Is(err, ErrRefDiagnostic) {"
+    },
+    {
+      "name": "adopt changed producer observation",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if fresh.Hash != t.receipt.Hash {",
+      "new": "if false && fresh.Hash != t.receipt.Hash {"
+    },
+    {
+      "name": "silently truncate receipt inventory",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if len(entries) > limit {",
+      "new": "if false && len(entries) > limit {"
+    },
+    {
+      "name": "hide pending custody from readonly inventory",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "func cleanTempReceiptLocked(ctx context.Context, root, path string, r tempReceipt, dryRun bool) (TempRefResult, error) {\n\trow := TempRefResult{Ref: r.Ref, State: \"held\", CleanupPending: r.CleanupPending}",
+      "new": "func cleanTempReceiptLocked(ctx context.Context, root, path string, r tempReceipt, dryRun bool) (TempRefResult, error) {\n\trow := TempRefResult{Ref: r.Ref, State: \"held\", CleanupPending: false}"
+    },
+    {
+      "name": "hide pending custody from recovery result",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if fresh.CleanupPending {\n\t\trow.CleanupPending = true",
+      "new": "if fresh.CleanupPending {\n\t\trow.CleanupPending = false"
+    },
+    {
+      "name": "rewrite completed or pending custody from a producer",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if fresh.Complete || fresh.CleanupPending {",
+      "new": "if false && (fresh.Complete || fresh.CleanupPending) {"
+    },
+    {
+      "name": "hide pending custody during busy completion",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "row := TempRefResult{Ref: r.Ref, State: \"held\", CleanupPending: r.CleanupPending}\n\tif err := ctx.Err();",
+      "new": "row := TempRefResult{Ref: r.Ref, State: \"held\", CleanupPending: false}\n\tif err := ctx.Err();"
+    },
+    {
+      "name": "fail closed on an unborn worktree holder",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "\t\t\t\tcontinue\n\t\t\tcase err != nil && exists:",
+      "new": "\t\t\t\treturn false, fmt.Errorf(\"unborn\")\n\t\t\tcase err != nil && exists:"
+    },
+    {
+      "name": "treat an unreadable worktree holder as unborn",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := refFileAbsent(common, filepath.Dir(path), name); err != nil {",
+      "new": "if err := refFileAbsent(common, filepath.Dir(path), name); false && err != nil {"
+    },
+    {
+      "name": "let producer cleanup change the verdict",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "if _, cleanupErr := tmp.Complete(context.Background()); cleanupErr != nil {",
+      "new": "if _, cleanupErr := tmp.Complete(context.Background()); cleanupErr != nil {\n\t\t\tif err == nil {\n\t\t\t\terr = cleanupErr\n\t\t\t}"
+    },
+    {
+      "name": "silence producer cleanup failure",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "fmt.Fprintf(cleanupWarn,",
+      "new": "fmt.Fprintf(io.Discard,"
+    },
+    {
+      "name": "drain unreadable initial destination",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "hash, exists, err := readTempRef(root, gr, r.Ref)",
+      "new": "hash, exists, err := gr.LocalRefHash(r.Ref)"
+    },
+    {
+      "name": "drain unreadable destination after CAS failure",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "_, exists, readErr := readTempRef(root, fresh, r.Ref)",
+      "new": "_, exists, readErr := fresh.LocalRefHash(r.Ref)"
+    },
+    {
+      "name": "accept missing without filesystem proof",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := refFileAbsent(common, common, name); err != nil {",
+      "new": "if err := refFileAbsent(common, common, name); false && err != nil {"
+    },
+    {
+      "name": "accept malformed destination hash",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if !validRefHash(hash) {",
+      "new": "if false && !validRefHash(hash) {"
+    },
+    {
+      "name": "accept invalid holder reference name",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := plumbing.ReferenceName(name).Validate(); err != nil {",
+      "new": "if err := plumbing.ReferenceName(name).Validate(); false && err != nil {"
+    },
+    {
+      "name": "claim completion despite declaration failure",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "its receipt is retained; recovery requires confirmed producer completion",
+      "new": "its completed receipt is retained"
+    }
+  ]
+}

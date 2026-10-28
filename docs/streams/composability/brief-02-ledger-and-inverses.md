@@ -51,10 +51,7 @@ files:
 - **edit** `tools/desk/cmd/deskinstall/` and the scaffold paths `assay:install` drives so that
   every outside step writes its ledger line at the moment of creation (label created, ruleset
   entry added, App installation observed).
-- **create** `tools/desk/cmd/deskdisable/` — `deskdisable <component> [--dry-run] [--yes]`:
-  replays the component's reverses LIFO; inside steps run; outside steps run their compensation
-  only when it is marked `unattended: true` in the manifest, otherwise they are printed as a
-  human checklist. `--dry-run` prints the plan and exits 0 without touching anything.
+- **create** `tools/desk/cmd/deskdisable/` — `deskdisable <component> [--dry-run] [--yes]`: replays the component's reverses LIFO; inside steps run; outside steps run their compensation only when it is marked `unattended: true` in the manifest, otherwise they are printed as a human checklist. `--dry-run` prints the plan and exits 0 without touching anything.
 - **edit** `tools/desk/component.yaml` (planned) — provides `assay.desk.verbs` now includes `deskdisable`.
 
 facts:

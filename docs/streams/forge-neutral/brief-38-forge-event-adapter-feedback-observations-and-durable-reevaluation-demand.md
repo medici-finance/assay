@@ -130,7 +130,9 @@ Options:
    window. Earlier text survives an edit or deletion for that window, at the cost of a larger
    store of private content and a retention and purge obligation.
 
-Default if no answer: none. The event adapter stays disabled (polling alone keeps freshness) until
+Default if no answer: none — blocks until answered.
+
+The event adapter stays disabled (polling alone keeps freshness) until
 answered.
 
 ## Ground rules

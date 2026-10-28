@@ -54,8 +54,7 @@ id: a7231cc4-611d-44e3-8a14-ce5a0d9fe3f0
 files:
 - `tools/cellctl/cellctl` — `new`, `check`, `deskd` and `up`.
 - `docs/cellctl.md` — the verb table and the four custody hand-steps.
-- `docs/streams/forge-neutral/leak-gate-shape.md` (planned) — the per-forge verdict surface
-  and its three-state contract.
+- `docs/streams/forge-neutral/leak-gate-shape.md` (planned) — the per-forge verdict surface and its three-state contract.
 - `docs/adopting-assay-gitlab.md` — the adopter runbook.
 
 single-point-of-failure: for the leak gate the single control is the verdict surface — if

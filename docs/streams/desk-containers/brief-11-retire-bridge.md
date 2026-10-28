@@ -41,16 +41,11 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/cmd/cellctl/cell.go` (planned) — created by desk-containers/10 — the kind loader gains a
-  RETIRED-ALIAS arm: `local` is refused (exit 3, like any unknown kind) with the migration line.
-- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the same arm, same text, in the bash oracle (`load_cell`, :224-236),
-  so brief 10's parity harness stays green; no other bash change.
-- `tools/cellctl/tests/parity.test.sh` (planned) — created by desk-containers/10 — one added fixture:
-  a `CELL_KIND=local` cell, verb `check`, expected divergence 0 (both refuse identically).
-- `tools/cellctl/tests/scrubbed-cell.test.sh` (planned) — created by desk-containers/09 — one added
-  case `migrate-local`.
-- `docs/cellctl.md` — new section *One `cellctl` on PATH* (after §Install) and a *Migrating a
-  bridge-era registration* paragraph in §*Scrubbed cells*.
+- `tools/desk/cmd/cellctl/cell.go` (planned) — created by desk-containers/10 — the kind loader gains a RETIRED-ALIAS arm: `local` is refused (exit 3, like any unknown kind) with the migration line.
+- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the same arm, same text, in the bash oracle (`load_cell`, :224-236), so brief 10's parity harness stays green; no other bash change.
+- `tools/cellctl/tests/parity.test.sh` (planned) — created by desk-containers/10 — one added fixture: a `CELL_KIND=local` cell, verb `check`, expected divergence 0 (both refuse identically).
+- `tools/cellctl/tests/scrubbed-cell.test.sh` (planned) — created by desk-containers/09 — one added case `migrate-local`.
+- `docs/cellctl.md` — new section *One `cellctl` on PATH* (after §Install) and a *Migrating a bridge-era registration* paragraph in §*Scrubbed cells*.
 - `changelog/desk-containers-11-retire-bridge.md` (planned) — one `### Changed` bullet.
 
 facts:

@@ -74,7 +74,9 @@ Options:
 1. **Accept the bounded implementation** — accept only the demonstrated field, failure and isolation contract; keep live activation separately controlled.
 2. **Hold for correction** — name the unsupported claim or boundary and revise the implementation before acceptance.
 
-Default if no answer: none — acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
+Default if no answer: none — blocks until answered.
+
+Acceptance remains pending. The decision is presented after implementation evidence is concrete; it does not block authoring or offline implementation.
 
 ## Ground rules
 

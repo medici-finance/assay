@@ -71,20 +71,14 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/modelstamp.go` — `LabelEvent` gains one field, the actor's
-  numeric id.
-- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`,
-  `tools/desk/internal/deskkit/forge_gitlab.go` — the existing label-event reads fill the id;
-  one new read op, `IssueLabelHistory` (planned), returns an issue's label history with a
-  completeness flag.
+- `tools/desk/internal/deskkit/modelstamp.go` — `LabelEvent` gains one field, the actor's numeric id.
+- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — the existing label-event reads fill the id; one new read op, `IssueLabelHistory` (planned), returns an issue's label history with a completeness flag.
 - `docs/streams/forge-gitlab/inventory.md` — the op register gains that op.
-- `tools/desk/cmd/deskread/main.go` (and its forge seam beside it) — a new per-issue kind,
-  `label-events` (planned).
+- `tools/desk/cmd/deskread/main.go` (and its forge seam beside it) — a new per-issue kind, `label-events` (planned).
 - `tools/desk/cmd/issueboard/board.go` — one new classifier input and the read behind it.
 - `statusgen/forgeread.go` — the reader for the new kind.
 - `statusgen/labelremovalhold.go` (planned) — the pure decision and the default checker.
-- `statusgen/scanissues.go`, `statusgen/transcribescan.go`, `statusgen/main.go` — the hold and
-  its wiring.
+- `statusgen/scanissues.go`, `statusgen/transcribescan.go`, `statusgen/main.go` — the hold and its wiring.
 - the test files named in Task; `plugins/assay/skills/intake-desk/SKILL.md` and
   `plugins/assay/skills/worker-desk/SKILL.md` (one sentence each).
 - this brief's own `consumers:` block (Task 14).

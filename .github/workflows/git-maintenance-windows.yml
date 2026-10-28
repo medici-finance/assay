@@ -1,0 +1,75 @@
+name: git-maintenance-windows
+
+# Native object-store and process-custody fixtures only; no forge credentials.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/git-maintenance-windows.yml'
+      - 'tools/desk/internal/gitmaintenance/**'
+      - 'tools/desk/internal/cellprocess/**'
+      - 'tools/desk/internal/cellcache/**'
+      - 'tools/desk/internal/gitexec/**'
+      - 'tools/desk/internal/gitcore/**'
+      - 'tools/desk/cmd/deskwt/**'
+      - 'tools/desk/go.mod'
+      - 'tools/desk/go.sum'
+permissions:
+  contents: read
+
+jobs:
+  native-windows-maintenance:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: tools/desk
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      KUBECONFIG: /dev/null
+      ASSAY_REQUIRE_NATIVE_HOOK_LIST: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      # Official release checksum: https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2
+      # Pin the native hook-inventory API and the corrected NUL config suppression.
+      - name: Supply checksum-verified native Git
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'PortableGit-2.56.0.2-64-bit.7z.exe'
+          $gitHome = Join-Path $env:RUNNER_TEMP 'git-maintenance-native'
+          Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/PortableGit-2.56.0.2-64-bit.7z.exe' -OutFile $archive
+          $digest = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($digest -ne '075e158ef8e1f0ab80b347e245405d3eca735c2dc88fd8e032e137d0ca61f61b') { throw 'Native Git checksum mismatch' }
+          $extract = Start-Process -FilePath $archive -ArgumentList '-y', "-o$gitHome" -Wait -PassThru
+          if ($extract.ExitCode -ne 0) { throw 'Native Git extraction failed' }
+          Join-Path $gitHome 'cmd' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Record native platform, Git and source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $sha -ne $env:EXPECTED_SHA) { throw 'Source SHA mismatch' }
+          $goos = go env GOOS
+          if ($LASTEXITCODE -ne 0 -or $goos -ne 'windows') { throw 'Native Windows is required' }
+          Write-Output "source_sha=$sha GOOS=$goos"
+          $gitVersion = git --version
+          if ($LASTEXITCODE -ne 0 -or $gitVersion -ne 'git version 2.56.0.windows.2') { throw 'Pinned native Git unavailable' }
+          Write-Output $gitVersion
+          go version
+          if ($LASTEXITCODE -ne 0) { throw 'Go unavailable' }
+      - name: Exercise native storage and process supervision
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # gitcore omitted until medici-finance/assay#2532 fixes its native Windows failures; re-add it then.
+          go test ./internal/gitmaintenance ./internal/cellprocess ./internal/gitexec -count=1 -timeout=5m -v
+          if ($LASTEXITCODE -ne 0) { throw 'Native storage or custody fixtures failed' }
+          go test ./cmd/deskwt -run '^(TestMaintenance|TestPruneMaintenance)' -count=1 -timeout=2m -v
+          if ($LASTEXITCODE -ne 0) { throw 'Maintenance command fixtures failed' }

@@ -10,6 +10,8 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
+delivery:
+  - {in: "assay#2655", covers: partial, note: "analyzer action, runner, baseline and local controls only; CI acquisition and the human-applied workflow with an actual job run (Task 1 and 5) remain owed"}
 schema: brief-v2
 version: 3
 authored: 2026-10-11 by statusgen newbrief

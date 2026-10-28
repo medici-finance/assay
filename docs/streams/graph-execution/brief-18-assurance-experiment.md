@@ -10,7 +10,7 @@ depends:
 - graph-execution/15
 - graph-execution/17
 - graph-execution/25
-unblocks: []
+unblocks: ["cell-api/03"]
 effort: M
 gate: model
 risk:

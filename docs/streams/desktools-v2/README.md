@@ -31,9 +31,14 @@ first-class principles (see [spec.md](spec.md) §2):
    `deskread` verb, never by importing `deskkit` (`statusgen/forgeread.go`), and that migration
    is owned by the sibling briefs `forge-neutral/18` and, for the control-feeding reads, `/35`.
    v2 does not redo it: it brings `statusgen/**` under the ban so the progress is measurable,
-   then holds the zero. The [library-first amendment](../../library-first.md), ruled on #2395
-   (`DR-forge-neutral-36`), lets statusgen link a narrow module's offline and frozen packages;
-   every online forge read keeps the verb and `deskkit` stays internal.
+   then holds the zero. The [library-first amendment](../../library-first.md) of 2026-10-08
+   (`DR-forge-neutral-36`) let statusgen link a narrow module's offline and frozen packages.
+   **Superseded 2026-10-25** by the driver's later ruling on #2395 (`DR-forge-library`): one
+   shared forge library for reads and writes, built here (`desktools-v2/75`); `deskread` and the
+   write verbs become thin wrappers around it, statusgen links it for its forge calls
+   (`desktools-v2/77`), the library owns the per-role-and-repository credential, gh/glab
+   launches are held to at most 7 and git uses go-git (`desktools-v2/76`). `deskkit` stays
+   internal.
 3. **Purpose-built queries** — typed access-pattern operations (review-queue snapshot, head-sha
    batch, board sweep), each backend one tuned query: N+1 → one round-trip, rate-limit headroom,
    and one consistent snapshot (freshness), with the GraphQL document never crossing the seam.
@@ -66,7 +71,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 09 | [purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls)](brief-09-access-pattern-queries.md) | 3 | L | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | 10 | [one outbound-write check at the forge write seam, keyed on the target's visibility](brief-10-one-outbound-write-check.md) | 2 | L | implemented | — | — |
 | 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | implemented | — | — |
-| 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | implemented | — | — |
+| 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | verified | 2026-10-19 assay-verifier-app[bot] @ e4d474af8bca (claude-opus-5-5) | — |
 | 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | verified | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 | 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | verified | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
@@ -76,8 +81,8 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
+| 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | implemented | — | — |
 | 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
 | 25 | [Migrate deskapps to Cobra and Viper](brief-25-migrate-deskapps-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 26 | [Migrate deskclose to Cobra and Viper](brief-26-migrate-deskclose-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
@@ -110,16 +115,28 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
 | 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
 | 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
-| 56 | [Migrate deskperf to Cobra and Viper](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | S | todo | — | — |
+| 56 | [Migrate deskperf and qualify deskusage on the shared CLI](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 57 | [Migrate intake-eval to Cobra and Viper](brief-57-migrate-intake-eval-to-cobra-and-viper.md) | 3 | S | todo | — | — |
 | 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | todo | — | — |
 | 59 | [Share concurrent credential lookups and bound reuse by credential expiry](brief-59-share-concurrent-credential-lookups-and-bound-reuse-by-credential-expiry.md) | 2 | M | todo | — | — |
-| 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | todo | — | — |
+| 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | implemented | — | — |
 | 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
 | 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 4 | M | todo | — | — |
-| 63 | [Define perf-v3 attribution, profiles and compatible local readers](brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md) | 2 | M | todo | — | — |
-| 64 | [Propagate performance context through desks, agents and tool CLIs](brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md) | 3 | M | todo | — | — |
-| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | todo | — | — |
+| 63 | [Define perf-v3 attribution, profiles and compatible local readers](brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md) | 2 | M | implemented | — | — |
+| 64 | [Propagate performance context through desks, agents and tool CLIs](brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md) | 3 | M | implemented | — | — |
+| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | implemented | — | — |
+| 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | implemented | — | — |
+| 67 | [Define an extensible perf-v4 envelope and compatible readers](brief-67-define-an-extensible-perf-v4-envelope-and-compatible-readers.md) | 3 | M | todo | — | — |
+| 68 | [Select perf-v4 in shared producers and qualify the direct migration](brief-68-select-perf-v4-in-shared-producers-and-qualify-the-direct-migration.md) | 4 | M | todo | — | — |
+| 69 | [Specify extensible JSON contracts and migration targets](brief-69-specify-extensible-json-contracts-and-migration-targets.md) | 1 | M | done | 2026-10-24 assay-verifier-app[bot] @ 385cb29e5682 (forge-identity) | 2026-10-27 assay-reviewer-app[bot] (approved PR #3830 @ 8ee5cc30f25b13843667a5f174951e9d0cdeb4b4) |
+| 70 | [Exempt workflow-bound issue filings from the filing budget](brief-70-exempt-workflow-bound-issue-filings-from-the-filing-budget.md) | 1 | M | todo | — | — |
+| 71 | [Credit container witness rows bracketed by host verifier admission](brief-71-credit-container-witness-rows-bracketed-by-host-verifier-admission.md) | 1 | M | implemented | — | — |
+| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | todo | — | — |
+| 73 | [Make deskevidence own the on-behalf-of principal on Runner cells](brief-73-make-deskevidence-own-the-on-behalf-of-principal-on-runner-cells.md) | 1 | M | todo | — | — |
+| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | todo | — | — |
+| 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
+| 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
+| 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -144,12 +161,16 @@ An earlier draft of this README put a different chain here — promote `deskkit`
 library, then port statusgen onto it. That was the tempting-but-wrong first step: it was derived
 without reading `statusgen/forgeread.go` or `forge-neutral/18`, which record the opposite
 decision and already own that migration ([spec.md](spec.md) §2 Principle 2, §4). Brief 07 is
-withdrawn and its number is not reused. The 2026-10-08 library-first amendment is not that
-chain: as ruled (`DR-forge-neutral-36`, spec §2 Principle 2) it covers offline and frozen
-inputs only, keeps `deskkit` internal and keeps statusgen's online reads on the verb. `desktools-v2/08` is the one brief here that waits on
+withdrawn and its number is not reused. The 2026-10-08 library-first amendment was not that
+chain (`DR-forge-neutral-36`: offline and frozen inputs only). The 2026-10-25 ruling
+(`DR-forge-library`, spec §2 Principle 2) does give statusgen a linked forge library, but not by
+exporting `deskkit`: briefs 75 and 76 build one narrow typed library with its own credential,
+outside `tools/desk/internal/`, and the git path beside it. `desktools-v2/08` waits on <!-- graph: encoded forge-neutral/18→desktools-v2/08 -->
 another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
-sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
-no critical path.
+sites in statusgen (26 remained on 2026-09-17), which is why it sits in wave 7 (only /77, which depends on it, is later) and on
+no critical path. Brief 77, which moves statusgen's reader onto the library, has the same
+cross-stream edges plus /75, /58 and /08, all in its frontmatter; the /08 edge is there so /08's
+class a gate lands first and /77 widens it, never the reverse. <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
 
 ## Dependency waves
 
@@ -169,6 +190,8 @@ no critical path.
 - **Wave 7** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the siblings
   `forge-neutral/18` and `/35`, waves 5 and 6 of their own stream — the wave number follows
   the later edge).
+- **Wave 8** — `desktools-v2/77` (retire the deskread bridge for statusgen; depends 75, 58,
+  `forge-neutral/18`, `/35` and 08 — the wave number follows the later edge, /08 at wave 7).
 
 Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 10 → 11` beside it.
 
@@ -323,5 +346,79 @@ Combined desk qualification has both that path and `58 → 59 → 62`; /60 remai
 The next unblocking move for attribution is /63's schema/profile/resolver, verified absent
 at 2e02111ed. /64 and /65 consume its fixtures independently. Final CLI qualification /17
 includes /64; existing CLI migrations adopt shared bindings without duplicating them.
-Collection/02 follows /01 and /63–65 in wave 4; it remains parked and never blocks local v3.
+Collection/02 follows /01 and /63–65 in wave 4; it never blocks local v3.
 The earlier 16 October schedule is historical; these amended dependencies control pickup.
+
+## Write-policy delivery — 18 October 2026
+
+[Contract](../../write-policy.md): /66 extracts `deskcore/writepolicy` and retains the
+writeguard command-hook adapter.
+/66 is independent of allocator completion and starts from current legacy behavior.
+Managed consumers separately bind allocation context and prove actual sandbox flow.
+Recheck current contracts and engineering guidelines at pickup under brief-v1 §4.1.1; no implementation is claimed here.
+
+Target-consumer clarification, 19 October 2026: graph-execution/22 directly consumes
+/66 for the local harness boundary and independent sandbox proof. desktools-v2/31's
+parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
+medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
+parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.
+
+## Extensible performance successor — 21 October 2026
+
+[The contract census](../../proposals/non-ci-architecture/29-extensible-json-contracts.md)
+updates the future architecture across JSON owners. Critical path for selected-profile
+performance is /69 (design/specification) → /67 (reader/core/extensions) → /68 (producer
+selection). /67 also needs /63; /68 also needs /64 and /65 verification. Authoring
+these briefs does not claim their implementation. Existing /26 and /62 work retains
+its snapshot, phase, benchmark and verification obligations; future format tasks
+migrate to v4 through dated amendments rather than editing completed evidence.
+
+## Workflow filings and witness records — 22 October 2026
+
+Four independent wave-1 briefs carry driver rulings of 22 October 2026 for ratification at merge: the public record of those rulings is the driver's merge of the PR that adds these briefs, #4069, merged 2026-10-22.
+/70 binds
+workflow issue filings to their PR (and brief), outside the process-error filing
+budget, with a per-role per-PR cap, its own audit class and the unchanged repo-wide
+ceiling as the compensating bound (proposal 11 brakes). /71 credits Linux container
+witness rows only when host verifier admission brackets the run and a tree digest
+binds the bytes the container ran to the admitted home, and makes
+`verifyrun --sandbox=container-netns` fail closed without that bracket. /72 has the
+dispatcher name an outcome-record path outside the verifier home, which `deskevidence`
+lands; admission and the record format are unchanged. /73 makes `deskevidence` restamp
+or refuse an on-behalf-of annotation that is not the roster principal, with a lint
+parity test. /71, /72 and /73 each edit the verify-desk skill, so whichever lands later
+merges the others' text. Authoring these briefs does not claim their implementation.
+
+## Shared planner consumers — requested 23 October 2026
+
+[The efficiency amendment](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+uses v2's existing typed/custody/query boundary. Reuse /09's completed snapshot and batches;
+coordinate /20–21 CLI surfaces with desk-tools/39–43. graph-execution/27 owns the five-role
+planner binding and existing runtime owners handle claims/refill. Neither parser migration
+nor transport optimization creates a new priority engine. Ranked GH savings and parity
+qualification stay with desk-tools/44 and R6; completed Evidence is preserved.
+
+## Shared forge library — ruled 25 October 2026
+
+The driver's ruling on #2395, recorded in
+[`DR-forge-library`](../decisions/DR-forge-library.md), supersedes `DR-forge-neutral-36`. Three
+human-gated briefs carry it; each cites the record with its `design:` key:
+
+- **/75** (wave 2, after /58) builds the one shared forge library for reads and writes and turns
+  `deskread` and the write verbs into thin wrappers around it. The library owns the credential
+  (one client per role and repository, private field, no ambient fallback) and carries the five
+  named custody records unchanged. It adds the combined gh/glab launch ratchet across desk-tools
+  and statusgen.
+- **/76** (wave 1) moves statusgen's git launches to go-git on top of the existing `gitcore`,
+  with parity goldens for the history and merge-base semantics `statusgen/verifyflip.go`
+  depends on, and adds statusgen's down-only git-launch ratchet beside the desk-tools counter
+  that `desktools-go-git/08` flips.
+- **/77** (wave 8, after /75, /58, /08, `forge-neutral/18` and `/35`) swaps statusgen's reader seam
+  from the `deskread` process to the library and retires statusgen's environment-token reads.
+
+Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 08 → 77` and `{forge-neutral/18, /35} → 77`; /76 is independent. The /08
+edge fixes landing order: /08's Task 2 gate and Task 5 path entry land before /77 widens them, so
+the two cannot land the other way round and narrow /77's gate. /08's row 10 admits the library's caller package only when /77 lands. /08 holds statusgen's gh
+column of the counter at zero; the rest of the statusgen total (the `origin` classifier and the
+API host literals) is /77's: /77 row 9 asserts it at `0`, and /77 Task 7 widens /08's gate to the
+whole total so it stays there (row 11 proves the script exits non-zero).

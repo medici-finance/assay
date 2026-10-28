@@ -34,11 +34,11 @@ consumers:
 ## Context
 
 files:
-- `comms/config (new)`
+- `comms/config` (new)
 - `tools/desk/cmd/cellctl/comms.go`
 - `tools/desk/cmd/cellctl/comms_init.go`
 - `tools/desk/cmd/cellctl/comms_startup.go`
-- `tools/desk/cmd/cellctl comms/config tests and CLI command registration`
+- `tools/desk/cmd/cellctl/` (comms/config tests and CLI command registration)
 - `tools/desk/cmd/commsgw/config.go`
 - `tools/desk/cmd/commsloop/main.go`
 - `comms/server`
@@ -74,7 +74,9 @@ Options:
 1. **Approve the bounded extraction (recommended)** — accept the reviewed report with the existing authority and disclosure controls preserved.
 2. **Narrow or revise** — remove incompatible changes and resubmit the report.
 
-Default if no answer: none — implementation approval remains pending.
+Default if no answer: none — blocks until answered.
+
+Implementation approval remains pending.
 
 ## Ground rules
 

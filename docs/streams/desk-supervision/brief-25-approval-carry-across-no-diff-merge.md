@@ -83,17 +83,12 @@ consumers:
 ## Context
 
 files:
-- **add** `statusgen/evaluation/reviewcurrency.go` (planned) + `reviewcurrency_test.go` (planned)
-  — the review-currency rule: two pure methods, `CarryByPatch` and `CarryByBlobs`, over immutable
-  caller-supplied observations, and the verdict body grammar.
-- **add** `tools/desk/internal/deskkit/approvalcarry.go` (planned) + `approvalcarry_test.go` (planned)
-  — thin adapters that gather the git and forge facts and call the evaluator; no carry logic.
-- **edit** `tools/desk/go.mod` — a relative require of the statusgen module, linking only the
-  offline `statusgen/evaluation` package.
+- **add** `statusgen/evaluation/reviewcurrency.go` (planned) + `reviewcurrency_test.go` (planned) — the review-currency rule: two pure methods, `CarryByPatch` and `CarryByBlobs`, over immutable caller-supplied observations, and the verdict body grammar.
+- **add** `tools/desk/internal/deskkit/approvalcarry.go` (planned) + `approvalcarry_test.go` (planned) — thin adapters that gather the git and forge facts and call the evaluator; no carry logic.
+- **edit** `tools/desk/go.mod` — a relative require of the statusgen module, linking only the offline `statusgen/evaluation` package.
 - **edit** `tools/desk/cmd/deskpost/` — a `carry` verb + tests, and gate (b) of `ready.go`.
 - **edit** `tools/desk/cmd/deskflip/flip.go` + tests — `checkReviewerApproved`.
-- **edit** `tools/desk/cmd/deskboard/board.go` + tests — the MERGE-CURR branch of `classify`, and the
-  carry-on-ready anomaly.
+- **edit** `tools/desk/cmd/deskboard/board.go` + tests — the MERGE-CURR branch of `classify`, and the carry-on-ready anomaly.
 - **add** `tools/desk/cmd/carrycheck/` (planned) — the read-only `CarryByBlobs` command the guard runs.
 - **add** `tools/evidence-automerge/carry-guard.sh` (planned) +
   `tools/evidence-automerge/carry-guard_test.sh` (planned) — the auto-merge carry guard's decision.

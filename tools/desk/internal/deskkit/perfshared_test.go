@@ -1,9 +1,9 @@
 package deskkit
 
 // perfshared_test.go — the perf writer (perf-v1 and perf-v2) exists ONCE, in the shared perfrec module, and every
-// recording tool calls it. #3101: statusgen records the same local perf-v1 line as the desk
-// tools, and a second copy of the writer (day-file layout, retention, install id, schema) is
-// exactly the drift this guards against.
+// recording tool calls it. #3101: statusgen records the same local perf line as the desk
+// tools (perf-v2 since its stage phases were added), and a second copy of the writer
+// (day-file layout, retention, install id, schema) is exactly the drift this guards against.
 
 import (
 	"go/ast"
@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -307,7 +308,7 @@ func perfrecClosure(t *testing.T, dir, goos string) []string {
 	cmd := exec.Command("go", "list", "-deps", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOOS="+goos)
-	out, err := cmd.Output()
+	out, err := goquiet.Cmd(cmd).Output()
 	if err != nil {
 		t.Fatalf("go list -deps (GOOS=%s) in %s: %v", goos, dir, err)
 	}

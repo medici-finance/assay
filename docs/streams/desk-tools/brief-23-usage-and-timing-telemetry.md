@@ -110,32 +110,21 @@ scan, no exit code and no refusal is read or written by any of it — rows 9, 12
 the mechanical evidence for that, and a reviewer who finds otherwise flips the answer.
 
 files:
-- `tools/desk/internal/deskkit/perf.go` (planned) (new) — `PerfRecord`, `PerfEnabled`,
-  `PerfRun`, `PerfStep`, `perfAppend`, `perfPrune`, `perfDir`, `perfInstallID`, the
-  `result`-from-exit mapper, and the child/forge counters' accessors.
+- `tools/desk/internal/deskkit/perf.go` (planned) (new) — `PerfRecord`, `PerfEnabled`, `PerfRun`, `PerfStep`, `perfAppend`, `perfPrune`, `perfDir`, `perfInstallID`, the `result`-from-exit mapper, and the child/forge counters' accessors.
 - `perfcpu_unix.go` (planned) and `perfcpu_windows.go` (planned), both new in the same
   package — the one platform-split call, modeled on `filelock_unix.go`/`filelock_windows.go`.
-- `perfread.go` (planned) (new, same package) — `LoadPerfDays`, `PerfSummary`,
-  `SummarisePerf`, `SummariseBootSteps` (the pure aggregation the read verb renders).
-- `perf_test.go` (planned), `perfread_test.go` (planned), `perfnopii_test.go` (planned) — all
-  new in the same package.
+- `perfread.go` (planned) (new, same package) — `LoadPerfDays`, `PerfSummary`, `SummarisePerf`, `SummariseBootSteps` (the pure aggregation the read verb renders).
+- `perf_test.go` (planned), `perfread_test.go` (planned), `perfnopii_test.go` (planned) — all new in the same package.
 - `perf-mutations.json` (planned) (new, same package) — the `muhar` spec for row 13.
-- `tools/desk/internal/deskkit/runtool.go` (existing) — `Run` increments the child counters
-  alongside its existing `traceRecord(r)` call. No other change.
-- `tools/desk/internal/deskkit/forge_github.go` and `forge_gitlab.go` (existing) — the
-  counting `http.RoundTripper` installed in `restClient()` / `client()`, so `forgeCalls` is
-  counted once per backend at the one place each already selects its transport.
-- `tools/desk/internal/deskkit/audittoolkey.go` (existing) — one line: `"deskperf": {}` in
-  `canonicalToolKeys`, without which `TestRegistryCoversCmdBinaries` goes red.
-- `tools/desk/cmd/deskperf/` (planned) (new) — `main.go`, `report.go`, `boot.go`, and their
-  tests.
+- `tools/desk/internal/deskkit/runtool.go` (existing) — `Run` increments the child counters alongside its existing `traceRecord(r)` call. No other change.
+- `tools/desk/internal/deskkit/forge_github.go` and `forge_gitlab.go` (existing) — the counting `http.RoundTripper` installed in `restClient()` / `client()`, so `forgeCalls` is counted once per backend at the one place each already selects its transport.
+- `tools/desk/internal/deskkit/audittoolkey.go` (existing) — one line: `"deskperf": {}` in `canonicalToolKeys`, without which `TestRegistryCoversCmdBinaries` goes red.
+- `tools/desk/cmd/deskperf/` (planned) (new) — `main.go`, `report.go`, `boot.go`, and their tests.
 - `tools/desk/cmd/deskboot/` (existing) — `boot.go` gains one `PerfStep` call per step.
 - First-wave `main()` wraps, one line each, under `tools/desk/cmd/`: `deskpr`, `deskpost`,
   `deskboard`, `desktoken`, `deskwt`, `deskdispatch`, `deskboot`.
 - `tools/desk/README.md` (existing) — a "Local performance history — `deskperf`" section.
-- `docs/telemetry.md` (existing) — one short subsection recording that desk-tools carries a
-  LOCAL-only perf log under the same promise and the same environment switch, and that the
-  two-switch rule binds any future remote send.
+- `docs/telemetry.md` (existing) — one short subsection recording that desk-tools carries a LOCAL-only perf log under the same promise and the same environment switch, and that the two-switch rule binds any future remote send.
 - `changelog/desk-tools-23-usage-telemetry.md` (planned) (new).
 
 facts (read at `48725dc0`, 2026-09-14):
@@ -667,6 +656,43 @@ Execution witness. statusgen verifyrun ran at 4b15482af5c6 in a local docker con
 | 17 | `o=$(statusgen --root . --consumers --brief desk-tools/23 --delivery b2050d8c735a9f1b290e8fb65a3cd67e483ad97b --base 86575b055da66c8340dd8b6ea4431738244f146e); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 1 corroborated, 0 disproved, 4 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 sandbox=container-netns | sha256:afc31f15b4c9 | 2026-10-19 | assay-verifier-app[bot] @ 4b15482af5c6+dirty (on-behalf-of human:ian) (forge-identity) |
 
 **VERIFY: PASS** — all 17 Verify rows pass at 4b15482af5c6, both by hand and in the container execution witness (verifyrun exit 0, 17 pass, 0 fail, sandbox=container-netns), so the environment hold from medici-finance/assay#1800 no longer applies. Two Verify-table follow-ups remain open as observations, not failures: rows 10 and 15 name relocated perfcpu files, and row 2's Expect still says perf-v1.
+
+### Re-verification 2026-10-20 at 742839555dcd (container execution witness, receipt-bearing re-pass)
+
+This block is a fresh pass at 742839555dcd1731139b15a295cf78cdbad9dc91, the current main, so that the item's outcome receipt can be derived from a source that postdates the stream README change. The latest prior Evidence on main is the 2026-10-19 block at 4b15482af5c6 above, landed by medici-finance/assay#3514. Between 4b15482af5c6 and this source the perf code moved on: deskkit perf.go and perfread.go, cmd/deskperf and the perfrec module all changed. The witness below therefore exercises the current perf source, not the one the earlier block saw. The runner follows the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). The runner class is a local docker container on image assay-verify:go1.27 (id sha256:955fd6c46c93, built from golang:1.27.2-trixie, git 2.47). It was started with `--network none`, with GOPROXY=off and GOTOOLCHAIN=local, and the container was the only network boundary. Inside it, `statusgen verifyrun --sandbox container-netns` ran non-dry with the engine's default seccomp profile. verifyrun exited 0 and recorded 17 pass, 0 fail and 0 could-not-run of 17 Verify rows. `statusgen verifyrun --check` in the same container printed the same 17 pass, 0 author-added rows, and exited 0. The verifyrun witness table follows.
+
+Verification-Attestation: medici-finance/assay#3645 run=d81a07ab4ec6dd38d41bb66a66e9da66acca2ce214025e834bb722f1ac7b207d source=742839555dcd1731139b15a295cf78cdbad9dc91 brief=docs/streams/desk-tools/brief-23-usage-and-timing-telemetry.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPerfRecordGoldenShape$' -count=1` | pass exit=0 sandbox=container-netns | sha256:1173e6d6063d | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPerfOffByDefaultCreatesNothing$' -count=1` | pass exit=0 sandbox=container-netns | sha256:69ec7e02ddb3 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPerfRecordCarriesNoIdentifiers$' -count=1` | pass exit=0 sandbox=container-netns | sha256:69ec7e02ddb3 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPerfPruneKeepsSevenDaysAndOnlyDayFiles$' -count=1` | pass exit=0 sandbox=container-netns | sha256:c1ba5c0d6ca8 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPerfWriteFailureNeverChangesExitCode$' -count=1` | pass exit=0 sandbox=container-netns | sha256:f4cdb49fa00c | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestSummarisePerfReproducesFixtureAggregates$' -count=1 && go test ./cmd/deskperf/ -run '^TestReportAndBootRenderFixtureDirectory$' -count=1` | pass exit=0 sandbox=container-netns | sha256:8493ca878c95 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskboot/ -run '^TestBootWritesOneStepRecordPerStep$' -count=1` | pass exit=0 sandbox=container-netns | sha256:66209faf0371 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPerfNeverTouchesTheAuditLedger$' -count=1 && go test ./cmd/deskperf/ -run '^TestWrappedVerbToDeskperfEndToEnd$' -count=1` | pass exit=0 sandbox=container-netns | sha256:1cd324005a4a | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && ( ! grep -rn -e 'net/http' -e 'net/url' -e 'http\.' internal/deskkit/perf.go internal/deskkit/perfread.go internal/deskkit/perfcpu_unix.go internal/deskkit/perfcpu_windows.go cmd/deskperf/ )` | pass exit=0 sandbox=container-netns | sha256:8de98224d030 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test -bench '^BenchmarkPerfAppend$' -benchtime 2000x -run '^$' ./internal/deskkit/ > /tmp/dt23-bench.out; grep -q 'BenchmarkPerfAppend' /tmp/dt23-bench.out && go test ./internal/deskkit/ -run '^TestPerfAppendMedianUnderOneMillisecond$' -count=1` | pass exit=0 sandbox=container-netns | sha256:f240bed9c436 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRegistryCoversCmdBinaries$' -count=1 && go test ./internal/deskkit/ -run '^TestCanonicalToolKey$' -count=1` | pass exit=0 sandbox=container-netns | sha256:b3100a548d6e | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/perf-mutations.json` | pass exit=0 sandbox=container-netns | sha256:0053fc1a2a06 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskperf/... ./cmd/deskboot/... ./cmd/deskpr/... -count=1` | pass exit=0 sandbox=container-netns | sha256:25b96551dc8c | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && gofmt -l internal/deskkit/perf.go internal/deskkit/perfread.go internal/deskkit/perfcpu_unix.go internal/deskkit/perfcpu_windows.go internal/deskkit/runtool.go internal/deskkit/audittoolkey.go cmd/deskperf cmd/deskboot > /tmp/dt23-fmt.out; test ! -s /tmp/dt23-fmt.out` | pass exit=0 sandbox=container-netns | sha256:69c779bcc023 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:3b02ef6f8f63 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+| 17 | `o=$(statusgen --root . --consumers --brief desk-tools/23 --delivery b2050d8c735a9f1b290e8fb65a3cd67e483ad97b --base 86575b055da66c8340dd8b6ea4431738244f146e); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 1 corroborated, 0 disproved, 4 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 sandbox=container-netns | sha256:afc31f15b4c9 | 2026-10-20 | assay-verifier-app[bot] @ 742839555dcd (on-behalf-of human:ian) (forge-identity) |
+
+The substance of this verification is the by-hand table in the 2026-10-19 block at 4b15482af5c6 above, where every one of the 17 Verify rows passed with 0 fail. This block adds a mechanical container re-run at the current source and does not re-run the rows by hand.
+
+Risk-bearing values, re-located at 742839555dcd. Each literal the 2026-10-19 block derived is unchanged in value; only its line moved:
+- RISK-VALUE: DERIVED — EnvVar = "ASSAY_TELEMETRY" @ perfrec/perfrec.go:47, compared `== "1"` in Enabled @ perfrec/perfrec.go:127. This matches statusgen's telemetryEnvVar (statusgen/telemetry.go:46) and its exact check (statusgen/telemetry.go:65), so one opt-in governs both tools.
+- RISK-VALUE: DERIVED — RetentionDays = 7 @ perfrec/perfrec.go:50, with the cutoff `today.AddDate(0, 0, -(RetentionDays - 1))` @ perfrec/perfrec.go:225. That keeps today plus 6 prior days, as the brief specifies. The reader is bound to the same value through perfRetentionDays (deskkit perf.go:56) and PerfMaxDays (deskkit perfread.go:32).
+- RISK-VALUE: DERIVED — dayFile = `^(\d{4}-\d{2}-\d{2})\.jsonl$` @ perfrec/perfrec.go:206. The pattern is anchored at both ends, so it cannot match audit.jsonl, install-id or a day-prefixed decoy.
+- RISK-VALUE: DERIVED — exitOK/exitDisabled/exitRefused/exitUnverifiable = 0/3/5/6 @ perfrec/perfrec.go:72-75. These equal deskkit's ExitOK/ExitDisabled/ExitRefused/ExitUnverifiable (exitcodes.go).
+- RISK-VALUE: DERIVED — directory mode 0o700 @ perfrec/perfrec.go:351 and 358, and file modes 0o600 @ perfrec/perfrec.go:273, 282, 367 and 387, all owner-only. The install id is `[16]byte` @ perfrec/perfrec.go:268 from crypto/rand, which gives the 32 hex characters that InstallIDPattern @ perfrec/perfrec.go:256 requires.
+
+**VERIFY: PASS** — all 17 Verify rows pass at 742839555dcd in the container execution witness (verifyrun exit 0, 17 pass, 0 fail, sandbox=container-netns), and the by-hand substance from the 2026-10-19 block stands with 0 fail. The two Verify-table observations from that block still apply: rows 10 and 15 name relocated perfcpu files, and row 2's Expect still says perf-v1.
 
 ## Review
 

@@ -170,7 +170,11 @@ func (d deskreadReader) OpenIssues(repos []string) (map[string][]forgeIssue, []f
 	for _, r := range repos {
 		args = append(args, "--repo", r)
 	}
-	out, err := exec.Command(d.bin, args...).Output()
+	// The deskread phase times the child; perfChildArgs hands it this run's context (perfrecord.go).
+	argv := perfChildArgs(d.bin, args) // before the phase: the one-time probe is not the child's wait
+	leave := perfEnter("deskread")
+	out, err := exec.Command(d.bin, argv...).Output()
+	leave()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -261,7 +265,10 @@ type deskreadItemEnvelope struct {
 // a could-not-check NOTICE, and a zero value would read as "not blessed" / "nobody answered".
 func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEnvelope, int, error) {
 	target := fmt.Sprintf("%s#%d", repo, number)
-	out, err := exec.Command(d.bin, kind, "--issue", target).Output()
+	argv := perfChildArgs(d.bin, []string{kind, "--issue", target}) // probe outside the phase
+	leave := perfEnter("deskread")
+	out, err := exec.Command(d.bin, argv...).Output()
+	leave()
 	var env deskreadItemEnvelope
 	jerr := json.Unmarshal(out, &env)
 	if jerr == nil && env.Schema != deskreadSchema {
@@ -365,6 +372,96 @@ func (d deskreadReader) IssueComments(repo string, number int) ([]issueComment, 
 		})
 	}
 	return out, nil
+}
+
+// --- the bounded issue list (--decision-latency, --assayscore, --issues) ----------------------
+
+// deskreadListEnvelope mirrors the verb's `issue-list` contract (`deskread issue-list --repo
+// owner/name --state open|closed|all [--label L]`). Only the consumed fields are declared, and
+// the three a missing value would turn into a guess are pointers: an entry with no issue list
+// or no completeness field is not an answer this build can trust.
+type deskreadListEnvelope struct {
+	Schema int    `json:"schema"`
+	Kind   string `json:"kind"`
+	Repos  []struct {
+		Repo       string             `json:"repo"`
+		Issues     *[]forgeread.Issue `json:"issues"`
+		Incomplete *bool              `json:"incomplete"`
+		PageCap    int                `json:"pageCap"`
+	} `json:"repos"`
+	Partial []struct {
+		Repo   string `json:"repo"`
+		Reason string `json:"reason"`
+	} `json:"partial"`
+}
+
+// IssueList is the `issue-list` kind: deskkit.Forge.ListIssues for ONE repo, at one stated
+// state and at most one label. It is a deskreadReader method only, like IssueTrust: its callers
+// are report modes, not --forge-gated checks, so there is no offline twin to answer through.
+//
+// Every way the list went unread is an ERROR, never a short or empty list: the verb would not
+// run and answered no envelope, it named the repo in `partial`, it answered no entry for the
+// repo, the entry carries no issue list or no completeness field, or the walk hit its page
+// bound with the forge still paginating (incomplete). The last is the one the `gh issue list
+// --limit 1000` reads this replaces could not see at all: they stopped at 1000 issues and said
+// nothing, so a larger queue read as a complete one.
+func (d deskreadReader) IssueList(repo, state, label string) ([]forgeread.Issue, error) {
+	args := []string{"issue-list", "--repo", repo, "--state", state}
+	if label != "" {
+		args = append(args, "--label", label)
+	}
+	what := fmt.Sprintf("%s issue-list --repo %s --state %s", d.bin, repo, state)
+	if label != "" {
+		what += " --label " + label
+	}
+	argv := perfChildArgs(d.bin, args) // probe outside the phase
+	leave := perfEnter("deskread")
+	out, err := exec.Command(d.bin, argv...).Output()
+	leave()
+	var env deskreadListEnvelope
+	jerr := json.Unmarshal(out, &env)
+	if jerr == nil && env.Schema != deskreadSchema {
+		return nil, fmt.Errorf("%s answered envelope schema %d, this build understands %d — "+
+			"upgrade statusgen rather than reading a contract it was not built against",
+			d.bin, env.Schema, deskreadSchema)
+	}
+	if jerr == nil && env.Kind != "issue-list" {
+		return nil, fmt.Errorf("%s: could-not-check: the envelope is kind %q, not \"issue-list\"", what, env.Kind)
+	}
+	if jerr == nil {
+		// A parsed envelope is authoritative even on a non-zero exit (the verb exits 6 when its
+		// one repo was unreadable, with the reason in `partial`).
+		for _, p := range env.Partial {
+			if p.Repo == repo {
+				return nil, fmt.Errorf("%s: could-not-check: %s", what, p.Reason)
+			}
+		}
+		for _, r := range env.Repos {
+			if r.Repo != repo {
+				continue
+			}
+			switch {
+			case r.Issues == nil:
+				return nil, fmt.Errorf("%s: could-not-check: the entry carries no issue list", what)
+			case r.Incomplete == nil:
+				return nil, fmt.Errorf("%s: could-not-check: the entry carries no completeness field", what)
+			case *r.Incomplete:
+				return nil, fmt.Errorf("%s: could-not-check: the list stopped at its %d-page bound with the forge still paginating, so it is not provably complete", what, r.PageCap)
+			}
+			return *r.Issues, nil
+		}
+	}
+	if err != nil {
+		detail := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			detail = firstLine(string(ee.Stderr))
+		}
+		return nil, fmt.Errorf("%s: could-not-check: %v %s", what, err, strings.TrimSpace(detail))
+	}
+	if jerr != nil {
+		return nil, fmt.Errorf("parsing the %s envelope: %w", what, jerr)
+	}
+	return nil, fmt.Errorf("%s: could-not-check: the envelope returned no result and no reason for this repo", what)
 }
 
 // labelEvent is one label application or removal on an issue, as the forge served it. Label is

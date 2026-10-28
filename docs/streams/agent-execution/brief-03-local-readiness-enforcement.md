@@ -4,7 +4,7 @@ title: "Enforce qualified profiles and workspace readiness in local execution"
 why: "New contracts only help when the real launch path consumes them. The first local adapter must refuse mismatched environments before starting a process, while preserving existing launcher and custody boundaries."
 wave: 8
 depends: ["agent-execution/02", "graph-execution/22", "graph-execution/26"]
-unblocks: ["agent-execution/04", "agent-execution/05", "agent-execution/08"]
+unblocks: ["agent-execution/04", "agent-execution/05", "agent-execution/08", "agent-execution/09"]
 effort: "M"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "yes", "sensitive-data": "no"}
@@ -35,9 +35,13 @@ facts: As inspected on 2026-10-16 at main `ec8d77e56627a7c2269f3d143ef6a31f3e41b
 
 ## Human decision
 
-Decision-trigger: spec. At pickup, prepare the concrete launcher/profile boundary and negative-path evidence, then author a self-contained options section and file the decision through the existing gate. The decision concerns adoption of the implemented launch boundary; no response permits no activation. Offline construction and fixture tests can proceed under the inherited ground rules.
+Decision-trigger: spec
+
+<!-- Pickup-time guidance; the executor authors the decision after the design step.
+At pickup, prepare the concrete launcher/profile boundary and negative-path evidence, then author a self-contained options section and file the decision through the existing gate. The decision concerns adoption of the implemented launch boundary; no response permits no activation. Offline construction and fixture tests can proceed under the inherited ground rules.
 
 Contract-consumption: agent-execution/01 supplies the qualified execution-profile types consumed here.
+-->
 
 ## Read first
 

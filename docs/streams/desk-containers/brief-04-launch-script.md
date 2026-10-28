@@ -3,7 +3,7 @@ brief: assay:assay:desk-containers:04
 title: interactive desktop launch script (desk-run.sh)
 wave: 3
 depends: ["desk-containers/02", "desk-containers/03"]
-unblocks: ["desk-containers/07"]
+unblocks: []
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -29,8 +29,7 @@ id: 8d6363a5-d747-4a47-b4da-52137ebcc3b9
 
 files:
 - `containers/desk-run.sh` (new) — the launcher.
-- `containers/desk-run.test.sh` (new) — dry-run + negative-path tests (no docker
-  daemon required: tests exercise `--dry-run` output and refusal paths).
+- `containers/desk-run.test.sh` (new) — dry-run + negative-path tests (no docker daemon required: tests exercise `--dry-run` output and refusal paths).
 - `docs/docker.md` — add the "run a desk from your desktop" section.
 
 facts:

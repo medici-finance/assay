@@ -4,15 +4,17 @@ title: Extract shared review observation and pure planning contracts
 why: "Queue classification and plan assembly live inside commands, so callers repeat collection and cannot consume one complete observation through a pure shared boundary."
 wave: 2
 depends: ["desk-tools/37"]
-unblocks: ["forge-neutral/39", "desk-tools/40", "desk-tools/41"]
+unblocks: ["forge-neutral/39", "desk-tools/40", "desk-tools/41", "graph-execution/27"]
 effort: M
 gate: human
+decision-issue: 4521
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-17 by statusgen newbrief
 sources:
+  - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
   - docs/desk-workflow-efficiency-spec.md
   - docs/desk-workflow-efficiency-change-map.md
   - freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d (App-authenticated main fetch)
@@ -24,9 +26,14 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 consumers:
-  - "tools/desk/cmd/deskboard/: follow-up desk-tools/39"
-  - "tools/desk/cmd/reviewloop/: follow-up desk-tools/39"
-  - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/39"
+  - "tools/desk/internal/reviewflow/selection.go: fixed-here (remaining candidate-plus-priority amendment)"
+  - "tools/desk/internal/reviewtest/selection_test.go: fixed-here (priority/capacity/coverage and mutation proof)"
+  - "spec/review-observation-v1.md: fixed-here (Go selection API and compatibility contract)"
+  - "docs/contracts.md: fixed-here (existing semantic-owner index)"
+  - "tools/desk/internal/deskclient/: follow-up graph-execution/27"
+  - "tools/desk/cmd/deskboard/: fixed-here (shared classification facts; observation collection follows in desk-tools/40)"
+  - "tools/desk/cmd/reviewloop/: fixed-here (shared plan assembly; observation CLI handoff follows in desk-tools/40)"
+  - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/41 (consume the qualified observation during candidate admission)"
 ---
 
 # Brief 39 — Extract shared review observation and pure planning contracts
@@ -68,6 +75,20 @@ design-fit:
 - Use fake providers and disposable local Git for acceptance; live activation and collection are separate gates.
 - Stop at implemented; independent verification supplies Evidence. Do not rewrite completed brief Evidence.
 
+## Candidate and priority amendment — 2026-10-23
+
+Extend the existing review observation/planning extraction, not its canonical domain meanings.
+Define candidate observation and explicit approved policy/evaluator revision, time and capacity
+as separate pure inputs, following efficiency spec §2.1 and A11–A12. Return ordered proposals
+plus held/unknown/watch and unmapped dispositions; retain exact subject/lane, scope and reasons.
+Policy rank is not coalescing-key order. Never drop a candidate absent from a priority mapping
+or reconstruct full coverage from shown/capped rows. graph-execution/27 consumes this existing
+reviewflow API as one role binding; other domain evaluators stay with their current owners.
+Keep collection out of the pure library and preserve the internal/public module boundary.
+
+Add the parity case below inside the already-declared internal/reviewtest test surface.
+These are future implementation obligations; existing approval and Evidence are unchanged.
+
 ## Task
 
 1. Specify typed review-observation-v1: requested/admitted scope, collection interval and per-input
@@ -103,6 +124,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewContractFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewContractFlow ' "$o")` | exit 0; named PASS. Existing and extracted production classifiers/planners match independent oracle across heads/body/reviews/checks/lanes/order/holds/uncapped depths. Mutation of one applicability or idle input fails. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewBoundary$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewBoundary ' "$o")` | exit 0; named PASS. Root contract/planner runs with provider effects and credentials forbidden; schema rejects wrong versions, missing scope and incomplete-as-empty. Cross-module import probe cannot consume desk internal packages. |
 | 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/39` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 4 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPriorityJoin$' ./... > "$o" && grep -F -- '--- PASS: TestReviewPriorityJoin ' "$o")` | exit 0; named PASS. the extracted pure contract matches an independent oracle for identical observation/policy/time/capacity, selected head/lane/order and held/unknown sets. Actual driver integration is accepted downstream in /43 and graph-execution/27; it is not a prerequisite here. Permute identity keys against rank, include unmapped and capped candidates, change policy only and deny provider/process/file reads; a second sorter or any provider call fails. |
 
 ## Pre-mortem and detection
 
@@ -121,3 +143,29 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
 adds implementation acceptance rather than reopening that decision. Existing adopter
 writer/custody/equivalence and collection consent gates remain separate.
+
+## Standing-desk consumer routing — 2026-10-18
+
+graph-execution/27 consumes this brief's planned pure policy/projection API from a
+tools/desk-local binding. It does not import cmd/main across modules, duplicate the
+classifier, change this brief's acceptance or add a process supervisor here. Preserve
+the current oracle, authority boundary and planned library home. This is a forward
+consumer, not a dependency on future workflow/controller delivery.
+
+## Implementation pickup — remaining amendment, 23 October 2026
+
+Continue at public main `4a4b8e4f3`. The original extraction and observation contract already
+shipped in PR #3593; reuse reviewflow/PlanObservation and the existing command adapters.
+The remaining merged amendment is the explicit candidate-plus-priority/capacity join and
+TestReviewPriorityJoin, not another classifier or a second queue. The source is the merged
+planner amendment in PR #4218, with docs/library-first.md, docs/contracts.md and
+spec/review-observation-v1.md at this source revision. Claim inspection found no active
+owner or open delivery PR for this brief. The driver explicitly requested this implementation
+and draft PR; no approval stamp, new ruling or lifecycle advancement is inferred.
+
+The additive internal Go API is PlanCandidates; collection and command/prose adoption remain
+/40, /43 and graph-execution/27, with their existing gates. Legacy board/reviewloop ordering
+is preserved and checked by the existing regression suite. The original fixed-here entries
+for those adapters describe the inherited extraction, not new edits in this follow-up.
+No status cell, historical Evidence or human gate is changed. Existing lifecycle reconciliation
+holds for the earlier delivery are disclosed rather than bypassed or repaired by a new stamp.
