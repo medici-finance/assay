@@ -88,6 +88,7 @@ func helpForms() [][]string {
 		[]string{"-spec", "mutations.json", "-h"},
 		[]string{"-j", "0", "-spec", "mutations.json", "--help"},
 		[]string{"-shard", "1/2", "-help"},
+		[]string{"--version"}, []string{"-version"},
 	)
 }
 
@@ -174,8 +175,12 @@ func TestCLIHelpOffline(t *testing.T) {
 				if errb.Len() != 0 {
 					t.Errorf("%v: wrote to stderr (a spec read or run started): %q", args, errb.String())
 				}
-				if !strings.Contains(out.String(), "--spec") {
-					t.Errorf("%v: stdout %q does not list the flags", args, out.String())
+				want := "--spec" // help lists the flags; version names the binary
+				if strings.HasSuffix(args[len(args)-1], "version") {
+					want = "muhar sourceSHA="
+				}
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("%v: stdout %q does not carry %q", args, out.String(), want)
 				}
 			}
 			if b, err := os.ReadFile(logPath); err == nil {
@@ -295,6 +300,15 @@ func TestCLILegacyForms(t *testing.T) {
 			}
 		}
 	})
+	t.Run("version", func(t *testing.T) {
+		r := record(t)
+		for _, args := range [][]string{{"--version"}, {"-version"}} {
+			code, out, stderr := r.exec(args...)
+			if code != 0 || !strings.HasPrefix(out, "muhar sourceSHA=") || stderr != "" || r.calls != 0 {
+				t.Errorf("%v: exit %d stdout %q stderr %q sweep %d", args, code, out, stderr, r.calls)
+			}
+		}
+	})
 	t.Run("paths", func(t *testing.T) {
 		for _, pv := range clicontract.PathValues {
 			r := record(t)
@@ -313,6 +327,8 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"-j", "x", "-spec", "x.json"}, `invalid argument "x"`},
 			{[]string{"-spec"}, "flag needs an argument"},
 			{[]string{"-spec", "x.json", "-select=maybe"}, `invalid argument "maybe"`},
+			// A trailing help word is the adapter's help command, which knows no -spec.
+			{[]string{"-spec", "x.json", "help"}, "unknown flag: --spec"},
 		}
 		for _, c := range cases {
 			r := record(t)

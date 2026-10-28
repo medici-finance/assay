@@ -24,6 +24,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -241,7 +242,11 @@ func runSample(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) 
 	}
 	seed := v.String("seed")
 	if o.seed, err = strconv.ParseInt(seed, 0, 64); err != nil {
-		return deskkit.Refused(fmt.Sprintf("invalid value %q for flag --seed: parse error", seed))
+		reason := "parse error"
+		if errors.Is(err, strconv.ErrRange) {
+			reason = "value out of range"
+		}
+		return deskkit.Refused(fmt.Sprintf("invalid value %q for flag --seed: %s", seed, reason))
 	}
 	if err := runStartup(stderr, pre); err != nil {
 		return err

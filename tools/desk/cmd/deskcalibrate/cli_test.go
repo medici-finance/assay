@@ -452,7 +452,7 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"sample", "--seed", "7"}, "--month YYYY-MM is required"},
 			{[]string{"sample", "--month", "2026-09"}, "--seed is required"},
 			{[]string{"sample", "--month", "2026-09", "--seed", "x"}, `invalid value "x" for flag --seed`},
-			{[]string{"sample", "--month", "2026-09", "--seed", "9223372036854775808"}, "for flag --seed"},
+			{[]string{"sample", "--month", "2026-09", "--seed", "9223372036854775808"}, "for flag --seed: value out of range"},
 			{[]string{"report"}, "--results <file> is required"},
 			{[]string{"report", "--results", "  "}, "--results <file> is required"},
 		}

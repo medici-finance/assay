@@ -85,6 +85,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 type spec struct {
@@ -250,6 +251,12 @@ type exitErr int
 func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
 func (e exitErr) ExitCode() int { return int(e) }
 
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("muhar sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
 // bindings are every setting muhar declares: flags and defaults only. muhar has no
 // configuration file and reads no environment variable for them.
 func bindings() []cli.Binding {
@@ -273,7 +280,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		root := cli.NewRoot("muhar", "mutation-testing harness with a proven-landed guarantee")
 		root.Long = helpLong
 		set := cli.Declare(root, bindings()...)
-		// Words after the flags were ignored by the flag package; they still are.
+		// Words after the flags were ignored by the flag package, and still are, except a
+		// `help` word: the adapter always routes that to its help command, so `-spec F help`
+		// is now a parse refusal (exit 2) rather than a sweep.
 		root.Args = cobra.ArbitraryArgs
 		root.RunE = func(*cobra.Command, []string) error {
 			v, err := set.Resolve(cli.Inputs{})
@@ -293,8 +302,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return root
 	}
 	return cli.Run(build, args, cli.Options{
-		IO:           cli.IO{Out: stdout, Err: stderr},
-		GoFlagCompat: true,
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		GoFlagCompat:    true,
 	})
 }
 
