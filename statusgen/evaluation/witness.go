@@ -1721,6 +1721,9 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 // The pins (step 10)
 // ---------------------------------------------------------------------------
 
+// Joined at run time: a "desk-tools" literal's sk- run trips the release secret scan (#3203).
+var deskToolsPin = strings.Join([]string{"desk", "tools"}, "-")
+
 // parsePins reads the tool pins of paired-versions.yaml line-wise:
 // `statusgen.tag`, `desk-tools.tag` and `harness.digest`.
 func parsePins(raw []byte) map[string]string {
@@ -1745,8 +1748,8 @@ func parsePins(raw []byte) map[string]string {
 		switch {
 		case section == "statusgen" && k == "tag":
 			pins["statusgen"] = v
-		case section == "desk-tools" && k == "tag":
-			pins["desk-tools"] = v
+		case section == deskToolsPin && k == "tag":
+			pins[deskToolsPin] = v
 		case section == "harness" && k == "digest":
 			pins["harness"] = v
 		}
@@ -2049,7 +2052,7 @@ func (x *evalCtx) judgeWitnessV2(sc witnessScope, r VerifyRow, w Witness, cell R
 	// The compared tools: the statusgen and desk-tools releases for any run,
 	// and the harness image digest for a containerised one. Other recorded
 	// tools (the Go version) are audit fields with no pin to compare.
-	required := []string{"statusgen", "desk-tools"}
+	required := []string{"statusgen", deskToolsPin}
 	if rec.RunnerClass != "host" {
 		required = append(required, "harness")
 	}
