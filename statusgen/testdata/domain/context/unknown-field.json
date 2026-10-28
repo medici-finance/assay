@@ -1,0 +1,84 @@
+{
+  "schema": "evaluation-context-v1",
+  "requires": [
+    "context@1"
+  ],
+  "work": {
+    "brief": "example:widgets:build:07",
+    "instance": "inst-example-07",
+    "node": "inst-example-07.verify",
+    "attempt": "inst-example-07.verify.a1"
+  },
+  "candidate": {
+    "repository": "example-org/widgets",
+    "base-commit": "1111111111111111111111111111111111111111",
+    "base-tree": "2222222222222222222222222222222222222222",
+    "commit": "3333333333333333333333333333333333333333",
+    "tree": "4444444444444444444444444444444444444444",
+    "manifest-digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "acceptance": {
+    "version": 1,
+    "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "candidate": {
+      "repository": "example-org/widgets",
+      "base-commit": "1111111111111111111111111111111111111111",
+      "base-tree": "2222222222222222222222222222222222222222",
+      "commit": "3333333333333333333333333333333333333333",
+      "tree": "4444444444444444444444444444444444444444",
+      "manifest-digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "required-facts": [
+      "eligibility",
+      "coverage"
+    ]
+  },
+  "sources": [
+    {
+      "name": "repository",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "facts": [
+    {
+      "name": "graph",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "evaluator": {
+    "version": "statusgen-evaluation/3",
+    "policy_digest": "06892e79c92d2a9a9526caa3ab9715e854898b640129691e77fa9ab3daf63e2d"
+  },
+  "query-digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "options-digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "dependencies": [
+    {
+      "work": "example:widgets:build:01",
+      "present": true,
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "work": "example:widgets:build:02",
+      "present": false,
+      "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ],
+  "dependency-digest": "sha256:83dcab186f143a7185b631c7c9bf4b10665024026016de8b039a0f5441bd8c64",
+  "coverage": "present",
+  "policy-digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "environment-digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+  "access-epoch": 1,
+  "generation": 1,
+  "observed-cutoff": "2026-10-28T10:00:00Z",
+  "bounds": [
+    {
+      "kind": "lease",
+      "expires-at": "2026-10-28T10:10:00Z"
+    },
+    {
+      "kind": "access",
+      "expires-at": "2026-10-28T10:20:00Z"
+    }
+  ],
+  "unexpected": true
+}

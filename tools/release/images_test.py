@@ -454,6 +454,98 @@ if args[:2] == ['image', 'inspect']:
                     attested = published['List the release assets to attest'].split('; do', 1)[0]
                     self.assertRegex(attested, r'(?<![\w-])' + asset + r'(?![\w-])')
 
+    # regression: #4784 — the release runner had no arm64 handler, so the
+    # linux/arm64 verify-runner build failed with "exec format error". The job
+    # registers emulation itself, before any credential exists, in dry runs too.
+    def test_arm64_emulation_is_registered_before_credentials_and_images(self):
+        root = HERE.parents[1]
+        step_name = 'Register and prove arm64 emulation'
+        for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
+            with self.subTest(path=path):
+                publisher = workflow_jobs((root / path).read_text())['release']
+                step = workflow_steps(publisher)[step_name]
+                at = publisher.find('      - name: ' + step_name + '\n')
+                self.assertGreater(at, publisher.find('      - name: Restore the prepared source'))
+                self.assertLess(at, publisher.find('      - name: Build, verify and publish the release images\n'))
+                login = publisher.find('| docker login ghcr.io')
+                self.assertGreater(login, 0)
+                self.assertLess(at, login)
+                # Per line (re.M): an `if:` anywhere in the step skips it.
+                self.assertNotRegex(step, r'(?m)^        if:', 'dry runs build arm64 too')
+                # The whole step, run script included: no expression may put a
+                # token or secret into the privileged step.
+                self.assertNotIn('${{', step, 'the privileged step must carry no token or secret')
+                env = step.split('        run: |\n', 1)[0]
+                self.assertRegex(env, r'BINFMT_IMAGE: [a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}\n')
+                self.assertIn('docker run --privileged --rm --network none "$BINFMT_IMAGE"'
+                              ' --uninstall qemu-aarch64 --install arm64 2>&1', step)
+                self.assertIn("grep -qx 'installing: arm64 OK'", step)
+
+    def test_arm64_emulation_step_fails_closed(self):
+        main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
+        step = workflow_steps(workflow_jobs(main)['release'])['Register and prove arm64 emulation']
+        script = '\n'.join(line[10:] for line in step.split('        run: |\n', 1)[1].splitlines())
+        work = self.root / 'emulation'
+        (work / 'images/verify-runner').mkdir(parents=True)
+        (work / 'bin').mkdir()
+        fake = work / 'bin/docker'
+        # Models the pinned installer (cmd/binfmt/main.go at e29e7d72): it logs
+        # one line per uninstall and install to stderr, prints its status JSON
+        # to stdout, and exits 0 even when a registration fails. Only a failed
+        # container start exits non-zero. The probe answers per FAKE_PROBE_*.
+        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                        'case "$*" in *--install*)\n'
+                        '  [ "$FAKE_START" = 0 ] || exit "$FAKE_START"\n'
+                        '  printf "%s" "$FAKE_LOG" >&2\n'
+                        '  echo \'{"supported":["linux/amd64"],"emulators":[]}\'\n'
+                        '  exit 0;;\nesac\n'
+                        '[ "$FAKE_PROBE_EXIT" = 0 ] || exit "$FAKE_PROBE_EXIT"\n'
+                        'echo "$FAKE_ARCH"\n')
+        fake.chmod(0o755)
+        base = 'golang:1.2.3-bookworm@sha256:' + 'a' * 64
+        fresh = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 OK\n'
+        replaced = 'uninstalling: qemu-aarch64 OK\ninstalling: arm64 OK\n'
+        stale = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 qemu-aarch64 already registered\n'
+        refused = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 EPERM opening /proc/sys/fs/binfmt_misc/register check permissions?\n'
+        no_install = 'error: cannot mount binfmt_misc filesystem at /proc/sys/fs/binfmt_misc: operation not permitted\n'
+        not_installed = "no 'installing: arm64 OK' line"
+        not_working = '::error::arm64 emulation is not working'
+        # name: (container start exit, installer log, probe exit, probe arch,
+        #        RUNNER_BASE, expected exit, expected message, probe expected)
+        cases = {
+            'fresh-node': ('0', fresh, '0', 'aarch64', base, 0, 'arm64 emulation ready', True),
+            'replaces-existing-handler': ('0', replaced, '0', 'aarch64', base, 0, 'arm64 emulation ready', True),
+            # The real tool exits 0 here; a working pre-existing handler must
+            # not be accepted in place of the pinned one.
+            'stale-handler-survives': ('0', stale, '0', 'aarch64', base, 1, 'unregister it on the runner host', False),
+            'register-refused': ('0', refused, '0', 'aarch64', base, 1, not_installed, False),
+            'binfmt-not-mountable': ('0', no_install, '0', 'aarch64', base, 1, not_installed, False),
+            'ok-for-another-arch-only': ('0', 'installing: riscv64 OK\n', '0', 'aarch64', base, 1, not_installed, False),
+            'container-fails-to-start': ('125', '', '0', 'aarch64', base, 1, 'exit 125', False),
+            'wrong-arch': ('0', fresh, '0', 'x86_64', base, 1, not_working, True),
+            'probe-fails': ('0', fresh, '125', '', base, 1, not_working, True),
+            'unpinned-base': ('0', fresh, '0', 'aarch64', 'golang:1.2.3-bookworm', 1, 'no single digest-pinned RUNNER_BASE', False),
+        }
+        installer = 'run --privileged --rm --network none binfmt:x@sha256:' + 'b' * 64 + ' --uninstall qemu-aarch64 --install arm64'
+        prober = 'run --rm --network none --platform linux/arm64 ' + base + ' uname -m'
+        for name, (start, log, probe_exit, arch, ref, code, message, probed) in cases.items():
+            with self.subTest(case=name):
+                (work / 'images/verify-runner/Dockerfile').write_text('ARG RUNNER_BASE=' + ref + '\nFROM ${RUNNER_BASE}\n')
+                calls = work / ('calls-' + name)
+                result = subprocess.run(
+                    ['bash', '-c', script], cwd=work, text=True, capture_output=True,
+                    env=dict(os.environ, PATH=str(work / 'bin') + os.pathsep + os.environ['PATH'],
+                             CALLS=str(calls), FAKE_START=start, FAKE_LOG=log, FAKE_PROBE_EXIT=probe_exit,
+                             FAKE_ARCH=arch, BINFMT_IMAGE='binfmt:x@sha256:' + 'b' * 64))
+                self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+                self.assertIn(message, result.stdout)
+                if ref == base:
+                    expected = [installer] + ([prober] if probed else [])
+                    self.assertEqual(calls.read_text().splitlines(), expected)
+                    # The installer's own lines are echoed into the job log.
+                    for line in log.splitlines():
+                        self.assertIn(line, result.stdout)
+
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
         main = (root / '.github/workflows/release.yml').read_text()
