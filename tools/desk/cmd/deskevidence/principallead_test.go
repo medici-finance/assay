@@ -140,8 +140,8 @@ var leadRunners = []struct{ name, cell string }{
 	// A math span holding a control word the tool neither names nor reads as a character code,
 	// inside the tag: one that takes several arguments and typesets only one, or one that
 	// typesets a letter of its own. The span fails closed.
-	{"typeset-tag-unnamed-multi-argument", "$\\mathrm{example-app}\\lbrack\\mathrm{b}\\mathchoice{zz}{o}{zz}{zz}\\mathrm{t}\\rbrack$" + foldTail},
-	{"typeset-tag-unnamed-glyph", "$\\mathrm{example-app}\\lbrack\\mathrm{b}\\ell\\mathrm{t}\\rbrack$" + foldTail},
+	{"typeset-tag-unnamed-multi-argument", "$\\mathrm{example-app}\\lbrack{}\\mathrm{b}\\mathchoice{zz}{o}{zz}{zz}\\mathrm{t}\\rbrack$" + foldTail},
+	{"typeset-tag-unnamed-glyph", "$\\mathrm{example-app}\\lbrack \\mathrm{b}\\ell \\mathrm{t}\\rbrack$" + foldTail},
 	// A lead read past and a lone dollar sign, with a later dollar sign the lead's reading must
 	// not pair it with.
 	{"glyph-dollar-later-dollar", ":robot: $ example-app[bot]" + foldTail + " $"},
