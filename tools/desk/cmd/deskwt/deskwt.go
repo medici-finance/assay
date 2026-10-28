@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -371,7 +370,7 @@ func survivingGitDir(guard *pathGuard, dir string, removed []string) string {
 	return dir
 }
 
-// cmdAdd implements `deskwt add <name> [--branch B | --detach] [--base origin/main]`: create a
+// runAdd implements `deskwt add <name> [--branch B | --detach] [--base origin/main]`: create a
 // worktree at `<tmpBaseDir>/tracker-<name>` on a NEW branch that TRACKS the base (so a
 // fresh worktree is immediately clean & up-to-date, satisfying remove's upstream check).
 //
@@ -382,44 +381,15 @@ func survivingGitDir(guard *pathGuard, dir string, removed []string) string {
 // `deskwt remove` already accepts a detached HEAD whose commit is proven on a remote (#851),
 // so the lifecycle closes. --detach and --branch are mutually exclusive.
 // semantic: S-worktree
-func cmdAdd(args []string) (err error) {
+func runAdd(o addOpts) (err error) {
 	ac := &auditCtx{verb: "add"}
 	defer func() { ac.finalize(err) }()
 
-	fs := flag.NewFlagSet("add", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	branch := fs.String("branch", "", "new branch name for the worktree (default: the worktree name)")
-	detach := fs.Bool("detach", false, "check the base out as a DETACHED HEAD — no branch created or touched (the verifier shape)")
-	base := fs.String("base", "origin/main", "start-point ref for the new worktree")
-	upstream := fs.String("upstream", "", "with a full commit --base: the fully qualified remote branch to track; its tip must match the commit")
-	role := fs.String("role", "", "stamp this desk role's App commit identity (token role or loop name) into the new "+
-		"worktree's own config; omitted, the new worktree's user.name/user.email are CLEARED so it can never inherit "+
-		"the shared checkout's identity")
-	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing")
-	// --lock-session locks the new worktree for a live session at creation, in the same
-	// reason format role-init writes, so prune holds it from its first second and the
-	// lock-reclaim / dead-session passes can retire it once that session's beacon is stale.
-	lockSession := fs.String("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format")
-	// --adopt-run hands back a FINISHED home of this run key instead of refusing it
-	// (adoptfinished.go, #4272). Resume-only: it needs --upstream's pinned head as its proof.
-	adoptRun := fs.String("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
-		"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it")
-	// Usage puts <name> first, but Go's flag stops at the first positional;
-	// parse in a loop so flags may appear before OR after the name (a stray/unknown flag
-	// still errors → refused).
-	positionals, perr := parseInterspersed(fs, args)
-	if perr != nil {
-		// TIER TWO: `-h`/`--help` reaches the parser as flag.ErrHelp. A help screen is
-		// not a refusal and writes no audit row (deskkit/helprequest.go).
-		if deskkit.IsHelpRequest(perr) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("refused: bad flags: " + perr.Error())
-	}
-	if len(positionals) != 1 {
-		return deskkit.Refused("refused: add takes exactly one <name> argument")
-	}
-	name := positionals[0]
+	// The one Cobra tree (cli.go) parsed every flag and the single <name> before this
+	// handler ran. The body reads the parsed values through the names it always used.
+	branch, detach, base, upstream := &o.branch, &o.detach, &o.base, &o.upstream
+	role, dryRun, lockSession, adoptRun := &o.role, &o.dryRun, &o.lockSession, &o.adoptRun
+	name := o.name
 	if !nameRe.MatchString(name) || strings.Contains(name, "..") {
 		return deskkit.Refused("refused: <name> must be a single safe segment (no slashes, no leading dash/dot, no '..')")
 	}
@@ -722,31 +692,18 @@ func cmdAdd(args []string) (err error) {
 	return nil
 }
 
-// cmdRemove implements `deskwt remove <path>`: refuse unless the RESOLVED path is a
+// runRemove implements `deskwt remove <path>`: refuse unless the RESOLVED path is a
 // sanctioned, registered worktree that is clean (tracked), fully pushed, and NOT the
 // shared checkout; then `git worktree remove` + prune. There is no --force flag.
-func cmdRemove(args []string) (err error) {
+func runRemove(o removeOpts) (err error) {
 	ac := &auditCtx{verb: "remove"}
 	defer func() { ac.finalize(err) }()
 
-	fs := flag.NewFlagSet("remove", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
 	// The ONLY flag is --dry-run (report the before_remove hook plan, touch nothing). A stray
-	// flag — e.g. --force — still makes Parse error → refused. There is NO force / override
-	// flag anywhere in this tool.
-	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing")
-	positionals, perr := parseInterspersed(fs, args)
-	if perr != nil {
-		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
-		if deskkit.IsHelpRequest(perr) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("refused: remove takes no flags but --dry-run (there is no --force): " + perr.Error())
-	}
-	if len(positionals) != 1 {
-		return deskkit.Refused("refused: remove takes exactly one <path> argument")
-	}
-	path := positionals[0]
+	// flag — e.g. --force — is a parse error in the Cobra tree (cli.go) before this handler
+	// runs. There is NO force / override flag anywhere in this tool.
+	dryRun := &o.dryRun
+	path := o.path
 
 	// --dry-run: report the before_remove hook plan and touch nothing.
 	if *dryRun {
@@ -914,26 +871,6 @@ func detachedHeadOnRemote(rt string) (bool, error) {
 		return false, deskkit.Unverifiable("cannot check whether the detached HEAD commit is present on any remote", err)
 	}
 	return len(names) != 0, nil
-}
-
-// parseInterspersed parses fs allowing flags to appear before OR after positional
-// arguments (Go's flag package otherwise stops at the first positional). It returns the
-// collected positionals; an unknown/malformed flag surfaces as the Parse error.
-func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
-	var positionals []string
-	rest := args
-	for {
-		if err := fs.Parse(rest); err != nil {
-			return nil, err
-		}
-		rest = fs.Args()
-		if len(rest) == 0 {
-			break
-		}
-		positionals = append(positionals, rest[0])
-		rest = rest[1:]
-	}
-	return positionals, nil
 }
 
 // resolvePath returns p with symlinks resolved on its longest EXISTING ancestor and the

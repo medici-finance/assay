@@ -370,3 +370,61 @@ func TestAdmittedEnvNarrowOnly(t *testing.T) {
 		}
 	}
 }
+
+// forgeTokenVars are the forge credential variables the forge CLI reads.
+var forgeTokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// regression: #4612
+// TestAdmittedRowsDropForgeTokens: an admitted run's rows no longer inherit
+// the forge credential variables the invoking process holds, while that
+// process keeps them, so its own forge read (the acceptance-approval client)
+// still resolves the token after the rows ran. The unadmitted control proves
+// the plant lands: the same row inherits the variables there. This pins the
+// row's own environment only; a same-user row can still read the invoking
+// process's environment (admittedRowEnv's out-of-scope list).
+func TestAdmittedRowsDropForgeTokens(t *testing.T) {
+	row := "test -z \"${GH_TOKEN+x}${GITHUB_TOKEN+x}${GH_ENTERPRISE_TOKEN+x}${GITHUB_ENTERPRISE_TOKEN+x}\""
+	for _, admit := range []bool{true, false} {
+		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
+			root, _ := admittedFixture(t, admit)
+			for _, name := range forgeTokenVars {
+				t.Setenv(name, "fixture-"+strings.ToLower(name))
+			}
+			code := verifyrunRow(t, root, row)
+			if admit && code != verifyrunExitPass {
+				t.Fatalf("admitted row saw a forge credential variable (exit %d)", code)
+			}
+			if !admit && code != verifyrunExitFail {
+				t.Fatalf("plant did not land: unadmitted row did not see the variables (exit %d)", code)
+			}
+			for _, name := range forgeTokenVars {
+				if got, want := os.Getenv(name), "fixture-"+strings.ToLower(name); got != want {
+					t.Errorf("invoking process lost %s: %q, want %q", name, got, want)
+				}
+			}
+			if got := rulingForgeClient().token; got != "fixture-gh_token" {
+				t.Errorf("approval client token after the run = %q, want the invoking GH_TOKEN", got)
+			}
+		})
+	}
+}
+
+// TestAdmittedEnvDropsForgeTokens pins the removal one variable at a time,
+// whatever its case, beside a variable that only shares a prefix.
+func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
+	in := []string{"PATH=/bin", "GH_TOKEN_FILE=kept", "Gh_Token=x"}
+	for _, name := range forgeTokenVars {
+		in = append(in, name+"=x")
+	}
+	for _, kv := range admittedRowEnv(in) {
+		key, _, _ := strings.Cut(kv, "=")
+		if slices.ContainsFunc(forgeTokenVars, func(n string) bool { return strings.EqualFold(n, key) }) {
+			t.Errorf("admitted row environment carries %s", kv)
+		}
+	}
+	for _, kv := range []string{"PATH=/bin", "GH_TOKEN_FILE=kept"} {
+		if !slices.Contains(admittedRowEnv(in), kv) {
+			t.Errorf("admitted row environment dropped %s", kv)
+		}
+	}
+}

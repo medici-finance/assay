@@ -58,8 +58,8 @@
     {
       "name": "restore the desktoken cache-reuse audit row (the ledger goes back to recording one row per no-op, 74% of its own volume)",
       "file": "cmd/desktoken/desktoken.go",
-      "old": "\t\t\tac.suppress = true // no network call, no mint, nothing changed — no audit row",
-      "new": "\t\t\tac.suppress = false // no network call, no mint, nothing changed — no audit row"
+      "old": "\t\tac.suppress = true // no network call, no mint, nothing changed — no audit row",
+      "new": "\t\tac.suppress = false // no network call, no mint, nothing changed — no audit row"
     },
     {
       "name": "recover only the live file again (a malformed line in a rotated segment is permanent: every read refuses, and the printed remedy has already been run)",

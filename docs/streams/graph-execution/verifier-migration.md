@@ -24,8 +24,12 @@ adopter's plan. No second controller, publisher, queue taxonomy or acceptance ev
    fence old capabilities before the new publisher is admitted. Rollback performs the
    same ownership/effect reconciliation. Sampling execution does not permit two writers.
 6. **Kubernetes profile:** agent-execution/08 adapts the existing runner/supervisor contract.
-   It remains in the parked execution stream pending approval of that stream's controlling
-   amendment and this profile. It is not on the interim evidence-production critical path.
+   When this section was written the agent-execution stream was parked. Its activation is
+   proposed by [PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes
+   effect on the maintainer's merge of it, carried by the status line of
+   [amendment 27](../../proposals/non-ci-architecture/27-agent-execution-environments.md).
+   Approval of this profile stays separate. It is not on the interim evidence-production
+   critical path.
 
 ## State and queue contract
 

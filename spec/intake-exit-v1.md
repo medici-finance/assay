@@ -158,3 +158,9 @@ record or an unsupported version is unknown. Writers must establish support at
 each consuming operation before emitting required companion fields. Neither
 writer is armed to publish companions by this library extraction. Old records
 remain intact, with no inferred disposition or backfill.
+
+## Accountable disposition companion
+
+[intake-handoff-v1](intake-handoff-v1.md) adds an explicitly negotiated judgment
+record without changing this schema or its five exits. A mechanical exit alone
+does not establish an acknowledged successor or readiness for repair scheduling.

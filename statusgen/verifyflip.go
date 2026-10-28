@@ -1065,11 +1065,19 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 	return true, nil
 }
 
-// flipSideBroughtNothing reports whether a merge parent Y, whose Evidence yev
-// differs from the kept parent X's xev, made no net change that X lacks,
-// judged against every merge base of X and Y. It holds when yev equals the
-// Evidence at SOME merge base, and xev equals the Evidence at NONE of them.
-// No merge base (unrelated histories) never holds.
+// flipSideBroughtNothing reports whether a merge parent Y, with Evidence yev,
+// made no net change that the kept parent X, with Evidence xev, lacks, judged
+// against every merge base of X and Y. It holds when yev equals the Evidence
+// at SOME merge base, and xev equals the Evidence at NONE of them. No merge
+// base (unrelated histories) never holds.
+//
+// The two base tests are independent, so the answer is that rule for every
+// input and asks nothing of the caller. When xev == yev, a base that matches
+// yev also matches xev, so the rule cannot hold and the answer is false: the
+// pair does not make the merge trivial. False is the fail-closed answer for
+// equal Evidence, which the rule was not written for. flipEvidenceChanged
+// skips a parent whose Evidence equals the merge's before it asks, so today
+// it never passes equal Evidence.
 //
 // Why SOME base suffices for Y (#4466): a merge base is an ancestor of X, so
 // when Y's Evidence is a base's, every byte Y carries — a later FAIL included
@@ -1092,10 +1100,10 @@ func flipSideBroughtNothing(xev, yev string, bases []string, evAt func(string) (
 		if err != nil {
 			return false, err
 		}
-		switch bev {
-		case yev:
+		if bev == yev {
 			some = true
-		case xev:
+		}
+		if bev == xev {
 			xAt = true
 		}
 	}

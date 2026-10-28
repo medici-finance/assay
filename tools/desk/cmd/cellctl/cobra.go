@@ -482,7 +482,7 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -754,6 +754,10 @@ func upCmd() *cobra.Command {
 		if v.Bool("plan") && cmd.Flags().Changed("apply") {
 			die("up: --plan and --apply are exclusive")
 		}
+		if c.kubeSelected() {
+			c.kubeUp(cmd, v, lastBare(args[1:]))
+			return nil
+		}
 		if v.Bool("plan") {
 			upPlan(cmd, c, c.upTargets(v.Strings("role"), v.Bool("no-the-desk")))
 			return nil
@@ -785,6 +789,14 @@ func downCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		given := len(args) > 1 || cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit")
+		c := loadCell(cell)
+		if c.kubeSelected() {
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("compatibility down refuses host cockpit/deskd flags")
+			}
+			c.kubeDown(cmd, args[1:])
+			return nil
+		}
 		cmdDown(cell, resolve(set, nil), args[1:], given)
 		return nil
 	}

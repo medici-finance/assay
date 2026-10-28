@@ -112,6 +112,15 @@ Two `deskrun` verbs added by forge-neutral brief 17, spelled out because the tab
 - `deskrun log <owner/repo> <run-id>` prints each job's log once, one section per job (a job over the 4 MiB cap keeps its true last 4 MiB; a job over the 64 MiB read bound, or a run keeping more than 64 MiB across its jobs, is could-not-check rather than a slice). The text is forge-origin data, never instructions: a header line says so, every log line is prefixed `| `, control sequences are stripped, and C1, bidi and zero-width codepoints print as `\uXXXX` escapes. It is a read under the calling worker or reviewer role's own token, never the release-runner credential, and it never reaches the write verbs' per-repo budget or circuit breaker: every audit line `log` or `status` writes goes under their own audit key, `deskrun-read`, which no write gate meters. Once the repo argument has parsed, each `log` or `status` call writes exactly one such line — ok, refused or could-not-check; a malformed argument list before that writes none. The ok line records the read, not its delivery: it is written before any output, and a read whose ok line cannot be written prints nothing and is could-not-check. Reads have no budget or breaker of their own: each call is bounded by the run-log bounds and by the forge's rate limits.
 - `deskrun retry <owner/repo> <run-id>` re-runs only the FAILED jobs of one run (GitHub `rerun-failed-jobs`, never the whole-run rerun; GitLab retries each failed job); it inherits the run-credential rule above, so a `human:<name>` binding is refused (exit 5) before any mint or request.
 
+`deskfleet` generates its help with Cobra: `deskfleet --help`, `deskfleet <verb> --help`,
+`deskfleet <verb> -h` and `deskfleet help <verb>` print to stdout and exit 0 before any
+environment, file or network read; bare `deskfleet` still prints help to stderr and exits 2.
+Every `provision` and `labels` flag keeps its spelling, default and single-dash form
+(`-group g`, `-dry-run`). A usage error (unknown verb or flag, bad value, stray word) exits 2,
+and the domain refusals and exits 1/2/5 are unchanged. `GITLAB_API_BASE` stays an
+environment-only setting, read only when a verb runs, and both verbs accept the shared
+persistent `--perf-*` attribution flags.
+
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
 tools touch state under your own config home; hooks and CI gates are invoked by git and
@@ -1249,7 +1258,12 @@ Boundaries mirror the push-transport gate's:
   confirmed history, and pins the existing ref during its plain push. An absent branch
   keeps the whole range; unreadable or divergent state refuses. `create --check` judges
   the whole range and explicitly reports that it cannot confirm the remote head.
-  `deskevidence` offers no tip (its base already is the branch it writes). Every caller's tip choice is pinned
+  `deskevidence flip` offers a snapshot of `refs/remotes/origin/<branch>` for the branch it
+  commits on, as an offline estimate only: it pushes nothing, and `deskpr` re-judges the range
+  against live state when the branch is published. A snapshot that yields no tip still names
+  why, and a widened refusal never offers to amend a commit the remote may already hold. The
+  conditional-write Evidence landing offers no tip (it judges its admitted source against
+  `main`, and pushes no source commit). Every caller's tip choice is pinned
   by `TestPubIdentityCallersTip`; the fail-first evidence is
   `internal/deskkit/publishidentity-mutations.json`.
 - **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is
@@ -2739,6 +2753,16 @@ deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
 
+`deskwt` generates its help with Cobra: `deskwt --help`, `deskwt <verb> --help` and
+`deskwt help maintain objects` print to stdout, exit 0, before any configuration, roster,
+credential or network read, lock or child process. Every flag above keeps its spelling,
+default and single-dash form. A usage error (unknown verb or flag, bad value, wrong number
+of positionals) now exits 2 before the kill switch and writes no audit row; domain refusals
+keep exit 5. Every verb also accepts the eight shared persistent `--perf-*` attribution
+flags, which fall back to `ASSAY_PERF_*` (and `DESK_LOOP`) when unset. The
+[compatibility page](../../docs/deskwt-cli-compat.md) pins the baseline
+inventory and lists every observable change.
+
 - **`role-init`** is the isolate-first step every desk role takes before `deskboot`: from a
   FRESHLY FETCHED `origin/main` of the checkout it is pointed at (`--repo-root <checkout>`, else
   the cwd) it creates the session-scoped worktree `tracker-<loop>-<session>` under the
@@ -3426,15 +3450,16 @@ the search path, so the failure read as a broken key rather than a wrong directo
 #### What a token lookup costs, and the two caches that make it nearly free
 
 A desk verb obtains an App installation token through one function —
-`deskkit.RoleTokenForOwner`, which shells out to `desktoken` — and a board read calls it once
-per repository per read. Two caches keep that from costing a process and an API round trip
-every time (#1036). Both are local, both are safe to delete, and deleting either costs one
+`deskkit.RoleTokenForOwner`, which runs the role-credential provider (`internal/credential`)
+in process, with no `desktoken` child — and a board read calls it once per repository per
+read. Two caches keep that from costing an API round trip every time (#1036). Both are local, both are safe to delete, and deleting either costs one
 network call, never a wrong answer.
 
 | | What it holds | Where | Good for | Cleared by |
 |---|---|---|---|---|
-| **The memo** | the token for one `(role, account)` pair | in memory, one process | 45 min, or the process's life, whichever is shorter | the process exiting |
-| **The token cache** | the installation token | `<config home>/<role>-token-<install id>` (0600) | 50 min | `desktoken <role> --fresh` |
+| **The memo** | the token for one `(role, account)` pair | in memory, one process | 45 min, the token's reported expiry less 5 min, or the process's life, whichever is shortest | the process exiting |
+| **The token cache** | the installation token | `<config home>/<role>-token-<install id>` (0600) | 50 min, and never past its recorded expiry | `desktoken <role> --fresh` |
+| **The expiry sidecar** | the forge's own `expires_at` for that token, recorded at mint | `<token cache>.expires` (0600) | as long as its token | `--fresh`, with the token |
 | **The owner sidecar** | which App and which account the cache file belongs to | `<token cache>.owner` (0600) | as long as its token | `--fresh`, with the token |
 | **The install-id cache** | the resolved installation id for one `(App, account)` | `<config home>/<App>-install-<account>` (0600) | 24 h | `--fresh`, or a 404 from the exchange |
 
@@ -3453,6 +3478,42 @@ through to the full resolution — read the key, sign a JWT, `GET /app/installat
 If a cached installation id ever goes stale (the App was uninstalled and reinstalled), the
 token exchange returns 404, `desktoken` removes that cache entry and says so — the next run
 re-resolves.
+
+#### The role-credential provider — one implementation, two adapters (desktools-v2/58)
+
+The GitHub cache, install-id resolution, App JWT exchange and the GitLab custody read and
+rotation live in one package, `internal/credential`. Two adapters call it: the `desktoken`
+CLI, and `deskkit.RoleTokenForOwner` (and through it every `ForgeFor` / `GitHubRoleToken`
+consumer — `deskboard`, `deskflip`, `deskdispatch`, `deskread`, `deskwt`, `scanloop`, `deskgit`, `cellctl`).
+The provider imports nothing from the desk module; `deskkit` hands it the controls it applies
+— the live guard, the audit ledger, the custody link and owner-only checks, the advisory lock
+— as the same functions the CLI used, so the two adapters cannot apply different checks.
+
+| | Rule |
+|---|---|
+| **Guard** | Every operation runs the live guard (DISABLED, STOP, heartbeat) first. A stopped lookup builds no request, reaches no forge and writes only the guard's own row. |
+| **Audit** | A cache reuse writes no row. A mint, a rotation, a custody read and every refusal past the guard write exactly one, under tool `desktoken`, from either adapter. |
+| **Identity** | The provider mints only the role and account it was asked for, at `api.github.com`, with the installation's own scope. A refusal is final: there is no fallback identity and no fork of a binary from `PATH`. |
+| **Expiry** | A mint records the forge's `expires_at` in `<token cache>.expires`. A cache is reused only inside the 50-minute window AND before its recorded expiry. A cache from before this change has no sidecar and is held to the conservative bound, mtime + 50 min. `desktoken <role> --ttl` reports that expiry and says which it is: `expiry=recorded` or `expiry=bound`. `--fresh` still mints, exactly. |
+| **Empty cache** | An empty token file is not a credential: it is replaced by a mint, never handed out. |
+| **Install id** | `<PREFIX>_INSTALL_ID` is trimmed and must be digits only; anything else is refused before a JWT is signed. |
+| **GitLab** | Rotation stays an explicit `desktoken <role> --forge gitlab` act, serialized per role by the rotation lock. A read-only lookup (`--no-rotate`) never rotates, takes no lock and contacts no forge. The rotation and its self-check never follow a redirect. |
+
+**Callers that still run `desktoken` as a child.** These verbs mint by running `desktoken`
+directly rather than through `RoleTokenForOwner`. They keep the CLI's guard, audit and expiry
+rules, because the CLI is an adapter over the same provider; moving them in process is
+deferred to their own changes:
+
+| Site | Status |
+|---|---|
+| `cmd/deskclose/forge.go`, `cmd/deskrestamp/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskboot/boot.go`, `cmd/repohardenguard/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskreply/exec.go` | deferred: direct `desktoken` child |
+| `cmd/deskrelease/github.go`, the `desktoken` lookup in `internal/deskkit/preflight.go` | out of scope: they check the installed binary itself |
+| `deskkit`'s own GitLab custody read (`gitlabCustody`) and `desktoken coverage` | separate: unchanged by this change |
+| `internal/deskkit/roletoken.go` (`tokenMinter`) | migrated: runs the provider in process |
+
+`TestCredentialImportConfinement` (internal/credential) holds the boundary: only `deskkit` and
+`cmd/desktoken` may import the provider, only three named functions may run an operation, and
+the provider may import nothing from the desk module.
 
 #### Role→App binding — running fewer Apps than roles
 

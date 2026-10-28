@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	handoff "github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/topology"
@@ -290,11 +291,68 @@ func (r *issueReader) fetchIssueTrustPayload(num int) (bodyEdited time.Time, eve
 // and one long thread never fails the whole board again.
 func (r *issueReader) fetchIssueEvents(num int) (events []deskkit.ContentEvent, complete bool, err error) {
 	f, fr, repo := r.forge, r.repo, r.repo.Slug()
+	if r.eventNext < len(r.eventNumbers) && r.eventNumbers[r.eventNext] == num {
+		end := min(r.eventNext+deskkit.IssueCommentBatchSize, len(r.eventNumbers))
+		payloads, batchErr := deskkit.ReadIssueCommentEvents(f, fr, r.eventNumbers[r.eventNext:end])
+		if batchErr != nil {
+			return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), batchErr)
+		}
+		r.eventPayloads = payloads
+		r.eventNext = end
+	}
+	if payload, ok := r.eventPayloads[num]; ok {
+		delete(r.eventPayloads, num)
+		return payload.Events, payload.Complete, nil
+	}
 	tp, terr := f.IssueContentEvents(fr, num)
 	if terr != nil {
 		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
 	}
 	return tp.Events, tp.Complete, nil
+}
+
+// Only known-trusted, selected escalation rows can be read ahead. Untrusted
+// authors keep their original trust-then-history sequence, including quarantine
+// and body-edit/numeric-identity checks. Duplicate listing identities retain
+// their original separate reads. This plan and its bounded results belong to
+// this repository's current collection only.
+func (r *issueReader) planIssueEvents(issues []ghIssue, byKey map[string]placeholderRow, projection issueflow.Projection, toFilter string) {
+	if !deskkit.CanBatchIssueComments(r.forge) {
+		return
+	}
+	seen := map[int]bool{}
+	for _, candidate := range issues {
+		if seen[candidate.Number] {
+			r.eventNumbers = nil
+			return
+		}
+		seen[candidate.Number] = true
+		if !deskkit.TrustedAuthor(candidate.Author.Login) {
+			continue
+		}
+		names := labelNames(candidate.Labels)
+		decisionOwed := hasDecisionLabel(names)
+		role, state := deskkit.AddressedToOf(names)
+		addressed := state == deskkit.RaisedByStamped
+		if !(decisionOwed || addressed) || toFilter != "" && (!addressed || !strings.EqualFold(role, toFilter)) {
+			continue
+		}
+		_, hasPh := byKey[r.repo.Slug()+"#"+strconv.Itoa(candidate.Number)]
+		helpWanted := false
+		for _, label := range names {
+			if strings.EqualFold(strings.TrimSpace(label), "help wanted") {
+				helpWanted = true
+			}
+		}
+		if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
+			HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names), DecisionOwed: decisionOwed,
+			Addressed: addressed, Role: role, AddressUnknown: state == deskkit.RaisedByIndeterminate,
+			HelpWanted: helpWanted,
+		}, toFilter) {
+			continue
+		}
+		r.eventNumbers = append(r.eventNumbers, candidate.Number)
+	}
 }
 
 // labelHistoryHold is the issue board's SUPERSET test over an issue's label history
@@ -419,11 +477,13 @@ func parseFrontmatter(path string) (map[string]string, error) {
 // placeholderRow is the parsed frontmatter of one docs/streams/issue-loop placeholder
 // file this tool cares about.
 type placeholderRow struct {
-	Path    string
-	Issue   int
-	Repo    string
-	Status  string
-	Blocked string
+	Handoff       string
+	HandoffOpened string
+	Path          string
+	Issue         int
+	Repo          string
+	Status        string
+	Blocked       string
 }
 
 // loadPlaceholders scans root/docs/streams/issue-loop for placeholder-named files and
@@ -458,11 +518,13 @@ func loadPlaceholders(root string) ([]placeholderRow, error) {
 			return nil, deskkit.Unverifiable("cannot parse placeholder "+path, err)
 		}
 		out = append(out, placeholderRow{
-			Path:    path,
-			Issue:   num,
-			Repo:    fields["repo"],
-			Status:  strings.ToLower(fields["status"]),
-			Blocked: fields["blocked"],
+			Path:          path,
+			Handoff:       fields["handoff"],
+			HandoffOpened: fields["handoff-opened"],
+			Issue:         num,
+			Repo:          fields["repo"],
+			Status:        strings.ToLower(fields["status"]),
+			Blocked:       fields["blocked"],
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -730,6 +792,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		if err != nil {
 			return nil, nil, err
 		}
+		reader.planIssueEvents(issues, byKey, projection, toFilter)
 		seen := map[string]bool{}
 
 		for _, iss := range issues {
@@ -847,6 +910,15 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 					row.HistoryHold, row.HistoryUnverifiable = reason, unver
 				}
 			}
+			intake := assessIssueHandoff(ph, key, names, now)
+			if projection == issueflow.WorkReady && !handoff.RepairDispositionSettled(intake) {
+				continue
+			}
+			// Keep classification visible in the ordinary intake/full board. A scan
+			// placeholder and a routing comment cannot make this judgment disappear.
+			if row.Action == actNone || row.Action == actCreatePlaceholder {
+				row.Title = "[intake:" + intake.State + "] " + row.Title
+			}
 			if addressed {
 				row.AddrRole = addrRole
 			}
@@ -942,8 +1014,13 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				continue
 			}
 			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true})
+			intake := assessIssueHandoff(ph, fmt.Sprintf("%s#%d", repo, ph.Issue), nil, now)
 			if title == "" {
 				title = "(title unavailable — issue closed)"
+			}
+			if intake.State != "observed" {
+				action = actAwait
+				title = "[intake:" + intake.State + "] " + title
 			}
 			rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: title, Action: action})
 		}

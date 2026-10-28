@@ -1,0 +1,444 @@
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "Role",
+  "metadata": {
+    "name": "compat-custodian-the-desk",
+    "namespace": "assay-desks"
+  },
+  "rules": [
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets"
+      ],
+      "resourceNames": [
+        "the-desk"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets/scale"
+      ],
+      "resourceNames": [
+        "the-desk"
+      ],
+      "verbs": [
+        "get",
+        "update"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods"
+      ],
+      "resourceNames": [
+        "the-desk-0"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods/attach"
+      ],
+      "resourceNames": [
+        "the-desk-0"
+      ],
+      "verbs": [
+        "create"
+      ]
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "RoleBinding",
+  "metadata": {
+    "name": "compat-custodian-the-desk",
+    "namespace": "assay-desks"
+  },
+  "roleRef": {
+    "apiGroup": "rbac.authorization.k8s.io",
+    "kind": "Role",
+    "name": "compat-custodian-the-desk"
+  },
+  "subjects": [
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "kind": "Group",
+      "name": "REQUIRES_EXISTING_CUSTODIAN_the-desk"
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "Role",
+  "metadata": {
+    "name": "compat-custodian-intake-desk",
+    "namespace": "assay-desks"
+  },
+  "rules": [
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets"
+      ],
+      "resourceNames": [
+        "intake-desk"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets/scale"
+      ],
+      "resourceNames": [
+        "intake-desk"
+      ],
+      "verbs": [
+        "get",
+        "update"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods"
+      ],
+      "resourceNames": [
+        "intake-desk-0"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods/attach"
+      ],
+      "resourceNames": [
+        "intake-desk-0"
+      ],
+      "verbs": [
+        "create"
+      ]
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "RoleBinding",
+  "metadata": {
+    "name": "compat-custodian-intake-desk",
+    "namespace": "assay-desks"
+  },
+  "roleRef": {
+    "apiGroup": "rbac.authorization.k8s.io",
+    "kind": "Role",
+    "name": "compat-custodian-intake-desk"
+  },
+  "subjects": [
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "kind": "Group",
+      "name": "REQUIRES_EXISTING_CUSTODIAN_intake-desk"
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "Role",
+  "metadata": {
+    "name": "compat-custodian-worker-desk",
+    "namespace": "assay-desks"
+  },
+  "rules": [
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets"
+      ],
+      "resourceNames": [
+        "worker-desk"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets/scale"
+      ],
+      "resourceNames": [
+        "worker-desk"
+      ],
+      "verbs": [
+        "get",
+        "update"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods"
+      ],
+      "resourceNames": [
+        "worker-desk-0"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods/attach"
+      ],
+      "resourceNames": [
+        "worker-desk-0"
+      ],
+      "verbs": [
+        "create"
+      ]
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "RoleBinding",
+  "metadata": {
+    "name": "compat-custodian-worker-desk",
+    "namespace": "assay-desks"
+  },
+  "roleRef": {
+    "apiGroup": "rbac.authorization.k8s.io",
+    "kind": "Role",
+    "name": "compat-custodian-worker-desk"
+  },
+  "subjects": [
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "kind": "Group",
+      "name": "REQUIRES_EXISTING_CUSTODIAN_worker-desk"
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "Role",
+  "metadata": {
+    "name": "compat-custodian-pr-review-desk",
+    "namespace": "assay-desks"
+  },
+  "rules": [
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets"
+      ],
+      "resourceNames": [
+        "pr-review-desk"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets/scale"
+      ],
+      "resourceNames": [
+        "pr-review-desk"
+      ],
+      "verbs": [
+        "get",
+        "update"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods"
+      ],
+      "resourceNames": [
+        "pr-review-desk-0"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods/attach"
+      ],
+      "resourceNames": [
+        "pr-review-desk-0"
+      ],
+      "verbs": [
+        "create"
+      ]
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "RoleBinding",
+  "metadata": {
+    "name": "compat-custodian-pr-review-desk",
+    "namespace": "assay-desks"
+  },
+  "roleRef": {
+    "apiGroup": "rbac.authorization.k8s.io",
+    "kind": "Role",
+    "name": "compat-custodian-pr-review-desk"
+  },
+  "subjects": [
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "kind": "Group",
+      "name": "REQUIRES_EXISTING_CUSTODIAN_pr-review-desk"
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "Role",
+  "metadata": {
+    "name": "compat-custodian-verify-desk",
+    "namespace": "assay-desks"
+  },
+  "rules": [
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets"
+      ],
+      "resourceNames": [
+        "verify-desk"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        "apps"
+      ],
+      "resources": [
+        "statefulsets/scale"
+      ],
+      "resourceNames": [
+        "verify-desk"
+      ],
+      "verbs": [
+        "get",
+        "update"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods"
+      ],
+      "resourceNames": [
+        "verify-desk-0"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroups": [
+        ""
+      ],
+      "resources": [
+        "pods/attach"
+      ],
+      "resourceNames": [
+        "verify-desk-0"
+      ],
+      "verbs": [
+        "create"
+      ]
+    }
+  ]
+}
+---
+{
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "RoleBinding",
+  "metadata": {
+    "name": "compat-custodian-verify-desk",
+    "namespace": "assay-desks"
+  },
+  "roleRef": {
+    "apiGroup": "rbac.authorization.k8s.io",
+    "kind": "Role",
+    "name": "compat-custodian-verify-desk"
+  },
+  "subjects": [
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "kind": "Group",
+      "name": "REQUIRES_EXISTING_CUSTODIAN_verify-desk"
+    }
+  ]
+}

@@ -73,10 +73,11 @@ type runnerAuthority struct {
 func (runnerAuthority) RequiredKeys() []string { return []string{"key", "generation", "validated_by"} }
 
 type runnerObservation struct {
-	State       string        `json:"state"`
-	ActualModel string        `json:"actual_model"`
-	Usage       runnerUsage   `json:"usage"`
-	Result      *runnerResult `json:"result"`
+	State       string          `json:"state"`
+	ActualModel string          `json:"actual_model"`
+	Usage       runnerUsage     `json:"usage"`
+	Result      *runnerResult   `json:"result"`
+	Ext         json.RawMessage `json:"ext"`
 }
 
 func (runnerObservation) RequiredKeys() []string { return []string{"state", "usage"} }

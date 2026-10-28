@@ -205,6 +205,11 @@ surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then
   set after the placeholder exists does not change its gate. When you score an item `risk:high` and
   its placeholder already reads `gate: model`, label the issue `help wanted` and comment, naming the
   placeholder file, that human:<name> must set `gate: human` in it by hand.
+  `statusgen --scan-issues` prints one `NOTICE` for each such item on every pass, with or
+  without `--dry-run`, naming the issue and the placeholder file, until the file reads
+  `gate: human`: that line is the mechanical signal that this edit is still owed. The desk's
+  scan drain does not show it; read it by running `statusgen --root . --scan-issues --dry-run`,
+  which writes nothing.
 - **Every exit, forward-only.** All five tracked exits (and the intake lane's four) take a
   triple; scoring is forward-only — the corpus accretes from now, existing items are not
   back-labelled, so an unscored older item is expected, never a defect.
@@ -270,6 +275,40 @@ one is refused (exit 5) and the first recorded exit stands. **On a refusal or a 
 a different `--opened` to get past it; file an issue against the desk tooling naming the item and
 the message. A drain pass that exits 5 or 6 naming intake-exit records has still landed and audited
 every exit — only the named records are missing; file the same issue.
+
+**Accountable handoff (version-negotiated).** A mechanical exit, scan PR, label,
+routing comment or closed issue is not accepted successor work. With readers
+supporting `intake-handoff-v1`, record the source event, deciding role, evidence
+and disposition using `scanloop land ... --handoff <json-file> --handoff-reader
+intake-handoff-v1`; retain the original exit and append a new judgment revision.
+Publish the companion beside the existing placeholder/register record with its
+`handoff:` pointer and `handoff-opened:` source time through the normal reviewed
+change. The local history alone is not an assignment authority. The register's
+`statusgen --intake-handoffs` view reports the same meaning without changing
+`--intake-exits`.
+
+Scoping queues a linked author-spec/author-brief task for a strong author. A
+sufficiently scoped repair may use the existing issue; delivered source goes to
+installation/qualification. An external prerequisite names the role, exact action
+and wake condition. Reuse existing owner work, including when a source issue is
+closed as a duplicate. Read back the successor through its owner before treating
+the handoff as discharged; a stopped scan carrier leaves successor-owed work.
+Legacy or unreadable companions remain classification-needed. Do not promote
+raw placeholders or open a new issue merely to acknowledge an observation.
+The drain replays durable observations after restart and still applies current
+trust; use the displayed judgment to reconcile existing work, not to repeat it.
+Replay of an issue stops only when its latest event has a recorded companion
+assessed `observed` or `external-wait`, or an exit you recorded by judgment as
+`rejected-watching` with that event's `--opened`. A mechanical exit never stops it. Read the result back in
+the next pass report: an issue still owed prints an `intake:` line under
+`EMITTED` with its assessment, and a settled one no longer queues.
+`statusgen --intake-handoffs` reads only the committed intake register, never an
+issue's local companion, so it cannot confirm an issue. A newer source event on
+the issue presents it again. A `RETIRED` line records a terminal
+`gone` or `quarantined` disposition for one event. A `DEFERRED` line names
+retained events held past this pass's replay bound. Neither line is an empty queue.
+Before committing a companion to a public repository, scrub its free-text
+`evidence`, `required_action` and `wake_condition` fields; they publish as written.
 
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues. Until R-7 signs and

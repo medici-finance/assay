@@ -254,6 +254,43 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions}, ""
 }
 
+// acceptanceRecordKind classifies a verifyrun --acceptance-record descriptor.
+// One Verification-Table line is a protected record (#4499): it names the
+// immutable delivery coordinates and nothing else, so which rows are original
+// and which are supplemental is derived from git at those coordinates, never
+// read from the record. That line plus one Acceptance-Transition line is an
+// acceptance transition. Any other shape, including an extra line that would
+// carry a verifier-supplied row list, is refused.
+func acceptanceRecordKind(descriptor string) (transition bool, why string) {
+	lines := strings.Split(descriptor, "\n")
+	switch {
+	case len(lines) == 1 && strings.HasPrefix(lines[0], "Verification-Table:"):
+		return false, ""
+	case len(lines) == 2 && strings.HasPrefix(lines[0], "Verification-Table:") && strings.HasPrefix(lines[1], "Acceptance-Transition:"):
+		return true, ""
+	}
+	return false, "statusgen verifyrun: --acceptance-record must hold one Verification-Table line, optionally followed by one Acceptance-Transition line, and nothing else"
+}
+
+// originalDefinitionDrift refuses a protected record whose original rows were
+// redefined at delivery. Without a transition the closure audits an original
+// row against its pre-delivery definition, so a row whose command, Expect or
+// class changed at delivery would be credited on a command nobody delivered.
+// Such a change is an acceptance transition, with its own approval, and stays
+// on that route.
+func originalDefinitionDrift(baseline, delivered string) string {
+	current := map[string]verifyRow{}
+	for _, row := range briefVerifyRows(delivered) {
+		current[row.ID] = row
+	}
+	for _, row := range briefVerifyRows(baseline) {
+		if got, ok := current[row.ID]; !ok || !reflect.DeepEqual(got, row) {
+			return "protected table: original row " + row.ID + " differs from its delivered definition; a changed original row needs an Acceptance-Transition record and its approval"
+		}
+	}
+	return ""
+}
+
 // deliveryCoordinates authenticates a recorded delivery/base/original triple
 // against the git graph reachable from HEAD in dir and returns the delivery's
 // parents. It is the one validator of those coordinates: the protected-table
