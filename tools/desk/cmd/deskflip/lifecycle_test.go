@@ -136,7 +136,7 @@ func TestDeliveryCannotFlipWithGreenApprovedButMissingLifecycleCheck(t *testing.
 	}
 }
 
-const nonRisk = "---\nstatus: todo\ngate: model\nrisk: {sensitive-data: no, destructive: no, privilege: no, broad-impact: no}\n---\n"
+const nonRisk = "---\nstatus: todo\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\n"
 
 func TestDeliveryFlipsOnlyWithCurrentHeadLifecycleSuccess(t *testing.T) {
 	s := newStub()
