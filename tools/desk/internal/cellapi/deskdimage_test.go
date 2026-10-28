@@ -562,7 +562,7 @@ func checkIgnore(text string) []deskdProblem {
 // makeRule is a target's recipe as the checker reads it.
 type makeRule struct {
 	lines   []string // logical shell lines: continuations joined, leading @ - + markers dropped
-	ignored []bool   // lines[i] carried make's - marker, so make ignores its exit status
+	ignored []bool   // lines[i] carried make's - marker (or may, after expansion), so make ignores its exit status
 	recipes int      // rules for the target that carry a recipe; make runs only the last
 }
 
@@ -606,8 +606,10 @@ func recipeLines(lines []string) ([]string, []bool) {
 		if cur.Len() == 0 {
 			// make reads any run of @, - and + (blanks between them allowed).
 			marks := body[:len(body)-len(strings.TrimLeft(body, "@-+ \t"))]
-			ign = strings.Contains(marks, "-")
 			body = body[len(marks):]
+			// make expands the line before it reads the markers, so a leading
+			// expansion ($(strip -)) can yield one the text does not show.
+			ign = strings.Contains(marks, "-") || (strings.HasPrefix(body, "$") && !strings.HasPrefix(body, "$$"))
 		}
 		if strings.HasSuffix(body, `\`) {
 			cur.WriteString(strings.TrimSuffix(body, `\`))
@@ -624,17 +626,39 @@ func recipeLines(lines []string) ([]string, []bool) {
 
 // makeIgnoresErrors names each Makefile-level setting under which make does not
 // fail a target on a failed recipe line, or reads the recipe other than one
-// shell per line: .IGNORE (bare, naming target, or through a variable),
-// MAKEFLAGS/MFLAGS gaining -i or --ignore-errors, and .ONESHELL.
+// POSIX shell per line: .IGNORE (bare, naming target, or through a variable),
+// MAKEFLAGS/MFLAGS gaining -i or --ignore-errors (or an abbreviation of it),
+// .ONESHELL, a SHELL other than /bin/sh, any .SHELLFLAGS, and $(eval), which
+// can create any of these where no line spells it. Each name is matched in any
+// form: a mention the checker cannot read as a plain setting is refused.
 func makeIgnoresErrors(makefile string, targets []string) []string {
-	ignoreRule := regexp.MustCompile(`^\.IGNORE\s*:(.*)$`)
-	flagsSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*(?:MAKEFLAGS|MFLAGS)\s*(?:\+|:|::|\?|!)?=(.*)$`)
+	const assignOp = `\s*(?:\+|:|::|:::|\?|!)?=`
+	ignoreRule := regexp.MustCompile(`^\s*\.IGNORE\s*::?(.*)$`)
+	flagsSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*(?:MAKEFLAGS|MFLAGS)` + assignOp + `(.*)$`)
+	shellSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*SHELL` + assignOp + `\s*/bin/sh\s*$`)
 	var why []string
 	for _, l := range strings.Split(strings.ReplaceAll(makefile, "\r\n", "\n"), "\n") {
 		if strings.HasPrefix(l, "\t") {
 			continue
 		}
 		l, _, _ = strings.Cut(l, "#")
+		q := strconv.Quote(strings.TrimSpace(l))
+		if regexp.MustCompile(`\$[({]eval\s`).MatchString(l) {
+			why = append(why, "$(eval) can define rules and settings (.IGNORE, MAKEFLAGS, SHELL) the checker cannot read: "+q)
+			continue
+		}
+		if regexp.MustCompile(`(^|[^\w.])SHELL\b`).MatchString(l) && !shellSet.MatchString(l) {
+			why = append(why, "SHELL is set to something other than /bin/sh, so recipe lines are not run as written: "+q)
+		}
+		if regexp.MustCompile(`\.SHELLFLAGS\b`).MatchString(l) {
+			why = append(why, ".SHELLFLAGS changes how each recipe line is run: "+q)
+		}
+		if regexp.MustCompile(`\b(?:MAKEFLAGS|MFLAGS)\b`).MatchString(l) && !flagsSet.MatchString(l) {
+			why = append(why, "MAKEFLAGS is named in a form the checker cannot read as a plain setting: "+q)
+		}
+		if regexp.MustCompile(`\.IGNORE\b`).MatchString(l) && !ignoreRule.MatchString(l) {
+			why = append(why, ".IGNORE is named in a form the checker cannot read as a rule: "+q)
+		}
 		if m := ignoreRule.FindStringSubmatch(l); m != nil {
 			deps := strings.Fields(m[1])
 			named := len(deps) == 0 || strings.Contains(m[1], "$")
@@ -644,13 +668,13 @@ func makeIgnoresErrors(makefile string, targets []string) []string {
 				}
 			}
 			if named {
-				why = append(why, ".IGNORE makes make ignore failed recipe lines: "+strconv.Quote(strings.TrimSpace(l)))
+				why = append(why, ".IGNORE makes make ignore failed recipe lines: "+q)
 			}
 		}
 		if m := flagsSet.FindStringSubmatch(l); m != nil && makeflagsIgnore(m[1]) {
-			why = append(why, "MAKEFLAGS runs make with -i, ignoring failed recipe lines: "+strconv.Quote(strings.TrimSpace(l)))
+			why = append(why, "MAKEFLAGS runs make with -i, ignoring failed recipe lines: "+q)
 		}
-		if regexp.MustCompile(`^\.ONESHELL\s*:`).MatchString(l) {
+		if regexp.MustCompile(`\.ONESHELL\b`).MatchString(l) {
 			why = append(why, ".ONESHELL runs each recipe as one shell, so a later line decides the target's status")
 		}
 	}
@@ -659,13 +683,14 @@ func makeIgnoresErrors(makefile string, targets []string) []string {
 
 // makeflagsIgnore reports whether a MAKEFLAGS value carries -i, alone or in a
 // short-flag group (a letter that takes an argument ends the group), or
-// --ignore-errors. A variable reference cannot be read, so it counts.
+// --ignore-errors or an abbreviation make accepts for it (--ig onward). A
+// variable reference cannot be read, so it counts.
 func makeflagsIgnore(v string) bool {
 	if strings.Contains(v, "$") {
 		return true
 	}
 	for _, w := range strings.Fields(v) {
-		if w == "--ignore-errors" {
+		if len(w) >= len("--ig") && strings.HasPrefix("--ignore-errors", w) {
 			return true
 		}
 		if strings.HasPrefix(w, "--") {
@@ -709,11 +734,17 @@ func phonyTargets(makefile string) map[string]bool {
 // On a line that carries a step, a trap (which can rewrite the exit status), an
 // exit/return without a literal non-zero status or an exec before the step
 // (which end the line first), and a function or alias named after the step's
-// command (which shadows it) are refused as well. At the make level, a line
-// marked -, .IGNORE, MAKEFLAGS with -i, .ONESHELL and a second recipe for the
-// target are refused in checkMakefile. Out of this file's reach, and so not
-// held here: a caller running make -i or exporting MAKEFLAGS, and a SHELL or
-// .SHELLFLAGS that is not a POSIX sh -c.
+// command (which shadows it) are refused as well, also when reached through
+// command/builtin or inside a { } group, an if, a loop or a subshell. eval and
+// . (source) are refused anywhere on such a line: they run text the checker
+// cannot read. At the make level, a line marked - (or starting with an
+// expansion, which can yield one), .IGNORE, MAKEFLAGS with -i, .ONESHELL, a
+// SHELL other than /bin/sh, .SHELLFLAGS, $(eval) and a second recipe for the
+// target are refused in checkMakefile. These rules match spellings, so a
+// spelling none of them names can still escape; they guard against the forms a
+// regression is likely to take, not against a determined rewrite. Out of this
+// file's reach, and so not held here: a caller running make -i or exporting
+// MAKEFLAGS or SHELL, and a makefile pulled in through include.
 
 // recipeStep is a command whose failure must fail its make target.
 type recipeStep struct {
@@ -938,8 +969,11 @@ func unfatalSteps(line string, steps []recipeStep) []string {
 		for _, st := range steps {
 			stepSeen = stepSeen || hasWords(w, st.words...)
 		}
+		w = leadCommand(w)
 		switch {
 		case len(w) == 0:
+		case w[0] == "eval" || w[0] == "." || w[0] == "source":
+			why = append(why, "line runs "+w[0]+", whose text the checker cannot read (it can exit, trap or shadow a step)")
 		case w[0] == "trap":
 			why = append(why, "line sets a trap, which can rewrite its exit status")
 		case stepSeen:
@@ -949,6 +983,26 @@ func unfatalSteps(line string, steps []recipeStep) []string {
 		}
 	}
 	return why
+}
+
+// leadCommand drops the words that put a command inside a compound or run it
+// through a builtin wrapper ({, (, !, if, then, else, elif, do, while, until,
+// command, builtin), so a trap, exit or eval there is read as the command it is.
+func leadCommand(w []string) []string {
+	for len(w) > 0 {
+		f := strings.TrimLeft(w[0], "({!")
+		switch {
+		case f == "":
+			w = w[1:]
+		case f != w[0]:
+			w = append([]string{f}, w[1:]...)
+		case slices.Contains([]string{"if", "then", "else", "elif", "do", "while", "until", "command", "builtin"}, f):
+			w = w[1:]
+		default:
+			return w
+		}
+	}
+	return w
 }
 
 // registryHostRef is an image reference whose first path component is a
@@ -1052,6 +1106,8 @@ func checkMakefile(text string) []deskdProblem {
 			add("missing-secret-scan", "deskd-image must run containers/scripts/layer-secret-scan.sh on the built image")
 		case tag != "" && !slices.Contains(scanned, tag):
 			add("missing-secret-scan", "deskd-image scans "+strings.Join(scanned, ", ")+", not the image its build tagged, "+tag)
+		case tagReassigned(recipes["deskd-image"], tag):
+			add("missing-secret-scan", "deskd-image reassigns the variable in its build tag "+tag+" between the build and the scan, so the scan may name another image")
 		}
 		for _, l := range recipes["deskd-image"] {
 			for _, why := range unfatalSteps(l, imageSteps) {
@@ -1088,6 +1144,37 @@ func checkMakefile(text string) []deskdProblem {
 		}
 	}
 	return ps
+}
+
+// tagReassigned reports whether the shell variable in the build's tag (the tag
+// in "assay-deskd:$$tag") is assigned, read, unset or looped over on the build's
+// line after the build and before the scan.
+func tagReassigned(lines []string, tag string) bool {
+	m := regexp.MustCompile(`\$\$\{?([A-Za-z_][A-Za-z0-9_]*)`).FindStringSubmatch(tag)
+	if m == nil {
+		return false
+	}
+	v := regexp.QuoteMeta(m[1])
+	assign := regexp.MustCompile(`(^|[\s({])` + v + `\+?=`)
+	named := regexp.MustCompile(`^(read|unset|getopts|for|local|declare|typeset|export|readonly)$`)
+	word := regexp.MustCompile(`(^|[^\w$])` + v + `\b`)
+	for _, l := range lines {
+		built := false
+		for _, s := range shellSegments(l) {
+			w := leadCommand(commandWords(s.masked))
+			switch {
+			case hasWords(w, "docker", "build"):
+				built = true
+			case !built:
+			case hasWords(w, "sh", "containers/scripts/layer-secret-scan.sh"):
+				built = false
+			case assign.MatchString(s.masked),
+				len(w) > 0 && named.MatchString(w[0]) && word.MatchString(strings.Join(w[1:], " ")):
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func checkDeskdBuild(in deskdBuildInputs) []deskdProblem {
