@@ -27,6 +27,8 @@ consumers:
   - "tools/desk/internal/kubecompat/: follow-up desk-containers/31"
   - "containers/k8s/compatibility/: follow-up desk-containers/31"
   - "containers/k8s/components/compatibility-cellctl/: follow-up desk-containers/31"
+  - "containers/k8s/check.py: follow-up desk-containers/31"
+  - "containers/k8s/testdata/: follow-up desk-containers/31"
   - "containers/base/Dockerfile: follow-up desk-containers/31"
   - "docs/cellctl.md: follow-up desk-containers/31"
   - "docs/docker.md: follow-up desk-containers/31"
