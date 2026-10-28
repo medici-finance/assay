@@ -92,7 +92,8 @@ for name, (args, stdin, want, version_args) in ROW_TOOLS.items():
                              capture_output=True, timeout=60)
     if version.returncode != 0:
         raise RuntimeError(f'{name} {" ".join(version_args)} exited {version.returncode}')
-    tools[name] = ' '.join(version.stdout.decode(errors='replace').split())
+    lines = version.stdout.decode(errors='replace').splitlines()
+    tools[name] = next((line.strip() for line in lines if any(c.isdigit() for c in line)), '')
 
 print(json.dumps({'python': platform.python_version(),
                   'PyYAML': importlib.metadata.version('PyYAML'),
