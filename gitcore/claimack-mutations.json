@@ -76,8 +76,8 @@
     {
       "name": "accept unsafe correlation ID",
       "file": "claimack.go",
-      "old": "return \"invalid\"",
-      "new": "return s"
+      "old": "\tif len(s) > 128 {\n\t\treturn \"invalid\"\n\t}",
+      "new": "\tif len(s) > 128 {\n\t\treturn s\n\t}"
     },
     {
       "name": "erase packet digest",
