@@ -269,6 +269,13 @@ unported:
 #     array). HP/03 A1: Codex CLI for v1 — the App-marketplace `interface` block
 #     superpowers carries is deliberately omitted (App is HP/08, out of scope).
 #
+#   plugins/assay/.cursor-plugin/plugin.json          (GENERATED — do not edit)
+#     The Cursor plugin manifest a Cursor team-marketplace import reads, via the
+#     root .cursor-plugin/marketplace.json (also GENERATED, carries no version).
+#     Derived from the Claude manifest by `tools/harnessgen cursor`, with explicit
+#     rules/skills/commands/hooks component fields (cursor.com/docs/reference/plugins).
+#     Stamped at cut time by scripts/stamp-plugin-version.sh like the Codex one.
+#
 #   plugins/assay/codex/packaging.md
 #     The coverage roster (the SOURCES.yaml discipline, ported): every
 #     skills/*/SKILL.md must be listed packaged or excluded-with-reason; an
