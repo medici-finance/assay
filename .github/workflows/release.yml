@@ -77,6 +77,10 @@ name: release
 #   * images — the single release job builds and verifies all nine images from
 #     the prepared source and Linux binary artifacts, then pushes them before
 #     tagging and publishing their checksummed references with the binaries.
+#     verify-runner is multi-arch (linux/amd64 + linux/arm64, #4323): both
+#     platforms are built and checked on this runner, which therefore needs
+#     arm64 emulation registered with its Docker engine; its reference pins
+#     the image index digest. The other eight images stay linux/amd64.
 #     One release Environment approval covers this entire publication sequence.
 
 on:
@@ -1199,6 +1203,11 @@ jobs:
           GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
           GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
           GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+          # linux-arm64 is the statusgen the arm64 half of the multi-arch
+          # verify-runner image carries (#4323). It is a published asset like the
+          # others: checksummed, described in the SBOM and attested, so the
+          # statusgen inside each runner platform is a release asset by sha256.
+          GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-arm64  .
           # windows-port/01: Go cross-compiles the two Windows targets on this same
           # Linux runner (no Windows host); the .exe suffix is part of the asset name.
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-amd64.exe .
@@ -1288,9 +1297,6 @@ jobs:
             tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
           done
 
-      # One checksums.txt covers every asset on the umbrella release — the five
-      # statusgen binaries, the five qualgen binaries, and the five desk-tools
-      # per-platform tarballs. Consumers pin each line by sha256 in .assay-versions.
       - name: Build versioned Cursor source bundle
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -1299,6 +1305,48 @@ jobs:
           cd tools/desk
           go run ./cmd/deskinstall --harness cursor --bundle ../../plugins/assay --release "$RELEASE_TAG" --pack ../../cursor-bundle.tar.gz
 
+      # SOFTWARE BILL OF MATERIALS. One SPDX 2.3 document, sbom.spdx.json, covers
+      # every Go-built asset: the six statusgen binaries, the five qualgen
+      # binaries, and the five desk-tools tarballs (each tarball described by the
+      # union of the Go binaries inside it). tools.release.sbom reads the Go
+      # build information the linker embedded (`go version -m`), so no extra tool
+      # joins the release runner; it records each asset's sha256, every linked
+      # module as a pkg:golang purl, and the Go toolchain as pkg:golang/stdlib.
+      # Deterministic: `created` is the source commit time. It refuses, writing
+      # nothing, if an asset is missing, a binary has no Go build information, or
+      # no dependency is found. Runs on the dry-run path too, so a dry run proves
+      # the SBOM builds; it is then checksummed and attested like every asset.
+      # The tag rides in via env:, never a `${{ }}` splice inside run:.
+      - name: Generate the SBOM
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          go version
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct HEAD)
+          export SOURCE_DATE_EPOCH
+          python3 - \
+            statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 statusgen-linux-arm64 \
+            statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
+            qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
+            qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
+            desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+            desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz <<'PY_SBOM'
+          import os
+          import sys
+          from pathlib import Path
+          from tools.release.sbom import write
+          write(Path.cwd(), sys.argv[1:], Path('sbom.spdx.json'), os.environ['REPOSITORY'],
+                os.environ['RELEASE_TAG'], int(os.environ['SOURCE_DATE_EPOCH']))
+          PY_SBOM
+          echo "sbom.spdx.json: $(grep -c '"name"' sbom.spdx.json) named elements"
+
+      # One checksums.txt covers every asset on the umbrella release — the six
+      # statusgen binaries, the five qualgen binaries, the five desk-tools
+      # per-platform tarballs, the Cursor source bundle and the SBOM
+      # (sbom.spdx.json). Consumers pin each binary line by sha256 in
+      # .assay-versions. The release job appends the image references.
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -1306,6 +1354,7 @@ jobs:
             statusgen-darwin-arm64 \
             statusgen-darwin-amd64 \
             statusgen-linux-amd64 \
+            statusgen-linux-arm64 \
             statusgen-windows-amd64.exe \
             statusgen-windows-arm64.exe \
             qualgen-darwin-arm64 \
@@ -1318,7 +1367,8 @@ jobs:
             desk-tools-linux-amd64.tar.gz \
             desk-tools-windows-amd64.tar.gz \
             desk-tools-windows-arm64.tar.gz \
-            cursor-bundle.tar.gz > checksums.txt
+            cursor-bundle.tar.gz \
+            sbom.spdx.json > checksums.txt
           cat checksums.txt
 
       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
@@ -1409,7 +1459,7 @@ jobs:
           sha256sum prepared-source.tar.gz image-bugs-gc-linux-amd64 release-highlights.md checksums.txt > build-inputs.sha256
           if [ -f release-source.bundle ]; then sha256sum release-source.bundle >> build-inputs.sha256; fi
 
-      # Independent platform artifacts let download-artifact transfer up to five
+      # Independent platform artifacts let download-artifact transfer up to six
       # platforms concurrently. Store the already-gzipped suites without another
       # compression pass; the loose binaries remain unstripped.
       - name: Upload prepared release artifacts (darwin-arm64)
@@ -1448,6 +1498,18 @@ jobs:
             qualgen-linux-amd64
             desk-tools-linux-amd64.tar.gz
 
+      # linux-arm64 carries statusgen only: it exists for the arm64 half of the
+      # multi-arch verify-runner image (#4323), not as a full platform suite.
+      - name: Upload prepared release artifacts (linux-arm64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-linux-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-linux-arm64
+
       - name: Upload prepared release artifacts (windows-amd64)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1482,6 +1544,7 @@ jobs:
           path: |
             cursor-bundle.tar.gz
             checksums.txt
+            sbom.spdx.json
             tool-validation-*.json
             tool-validation-*.md
             image-bugs-gc-linux-amd64
@@ -1572,10 +1635,13 @@ jobs:
           python3 - <<'PY_REFS'
           import json, os
           from pathlib import Path
-          from tools.release.images_contract import validate
+          from tools.release.images_contract import RUNNER_PLATFORM, validate
+          # A new release records the multi-arch runner; only a consumer of an
+          # older release's record accepts its amd64-only runner entry.
           validate(json.loads(Path('release-images.json').read_text()),
                    os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
-                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'])
+                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'],
+                   runner_platforms=(RUNNER_PLATFORM,))
           PY_REFS
           sha256sum release-images.json verify-runner-image.txt >> checksums.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1616,14 +1682,14 @@ jobs:
           # the "Assemble the tool-validation evidence pack" step above.
           # windows-port/01: the two statusgen .exe assets and the two desk-tools
           # windows tarballs are published alongside the Unix assets.
-          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
+          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 statusgen-linux-arm64 \
                    statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
                    qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
                    qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
                    desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
                    desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
                    "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
-                   cursor-bundle.tar.gz release-images.json verify-runner-image.txt checksums.txt; do
+                   cursor-bundle.tar.gz sbom.spdx.json release-images.json verify-runner-image.txt checksums.txt; do
             test -f "$f" || { echo "::error::release asset $f is missing"; exit 1; }
             printf '%s\n' "$f"
           done > release-assets.txt
@@ -1781,7 +1847,7 @@ jobs:
             # (that is the <asset>.sigstore.json bundles, #3094). The authorizer
             # rides in via env: and is read by the helper below exactly like
             # RELEASE_TAG and IMAGE_MANIFEST.
-            body=$(RELEASE_TAG="$RELEASE_TAG" IMAGE_MANIFEST="$image_manifest" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; images=json.load(open(os.environ["IMAGE_MANIFEST"],encoding="utf-8"))["images"]; img="\n".join("  * "+i["name"]+": "+i["ref"] for i in images); auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\nContainer images produced by this release (pin immutable references from release-images.json):\n"+img+"\n\nSee checksums.txt for every asset sha256.\n\nBuild provenance: every asset has a Sigstore bundle beside it, <asset>.sigstore.json - one SLSA provenance attestation, signed by the release workflow of this repository and recorded in the public transparency log, naming every asset by sha256. deskinstall verifies it before placing anything; check one by hand with: gh attestation verify <asset> --repo "+os.environ["REPO"]+" --bundle <asset>.sigstore.json\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact (the provenance bundles above record that), and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            body=$(RELEASE_TAG="$RELEASE_TAG" IMAGE_MANIFEST="$image_manifest" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; images=json.load(open(os.environ["IMAGE_MANIFEST"],encoding="utf-8"))["images"]; img="\n".join("  * "+i["name"]+": "+i["ref"] for i in images); auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\nContainer images produced by this release (pin immutable references from release-images.json):\n"+img+"\n\nSee checksums.txt for every asset sha256.\n\nSoftware bill of materials: sbom.spdx.json (SPDX 2.3 JSON) lists every Go module and the Go toolchain linked into each statusgen and qualgen binary and each desk-tools tarball, with each asset sha256 and a pkg:golang purl per module.\n\nBuild provenance: every asset has a Sigstore bundle beside it, <asset>.sigstore.json - one SLSA provenance attestation, signed by the release workflow of this repository and recorded in the public transparency log, naming every asset by sha256. deskinstall verifies it before placing anything; check one by hand with: gh attestation verify <asset> --repo "+os.environ["REPO"]+" --bundle <asset>.sigstore.json\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact (the provenance bundles above record that), and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then

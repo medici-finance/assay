@@ -10,7 +10,7 @@
     ".cursor/references/milestone-authoring.md": "107cf83de92db67348306134ad87caf72405f024d41db1c7fee12a1d1f344ec6",
     ".cursor/references/standing-note.md": "2f2868fdd8f122903e30e1b720a0efb7940165946e379adad2e6378a4d4e58c0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "519006d135c1d6494e5564dc530f5127ad7a8ac322a821970757b994c10d4568",
+    ".cursor/rules/assay.mdc": "598ed2af956bebb7e826c7f3c02a25ad8534ce03c7553366ade46bd06e60208e",
     ".cursor/skills/adopt/SKILL.md": "8a2fda684f224efd2a35c1ccfbe5d842d2f91d168d342f70d5b027b16adfd3f8",
     ".cursor/skills/ask-decision/SKILL.md": "d51f84897dd83f2b8d472b0b66e5ade2ff2045d251add1e2b8387880b72726d4",
     ".cursor/skills/author-brief/SKILL.md": "5bf0e4ba5b428f5b290a9ef76405977e703eb5758383791236447546a6c30f3f",
@@ -42,5 +42,5 @@
     ".cursor/skills/worker-desk/SKILL.md": "6a5905394b99aaff991cb0c7e7551af51f155482ad539149b08c6d5d12681eed",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "61f6196d7830a57b9ef84c2cf4b2d4862a62207625893fc74e91f0e878b8672b"
   },
-  "bindingsSha256": "32a9b4fcbae127b7d98d39c608d8c4174276e0a6f100ccc40309eeddd24d6812"
+  "bindingsSha256": "023e7d417a8fa179439aec07c76b555f1b11de06798618153dffe6f0afe7e633"
 }

@@ -132,7 +132,7 @@ check "exit 2 fails even with both fail-on inputs false" '[ "$rc" -eq 2 ]'
 run_case flagreject "specs/flagreject.json"
 check "exit 2 with no HARNESS BROKEN report still exits 2" '[ "$rc" -eq 2 ] && out_is "result=harness-broken"'
 check "and says muhar printed no HARNESS BROKEN report" 'has "$log" "without a HARNESS BROKEN report" && ! has "$log" "The baseline was red"'
-check "and its summary carries muhar's stderr" 'has "$sum" "muhar stderr (last 40 lines)" && has "$sum" "for flag -j: parse error"'
+check "and its summary carries muhar's stderr" 'has "$sum" "muhar stderr (last 40 lines)" && has "$sum" "flag: strconv.ParseInt: parsing"'
 
 echo "== other muhar exits"
 run_case usage "specs/usage.json"
