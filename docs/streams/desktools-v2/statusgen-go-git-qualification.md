@@ -81,3 +81,14 @@ or that listing executes tests. Of the 128 relocated bodies, 113 are identical;
 Their old/new body hashes and diffs are retained for review alongside separate
 behavioral qualification. No named test function was removed from its new owner,
 and no ledger/checker or baseline policy is changed to explain the relocation.
+
+## Existing run memo and canonical repository cache
+
+A broadened retained run-memo check exposed recursive locking: resolving an exact
+base already held the session memo lock, and the new typed commit read attempted
+to acquire it again for the canonical repository cache. The existing test timed
+out, and a bounded lock-context regression reproduced the failure independently.
+The repository cache now has its own lock inside the same run owner. Exact-base
+memoization, root keys and session lifetime retain their prior implementation;
+no second read session or native retry is added. The upper-flow mutation map
+retains its twelve mutants and adds this lock regression as a thirteenth mutant.

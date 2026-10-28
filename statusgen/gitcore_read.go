@@ -97,7 +97,7 @@ func gitCoreFor(root string) gitCoreRead {
 		return observeHistoryProfile(openGitCoreRead(root))
 	}
 	s := activeGitReads
-	s.mu.Lock()
+	s.coreMu.Lock()
 	if s.core == nil {
 		s.core = map[string]gitCoreRead{}
 	}
@@ -106,7 +106,7 @@ func gitCoreFor(root string) gitCoreRead {
 		r = openGitCoreRead(root)
 		s.core[root] = r
 	}
-	s.mu.Unlock()
+	s.coreMu.Unlock()
 	// Do not store negative metadata absence in the invocation repository cache.
 	return observeHistoryProfile(r)
 }

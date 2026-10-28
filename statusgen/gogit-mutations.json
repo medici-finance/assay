@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null . && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/gitlaunch && (cd ../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=300s -run '^(TestGoGitReadParity|TestRevisionCallerFlow|TestRevisionOrdinaryNestedPrefix)$' . && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestLaunchCounter|TestInventoryPlants|TestCrossFileLaunch|TestLocalNativeSeam|TestGitCeilingOnlyDown|TestCounterTrust)$' ./internal/gitlaunch",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=300s -run '^(TestGoGitReadParity|TestRevisionCallerFlow|TestRevisionOrdinaryNestedPrefix|TestGoGitSessionLock|TestMergeBaseExactRunMemo|TestMergeBaseMemoPerRoot)$' . && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestLaunchCounter|TestInventoryPlants|TestCrossFileLaunch|TestLocalNativeSeam|TestGitCeilingOnlyDown|TestCounterTrust)$' ./internal/gitlaunch",
   "control": {
     "name": "CONTROL upper raw-author bytes replaced with incompatible declared encoding",
     "file": "evidenceactor.go",
@@ -79,6 +79,12 @@
       "file": "internal/gitlaunch/main.go",
       "old": "\"gitPrefixOutput\": true",
       "new": "\"gitPrefixOutput\": false"
+    },
+    {
+      "name": "repository cache recursively uses the run memo lock",
+      "file": "gitcore_read.go",
+      "old": "s.coreMu.Lock()\n\tif s.core == nil {\n\t\ts.core = map[string]gitCoreRead{}\n\t}\n\tr, ok := s.core[root]\n\tif !ok {\n\t\tr = openGitCoreRead(root)\n\t\ts.core[root] = r\n\t}\n\ts.coreMu.Unlock()",
+      "new": "s.mu.Lock()\n\tif s.core == nil {\n\t\ts.core = map[string]gitCoreRead{}\n\t}\n\tr, ok := s.core[root]\n\tif !ok {\n\t\tr = openGitCoreRead(root)\n\t\ts.core[root] = r\n\t}\n\ts.mu.Unlock()"
     }
   ]
 }
