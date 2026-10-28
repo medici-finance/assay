@@ -122,10 +122,10 @@ Options:
 3. **No ladder** — widening stays a case-by-case ruling with no stated condition.
 
 Whichever option is ruled, the ruling also settles how 9.4 treats the auto-approve lane (see
-facts): **(a)** recommended — the ladder is the one place a widening condition is written, so
-9.4 counts a widening enacted under a recorded human acceptance of R-8's form as ruled for the
-area it names, and `docs/gate-ladder.md` points to R-8 rather than restating it; **(b)** 9.4
-admits only ladder rungs, and enacting the auto-approve lane first needs a rung for its class.
+facts): **(a)** recommended — 9.4 also counts a widening enacted under a recorded human
+acceptance of R-8's form as ruled, for the area that acceptance names, and the ladder points to
+R-8 rather than restating it; **(b)** 9.4 admits only ladder rungs, so enacting the auto-approve
+lane for any area first needs a ruled rung for its class.
 
 Default if no answer: none — blocks until answered.
 
