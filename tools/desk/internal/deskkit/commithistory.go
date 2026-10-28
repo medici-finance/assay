@@ -11,10 +11,17 @@ import (
 // Bounded, shared native reads: callers keep their existing observation/cache lifetime.
 // Never follow a Link URL (it is only a continuation signal), nor claim completeness at
 // GitHub's 3000-file ceiling. Each page still uses the ordinary custody/observer/transport.
+//
+// GetCommit and CompareRefs are shared with metadata-only callers (SHA, parents, author,
+// committed date, compare status). Page 1 carries all of that metadata, so a failure on a
+// LATER page never discards it: the result comes back with FilesComplete/CommitsComplete
+// false, which every completeness consumer already treats as could-not-check. Only an
+// identity or metadata change between pages, where the metadata itself is in doubt, and a
+// page-1 failure, where there is no metadata yet, return an error.
 const (
 	historyPerPage     = 100
-	historyMaxPages    = 10 // at most1000 compare commits
-	commitFileMaxPages = 30 // GitHub's hard3000-file ceiling
+	historyMaxPages    = 10 // at most 1000 compare commits
+	commitFileMaxPages = 30 // GitHub's hard 3000-file ceiling
 )
 
 func immutableCommitRef(ref string) bool {
@@ -35,7 +42,10 @@ func (g *GitHubForge) commitWithFiles(repo ForgeRepo, ref string) (*RepoCommit, 
 		path := fmt.Sprintf("/repos/%s/%s/commits/%s?per_page=%d&page=%d", repo.Owner, repo.Name, pinned, historyPerPage, page)
 		hdr, err := g.doJSONHeader(http.MethodGet, path, nil, &w)
 		if err != nil {
-			return nil, err
+			if page == 1 {
+				return nil, err
+			}
+			return out, nil // later-page failure: keep page-1 metadata, files stay incomplete
 		}
 		if page == 1 {
 			if immutableCommitRef(ref) && !strings.EqualFold(w.SHA, ref) {
@@ -53,14 +63,14 @@ func (g *GitHubForge) commitWithFiles(repo ForgeRepo, ref string) (*RepoCommit, 
 		}
 		for _, f := range w.Files {
 			if f.Filename == "" || seen[f.Filename] {
-				return nil, Unverifiable("commit file pagination repeated or omitted a file identity", nil)
+				return out, nil // a repeated or omitted file identity: the file list stays incomplete
 			}
 			seen[f.Filename] = true
 			out.Files = append(out.Files, ChangedFile{Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status})
 		}
 		more := hasNextLink(hdr)
 		if len(w.Files) == 0 && more {
-			return nil, Unverifiable("commit file pagination made no progress", nil)
+			return out, nil // continuation without progress: the file list stays incomplete
 		}
 		if len(w.Files) < historyPerPage && !more {
 			out.FilesComplete = true
@@ -85,12 +95,15 @@ func (g *GitHubForge) compareWithHistory(repo ForgeRepo, base, head string) (*Re
 		path := fmt.Sprintf("/repos/%s/%s/compare/%s...%s?per_page=%d&page=%d", repo.Owner, repo.Name, base, head, historyPerPage, page)
 		hdr, err := g.doJSONHeader(http.MethodGet, path, nil, &w)
 		if err != nil {
-			return nil, err
+			if page == 1 {
+				return nil, err
+			}
+			return out, nil // later-page failure: keep page-1 status, commits stay incomplete
 		}
 		if page == 1 {
 			first = w
 			out = &RefComparison{Status: w.Status, AheadBy: w.AheadBy, BehindBy: w.BehindBy}
-			// The compare API returns its bounded aggregate file window only on page1.
+			// The compare API returns its bounded aggregate file window only on page 1.
 			// This field retains its existing meaning; it never proves interval history.
 			for _, f := range w.Files {
 				out.Files = append(out.Files, ChangedFile{Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status})
@@ -103,7 +116,7 @@ func (g *GitHubForge) compareWithHistory(repo ForgeRepo, base, head string) (*Re
 		}
 		for _, c := range w.Commits {
 			if strings.TrimSpace(c.SHA) == "" || seen[c.SHA] {
-				return nil, Unverifiable("compare pagination repeated or omitted a commit identity", nil)
+				return out, nil // a repeated or omitted commit identity: the commit list stays incomplete
 			}
 			seen[c.SHA] = true
 			out.Commits = append(out.Commits, c.toRepoCommit())
@@ -114,7 +127,7 @@ func (g *GitHubForge) compareWithHistory(repo ForgeRepo, base, head string) (*Re
 			return out, nil
 		}
 		if len(out.Commits) > *w.TotalCommits {
-			return nil, Unverifiable("compare pagination exceeded its declared commit count", nil)
+			return out, nil // more commits than declared: the commit list stays incomplete
 		}
 		more := hasNextLink(hdr)
 		if !more && len(out.Commits) == *w.TotalCommits {

@@ -1,5 +1,5 @@
 {
-  "test": "GOWORK=off go test ./internal/deskkit ./cmd/deskboard -run 'TestCompareHistoryEvidence|TestCommitFileEvidence|TestBoundedComparePagination|TestComparePaginationUncertainty|TestCommitPaginationUncertainty|TestHistoryPaginationBoard|TestHistoryPaginationSweepReuse' -count=1 -timeout=90s",
+  "test": "GOWORK=off go test ./internal/deskkit ./cmd/deskboard -run 'TestCompareHistoryEvidence|TestCommitFileEvidence|TestBoundedComparePagination|TestComparePaginationUncertainty|TestCommitPaginationUncertainty|TestHistoryPaginationBoard|TestHistoryPaginationSweepReuse|TestLaterPageFailureKeepsMetadata' -count=1 -timeout=90s",
   "control": {
     "name": "healthy complete fixture rejects missing completeness",
     "file": "internal/deskkit/commithistory.go",
@@ -90,6 +90,30 @@
       "file": "internal/deskkit/commithistory.go",
       "old": "if *w.TotalCommits > historyMaxPages*historyPerPage {",
       "new": "if false && *w.TotalCommits > historyMaxPages*historyPerPage {"
+    },
+    {
+      "name": "later commit page failure discards page-1 metadata",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil // later-page failure: keep page-1 metadata, files stay incomplete",
+      "new": "return nil, err"
+    },
+    {
+      "name": "later compare page failure discards page-1 status",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "return out, nil // later-page failure: keep page-1 status, commits stay incomplete",
+      "new": "return nil, err"
+    },
+    {
+      "name": "accept an oversized file page",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "w.Files == nil || len(w.Files) > historyPerPage",
+      "new": "w.Files == nil"
+    },
+    {
+      "name": "accept an oversized compare page",
+      "file": "internal/deskkit/commithistory.go",
+      "old": "w.Commits == nil || len(w.Commits) > historyPerPage",
+      "new": "w.Commits == nil"
     }
   ]
 }

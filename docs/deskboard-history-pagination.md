@@ -42,13 +42,57 @@ a long first-parent chain can still need many commit reads, and the existing swe
 quota floor can refuse the board before that work finishes. Such a refusal stays a
 refusal. The incomplete-data fallback is not waived to obtain a cheaper result.
 
+## Failure shape: what a caller gets back
+
+Both methods are shared with callers that read only metadata, so a failure is split
+by WHERE it happens:
+
+| Failure | `GetCommit` | `CompareRefs` |
+|---|---|---|
+| Page-1 transport, HTTP or JSON error | error | error |
+| Page-1 SHA differs from a requested immutable SHA | `Unverifiable` error | n/a |
+| Later page changes the commit SHA/parents, or the compare total/status/ahead/behind | `Unverifiable` error | `Unverifiable` error |
+| Later-page transport, HTTP (including 5xx) or JSON error | page-1 metadata, `FilesComplete=false` | page-1 status, `CommitsComplete=false` |
+| Repeated or empty identity, continuation without progress, more commits than declared, oversized page, exhausted budget | page-1 metadata, `FilesComplete=false` | page-1 status, `CommitsComplete=false` |
+
+Only an identity or metadata change between pages, where the metadata itself is in
+doubt, and a page-1 failure, where there is no metadata yet, return an error. Every
+other uncertainty keeps what page 1 returned and drops only the completeness flag.
+The completeness consumers (deskboard `changedFilesBetween`, deskdispatch review
+preparation, the deskevidence decision gate) already treat an incomplete result and an
+error identically, as could-not-check, so the split changes no decision they make.
+
+## Per-caller request cost
+
+Before this change every `GetCommit` and `CompareRefs` call was one request. Now:
+
+| Call | Requests per call |
+|---|---|
+| `GetCommit` on a commit touching n files | floor(n/100)+1, at most 30 (1 for n < 100; 2 for 100–199; 3 for 200–299) |
+| `CompareRefs` with two immutable SHAs, declared total t ≤ 1000 | max(1, ceil(t/100)), at most 10 |
+| `CompareRefs` with a declared total above 1000, or with a branch-name endpoint | 1 |
+
+The metadata-only `GetCommit` callers pay the file pages even though they never read
+the file list: deskpost (head author and head committed-at), deskflip reanchor,
+deskautolane, deskevidence (commit reads, landed check, decision gate) and deskboard's
+stalled sweep (one head-commit read per open PR). For them the added cost is
+floor(n/100) requests per call, so a 250-file keep-current merge head costs 3 requests
+where it cost 1. The same applies to `CompareRefs` callers that read only `Status`
+with immutable endpoints, such as the deskevidence outcome binding: up to 9 extra
+requests for an interval of up to 1000 commits. A later-page failure no longer costs
+any of these callers the metadata it already had (see the table above). This is a
+stated cost, not a measured one: the measurement below covers only the deskboard
+interval fixture.
+
 ## Consumer routing
 
 - Fixed here: shared GitHub `GetCommit` and `CompareRefs` pagination and evidence.
 - Preserved callers: deskboard, deskdispatch review preparation, deskevidence,
-  deskpost, deskflip and deskautolane use the same Forge methods and ordinary errors.
-  Metadata consumers still receive commit metadata when file completeness is false;
-  callers that require file/history evidence must honor the completeness fields.
+  deskpost, deskflip and deskautolane use the same Forge methods. A page-1 failure
+  and an identity or metadata change between pages are ordinary errors; every other
+  uncertainty returns the page-1 metadata with the completeness field false (see
+  §Failure shape). Callers that require file/history evidence must honor the
+  completeness fields.
 - Unchanged: GitLab adapter, aggregate compare-file semantics, review queue snapshot,
   actor/exact-head policies, local git readers and decision-admission sweep reuse.
 - Existing perf-v4 codec/readers and producer migration belong to desktools-v2/67–68;
@@ -62,7 +106,10 @@ renames, duplicate/missing entries, changing refs, malformed/cut responses, late
 errors and bounded exhaustion. Native deskboard regressions exercise first-parent
 classification and complete-only interval reuse, including retry after partial data.
 The dedicated mutation spec qualifies with a green baseline, caught positive control,
-14 caught faults, zero survivors and zero unmutatable faults. All seven shared adapter
+18 caught faults, zero survivors and zero unmutatable faults (14 at the first revision;
+the later-page metadata and oversized-page guards added four). The spec is run by hand
+with `go run ./cmd/muhar -spec internal/deskkit/commithistory-mutations.json` from
+`tools/desk`; it is not yet in a CI mutation matrix. All seven shared adapter
 and consumer suites pass (deskkit 462.946s, deskboard 41.808s, deskdispatch 169.802s,
 deskevidence 173.221s, deskpost 19.844s, deskflip 2.239s, deskautolane 1.078s). Focused race,
 vet, source lint, mutation-anchor and committed test-ledger checks pass. No original
