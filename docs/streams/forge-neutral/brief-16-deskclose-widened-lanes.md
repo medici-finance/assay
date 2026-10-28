@@ -1020,15 +1020,21 @@ Row results, observed against each row's Expect:
 
 - Rows 2-12 and 14 pass in the bracketed container witness (`--bracket-digest` verdict=match).
 - Row 17 now passes in the container witness, with exit 0. The full clone carries the history this row needs. The earlier lane could not run it from a linked worktree (#4327).
-- Row 1 fails in the container witness (exit 1). This is an environment limit, not a deskclose defect: the deskclose package is ok in that lane. A diagnostic re-run with the same mounts, outside the witness, shows failures only in tests that are not hermetic (#4322):
-  - cmd/deskboard and cmd/deskdispatch exit 6 with "cannot resolve which forge serves example-org/agents: no ASSAY_REPO_FORGES entry names it, and the origin remote's host is absent".
-  - cmd/deskpreflight sees "statusgen --lint exited 5 … LINT: REFUSED configuration".
-  - cmd/deskperf attempts a module download with the network off.
+- Row 1 fails in the container witness (exit 1). The deskclose package is ok in that lane. A diagnostic re-run with the same mounts, outside the witness, fails seven packages. Each attribution below is read from that run's output:
+  - cmd/deskboard and cmd/deskdispatch exit 6 with "cannot resolve which forge serves example-org/agents: no ASSAY_REPO_FORGES entry names it, and the origin remote's host is absent" (deskdispatch reports the same for its own fixture repo). These tests are not hermetic (#4322).
+  - cmd/scanloop: four TestRun_* tests stop at the trust gate, whose read fails with the same "cannot resolve which forge serves" error for a fixture item. Not hermetic (#4322).
+  - cmd/deskpreflight sees "statusgen --lint exited 5 … LINT: REFUSED configuration" against the ambient configuration. Not hermetic (#4322).
+  - cmd/deskperf: TestV4ReadReportFlow builds deskperf, and the build tries to download modules, which GOPROXY=off refuses ("module lookup disabled by GOPROXY=off"). The test needs the network. That is a lane limit, but not the ambient remote or roster read that #4322 names.
+  - internal/deskkit: TestOverrideIdentityResolvesRosterLogin panics with a nil-pointer dereference at scanoverride_identity_test.go:105 (at ee2b421). The container's uid 501 has no passwd entry, so user.Current() returns a nil *user.User with an error, and the skip guard reads u.Username inside its own t.Skipf arguments. The environment triggers it, but the defect is in the test code. The panic kills the package's remaining tests. Before it, TestReviewCallerFlow and TestReviewCallerRollback fail on "pr-monitor: jq not found" from the reviewtest run they start. Row 14's `-run`-filtered invocations never reach the panicking test, which is why row 14 passes.
+  - internal/reviewtest: TestReviewDriverParity and TestReviewCallerFaults fail with "pr-monitor: jq not found". The runner image has no jq, so this is a runner-image gap, not a #4322 read.
+  - A probe of the same pinned image, run as `--user 501:20`, confirms both conditions: no passwd entry for uid 501, and no jq on PATH.
+  - The deskkit nil dereference needs its own bug. Filing it is owed by the desk, because this run's filing budget is exhausted.
 - Rows 13 and 15 pass on the host:
-  - Row 13 counts 4 matching lines in the verify-gate-close workflow: the sender.type read at line 98, and the reopen calls at lines 133 and 299.
+  - Row 13 counts 4 matching lines in the verify-gate-close workflow: the comment naming `github.event.sender.type` at line 29, the sender.type read at line 98, and the reopen calls at lines 133 and 299.
   - Row 15 counts self-withdraw 0 + 2 and verify-gate-refire 3 + 2 (inventory + deskclose main), so both totals are at least 1.
 - Row 16 passes at head but is **non-discriminating** under fail-first. Its Expect contains "LIVE", so verifyrun selects it as risk-bearing (#3388). At base 2024206eb no TestSelfWithdraw test exists yet, so the command prints "[no tests to run]" and exits 0. The Base cell reads `base=2024206ebb5e green rc=0`, and verifyrun reports "row 16: non-discriminating — green at base 2024206ebb5e and pass at head", folding the run to exit 1.
 - A supplemental hand mutation of row 16 earns no acceptance credit. It ran in a throwaway export of this source, outside the home. Changing lanes.go:239 to `if false && pr.Author.ID != self.id {` gives exit 1, with only `--- FAIL: TestSelfWithdrawIDPinRejectsLoginOnlyMatch`. Restoring the line gives exit 0. The control is live; the row as written cannot show it.
+- `statusgen verifyrun --check` on the landed brief scores row 1 as its one fail, and scores row 16 as pass. Row 16's non-discrimination comes from the `--fail-first` run's own exit 1, quoted above, not from `--check`.
 
 #### Risk-bearing values (enumerate, rank, derive)
 
@@ -1058,7 +1064,7 @@ RISK-VALUE: DERIVED — ident.ID == 0 refusal @ lanes.go:160 (+ pr.Author.ID != 
 RISK-VALUE: DERIVED — roleVerifier = "verifier" @ lanes.go:48 — equals the verify-desk loop's role binding at roletoken.go:45 ("verify-desk": "verifier"). Row 10 refuses every other role.
 RISK-VALUE: DERIVED — VerifyGateLabel = "verify-gate" @ trust.go:300 — equals the label the independent server-side guard keys on (verify-gate-close.yml:58). That guard reopens any close not made by an allowlisted `User` sender (verify-gate-close.yml:125-133), and row 13 reads it. Row 11 refuses unlabelled items.
 
-**VERIFY: FAIL** — Row 16, the one risk-bearing row, is non-discriminating under fail-first: it is green at the honest base 2024206eb because its tests do not exist there. This is a check-definition defect (#3388 class); no implementation defect was found, and the supplemental mutation shows the id pin is live. Row 1 also fails in the container lane on non-hermetic tests (#4322). Rows 2-15 and 17 pass in the witness.
+**VERIFY: FAIL** — Row 16, the one risk-bearing row, is non-discriminating under fail-first: it is green at the honest base 2024206eb because its tests do not exist there. This is a check-definition defect (#3388 class). No implementation defect was found in the deliverable under verification (the deskclose widened lanes), and the supplemental mutation shows the id pin is live. Row 1 also fails in the container lane: four packages on tests that are not hermetic (#4322), cmd/deskperf on a module download with the network off, internal/reviewtest on the runner image's missing jq, and internal/deskkit on a nil-pointer panic in its own test code. Rows 2-15 and 17 pass in the witness.
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers `no`; see gate-why for the reasoning that
