@@ -174,7 +174,7 @@ func gitTestPackage(files []*ast.File, names []string) bool {
 			if p == "testing" {
 				testOnly = true
 			}
-			if strings.HasSuffix(p, "/internal/gittest") {
+			if strings.HasSuffix(p, "/gitcore/gittest") {
 				harness = true
 			}
 		}
@@ -303,6 +303,17 @@ func TestGitPackagesInstallQuiet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	lifted, liftedCount, liftedErr := uncovered(filepath.Join("..", "..", "..", "..", "gitcore"))
+	if liftedErr != nil {
+		t.Fatal(liftedErr)
+	}
+	if liftedCount < 2 {
+		t.Fatal("lifted Git owner and fixture harness were not examined")
+	}
+	for _, name := range lifted {
+		missing = append(missing, "gitcore/"+name)
+	}
+	t.Logf("lifted Git source: %d git-test packages examined",liftedCount)
 	// Non-vacuous: the two packages the race was first reported in are git-test packages.
 	if examined < 20 {
 		t.Fatalf("the scan found only %d packages whose tests run git; the matcher has stopped matching", examined)

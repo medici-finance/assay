@@ -45,6 +45,7 @@ var errGitObjectMissing = errors.New("git object missing")
 
 // gitReadSession is one run's git read memo plus its batch readers.
 type gitReadSession struct {
+	core       map[string]gitCoreRead // canonical repositories, scoped to this existing run owner
 	mu         sync.Mutex
 	batches    map[string]*catFileBatch    // per root; nil entry = could not start, use exec
 	objects    map[string]gitReadResult    // root + "\x00" + spec

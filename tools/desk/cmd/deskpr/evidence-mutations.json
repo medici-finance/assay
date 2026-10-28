@@ -33,7 +33,7 @@
     },
     {
       "name": "push ignores checked-ref precondition",
-      "file": "internal/gitcore/gitcore.go",
+      "file": "../../gitcore/gitcore.go",
       "old": "RequireRemoteRefs: requires,",
       "new": "RequireRemoteRefs: requires[:0],"
     },

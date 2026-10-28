@@ -10,7 +10,7 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // probes_forge_test.go — the offline tests behind #1197 for the production BranchLister:

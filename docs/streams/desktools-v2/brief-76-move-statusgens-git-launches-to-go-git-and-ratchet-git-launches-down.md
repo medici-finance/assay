@@ -27,6 +27,10 @@ domain: complicated
 gate-why: "sensitive-data is yes because the moved reads include the history and merge-base inputs of the verified-flip provenance control (statusgen/verifyflip.go, SEC-2013-4). The human confirms parity on criss-cross and replace-ref histories, and accepts each git launch kept as one go-git cannot do."
 decision-trigger: start
 consumers:
+  - "gitcore/: follow-up desktools-v2/76 (final canonical module placement, including gitcore/gittest/; no second implementation)"
+  - "Dockerfile, images/assay-harness/Dockerfile: follow-up desktools-v2/76 (same-source sibling-module build closure)"
+  - "tools/desk/internal/deskkit/, tools/desk/internal/gitquiet/, tools/desk/internal/reviewtest/: follow-up desktools-v2/76 (retain original source guards and qualify the moved owner)"
+  - ".github/workflows/, ci/staged-workflows/: follow-up desktools-v2/76 (preserved CI reachability and source-copy closure; no capability changes)"
   - "tools/desk/internal/gitcore/: follow-up desktools-v2/76 (lifted to an importable module; tools/desk keeps its import path or a forwarding shim)"
   - "tools/desk/internal/gitquiet/, tools/desk/internal/gittest/: follow-up desktools-v2/76 (gitcore's internal imports move with it or are replaced; the top-level gitquiet/ module is the precedent)"
   - "statusgen/*.go git call sites, statusgen/go.mod: follow-up desktools-v2/76"
@@ -46,6 +50,14 @@ files:
   `statusgen/registercorroborate.go` and the other files with git launches
 - `statusgen/scripts/count-git-launch.sh` (planned) or an equivalent test
 - `changelog/statusgen-go-git.md` (planned)
+- `gitcore/`, including `gitcore/gittest/` (final placement of the existing owner and harness)
+- `statusgen/internal/gitlaunch/`, `statusgen/git-launches.json` (offline source ratchet)
+- `Dockerfile`, `images/assay-harness/Dockerfile`, `images/verify-runner/Dockerfile`, `statusgen/testdata/verification-handoff/mutate.py`
+- `.github/workflows/ci.yml`, `.github/workflows/assay-statusgen.yml`, `.github/workflows/git-maintenance-windows.yml`
+- `.github/scripts/go-test-shard.py`, `ci/staged-workflows/assay-statusgen.yml`
+- `tools/desk/internal/{deskkit,gitquiet,reviewtest,arch}/`, affected desk import callers and mutation maps
+- `docs/contracts.md`, `docs/library-first.md`, `docs/streams/desktools-v2/cli-migration.json`
+- `tools/desk/internal/clicontract/gitlaunch_test.go` (only the two exact source-test routes)
 
 single-point-of-failure: none — this brief adds no credential, identity or forge access; it
 changes how local repository objects are read. The control it can weaken is the verified-flip

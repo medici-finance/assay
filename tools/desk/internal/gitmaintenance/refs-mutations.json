@@ -63,7 +63,7 @@
     },
     {
       "name": "accept symbolic aliases as observed hash references",
-      "file": "internal/gitcore/refread.go",
+      "file": "../../gitcore/refread.go",
       "old": "if ref.Type() != plumbing.HashReference {",
       "new": "if false && ref.Type() != plumbing.HashReference {"
     },

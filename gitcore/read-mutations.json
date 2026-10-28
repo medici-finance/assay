@@ -1,0 +1,47 @@
+{
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestRawCommitBytes|TestCloseKeepsCAS|TestCloseKeepsPayload|TestAlternatesClose|TestAckCloseIsOutcome)$' .",
+  "control": {
+    "name": "CONTROL raw provenance bytes replaced after successful read",
+    "file": "rawread.go",
+    "old": "data, readErr := io.ReadAll(rd)",
+    "new": "data, readErr := io.ReadAll(rd)\n\tdata = []byte(\"decoded identity substituted\")"
+  },
+  "mutations": [
+    {
+      "name": "push cleanup flag lost after real session Close",
+      "file": "claimref.go",
+      "old": "return RefUpdateVerdict{}, fmt.Errorf(\"gitcore: receive-pack session: %w\", err)\n\t}\n\tdefer func() { r.SessionCloseFailed = sess.Close() != nil }()",
+      "new": "return RefUpdateVerdict{}, fmt.Errorf(\"gitcore: receive-pack session: %w\", err)\n\t}\n\tdefer func() { if sess.Close() != nil { r.SessionCloseFailed = false } }()"
+    },
+    {
+      "name": "delete cleanup flag lost after real session Close",
+      "file": "claimref.go",
+      "old": "return 0, fmt.Errorf(\"gitcore: receive-pack session: %w\", err)\n\t}\n\tdefer func() { r.SessionCloseFailed = sess.Close() != nil }()",
+      "new": "return 0, fmt.Errorf(\"gitcore: receive-pack session: %w\", err)\n\t}\n\tdefer func() { if sess.Close() != nil { r.SessionCloseFailed = false } }()"
+    },
+    {
+      "name": "payload sess cleanup flag lost",
+      "file": "claimref.go",
+      "old": "receipt.SessionCloseFailed = sess.Close() != nil",
+      "new": "if sess.Close() != nil { receipt.SessionCloseFailed = false }"
+    },
+    {
+      "name": "payload resp cleanup flag lost",
+      "file": "claimref.go",
+      "old": "receipt.ResponseCloseFailed = resp.Close() != nil",
+      "new": "if resp.Close() != nil { receipt.ResponseCloseFailed = false }"
+    },
+    {
+      "name": "alternate cleanup diagnosis erased",
+      "file": "alternates.go",
+      "old": "problems = append(problems, \"objects/info/alternates close failed\")",
+      "new": "problems = append(problems, \"\")"
+    },
+    {
+      "name": "alternate read failure lost when close also fails",
+      "file": "alternates.go",
+      "old": "problems = append(problems, fmt.Sprintf(\"objects/info/alternates could not be read to the end: %v\", serr))",
+      "new": "problems = append(problems, \"scanner diagnosis erased\")"
+    }
+  ]
+}

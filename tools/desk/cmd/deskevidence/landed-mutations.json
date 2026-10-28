@@ -21,7 +21,7 @@
     },
     {
       "name": "remote baseline dropped",
-      "file": "internal/gitcore/checkout.go",
+      "file": "../../gitcore/checkout.go",
       "old": "r.repo.Storer.SetReference(baseline)",
       "new": "r.repo.Storer.RemoveReference(baseline.Name())"
     },

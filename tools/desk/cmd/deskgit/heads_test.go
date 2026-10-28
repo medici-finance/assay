@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
+	"github.com/medici-finance/assay/gitcore/gittest"
 )
 
 // regression: #3327

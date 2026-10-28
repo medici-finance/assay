@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
+	"github.com/medici-finance/assay/gitcore/gittest"
 	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 

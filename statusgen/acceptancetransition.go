@@ -67,8 +67,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if !found {
 		return fail("amendment is not after delivery on the observed first-parent chain")
 	}
-	parents, e := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", amendment).Output()
-	pp := strings.Fields(string(parents))
+	pp, e := provenanceParents(dir, amendment)
 	if e != nil || (len(pp) != 1 && len(pp) != 2) {
 		return fail("amendment must have one or two parents")
 	}
@@ -198,7 +197,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 
 	// The ruling's body itself binds every immutable coordinate and changed row.
 	// A bot relay or a general APPROVED review cannot satisfy this exact act.
-	rootRaw, e := historyGit(dir, "rev-parse", "--show-toplevel").Output()
+	rootRaw, e := provenanceRepoTop(dir)
 	if e != nil {
 		return fail("cannot resolve repository")
 	}

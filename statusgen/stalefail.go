@@ -73,7 +73,7 @@ func failEvidenceDate(evidence string) (time.Time, bool) {
 // newestFailFix reads only locally available main history, never HEAD or a
 // network endpoint. An absent/shallow history cannot prove a FAIL current.
 func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
-	shallow, err := exec.Command("git", "-C", root, "rev-parse", "--is-shallow-repository").Output()
+	shallow, err := gitShallowOutput(root)
 	if err != nil || strings.TrimSpace(string(shallow)) != "false" {
 		return "", false
 	}

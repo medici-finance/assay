@@ -977,11 +977,11 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 			seen[c] = true
 			commits = append(commits, c)
 		}
-		out, err := historyGit(dir, "rev-list", "--full-history", c+"..HEAD", "--", base).Output()
+		hashes, err := flipHistoryWalk(dir, base, c)
 		if err != nil {
 			return fmt.Errorf("provenance: git rev-list %s..HEAD %s: %v", c, base, err)
 		}
-		for _, h := range strings.Fields(string(out)) {
+		for _, h := range hashes {
 			if !seen[h] {
 				seen[h] = true
 				commits = append(commits, h)
@@ -1155,4 +1155,13 @@ func flipEvidenceAt(dir, rev, base string) (string, error) {
 		return "", fmt.Errorf("git show %s:%s: %v", rev, base, err)
 	}
 	return extractEvidence(strings.ReplaceAll(string(out), "\r\n", "\n")), nil
+}
+
+// flipHistoryWalk retains Git's full-history path selection. The selected
+// in-process PathHistory iterator exposes all reachable commits, not this
+// exclusion and merge-simplification query; its native oracle is qualified by
+// TestFlipHistoryParity, including a merge that drops the path.
+func flipHistoryWalk(dir, base, since string) ([]string, error) {
+	out, err := historyGit(dir, "rev-list", "--full-history", since+"..HEAD", "--", base).Output()
+	return strings.Fields(string(out)), err
 }

@@ -12,7 +12,7 @@ import (
 
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
+	"github.com/medici-finance/assay/gitcore/gittest"
 )
 
 // The forge is offline, but dispatch's allocation child and every Git command

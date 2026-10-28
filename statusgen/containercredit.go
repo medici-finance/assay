@@ -136,7 +136,7 @@ func (cc *creditContext) placeWitness(witness string) creditVerdict {
 		return creditCouldNot("cannot resolve %s: %v", witness, err)
 	}
 	cc.dir, cc.base = filepath.Dir(resolved), filepath.Base(resolved)
-	top, err := historyGit(cc.dir, "rev-parse", "--show-toplevel").Output()
+	top, err := provenanceRepoTop(cc.dir)
 	if err != nil {
 		return creditCouldNot("--credit needs a --witness file inside a git work tree; %s is not in one", witness)
 	}

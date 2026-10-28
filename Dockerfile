@@ -72,6 +72,7 @@ COPY comms/ ./comms/
 COPY perfrec/ ./perfrec/
 # Test-support replacement module required when loading either module graph.
 COPY gitquiet/ ./gitquiet/
+COPY gitcore/ ./gitcore/
 COPY deskcore ./deskcore/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/

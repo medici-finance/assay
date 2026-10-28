@@ -8,6 +8,16 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "statusgen/scripts/count-git-launch.sh",
+      "reason": "desktools-v2/76 source-only offline Git-launch ratchet invoked by its original Verify row 4; no arguments, never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "statusgen/internal/gitlaunch",
+      "reason": "desktools-v2/76 source-only AST inventory and ratchet implementation invoked by count-git-launch.sh and bounded tests; inspects source only and is never installed or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s",
       "reason": "desk-containers/06 source-only YAML-to-JSON test adapter invoked by the offline packaging checker; Go main is run from the existing desk module, never installed or released as an operator CLI"
     },
