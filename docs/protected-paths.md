@@ -182,21 +182,34 @@ that comment removal is idempotent grants an exemption or older-row credit.
 ### Explicit human-approved acceptance transitions
 
 The immutable-delivery rule above remains the default. A versioned brief may opt
-into one later, separately landed command correction. This is a new human act,
+into one later, separately landed command or Expect correction. This is a new human act,
 not an authority inferred from merging a source edit, incrementing `version:`, a
 label, a local record, an APPROVED review, or a bot relaying a person's words.
 
-The bounded first implementation supports changing commands of existing original
-rows while retaining their exact Expect, class, shell, order and obligations.
-Each changed command must occupy exactly one unambiguous code span, with
-byte-identical surrounding context in the original, delivered and amended
-Command cells. The delivered row must match the entire original row definition.
-Tables must have explicit row IDs under a first-column `#` header. Original rows cannot
-be added, dropped or renumbered. Supplemental rows cannot change or gain credit.
-An unchanged row still owes its original command and Expect even if the delivering
-worker edited it. Coverage records acceptance sources per row: original revision
-for unchanged obligations, approved amendment for the corrected ones.
+The transition supports a command-only or an Expect-only correction to an existing
+original row. A command correction retains its exact Expect, class, shell, order and
+obligations. It must occupy one unambiguous code span with byte-identical surrounding
+context, and its delivered row must still match the complete original definition.
+An Expect-only correction retains the complete original Command, class, shell, order
+and obligations. A command and Expect cannot both change in the same approved row.
+Original rows cannot be added, dropped or renumbered; tables retain the explicit
+first-column `#` IDs. Supplemental rows cannot change or gain acceptance credit.
 
+Every command correction must be named by the exact human approval's `rows=` list.
+That list may also explicitly name original rows whose only difference from the
+original is their Expect, including an Expect strengthened at delivery. An older
+command-only approval does **not** acquire that new scope: an unnamed Expect change
+continues to owe the original Expect. Unknown, supplemental, duplicate, reordered
+row IDs and an omitted command correction refuse. The immutable amendment SHA binds
+the exact columns and values; no approval of an arbitrary future assertion is inferred.
+Coverage records the original revision for retained obligations and the approved
+amendment for explicitly selected corrections.
+
+The runner prints a derived diagnostic such as
+`Acceptance-Changes: 2=Expect,3=Command` in its generated closure record. This names
+the approved columns in table order; it is output only, never descriptor input or
+an authority supplied by a witness. Audits still derive effective obligations from
+immutable Git snapshots and re-corroborate the exact approval.
 The amendment must be on the observed HEAD's first-parent chain after delivery.
 A squash amendment has one parent. A two-parent amendment needs a unique merge
 base whose acceptance table equals pre-merge main. Intermediate acceptance edits,
@@ -209,7 +222,8 @@ A human recognized by the existing external human-login roster posts an unedited
 comment on a same-repository decision issue. That issue contains
 `<!-- acceptance-transition: docs/streams/example/brief-01-example.md -->`.
 The comment contains exactly the following payload, with actual full Git IDs and
-all changed row IDs in table order:
+every changed Command row and each Expect-only row being approved, in table order.
+An unnamed Expect-only row retains its original assertion:
 
 ```text
 Approve acceptance-transition v1
@@ -281,6 +295,6 @@ repository's workflows or provide any actual amendment approval.
 
 Transition execution inside `--in-container` or with cross-repository admission is
 unsupported and refuses. The fenced runner gains no network access. Chained
-transitions, row retirement, changed assertions/classes and table-layout migrations
-also remain unsupported. Human closure gates, independent review and release/pin
+transitions, row retirement, class changes, combined command-and-Expect changes in
+one row, and table-layout migrations also remain unsupported. Human closure gates, independent review and release/pin
 requirements remain separate; this mechanism performs none of those actions.
