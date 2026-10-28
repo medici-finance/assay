@@ -30,9 +30,13 @@ roll remains a separate downstream job under its own existing identity.
    verify-runner is multi-arch: it is built once for `linux/amd64` and once for
    `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
    binary, and each build's OS/architecture is read back before any check. The
-   release runner therefore needs arm64 emulation registered with its Docker
-   engine; without it the arm64 build fails before any push. The other eight
-   images stay `linux/amd64`.
+   arm64 build runs under emulation, so before any image is built the release
+   job registers it with the runner's Docker engine from a digest-pinned
+   `tonistiigi/binfmt` installer, then proves a `linux/arm64` container of the
+   runner's own base image reports `aarch64`, and stops with an error if not
+   ([issue 4784](https://github.com/medici-finance/assay/issues/4784)). That
+   privileged installer runs before the registry login and carries no
+   credential. The other eight images stay `linux/amd64`.
 3. Check statusgen's version in all nine images, and in both runner
    platforms. Execute the release-owned
    `images/verify-runner/check.py` inside each built runner platform: import PyYAML and

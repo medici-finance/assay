@@ -78,9 +78,12 @@ name: release
 #     the prepared source and Linux binary artifacts, then pushes them before
 #     tagging and publishing their checksummed references with the binaries.
 #     verify-runner is multi-arch (linux/amd64 + linux/arm64, #4323): both
-#     platforms are built and checked on this runner, which therefore needs
-#     arm64 emulation registered with its Docker engine; its reference pins
-#     the image index digest. The other eight images stay linux/amd64.
+#     platforms are built and checked on this runner. The release job registers
+#     arm64 emulation with the runner's Docker engine itself, from a
+#     digest-pinned binfmt installer, and proves it works before any image is
+#     built (#4784); the runner host is not assumed to carry it. The runner's
+#     reference pins the image index digest. The other eight images stay
+#     linux/amd64.
 #     One release Environment approval covers this entire publication sequence.
 
 on:
@@ -1590,6 +1593,45 @@ jobs:
           if [ -f release-source.bundle ]; then git fetch ./release-source.bundle HEAD; fi
           git checkout --detach "$SOURCE_SHA"
           sha256sum -c checksums.txt
+      # ARM64 EMULATION (#4784). verify-runner's linux/arm64 image builds on this
+      # amd64 runner under QEMU, so the job registers the handler itself: a
+      # replaced runner pod would silently lose host-side setup. It runs in dry
+      # runs too, because a dry run builds both runner platforms.
+      # ORDERING: the installer is a --privileged container, so it runs here,
+      # BEFORE the image step's `docker login` and before any step whose env
+      # holds a credential. This step's env carries no secret, it uses an empty
+      # DOCKER_CONFIG, and the container has no network and no mounts.
+      # Registration is kernel-wide on the node and outlives this job.
+      # Admission: the installer's risk summary is recorded on issue #4784.
+      - name: Register and prove arm64 emulation
+        env:
+          # Upstream release deploy/v10.2.3-68 (2026-06-08, QEMU 10.2.3) of
+          # github.com/tonistiigi/binfmt; the digest is that tag's image index on
+          # Docker Hub, the registry this job already pulls its base images from.
+          BINFMT_IMAGE: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+        run: |
+          set -euo pipefail
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          # The probe is verify-runner's own digest-pinned base, which the arm64
+          # build pulls anyway, so the proof adds no image of its own.
+          probe="$(sed -n 's/^ARG RUNNER_BASE=//p' images/verify-runner/Dockerfile)"
+          if ! [[ "$probe" =~ ^[a-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::images/verify-runner/Dockerfile has no single digest-pinned RUNNER_BASE to prove arm64 emulation with (read: '${probe}')."
+            exit 1
+          fi
+          status=0
+          docker run --privileged --rm --network none "$BINFMT_IMAGE" --install arm64 || status=$?
+          arch="$(docker run --rm --network none --platform linux/arm64 "$probe" uname -m)" || arch=""
+          if [ "$arch" != aarch64 ]; then
+            echo "::error::arm64 emulation is not working on this runner: a linux/arm64 container reported '${arch}', not 'aarch64' (binfmt installer exit ${status}). The linux/arm64 verify-runner build would fail with 'exec format error'; stopping before any image is built."
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::The binfmt installer exited ${status}, but a linux/arm64 container runs (an arm64 handler was already registered)."
+          fi
+          echo "arm64 emulation ready: linux/arm64 container reports ${arch}."
       - name: Build, verify and publish the release images
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}

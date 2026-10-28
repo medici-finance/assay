@@ -454,6 +454,68 @@ if args[:2] == ['image', 'inspect']:
                     attested = published['List the release assets to attest'].split('; do', 1)[0]
                     self.assertRegex(attested, r'(?<![\w-])' + asset + r'(?![\w-])')
 
+    # regression: #4784 — the release runner had no arm64 handler, so the
+    # linux/arm64 verify-runner build failed with "exec format error". The job
+    # registers emulation itself, before any credential exists, in dry runs too.
+    def test_arm64_emulation_is_registered_before_credentials_and_images(self):
+        root = HERE.parents[1]
+        step_name = 'Register and prove arm64 emulation'
+        for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
+            with self.subTest(path=path):
+                publisher = workflow_jobs((root / path).read_text())['release']
+                step = workflow_steps(publisher)[step_name]
+                at = publisher.find('      - name: ' + step_name + '\n')
+                self.assertGreater(at, publisher.find('      - name: Restore the prepared source'))
+                self.assertLess(at, publisher.find('      - name: Build, verify and publish the release images\n'))
+                login = publisher.find('| docker login ghcr.io')
+                self.assertGreater(login, 0)
+                self.assertLess(at, login)
+                self.assertNotRegex(step, r'^        if:', 'dry runs build arm64 too')
+                env = step.split('        run: |\n', 1)[0]
+                self.assertNotIn('${{', env, 'the privileged step must carry no token or secret')
+                self.assertRegex(env, r'BINFMT_IMAGE: [a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}\n')
+                self.assertIn('docker run --privileged --rm --network none "$BINFMT_IMAGE" --install arm64', step)
+
+    def test_arm64_emulation_step_fails_closed(self):
+        main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
+        step = workflow_steps(workflow_jobs(main)['release'])['Register and prove arm64 emulation']
+        script = '\n'.join(line[10:] for line in step.split('        run: |\n', 1)[1].splitlines())
+        work = self.root / 'emulation'
+        (work / 'images/verify-runner').mkdir(parents=True)
+        (work / 'bin').mkdir()
+        fake = work / 'bin/docker'
+        # Records each call; the installer and the probe answer per FAKE_* env.
+        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                        'case "$*" in *--install*) exit "$FAKE_INSTALL";; esac\n'
+                        '[ "$FAKE_PROBE_EXIT" = 0 ] || exit "$FAKE_PROBE_EXIT"\n'
+                        'echo "$FAKE_ARCH"\n')
+        fake.chmod(0o755)
+        base = 'golang:1.2.3-bookworm@sha256:' + 'a' * 64
+        cases = {
+            'emulated': ('0', '0', 'aarch64', base, 0, None),
+            'already-registered': ('1', '0', 'aarch64', base, 0, '::warning::'),
+            'wrong-arch': ('0', '0', 'x86_64', base, 1, '::error::arm64 emulation is not working'),
+            'probe-fails': ('0', '125', '', base, 1, '::error::arm64 emulation is not working'),
+            'install-and-probe-fail': ('1', '1', '', base, 1, 'binfmt installer exit 1'),
+            'unpinned-base': ('0', '0', 'aarch64', 'golang:1.2.3-bookworm', 1, 'no single digest-pinned RUNNER_BASE'),
+        }
+        for name, (install, probe_exit, arch, ref, code, message) in cases.items():
+            with self.subTest(case=name):
+                (work / 'images/verify-runner/Dockerfile').write_text('ARG RUNNER_BASE=' + ref + '\nFROM ${RUNNER_BASE}\n')
+                calls = work / ('calls-' + name)
+                result = subprocess.run(
+                    ['bash', '-c', script], cwd=work, text=True, capture_output=True,
+                    env=dict(os.environ, PATH=str(work / 'bin') + os.pathsep + os.environ['PATH'],
+                             CALLS=str(calls), FAKE_INSTALL=install, FAKE_PROBE_EXIT=probe_exit,
+                             FAKE_ARCH=arch, BINFMT_IMAGE='binfmt:x@sha256:' + 'b' * 64))
+                self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+                if message:
+                    self.assertIn(message, result.stdout)
+                if ref == base:
+                    recorded = calls.read_text().splitlines()
+                    self.assertEqual(recorded[0], 'run --privileged --rm --network none binfmt:x@sha256:' + 'b' * 64 + ' --install arm64')
+                    self.assertEqual(recorded[1], 'run --rm --network none --platform linux/arm64 ' + base + ' uname -m')
+
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
         main = (root / '.github/workflows/release.yml').read_text()
