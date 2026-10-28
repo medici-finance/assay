@@ -263,14 +263,21 @@ func (d *DutyResult) note(state, reason string) {
 	}
 }
 
-// EvaluateDuty applies one duty policy to corroborated evidence bound to the
-// record's current assessment. It does not consult Assessment.State: duty
-// provenance and evidence support are separate claims. The result grants
-// nothing; consumers keep their own effect and role controls.
+// EvaluateDuty applies one duty policy to evidence bound to the record's
+// current assessment. Every claim is passed through Corroborate against sel
+// before any field of it is read, so a claim the selector did not select is
+// refused here and a nil selector is could-not-check. The selector itself is
+// the caller's trusted composition; this function cannot tell a trusted
+// selector from one that echoes its input. It does not consult
+// Assessment.State: duty provenance and evidence support are separate claims.
+// The result grants nothing; consumers keep their own effect and role controls.
 // semantic: S-verification-domain
-func EvaluateDuty(r Record, a Assessment, policy DutyPolicy, evidence []Provenance) (DutyResult, error) {
+func EvaluateDuty(r Record, a Assessment, policy DutyPolicy, sel Selector, claims []Provenance) (DutyResult, error) {
 	if err := a.CheckCurrent(r); err != nil {
 		return DutyResult{}, err
+	}
+	if sel == nil {
+		return DutyResult{}, unknown("provenance-uncorroborated")
 	}
 	if !nodeRE.MatchString(policy.Duty) || rank(proofClasses, policy.MinProof) < 0 || policy.Against == nil {
 		return DutyResult{}, refuse("duty-policy")
@@ -281,8 +288,9 @@ func EvaluateDuty(r Record, a Assessment, policy DutyPolicy, evidence []Provenan
 		}
 	}
 	byDuty := map[string]Provenance{}
-	for _, p := range evidence {
-		if err := p.Validate(); err != nil {
+	for _, claim := range claims {
+		p, err := Corroborate(claim, sel)
+		if err != nil {
 			return DutyResult{}, err
 		}
 		// Each duty acts at its own node, so node and attempt may differ; the

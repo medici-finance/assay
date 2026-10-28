@@ -84,15 +84,28 @@ looks up the item by work, candidate, duty and evidence digest and returns the
 selector's record. A claim that differs in any field, such as a caller-chosen
 principal, a shortened delegation or a raised proof label, is refused with
 `provenance-not-selected`. An item the selector does not know is could-not-check.
-This package installs no selector. Production adapters belong to the existing
-identity and evidence owners.
+`EvaluateDuty` takes the selector as an argument and calls `Corroborate` on every
+claim itself before reading any field of it, so the duty check never reads a value
+the selector did not supply. The selector is the trust root. This package cannot
+tell a trusted selector from one that echoes its input, so composing it from trusted
+adapters, never from model text, stays the consumer's obligation. This package
+installs no selector. Production adapters belong to the existing identity and
+evidence owners.
+
+This package does not relate `requester` or `represented` to the lineage. When an
+actor acts on behalf of a principal, the trusted adapter that builds the record must
+put that principal in `responsible` or `delegation`. A principal that appears only
+as the represented actor is not compared for independence.
 
 ## Duty applicability
 
-`EvaluateDuty(record, assessment, policy, evidence)` applies one caller-selected
-existing duty policy. It first requires `assessment.CheckCurrent(record)`. Every
-evidence item must validate and bind to the record's brief, instance, exact
-candidate and acceptance binding, or the call is refused with
+`EvaluateDuty(record, assessment, policy, selector, claims)` applies one
+caller-selected existing duty policy. It first requires
+`assessment.CheckCurrent(record)` and a selector; without one the call is
+could-not-check (`provenance-uncorroborated`). Every claim then goes through
+`Corroborate`, so an unselected claim is refused (`provenance-not-selected`) and an
+unknown item is could-not-check. Every selected item must bind to the record's
+brief, instance, exact candidate and acceptance binding, or the call is refused with
 `provenance-subject`. Two items for one duty are refused as `duty-ambiguous`.
 The function does not read the assessment's support state: evidence support and
 duty provenance are separate claims.

@@ -42,12 +42,19 @@ func review(min string) DutyPolicy {
 
 func evalDuty(t *testing.T, policy DutyPolicy, names ...string) DutyResult {
 	t.Helper()
-	r, a := currentAssessment(t)
 	var evidence []Provenance
 	for _, n := range names {
 		evidence = append(evidence, provFixture(t, n))
 	}
-	out, e := EvaluateDuty(r, a, policy, evidence)
+	return evalItems(t, policy, evidence...)
+}
+
+// evalItems treats the given records as the trusted source's own records, so
+// the duty logic under test sees exactly what the selector holds.
+func evalItems(t *testing.T, policy DutyPolicy, evidence ...Provenance) DutyResult {
+	t.Helper()
+	r, a := currentAssessment(t)
+	out, e := EvaluateDuty(r, a, policy, newSource(evidence...), evidence)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -138,6 +145,20 @@ func TestProofClass(t *testing.T) {
 	human := DutyPolicy{Duty: "author", Against: []string{}, HumanAct: true, MinProof: "authenticated"}
 	wantDuty(t, evalDuty(t, human, "valid/author"), "satisfied")
 	wantDuty(t, evalDuty(t, human, "valid/author-bot-for-human"), "unsatisfied", "not-human-act")
+	// A human executor acting on another's request, or for another, is not
+	// that requester's or represented actor's own act.
+	asked := provFixture(t, "valid/author")
+	asked.Requester = Actor{ID: "principal:carol", Kind: "human"}
+	wantDuty(t, evalItems(t, human, asked), "unsatisfied", "not-human-act")
+	onBehalf := provFixture(t, "valid/author")
+	onBehalf.Represented = Actor{ID: "principal:carol", Kind: "human"}
+	wantDuty(t, evalItems(t, human, onBehalf), "unsatisfied", "not-human-act")
+	// A correctly shaped human act whose attribution is only claimed holds.
+	claimed := provFixture(t, "valid/author")
+	claimed.Corroboration.Attribution = "claimed"
+	claimed.DeclaredProof = "self-report"
+	floor := DutyPolicy{Duty: "author", Against: []string{}, HumanAct: true, MinProof: "self-report"}
+	wantDuty(t, evalItems(t, floor, claimed), "held", "attribution-uncorroborated")
 
 	// Missing corroboration and missing evidence hold; they never pass.
 	wantDuty(t, evalDuty(t, review("attested"), "valid/author", "valid/review-uncorroborated"), "held", "lineage-uncorroborated")
@@ -186,35 +207,38 @@ func TestDutyEvidenceFlow(t *testing.T) {
 	_, e = Corroborate(author, nil)
 	requireCode(t, e, "provenance-uncorroborated")
 
-	// The selector's own records flow into the real duty check.
-	var trusted []Provenance
-	for _, claim := range []Provenance{author, overlap} {
-		p, e := Corroborate(claim, src)
-		if e != nil {
-			t.Fatal(e)
-		}
-		trusted = append(trusted, p)
+	// The duty check selects every claim itself. A forged claim with every
+	// dimension corroborated and the author dropped from the reviewer's
+	// lineage would be satisfied if read as supplied; it is refused instead.
+	forged := hidden
+	forged.Corroboration = Corroboration{corroborated, corroborated, corroborated, corroborated, corroborated}
+	if e := forged.Validate(); e != nil {
+		t.Fatal(e)
 	}
-	out, e := EvaluateDuty(r, a, review("attested"), trusted)
+	_, e = EvaluateDuty(r, a, review("attested"), src, []Provenance{author, forged})
+	requireCode(t, e, "provenance-not-selected")
+	_, e = EvaluateDuty(r, a, review("attested"), src, []Provenance{author, unknownItem})
+	requireCode(t, e, "provenance-uncorroborated")
+	_, e = EvaluateDuty(r, a, review("attested"), nil, []Provenance{})
+	requireCode(t, e, "provenance-uncorroborated")
+
+	// The selector's own records flow into the real duty check.
+	out, e := EvaluateDuty(r, a, review("attested"), src, []Provenance{author, overlap})
 	if e != nil {
 		t.Fatal(e)
 	}
 	wantDuty(t, out, "unsatisfied", "principal-overlap")
 
 	// Corroborated evidence for another candidate is refused, not ignored.
-	p, e := Corroborate(other, src)
-	if e != nil {
-		t.Fatal(e)
-	}
-	_, e = EvaluateDuty(r, a, review("attested"), []Provenance{p, overlap})
+	_, e = EvaluateDuty(r, a, review("attested"), src, []Provenance{other, overlap})
 	requireCode(t, e, "provenance-subject")
-	_, e = EvaluateDuty(r, a, review("attested"), []Provenance{author, author})
+	_, e = EvaluateDuty(r, a, review("attested"), src, []Provenance{author, author})
 	requireCode(t, e, "duty-ambiguous")
 
 	// A stale assessment cannot be reused for duty evaluation.
 	stale := a
 	stale.Generation++
-	_, e = EvaluateDuty(r, stale, review("attested"), trusted)
+	_, e = EvaluateDuty(r, stale, review("attested"), src, []Provenance{author, overlap})
 	requireCode(t, e, "stale-generation")
 }
 

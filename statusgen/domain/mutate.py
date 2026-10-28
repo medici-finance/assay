@@ -53,7 +53,11 @@ MUTATIONS = [
     ("ignore-delegation", "TestDutySponsor", [(PROVENANCE, LINEAGE, "\treturn map[string]bool{p.Responsible: true}")]),
     ("trust-declared-proof", "TestProofClass", [(PROVENANCE, "func (p Provenance) EffectiveProof() string {\n", "func (p Provenance) EffectiveProof() string {\n\treturn p.DeclaredProof\n")]),
     ("model-text-identity", "TestDutyEvidenceFlow", [(PROVENANCE, SELECTED, SELECTED.replace("(trusted, claim)", "(trusted.Work, claim.Work)").replace("return trusted, nil", "return claim, nil"))]),
-    ("drop-required-field", "TestProvenanceSchema", [("schemas/evidence-provenance-v1.json", '    "environment",\n    "declared-proof",', '    "declared-proof",')]),
+    ("unselected-duty-input", "TestDutyEvidenceFlow", [(PROVENANCE, "\t\tp, err := Corroborate(claim, sel)\n", "\t\tp, err := claim, claim.Validate()\n")]),
+    ("nil-selector", "TestDutyEvidenceFlow", [(PROVENANCE, "\tif sel == nil {\n\t\treturn DutyResult{}, unknown(\"provenance-uncorroborated\")\n\t}\n", "")]),
+    ("human-act-executor-only", "TestProofClass", [(PROVENANCE, 'p.Executor.Kind != "human" || p.Requester != p.Executor || p.Represented != p.Executor', 'p.Executor.Kind != "human"')]),
+    ("attribution-hold", "TestProofClass", [(PROVENANCE, '} else if p.Corroboration.Attribution != corroborated {\n\t\t\tout.note("held", "attribution-uncorroborated")\n\t\t}', "}")]),
+    ("drop-required-field","TestProvenanceSchema", [("schemas/evidence-provenance-v1.json", '    "environment",\n    "declared-proof",', '    "declared-proof",')]),
 ]
 
 def snapshot(dest):

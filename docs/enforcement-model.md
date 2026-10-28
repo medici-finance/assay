@@ -193,8 +193,11 @@ principals. Its limits:
 - **No waiver.** An unsatisfied independent duty is not relaxed here. Any exception is a
   retained human decision recorded by its existing owner.
 
-The contract is pure and not active. Provenance is accepted only through a trusted
-selection port, and no production selector is installed. Admission (graph-execution/14),
+The contract is pure and not active. Duty evaluation reads provenance only through a
+selection port: it checks every item against the selector's record, refuses a claim that
+differs and holds as could-not-check without a selector. The selector itself must come
+from trusted composition, never from model text. No production selector is installed,
+and a selector that echoes its input protects nothing. Admission (graph-execution/14),
 the publication review bridge (/25) and control exports (/15) are planned consumers.
 Whether they must require corroborated provenance, or keep it report-only, is a pending
 human decision (#4800). Until then the existing identity checks and human gates are the
