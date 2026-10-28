@@ -1299,7 +1299,7 @@ jobs:
       # SOFTWARE BILL OF MATERIALS. One SPDX 2.3 document, sbom.spdx.json, covers
       # every Go-built asset: the five statusgen binaries, the five qualgen
       # binaries, and the five desk-tools tarballs (each tarball described by the
-      # union of the Go binaries inside it). tools/release/sbom.py reads the Go
+      # union of the Go binaries inside it). tools.release.sbom reads the Go
       # build information the linker embedded (`go version -m`), so no extra tool
       # joins the release runner; it records each asset's sha256, every linked
       # module as a pkg:golang purl, and the Go toolchain as pkg:golang/stdlib.

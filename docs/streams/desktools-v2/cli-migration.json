@@ -117,6 +117,16 @@
       "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
     },
     {
+      "class": "library",
+      "pattern": "tools/release/sbom.py",
+      "reason": "internal release SBOM writer imported by the fixed release workflow Python call; no shebang, main guard, argument parser or independent operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/sbom_test.py",
+      "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
+    },
+    {
       "class": "test",
       "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
       "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
