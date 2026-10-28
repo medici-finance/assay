@@ -168,6 +168,7 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"note column", note, true},
 		{"misaligned row", misaligned, true},
 		{"live held row", annObs("—", "HELD — no runner online"), true},
+		{"prose line, not a cell", annObs("0", "ok") + "PASS: a could-not-check mission section\n", true},
 	})
 }
 

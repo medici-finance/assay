@@ -859,6 +859,8 @@ func TestHeldScopeFailClosed(t *testing.T) {
 			"**VERIFY: PASS**\n\n| # | Command | Expect | Observed |\n| 2 | `probe` | could-not-check | ok |\n", true},
 		{"unrecognised table is read whole",
 			"**VERIFY: PASS**\n\n| Check | Note |\n|---|---|\n| floor | expected could-not-check |\n", true},
+		{"exit prose with no results table",
+			"**VERIFY: PASS** — exit codes: could-not-check → exit 6.\n", true},
 		{"longer header name is a result",
 			"**VERIFY: PASS**\n\n| # | Command | Exit | Runner verdict |\n|---|---|---|---|\n| 2 | `probe` | 0 | HELD — offline |\n", true},
 	})

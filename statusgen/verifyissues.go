@@ -944,9 +944,7 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // last entry, closing on its own live strict PASS, re-ran to a clean outcome,
 // or, once that entry re-ran EVERY row key of EVERY earlier entry so, any
 // held line of an earlier entry but a table line it cannot key (#3841) — and
-// otherwise the first held line in the whole section refuses, as before. A
-// prose line counts only where its occurrence is a structured hold signal
-// (heldScanScope rule 6, #4721).
+// otherwise the first held line in the whole section refuses, as before.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
@@ -989,13 +987,6 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		// it as when the whole row was read.
 		// The refusal message still quotes the whole row.
 		_, whole, _ := stripStruck(line, masked)
-		// A line that is, or may render as, a table row is not prose: it is
-		// read in its result cells or whole, never for rule 6's signals only.
-		// Any pipe, even one inside a code span or escaped, keeps the line
-		// out of rule 6 — the fail-closed side of where a GFM table row
-		// splits.
-		tabular := read.key != "" || len(read.blank) > 0 || heldTableLine(line) ||
-			strings.Contains(line, "|") || heldHTMLTableRe.MatchString(line)
 		line, masked = heldBlankRanges(line, read.blank), heldBlankRanges(masked, read.blank)
 		clean, view, cuts := stripStruck(line, masked)
 		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
@@ -1034,10 +1025,11 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			if cuts == nil && read.key == "" && len(read.blank) == 0 && heldRiskDefinition(clean, h) {
 				continue
 			}
-			// Prose is read for structured hold signals only; a state word a
-			// sentence merely names is not a disposition (heldScanScope rule
-			// 6, #4721). A table line is never prose here.
-			if !tabular && !heldStructuredHold(clean, h) {
+			// Prose that only recounts a state word — a zero tally, a mutation
+			// sentence, a past flip hold citing its tracker — is not a
+			// disposition (heldScanScope rule 6, #4721). A table line, a
+			// struck line and every other prose shape stay read.
+			if cuts == nil && !heldProseExempt(line, read) && heldRecounted(clean, h) {
 				continue
 			}
 			// A negated or zero-counted occurrence ("no could-not-check",
@@ -1090,6 +1082,15 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		return true, quotes[k]
 	}
 	return false, ""
+}
+
+// heldProseExempt reports whether line is, or may render as, a table row: it
+// is read in its result cells or whole, never for rule 6's recounted prose.
+// Any pipe, even one inside a code span or escaped, keeps the line out of
+// rule 6 — the fail-closed side of where a GFM table row splits.
+func heldProseExempt(line string, read heldLineRead) bool {
+	return read.key != "" || len(read.blank) > 0 || heldTableLine(line) ||
+		strings.Contains(line, "|") || heldHTMLTableRe.MatchString(line)
 }
 
 // evidenceVerifierInfo extracts the date and runner from the first data row of an

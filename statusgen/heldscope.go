@@ -176,15 +176,16 @@ import (
 //     wording and any independent hold remain read. The source locator is
 //     syntax, not proof that the derivation or its claimed value is correct.
 //
-//  6. Structured signals only (#4721). A line outside every table — prose,
-//     with no pipe and no HTML table tag — is read only for an occurrence
-//     written as a structured hold signal (heldStructuredHold): a HELD,
-//     COULD-NOT-CHECK or COULD-NOT-RUN marker in capitals, a RISK-VALUE
-//     record, a non-PASS verdict token on the line, a row reference, a hold
-//     reason or value, a state that opens its line, "held at" a board status,
-//     or a count. A state word a sentence only names ("could-not-check 0", a
-//     mutation that "rounds could-not-check to pass", a flip that "was held
-//     on #N") is not read. Table lines are read under rules 1 to 5 as before.
+//  6. Recounted prose (#4721). A line outside every table — prose, with no pipe
+//     and no HTML table tag — may name a state word without recording a hold.
+//     Exactly three shapes are excused (heldRecounted), each on the lower-case
+//     occurrence alone: a zero tally closing its clause ("observed failed
+//     obligations 0; could-not-check 0."), a verb that rounds the state to a
+//     pass ("rounds could-not-check to pass"), and a past flip hold that
+//     cites its tracker ("its board flip was held on #4536"). Prose stays
+//     read for everything else, so a labelled disposition, a row, a reason, a
+//     capital marker or a zero followed by a noun still holds. Table lines
+//     are read under rules 1 to 5, never excused by this rule.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
@@ -1911,104 +1912,57 @@ func heldRiskDefinition(clean string, h []int) bool {
 	return false
 }
 
-// Structured hold signals (rule 6, #4721).
+// Recounted prose (rule 6, #4721).
 //
-// A line outside every table — prose — is not a row disposition. Before this
-// rule the scan read every prose occurrence of HELD or could-not-check as a
-// live hold unless a narrow excuse matched it, so each new sentence that
-// merely named a state word ("could-not-check 0", "the mutation rounds
-// could-not-check to pass", "its board flip was held on #N") refused a clean
-// PASS until a further excuse was written for it. The burden is now the other
-// way round: a prose occurrence counts only when it is written as one of the
-// structured signals below. Table lines are not prose: an aligned results row
-// is still read in its result cells (rule 1), and any other line that carries
-// a pipe anywhere or an HTML table tag is still read whole, as before.
+// Prose that only recounts a state word is not a disposition: a tally that
+// closes on a zero, a sentence about what a mutation does, a past flip hold
+// the entry cites by its tracker. Each of the three shapes below is a closed
+// excuse written to fail closed, like the negation rule it sits beside: it
+// applies to the LOWER-CASE occurrence alone (a capital HELD or COULD-NOT-CHECK
+// is the disposition token a verifier writes, and Held or Could-Not-Check is
+// not on any list), reads only that occurrence's own surroundings, and leaves
+// every other occurrence on the line to the rules that already read it.
 //
-// A prose occurrence is a hold signal when ANY of these holds:
-//
-//   - Marker: it is written in capitals, HELD, COULD-NOT-CHECK or
-//     COULD-NOT-RUN — the disposition token a verifier writes.
-//   - Record: the line is a RISK-VALUE record (heldRiskLineRe). A record is
-//     read exactly as before, so only the sourced definitions of rule 5 are
-//     excused on it.
-//   - Verdict: the line carries a non-PASS verdict token (heldVerdictLineRe:
-//     "VERIFY: BLOCKED", or BLOCKED or FAIL in capitals anywhere on it, as in
-//     "- Row 3: BLOCKED — could-not-check, no runner").
-//   - Row: a row reference sits right before it, past only linking words and
-//     punctuation ("row 3 could-not-check", "Rows 2 and 4 are held", "row 5:
-//     HELD"), or right after it ("could-not-check on row 3", "held (row 2)").
-//   - Reason: a hold reason or a value follows it ("held pending runner",
-//     "could-not-check because …", "Held for the Linux runner",
-//     "could-not-check: no runner") — heldReasonAfterRe and heldValueAfterRe,
-//     the same words the negation rule refuses on.
-//   - Lead: it opens its line, past only indentation, emphasis and a list
-//     marker ("could-not-check — offline, no cluster contact", "**Held at
-//     `implemented` — …**"): a line that starts with the state is a
-//     disposition, not a sentence that names one.
-//   - Status: "held" is followed by a board status ("held at `implemented`")
-//     — the entry holds the brief at that status.
-//   - Count: a count sits right before it ("5 could-not-check", "one
-//     could-not-check", "0 could-not-check") — a zero one is then excused or
-//     refused by the negation rule's zero cue, as before — or a non-zero count
-//     sits right after it ("could-not-check 2", "could-not-check: 1"). A zero
-//     count right after it ("could-not-check 0") is a tally that records no
-//     hold and is no signal, unless the line also carries a ratio that did not
-//     pass everything it counts ("1 of 2 rows passed", heldShortRatio).
-//
-// Anything else in prose — a state word that a sentence names while
-// describing a mutation, a past event, a definition or a mapping — is not
-// read. Every signal is checked on the occurrence's own surroundings, and an
-// occurrence that is a signal still passes through the negation and routing
-// rules unchanged, so "no HELD" and a routed deferral are still excused.
+//   - Zero tally: the state word is followed by a bare 0 that ends its clause
+//     (";", ",", ")", a sentence stop or the end of the line), optionally after
+//     a colon, and what precedes the word is the start of the line, a clause
+//     break (";", ",", "(") or a tally label ("accounting:", "summary:"). A noun
+//     after the zero ("could-not-check 0 clusters reachable"), a row before the
+//     word ("row 3 could-not-check: 0.") or a ratio on the line that did not
+//     pass everything it counts ("1 of 2 rows passed") is not a tally.
+//   - Mutation sentence: the word is the object of a verb that rounds a state up
+//     ("rounds", "coerces", "converts", "promotes", "upgrades") and is followed
+//     at once by "to pass" or a synonym ("rounds could-not-check to pass").
+//   - Past flip hold: "flip was held on <tracker ref>" or "flip had been held on
+//     <tracker ref>", where the tracker is #N or owner/repo#N and the reference
+//     ends its clause. A present-tense flip hold, one that names no tracker, or
+//     one that goes on to give a reason or a further clause is read.
 var (
-	heldRiskLineRe    = regexp.MustCompile(`^[\s>*_+-]*(?:\d+[.)][\s*_]*)?RISK-VALUE\b`)
-	heldVerdictLineRe = regexp.MustCompile(`\bVERIFY:[\s*_]*(?:BLOCKED|FAIL(?:ED)?|HELD|PARTIAL|INCONCLUSIVE|COULD-NOT-CHECK|COULD-NOT-RUN)\b|\b(?:BLOCKED|FAIL(?:ED)?)\b`)
+	heldTallyAfterRe  = regexp.MustCompile(`^[ \t]*:?[ \t]*0[ \t]*(?:[;,)]|\.(?:[ \t]|$)|$)`)
+	heldTallyBeforeRe = regexp.MustCompile(`(?i)(?:^|[;,(]|\b(?:accounting|summary|totals?|counts?|tally):)[ \t]*$`)
+	heldRoundBeforeRe = regexp.MustCompile(`(?i)\b(?:rounds?|rounded|coerces?|coerced|converts?|converted|promotes?|promoted|upgrades?|upgraded)[ \t]+$`)
+	heldRoundAfterRe  = regexp.MustCompile(`(?i)^[ \t]+(?:to|into|as)[ \t]+(?:a[ \t]+)?(?:pass(?:es|ed)?|green|ok|success)\b`)
+	heldFlipBeforeRe  = regexp.MustCompile(`(?i)\bflip[ \t]+(?:was|had[ \t]+been)[ \t]+$`)
+	heldFlipAfterRe   = regexp.MustCompile(`^[ \t]+on[ \t]+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*(?:[;,)]|\.(?:[ \t]|$)|[ \t]*$)`)
 	// heldRatioRe is a ratio on the line ("1 of 2 rows passed", "3/4").
 	heldRatioRe = regexp.MustCompile(`(?i)\b(\d+)(?:[ \t]+of[ \t]+|/)(\d+)\b`)
-	// heldRowBeforeRe is a row reference closing the text before an
-	// occurrence, past linking words, emphasis and punctuation.
-	heldRowBeforeRe = regexp.MustCompile(`(?i)\b(?:rows?[ \t]*\d+[a-z]?(?:[ \t]*(?:,|and|&|-|–|to|or)[ \t]*\d+[a-z]?)*|#[ \t]*\d+)(?:[ \t]*\([^()]*\))?(?:[\s*_:=,—–\x60-]|\b(?:is|are|was|were|still|stays?|stayed|remains?|remained|now|again|also|marked|recorded|reported|left|reads?|as|therefore|thus|hence|so|currently|effectively|instead|accordingly|likewise)\b)*$`)
-	// heldRowAfterRe is a row reference opening the text after an occurrence.
-	heldRowAfterRe = regexp.MustCompile(`(?i)^[\s*_\x60]*(?:\(|:|—|–|-|,)?[\s*_]*(?:\b(?:on|for|in|at|of)\b[\s*_]*)?(?:verify[ \t]+)?rows?[ \t]*\d`)
-	// heldCountBeforeRe is a count closing the text before an occurrence.
-	heldCountBeforeRe = regexp.MustCompile(`(?i)(?:\b(\d+)(?:/\d+)?|\b(one|two|three|four|five|six|seven|eight|nine|ten|some|several|non-zero|nonzero))[\s*_\x60]*$`)
-	// heldCountAfterRe is a count opening the text after an occurrence.
-	heldCountAfterRe = regexp.MustCompile(`^[\s*_\x60]*[:=]?[\s*_\x60]*(\d+)\b`)
-	// heldLeadRe is the text before an occurrence that opens its line: only
-	// indentation, emphasis and a list marker.
-	heldLeadRe = regexp.MustCompile(`^[\s*_+\x60-]*(?:\d+[.)][\s*_\x60]*)?$`)
-	// heldStatusAfterRe is a board status following "held": "held at
-	// `implemented`". The status may be written in code, which the scan
-	// reads masked.
-	heldStatusAfterRe = regexp.MustCompile("(?i)^[\\s*_]*at[\\s*_`]*(?:\\x00|implemented\\b|merged\\b)")
 )
 
-// heldStructuredHold reports whether the prose occurrence at clean[h[0]:h[1]]
-// is written as a structured hold signal (rule 6, #4721). clean is the line as
-// the scan reads it: inline code masked, struck spans removed.
-func heldStructuredHold(clean string, h []int) bool {
+// heldRecounted reports whether the prose occurrence at clean[h[0]:h[1]] is one
+// of the three recounted shapes above (rule 6, #4721). The caller passes only
+// lines outside every table, with no struck span.
+func heldRecounted(clean string, h []int) bool {
 	word, before, after := clean[h[0]:h[1]], clean[:h[0]], clean[h[1]:]
-	if m := heldCountAfterRe.FindStringSubmatch(after); m != nil {
-		n, err := strconv.Atoi(m[1])
-		return err != nil || n != 0 || heldShortRatio(clean)
+	if word != "held" && word != "could-not-check" {
+		return false // a capital or mixed-case occurrence is read
 	}
-	switch {
-	case word == "HELD" || word == "COULD-NOT-CHECK" || word == "COULD-NOT-RUN":
-		return true
-	case heldRiskLineRe.MatchString(clean), heldVerdictLineRe.MatchString(clean):
-		return true
-	case heldRowBeforeRe.MatchString(before), heldRowAfterRe.MatchString(after):
-		return true
-	case heldReasonAfterRe.MatchString(after), heldValueAfterRe.MatchString(after):
-		return true
-	case heldLeadRe.MatchString(before):
-		return true
-	case strings.EqualFold(word, "held") && heldStatusAfterRe.MatchString(after):
+	if heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) && !heldShortRatio(clean) {
 		return true
 	}
-	// A count before it, zero or not, is a signal; a zero count is then
-	// excused or refused by the negation rule's zero cue, exactly as before.
-	return heldCountBeforeRe.MatchString(before)
+	if word == "could-not-check" {
+		return heldRoundBeforeRe.MatchString(before) && heldRoundAfterRe.MatchString(after)
+	}
+	return heldFlipBeforeRe.MatchString(before) && heldFlipAfterRe.MatchString(after)
 }
 
 // heldShortRatio reports whether clean carries a ratio that did not pass
