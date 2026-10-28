@@ -271,6 +271,13 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{
+			test: "statusgen/cellop_record_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"docs/streams/desk-containers/brief-15-cell-op-machine-seam.md"},
+			runInvokes: []string{"cd statusgen && go test ./... && go vet ./..."},
+			why:        "the completion regression reads the retained evidence record; unfiltered source CI runs statusgen tests on evidence-only edits",
+		},
 		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema coverage and actual Go/Python launch hash parity; workflow has no path filter"},
 
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
