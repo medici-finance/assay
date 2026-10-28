@@ -101,7 +101,7 @@ applied state and are expected to pass after the human's commit lands.
    `tools/desk/cmd/deskfleet/{client,main}.go`, `tools/desk/cmd/deskflip/flip.go`,
    `tools/desk/cmd/deskpost/{forgeclient,github}.go`, `tools/desk/cmd/desktoken/{gitlab,main}.go`,
    `tools/desk/internal/deskkit/{forge,forgegit,forgeidentity,forgeresolve,preflight,scrub,transporthost,trustliveness_gitlab}.go`
-   and `tools/desk/internal/gitcore/claimref.go` — the list is not exhaustive; the script's own
+   and `gitcore/claimref.go` — the list is not exhaustive; the script's own
    count is authoritative. Any carve-out (a file whose literal is the documented canonical home,
    as `forge.go` is for class d) is declared in the script header with its reason — never a
    silent exclusion. `--baseline` additionally upserts a line
