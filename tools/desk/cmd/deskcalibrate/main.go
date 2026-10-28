@@ -24,12 +24,15 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -47,109 +50,253 @@ nothing. deskcalibrate REFUSES a same-vendor sample.
 Exit: 0 ok · 5 refused · 6 unverifiable.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskcalibrate", nil, os.Args[1:], func([]string) int {
-		// deskcalibrate reads the roster to learn the reviewer role's vendor, so
-		// ciEligible=false: config-home file only, never the environment, in CI as
-		// well as locally — the declaration every acting read verb makes.
-		deskkit.SetToolClass(deskkit.ClassForTool(false))
-		deskkit.EchoEffectiveConfig(os.Stderr)
-		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
-		}
-		return run(os.Args[1:], os.Stdout, os.Stderr)
+	os.Exit(deskkit.PerfRun("deskcalibrate", nil, os.Args[1:], func(a []string) int {
+		return execute(a, os.Stdout, os.Stderr, startup)
 	}))
 }
 
-func run(args []string, stdout, stderr *os.File) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version" || args[0] == "version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "deskcalibrate sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
+// startup is what every real run does first, after its command line parsed and its values
+// passed their checks, and never for help or version (help reads nothing).
+//
+// deskcalibrate reads the roster to learn the reviewer role's vendor, so ciEligible=false:
+// config-home file only, never the environment, in CI as well as locally — the declaration
+// every acting read verb makes.
+func startup(stderr io.Writer) int {
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(stderr)
+	if !deskkit.CheckVerbActivation(stderr) {
+		return deskkit.ExitUnverifiable
 	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(stderr, usage)
-		if len(args) == 0 {
-			return deskkit.ExitRefused
-		}
-		return deskkit.ExitOK
-	}
+	return deskkit.ExitOK
+}
 
-	sub, rest := args[0], args[1:]
-	var err error
-	switch sub {
-	case "sample":
-		err = cmdSample(rest, stdout)
-	case "report":
-		err = cmdReport(rest, stdout)
-	default:
-		fmt.Fprintf(stderr, "deskcalibrate: unknown subcommand %q\n\n%s\n", sub, usage)
-		return deskkit.ExitRefused
+// run is execute without the process startup.
+func run(args []string, stdout, stderr io.Writer) int {
+	return execute(args, stdout, stderr, nil)
+}
+
+// sampleOpts are the typed values `sample` hands its handler.
+type sampleOpts struct {
+	month, vendor, human string
+	reviewerVendor       string // resolved: --reviewer-vendor when non-blank, else the roster
+	prs, candidatesFile  string
+	seed                 int64
+	n                    int
+}
+
+// sampleFn and reportFn are the typed handlers the command tree calls; the contract tests
+// replace them to observe the values that reach them.
+var (
+	sampleFn = cmdSample
+	reportFn = cmdReport
+)
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+// versionLine is what --version, -version and the legacy `version` word print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskcalibrate sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// sampleBindings are the `sample` settings: flags and defaults, plus the reviewer role's
+// vendor from the environment. That vendor is two keys so a blank --reviewer-vendor still
+// falls through to ASSAY_REVIEWER_VENDOR, exactly as the hand-rolled parser read it.
+func sampleBindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "month", Kind: cli.String, Flag: "month", Usage: "prior calendar month, YYYY-MM (recorded in the sample)"},
+		// A string, parsed as a 64-bit integer, so the seed's range is the same on every platform.
+		{Key: "seed", Kind: cli.String, Flag: "seed", Usage: "sampling seed `N` (recorded; same seed → same sample)"},
+		{Key: "vendor", Kind: cli.String, Flag: "vendor", Usage: "re-reviewer model vendor (must differ from the reviewer role's vendor)"},
+		{Key: "human", Kind: cli.String, Flag: "human", Usage: "re-reviewer human login (a human checklist is independent of every model vendor)"},
+		{Key: "reviewer-vendor", Kind: cli.String, Flag: "reviewer-vendor",
+			Usage: "reviewer role's model vendor (default: " + deskkit.EnvReviewerVendor + " from roster.env)"},
+		{Key: "roster-vendor", Kind: cli.String, Env: []string{deskkit.EnvReviewerVendor}},
+		{Key: "prs", Kind: cli.String, Flag: "prs", Usage: "comma-separated candidate APPROVED PR numbers"},
+		{Key: "candidates-file", Kind: cli.String, Flag: "candidates-file", Usage: "file of candidate APPROVED PR numbers, one per line"},
+		// -n is one letter, so the Go-flag spelling is the shorthand.
+		{Key: "n", Kind: cli.Int, Flag: "n", Short: "n", Default: DefaultSampleSize, Usage: "sample size"},
 	}
-	if err != nil {
+}
+
+// reportBindings are the `report` settings. A results file without a reviewer vendor takes
+// the roster's, as before.
+func reportBindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "results", Kind: cli.String, Flag: "results", Usage: "re-review results JSON (a deskcalibrate Report)"},
+		{Key: "roster-vendor", Kind: cli.String, Env: []string{deskkit.EnvReviewerVendor}},
+	}
+}
+
+// execute runs one invocation against a fresh command tree. pre is the process startup (nil
+// in the in-package tests).
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskcalibrate", "monthly reviewer-calibration sample + report")
+		root.Long = usage
+		// An unknown subcommand is a refusal before anything runs.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("unknown subcommand %s", strconv.Quote(args[0]))
+			}
+			return nil
+		}
+		// No subcommand is a refusal with the usage on stderr, as before.
+		root.RunE = func(*cobra.Command, []string) error {
+			fmt.Fprintln(stderr, usage)
+			return exitErr(deskkit.ExitRefused)
+		}
+
+		sample := &cobra.Command{Use: "sample", Short: "emit the seeded sample + the re-review worklist", Args: cobra.ArbitraryArgs}
+		sset := cli.Declare(sample, sampleBindings()...)
+		sample.RunE = func(*cobra.Command, []string) error {
+			return finish(stderr, runSample(sset, stdout, stderr, pre))
+		}
+
+		report := &cobra.Command{Use: "report", Short: "render the monthly report markdown from a results JSON", Args: cobra.ArbitraryArgs}
+		rset := cli.Declare(report, reportBindings()...)
+		report.RunE = func(*cobra.Command, []string) error {
+			return finish(stderr, runReport(rset, stdout, stderr, pre))
+		}
+
+		root.AddCommand(sample, report, &cobra.Command{Use: "version", Short: "print the version", Hidden: true,
+			Args: cobra.ArbitraryArgs,
+			RunE: func(*cobra.Command, []string) error {
+				fmt.Fprintln(stdout, versionLine())
+				return nil
+			}})
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy refusal code (5), not the adapter's default.
+		UsageExit:    deskkit.ExitRefused,
+		GoFlagCompat: true,
+	})
+}
+
+// finish reports a handler error the way the hand-rolled dispatcher did and keeps its code.
+func finish(stderr io.Writer, err error) error {
+	if err == nil {
+		return nil
+	}
+	var coded exitErr
+	if e, ok := err.(exitErr); ok {
+		coded = e
+	} else {
 		fmt.Fprintln(stderr, "deskcalibrate:", err.Error())
+		coded = exitErr(deskkit.ExitCodeOf(err))
 	}
-	return deskkit.ExitCodeOf(err)
+	return coded
+}
+
+func resolve(set *cli.Set) (*cli.Values, error) {
+	v, err := set.Resolve(cli.Inputs{})
+	if err != nil {
+		return nil, deskkit.Refused(err.Error())
+	}
+	if onResolve != nil {
+		onResolve(v)
+	}
+	return v, nil
+}
+
+// runStartup runs the process startup when there is one.
+func runStartup(stderr io.Writer, pre func(io.Writer) int) error {
+	if pre == nil {
+		return nil
+	}
+	if code := pre(stderr); code != deskkit.ExitOK {
+		return exitErr(code)
+	}
+	return nil
+}
+
+// runSample resolves and checks `sample`'s values, then runs the startup and the handler, in
+// that order: a bad value is refused before anything is read or echoed.
+func runSample(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) error {
+	v, err := resolve(set)
+	if err != nil {
+		return err
+	}
+	o := sampleOpts{
+		month: v.String("month"), vendor: v.String("vendor"), human: v.String("human"),
+		reviewerVendor: resolveReviewerVendor(v.String("reviewer-vendor"), v.String("roster-vendor")),
+		prs:            v.String("prs"), candidatesFile: v.String("candidates-file"), n: v.Int("n"),
+	}
+	if strings.TrimSpace(o.month) == "" {
+		return deskkit.Refused("--month YYYY-MM is required (the sample is recorded against it)")
+	}
+	if v.Source("seed") != cli.Flag {
+		return deskkit.Refused("--seed is required and recorded — an unseeded sample is not reproducible")
+	}
+	if o.seed, err = strconv.ParseInt(v.String("seed"), 0, 64); err != nil {
+		return deskkit.Refused(fmt.Sprintf("invalid value %q for flag --seed: parse error", v.String("seed")))
+	}
+	if err := runStartup(stderr, pre); err != nil {
+		return err
+	}
+	return sampleFn(o, stdout)
+}
+
+func runReport(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) error {
+	v, err := resolve(set)
+	if err != nil {
+		return err
+	}
+	results := v.String("results")
+	if strings.TrimSpace(results) == "" {
+		return deskkit.Refused("--results <file> is required")
+	}
+	if err := runStartup(stderr, pre); err != nil {
+		return err
+	}
+	return reportFn(results, v.String("roster-vendor"), stdout)
 }
 
 // resolveReviewerVendor prefers an explicit --reviewer-vendor, else the roster's
 // ASSAY_REVIEWER_VENDOR. A missing value is left empty; CheckIndependence turns
 // that into the fail-closed refusal.
-func resolveReviewerVendor(flagVal string) string {
+func resolveReviewerVendor(flagVal, rosterVal string) string {
 	if strings.TrimSpace(flagVal) != "" {
 		return flagVal
 	}
-	return os.Getenv(deskkit.EnvReviewerVendor)
+	return rosterVal
 }
 
-func cmdSample(args []string, stdout *os.File) error {
-	fs := flag.NewFlagSet("sample", flag.ContinueOnError)
-	month := fs.String("month", "", "prior calendar month, YYYY-MM (recorded in the sample)")
-	seed := fs.Int64("seed", 0, "sampling seed (recorded; same seed → same sample)")
-	seedSet := false
-	vendor := fs.String("vendor", "", "re-reviewer model vendor (must differ from the reviewer role's vendor)")
-	human := fs.String("human", "", "re-reviewer human login (a human checklist is independent of every model vendor)")
-	reviewerVendor := fs.String("reviewer-vendor", "", "reviewer role's model vendor (default: "+deskkit.EnvReviewerVendor+" from roster.env)")
-	prs := fs.String("prs", "", "comma-separated candidate APPROVED PR numbers")
-	candidatesFile := fs.String("candidates-file", "", "file of candidate APPROVED PR numbers, one per line")
-	n := fs.Int("n", DefaultSampleSize, "sample size")
-	if err := fs.Parse(args); err != nil {
-		return deskkit.Refused(err.Error())
-	}
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "seed" {
-			seedSet = true
-		}
-	})
-	if strings.TrimSpace(*month) == "" {
-		return deskkit.Refused("--month YYYY-MM is required (the sample is recorded against it)")
-	}
-	if !seedSet {
-		return deskkit.Refused("--seed is required and recorded — an unseeded sample is not reproducible")
-	}
-
-	rr := ReReviewer{Vendor: *vendor, Human: *human}
-	if rr.isHuman() && strings.TrimSpace(*vendor) != "" {
+func cmdSample(o sampleOpts, stdout io.Writer) error {
+	rr := ReReviewer{Vendor: o.vendor, Human: o.human}
+	if rr.isHuman() && strings.TrimSpace(o.vendor) != "" {
 		return deskkit.Refused("pass either --vendor or --human, not both")
 	}
-	rv := resolveReviewerVendor(*reviewerVendor)
+	rv := o.reviewerVendor
 	// SPOF check first: refuse before doing any sampling work.
 	if err := CheckIndependence(rv, rr); err != nil {
 		return err
 	}
 
-	candidates, err := loadCandidates(*prs, *candidatesFile)
+	candidates, err := loadCandidates(o.prs, o.candidatesFile)
 	if err != nil {
 		return err
 	}
-	sample, err := SeededSample(candidates, *seed, *n)
+	sample, err := SeededSample(candidates, o.seed, o.n)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(stdout, "reviewer-calibration sample — %s\n", *month)
+	fmt.Fprintf(stdout, "reviewer-calibration sample — %s\n", o.month)
 	fmt.Fprintf(stdout, "reviewer-vendor: %s\n", normalizeVendor(rv))
 	fmt.Fprintf(stdout, "re-reviewer: %s\n", rr.Identity())
-	fmt.Fprintf(stdout, "seed: %d\n", *seed)
+	fmt.Fprintf(stdout, "seed: %d\n", o.seed)
 	fmt.Fprintf(stdout, "candidates: %d\n", len(candidates))
 	fmt.Fprintf(stdout, "sample (%d):\n", len(sample))
 	for _, pr := range sample {
@@ -159,16 +306,8 @@ func cmdSample(args []string, stdout *os.File) error {
 	return nil
 }
 
-func cmdReport(args []string, stdout *os.File) error {
-	fs := flag.NewFlagSet("report", flag.ContinueOnError)
-	results := fs.String("results", "", "re-review results JSON (a deskcalibrate Report)")
-	if err := fs.Parse(args); err != nil {
-		return deskkit.Refused(err.Error())
-	}
-	if strings.TrimSpace(*results) == "" {
-		return deskkit.Refused("--results <file> is required")
-	}
-	raw, err := os.ReadFile(*results)
+func cmdReport(results, rosterVendor string, stdout io.Writer) error {
+	raw, err := os.ReadFile(results)
 	if err != nil {
 		return deskkit.RefusedWithCause("cannot read results file", err)
 	}
@@ -177,7 +316,7 @@ func cmdReport(args []string, stdout *os.File) error {
 		return deskkit.RefusedWithCause("results file does not parse as a calibration Report", err)
 	}
 	if strings.TrimSpace(rep.ReviewerVendor) == "" {
-		rep.ReviewerVendor = os.Getenv(deskkit.EnvReviewerVendor)
+		rep.ReviewerVendor = rosterVendor
 	}
 	md, err := rep.Render()
 	if err != nil {
