@@ -166,3 +166,26 @@ package, so it does not appear in `packages.txt`. The last layer runs
 image whose git is below the floor fails the build. The image stays offline at
 runtime: the tarball is fetched only during the build. A git bump changes the
 pair in both Dockerfiles in one change.
+
+## Runner Go module cache
+
+Rows run with no network, a read-only root and `GOPROXY=off`, so the image bakes
+the Go modules they resolve: its Dockerfile runs `go mod download` for
+`tools/desk` and `statusgen` from the release's own `go.mod` and `go.sum`, and
+records those roots, one per line, in
+`/usr/local/share/verify-runner/go-module-roots.txt`. The cache is pinned by the
+image digest like everything else in the image; nothing is mounted or fetched at
+row time.
+
+The cache matches the source the release was built from, not a tree verified
+later. When main moves a requirement after a release, a row that builds that
+module in an older image stops on module resolution before its check runs
+(#4683). A container-netns `statusgen verifyrun` reads the roots file, compares
+each root's `go.mod` in the verified tree with the cache before any row, and
+prints the gap once. A row that exits non-zero naming a missing module is
+recorded could-not-run with `image module cache predates go.sum (<module> <want>
+vs <have>)` rather than as a failure; rows that do not touch a missing module
+keep their own verdict. The remedy is to run in the image of a release whose
+`go.mod` and `go.sum` for those roots match the verified tree, normally the
+first release that contains the verified commit. A requirement bump on main
+that no release contains yet cannot be verified offline until the next release.
