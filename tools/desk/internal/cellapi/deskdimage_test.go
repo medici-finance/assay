@@ -27,8 +27,9 @@ const (
 	deskdFixturesDir = "testdata/deskdimage"
 )
 
-// Problem codes. Every code has exactly one negative fixture named <code>.fixture;
-// the test fails if a code has none, so a rule cannot exist untested.
+// Problem codes. Every code has a negative fixture named <code>.fixture, and may
+// have more named <code>--<variant>.fixture; the test fails if a code has none,
+// so a rule cannot exist untested.
 var deskdProblemCodes = []string{
 	// Dockerfile: pins and stage shape.
 	"unpinned-frontend",
@@ -71,6 +72,7 @@ var deskdProblemCodes = []string{
 	"target-missing",
 	"context-not-deskd",
 	"missing-secret-scan",
+	"step-not-fatal",
 	"no-builder-check",
 	"tag-not-local",
 	"docker-push",
@@ -489,8 +491,10 @@ func checkDockerfile(text string) []deskdProblem {
 		add("final-user-root", "final USER "+user+" is uid or gid 0")
 	}
 
-	// Baked arguments: the named rules first, the generic rule only when no named
-	// one explains the extra arguments.
+	// Baked arguments: the named rules first, the generic rule only when a named
+	// one has already REPORTED a problem for them. A compliant argument (a
+	// loopback -addr) explains nothing, so it never excuses a CMD or an extra
+	// ENTRYPOINT argument: any baked argument is red under one code or another.
 	baked := append([]string{}, cmdArgs...)
 	if entryOK && len(entry) > 1 {
 		baked = append(baked, entry[1:]...)
@@ -508,8 +512,8 @@ func checkDockerfile(text string) []deskdProblem {
 			}
 			if !loopbackAddr.MatchString(v) {
 				add("non-loopback-bind", "baked argument "+a+" "+v+" widens deskd's loopback default")
+				named = true
 			}
-			named = true
 		}
 	}
 	if !entryOK || len(entry) == 0 || entry[0] != "/deskd" || (len(entry) > 1 && !named) {
@@ -675,6 +679,28 @@ func checkMakefile(text string) []deskdProblem {
 		if !scanOK {
 			add("missing-secret-scan", "deskd-image must run containers/scripts/layer-secret-scan.sh on the built image, failing on any non-zero")
 		}
+		// make fails a recipe only on a logical line's LAST status. On the line that
+		// carries the docker build or the scan, a later command (the closing echo)
+		// would mask their failure unless the line runs under errexit or chains
+		// every following command with &&.
+		errexit := regexp.MustCompile(`^\s*set\s+(-[A-Za-z]*e[A-Za-z]*|-o\s+errexit)(\s|;)`)
+		quoted := regexp.MustCompile(`"(?:[^"\\]|\\.)*"|'[^']*'`)
+		buildCmd := regexp.MustCompile(`(^|[;&|]\s*)docker\s+build\s`)
+		for _, l := range recipes["deskd-image"] {
+			if errexit.MatchString(l) && !strings.Contains(l, "set +e") {
+				continue
+			}
+			bare := quoted.ReplaceAllString(l, `""`)
+			for _, at := range []*regexp.Regexp{buildCmd, scan} {
+				loc := at.FindStringIndex(bare)
+				if loc == nil {
+					continue
+				}
+				if rest := bare[loc[1]:]; strings.Contains(rest, ";") || strings.Contains(rest, "||") {
+					add("step-not-fatal", "deskd-image runs the build or the layer scan without errexit and before another command; a failure would not fail the target: "+strconv.Quote(l))
+				}
+			}
+		}
 		if !strings.Contains(img, "command -v docker") || !strings.Contains(img, "docker info") {
 			add("no-builder-check", "deskd-image must refuse with a named could-not-check when docker or its daemon is missing")
 		}
@@ -721,7 +747,7 @@ func checkDeskdBuild(in deskdBuildInputs) []deskdProblem {
 // deskdFixture plants one violation into a copy of the real files.
 // Format, one `key: value` per line, `#` comments allowed:
 //
-//	want: <problem code>            (must equal the file's base name)
+//	want: <problem code>            (the file's base name, or its <code>--<variant> prefix)
 //	file: Dockerfile|ignore|Makefile
 //	replace: "<Go-quoted text that occurs exactly once in the real file>"
 //	with: "<Go-quoted replacement>"
@@ -771,8 +797,8 @@ func readDeskdFixtures(t *testing.T) []deskdFixture {
 				t.Fatalf("%s: unknown key %q", p, k)
 			}
 		}
-		if fx.want+".fixture" != fx.name {
-			t.Fatalf("%s: want %q must equal the file's base name", p, fx.want)
+		if base := strings.TrimSuffix(fx.name, ".fixture"); fx.want != base && !strings.HasPrefix(base, fx.want+"--") {
+			t.Fatalf("%s: want %q must equal the file's base name, or prefix it as <code>--<variant>", p, fx.want)
 		}
 		if fx.replace == "" || fx.replace == fx.with {
 			t.Fatalf("%s: a fixture must replace non-empty text with something different", p)
@@ -831,7 +857,7 @@ func TestDeskdImageBuildContract(t *testing.T) {
 		known[c] = true
 	}
 	for _, fx := range fixtures {
-		t.Run(fx.want, func(t *testing.T) {
+		t.Run(strings.TrimSuffix(fx.name, ".fixture"), func(t *testing.T) {
 			if !known[fx.want] {
 				t.Fatalf("fixture names unknown problem code %q", fx.want)
 			}

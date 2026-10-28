@@ -195,7 +195,7 @@ func TestPerfRunnerCI(t *testing.T) {
 // TestDeskdImageContractCI holds the same public-layout guarantee for the
 // deskd build contract: its registry row's workflow reaches the
 // tools/desk shard on pull_request and push, and no path filter hides the
-// Makefile, Windows script or images/deskd/ edits it reads.
+// Makefile or images/deskd/ edits it reads.
 func TestDeskdImageContractCI(t *testing.T) {
 	ciAssertPublicLayoutRow(t, "tools/desk/internal/cellapi/deskdimage_test.go")
 }
