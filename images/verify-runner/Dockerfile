@@ -65,10 +65,17 @@ FROM ${RUNNER_BASE}
 # not a Debian package and is not listed in it. Its runtime libraries (libcurl3-
 # gnutls, libexpat1, libpcre2-8-0, zlib1g) stay installed: purge, without
 # --auto-remove, removes only the named packages.
+#
+# Row tools (#4684, #4318): rows run with no network, so a tool a row or the code
+# under test shells out to must already be here. jq, shellcheck and tmux are
+# Debian packages pinned like the Python ones; check.py proves each one runs.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       python3-yaml=6.0-3+b2 \
       python3-jsonschema=4.10.3-1 \
+      jq=1.6-2.1+deb12u3 \
+      shellcheck=0.9.0-1 \
+      tmux=3.3a-3 \
  && apt-get purge -y git git-man \
  && mkdir -p /usr/local/share/verify-runner \
  && dpkg-query -W -f='${binary:Package}=${Version}\n' \

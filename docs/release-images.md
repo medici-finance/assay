@@ -25,7 +25,8 @@ roll remains a separate downstream job under its own existing identity.
    desk-base from that newly built version, and the five desks from that base.
    Build assay-harness with the same binaries and prepared plugin source, and
    verify-runner from the release statusgen plus its digest-pinned Go base and
-   the Python packages pinned in `images/verify-runner/Dockerfile`.
+   the Debian packages (Python libraries and row tools) pinned in
+   `images/verify-runner/Dockerfile`.
 3. Check statusgen's version in all nine images. Execute the release-owned
    `images/verify-runner/check.py` inside the built runner: import PyYAML and
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
@@ -35,7 +36,9 @@ roll remains a separate downstream job under its own existing identity.
    `root:root` directory that neither its group nor others can write, and each
    script is a `root:root` regular file, executable, with no set-user-id or
    set-group-id bit, that neither its group nor others can write, and,
-   executed directly with no argument, prints its usage and exits 2. The probe
+   executed directly with no argument, prints its usage and exits 2. It runs
+   the row tools `jq`, `shellcheck` and `tmux` from `PATH`, so a release whose
+   runner lacks one stops before any push. The probe
    prints Python and distribution versions into the release build log. It uses
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp
@@ -121,10 +124,14 @@ variable in the protected `board-writer` environment; the existing
 `BOARD_APP_PRIVATE_KEY` secret remains the signing key. The client ID is not the
 numeric App ID.
 
-## Runner Python dependencies
+## Runner Debian dependencies
 
 The Dockerfile owns the direct Debian bookworm package pins. Their risk assessment
 is recorded on [issue 3469](https://github.com/medici-finance/assay/issues/3469#issuecomment-6272973965).
+The row tools `jq`, `shellcheck` and `tmux` are pinned the same way, because rows
+run offline and cannot fetch a tool they call
+([issue 4684](https://github.com/medici-finance/assay/issues/4684),
+[issue 4318](https://github.com/medici-finance/assay/issues/4318)).
 Apt resolves transitive dependencies from the base suite during the approved build;
 `/usr/local/share/verify-runner/packages.txt` records every installed Debian package
 and version in the immutable image, including transitive dependencies and Python.
