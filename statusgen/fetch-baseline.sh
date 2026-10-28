@@ -84,6 +84,7 @@ base="https://github.com/${repo}/releases/download/${tag}"
 bin="${dest}/statusgen-baseline-${tag}"
 sums="${dest}/statusgen-baseline-${tag}.checksums.txt"
 
+echo "fetch-baseline: downloading ${base}/checksums.txt and ${base}/${asset}" >&2
 curl -fsSL --retry 3 --proto '=https' "${base}/checksums.txt" -o "$sums"
 curl -fsSL --retry 3 --proto '=https' "${base}/${asset}" -o "$bin"
 
