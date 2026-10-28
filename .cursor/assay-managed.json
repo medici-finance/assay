@@ -1,9 +1,10 @@
 {
   "schema": 1,
+  "version": "1.0.65",
   "files": {
     ".cursor/references/claude-code.md": "e516df336b5f36b2809b27d058b223d02ad6477ec21fe6b7f66b764bfdd8bf98",
     ".cursor/references/codex.md": "af59e7db00415cfe6eabdf5a630a394fecb7b83f98aea33af1d8049fc1f9914a",
-    ".cursor/references/cursor.md": "2a5bf5ecc4416ee9460ec9eae6383151352496c2ccde977630de86e73b04a7b5",
+    ".cursor/references/cursor.md": "3561443bf0e004d9e1fd5189201dc345b80761473f353436f5101cec31c066fb",
     ".cursor/references/desk-common.md": "047e5f6e1871b06ebc58a6a14973df2b786f2cff460cccbd79e0f75973e6bca6",
     ".cursor/references/desk-shell.md": "be9463e3d3db6b5201dcb431d91c100d3f3205637b9e5cf4dcc6db75a4f6a8cd",
     ".cursor/references/implementation-pickup.md": "0b356b01a841bd1324c32d4c48b9585a866871c2b1078cfe3437b354bd1966ec",
