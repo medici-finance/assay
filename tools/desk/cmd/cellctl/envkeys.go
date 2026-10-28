@@ -222,6 +222,8 @@ func buildEnvKeys() []envKey {
 			why: "is one cell's session name, which `down` stops"},
 		envKey{key: "CELL_GO_CACHE_ROOT", class: envCell, desc: "The cell's managed Go cache root (default: go-cache in the cell's directory).",
 			why: "is a cache root marked for exactly one cell; a second cell is refused it"},
+		envKey{key: "CELL_KUBERNETES_CONFIG", class: envCell, desc: "K8s cells: explicit trusted compatibility profile; absent preserves the local path.",
+			why: "binds one cell to one explicit Kubernetes API, image and role-custody profile"},
 		envKey{key: "CELL_CONTAINER_CONFIG", class: envCell, desc: "Container cells: the configuration file the cell is defined in.",
 			why: "binds one cell to its container definition"},
 		envKey{key: "CELL_CONTAINER_LAUNCHER", class: envCell, desc: "Container cells: the launcher the cell is started with.",

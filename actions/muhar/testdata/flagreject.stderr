@@ -1,2 +1,2 @@
-invalid value "99999" for flag -j: parse error
-Usage of muhar:
+muhar: invalid argument "1e3" for "-j, --j" flag: strconv.ParseInt: parsing "1e3": invalid syntax
+Run 'muhar --help' for usage.

@@ -40,6 +40,14 @@ func (k *checker) warn(format string, args ...any) {
 
 func cmdCheck(cell, cfgArg string) {
 	c := loadCell(cell)
+	if c.kubeSelected() {
+		if cfgArg != "" {
+			die("compatibility check accepts no host config directory")
+		}
+		c.kubeRuntime(false)
+		fmt.Println("checked-clean: compatibility profile and explicit static target validated offline; effective custody and candidate image require qualification")
+		return
+	}
 	k := &checker{ok: true}
 
 	policy, policySource, policyErr := c.cellModelPolicy()
