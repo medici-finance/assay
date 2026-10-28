@@ -8,7 +8,7 @@ unblocks: ["cell-api/05"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
-gate-why: "All four risk answers are no. The deliverable builds a binary and a local image from already-public source; it pushes, tags, publishes, deploys and provisions nothing, and handles no runtime data or credentials. Publication remains the release workflow's separately approved act, and every deployment, profile and exposure decision stays behind cell-api/05's human gate."
+gate-why: "All four risk answers are no. The deliverable builds a binary and a local image from already-public source; it pushes, tags, publishes, deploys and provisions nothing, and handles no runtime data or credentials. Adding deskd to the release image set is cell-api/05's, publication remains the release workflow's separately approved act, and every deployment, profile and exposure decision stays behind cell-api/05's human gate."
 issues: []
 schema: brief-v2
 version: 1
@@ -41,7 +41,7 @@ consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up cell-api/08"
   - "changelog/deskd-image-build.md: follow-up cell-api/08"
   - "image artifact pin and supported service/client matrix: follow-up cell-api/05"
-  - "containers/k8s/release-images.json, docs/release-images.md and the release workflow: out-of-scope (publishing a deskd image is a separate release act; this brief adds no image to the release set)"
+  - "release image set (tools/release/images.py, its contract and docs/release-images.md): follow-up cell-api/05 (adds deskd to the release producer; publishing stays the release's separately approved act; this brief adds no image to the release set)"
 ---
 
 # Brief 08 — Build the deskd binary and image from public source through the Makefile
@@ -61,7 +61,7 @@ facts:
 
 layering: This brief carves the image-build duty out of cell-api/05 Task 1 so it can proceed on the already-public source while 05's profile, database and qualification dependencies stay open. It packages the existing deskd closure unchanged. It adds no runtime behaviour, configuration or authority, and it neither pins nor publishes an artifact.
 
-single-point-of-failure: the static contract test (Verify 1) is the control that keeps an unpinned base, a credential or out-of-tree COPY, a widened default bind or a push out of the build definition. The built-image check (Verify 5) runs the existing layer-secret scan and inspects the actual image's user and contents on a different signal, and before any image could be published the release workflow's own approval, pre-push checks and layer-secret gate still apply.
+single-point-of-failure: the static contract test (Verify 1) is the control that keeps an unpinned base, a credential or out-of-tree COPY, a widened default bind or a push out of the build definition. The built-image check (Verify 5) runs the existing layer-secret scan and inspects the actual image's user and contents on a different signal, A local image is never a pin: only the release job, once cell-api/05 adds deskd to its image set, produces a pinnable registry reference, under its own approval, pre-push checks and layer-secret gate.
 
 design-fit:
   owner: R7 service host packaging (cell-api); the root Makefile owns local build entrypoints and `tools/winparity` owns their Windows parity
@@ -107,6 +107,9 @@ Dockerfile and Makefile-recipe test patterns.
      `GOFLAGS=-mod=readonly`, downloads modules checked against `deskd/go.sum`, and
      builds only `./cmd/deskd` with `-trimpath`. BuildKit cache mounts are allowed;
      secret and SSH mounts are not.
+   - Leave module checksum verification on. No stage sets `GOSUMDB=off`, `GONOSUMDB`,
+     `GONOSUMCHECK`, `GOPRIVATE` or `GOINSECURE`, and no `GOFLAGS` value or build flag
+     carries `-mod=mod` or `-insecure`.
    - The final stage carries only the static binary, the CA trust bundle from the
      pinned build stage, and passwd/group entries for one numeric non-root user. It ends
      with `USER <uid>:<gid>` with a non-zero uid and gid. It has no shell, package
@@ -132,6 +135,10 @@ Dockerfile and Makefile-recipe test patterns.
      `assay-deskd:<full source SHA>`, a local name with no registry host, and adds a
      `-dirty` suffix when `git status --porcelain -- deskd images/deskd` is non-empty.
      It passes the same SHA into the revision label.
+   - The tag is a local build name, never an artifact pin. The build is not specified as
+     reproducible, so two builds of one SHA need not share an image ID, and an image that
+     was never pushed has no registry digest. cell-api/05 pins only the reference a
+     published release records.
    - After the build, `deskd-image` runs `containers/scripts/layer-secret-scan.sh` on
      the built image. A finding or a could-not-check result fails the target.
    - If `docker` is absent or its daemon is unreachable, `deskd-image` prints a named
@@ -157,6 +164,8 @@ Dockerfile and Makefile-recipe test patterns.
    - the final stage's last `USER` is numeric and non-root;
    - the build runs with `GOWORK=off`, CGO off and readonly modules, and builds only
      `./cmd/deskd`;
+   - no checksum-disabling setting (`GOSUMDB=off`, `GONOSUMDB`, `GONOSUMCHECK`,
+     `GOPRIVATE`, `GOINSECURE`, `-mod=mod`, `-insecure`) appears in any stage;
    - nothing credential-shaped, URL-sourced or out-of-context is copied, and the final
      stage has no extra COPY;
    - no secret-named ENV or ARG, and no baked config path or non-loopback bind;
@@ -166,7 +175,8 @@ Dockerfile and Makefile-recipe test patterns.
 
    Run the same checker over one synthetic negative fixture per property under
    `testdata/deskdimage/` (each fixture plants exactly one violation, such as an
-   unpinned `FROM`, `USER root`, a missing `GOWORK=off`, `COPY id_rsa`, `ENV GH_TOKEN=`,
+   unpinned `FROM`, `USER root`, a missing `GOWORK=off`, `ENV GOSUMDB=off`,
+   `ENV GOFLAGS=-mod=mod`, `COPY id_rsa`, `ENV GH_TOKEN=`,
    `--addr 0.0.0.0`, `docker push`, `--push` or a repo-root context). Every fixture must
    be rejected for its named reason. Zero fixtures read or a passing negative fixture
    fails the test. Register the test in `ciCrossModuleRegistry` with the paths it reads.
@@ -178,13 +188,14 @@ Dockerfile and Makefile-recipe test patterns.
 ## Interface and acceptance contract
 
 The image packages the existing deskd closure and runtime contract unchanged. Its
-consumers are cell-api/05, which declares the artifact pin, the supported
-service/client matrix and the deployment profile, and a later release act. This brief
+consumers are cell-api/05, which adds deskd to the release image set and declares the
+artifact pin (a published release record's reference), the supported service/client
+matrix and the deployment profile, and the release act that publishes it. This brief
 pushes, tags remotely, publishes and deploys nothing, and adds no entry to
 `release-images.json` or the release workflow. Explicitly out of scope, all owned by
 cell-api/05 or later briefs:
 
-- publishing, pushing or release-tagging the image;
+- adding the image to the release image set, and publishing, pushing or release-tagging it;
 - the artifact pin and supported service/client matrix;
 - the Kubernetes service profile and network policy;
 - the service database role and grants;
@@ -206,13 +217,13 @@ this authoring PR. Missing, unknown, not-yet-landed or wrong-parent inputs fail 
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | exit 0; named PASS over the real `images/deskd/Dockerfile`, its ignore file and `Makefile`. Each property from Tasks 1–2 has a negative fixture that the same checker rejects by name: unpinned `FROM` or frontend, root or non-numeric final `USER`, missing `GOWORK=off`/CGO-off/readonly modules, credential-shaped or out-of-context COPY, extra final-stage COPY, secret-named ENV/ARG, baked config path or non-loopback bind, missing target, repo-root context, missing layer-secret scan, and `push`/`--push`/`login`/registry exporter in `deskd-image`. Zero fixtures read fails. |
+| 1 | check:ci +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestDeskdImageBuildContract$' ./internal/cellapi/ > "$o" && grep -F -- '--- PASS: TestDeskdImageBuildContract ' "$o")` | exit 0; named PASS over the real `images/deskd/Dockerfile`, its ignore file and `Makefile`. Each property from Tasks 1–2 has a negative fixture that the same checker rejects by name: unpinned `FROM` or frontend, root or non-numeric final `USER`, missing `GOWORK=off`/CGO-off/readonly modules, each checksum-disabling setting (`GOSUMDB=off`, `GONOSUMDB`, `GONOSUMCHECK`, `GOPRIVATE`, `GOINSECURE`, `-mod=mod`, `-insecure`), credential-shaped or out-of-context COPY, extra final-stage COPY, secret-named ENV/ARG, baked config path or non-loopback bind, missing target, repo-root context, missing layer-secret scan, and `push`/`--push`/`login`/registry exporter in `deskd-image`. Zero fixtures read fails. |
 | 2 | check:ci +neighbour | `(cd tools/winparity && GOWORK=off go run . --root ../..)` | exit 0; prints `winparity: OK` for target parity, and the target list includes `deskd-build` and `deskd-image`. Also prints the 5.1-clean line. A target on one side only, or a non-ASCII or `>>>` script, fails. |
 | 3 | check:ci +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 120s -count=1 -v -run '^(TestCrossModuleTestsAreTriggeredByWhatTheyRead\|TestCrossModuleReaderRegistryIsNotSilentlyStale)$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCrossModuleTestsAreTriggeredByWhatTheyRead ' "$o" && grep -F -- '--- PASS: TestCrossModuleReaderRegistryIsNotSilentlyStale ' "$o")` | exit 0; both named PASS. The new test is registered with every path it reads, and the CI job that runs `tools/desk` reaches it on pull_request and push. |
 | 4 | check +flow | `make deskd-build && test -x deskd/dist/deskd && deskd/dist/deskd -h 2>&1 \| grep -F -- '-human-login'` | exit 0; the unprivileged target builds the real service binary from `deskd/` with `GOWORK=off`, and its usage lists the existing `-human-login` flag. Nothing is written outside `deskd/dist/`, and `git status --porcelain` shows no tracked change. |
-| 5 | check +flow +mutation | `command -v docker >/dev/null && docker info >/dev/null 2>&1 && make deskd-image && img="assay-deskd:$(git rev-parse HEAD)" && u=$(docker image inspect --format '{{.Config.User}}' "$img") && case "$u" in ''\|0\|0:*\|root\|root:*) exit 1;; esac && test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img")" = "$(git rev-parse HEAD)" && ! docker run --rm --network none --entrypoint /bin/sh "$img" -c true && docker run --rm --network none "$img" -h 2>&1 \| grep -F -- '-human-login' && sh containers/scripts/layer-secret-scan.sh "$img"` | exit 0 on a clean checkout with a working builder. The local image exists under the source SHA, with no registry host. Its configured user is numeric and non-root, and its revision label equals the SHA. No `/bin/sh` exists in it. The binary runs offline and prints its usage. The layer-secret scan is clean. A missing builder or daemon, a scan could-not-check, or a missing image is non-zero and recorded as could-not-check, never pass. The recorded control plants `USER root` or a credential file in a scratch copy of the Dockerfile and shows the inspection or scan fail. |
+| 5 | check +flow +mutation | `command -v docker >/dev/null && docker info >/dev/null 2>&1 && make deskd-image && img="assay-deskd:$(git rev-parse HEAD)" && u=$(docker image inspect --format '{{.Config.User}}' "$img") && printf '%s\n' "$u" \| grep -Eqx '[1-9][0-9]*:[1-9][0-9]*' && test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img")" = "$(git rev-parse HEAD)" && t=$(mktemp) && { docker run --rm --network none --entrypoint /bin/sh "$img" -c true > "$t" 2>&1; test $? -eq 127; } && grep -F -- '/bin/sh' "$t" && docker run --rm --network none "$img" -h 2>&1 \| grep -F -- '-human-login' && sh containers/scripts/layer-secret-scan.sh "$img"` | exit 0 on a clean checkout with a working builder. The local image exists under the source SHA, with no registry host. Its configured user is `<uid>:<gid>`, both numeric and non-zero, and its revision label equals the SHA. No `/bin/sh` exists in it: running it as the entrypoint exits 127 with an error naming `/bin/sh`, and any other failure (a missing image, a daemon error) fails the row instead of passing it. The binary runs offline and prints its usage. The layer-secret scan is clean. A missing builder or daemon, a scan could-not-check, or a missing image is non-zero and recorded as could-not-check, never pass. The recorded control plants `USER root` or a credential file in a scratch copy of the Dockerfile and shows the inspection or scan fail. |
 | 6 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
-| 7 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/08 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent. Record exact corroborated, disproved and unchecked counts, with 0 disproved. Unchecked consumers stay held, and the two non-path entries (the cell-api/05 pin and the out-of-scope release set) are review obligations. |
+| 7 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/08 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent. Record exact corroborated, disproved and unchecked counts, with 0 disproved. Unchecked consumers stay held, and the two non-path entries (the cell-api/05 pin and cell-api/05's release-set addition) are review obligations. |
 
 ## Threat model and detection
 
@@ -223,9 +234,10 @@ this authoring PR. Missing, unknown, not-yet-landed or wrong-parent inputs fail 
 | The image runs as root or ships a shell or terminal backend that widens what a compromised service can do | rows 1 and 5 |
 | The image bakes a non-loopback bind or config path that turns a local build into an exposure | row 1; exposure stays behind cell-api/05's human gate |
 | `deskd-image` pushes or exports to a registry, turning a local build into an unapproved publication | row 1; publication is also gated by the release workflow's own approval |
+| A local or `-dirty` build is pinned or deployed as if it were a published artifact | No row here: this brief produces no pin. cell-api/05's `deskd-deploy` accepts only a published release record's reference (its row 8) |
 | The Windows script drifts from the Makefile, or the new test is not run by CI | rows 2 and 3 |
 | An absent builder reads as a passing image build | row 5 is could-not-check without a builder, never pass |
-| A Go module substituted on the proxy | No row of its own. `GOFLAGS=-mod=readonly` with `deskd/go.sum` and the default checksum database refuse it in the build stage; review-only: confirm the Dockerfile does not disable either. |
+| A Go module substituted on the proxy | row 1: `GOFLAGS=-mod=readonly` with `deskd/go.sum` and the default checksum database refuse it in the build stage, and a negative fixture for each checksum-disabling setting proves the Dockerfile cannot turn either off |
 
 ## Evidence
 

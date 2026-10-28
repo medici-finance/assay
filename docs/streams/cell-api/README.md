@@ -84,7 +84,7 @@ paragraph is not a claim that every source consumer has already been accounted f
 | Service composition, derived inbox/cell/roadmap projections, source readers and local presentation markers | Move the service code and read-model adapters; share the existing R6 mirror and R1 projections. Classify local markers separately from work/effect authority. The legacy SQLite index is not the target coordination store. | 02: `tools/desk/cmd/deskd/`, `tools/desk/internal/cellapi/`; R2 PostgreSQL and existing forge mirror remain sole owners |
 | Mounted mux, capability guard, caller identity, per-repository filtering, named human actions and MCP authority assertions | Reuse the proven assertions, then exercise the actual public mounted handlers. Legacy bearer/loopback, terminal-input or human-write behavior is compatibility evidence, not authority for a public network listener. | 03: same composition plus existing R3/R4 and forge-neutral/40 custody; default read/plan-only ingress |
 | CLI, MCP, generated client and cockpit connection adapter | Move thin adapters onto one versioned API. Cockpit follows the service; preserve only the selected read/status/reconnect workflow in this set. Feature/packaging redesign is outside it. | 04: public CLI/MCP adapters and a small cockpit client example; legacy consumers remain until explicitly migrated or retained |
-| Existing standalone service image with a derived-index volume | Rebuild a publication-clean service image from public source. Keep service host separate from the in-cluster operator and five agent Pods. Replace legacy index/storage wiring only through 02's classification. | 08: `images/deskd/` and the `deskd-build`/`deskd-image` Makefile targets; 05: the image pin, generic `containers/k8s/components/cell-api/` and the human-only `deskd-deploy` target |
+| Existing standalone service image with a derived-index volume | Rebuild a publication-clean service image from public source. Keep service host separate from the in-cluster operator and five agent Pods. Replace legacy index/storage wiring only through 02's classification. | 08: `images/deskd/` and the `deskd-build`/`deskd-image` Makefile targets; 05: deskd's entry in the release image set, the published-release image pin, generic `containers/k8s/components/cell-api/` and the human-only `deskd-deploy` target |
 | Terminal backends and local process/session controls | Retain legacy adapters until qualified replacement; route managed lifecycle and Kubernetes attach through the shared runner and existing cellctl profile. No copied spawn/kill loop inside deskd. | 06 consumes desk-containers/28, graph-execution/26–27 and agent-execution/09 |
 | Source configuration, credentials, documentation, builds, pins and outstanding work | Publish generic schemas/examples only. Keep adopter roster/values, issuer/operator configuration, private crosswalk, secrets and historical incidents at their original custody. Inventory last consumers and qualification obligations before retirement. | 01 inventory → 07 migration/rollback under composability/03 (R8); source owner reconciles private work separately |
 
@@ -143,8 +143,9 @@ The generator-derived wave values include external prerequisites. Within this se
 - 03 requires R5's complete verifier proof (graph-execution/18) and the qualified
   R3/R4 serving boundary (forge-neutral/40). This preserves the R5/R6 activation path.
 - 08 builds the deskd binary and a local image from the already-public `deskd/` module
-  through the root Makefile. It has no in-set prerequisite, so it can land ahead of 05,
-  which pins its image digest rather than building one.
+  through the root Makefile. It has no in-set prerequisite, so it can land ahead of 05.
+  05 adds that image definition to the release image set and pins the reference a
+  published release records; it never pins or deploys a local build.
 - 05 consumes the CNPG profile and desk-containers/29's existing qualification harness;
   06 consumes the dedicated in-cluster operator profile.
   05 owns the additive read-role/profile amendment and the service-specific disposable
