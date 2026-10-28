@@ -125,6 +125,14 @@ RUN set -eu; \
 # tests build from source. Only module files are copied; the downloads are
 # checked against each module's go.sum. Rows need no proxy, and the cache stays
 # read-only and world-readable for a non-root row user.
+#
+# The cache matches the go.mod files of THIS build's source. A tree verified
+# later may require versions this cache does not hold, and offline rows cannot
+# fetch them (#4683). go-module-roots.txt records the roots baked here, one per
+# line; a container-netns `statusgen verifyrun` reads it, compares each root's
+# go.mod in the verified tree with this cache, and records a row that stops on
+# a missing module as could-not-run, naming the module and both versions.
+# Every root downloaded below is listed in it, and only those.
 ENV GOMODCACHE=/go/pkg/mod
 COPY tools/desk/go.mod tools/desk/go.sum /tmp/modsrc/tools/desk/
 COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
@@ -141,6 +149,8 @@ RUN set -eu; \
     cd /tmp/modsrc/statusgen; \
     go mod download; \
     cd /; \
+    mkdir -p /usr/local/share/verify-runner; \
+    printf '%s\n' tools/desk statusgen > /usr/local/share/verify-runner/go-module-roots.txt; \
     rm -rf /tmp/modsrc /root/.cache
 
 COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
