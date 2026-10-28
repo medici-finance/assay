@@ -8,6 +8,21 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/desk-session.test.sh",
+      "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/desk-session.test.py",
+      "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/fake-agent.fixture.py",
+      "reason": "desk-containers/31 synthetic offline agent used only by the bounded PID1 fixture, never packaged or released as an agent"
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s",
       "reason": "desk-containers/06 source-only YAML-to-JSON test adapter invoked by the offline packaging checker; Go main is run from the existing desk module, never installed or released as an operator CLI"
     },
@@ -115,6 +130,16 @@
       "class": "test",
       "pattern": "tools/release/go_cache_mutation.py",
       "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/sbom.py",
+      "reason": "internal release SBOM writer imported by the fixed release workflow Python call; no shebang, main guard, argument parser or independent operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/sbom_test.py",
+      "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
     },
     {
       "class": "test",
@@ -515,13 +540,16 @@
         "docs/cellctl-model-policy.md",
         "docs/cellctl-provider-defaults.md",
         "tools/cellctl/tests/provider.test.sh",
-        "tools/cellctl/tests/parity.test.sh"
+        "tools/cellctl/tests/parity.test.sh",
+        "containers/k8s/compatibility/cellctl-config.schema.json",
+        "containers/k8s/components/compatibility-cellctl/README.md"
       ],
-      "parser": "manual os.Args parsing",
+      "parser": "Cobra typed command tree",
       "complexity": "complex",
       "basis": "8889 LOC, ~34 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/16",
-      "state": "migrated"
+      "state": "migrated",
+      "reason": "desk-containers/31 adds explicitly selected Kubernetes compatibility transport and attach-only command; legacy routes remain"
     },
     {
       "executable": "clusterguard",
@@ -727,7 +755,7 @@
       "complexity": "simple",
       "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskclaim",
@@ -1323,7 +1351,7 @@
       "complexity": "simple",
       "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrelease",
@@ -1651,7 +1679,7 @@
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar-action.sh",
@@ -1669,7 +1697,8 @@
       "complexity": "simple",
       "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/muhar"
     },
     {
       "executable": "opmetrics",
@@ -1685,7 +1714,7 @@
       "complexity": "simple",
       "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "repohardenguard",
@@ -2666,6 +2695,46 @@
       "basis": "2 verbs (record, summary), 11 command flags; record semantics belong to desk-supervision/34, shared CLI qualification to this owner",
       "owner": "desktools-v2/56",
       "state": "pending"
+    },
+    {
+      "executable": "desk-session.sh",
+      "path": "containers/k8s/compatibility/desk-session.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "image-owned compatibility PID1 launcher in the five role images",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/k8s/components/compatibility-cellctl/workloads.yaml",
+        "tools/desk/internal/kubecompat/native/client.go",
+        "docs/cellctl.md",
+        "docs/docker.md"
+      ],
+      "parser": "POSIX fixed argv forwarding",
+      "complexity": "simple",
+      "basis": "bounded launch/retained-history/PTY/stop adapter; no scheduler or work authority",
+      "owner": "desk-containers/31",
+      "state": "exempt",
+      "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
+    },
+    {
+      "executable": "desk-session.py",
+      "path": "containers/k8s/compatibility/desk-session.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "image-owned compatibility PID1 launcher in the five role images",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/k8s/components/compatibility-cellctl/workloads.yaml",
+        "tools/desk/internal/kubecompat/native/client.go",
+        "docs/cellctl.md",
+        "docs/docker.md"
+      ],
+      "parser": "Python argparse typed boot/readiness/preparation protocol",
+      "complexity": "simple",
+      "basis": "bounded launch/retained-history/PTY/stop adapter; no scheduler or work authority",
+      "owner": "desk-containers/31",
+      "state": "exempt",
+      "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
     }
   ]
 }

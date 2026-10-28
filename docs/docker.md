@@ -280,3 +280,34 @@ Confirm the previous execution stopped before admitting a replacement role;
 retains claims, but namespace/PVC deletion and storage-provider policy still
 require separate backup/recovery planning. Neither offline schema validation nor
 an attach connection establishes safe recovery or a qualified managed cell.
+
+
+### Opt-in cellctl compatibility agent launcher
+
+The historical Kubernetes base still consumes its recorded shell-only v1.0.52
+images. The separate `containers/k8s/components/compatibility-cellctl` template
+selects the new image-owned bounded launcher and installs all roles paused. Its
+unbuilt candidate marker is an explicit adoption hold, not a usable image pin.
+Build and publish through the existing protected release producer, record actual
+role-image manifest digests and the unchanged release image record, and qualify
+operator/agent/profile values before activation. A local config ID, source hash,
+synthetic fixture or dry-run release is insufficient.
+
+The existing image credential preflight remains the entrypoint. The launcher
+uses only the already-prepared pinned agent, role instructions and retained work
+inputs. It sends one pinned initial role prompt and keeps attach/reconnect
+separate from starting the process. Cold preparation, dirty-history holds,
+complete process-namespace stop and exact API termination acknowledgement are
+specified in the trusted compatibility section of `docs/cellctl.md`.
+
+Run the real lower-layer fixtures with an explicitly selected local test daemon
+and cached `python:3.13-slim`; no image pull or container network is allowed:
+
+```sh
+ASSAY_TEST_DOCKER_HOST=unix:///var/run/docker.sock \
+  sh containers/k8s/compatibility/desk-session.test.sh --self-test
+```
+
+This command uses synthetic agent/credential-free fixtures, not the real model or
+cluster. Missing local Docker/image capability is could-not-check. The fixture
+image identity is test-environment evidence and supplies no candidate provenance.
