@@ -1,0 +1,5 @@
+# deskd-build: a failed go build handled by || echo leaves the target green.
+want: step-not-fatal
+file: Makefile
+replace: "./cmd/deskd\n\t@echo \"deskd-build: built"
+with: "./cmd/deskd || echo \"deskd-build: go build failed\" >&2\n\t@echo \"deskd-build: built"

@@ -608,6 +608,227 @@ func phonyTargets(makefile string) map[string]bool {
 	return out
 }
 
+// ---------------------------------------------------------------------------
+// Recipe-line shell reading, for step-not-fatal.
+//
+// make fails a target only on a logical recipe line's LAST exit status, and
+// each line is its own shell. A command whose failure must fail the target (a
+// build, the layer scan) therefore has to be a plain command whose status
+// reaches the end of its line: nothing after it, an unbroken && chain to the
+// end, or ; under errexit. errexit does not stop the shell for a command on the
+// left of && or ||, inside an if or after !, and without pipefail a pipeline
+// reports only its last command, so those positions are refused too.
+
+// recipeStep is a command whose failure must fail its make target.
+type recipeStep struct {
+	name  string
+	words []string       // the plain command's leading words
+	at    *regexp.Regexp // any occurrence of it in quote-masked text
+}
+
+var imageSteps = []recipeStep{
+	{"docker build", []string{"docker", "build"}, regexp.MustCompile(`(^|[^\w./-])docker\s+build(\s|$)`)},
+	{"layer-secret scan", []string{"sh", "containers/scripts/layer-secret-scan.sh"}, regexp.MustCompile(`layer-secret-scan\.sh`)},
+}
+
+var goBuildSteps = []recipeStep{
+	{"go build", []string{"go", "build"}, regexp.MustCompile(`(^|[^\w./-])go\s+build(\s|$)`)},
+}
+
+// maskQuotes replaces every byte inside a quoted string (and every escaped
+// byte) with '_', keeping the quotes and the length, so operators and command
+// names inside strings are not read as shell structure.
+func maskQuotes(line string) string {
+	b := []byte(line)
+	var q byte
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case q != '\'' && c == '\\' && i+1 < len(b):
+			b[i+1] = '_'
+			if q != 0 {
+				b[i] = '_'
+			}
+			i++
+		case q == 0 && (c == '"' || c == '\''):
+			q = c
+		case q != 0 && c == q:
+			q = 0
+		case q != 0:
+			b[i] = '_'
+		}
+	}
+	return string(b)
+}
+
+// shellSeg is one simple command of a recipe line and the operator after it
+// ("" at the end of the line).
+type shellSeg struct{ text, masked, next string }
+
+// shellSegments splits a logical recipe line at ; && || | |& and &, outside
+// quotes, leaving the & of a redirection (>&2, &>f) and the | of >| alone.
+func shellSegments(line string) []shellSeg {
+	m := maskQuotes(line)
+	var out []shellSeg
+	start := 0
+	emit := func(end int, op string) {
+		out = append(out, shellSeg{strings.TrimSpace(line[start:end]), strings.TrimSpace(m[start:end]), op})
+	}
+	for i := 0; i < len(m); i++ {
+		next := byte(0)
+		if i+1 < len(m) {
+			next = m[i+1]
+		}
+		prev := byte(0)
+		if i > 0 {
+			prev = m[i-1]
+		}
+		var op string
+		switch c := m[i]; {
+		case c == ';':
+			op = ";"
+		case c == '&' && next == '&':
+			op = "&&"
+		case c == '|' && next == '|':
+			op = "||"
+		case c == '|' && next == '&':
+			op = "|&"
+		case c == '|' && prev != '>':
+			op = "|"
+		case c == '&' && prev != '>' && prev != '<' && next != '>':
+			op = "&"
+		default:
+			continue
+		}
+		emit(i, op)
+		i += len(op) - 1
+		start = i + 1
+	}
+	emit(len(m), "")
+	return out
+}
+
+// commandWords drops leading NAME=value assignments from a command's words.
+func commandWords(masked string) []string {
+	w := strings.Fields(masked)
+	for len(w) > 0 && regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`).MatchString(w[0]) {
+		w = w[1:]
+	}
+	return w
+}
+
+func hasWords(w []string, want ...string) bool {
+	if len(w) < len(want) {
+		return false
+	}
+	for i := range want {
+		if w[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// applySet folds one `set` command's arguments into the errexit and pipefail
+// state: -e/+e, -o/+o errexit and -o/+o pipefail, in any flag group.
+func applySet(args []string, errexit, pipefail bool) (bool, bool) {
+	for j := 0; j < len(args); j++ {
+		a := args[j]
+		if len(a) < 2 || (a[0] != '-' && a[0] != '+') {
+			continue
+		}
+		on := a[0] == '-'
+		for _, c := range a[1:] {
+			switch c {
+			case 'e':
+				errexit = on
+			case 'o':
+				if j+1 < len(args) {
+					j++
+					switch args[j] {
+					case "errexit":
+						errexit = on
+					case "pipefail":
+						pipefail = on
+					}
+				}
+			}
+		}
+	}
+	return errexit, pipefail
+}
+
+// stepMasked says why the step that starts rest[0] would not decide the line's
+// exit status, or "" when it does.
+func stepMasked(rest []shellSeg, errexit, pipefail bool) string {
+	following := func(j int) bool {
+		for _, s := range rest[j+1:] {
+			if s.masked != "" {
+				return true
+			}
+		}
+		return false
+	}
+	i, op := 0, rest[0].next
+	for pipefail && (op == "|" || op == "|&") && i+1 < len(rest) {
+		i++
+		op = rest[i].next
+	}
+	switch {
+	case op == "|" || op == "|&":
+		return "is piped without pipefail, so the pipeline reports only its last command"
+	case op == "||":
+		return "is followed by ||, which handles its failure"
+	case op == "&":
+		return "is backgrounded"
+	case op == "" || !following(i):
+		return ""
+	case op == "&&":
+		for j := i + 1; j < len(rest); j++ {
+			if n := rest[j].next; n == "&" || ((n == ";" || n == "||") && following(j)) {
+				return "is &&-chained into a list that a later " + n + " ends, which errexit does not stop"
+			}
+		}
+		return ""
+	case op == ";" && errexit:
+		return ""
+	}
+	return "is followed by another command without errexit, which then decides the line's status"
+}
+
+// unfatalSteps reports each step on one logical recipe line whose failure the
+// rest of the line would mask, and each occurrence of a step that is not a
+// plain command (inside if, after !, in a subshell or a substitution).
+func unfatalSteps(line string, steps []recipeStep) []string {
+	segs := shellSegments(line)
+	var why []string
+	errexit, pipefail := false, false
+	plain := map[string]int{}
+	for k, s := range segs {
+		w := commandWords(s.masked)
+		if len(w) > 0 && w[0] == "set" {
+			errexit, pipefail = applySet(w[1:], errexit, pipefail)
+			continue
+		}
+		for _, st := range steps {
+			if !hasWords(w, st.words...) {
+				continue
+			}
+			plain[st.name]++
+			if m := stepMasked(segs[k:], errexit, pipefail); m != "" {
+				why = append(why, st.name+" "+m)
+			}
+		}
+	}
+	masked := maskQuotes(line)
+	for _, st := range steps {
+		if n := len(st.at.FindAllStringIndex(masked, -1)); n > plain[st.name] {
+			why = append(why, st.name+" is not a plain command, so its status is not the line's")
+		}
+	}
+	return why
+}
+
 // registryHostRef is an image reference whose first path component is a
 // registry host (has a dot or a port, or is localhost).
 var registryHostRef = regexp.MustCompile(`^([a-z0-9-]+\.[a-z0-9.-]+|[a-z0-9.-]+:[0-9]+|localhost)/`)
@@ -645,6 +866,11 @@ func checkMakefile(text string) []deskdProblem {
 		if bad {
 			add("build-outside-dist", "deskd-build may write only under deskd/dist/")
 		}
+		for _, l := range recipes["deskd-build"] {
+			for _, why := range unfatalSteps(l, goBuildSteps) {
+				add("step-not-fatal", "deskd-build: the "+why+"; a failure would not fail the target: "+strconv.Quote(l))
+			}
+		}
 	}
 
 	// deskd-image: local docker build of the deskd context, then the layer scan.
@@ -652,9 +878,9 @@ func checkMakefile(text string) []deskdProblem {
 	if len(recipes["deskd-image"]) > 0 {
 		var build []string
 		for _, l := range recipes["deskd-image"] {
-			for _, seg := range regexp.MustCompile(`&&|;|\|\|`).Split(l, -1) {
-				if f := strings.Fields(seg); len(f) >= 2 && f[0] == "docker" && f[1] == "build" {
-					build = f
+			for _, s := range shellSegments(l) {
+				if hasWords(commandWords(s.masked), "docker", "build") {
+					build = strings.Fields(s.text)
 				}
 			}
 		}
@@ -669,36 +895,21 @@ func checkMakefile(text string) []deskdProblem {
 		if !regexp.MustCompile(`--build-arg\s+"?REVISION=`).MatchString(joined) {
 			add("missing-oci-label", "deskd-image must pass the source SHA as --build-arg REVISION=")
 		}
-		scan := regexp.MustCompile(`sh containers/scripts/layer-secret-scan\.sh\s+\S+`)
+		// Presence only, on quote-masked text: a scan named inside an echo string
+		// never runs. Whether its failure fails the target is step-not-fatal's.
+		scan := regexp.MustCompile(`(^|[\s;&|(!])sh\s+containers/scripts/layer-secret-scan\.sh\s+[^\s;&|]+`)
 		scanOK := false
 		for _, l := range recipes["deskd-image"] {
-			if scan.MatchString(l) && !regexp.MustCompile(`\|\|\s*(true|:)`).MatchString(l) {
+			if scan.MatchString(maskQuotes(l)) {
 				scanOK = true
 			}
 		}
 		if !scanOK {
-			add("missing-secret-scan", "deskd-image must run containers/scripts/layer-secret-scan.sh on the built image, failing on any non-zero")
+			add("missing-secret-scan", "deskd-image must run containers/scripts/layer-secret-scan.sh on the built image")
 		}
-		// make fails a recipe only on a logical line's LAST status. On the line that
-		// carries the docker build or the scan, a later command (the closing echo)
-		// would mask their failure unless the line runs under errexit or chains
-		// every following command with &&.
-		errexit := regexp.MustCompile(`^\s*set\s+(-[A-Za-z]*e[A-Za-z]*|-o\s+errexit)(\s|;)`)
-		quoted := regexp.MustCompile(`"(?:[^"\\]|\\.)*"|'[^']*'`)
-		buildCmd := regexp.MustCompile(`(^|[;&|]\s*)docker\s+build\s`)
 		for _, l := range recipes["deskd-image"] {
-			if errexit.MatchString(l) && !strings.Contains(l, "set +e") {
-				continue
-			}
-			bare := quoted.ReplaceAllString(l, `""`)
-			for _, at := range []*regexp.Regexp{buildCmd, scan} {
-				loc := at.FindStringIndex(bare)
-				if loc == nil {
-					continue
-				}
-				if rest := bare[loc[1]:]; strings.Contains(rest, ";") || strings.Contains(rest, "||") {
-					add("step-not-fatal", "deskd-image runs the build or the layer scan without errexit and before another command; a failure would not fail the target: "+strconv.Quote(l))
-				}
+			for _, why := range unfatalSteps(l, imageSteps) {
+				add("step-not-fatal", "deskd-image: the "+why+"; a failure would not fail the target: "+strconv.Quote(l))
 			}
 		}
 		if !strings.Contains(img, "command -v docker") || !strings.Contains(img, "docker info") {
