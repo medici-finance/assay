@@ -22,7 +22,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-10-25 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/30 | 2026-10-28 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 8/37 | 2026-10-27 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/57 | 2026-10-27 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/57 | 2026-10-28 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-23 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/61 | 2026-10-27 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-24 |  |
@@ -141,7 +141,7 @@ _Held by per-stream caps: 18 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 52917f5fa 2026-10-27T23:59:14Z_
+_last regen: 558f3e56d 2026-10-28T00:09:07Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -162,7 +162,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 52917f5fa 2026-10-27T23:59:14Z_
+_last regen: 558f3e56d 2026-10-28T00:09:07Z_
 
 **Progress:** 35/94 brief items done.
 
