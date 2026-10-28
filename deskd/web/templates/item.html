@@ -1,0 +1,148 @@
+{{define "item.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deskd — {{.Row.Title}}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-human-login="{{humanLogin}}" class="item">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <a class="brand" href="/inbox">deskd</a>
+    <span class="crumb">item</span>
+  </div>
+  <div class="topbar-right">
+    {{if .Viewer.Authenticated}}
+    <span class="viewer-chip" data-capability="{{.Viewer.Capability}}">{{.Viewer.Login}}{{if .Viewer.Capability}} · {{.Viewer.Capability}}{{end}}</span>
+    <a class="signout" href="/auth/logout">sign out</a>
+    {{else}}
+    <a class="signin" href="/auth/login?return_to=/item/{{.Row.ID}}">sign in with GitHub</a>
+    {{end}}
+    <span id="session-chip" class="session-chip" data-live="false">session: checking…</span>
+  </div>
+</header>
+
+<main class="detail"
+      data-id="{{.Row.ID}}"
+      data-gold="{{.Row.Gold}}"
+      data-answered="{{.Row.Answered}}"
+      data-options-rev="{{.Row.OptionsRev}}"
+      data-platform-url="{{.Row.PlatformURL}}">
+
+  <h1 class="detail-title">
+    <span class="attn attn-{{.Row.State}}"><span class="glyph">{{.Row.Glyph}}</span> {{.Row.Word}}</span>
+    {{.Row.Title}}
+  </h1>
+
+  <section class="chrome">
+    <span class="chip chip-kind">{{.Row.Kind}}</span>
+    <span class="chip chip-urg urg-{{.Row.Urgency}}">{{.Row.Urgency}}</span>
+    <span class="chip chip-prov">{{.Row.Provenance}}</span>
+    <span class="age">{{humanAge .Row.AgeSeconds}} old</span>
+    <a class="platform-link" href="{{.Row.PlatformURL}}" target="_blank" rel="noopener">on GitHub ↗</a>
+  </section>
+
+  <section class="situation-block">
+    <h2>situation</h2>
+    <p class="situation">{{.Row.Situation}}</p>
+  </section>
+
+  <!-- artifact trail (spec §2.5/§2.6): the escalation node renders at its
+       position, dashed-gold ⟡ while open, solid + outcome colour once answered.
+       This build ingests only escalation issues, so the surrounding
+       automation artifacts arrive with the artifact plane. -->
+  <section class="trail-block">
+    <h2>artifact trail</h2>
+    <ol class="trail">
+      {{range .Trail}}
+      <li class="trail-node {{if .IsEscalation}}escalation{{end}} stroke-{{.Stroke}} outcome-{{.Outcome}}">
+        <span class="node-glyph">{{.Glyph}}</span>
+        <span class="node-label">{{.Label}}</span>
+      </li>
+      {{end}}
+    </ol>
+    <p class="trail-note">automation artifacts arrive with the artifact plane; this build derives the escalation node only.</p>
+  </section>
+
+  {{if .Row.Answered}}
+  <section class="answered-block">
+    <p>this escalation is answered and closed.</p>
+  </section>
+  {{else if .Row.Unparsed}}
+  <section class="unparsed-block">
+    <p class="unparsed-note">malformed escalation — shown raw, no answer bindings (§6.6)</p>
+    <pre class="raw-body">{{.Row.RawBody}}</pre>
+  </section>
+  {{else}}
+  <!--
+    Affordances below are rendered BY CAPABILITY, but the UI is NOT a security
+    control. The server gates /answer on the answerer tier and
+    /comment on the commenter tier regardless of what this page draws: a
+    commenter never sees the answer block, and even a forged answer POST returns
+    403 from the capability middleware (Verify 2), while the answer Service's own
+    answerer-login binding refuses it a second time. The real gate is server-side.
+  -->
+  {{if .Viewer.CanAnswer}}
+  <section class="answer-block" id="answer-block">
+    <h2>answer as {{.Viewer.Login}}</h2>
+    {{if .Row.Options}}
+    <ol class="options" id="options">
+      {{range .Row.Options}}
+      <li class="option" data-option-id="{{.ID}}" data-digit="{{.Digit}}" tabindex="0" role="button"
+          aria-label="option {{.Digit}}: {{.Label}}. {{.Consequence}}">
+        <span class="opt-digit">{{.Digit}}</span>
+        <span class="opt-label">{{.Label}}</span>
+        <span class="opt-consequence">{{.Consequence}}</span>
+      </li>
+      {{end}}
+    </ol>
+    {{end}}
+    <label class="answer-text-label" for="answer-text">note (optional)</label>
+    <textarea id="answer-text" class="answer-text" rows="3" placeholder="context for this decision"></textarea>
+
+    <!-- two-step commit (D1): a digit/click STAGES; a distinct key (Enter /
+         the commit button) commits, behind the confirm chip. -->
+    <div class="commit-row">
+      <div id="confirm-chip" class="confirm-chip" hidden>
+        <span class="confirm-identity">answering as {{humanLogin}}</span>
+        <span class="confirm-target" id="confirm-target"></span>
+        <span class="confirm-option" id="confirm-option"></span>
+      </div>
+      <button id="commit" class="commit" disabled>answer &amp; close</button>
+      <button id="ack" class="ack">ack 👀</button>
+      <span id="commit-status" class="commit-status" role="status"></span>
+    </div>
+  </section>
+  {{end}}{{/* .Viewer.CanAnswer */}}
+
+  {{if .Viewer.CanComment}}
+  <!-- Comment tier — RETIRED FROM THE SERVICE (the service contract P2).
+       A free-text comment is a human-authored platform write, and the service's
+       enumerated allow-list is {answer, ack}: there is no general-write route on
+       deskd any more, so there is nothing for this box to post to. The comment
+       path re-homes to the client host (the service contract), where it is the
+       person's own write on their own machine rather than a write the service
+       performs on their behalf. The tier itself is unchanged — the capability
+       ladder still derives commenter, and it is what the client will gate on. -->
+  <section class="comment-block" id="comment-block" data-id="{{.Row.ID}}">
+    <h2>comment as {{.Viewer.Login}}</h2>
+    <p class="comment-moved">Commenting moved off the service with the client&#47;service cut
+      (the service contract). It returns with the console client (the service contract); until then,
+      comment on the escalation in GitHub.</p>
+    <p><a class="btn" href="{{.Row.Links.platform}}">open the issue on GitHub</a></p>
+  </section>
+  {{else if not .Viewer.Authenticated}}
+  <section class="signin-block">
+    <p>sign in with GitHub to comment on this escalation.</p>
+    <a class="btn signin" href="/auth/login?return_to=/item/{{.Row.ID}}">sign in with GitHub</a>
+  </section>
+  {{end}}
+  {{end}}
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>{{end}}

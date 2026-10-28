@@ -15,8 +15,9 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 
-// Fixture environment isolation also addresses the helper tracked in
-// https://github.com/medici-finance/assay/issues/3750.
+// associationGit runs fixture Git with every inherited GIT_* variable removed, so a
+// caller's GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE cannot redirect fixture writes.
+// TestAssociationFixtureIsolation pins it.
 func associationGit(t testing.TB, root string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
@@ -71,6 +72,34 @@ func associationFixture(t *testing.T) (loopengine.Item, string, string) {
 		t.Fatal(err)
 	}
 	return got, source, tracking
+}
+
+// A hook may export GIT_DIR and related variables while running this suite.
+// Association fixture setup (init, config, remote, staging, commit, ref update,
+// detach) must write only its own temporary repository. This covers the fixture
+// helper only; production association code is exercised by the suites that call it.
+// regression: #3750
+func TestAssociationFixtureIsolation(t *testing.T) {
+	victim := regression.HostileGitDir(t)
+	before := regression.SnapshotTree(t, victim)
+	// Checked at cleanup too, so a setup step that fails after writing to the
+	// caller repository still reports what it changed.
+	t.Cleanup(func() {
+		if changes := before.Changes(regression.SnapshotTree(t, victim)); changes != "" {
+			t.Errorf("association fixture modified caller repository:\n%s", changes)
+		}
+	})
+	fixture := associationRepo(t, "example-org/tracker", map[string]string{"nested/fixture.txt": "fixture\n"})
+	head := associationGit(t, fixture, "rev-parse", "HEAD")
+	if got := associationGit(t, fixture, "config", "--get", "remote.origin.url"); got != "https://github.com/example-org/tracker.git" {
+		t.Fatalf("fixture origin = %q", got)
+	}
+	if got := associationGit(t, fixture, "rev-parse", "refs/remotes/origin/main"); got != head {
+		t.Fatalf("fixture origin/main = %q, want %q", got, head)
+	}
+	if got := associationGit(t, fixture, "show", "HEAD:nested/fixture.txt"); got != "fixture" {
+		t.Fatalf("fixture commit content = %q", got)
+	}
 }
 
 // regression: #2485

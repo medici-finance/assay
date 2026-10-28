@@ -63,7 +63,7 @@ image.
 
 ## How it's built and published
 
-- `Dockerfile` (repo root) is a multi-stage build: a `golang:1.27.2-alpine`
+- `Dockerfile` (repo root) is a multi-stage build: a `golang:1.27.3-alpine`
   builder compiles every binary `CGO_ENABLED=0` (static) with the same version
   stamps the release workflows use, and a small `alpine` final stage carries
   the binaries plus `git`, `gh`, and `ca-certificates` under a non-root user.
@@ -95,8 +95,8 @@ the assay plugin on hand) uses a separate family of images under
   `/opt/assay/plugin`;
 - a first-run installer for the **interactive agent CLI** (installed into the
   persistent volume rather than baked — see `containers/README.md`);
-- a **non-root `desk` user** and a declared **`VOLUME /work`** for persistent
-  working state.
+- a **non-root `desk` user** (UID/GID pinned to 999) and a declared
+  **`VOLUME /work`** for persistent working state.
 
 It is a **glibc** base (`debian:bookworm-slim`), not Alpine, because the agent
 CLI and Python wheels need glibc; the reused desk-tools binaries are static and
@@ -190,8 +190,9 @@ Build them locally with the commands in
 [`containers/k8s/`](../containers/k8s/README.md) packages the same five desk
 images as separate interactive StatefulSets. Each role has its own Pod, named
 container, App-PEM/model Secret references and retained `/work` PVC. Images are
-pinned by digest, agent service-account token mounting is disabled, ingress is
-denied, and no Service or Ingress exposes a terminal. Storage class and deployment
+pinned by digest, each checked against the releasing build's own
+`release-images.json` kept in the package, agent service-account token
+mounting is disabled, ingress is denied, and no Service or Ingress exposes a terminal. Storage class and deployment
 values belong in an adopter overlay. The package requires no Windows host,
 compose stack, CronJob, workflow controller or desktop multiplexer.
 

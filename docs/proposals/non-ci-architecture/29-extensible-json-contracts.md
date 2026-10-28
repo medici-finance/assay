@@ -96,7 +96,7 @@ compatibility: opmetrics, forge reads and runner requests provide partial preced
    every live brief is performed by this architecture document. For performance,
    statusgen/26 and desktools-v2/62 retain snapshot, phase and workload obligations
    but future format delivery targets v4; /63–65's completed source/evidence remains
-   about v3. Performance-collection stays parked and must later add a v4 reader
+   about v3. Performance-collection must later add a v4 reader
    explicitly before consuming it.
 5. Retire an old writer only after all selected consumers are proven compatible.
    Retain historical readers for the declared retention period. Roll back writer

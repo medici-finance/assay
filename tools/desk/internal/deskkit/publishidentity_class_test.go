@@ -41,7 +41,7 @@ import (
 var publishIdentitySites = map[string]string{
 	// The wrappers: the only literals. Each passes its tip through explicitly.
 	"cmd/deskpr/exec.go|publishIdentityGate|literal|remoteTip":          "deskpr wrapper; the tip is chosen per call site below",
-	`cmd/deskevidence/github.go|publishIdentityGate|literal|""`:         "used only by flip for local branch commits; its entire base-to-HEAD range is checked",
+	"cmd/deskevidence/github.go|publishIdentityGate|literal|remoteTip":  "flip pins PublishTrackingTip for its explicit branch; offline estimate only, deskpr rechecks live state",
 	`cmd/deskevidence/github.go|publishEvidenceIdentityGate|literal|""`: "conditional file writes judge the immutable admitted source against fetched main; no source commit is pushed",
 	"cmd/deskevidence/github.go|publishEvidenceIdentityGate|direct|-":   "the conditional-write wrapper calls the same role gate with the admitted Source",
 	"cmd/deskpr/exec.go|publishIdentityGate|direct|-":                   "the deskpr wrapper calls its seam",
@@ -51,7 +51,7 @@ var publishIdentitySites = map[string]string{
 	`cmd/deskpr/deskpr.go|cmdCreate|call|""`: "offline create --check judges the whole range; live create uses prepareCreatePush",
 	"cmd/deskpr/createpublish.go|prepareCreatePush|call|tip": "live create lists the exact credentialed push endpoint and branch; " +
 		"the proof binds source and destination, and the push requires the read tip unchanged",
-	"cmd/deskpr/deskpr.go|cmdUpdate|call|offlineTip": "offline/--check stage: remoteTrackingTip(facts.branch), a local " +
+	"cmd/deskpr/deskpr.go|cmdUpdate|call|offlineTip": "offline/--check stage: PublishTrackingTip(facts.dir, facts.branch), a local " +
 		"estimate used only if it resolves and is an ancestor of HEAD, re-judged by the live stage before any push; " +
 		"under `update --pr N` the PR's head ref is unknown offline, so offlineTip is \"\": a real run skips this stage " +
 		"and is judged by the live stage only (#2432), while `--pr N --check` judges the whole range (stricter, never narrower)",
@@ -61,9 +61,8 @@ var publishIdentitySites = map[string]string{
 	// Conditional-write callers bind the source independently of their destination.
 	"cmd/deskevidence/deskevidence.go|cmdEvidence|call|-":            "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main",
 	"cmd/deskevidence/outcomerecord.go|cmdOutcomeRecordWrite|call|-": "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main",
-	// flip (#2074) judges a fresh local branch before and after its commit: the
-	// wrapper's empty tip is the widest range, every commit not on the base.
-	"cmd/deskevidence/flip.go|runFlip|call|-": "deskevidence wrapper fixes RemoteTip to \"\"",
+	// Flip judges unpublished commits using the shared offline branch estimate.
+	"cmd/deskevidence/flip.go|runFlip|call|remoteTip": "shared offline branch tip, pinned across both local checks; publication rechecks live state",
 }
 
 // publishIdentitySite is one place the gate is reached.

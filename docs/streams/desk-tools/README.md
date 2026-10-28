@@ -232,6 +232,12 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
+| 55 | [Adopt parity-checked prune mutation selection](brief-55-adopt-parity-checked-prune-mutation-selection.md) | 1 | M | todo | — | — |
+| 56 | [Make mutation reports resumable and measurable](brief-56-make-mutation-reports-resumable-and-measurable.md) | 1 | M | todo | — | — |
+| 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | todo | — | — |
+| 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
+| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | todo | — | — |
+| 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -257,7 +263,7 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -306,7 +312,7 @@ whole mirror, a persistent cache, or the future runtime first does not resolve t
 - Wave 5: 44 after 41+42+43.
 
 The richer phase schema, adapters and tool panel amend performance-collection/01, /02,
-/07 (stream remains parked). Future serving amends forge-neutral/37–45; only its /39
+/07. Future serving amends forge-neutral/37–45; only its /39
 public contract mapping waits for desk-tools/39 and /45 qualification for desk-tools/43–44.
 The early lane has no reverse service/DB dependency. Active parser ports #3248/#3302,
 proposed supervision #3325 and generic improvement #3305 are pickup checkpoints, not
@@ -430,3 +436,30 @@ list, spec role sets, worktrees and claims. The issue label values (`to:reviewer
 least one release, a thin deprecated `pr-review-desk` skill redirects to `review-desk`, and a
 skillslint gate fails on any new bare use of the old name. The matching change to the
 maintainers' house layer is a separate brief there.
+
+## Candidate-plus-priority planner reuse — requested 23 October 2026
+
+See the [single contract and ranked provider-cost model](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+and [owner map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+Extend existing /39–40 pure observation/planning, /43 caller and /44 parity/cost work;
+/42 retains issue projection ownership and /45,/51 retain verification queue/skill ownership.
+No new brief IDs or generated status changes. Both prose and discrete clients consume the
+same role-qualified plan; graph-execution/27 composes all five existing role evaluators.
+
+Critical path stays /37 -> /39 -> /40 -> /43 -> /44 for the review bridge. All-five-role
+runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapters
+from /43 and /51, including /51’s existing human gate. Those edges are reciprocal; R6
+cross-window reuse follows its own route.
+Completed Evidence remains intact. A modified active assignment is rebound only through its
+owner checkpoint; authoring this amendment does not replace its current contract.
+
+## Operate is human, and the gate ladder — 27 October 2026
+
+Brief 60 is the public half of a downstream house's plan item. Its house-side check (a site-copy
+rule that refuses a page claiming a gate relaxation no ladder rung backs) has already landed
+downstream. What remains lives here: a short normative subsection in `spec/lifecycle-v1.md`
+§9 stating what an agent fleet may own and what stays human, a gate ladder with every
+threshold recorded as `not set`, and a review finding class, "claims a relaxation", that blocks
+a change asserting a widening the ladder does not back. The rung row is a fixed contract
+because downstream tools parse it. It is `gate: human` with a creation-time decision, and
+nothing in it changes any gate's behaviour.

@@ -459,11 +459,12 @@ func runBriefRows(root string, it loopengine.Item, execFn rowExec) []rowResult {
 		}
 		var exit int
 		var output string
-		if why := commentRefusal(row); why != "" {
-			// A command that is only a shell comment exits 0 with no output, so running
-			// it would record a PASS for a check that never looked (#2684). Fail closed
+		if why := rowRefusal(row); why != "" {
+			// A shell comment or no-op exits 0 having looked at nothing, and a prose
+			// mention or blank lift is not the check, so running any of them could
+			// record a PASS for a check that never ran (#2684, #3147). Fail closed
 			// without executing, exactly as an unrunnable command does.
-			exit, output = commentOnlyExit, "could-not-run: "+why
+			exit, output = couldNotRunExit, "could-not-run: "+why
 		} else {
 			exit, output = execFn(root, row.Command)
 		}
@@ -479,20 +480,20 @@ func runBriefRows(root string, it loopengine.Item, execFn rowExec) []rowResult {
 	return results
 }
 
-// commentRefusal is why row must not run as a shell comment, or "": the reason
-// parseVerifyRows recorded from the raw cell, else the lifted command itself
-// starting `#` (a row built without a cell).
-func commentRefusal(row verifyRow) string {
-	if row.CommentLed == "" && verifycmd.CommentOnly(row.Command) {
-		return verifycmd.UnmarkedCommentWhy
+// rowRefusal is why row must not run, or "": the reason parseVerifyRows recorded
+// from the raw cell, else the lifted command itself judged (a row built without
+// a cell): blank, a shell comment or a no-op.
+func rowRefusal(row verifyRow) string {
+	if row.Refused != "" {
+		return row.Refused
 	}
-	return row.CommentLed
+	return verifycmd.CommandRefused(row.Command)
 }
 
-// commentOnlyExit is the exit code recorded for a Verify command that is only a
-// shell comment: 127, the shell's own "nothing runnable" code, so the row is a
-// non-zero verdict and never a silent pass.
-const commentOnlyExit = 127
+// couldNotRunExit is the exit code recorded for a refused Verify command: 127,
+// the shell's own "nothing runnable" code, so the row is a non-zero verdict and
+// never a silent pass.
+const couldNotRunExit = 127
 
 // resolveVerifierPEMPath resolves the verifier private-key PEM, honouring (in order) an
 // explicit override, the VERIFIER_PEM env, and finally verifier-app.pem on the App-credential

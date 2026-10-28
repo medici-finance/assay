@@ -81,10 +81,52 @@ def cases(clean):
                               and d['metadata']['name'] == role)
                 target['spec']['template']['spec']['securityContext'][field] = 1000
             fixtures['image-identity-' + role + '-' + field] = wrong_identity
+    # regression: #3857 — every role reference must be the one its release
+    # build recorded. Each plant is a well-formed immutable reference that the
+    # shape check alone admits: a digest no release recorded, another role's
+    # recorded digest, and the recorded digest under a different release tag.
+    for workload in (d for d in clean if d['kind'] == 'StatefulSet'):
+        role = workload['metadata']['name']
+        others = [d for d in clean if d['kind'] == 'StatefulSet' and d['metadata']['name'] != role]
+        foreign = others[0]['spec']['template']['spec']['containers'][0]['image'].split('@')[1]
+        def unrecorded(ds, role=role, kind='digest', foreign=foreign):
+            target = next(d for d in ds if d['kind'] == 'StatefulSet'
+                          and d['metadata']['name'] == role)
+            box = target['spec']['template']['spec']['containers'][0]
+            name, digest = box['image'].split('@')
+            if kind == 'digest':
+                digest = 'sha256:' + hashlib.sha256(b'unrecorded ' + role.encode()).hexdigest()
+            elif kind == 'swapped':
+                digest = foreign
+            else:
+                name = name.rsplit(':', 1)[0] + ':v0.0.1'
+            box['image'] = name + '@' + digest
+        for kind in ['digest', 'swapped', 'tag']:
+            fixtures['image-provenance-' + role + '-' + kind] = (
+                lambda ds, f=unrecorded, kind=kind: f(ds, kind=kind))
     for name, change in fixtures.items():
         mutant = copy.deepcopy(clean)
         change(mutant)
         yield name, mutant
+
+
+# regression: #3857 — a coordinated edit: the same fabricated digest written
+# into the record and into one role's manifest, at every role. The record stays
+# a valid release-images-v1 document and the manifest equals it, so only the
+# pin on the record's own bytes can reject the pair.
+def record_cases(clean, record):
+    for workload in (d for d in clean if d['kind'] == 'StatefulSet'):
+        role = workload['metadata']['name']
+        ref = workload['spec']['template']['spec']['containers'][0]['image']
+        fabricated = ref.split('@')[0] + '@sha256:' + hashlib.sha256(b'fabricated ' + role.encode()).hexdigest()
+        if record.count(ref.encode()) != 1:
+            raise ValueError('record does not hold exactly one reference for ' + role)
+        mutant = copy.deepcopy(clean)
+        target = next(d for d in mutant if d['kind'] == 'StatefulSet'
+                      and d['metadata']['name'] == role)
+        target['spec']['template']['spec']['containers'][0]['image'] = fabricated
+        yield ('image-provenance-' + role + '-fabricated-pair', mutant,
+               record.replace(ref.encode(), fabricated.encode()))
 
 
 # regression: desk-containers/06

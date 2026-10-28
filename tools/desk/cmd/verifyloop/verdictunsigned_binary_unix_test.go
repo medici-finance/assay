@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // TestUnsignedOutBinaryActivation runs the BUILT verifyloop binary, so the run passes through
@@ -24,7 +26,7 @@ import (
 func TestUnsignedOutBinaryActivation(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "verifyloop")
 	build := exec.Command("go", "build", "-o", bin, ".")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("building verifyloop: %v\n%s", err, out)
 	}
 

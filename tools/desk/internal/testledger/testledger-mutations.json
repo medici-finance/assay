@@ -150,6 +150,30 @@
       "file": "internal/testledger/ledger_test.go",
       "old": "case isDir && rev != \"\":",
       "new": "case false:"
+    },
+    {
+      "name": "the characterization tag is never read",
+      "file": "internal/testledger/ledger.go",
+      "old": "module, oracle := characterization(fn.Doc)",
+      "new": "module, oracle := \"\", \"\""
+    },
+    {
+      "name": "prose after the characterization prefix reads as a tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "if len(f) == 2 && strings.HasSuffix(f[1], \".md\")",
+      "new": "if len(f) >= 2"
+    },
+    {
+      "name": "a table row in any oracle section counts as triage",
+      "file": "internal/testledger/ledger.go",
+      "old": "in = strings.HasPrefix(line, \"## 3.\")",
+      "new": "in = true"
+    },
+    {
+      "name": "an untriaged characterization test is never reported",
+      "file": "internal/testledger/ledger.go",
+      "old": "case !rows[f.Oracle][f.Name]:",
+      "new": "case false:"
     }
   ]
 }

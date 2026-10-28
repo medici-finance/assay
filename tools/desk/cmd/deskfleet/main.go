@@ -31,13 +31,16 @@
 // Every mode that reaches the network prints its target before its first request.
 //
 // OFFLINE CONTRACT. --dry-run enumerates every action and makes ZERO network calls. A real
-// run refuses before any network contact unless GITLAB_API_BASE is set (read from the
-// environment at call time; there is no default host) — and on success it prints the export
+// run refuses before any network contact unless GITLAB_API_BASE is set (an environment-only
+// binding the verb resolves when it runs; there is no default host) — and on success it prints the export
 // line the operator adds to the shell that runs the desk verbs; it never writes roster.env.
 //
 // A BOOTSTRAP VERB. Like deskinstall, it runs before a fleet — or a roster — exists, so it
 // reads no roster and consults no kill switch; it acts only on the forge a human points it at
 // with a credential that human supplies as a FILE (never argv, never the environment).
+//
+// PARSING. cli.go builds the Cobra command tree (through the desk adapter, internal/cli); help
+// and --version answer before any environment, file or network read.
 //
 // Exit: 0 ok · 1 a step failed (the output names each) · 2 usage · 5 refused (a precondition,
 // or a token file that is definitely not owner-only).
@@ -53,56 +56,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
-
-const usage = `deskfleet — Go-native GitLab fleet provisioning and forge-neutral fleet labels.
-
-USAGE:
-  deskfleet provision --group <path-or-id> --prefix <name> --owner-token-file <file>
-                      [--project <path-or-id>] [--out-dir <dir>] [--pat-expiry-days N]
-                      [--avatars-dir <dir> | --no-avatars] [--dry-run]
-  deskfleet provision --avatars-only --avatars-dir <dir> --prefix <name> [--out-dir <dir>] [--dry-run]
-  deskfleet labels --forge gitlab --project <path-or-id> --token-file <file> [--dry-run]
-  deskfleet labels --forge github --repo <owner/name>    --token-file <file> [--dry-run]
-  deskfleet --version
-
-provision  creates the seven role service accounts, their group memberships and (for an
-           account created by this run) one PAT each, written owner-only to
-           gitlab-<role>.token in --out-dir (default: the config home, where
-           desktoken --forge gitlab <role> reads it). With --project it also protects main,
-           sets MR approvals, protects release tags, sets the pipeline and discussion merge
-           checks, and creates the fleet labels. With --avatars-dir, each new account sets
-           <dir>/<role>.png as its own avatar, signed in as itself; without it (or with
-           --no-avatars) the avatar step is SKIPPED and named (no icon is fetched from the
-           web). --avatars-only sets the avatars of existing accounts from their
-           gitlab-<role>.token files and touches nothing else. Requires GITLAB_API_BASE (your REST v4 base,
-           e.g. https://gitlab.example.com/api/v4) — there is no default host.
-labels     creates the nine fleet labels (review-request, six raised-by:<role>, and the
-           authorization-needed / approval-needed pair) on one GitHub repo or GitLab project.
-           An existing label is a no-op.
-
-Credentials are read from FILES only (--owner-token-file / --token-file), which must pass
-the owner-only custody check; they are never accepted as a flag value or env variable, and
-never printed — only paths are. A link at one of those two flags' paths is followed, and the
-custody check judges the file it resolves to. A gitlab-<role>.token read back from --out-dir
-may only be a link to a file in its own directory, the rule desktoken applies to that file.
-
---dry-run  enumerates every action and makes ZERO network calls.
-
-Custody (the recorded ruling): a minted token whose owner-only read-back is INCONCLUSIVE is
-kept with a WARNING naming the file; one that is definitely not owner-only stops the run.
-A run that fails partway through minting stops, reports every token it minted (never the
-value) for manual revocation, names every account it created with no token and every request
-whose outcome it could not check, and revokes nothing.
-
-Exit: 0 ok · 1 a step failed · 2 usage · 5 refused.`
 
 // env is every seam the tests replace. Production values come from defaultEnv.
 type env struct {
 	stdout, stderr   io.Writer
 	http             *http.Client
-	getenv           func(string) string
+	lookupEnv        func(string) (string, bool)
 	now              func() time.Time
 	createRestricted createRestrictedFunc
 	classifyCustody  func(path string) deskkit.CustodyVerdict
@@ -114,7 +76,7 @@ func defaultEnv() *env {
 		stdout:           os.Stdout,
 		stderr:           os.Stderr,
 		http:             &http.Client{Timeout: 60 * time.Second},
-		getenv:           os.Getenv,
+		lookupEnv:        os.LookupEnv,
 		now:              time.Now,
 		createRestricted: createRestricted,
 		classifyCustody:  deskkit.ClassifyCustodyOwnerOnly,
@@ -130,32 +92,16 @@ const (
 )
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskfleet", nil, os.Args[1:], func([]string) int {
-		return run(os.Args[1:], defaultEnv())
-	}))
-}
-
-func run(args []string, e *env) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(e.stdout, "deskfleet sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return exitOK
-	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(e.stderr, usage)
-		if len(args) == 0 {
-			return exitUsage
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+	os.Exit(deskkit.PerfRunMeasured("deskfleet", []string{"provision", "labels"}, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		sink := func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
 		}
-		return exitOK
-	}
-	switch args[0] {
-	case "provision":
-		return cmdProvision(args[1:], e)
-	case "labels":
-		return cmdLabels(args[1:], e)
-	}
-	fmt.Fprintf(e.stderr, "deskfleet: unknown subcommand %q\n\n%s\n", args[0], usage)
-	return exitUsage
+		return run(a, defaultEnv(), sink), selected
+	}))
 }
 
 // credentialLinks says how readCredentialFile treats a symbolic link at the path it reads.
@@ -222,10 +168,11 @@ func readCredentialFile(flagName, path string, links credentialLinks) (string, e
 	return tok, nil
 }
 
-// gitlabAPIBase reads GITLAB_API_BASE at call time. There is deliberately no default: GitLab
-// is commonly self-hosted, and a guessed host would receive a live credential.
-func gitlabAPIBase(e *env) (string, error) {
-	base := strings.TrimSpace(e.getenv("GITLAB_API_BASE"))
+// gitlabAPIBase checks the GITLAB_API_BASE value the running verb resolved (raw: the declared
+// environment-only binding). There is deliberately no default: GitLab is commonly
+// self-hosted, and a guessed host would receive a live credential.
+func gitlabAPIBase(raw string) (string, error) {
+	base := strings.TrimSpace(raw)
 	if base == "" {
 		return "", fmt.Errorf("GITLAB_API_BASE is not set — refusing before any network contact. Set it to " +
 			"your deployment's REST v4 base (self-hosted: https://gitlab.example.com/api/v4; gitlab.com " +

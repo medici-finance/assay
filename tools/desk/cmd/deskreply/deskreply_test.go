@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -145,7 +146,7 @@ func runTests(m *testing.M) int {
 	buildDT := exec.Command("go", "build", "-o", filepath.Join(dir, "desktoken"), ".")
 	buildDT.Dir = dir
 	buildDT.Env = fakeBuildEnv()
-	if out, berr := buildDT.CombinedOutput(); berr != nil {
+	if out, berr := goquiet.Cmd(buildDT).CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "build fake desktoken: %v\n%s\n", berr, out)
 		return 1
 	}
@@ -735,7 +736,7 @@ func TestNoAppTokenPath(t *testing.T) {
 	}
 
 	// Best-effort transitive proof: the whole build graph carries no deskpost dependency.
-	out, lerr := exec.Command("go", "list", "-deps", ".").CombinedOutput()
+	out, lerr := goquiet.Cmd(exec.Command("go", "list", "-deps", ".")).CombinedOutput()
 	if lerr != nil {
 		t.Logf("skipping `go list -deps` transitive check: %v", lerr)
 		return
@@ -772,7 +773,7 @@ func TestParseRepo(t *testing.T) {
 // This closes a class the review found twice. publicRepoGateFn is stubbed by every
 // other test here, so the tests above prove only that the caller PROPAGATES the gate's
 // error — they would pass identically if production had never been bound to the gate
-// at all. That is not hypothetical: at head 1b91e146 `deskpr create` returned exit 6
+// at all. That is not hypothetical: at one earlier head `deskpr create` returned exit 6
 // on EVERY repo, private ones included, and no test noticed, because they all ran
 // against a stub. Asserting the production binding is what makes the other assertions
 // mean something.

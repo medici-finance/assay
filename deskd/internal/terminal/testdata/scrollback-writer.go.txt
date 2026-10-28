@@ -1,0 +1,8 @@
+// Positive control: this driver would persist terminal output.
+package fixture
+
+import "os"
+
+func persist(output []byte) error {
+	return os.WriteFile("scrollback", output, 0600)
+}

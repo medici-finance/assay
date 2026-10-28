@@ -43,7 +43,7 @@ import (
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
-var perfVerbs = []string{"prs", "actions", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files"}
+var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files"}
 
 func main() {
 	args := os.Args[1:]
@@ -89,10 +89,10 @@ func boardCode(n int) error {
 }
 
 type boardOptions struct {
-	table, delta, quiet, json bool
-	out, tier                 string
-	minAge, floor             int
-	merge, unreviewed         time.Duration
+	table, delta, quiet, json    bool
+	out, tier, reviewObservation string
+	minAge, floor                int
+	merge, unreviewed            time.Duration
 }
 
 func versionLine() string {
@@ -106,6 +106,7 @@ func boardBindings() []cli.Binding {
 		{Key: "json", Kind: cli.Bool, Flag: "json", Persistent: true, Default: false, Usage: "JSON output (stalled otherwise defaults to a table)"},
 		{Key: "delta", Kind: cli.Bool, Flag: "delta", Persistent: true, Default: false, Usage: "only changed rows (prs/actions/queue/nextup)"},
 		{Key: "quiet", Kind: cli.Bool, Flag: "quiet", Persistent: true, Default: false, Usage: "summary line (prs/actions/queue/nextup)"},
+		{Key: "review-observation", Kind: cli.String, Flag: "review-observation", Persistent: true, Usage: "throughput only: reuse a complete fresh review observation; no review recollection on hold"},
 		{Key: "out", Kind: cli.String, Flag: "out", Persistent: true, Default: "", Usage: "write primary output to a caller-minted file"},
 		{Key: "min-age-hours", Kind: cli.String, Flag: "min-age-hours", Persistent: true, Default: "48", Usage: "stalled draft window in positive hours"},
 		{Key: "merge-now-threshold", Kind: cli.String, Flag: "merge-now-threshold", Persistent: true, Default: "20m", Usage: "MERGE-NOW approved-age decay duration"},
@@ -138,9 +139,15 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 					fmt.Fprintln(stderr, err)
 					return boardExit(deskkit.ExitRefused)
 				}
+				if o.reviewObservation != "" && sub != "throughput" {
+					return deskkit.Refused("deskboard: --review-observation is supported only by throughput")
+				}
 				if o.out != "" && (o.delta || o.quiet) {
 					fmt.Fprintln(stderr, "deskboard: --out is not supported together with --delta/--quiet")
 					return boardExit(deskkit.ExitRefused)
+				}
+				if sub == "review-queue" && o.table {
+					return deskkit.Refused("deskboard review-queue requires JSON output; --table cannot produce the complete artifact")
 				}
 				if sub == "stalled" && o.table && o.json {
 					fmt.Fprintln(stderr, "deskboard: stalled: --table and --json are contradictory; pass one")
@@ -185,6 +192,7 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 			name, short string
 			aliases     []string
 		}{
+			{"review-queue", "complete frozen review observation (offline planning bridge)", nil},
 			{"prs", "open PRs across watched repos", nil}, {"actions", "per-PR ACTION classification", nil},
 			{"queue", "open verify-gate issues", nil}, {"throughput", "queue depth versus pool slots", nil},
 			{"health", "default-branch health per watched repo", nil},
@@ -233,7 +241,7 @@ func resolveBoard(set *cli.Set) (boardOptions, error) {
 	if boardResolved != nil {
 		boardResolved(v)
 	}
-	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier")}
+	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier"), reviewObservation: v.String("review-observation")}
 	o.minAge, err = strconv.Atoi(v.String("min-age-hours"))
 	if err != nil || o.minAge <= 0 {
 		return o, deskkit.Refused("deskboard: --min-age-hours requires a positive integer")
@@ -281,7 +289,13 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 	lastSweepCost = nil
 	hdr := boardHeader()
 
-	rep, err := boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
+	var rep *Report
+	var err error
+	if sub == "throughput" && o.reviewObservation != "" {
+		rep, err = cmdThroughput(hdr, mergeNowThreshold, unreviewedThreshold, o.reviewObservation)
+	} else {
+		rep, err = boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
+	}
 	// #2421: one read-cost line per actions sweep, on success and on refusal alike.
 	if sub == "actions" && lastSweepCost != nil {
 		fmt.Fprintln(stderr, lastSweepCost.line())
@@ -339,6 +353,16 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 		}
 		wantTable = !jsonOut
 	}
+	if sub == "review-queue" && outPath != "" {
+		if err := writeReviewObservation(outPath, rep.value); err != nil {
+			logRun(sub, deskkit.ResultUnverifiable, "--out: "+err.Error())
+			fmt.Fprintln(stderr, "deskboard review-queue: cannot save artifact:", err)
+			return deskkit.ExitUnverifiable
+		}
+		fmt.Fprintln(stdout, rep.detail)
+		logRun(sub, deskkit.ResultOK, rep.detail)
+		return deskkit.ExitOK
+	}
 	// --out redirects the PRIMARY output (table or JSON) to a caller-minted scratch
 	// file instead of stdout — a portable substitute for a shell `>` redirect
 	// (desk-shell.md §Scratch files) that does not depend on the invoking shell.
@@ -390,7 +414,7 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 // precedent already (TestStalled_RepoListFailureFailsClosed: "'no stalled drafts in
 // that repo' would be a claim nothing verified") and simply predates this map.
 var boardWideVerbs = map[string]bool{
-	"prs": true, "actions": true, "queue": true, "health": true, "policydrift": true,
+	"review-queue": true, "prs": true, "actions": true, "queue": true, "health": true, "policydrift": true,
 	"stalled": true,
 }
 
@@ -413,6 +437,8 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		}
 	}
 	switch sub {
+	case "review-queue":
+		return cmdReviewQueue()
 	case "prs":
 		return cmdPRs(hdr)
 	case "actions":
@@ -506,7 +532,35 @@ const (
 	staleStateDrift         = "drift"          // checked: they differ
 	staleStateNotApplicable = "not-applicable" // unpinned build: there is no install to drift
 	staleStateUnknown       = "unknown"        // COULD-NOT-CHECK: no pin found AND no in-tree ref
+	// staleStateHotfix: checked — the running binary is a valid local hotfix over this
+	// checkout's pin (its base == the pin, unexpired). Not stale, but never silent: the
+	// header names it on every board read.
+	staleStateHotfix = "hotfix"
 )
+
+// hotfixNow is the clock the hotfix arm reads expiry against; a seam for tests only.
+var hotfixNow = time.Now
+
+// hotfixStaleState classifies a running hotfix tag against the checkout's pin: base == pin
+// and unexpired is `hotfix` (stale=false, a HOTFIX: header); anything else is drift naming
+// the hotfix, which leaves the board BLIND exactly as any other drift does.
+func hotfixStaleState(running, base, pinTag, pinArtifact, pinFile string) (string, bool, string) {
+	expires, err := time.Parse(time.RFC3339, deskkit.HotfixExpires)
+	if err != nil {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " carries no readable expiry (" +
+			deskkit.HotfixExpires + ") — run `cellctl hotfix status`; the pin is " + pinTag + " in " + pinFile
+	}
+	exp := expires.UTC().Format(time.RFC3339)
+	if !hotfixNow().Before(expires) {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " expired " + exp +
+			" — regenerate the shims (`cellctl up`) to fall back to pin " + pinTag + " (" + pinFile + ")"
+	}
+	if normalizeTag(base) != normalizeTag(pinTag) {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " outlived its pin: built over " + base +
+			", " + pinFile + " pins " + pinArtifact + " " + pinTag + " — regenerate the shims (`cellctl up`)"
+	}
+	return staleStateHotfix, false, "HOTFIX: desk-tools " + running + " over pin " + pinTag + " (expires " + exp + ")"
+}
 
 // staleState reports installed-vs-tracked drift as a three-state verdict plus the
 // authoritative boolean.
@@ -558,6 +612,9 @@ func staleState() (state string, stale bool, detail string) {
 		running := deskkit.ReleaseTag
 		if running != "" {
 			pinFile := filepath.Join(pinRoot, deskkit.AssayVersionsFile)
+			if base, ok := deskkit.HotfixBase(running); ok {
+				return hotfixStaleState(running, base, pinTag, pinArtifact, pinFile)
+			}
 			if normalizeTag(running) == normalizeTag(pinTag) {
 				return staleStateInSync, false,
 					"in sync with " + pinFile + " (" + pinArtifact + " " + pinTag + ")"
@@ -786,7 +843,7 @@ func deskToolsPinReal() (root, tag, artifact string, found bool) {
 // deskToolsArtifact is the bare artifact name, tried first so a consumer that already
 // carries it keeps exactly today's verdict. The lookup itself is deskkit's, shared with
 // deskboot's first-sweep check (#2986), so the boot and the board read one pin the same way.
-const deskToolsArtifact = deskkit.DeskToolsArtifact
+var deskToolsArtifact = deskkit.DeskToolsArtifact
 
 // deskPlatform is the host's `<os>-<arch>` token. It is a var for the same reason isPinned
 // and gitTree are: the per-platform fallback has to be exercisable for a platform the test
@@ -913,6 +970,8 @@ func printBanners(w io.Writer, h Header) {
 		fmt.Fprintln(w, "STALE-UNKNOWN: "+h.StaleDetail)
 	case staleStateDrift:
 		fmt.Fprintln(w, "STALE: "+h.StaleDetail)
+	case staleStateHotfix:
+		fmt.Fprintln(w, h.StaleDetail) // the detail opens with `HOTFIX:`
 	default:
 		fmt.Fprintln(w, "desk-tools: "+h.StaleDetail)
 	}

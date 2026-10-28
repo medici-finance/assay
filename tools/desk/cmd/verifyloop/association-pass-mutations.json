@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/verifyloop -run '^Test(AssociationPass|BlockerObservation|PlanningRevision|Plan_AllRejected|VerifyPerformanceBlockerFanIn)' -count=1 -timeout 120s",
+  "test": "go test ./cmd/verifyloop -run '^Test(AssociationPass|AssociationFixture|BlockerObservation|PlanningRevision|Plan_AllRejected|VerifyPerformanceBlockerFanIn)' -count=1 -timeout 120s",
   "mutations": [
     {
       "name": "fresh-dispatch",
@@ -78,6 +78,12 @@
       "file": "internal/deskkit/verifierassociation.go",
       "old": "r.repo, err = verifierOrigin(root)",
       "new": "rawRemote, e := r.git.RemoteURL(\"origin\")\n if e != nil { err = e } else { r.repo, err = RemoteRepoSlug(rawRemote) }"
+    },
+    {
+      "name": "fixture-git-env",
+      "file": "cmd/verifyloop/association_test.go",
+      "old": "cmd.Env = regression.FixtureEnv(\"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t), \"GIT_CONFIG_NOSYSTEM=1\", \"GIT_CONFIG_GLOBAL=\"+os.DevNull)",
+      "new": "cmd.Env = append(os.Environ(), \"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t))\n\t_ = regression.FixtureEnv"
     }
   ],
   "root": ".",

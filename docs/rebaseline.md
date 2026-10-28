@@ -24,7 +24,7 @@ the review and the human merge are the independent layers behind it.
 
 | Class | Proof required | Status |
 |-------|----------------|--------|
-| `safe:rename` | The row pins a path that no longer exists, and git records a **single** rename/move hop from it to a path that exists now (`git log --follow`). The work is intact; only the pinned path moved. | **live** |
+| `safe:rename` | The row pins a path that no longer exists, and git records a **single** rename/move hop from it to a path that exists now (`git log --follow`). The row is then **re-run** with the old path rewritten to the new one in its Command and Expect, and it must pass that Expect. Only whole literal path tokens are rewritten; similarly named paths keep their meaning. The work is intact; only the pinned path moved. | **live** |
 | `safe:count` | The row's Expect is a count whose current value differs, and the target files changed **only by additions** since the Evidence date — the higher count is growth, not a regression. | *not yet implemented* |
 | `safe:idiom` | The row pins a tool idiom **retired by a recorded ruling** (e.g. a renamed flag). The command idiom moved; the checked behaviour did not. | *not yet implemented* |
 
@@ -42,10 +42,10 @@ the review and the human merge are the independent layers behind it.
 
 | Class | Signal |
 |-------|--------|
-| `refused:behaviour-changed` | The command still **runs** and returns a different result than the row pinned. That is a real behaviour change, not a stale oracle. |
+| `refused:behaviour-changed` | The command still **runs** and its result fails the row's own Expect cell, or the rename-rewritten row runs and fails it. That is a real behaviour change, not a stale oracle. |
 | `refused:gone` | The pinned deliverable path is gone with **no** single rename hop — the verb cannot prove the work survived. |
 | `refused:risk-bearing` | The row's owning brief is risk-bearing (`gate: human`, or any `risk:` flag `yes`). **No shape** makes such a row re-baselineable by the verb, regardless of its stale shape. |
-| `refused:unclassified` | The facts do not positively place the row in any safe class. The fail-closed default: unproven is never re-baselined. |
+| `refused:unclassified` | The facts do not positively place the row in any safe class, including a rename-rewritten row that could not run or whose Expect could not be decided. The fail-closed default: unproven is never re-baselined. |
 
 `refused:risk-bearing` is read from the owning brief's own frontmatter via the same audited
 predicate the ready-flip risk gate uses, so the verb's notion of "risk-bearing" cannot drift
@@ -68,7 +68,19 @@ deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
     is printed only afterwards. Verify-row commands are trusted-authored and are exactly what
     the verifier runs anyway, inside the verifier's offline envelope; as defence in depth the
     probe additionally forces `KUBECONFIG=/dev/null` in the command's environment, so a row
-    command cannot reach a cluster whatever the ambient `KUBECONFIG`.
+    command cannot reach a cluster whatever the ambient `KUBECONFIG`. For a rename hop it runs
+    the rewritten row instead, under the same envelope.
+  - **The result is judged against the row's Expect cell**, read the way `statusgen`'s
+    verify runner reads it: the exit code it names (`exit 1`; default `0`; a backticked
+    `exit=N` is printed output, not the required exit), an `output is` line, and a `≥ N`
+    floor. A row whose Expect is `exit 1` and whose command exits 1 has not changed.
+    An Expect that names none of those is **undecided**, not a pass: prose only, a backticked
+    token only, or an exit given as "non-zero" with no number. An explicit numeric exit wins over explanatory "non-zero" prose; an overflowed numeric constraint is undecided. `statusgen` would pass such a
+    row on its exit status alone. Here it is never proof, so a renamed row with an undecided
+    Expect is `refused:unclassified`, and so is an undecided behaviour probe.
+  - **Comment-led and comment-only rows are never executed**, by either the behaviour probe or the rename re-run. A comment's no-op exit is never proof of `safe:rename`.
+  - **An escaped pipe `\|` in the Command cell is part of the command.** Rows are split the way
+    `statusgen` splits them, and the probe runs the un-escaped pipeline.
 - **With `--open`** — on a `safe:*` verdict it rewrites that one row, commits it on a
   `rebaseline/<stream>-<NN>-row-<K>` branch, and opens a **draft** PR via `deskpr create` (as the
   loop identity — the verifier App under `DESK_LOOP=verify-desk`). On a `refused:*` verdict it

@@ -3,10 +3,15 @@ package deskkit
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
 )
 
 // ---- pure-loader helpers (offline, no filesystem) --------------------------
@@ -308,21 +313,47 @@ func TestContributorLedgerRosterCoupling(t *testing.T) {
 		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys is gone — nothing declares the " +
 			"recognised roster schema on that side")
 	}
-	// Windowed: the new constant must actually be LISTED inside scanKnownRosterKeys's
-	// body, not merely declared and forgotten (the same class of gap #491 was).
-	fnIdx := strings.Index(src, "func scanKnownRosterKeys()")
-	if fnIdx < 0 {
-		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys function body not found")
+	// Structural: scanKnownRosterKeys's body must be exactly one return of the shared
+	// schema, so the twin cannot keep (or grow back) a second list, and the shared
+	// schema itself must list the new key (the same class of gap #491 was).
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "rosterconfig.go", rc, 0)
+	if err != nil {
+		t.Fatalf("statusgen/rosterconfig.go does not parse: %v", err)
 	}
-	closeIdx := strings.Index(src[fnIdx:], "\n}")
-	if closeIdx < 0 {
-		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys function body has no closing brace " +
-			"within scan range")
+	delegates := false
+	for _, d := range file.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "scanKnownRosterKeys" || fn.Body == nil || len(fn.Body.List) != 1 {
+			continue
+		}
+		ret, ok := fn.Body.List[0].(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 1 {
+			continue
+		}
+		call, ok := ret.Results[0].(*ast.CallExpr)
+		if !ok || len(call.Args) != 0 {
+			continue
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		if pkg, isIdent := sel.X.(*ast.Ident); isIdent && pkg.Name == "trustcore" && sel.Sel.Name == "KnownRosterKeys" {
+			delegates = true
+		}
 	}
-	body := src[fnIdx : fnIdx+closeIdx]
-	if !strings.Contains(body, "scanEnvContributorLedger") {
-		t.Error("statusgen/rosterconfig.go: scanKnownRosterKeys() does not list scanEnvContributorLedger " +
-			"— declaring the constant without recognising it changes nothing")
+	if !delegates {
+		t.Error("statusgen/rosterconfig.go: scanKnownRosterKeys must be exactly `return trustcore.KnownRosterKeys()` " +
+			"(deskcore/trust), not a second list")
+	}
+	shared := map[string]bool{}
+	for _, k := range trustcore.KnownRosterKeys() {
+		shared[k] = true
+	}
+	if !shared[EnvContributorLedger] {
+		t.Errorf("deskcore/trust.KnownRosterKeys() does not list %s — declaring the constant without "+
+			"recognising it changes nothing", EnvContributorLedger)
 	}
 
 	// ---- (3) behavioural: this reader actually resolves a configured path ----

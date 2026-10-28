@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
@@ -100,7 +101,7 @@ var startupBuildCaches map[string]string
 var startupBuildCacheErr error
 
 func resolveStartupBuildCaches() {
-	out, err := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE").Output()
+	out, err := goquiet.Cmd(exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE")).Output()
 	if err != nil {
 		startupBuildCacheErr = fmt.Errorf("resolve test build caches: %w", err)
 		return

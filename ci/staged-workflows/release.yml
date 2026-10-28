@@ -77,6 +77,10 @@ name: release
 #   * images — the single release job builds and verifies all nine images from
 #     the prepared source and Linux binary artifacts, then pushes them before
 #     tagging and publishing their checksummed references with the binaries.
+#     verify-runner is multi-arch (linux/amd64 + linux/arm64, #4323): both
+#     platforms are built and checked on this runner, which therefore needs
+#     arm64 emulation registered with its Docker engine; its reference pins
+#     the image index digest. The other eight images stay linux/amd64.
 #     One release Environment approval covers this entire publication sequence.
 
 on:
@@ -115,7 +119,7 @@ concurrency:
 
 env:
   # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
 
 jobs:
   # Work out WHICH tag this run is about, before anything is built or written.
@@ -539,7 +543,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -1043,7 +1047,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -1199,6 +1203,11 @@ jobs:
           GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
           GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
           GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+          # linux-arm64 is the statusgen the arm64 half of the multi-arch
+          # verify-runner image carries (#4323). It is a published asset like the
+          # others: checksummed, described in the SBOM and attested, so the
+          # statusgen inside each runner platform is a release asset by sha256.
+          GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-arm64  .
           # windows-port/01: Go cross-compiles the two Windows targets on this same
           # Linux runner (no Windows host); the .exe suffix is part of the asset name.
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-amd64.exe .
@@ -1288,9 +1297,6 @@ jobs:
             tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
           done
 
-      # One checksums.txt covers every asset on the umbrella release — the five
-      # statusgen binaries, the five qualgen binaries, and the five desk-tools
-      # per-platform tarballs. Consumers pin each line by sha256 in .assay-versions.
       - name: Build versioned Cursor source bundle
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -1299,6 +1305,48 @@ jobs:
           cd tools/desk
           go run ./cmd/deskinstall --harness cursor --bundle ../../plugins/assay --release "$RELEASE_TAG" --pack ../../cursor-bundle.tar.gz
 
+      # SOFTWARE BILL OF MATERIALS. One SPDX 2.3 document, sbom.spdx.json, covers
+      # every Go-built asset: the six statusgen binaries, the five qualgen
+      # binaries, and the five desk-tools tarballs (each tarball described by the
+      # union of the Go binaries inside it). tools.release.sbom reads the Go
+      # build information the linker embedded (`go version -m`), so no extra tool
+      # joins the release runner; it records each asset's sha256, every linked
+      # module as a pkg:golang purl, and the Go toolchain as pkg:golang/stdlib.
+      # Deterministic: `created` is the source commit time. It refuses, writing
+      # nothing, if an asset is missing, a binary has no Go build information, or
+      # no dependency is found. Runs on the dry-run path too, so a dry run proves
+      # the SBOM builds; it is then checksummed and attested like every asset.
+      # The tag rides in via env:, never a `${{ }}` splice inside run:.
+      - name: Generate the SBOM
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          go version
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct HEAD)
+          export SOURCE_DATE_EPOCH
+          python3 - \
+            statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 statusgen-linux-arm64 \
+            statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
+            qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
+            qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
+            desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+            desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz <<'PY_SBOM'
+          import os
+          import sys
+          from pathlib import Path
+          from tools.release.sbom import write
+          write(Path.cwd(), sys.argv[1:], Path('sbom.spdx.json'), os.environ['REPOSITORY'],
+                os.environ['RELEASE_TAG'], int(os.environ['SOURCE_DATE_EPOCH']))
+          PY_SBOM
+          echo "sbom.spdx.json: $(grep -c '"name"' sbom.spdx.json) named elements"
+
+      # One checksums.txt covers every asset on the umbrella release — the six
+      # statusgen binaries, the five qualgen binaries, the five desk-tools
+      # per-platform tarballs, the Cursor source bundle and the SBOM
+      # (sbom.spdx.json). Consumers pin each binary line by sha256 in
+      # .assay-versions. The release job appends the image references.
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -1306,6 +1354,7 @@ jobs:
             statusgen-darwin-arm64 \
             statusgen-darwin-amd64 \
             statusgen-linux-amd64 \
+            statusgen-linux-arm64 \
             statusgen-windows-amd64.exe \
             statusgen-windows-arm64.exe \
             qualgen-darwin-arm64 \
@@ -1318,7 +1367,8 @@ jobs:
             desk-tools-linux-amd64.tar.gz \
             desk-tools-windows-amd64.tar.gz \
             desk-tools-windows-arm64.tar.gz \
-            cursor-bundle.tar.gz > checksums.txt
+            cursor-bundle.tar.gz \
+            sbom.spdx.json > checksums.txt
           cat checksums.txt
 
       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
@@ -1409,7 +1459,7 @@ jobs:
           sha256sum prepared-source.tar.gz image-bugs-gc-linux-amd64 release-highlights.md checksums.txt > build-inputs.sha256
           if [ -f release-source.bundle ]; then sha256sum release-source.bundle >> build-inputs.sha256; fi
 
-      # Independent platform artifacts let download-artifact transfer up to five
+      # Independent platform artifacts let download-artifact transfer up to six
       # platforms concurrently. Store the already-gzipped suites without another
       # compression pass; the loose binaries remain unstripped.
       - name: Upload prepared release artifacts (darwin-arm64)
@@ -1448,6 +1498,18 @@ jobs:
             qualgen-linux-amd64
             desk-tools-linux-amd64.tar.gz
 
+      # linux-arm64 carries statusgen only: it exists for the arm64 half of the
+      # multi-arch verify-runner image (#4323), not as a full platform suite.
+      - name: Upload prepared release artifacts (linux-arm64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-linux-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-linux-arm64
+
       - name: Upload prepared release artifacts (windows-amd64)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1482,6 +1544,7 @@ jobs:
           path: |
             cursor-bundle.tar.gz
             checksums.txt
+            sbom.spdx.json
             tool-validation-*.json
             tool-validation-*.md
             image-bugs-gc-linux-amd64
@@ -1502,6 +1565,11 @@ jobs:
       contents: write
       actions: read
       packages: write
+      # Build provenance (#3094): id-token mints the OIDC token the Sigstore
+      # signing certificate is issued against, and attestations records the
+      # attestation on the repository. This job only; no other job signs.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1567,10 +1635,13 @@ jobs:
           python3 - <<'PY_REFS'
           import json, os
           from pathlib import Path
-          from tools.release.images_contract import validate
+          from tools.release.images_contract import RUNNER_PLATFORM, validate
+          # A new release records the multi-arch runner; only a consumer of an
+          # older release's record accepts its amd64-only runner entry.
           validate(json.loads(Path('release-images.json').read_text()),
                    os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
-                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'])
+                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'],
+                   runner_platforms=(RUNNER_PLATFORM,))
           PY_REFS
           sha256sum release-images.json verify-runner-image.txt >> checksums.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1586,8 +1657,77 @@ jobs:
       - name: Dry run — stop before tagging and publishing
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
         run: |
-          echo "Dry run: binaries and all nine images built and checked; no images pushed, no tag cut, no release published."
+          echo "Dry run: binaries and all nine images built and checked; no images pushed, no provenance attested, no tag cut, no release published."
           echo "::notice::Dry run complete — build + guard + tests passed. No tag cut, no release published."
+
+      # BUILD PROVENANCE (#3094). Every asset the release publishes is attested
+      # here, after checksums.txt is final and before the tag is pushed, so a
+      # Sigstore or attestation failure stops the run without burning a version.
+      # The list below is the ONE list of published assets: the attestation
+      # covers exactly it, and the upload step below publishes exactly it, each
+      # asset with <asset>.sigstore.json beside it (the name deskinstall fetches).
+      # The list is explicit (not a glob), so a built+checksummed asset absent
+      # from here would be emitted in checksums.txt but never attached; the
+      # staging step refuses that case (every checksums.txt file must be listed).
+      - name: List the release assets to attest
+        id: assets
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # The two tool-validation evidence-pack files (iso-9001/01) ride
+          # alongside the binaries: the .json a consumer parses, the .md an
+          # auditor reads. Assembled from this run's captured mutation reports by
+          # the "Assemble the tool-validation evidence pack" step above.
+          # windows-port/01: the two statusgen .exe assets and the two desk-tools
+          # windows tarballs are published alongside the Unix assets.
+          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 statusgen-linux-arm64 \
+                   statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
+                   qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
+                   qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
+                   desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+                   desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
+                   "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
+                   cursor-bundle.tar.gz sbom.spdx.json release-images.json verify-runner-image.txt checksums.txt; do
+            test -f "$f" || { echo "::error::release asset $f is missing"; exit 1; }
+            printf '%s\n' "$f"
+          done > release-assets.txt
+          {
+            echo 'paths<<RELEASE_ASSETS_EOF'
+            cat release-assets.txt
+            echo 'RELEASE_ASSETS_EOF'
+          } >> "$GITHUB_OUTPUT"
+          cat release-assets.txt
+      # One SLSA build-provenance attestation whose statement names every listed
+      # asset by sha256 (the public-good Sigstore instance for a public repo,
+      # with a Rekor transparency-log entry), recorded on the repository so
+      # `gh attestation verify` also works.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: provenance
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        with:
+          subject-path: ${{ steps.assets.outputs.paths }}
+      # Refuses (writing nothing) unless every checksums.txt file is listed with
+      # the bytes checksums.txt records, and the bundle has the shape deskinstall
+      # verifies and names every listed asset's sha256; then writes the bundle
+      # beside each asset and re-checks every pair. Signatures are verified by
+      # deskinstall and `gh attestation verify`, not here.
+      - name: Stage and check a Sigstore bundle beside every release asset
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_BUNDLES'
+          import os
+          from pathlib import Path
+          from tools.release.bundles import check, stage
+          stage(Path.cwd(), Path(os.environ['BUNDLE']), Path('release-assets.txt'), Path('checksums.txt'))
+          problems = check(Path.cwd(), Path('release-assets.txt'))
+          if problems:
+              raise SystemExit('provenance bundles missing or wrong:\n' + '\n'.join(problems))
+          PY_BUNDLES
 
       # THE LAST POSSIBLE MOMENT. Dispatch only (and never on a dry run); the
       # guard has passed and the artifacts are already built and checksummed, so
@@ -1654,6 +1794,17 @@ jobs:
         run: |
           set -euo pipefail
 
+          # BUILD PROVENANCE (#3094) — refuse before the release is even created
+          # if any asset to be published lacks its bundle, or its bundle does
+          # not attest the bytes about to be uploaded.
+          python3 - <<'PY_BUNDLES'
+          from pathlib import Path
+          from tools.release.bundles import check
+          problems = check(Path.cwd(), Path('release-assets.txt'))
+          if problems:
+              raise SystemExit('provenance bundles missing or wrong:\n' + '\n'.join(problems))
+          PY_BUNDLES
+
           api="https://api.github.com/repos/${REPO}"
           uploads="https://uploads.github.com/repos/${REPO}"
           auth=(-H "Authorization: Bearer ${GH_TOKEN}" \
@@ -1692,11 +1843,11 @@ jobs:
             # with the labelled authorized-by line: who authorized this cut and
             # the path the value came from (dispatch actor, or an explicit
             # not-recorded on a tag push), plus the sentence that keeps the
-            # line honest — it records authorization, not build provenance,
-            # and claims no signature or attestation the pipeline does not
-            # perform. The authorizer rides in via env: and is read by the
-            # helper below exactly like RELEASE_TAG and IMAGE_MANIFEST.
-            body=$(RELEASE_TAG="$RELEASE_TAG" IMAGE_MANIFEST="$image_manifest" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; images=json.load(open(os.environ["IMAGE_MANIFEST"],encoding="utf-8"))["images"]; img="\n".join("  * "+i["name"]+": "+i["ref"] for i in images); auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload; SHA-256 integrity, not provenance)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\nContainer images produced by this release (pin immutable references from release-images.json):\n"+img+"\n\nSee checksums.txt for every asset sha256.\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact; the pipeline carries no signature or provenance attestation, and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            # line honest — it records authorization, not build provenance
+            # (that is the <asset>.sigstore.json bundles, #3094). The authorizer
+            # rides in via env: and is read by the helper below exactly like
+            # RELEASE_TAG and IMAGE_MANIFEST.
+            body=$(RELEASE_TAG="$RELEASE_TAG" IMAGE_MANIFEST="$image_manifest" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; images=json.load(open(os.environ["IMAGE_MANIFEST"],encoding="utf-8"))["images"]; img="\n".join("  * "+i["name"]+": "+i["ref"] for i in images); auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\nContainer images produced by this release (pin immutable references from release-images.json):\n"+img+"\n\nSee checksums.txt for every asset sha256.\n\nSoftware bill of materials: sbom.spdx.json (SPDX 2.3 JSON) lists every Go module and the Go toolchain linked into each statusgen and qualgen binary and each desk-tools tarball, with each asset sha256 and a pkg:golang purl per module.\n\nBuild provenance: every asset has a Sigstore bundle beside it, <asset>.sigstore.json - one SLSA provenance attestation, signed by the release workflow of this repository and recorded in the public transparency log, naming every asset by sha256. deskinstall verifies it before placing anything; check one by hand with: gh attestation verify <asset> --repo "+os.environ["REPO"]+" --bundle <asset>.sigstore.json\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact (the provenance bundles above record that), and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
@@ -1726,37 +1877,48 @@ jobs:
             cat "$assets_json"; exit 1
           fi
 
-          # The two tool-validation evidence-pack files (iso-9001/01) ride
-          # alongside the binaries: the .json a consumer parses, the .md an
-          # auditor reads. Assembled from this run's captured mutation reports by
-          # the "Assemble the tool-validation evidence pack" step above.
-          # windows-port/01: the two statusgen .exe assets and the two desk-tools
-          # windows tarballs are uploaded alongside the Unix assets — this list is
-          # explicit (not a glob), so a built+checksummed asset absent from here
-          # would be emitted in checksums.txt but never attached to the release.
-          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
-                   statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
-                   qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
-                   qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
-                   desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
-                   desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
-                   "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
-                   cursor-bundle.tar.gz release-images.json verify-runner-image.txt checksums.txt; do
-            # Fail loudly if this name is already published — never swap the bytes.
-            existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
-            if [ -n "${existing_id:-}" ]; then
-              echo "::error::asset $f (id $existing_id) already exists on release ${RELEASE_TAG}. Release assets are immutable — never swap the bytes behind a published name. Cut the NEXT patch version instead."
-              exit 1
-            fi
-            echo "uploading $f"
-            status=$(curl -sS --retry 3 -o "$RUNNER_TEMP/upload.json" -w '%{http_code}' -X POST "${auth[@]}" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$f" \
-              "${uploads}/releases/${release_id}/assets?name=${f}")
-            if [ "$status" != "201" ]; then
-              echo "::error::upload of $f failed (HTTP $status)"; cat "$RUNNER_TEMP/upload.json"; exit 1
-            fi
-          done
+          # The assets are exactly release-assets.txt, written by the "List the
+          # release assets to attest" step above (the list the attestation
+          # covers), and each is followed by its provenance bundle.
+          while IFS= read -r f; do
+            for name in "$f" "$f.sigstore.json"; do
+              # Fail loudly if this name is already published — never swap the bytes.
+              existing_id=$(NAME="$name" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
+              if [ -n "${existing_id:-}" ]; then
+                echo "::error::asset $name (id $existing_id) already exists on release ${RELEASE_TAG}. Release assets are immutable — never swap the bytes behind a published name. Cut the NEXT patch version instead."
+                exit 1
+              fi
+              echo "uploading $name"
+              status=$(curl -sS --retry 3 -o "$RUNNER_TEMP/upload.json" -w '%{http_code}' -X POST "${auth[@]}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$name" \
+                "${uploads}/releases/${release_id}/assets?name=${name}")
+              if [ "$status" != "201" ]; then
+                echo "::error::upload of $name failed (HTTP $status)"; cat "$RUNNER_TEMP/upload.json"; exit 1
+              fi
+            done
+          done < release-assets.txt
+
+          # BUILD PROVENANCE (#3094) — read the release back and refuse to
+          # publish unless every asset AND its bundle is on it exactly once at
+          # the uploaded size. A refusal here exits before the publish flip
+          # below, so a draft stays a draft.
+          published_json="$RUNNER_TEMP/assets-published.json"
+          list_status=$(curl -sS --retry 3 -o "$published_json" -w '%{http_code}' "${auth[@]}" \
+            "${api}/releases/${release_id}/assets?per_page=100")
+          if [ "$list_status" != "200" ]; then
+            echo "::error::could not read back the assets of ${RELEASE_TAG} (HTTP $list_status) — refusing to publish a release whose bundles are unchecked"
+            cat "$published_json"; exit 1
+          fi
+          PUBLISHED_JSON="$published_json" python3 - <<'PY_PUBLISHED'
+          import json, os
+          from pathlib import Path
+          from tools.release.bundles import published_problems
+          listing = json.loads(Path(os.environ['PUBLISHED_JSON']).read_text())
+          problems = published_problems(Path.cwd(), Path('release-assets.txt'), listing)
+          if problems:
+              raise SystemExit('release is missing provenance bundles; left unpublished:\n' + '\n'.join(problems))
+          PY_PUBLISHED
 
           # 3) Publish. Every asset is now attached. If the release is still a
           #    draft (freshly created, or a prior attempt left a draft), flip it
@@ -1772,7 +1934,7 @@ jobs:
               echo "::error::could not publish release ${RELEASE_TAG} (HTTP $pub_status)"; cat "$RUNNER_TEMP/publish.json"; exit 1
             fi
           fi
-          echo "Published ${RELEASE_TAG} with statusgen + qualgen + desk-tools binaries + checksums.txt (including checksummed container-image references)."
+          echo "Published ${RELEASE_TAG} with statusgen + qualgen + desk-tools binaries + checksums.txt (including checksummed container-image references), each asset with its <asset>.sigstore.json provenance bundle."
 
   # ───────────────────────────────────────────────────────────────────────────
   # CHANGELOG ROLL — its OWN job, deliberately NOT a trailing step of `release`.
@@ -1829,7 +1991,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"

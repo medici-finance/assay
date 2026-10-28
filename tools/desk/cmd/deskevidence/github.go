@@ -87,16 +87,18 @@ var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
 // so a gate quietly stubbed out in the shipped binary fails its seam-reality test loudly.
 var productionPublishIdentityGateFn = publishIdentityGateFn
 
-// publishIdentityGate judges all local branch commits before and after flip's
-// local commit. That lane may later push them; conditional forge-file writes
-// use the separate admitted-source boundary below instead.
-func publishIdentityGate(dir, base string) error {
+// publishIdentityGate judges unpublished branch commits before and after flip's
+// local commit. Publication rechecks the live destination; conditional forge-file writes
+// use the separate admitted-source boundary below instead. tipWhy is why the
+// snapshot supplied no tip, so a refusal names it (deskkit.PublishTrackingTip).
+func publishIdentityGate(dir, base, remoteTip, tipWhy string) error {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
-	// No already-published PR tip narrows flip's local branch check.
+	// Flip pins the shared offline estimate before making its local commit.
 	return publishIdentityGateFn(deskkit.PublishIdentityInput{
-		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), RemoteTip: "", Role: "verifier",
+		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), RemoteTip: remoteTip, Role: "verifier",
+		RemoteTipWhy: tipWhy,
 	})
 }
 

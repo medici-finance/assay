@@ -10,9 +10,10 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-17 by statusgen newbrief
 sources:
+  - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
   - docs/desk-workflow-efficiency-spec.md
   - docs/desk-workflow-efficiency-change-map.md
   - freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d (App-authenticated main fetch)
@@ -68,6 +69,21 @@ design-fit:
 - Use fake providers and disposable local Git for acceptance; live activation and collection are separate gates.
 - Stop at implemented; independent verification supplies Evidence. Do not rewrite completed brief Evidence.
 
+## Candidate and priority amendment — 2026-10-23
+
+Qualify the ranked GH-request model in the existing efficiency spec and A11–A12 using /37's
+oracle and actual production collectors/planners/consumers. Separate shared producer attempts,
+client-service calls, Git transport, local reads, 304, GraphQL points, pages, overflow, auth and
+consequential rechecks; do not add overlapping estimated savings or credit existing batches.
+Exercise R/P/I/T cohorts under cold/warm/changed/error conditions; pure priority/refill selection
+must make zero provider requests without reducing coverage. Record per-desk before/after and
+O() for the review/issue paths delivered by this brief’s dependencies, including issue pages
+and partial sources. Reuse this oracle and cost format for later worker/verifier/coordinator
+results delivered by graph-execution/27 and /51, including repair-reader coverage. Missing
+adapters are coverage gaps, not hidden prerequisites to this early review bridge or proof of
+five-role completion. A named reader and current coverage precede any numeric verify saving.
+No private cohort or runtime enrollment is required. Reuse the existing qualification surface.
+
 ## Task
 
 1. Run the frozen oracle and workload suite against baseline and subject for review, issue discovery
@@ -76,7 +92,7 @@ design-fit:
    hashes, correctness, coverage and CPU/wall/request/points vector. Compare full dispatcher-plus-
    agent work. Unknown children/quota and overlapping wall cannot be scored as savings.
 2. Publish a local, reproducible qualification and limitations record. Reuse performance-
-   collection/07 exports when available without depending on the parked collection stream, its
+   collection/07 exports when available without depending on the performance-collection stream, its
    DB/API or new consent. Pending #3305 owns reusable scorecard/experiment mechanisms; consume them
    when qualified rather than creating a second system. A failed/no-go result is valid and blocks an
    improvement claim.
@@ -117,6 +133,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowCostAcceptance$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestWorkflowCostAcceptance ' "$o")` | exit 0; named PASS. Matched complete-cycle replay passes correctness and preserves declared CPU/wall/attempt/points tradeoffs across workload/fault cohorts; extra work moved into child preparation or duplicate watch fails the cost/coverage claim. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestRetirementConsumerHold$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestRetirementConsumerHold ' "$o")` | exit 0; named PASS. Planted supported legacy consumer/pin, missing rollback version or unqualified replacement prevents retirement. Call removal can pass while shared binary remains; unsupported completeness cannot count as zero use. |
 | 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/44` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 4 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPlanCost$' ./... > "$o" && grep -F -- '--- PASS: TestSharedPlanCost ' "$o")` | exit 0; named PASS. transport counters distinguish collector, T pure reselections and final checks; review/issue curves and same-input decisions match the independent oracle on actual delivered paths. Other roles append production evidence through graph-execution/27 and /51; absent adapters cannot count as complete. Dropping a source, hiding producer cost or treating a 304 as no request fails; unavailable quota/adapters remain explicit. |
 
 ## Pre-mortem and detection
 

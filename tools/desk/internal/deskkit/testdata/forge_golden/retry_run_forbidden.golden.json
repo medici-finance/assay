@@ -1,0 +1,10 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/actions/runs/501/rerun-failed-jobs"
+    }
+  ],
+  "err": "forge API POST /repos/medici-finance/assay/actions/runs/501/rerun-failed-jobs returned HTTP 403",
+  "not_found": false
+}

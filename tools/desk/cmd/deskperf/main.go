@@ -2,7 +2,7 @@
 // ASSAY_TELEMETRY=1 (deskkit/perf.go) and turns it into per-tool percentiles,
 // a forge-call and rate-limit view, and a boot-cost breakdown.
 //
-//		deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]
+//		deskperf report [--days N] [--tool X] [--role R] [--top N] [--json] [--by-day]
 //	     [--perf-profile workflow] [--group-by tool|work|session|agent|deskRole|role]
 //	     [--session-id ID] [--agent-id ID] [--desk-role ROLE] [--assigned-role ROLE] [--work JSON]
 //		deskperf boot   [--days N] [--role R] [--json]
@@ -35,10 +35,15 @@ import (
 const usage = `deskperf — read the local perf history (opt-in: ASSAY_TELEMETRY=1).
 
 usage:
-  deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]
+  deskperf report [--days N] [--tool X] [--role R] [--top N] [--json] [--by-day]
       [--perf-profile workflow] [--group-by tool|work|session|agent|deskRole|role]
       [--session-id ID] [--agent-id ID] [--desk-role ROLE] [--assigned-role ROLE] [--work JSON]
-      per tool: count, p50 / p90 / max wall ms, total wall ms, share of total wall,
+      command overview first: tool + command, count, summed invocation wall,
+      p50 / p90 / max, outcomes, measured CPU and HTTP with coverage. Largest
+      command costs appear first. Timing cohorts remain separate rows and shares
+      use only their own cohort; nested/concurrent invocation work is not unique
+      elapsed time. JSON adds commands without moving the existing fields.
+      Then per tool: count, p50 / p90 / max wall ms, total wall ms, share of total wall,
       refusal ratio (refused + unwritten + unverifiable over count); then the top-N
       slowest invocations (default 10) as ts / tool / verb / wallMs. Legacy
       records (the original schema) and perf-v2 records are reported as SEPARATE
@@ -50,7 +55,20 @@ usage:
       calls and that hour and the p90 run as a share of the 5000/hour App budget
       floor (pooled over every tool and installation: a gauge, not a bound).
       It pools legacy forgeCalls and the perf-v2 http counter (one budget); a run
-      whose counter is unavailable prints as unavailable, never as zero
+      whose counter is unavailable prints as unavailable, never as zero.
+      A perf-v3 requests-by-tool section closes the report: per tool, request
+      attempts by protocol/resource class, request-latency p50 / p90 ESTIMATED
+      from the durationBins histogram, and rate-limit points summed where their
+      coverage is measured
+      --by-day reports the same window as a TIMESERIES instead of the pooled
+      tables: one row per tool × UTC day with invocation count, wall p50 / p90 /
+      max per schema group (legacy, perf-v2 and perf-v3 walls are never mixed),
+      the forge count pooled over every schema (legacy forgeCalls + the
+      perf-v2/perf-v3 http counter), and the day's perf-v3 request rollup per
+      tool. Rows are tool × day, so --by-day takes no --group-by other than
+      tool (refused). Every perf-v3 figure comes from one window-wide selection
+      (replays counted once, conflicting identities excluded); a workflow filter
+      leaves out legacy/perf-v2 records, which carry no attribution
   deskperf boot [--days N] [--role R] [--json]
       deskboot's per-step p50 / p90 / max and the summed boot cost, per role
   deskperf --version      print the build stamp

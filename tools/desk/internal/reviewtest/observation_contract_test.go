@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	rf "github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
@@ -306,7 +307,7 @@ func TestReviewContractFlow(t *testing.T) {
 
 // Compile a real production-source overlay and require the designated behavioral
 // assertion to fail. Compilation errors and unrelated failures are not kills.
-func contractMutation(t *testing.T, relative, old, replacement, run, diagnostic string) {
+func contractMutation(t *testing.T, relative, old, replacement, run, diagnostic string, packages ...string) {
 	t.Helper()
 	root := moduleRoot(t)
 	source := filepath.Join(root, relative)
@@ -329,11 +330,15 @@ func contractMutation(t *testing.T, relative, old, replacement, run, diagnostic 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "test", "-overlay", path, "-count=1", "-timeout=60s", "-v", "-run", run, "./internal/reviewtest")
+	pkg := "./internal/reviewtest"
+	if len(packages) > 0 {
+		pkg = packages[0]
+	}
+	cmd := exec.CommandContext(ctx, "go", "test", "-overlay", path, "-count=1", "-timeout=60s", "-v", "-run", run, pkg)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
-	out, e := cmd.CombinedOutput()
-	if e == nil || !strings.Contains(string(out), diagnostic) || !strings.Contains(string(out), "--- FAIL: TestReview") {
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off", "GOFLAGS=-overlay="+path, "ASSAY_REVIEW_CONTRACT_MUTANT=1")
+	out, e := goquiet.Cmd(cmd).CombinedOutput()
+	if e == nil || !strings.Contains(string(out), diagnostic) || !strings.Contains(string(out), "--- FAIL: "+strings.Split(strings.TrimPrefix(run, "^"), "$")[0]) {
 		t.Fatalf("mutation did not fail designated assertion: %v\n%s", e, out)
 	}
 	t.Logf("killed production mutation: %s (%s)", relative, diagnostic)

@@ -416,7 +416,7 @@ for compatibility tests. No production dual-write or silent downgrade is introdu
 Invalid explicit context retains existing redacted coverage handling without changing
 the underlying tool result. Publish through ordinary release/checksum pins, with
 reader capability established before consumer selection. No special release,
-workflow dispatch, local binary install, network upload or parked collection activation
+workflow dispatch, local binary install, network upload or performance-collection activation
 is part of this delivery. Future collection explicitly adds v4 alongside legacy reads.
 
 ### Proof and reconciliation

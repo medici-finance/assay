@@ -16,222 +16,18 @@
 // These are local-only verbs: they take the full audit line and the kill switch
 // but NOT the outward-write rate limit (deskkit/ratelimit.go "Verb classes").
 //
-// Exit codes (deskkit contract): 0 success/noop, 3 disabled, 4 rate-limited
+// Exit codes (deskkit contract): 0 success/noop, 2 usage (a malformed command line, refused
+// before any effect), 3 disabled, 4 rate-limited
 // (unused here), 5 refused, 6 unverifiable. See deskkit/exitcodes.go.
 package main
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
-
-const usage = `deskwt — safe worktree lifecycle and coordinated offline Git maintenance.
-
-USAGE:
-  deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
-             [--lock-session <id>]
-  deskwt remove <path>
-  deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
-  deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
-               [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
-               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>]
-               [--min-idle <dur>] [--no-maintenance]
-  deskwt maintain objects [--repo <path>] [--dry-run | --apply] [--json]
-                     [--min-interval 24h] [--timeout 2m]
-  deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
-  deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
-  deskwt --version
-
-maintain objects prints a read-only inventory and task plan by default. --apply runs bounded,
-offline ref packing, commit-graph and incremental object packing, once per common Git
-directory per 24h attempt interval. Failed attempts consume the same interval. Every object ID is retained, including unreachable objects borrowed
-by other clones. Configured reference-transaction hooks or uncertain native hook inventory
-hold maintenance. It never fetches, runs gc, expires reflogs or changes branches/worktrees.
-prune also attempts this daily maintenance after its lifecycle sweep; --no-maintenance
-skips it, and --branches-only retains its branch-only meaning. Child process groups
-or Windows jobs enforce the runtime budget before releasing repository ownership.
-
-role-init provisions a DESK ROLE's own worktree in one idempotent call: a session-scoped
-path under the sanctioned temporary-root prefix, a uniquely-named branch cut from a FRESHLY FETCHED
-origin/main (so the preflight landing probe is green and the session does not start behind
-main), a worktree lock, and the role's App commit identity set PER-WORKTREE (bot USER id,
-#638) so concurrent sessions cannot race each other's identity via shared config, plus the
-role's App fetch/push TRANSPORT and CREDENTIAL HELPER set per-worktree (URL list and helper
-chain reset, one inline helper reading the
-role's 0600 token file — never a token in argv or a URL), and finally the role's own
-PREFLIGHT run against the provisioned worktree (red = exit 6, the path is still printed). An
-existing valid worktree is reused (transport and helper re-wired, existing files preserved); a
-foreign-repo path is refused, never re-pointed. The
-LAST line on stdout is the worktree's absolute path — the launcher contract:
-` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
-role-clean unlocks and removes it under the same safety guards as remove.
-
-<role> is EVERY desk role desktoken mints (desk, worker, reviewer, verifier, issue-loop,
-intake-loop), spelled either as that token role or as the loop name deskboot boots
-(the-desk, worker-desk, pr-review-desk, verify-desk, intake-desk); --role <role> is the
-same thing spelled as a flag. --repo-root names the checkout to provision FROM (default:
-the working directory). The shared checkout's index and user.* config are never touched:
-the identity lands in the NEW worktree's own config, and the one shared-config write is
-enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
---no-fetch cuts from the local origin/main as-is.
-
-add --base <full-commit> --upstream <full-remote-ref> checks that the remote ref
-resolves to that commit before allocating. It checks out the immutable commit with
---no-track, then sets branch tracking separately; a failed tracking setup rolls back
-the new worktree. --upstream requires a fully qualified refs/remotes/ ref and is
-incompatible with --detach. Without --upstream, the existing track-the-base behavior
-is unchanged. Worker resume dispatches supply both values.
-
-add STAMPS or CLEARS the new worktree's commit identity so it never INHERITS the shared
-checkout's. With --role R (a token role or a loop name, folded the same way role-init folds
-it) the role's App commit identity — the bot USER id noreply address (#638), resolved through
-the SAME shared resolver role-init uses — is written to the new worktree's own config
-(extensions.worktreeConfig), and an unbound role is REFUSED (exit 5) before the worktree is
-created. WITHOUT --role the new worktree's user.name/user.email are CLEARED (set empty at
-worktree scope, which shadows the shared value — an --unset would fall through to it), so a
-commit there fails closed ("Author identity unknown") until an identity is set, rather than
-committing under an unrelated inherited identity. The shared checkout's config is never
-touched either way. The identity (or the cleared state) is echoed to stderr; stdout stays the
-bare worktree path.
-
-add --role and role-init GIVE the worktree the role App's OWN TRANSPORT instead of the one it would
-inherit (an SSH origin, an operator's pushurl sentinel). At worktree scope it writes
-remote.origin.pushurl and remote.origin.url as an empty entry (git's list reset, git 2.46+)
-followed by https://<host>:443/<owner>/<name>.git — the explicit port keeps a global
-https-to-SSH insteadOf from rewriting it — plus the role App's host-scoped credential helper
-(the same one role-init writes). An SSH host alias is resolved to its real host with
-` + "`ssh -G`" + ` (no connection). It then reads back what git itself resolves for fetch and push, and
-REFUSES (exit 5) unless both are exactly that one URL. add rolls back its new worktree;
-role-init retains its worktree for repair and stops before preflight. On any failure after
-the URL writes (that refusal, or a credential that cannot be resolved) the worktree-scoped URL
-lists are restored, and the inherited credential helper chain, cleared before the first URL
-write, stays cleared. An origin on
-git's local transport (a path) carries no key and is left as it is, unless it pushes over SSH.
-An explicit HTTP service port, an HTTPS port other than 443, or an empty HTTP(S)
-port is refused before URL or credential provisioning. Omitted HTTP ports retain
-the established HTTPS migration.
-
-Without --role, add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this
-checkout's remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut
-from it — and a session whose $DESK_LOOP resolves to a role App would push under whatever key
-this machine's agent holds, a human's, while its commits read as the App's. The refusal names
-the url and the remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
-read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
-their own key, which is what the SSH remote is for.
-
-add --lock-session <id> LOCKS the new worktree for that live session, in role-init's lock
-reason format (` + "`session=<id>`" + `), so prune holds it from its first second and
---reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
-is stale. A lock that cannot be taken and verified rolls the worktree back.
-
-add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
-one refs store, so a branch left behind by an abandoned dispatch blocks every later add that
-derives the same name. A leftover that is checked out in no worktree and carries no commit its
-upstream (or --base) lacks is RECLAIMED — deleted and recreated — with an audit line. One that
-is checked out somewhere, or carries unpushed commits, is REFUSED, naming the worktree path or
-the commit count.
-
-Worktree creation/removal acts only on paths that RESOLVE under the sanctioned
-temporary-root prefix or <repo-root>/.claude/worktrees/. The shared checkout is refused
-by identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
---force flag. On any state it cannot positively verify it refuses.
-
-remove also clears a registration whose worktree has NO git link left — an empty-directory
-husk, or a directory already gone — which the gates above cannot open (they exited 6 and left
-the branch registered forever). It does so only when the directory holds nothing, no process
-holds it open (lsof — without root it sees only the caller's own processes; unavailable = could-not-check, refuse), the admin HEAD is recoverable
-(a branch that resolves, or a detached commit on a remote-tracking ref), and any lock is the
-caller's own session's or its session is proven gone by the roster. A husk with files, a lock
-naming no session, or git's "initializing" lock is refused. Then it unlocks, runs
-` + "`git worktree prune`" + `, verifies the registration is gone, and removes the empty directory; a
-failed clear restores the original lock. before_remove runs only when the directory exists (cwd = the husk); a
-directory already gone has nothing to clean, so the hook is skipped.
-
-prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then handles
-stale registrations whose directory survives but whose .git gitdir file is gone (the shape
-` + "`git worktree remove`" + ` refuses and a lock makes ` + "`git worktree prune`" + ` keep forever). It
-clears the REGISTRATION only — the directory is left on disk — and only behind three
-gates: the scope gates every arm enforces (never the shared checkout, the current
-worktree, or outside the sanctioned prefixes), an admin-HEAD target retained by a branch that positively resolves to a commit,
-or by a detached commit already on refs/remotes/origin/main,
-and the lock rule — the default sweep never retires a lock, so a locked husk clears only
-when --reclaim-stale-locks has proven its lock stale this sweep. Then it removes
-ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/main. An
-UNMERGED branch (an open PR in flight) is LEFT untouched — that is the active-worker guard.
-A worktree whose HEAD IS the origin/main tip (zero landed commits — the fresh-worktree case,
-and the shape a reclaim-by-detach leaves behind) must additionally pass three at-tip gates:
-old enough to be no session's just-created workspace (the fresh-worktree safety window),
-nothing uncommitted or untracked (the untracked-inclusive status), and no git-ignored
-payload. An at-tip tree passing all three drains; any other is LEFT with the reason named.
-A worktree holding a verifier admission record (an admitted verifier run's home, whose
-Evidence still lands from it) is LEFT by both this sweep and --reap-dead-sessions for 24h
-after admission; ` + "`deskwt remove`" + ` is the explicit release. An unreadable record holds that
-worktree; a record that names no worktree holds every candidate in the sweep.
-Ahead of every content gate, in this arm and the --reap-dead-sessions arm alike, the
-ACTIVITY gate holds any worktree git shows activity in within --min-idle (default 1h;
-tunable, never disableable): the newest mtime of its admin HEAD, index, logs/HEAD,
-ORIG_HEAD and FETCH_HEAD and of the worktree root itself. It is held as "active <age> ago";
-evidence that cannot be read holds it too. A tree a session is working in can be
-content-identical to residue — this gate needs no lock to see the session.
-With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
-prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
-Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
-dead-session-reaped, and branches-deleted — plus, when it acted, stale-registrations-cleared.
-
-Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
-for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
-then the compiled per-user default) it runs the managed cache's own pressure check —
-reclaiming over the byte budget or under the free-space floor, and trimming over the
-high-water mark (75% of budget). Active consumer records protect mod/, gopath/ and whole
-roots; a trim removes build/ entries oldest first down to the low-water mark (60% of budget
-by default), plus any past the policy's trim age, and never one younger than the trim
-safety floor (2h by default) — and it reaps a cache root whose owning directory this same sweep removed,
-gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
-when every cache is within policy; the summary gains a cache segment only when it
-reclaimed, reaped, or found pressure it could not clear.
-
-Every sweep ALSO garbage-collects LOCAL branches (Step C — the worktree lifecycle leaves a
-stale local ref behind per worktree, and nothing else reaps them). A branch is collected
-ONLY when its content is provably on refs/remotes/origin/main: its tip is an ancestor of
-the mainline (a fresh, never-used handle is exactly this), or every unique commit's
-patch-id is already in the mainline's history (the squash-merge case). Never collected:
-main/master, any branch checked out in any worktree (guarded by the worktree-list holder
-set, re-read immediately before each delete — git's ref-update layer has NO checked-out
-refusal to lean on), and anything whose proof fails or cannot be completed — a branch with
-unique patches is KEPT, always. The delete is a compare-and-delete against the proven sha
-(git update-ref -d --no-deref), never a force verb. --no-branches skips this pass;
---branches-only runs it alone, so the boot path can control cadence. Live sweeps print the
-per-class COUNTS only; --dry-run prints the per-branch COLLECT plan and deletes nothing.
-
-A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
-session that has since died is permanent and the locked population only grows.
---reclaim-stale-locks (default OFF) gives the lock a lifecycle: it UNLOCKS the locks it can
-prove stale — the ` + "`session=<id>`" + ` in the lock reason has no live roster beacon, or (with
---lock-ttl 24h) the lock is older than the TTL — and then the ORDINARY rules decide, unchanged.
-It never removes anything itself: a reclaimed worktree that is dirty, unpushed or unmerged is
-still LEFT. Every unlock prints the worktree, the lock reason, and why it was judged stale.
-
-That leaves the worktrees of sessions that died with work in flight: an unmerged branch is
-"active work" to the ordinary rules, so a dead session's open-PR worktree is held forever and
-every later resume of that branch fails at worktree-create (git allows one worktree per
-branch). --reap-dead-sessions (default OFF) judges those by a different question — does a
-LIVE session still own this tree, and is deleting it provably lossless? A tree is reaped only
-when no live session owns it (its lock names a session the roster shows is gone, or it
-carries no lock at all) AND it is clean with UNTRACKED FILES COUNTED AND HEAD is already
-reachable from its upstream or from refs/remotes/origin/main. Its stale local branch is
-deleted with it (non-force ` + "`git branch -d`" + `) so the next add cuts fresh from origin. A live
-session's lock holds its worktree unconditionally, and anything dirty, unpushed or
-unverifiable is LISTED with the reason and left. Pair it with --dry-run first: that prints
-the full plan — path, session, REAP/KEEP, reason — and changes nothing.
-
-Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.
-
-DIAGNOSTICS: DESK_TRACE=1 (or a global --trace, any position) prints the full cause
-chain, every child process with its command line, exit status and elapsed time, and the
-failing child's stderr in full. Credentials are redacted. With it off, output is
-unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
 // perfVerbs is deskwt's registered first-argument set for the opt-in local perf record
 // (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
@@ -239,93 +35,40 @@ unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 var perfVerbs = []string{"add", "remove", "prune", "maintain", "role-init", "role-clean", "--version", "--help"}
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (a correctness review found: SetToolClass had no caller anywhere,
-	// so "ClassWrite is the safe default" was true only by luck). This tool ACTS on
-	// the roster, so it is ciEligible=false: it reads the config-home file and never
-	// the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run. Every tool that reads a configured
-	// control surface echoes it — a value that lives in settings rather than in a diff
-	// is only visible at RUN time, and a NARROWING must be as visible as a widening.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
+	selected := perfrec.ResolveContext(perfrec.ContextInput{})
+	// main owns the declared class, the effective-config echo and activation discovery.
+	// Cobra invokes them only for an execution, after help, version and parsing: a help
+	// screen or a malformed command line reads no roster and writes no audit row.
+	env := wtCLI{
+		before: func() error {
+			// The roster class is an EXPLICIT declaration, never the zero value by accident.
+			// This tool ACTS on the roster, so it is ciEligible=false: it reads the
+			// config-home file and never the environment, in CI as well as locally.
+			deskkit.SetToolClass(deskkit.ClassForTool(false))
+			// P3: echo the effective roster once per run, so a narrowing is as visible as a
+			// widening.
+			deskkit.EchoEffectiveConfig(os.Stderr)
+			if !deskkit.CheckVerbActivation(os.Stderr) {
+				return deskkit.Unverifiable("deskwt activation could not be established", nil)
+			}
+			return nil
+		},
+		handle: guardedExecute,
 	}
-	os.Exit(deskkit.PerfRun("deskwt", perfVerbs, os.Args[1:], run))
+	// The one measurement finalizer wraps the whole command, parsing included.
+	os.Exit(deskkit.PerfRunMeasured("deskwt", perfVerbs, os.Args[1:], func(a []string, measurement *perfrec.Session) (int, perfrec.Context) {
+		env.performance = func(c perfrec.Context) {
+			selected = c
+			if measurement != nil {
+				measurement.SelectContext(c)
+			}
+		}
+		return parseWT(a, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}), selected
+	}))
 }
 
+// run is one in-process invocation for the regression tests: the same tree, the kill switch
+// and verb, without main's activation discovery.
 func run(args []string) int {
-	// The global diagnostic switch, taken BEFORE any subcommand dispatch so `--trace` works
-	// on every deskwt verb and is invisible to each subcommand's own FlagSet. The env form
-	// (DESK_TRACE=1) needs no help and is the portable one: it survives being invoked by
-	// deskdispatch, by a loop supervisor, or by a dispatched agent's wrapper.
-	args = deskkit.TakeTraceFlag(args)
-
-	// --version / help are pure reads: no kill-switch gate, no audit line.
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		sha, built := deskkit.Version()
-		fmt.Printf("deskwt sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(os.Stderr, usage)
-		if len(args) == 0 {
-			return deskkit.ExitRefused
-		}
-		return deskkit.ExitOK
-	}
-
-	// TIER ONE of the help retrofit (deskkit/helprequest.go). A SUBCOMMAND help request —
-	// `deskwt <sub> --help` — is a request for a help screen, not an invocation of the verb, and
-	// until this it was recorded as `refused: bad flags: flag: help requested`: exit 5 plus one
-	// row appended to a ledger the write budget counts and nothing rotates (1,043 such rows
-	// measured on one operating desk host over 32 days). It returns HERE, before Guard, and
-	// writes nothing. HelpOnly matches only the unambiguous single-token shape, so a `--help`
-	// that is another flag's VALUE cannot be mistaken for one; every wider spelling falls
-	// through to the subcommand's own parse, where flag.ErrHelp is recognised instead.
-	if deskkit.HelpOnly(args) {
-		fmt.Fprintln(os.Stderr, usage)
-		return deskkit.ExitOK
-	}
-
-	// kill-switch check is the FIRST action of the tool. Guard writes its own
-	// result=disabled audit line.
-	if err := deskkit.Guard(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		return deskkit.ExitCodeOf(err)
-	}
-
-	// Running from source (go run / unstamped) is a drift risk — say so loudly.
-	deskkit.WarnIfUnpinned(os.Stderr)
-
-	sub, rest := args[0], args[1:]
-	var err error
-	switch sub {
-	case "add":
-		err = cmdAdd(rest)
-	case "remove":
-		err = cmdRemove(rest)
-	case "prune":
-		err = cmdPrune(rest)
-	case "maintain":
-		err = cmdMaintain(rest)
-	case "role-init":
-		err = cmdRoleInit(rest)
-	case "role-clean":
-		err = cmdRoleClean(rest)
-	default:
-		fmt.Fprintf(os.Stderr, "deskwt: unknown subcommand %q\n\n%s\n", sub, usage)
-		return deskkit.ExitRefused
-	}
-	// TIER TWO terminus (deskkit/helprequest.go): print the help screen the operator asked
-	// for and exit 0. The sentinel's own message is never what they wanted to read.
-	if deskkit.IsHelpRequest(err) {
-		fmt.Fprintln(os.Stderr, usage)
-		return deskkit.ExitOK
-	}
-	// The shared exit path. With DESK_TRACE off this is byte-identical to the
-	// fmt.Fprintln(os.Stderr, err.Error()) it replaces.
-	deskkit.ReportError(os.Stderr, err)
-	return deskkit.ExitCodeOf(err)
+	return parseWT(args, wtCLI{handle: guardedExecute}, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
 }

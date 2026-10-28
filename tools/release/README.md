@@ -31,6 +31,27 @@ is kept honest by `TestBriefV1SchemaCoverage` and `statusgen conform`.
   bash tools/release/check-spec-header-version.test.sh
   ```
 
+- `bundles.py` / `bundles_test.py` — the provenance-bundle lane of the release
+  job (#3094), unrelated to the spec stamp. The release attests every published
+  asset in one step; `bundles.py` refuses unless the bundle has the shape
+  `deskinstall` verifies and names the sha256 of every listed asset (and every
+  `checksums.txt` file is listed with its recorded bytes), writes it beside each
+  asset as `<asset>.sigstore.json`, and refuses to publish a release on which
+  any asset or bundle is missing. It verifies no signature; `deskinstall` and
+  `gh attestation verify` do. Offline fixtures:
+  `python3 -B -m unittest discover -s tools/release -p bundles_test.py -v`.
+- `sbom.py` / `sbom_test.py` — the release SBOM (#4716). The
+  artifacts job writes `sbom.spdx.json`, an SPDX 2.3 JSON document built from
+  the Go build information `go version -m` reads out of each statusgen and
+  qualgen binary and each desk-tools tarball. It holds one package per asset,
+  carrying the asset's sha256, and one package per linked Go module plus the
+  Go toolchain (`pkg:golang/stdlib`), each with a `pkg:golang` purl and joined
+  to its asset by `DEPENDS_ON`. The output is deterministic: the creation time
+  is the source commit's time. The job refuses, writing nothing, when an asset
+  is missing or carries no Go build information. The SBOM is checksummed,
+  uploaded and attested like every other asset. Offline fixtures (one builds a
+  real binary when `go` is on PATH):
+  `python3 -B -m unittest discover -s tools/release -p sbom_test.py -v`.
 - `release.yml.patch` — the exact delta to `.github/workflows/release.yml`.
 - `release.yml.proposed` — the whole intended `release.yml` (the patch applied
   to the live file as it stood at staging, plus a banner). Kept for review;

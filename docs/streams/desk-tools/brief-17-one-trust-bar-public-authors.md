@@ -203,3 +203,75 @@ layers named in the Context's single-point-of-failure note actually independent 
 (2) does row 4 fail if the change is over-applied — that is, would a diff that removed the
 quarantine entirely be caught? A Verify table on which only trusted logins are exercised has
 verified the widening and nothing else.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestTrustedSharedLoginIsReviewableOnPublicRepo$' -count=1` | pass exit=0 sandbox=container-netns | sha256:8fab1b2a3eef | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestBoardAndPostGateAgreeOnAuthorTrust$' -count=1` | pass exit=0 sandbox=container-netns | sha256:8b3f4f552fe5 | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestUnlistedAuthorStillQuarantined$' -count=1` | pass exit=0 sandbox=container-netns | sha256:f1a61386a930 | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestTrustedAuthorUnconfiguredFailsClosed$' -count=1` | pass exit=0 sandbox=container-netns | sha256:69ec7e02ddb3 | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./... -count=1` | fail exit=1 sandbox=container-netns | sha256:b6cb0dcc3c29 | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -rn 'TrustedPublicAuthor' tools/ > /tmp/tpa.out; test ! -s /tmp/tpa.out` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `gofmt -l tools/desk/cmd/deskboard tools/desk/internal/deskkit > /tmp/b17-fmt.out; test ! -s /tmp/b17-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:3874964ca4ec | 2026-10-20 | assay-verifier-app[bot] @ a477d1dce0c1 (on-behalf-of human:ian) (forge-identity) |
+
+### Verifier re-run — 2026-10-20, non-implementer verify-desk dispatch (gate: human, Evidence only)
+
+Runner for the witness table above: a local docker container, image assay-verify:go1.27
+(id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie, git 2.47), `--network none`,
+sandbox=container-netns, default seccomp. Source: merged main
+a477d1dce0c1fcd124f29ab9b6fc04557992d2eb. The container verdict was weighed under the
+driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the
+private house tracker). By-hand diagnosis ran on darwin/arm64 (git 2.56.0), in scratch
+clones at the same sha, never in this admitted home.
+
+Prior Evidence: this brief carries only the implementer run of 2026-09-13 (merged to
+a961a709), which recorded row 7 at exit 1 (the harness refused the deletion of the retired
+function) and row 8 at exit 1 (an unrelated gofmt-dirty file). Since then, row 8's file has
+been fixed on main, and a new comment that names the retired function was added in the
+deskboard authorship-guard test.
+
+Per-row classification of the witness failures:
+
+- Row 6 (whole tools/desk suite), witness exit 1: environment-only. In the container, the
+  only failures are in packages this brief does not touch. The cellcache unreadable_report
+  subtests fail because the container runs as uid 0, and a chmod-0 report file stays
+  readable to root. The gitmaintenance temp-ref tests fail because they need the native
+  `git hook list` subcommand, and git 2.47 answers "unknown subcommand: list". Neither
+  assertion is about the item under test. By hand on darwin, the same command
+  `cd tools/desk && go test ./... -count=1` exits 0 with 117 packages ok and no FAIL line.
+  That run used a clone whose origin URL matches the home's, and a short TMPDIR, because a
+  managed-scratch TMPDIR pushes the cellctl comms gateway socket path past the darwin
+  sun_path limit. The deskboard, deskkit and deskpost packages pass in both environments.
+- Row 7 (no residual TrustedPublicAuthor reference), witness exit 1: real deliverable
+  defect. The by-hand grep at the same sha exits 1 with 3 matches: the retired function's
+  own doc comment and definition in tools/desk/internal/deskkit/trust.go (lines 52 and 65;
+  the function still spans lines 52-98, with no callers), and a predicate-list comment in
+  tools/desk/cmd/deskboard/authorskip_guard_test.go line 76. Task step 2 ("Retire
+  TrustedPublicAuthor") is undelivered. The help-wanted issue that tracked the harness
+  refusal (medici-finance/assay#874) was closed as superseded by medici-finance/assay#1027,
+  which merged without the deletion.
+
+Mutation obligation, row 4 (by hand, scratch clone): replacing the line
+`authorTrusted := deskkit.TrustedAuthor(p.Author.Login)` in classifyPR with
+`authorTrusted := true` makes `TestUnlistedAuthorStillQuarantined` exit 1 at
+publicauthorgate_test.go:90 ("an arbitrary fork author on a public repo must still be
+quarantined"). Restored, it exits 0. The negative control discriminates.
+
+By-hand host runs of rows 1-5, 8 and 9 at the same sha: all exit 0 (row 9 prints LINT: PASS
+and echoes 0).
+
+Risk-bearing values. The enumeration covered the delivered diff of
+medici-finance/assay#1027 (board.go, trust.go, apptrailergate.go, the tests, README,
+changelog and DR record). It found no numeric constant, bound, threshold or timeout. It
+found one authority binding: the board's author-trust predicate.
+
+RISK-VALUE: DERIVED — authorTrusted = deskkit.TrustedAuthor(p.Author.Login) @ tools/desk/cmd/deskboard/board.go:1763 — the reference bar is deskpost's trustGate, deskkit.TrustedAuthorID(login, id) @ tools/desk/cmd/deskpost/github.go:1081. TrustedAuthorID @ tools/desk/internal/deskkit/trust.go:410-417 returns TrustedAuthor(login) unchanged when id == 0, and the board's gh-CLI PR list carries no numeric id. So, by construction, the board admits exactly the logins deskpost admits on the same input, which is what the 2026-09-06 maintainer ruling recorded at medici-finance/assay#808 asks for. The unconfigured-roster arm (trust.go:45-48, `!c.Configured()` returns false) is unchanged.
+
+Gate: human, risk all no, not irreversible. This pass records Evidence only and signs
+nothing off.
+
+Verification-Attestation: medici-finance/assay#3691 run=4e2866e2f4a7ea348d928acfe3004ba660e3f8e85e84d9e487eb1d29030ceddd source=a477d1dce0c1fcd124f29ab9b6fc04557992d2eb brief=docs/streams/desk-tools/brief-17-one-trust-bar-public-authors.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: FAIL** — row 7: the retired TrustedPublicAuthor function is still defined in deskkit/trust.go and is named in a deskboard test comment (3 grep matches). Rows 1-5, 8 and 9 pass. Row 6 passes by hand, and its container failure is environment-only. Bug filed: #3837 (row 7 defect, with the stale-prose scope outside `tools/`). The verify-fail receipt is owed from a fresh admission at a source that has the joined Context `files:` block (this source still wraps it), and #3837 tracks it.

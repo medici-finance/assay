@@ -234,24 +234,26 @@ func TestShellCommentSharedVectors(t *testing.T) {
 }
 
 // commentCellVector is one whole Command cell from the shared table's "cells"
-// section (#2684 review S1, F2), which tools/desk's verifycmd is held to too.
+// section (#2684 review S1, F2; #3147), which tools/desk's verifycmd is held to too.
 type commentCellVector struct {
 	Name      string `json:"name"`
 	Cell      string `json:"cell"`
 	FirstSpan string `json:"firstSpan"`
 	Marked    bool   `json:"marked"`
+	Lift      string `json:"lift"`
 	Statusgen string `json:"statusgen"`
 	Desk      string `json:"desk"`
+	Passes    bool   `json:"passes"`
 }
 
-// TestCommentCellSharedVectors — statusgen's cell-to-verdict mapping for the
-// comment class, pinned at the CELL level so the two modules cannot apply one
-// predicate to different strings: the first-span lift tools/desk ports, the
-// marker, the lint's verdict, and the witness a real run writes (a refused cell
-// is could-not-run and never executed; a runs cell executes and passes). The
-// table's own invariant is checked too: a cell statusgen refuses is never one
-// the tools/desk executors run.
-// regression: #2684
+// TestCommentCellSharedVectors — statusgen's cell-to-verdict mapping, pinned at
+// the CELL level so the two modules cannot apply one rule to different strings:
+// the first-span lift tools/desk ports, the marker, the lifted command both
+// modules run, the lint's verdict, and the witness a real run writes (a refused
+// cell is could-not-run and never executed; a runs cell executes and keeps its
+// own exit status). The table's own invariant is checked too: statusgen and the
+// tools/desk executors reach the same verdict on every cell (#3147).
+// regression: #2684, #3147
 func TestCommentCellSharedVectors(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("testdata", "shell-comment-vectors.json"))
 	if err != nil {
@@ -263,13 +265,13 @@ func TestCommentCellSharedVectors(t *testing.T) {
 	if err := json.Unmarshal(b, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Cells) < 12 {
+	if len(doc.Cells) < 30 {
 		t.Fatalf("positive control: only %d cell vectors loaded", len(doc.Cells))
 	}
 	var table []string
 	for i, v := range doc.Cells {
-		if v.Statusgen == "comment-refused" && v.Desk != "comment-refused" {
-			t.Errorf("%s: statusgen refuses the cell but the table lets the tools/desk executors run it", v.Name)
+		if v.Statusgen != v.Desk {
+			t.Errorf("%s: the table lets the tools/desk executors (%s) differ from statusgen (%s)", v.Name, v.Desk, v.Statusgen)
 		}
 		if got := codeSpan(v.Cell); got != v.FirstSpan {
 			t.Errorf("%s: codeSpan(%q) = %q, want %q", v.Name, v.Cell, got, v.FirstSpan)
@@ -277,15 +279,19 @@ func TestCommentCellSharedVectors(t *testing.T) {
 		if got := len(markedCommands(v.Cell)) > 0; got != v.Marked {
 			t.Errorf("%s: marked = %v, want %v", v.Name, got, v.Marked)
 		}
+		if got := verifyCommand(v.Cell); got != v.Lift {
+			t.Errorf("%s: verifyCommand(%q) = %q, want %q", v.Name, v.Cell, got, v.Lift)
+		}
 		_, why := proseLedCommandWhy(v.Cell)
 		got := "runs"
-		if strings.Contains(why, "shell comment") {
+		switch {
+		case strings.Contains(why, "shell comment"):
 			got = "comment-refused"
-		} else if why != "" {
-			t.Errorf("%s: flagged for a non-comment reason %q; the comment table holds only comment-class cells", v.Name, why)
+		case why != "" || strings.TrimSpace(verifyCommand(v.Cell)) == "":
+			got = "refused"
 		}
 		if got != v.Statusgen {
-			t.Errorf("%s: statusgen verdict on %q = %s, want %s", v.Name, v.Cell, got, v.Statusgen)
+			t.Errorf("%s: statusgen verdict on %q = %s (%q), want %s", v.Name, v.Cell, got, why, v.Statusgen)
 		}
 		table = append(table, "| "+strconv.Itoa(i+1)+" | "+v.Cell+" | exit 0 |")
 	}
@@ -296,9 +302,44 @@ func TestCommentCellSharedVectors(t *testing.T) {
 	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-10-15", 30*time.Second, false)
 	for i, v := range doc.Cells {
 		w := ws[i]
-		refused := w.State == stateCouldNotRun && w.Exit == -1 && strings.Contains(w.Note, "shell comment")
-		if want := v.Statusgen == "comment-refused"; refused != want || (!want && w.State != statePass) {
-			t.Errorf("%s: witness state=%s exit=%d note=%q; want %s", v.Name, w.State, w.Exit, w.Note, v.Statusgen)
+		refused := w.State == stateCouldNotRun && w.Exit == -1
+		switch {
+		case v.Statusgen != "runs" && !refused:
+			t.Errorf("%s: witness state=%s exit=%d note=%q; want a could-not-run that never executed (%s)", v.Name, w.State, w.Exit, w.Note, v.Statusgen)
+		case v.Statusgen == "comment-refused" && !strings.Contains(w.Note, "shell comment"):
+			t.Errorf("%s: a comment-refused witness must say it is a shell comment, got %q", v.Name, w.Note)
+		case v.Statusgen == "runs" && v.Passes && w.State != statePass:
+			t.Errorf("%s: witness state=%s exit=%d note=%q; want pass", v.Name, w.State, w.Exit, w.Note)
+		case v.Statusgen == "runs" && !v.Passes && w.State != stateFail:
+			t.Errorf("%s: witness state=%s exit=%d note=%q; want fail", v.Name, w.State, w.Exit, w.Note)
 		}
+	}
+}
+
+// TestShellNoOpRemedy — a no-op lift (#3147 A2) is refused with its own remedy:
+// replace the no-op. The marker remedy is wrong for it — a marked `cmd: :` is
+// already marked, and marking an unmarked `:` changes nothing — and a marked
+// no-op is reported as the marked command, not the first span.
+// regression: #3147
+func TestShellNoOpRemedy(t *testing.T) {
+	for _, why := range []string{shellNoOpWhy, shellNoOpMarkedWhy} {
+		if got := proseLedRemedy(why); !strings.HasPrefix(got, "Replace the no-op") {
+			t.Errorf("proseLedRemedy(%q) = %q; want the replace-the-no-op remedy", why, got)
+		}
+	}
+	for _, cell := range []string{"`:`", "`REM check the log`", "Read `x.md`: `cmd: :`"} {
+		var msg string
+		for _, f := range rowFindings(cell, "exit 0") {
+			if f.rule == ruleProseLedCommand {
+				msg = f.msg
+			}
+		}
+		if !strings.Contains(msg, "Replace the no-op") || strings.Contains(msg, "explicit marker") {
+			t.Errorf("%s: the prose-led finding must name the replace remedy, not the marker: %q", cell, msg)
+		}
+	}
+	rows := briefVerifyRows(verifyTable("| 1 | Read `x.md`: `cmd: :` | exit 0 |"))
+	if len(rows) != 1 || !strings.HasPrefix(rows[0].ProseLed, "marked command : is ") {
+		t.Fatalf("a marked no-op must be reported as the marked command, got %+v", rows)
 	}
 }

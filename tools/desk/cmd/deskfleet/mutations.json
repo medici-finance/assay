@@ -142,7 +142,7 @@
     {
       "name": "F4/S2 — deskfleet labels contacts the forge without printing its target first",
       "file": "cmd/deskfleet/labels.go",
-      "old": "\tfmt.Fprintf(e.stdout, \"target: %s %s %s\\n\", base, *forge, target)",
+      "old": "\tfmt.Fprintf(e.stdout, \"target: %s %s %s\\n\", base, o.forge, target)",
       "new": ""
     },
     {

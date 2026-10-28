@@ -35,6 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: intake-desk
+          # Recorded by its release build: ../release-images.json (check.sh binds it).
           image: ghcr.io/medici-finance/assay/intake-desk:v1.0.52@sha256:16b5e263591ae279c273128a9c423dea7ed3572b0f501eea9ce80395ee3962fa
           imagePullPolicy: IfNotPresent
           stdin: true

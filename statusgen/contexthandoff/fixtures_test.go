@@ -51,6 +51,7 @@ var packageOnlyRules = map[string]bool{
 	RuleReadiness:        true,
 	RuleNotApproved:      true,
 	RuleManifestMismatch: true,
+	RuleDispositionScope: true,
 }
 
 func readFile(t *testing.T, path string) []byte {

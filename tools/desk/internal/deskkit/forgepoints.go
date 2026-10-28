@@ -17,6 +17,8 @@ var ghPointQueries = [...]string{
 	ghCommentsQuery, ghChangeCommentsWalkQuery, ghIssueCommentsQuery,
 	ghListIssuesQuery, ghIssueStateEventsQuery, IssueTrustQuery, PRTrustQuery, IssueEventsQuery,
 	verifierIssueBatchQuery, verifierHistoryBatchQuery, verifierLabelsBatchQuery,
+	issueCommentBatchQuery,
+	pendingChangeBatchQuery, pendingFilesBatchQuery,
 }
 
 func ghPointQuery(query string) string {

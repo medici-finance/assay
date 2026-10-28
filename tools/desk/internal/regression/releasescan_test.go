@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // The desk-base image ships every tools/desk/cmd binary, statusgen and bugs-gc in
@@ -228,7 +230,7 @@ func TestReleaseBinariesScanClean(t *testing.T) {
 		cmd.Dir = filepath.Join(root, filepath.FromSlash(b.dir))
 		cmd.Env = FixtureEnv("CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 		cmd.WaitDelay = time.Second
-		if o, err := cmd.CombinedOutput(); err != nil {
+		if o, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v\n%s", b.dir, err, o)
 		}
 	}
