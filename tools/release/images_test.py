@@ -268,7 +268,7 @@ if args[:2] == ['image', 'inspect']:
         root = HERE.parents[1]
         platforms = ['darwin-arm64', 'darwin-amd64', 'linux-amd64',
                      'windows-amd64', 'windows-arm64']
-        common = ['cursor-bundle.tar.gz', 'checksums.txt',
+        common = ['cursor-bundle.tar.gz', 'checksums.txt', 'sbom.spdx.json',
                   'tool-validation-v1.2.3.json', 'tool-validation-v1.2.3.md',
                   'image-bugs-gc-linux-amd64', 'prepared-source.tar.gz',
                   'build-inputs.sha256', 'release-highlights.md']
