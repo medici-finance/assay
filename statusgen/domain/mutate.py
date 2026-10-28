@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline mutation controls for graph-execution/28. Run from any directory.
+"""Offline mutation controls for graph-execution/28 and /31. Run from any directory.
 
 Copies only declared source and fixture inputs into an owned temporary directory.
 No Git, providers, repository edits, dependency downloads or environment discovery.
@@ -14,6 +14,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 RECORDS = "statusgen/domain/records.go"
 ASSESS = "statusgen/domain/assess.go"
+PROVENANCE = "statusgen/domain/provenance.go"
+LINEAGE = "\tset := map[string]bool{p.Responsible: true}\n\tfor _, principal := range p.Delegation {\n\t\tset[principal] = true\n\t}\n\treturn set"
+SELECTED = '\tif !reflect.DeepEqual(trusted, claim) {\n\t\treturn Provenance{}, refuse("provenance-not-selected")\n\t}\n\treturn trusted, nil'
 MUTATIONS = [
     ("path-identity", "TestDomainPathIsNotIdentity", [(RECORDS, "key := q.String()", "key := item.Path + q.String()")]),
     ("unknown-fact", "TestDomainMissingFactHolds", [(ASSESS, "if state != Present {", "if state != Present && state != CouldNotCheck {")]),
@@ -29,6 +32,11 @@ MUTATIONS = [
     ("schema-open", "TestDomainSchemaFixtures", [("schemas/verification-domain-v1.json", '"additionalProperties": false', '"additionalProperties": true')]),
     ("schema-drift", "TestDomainSchemaSurface", [("schemas/verification-domain-v1.json", '"unaccepted",', '"unchecked",')]),
     ("canonical-order", "TestDomainCanonical", [(RECORDS, "return json.Marshal(tree)", "return json.Marshal(r)")]),
+    ("leaf-keys", "TestDutyPrincipals", [(PROVENANCE, LINEAGE, "\treturn map[string]bool{p.Key: true}")]),
+    ("ignore-delegation", "TestDutySponsor", [(PROVENANCE, LINEAGE, "\treturn map[string]bool{p.Responsible: true}")]),
+    ("trust-declared-proof", "TestProofClass", [(PROVENANCE, "func (p Provenance) EffectiveProof() string {\n", "func (p Provenance) EffectiveProof() string {\n\treturn p.DeclaredProof\n")]),
+    ("model-text-identity", "TestDutyEvidenceFlow", [(PROVENANCE, SELECTED, SELECTED.replace("(trusted, claim)", "(trusted.Work, claim.Work)").replace("return trusted, nil", "return claim, nil"))]),
+    ("drop-required-field", "TestProvenanceSchema", [("schemas/evidence-provenance-v1.json", '    "environment",\n    "declared-proof",', '    "declared-proof",')]),
 ]
 
 def snapshot(dest):
@@ -45,14 +53,16 @@ def snapshot(dest):
     identity = Path("statusgen/contexthandoff/ids.go")
     (dest / identity).parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / identity, dest / identity)
-    for name in ("verification-domain-v1.json", "workflow-instance-v1.json"):
+    for name in ("verification-domain-v1.json", "workflow-instance-v1.json", "evidence-provenance-v1.json"):
         out = dest / "schemas" / name
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "schemas" / name, out)
-    out = dest / "spec/verification-domain-v1.md"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ROOT / "spec/verification-domain-v1.md", out)
-    for f in (ROOT / "statusgen/testdata/domain").glob("*/*.json"):
+    for name in ("verification-domain-v1.md", "evidence-provenance-v1.md"):
+        out = dest / "spec" / name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "spec" / name, out)
+    fixtures = ROOT / "statusgen/testdata/domain"
+    for f in [*fixtures.glob("*/*.json"), *fixtures.glob("provenance/*/*.json")]:
         out = dest / f.relative_to(ROOT)
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(f, out)

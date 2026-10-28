@@ -168,3 +168,34 @@ The admission layer has four rules:
 The layer is not yet active. Nothing on the dispatch path consults it. Binding it at the
 dispatch boundary is graph-execution/14, behind its own human gate. Until then it changes
 no behaviour, and the three layers above remain the whole of what is enforced.
+
+## What evidence provenance does and does not prove
+
+Evidence provenance (`spec/evidence-provenance-v1.md`, `statusgen/domain/provenance.go`,
+graph-execution/31) records, for one evidence item, who requested it, whom it represented,
+which provider identity executed it, the principal accountable for it and the principals
+who delegated to that one. Duty independence is then compared on those accountable
+principals. Its limits:
+
+- **Different keys, Apps or issuers are not independence.** Two duties performed under two
+  keys of one principal, or by an agent whose delegation leads back to the author, are not
+  independent. A shared issuer does not make two distinct principals dependent either.
+- **A sponsor is not a delegator.** Being accountable for the work does not put a principal
+  in every actor's lineage.
+- **A bot acting for a person is not a human act.** A provider App or agent session stays
+  that kind even when it represents a human.
+- **A label is not proof.** The effective proof class rises only with corroborated
+  dimensions. A claimed signature, a self-report or a withheld fact holds a duty that needs
+  more. Nothing here verifies a signature, qualifies hardware-backed approval or threshold
+  signing, or proves custody; those need separately qualified evidence.
+- **Environment identity is not reproducibility.** The environment manifest digest makes
+  evidence attributable and comparable. It does not show the run can be repeated.
+- **No waiver.** An unsatisfied independent duty is not relaxed here. Any exception is a
+  retained human decision recorded by its existing owner.
+
+The contract is pure and not active. Provenance is accepted only through a trusted
+selection port, and no production selector is installed. Admission (graph-execution/14),
+the publication review bridge (/25) and control exports (/15) are planned consumers.
+Whether they must require corroborated provenance, or keep it report-only, is a pending
+human decision (#4800). Until then the existing identity checks and human gates are the
+whole of what is enforced.
