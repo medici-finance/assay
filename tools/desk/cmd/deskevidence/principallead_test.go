@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode"
@@ -181,6 +182,18 @@ var leadRunners = []struct{ name, cell string }{
 	// A span after a lone run of `$` whose text ends in a letter, read as a span that shows
 	// only a symbol.
 	{"symbol-span-letter-after-lone-dollar", "$ $q$ example-app[bot]" + foldTail},
+	// A math span whose tag a renderer typesets from character codes, decimal or hex, with
+	// optional arguments or not, for a bracket or for a letter, beside a bracket it names.
+	{"typeset-code-words-decimal", "$\\enspace \\textsf{example-app\\unicode{91}bot\\unicode{93}}$" + foldTail},
+	{"typeset-code-words-options", "$\\quad \\textrm{example-app\\unicode[sans-serif]{91}bot\\unicode[sans-serif]{93}}$" + foldTail},
+	{"typeset-code-letter", "$\\quad \\mathrm{example-app[\\unicode{98}ot]}$" + foldTail},
+	{"typeset-code-word-and-named", "$\\enspace \\textsf{example-app\\unicode{0x5b}bot\\rbrack}$" + foldTail},
+	{"typeset-char-words", "$\\qquad \\mathsf{example-app\\char91 bot\\char93}$" + foldTail},
+	// A math span whose tag one control word the tool does not name opens, closed by a bracket
+	// it names, and one whose bracket words each take an argument a renderer can typeset into
+	// the bracket.
+	{"typeset-one-unnamed-word", "$\\qquad \\mathsf{example-app\\lang bot\\rbrack}$" + foldTail},
+	{"typeset-bracket-words-arguments", "$\\enspace \\textrm{example-app\\leftbr{s}bot\\rightbr{s}}$" + foldTail},
 }
 
 // regression: #4102
@@ -546,5 +559,81 @@ func TestShownTextsFailClosedPastCap(t *testing.T) {
 	}
 	if eachShownTextWithin(math, readingCap, never) {
 		t.Errorf("%q refused under the cap", math)
+	}
+}
+
+// regression: #4102
+// TestMathTextsCharacterCodes: a math text is read with each character code as its character
+// and, beside that, with its control word read as one the tool does not name; a control word
+// the tool does not name is read alone as an opening and as a closing bracket; and a bracket
+// word's argument is read both shown and taken into the bracket.
+func TestMathTextsCharacterCodes(t *testing.T) {
+	for _, tc := range []struct{ math, want string }{
+		{"x\\unicode{91}y", "x[y"},
+		{"x\\unicode{91}y", "x91y"},
+		{"x\\unicode{x5d}y", "x]y"},
+		{"x\\unicode{0X5D}y", "x]y"},
+		{"x\\unicode[a][b]{93}y", "x]y"},
+		{"x\\unicode{98}y", "xby"},
+		{"x\\char\"5Dy", "x]y"},
+		{"x\\char'135y", "x]y"},
+		{"x\\char93 y", "x]y"},
+		{"x\\mathchar\"7162y", "xby"},
+		{"a\\foo b", "a[ b"},
+		{"a\\foo b", "a] b"},
+		{"x\\foo{z}y\\bar w", "x[y]w"},
+		{"x\\foo y\\bar{z}w", "x[y]w"},
+		{"x\\foo{z}y\\bar{z}w", "x[y]w"},
+		{"x\\foo[o]{z}y\\bar\"5Dw", "x[y]w"},
+	} {
+		found := false
+		mathTexts(tc.math, func(m string) bool {
+			found = found || m == tc.want
+			return false
+		})
+		if !found {
+			t.Errorf("%q not read as %q", tc.math, tc.want)
+		}
+	}
+}
+
+// regression: #4102
+// TestMathTextsBarIsNoBracket: an escaped bar, as a table cell writes a shell pipe, is read as
+// a bar and never as a bracket, so a command cell piping one tool into another shows no tag.
+func TestMathTextsBarIsNoBracket(t *testing.T) {
+	bar := false
+	mathTexts("base \\| tail -1) && test", func(m string) bool {
+		if strings.ContainsAny(m, "[]") {
+			t.Errorf("escaped bar read as a bracket: %q", m)
+		}
+		bar = bar || strings.Contains(m, "base | tail")
+		return false
+	})
+	if !bar {
+		t.Error("escaped bar not read as a bar")
+	}
+	cell := "TAG=$(ls registry.example/base \\| tail -1) && test -n \"$TAG\" && ls \"registry.example/base:$TAG\" >/dev/null"
+	if showsAppRun(cell) {
+		t.Errorf("command cell %q read as App-run", cell)
+	}
+}
+
+// regression: #4102
+// TestHiddenReadingsStopAtBudget: a text holding many hidden elements builds no more of its
+// hidden readings once the limit is spent, whether the text itself spends it or the first few
+// of its hidden readings do.
+func TestHiddenReadingsStopAtBudget(t *testing.T) {
+	cell := strings.Repeat("<i hidden>yyyyyy</i>", 2000) + " human:operator @ abc1234"
+	for _, limit := range []int{1, 4 * len(cell)} {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		refused := eachShownTextWithin(cell, limit, func(string) bool { return false })
+		runtime.ReadMemStats(&after)
+		if !refused {
+			t.Errorf("text of %d bytes read within a %d-byte limit", len(cell), limit)
+		}
+		if got := after.TotalAlloc - before.TotalAlloc; got > 32<<20 {
+			t.Errorf("%d bytes allocated reading a text of %d bytes within a %d-byte limit", got, len(cell), limit)
+		}
 	}
 }

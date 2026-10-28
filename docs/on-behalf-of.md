@@ -309,11 +309,21 @@ same roster's human set:
     the left, inside code spans too, for a renderer that typesets math there, each span read
     from each place a control word, a brace or white space ends. Text read as math has its
     markup (control words, braces, backticks and sub- or superscript signs) removed, a control
-    word for a bracket, brace, bar or escaped sign read as that character, and is read both
-    with its white space and with it dropped, as math typesets the symbols in it without the
-    white space between them, and once more for each two control words or symbols the tool does
-    not name, in order, read as an opening and a closing bracket, since a renderer can typeset
-    any of them as one. No reading depends on which runs before a span a renderer pairs. A
+    word for a bracket, brace, bar or escaped sign read as that character, a character code
+    (`\unicode` with optional arguments and a braced decimal or hex code, `\char` with a hex,
+    octal, decimal or backtick code, `\mathchar` by the low byte of its code) read as the
+    character it names, and is read both with its white space and with it dropped, as math
+    typesets the symbols in it without the white space between them. It is read once more for
+    each control word or symbol the tool does not name, read alone as an opening and alone as a
+    closing bracket, and for each two of them, in order, read as an opening and a closing
+    bracket, since a renderer can typeset any of them as one; a word read as a bracket is read
+    both with the argument after it (optional arguments, then a brace group or a number) shown
+    and with that argument taken into the bracket, since a renderer can typeset a word and its
+    argument as one character. A text holding a character code is read all of those ways once
+    more with each code's control word read as one the tool does not name, for a renderer that
+    does not typeset the code, so reading codes adds readings and removes none. An escaped bar
+    (`\|`, as a table cell writes a shell pipe) is read as a bar, never as a bracket. No reading
+    depends on which runs before a span a renderer pairs. A
     later backtick run can still close a code span an earlier one opens, and so take the runs
     of `$` inside it out of the CommonMark reading, as it takes them out of what a renderer
     typesets; the loose and left-paired readings keep them. The text after each raw line break
@@ -335,11 +345,14 @@ same roster's human set:
     typeset or hide text in a way none of them names. A text reached by more than one reading
     is read once. The number of readings, each about as long as the text, grows with the line
     breaks and hidden elements a text holds, times the places between two runs of `$` a span's
-    text can start at, times the pairs of control words in a span, so a short text can ask for
-    far more work than its length. The readings of one cell or line may read at most 128 MiB of
-    text in all; past that cap the text is taken as showing App-run text and refused, never
-    read with fewer readings. The heaviest text in the briefs the cap was checked against reads
-    about 22 MiB.
+    text can start at, times the control words and the pairs of control words in a span (up to
+    four readings for a pair whose words both take an argument, and twice that when the span
+    holds a character code), so a short text can ask for far more work than its length. The
+    readings of one cell or line may read at most 128 MiB of text in all, each hidden-element
+    reading charged before the next is built and each hidden element's end found by reading
+    only as far as that end; past that cap the text is taken as showing
+    App-run text and refused, never read with fewer readings. The heaviest text in the briefs the
+    cap was checked against reads about 5.3 MiB.
     Every trim takes any Unicode white space, a non-breaking or wide space included.
     A cell's text so starts at the first word a reader can take for a name. A cell's
     identity region is its text up to the first ASCII space or `(`, where the lint cuts it,

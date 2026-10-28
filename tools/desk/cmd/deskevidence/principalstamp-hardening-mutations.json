@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead|TestShowsAppRunKeepsRefusalInContext|TestShownTextsFailClosedPastCap)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead|TestShowsAppRunKeepsRefusalInContext|TestShownTextsFailClosedPastCap|TestMathTextsCharacterCodes|TestHiddenReadingsStopAtBudget|TestMathTextsBarIsNoBracket)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -898,8 +898,8 @@
     {
       "name": "a math span's markup not removed from its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "b.WriteString(s[last:m[0]])\n\t\tlast = m[1]\n\t\tw := s[m[0]:m[1]]",
-      "new": "b.WriteString(s[last:m[0]])\n\t\tlast = m[0]\n\t\tw := s[m[0]:m[1]]"
+      "old": "b.WriteString(s[last:t.at])\n\t\tlast = t.end\n",
+      "new": "b.WriteString(s[last:t.at])\n\t\tlast = t.at\n"
     },
     {
       "name": "a math span's text not read from after a control word in it",
@@ -916,8 +916,8 @@
     {
       "name": "an element a renderer hides by default read only with its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for _, e := range append([]string{base}, hiddenReadings(base)...) {",
-      "new": "for _, e := range []string{base} {"
+      "old": "if keep(base) || eachHiddenReading(base, keep) {",
+      "new": "if keep(base) {"
     },
     {
       "name": "a ruby fallback not read as hidden",
@@ -952,8 +952,8 @@
     {
       "name": "a math span's text not read with its white space dropped",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for _, collapse := range []bool{false, true} {\n\t\tif add(mathText(s, collapse, -1, -1)) {",
-      "new": "for _, collapse := range []bool{false} {\n\t\tif add(mathText(s, collapse, -1, -1)) {"
+      "old": "for _, collapse := range []bool{false, true} {\n\t\tp := mathPrepare(s, collapse)",
+      "new": "for _, collapse := range []bool{false} {\n\t\tp := mathPrepare(s, collapse)"
     },
     {
       "name": "a bracket control word not read as its glyph",
@@ -1006,14 +1006,14 @@
     {
       "name": "control words the tool does not name never read as a bracket pair",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "n := len(unnamedMarkup(s, collapse))",
-      "new": "n := 0 * len(unnamedMarkup(s, collapse))"
+      "old": "for _, j := range unnamed[x+1:] {",
+      "new": "for _, j := range unnamed[x+1 : x+1] {"
     },
     {
       "name": "only adjacent unnamed control words read as a bracket pair",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for j := i + 1; j < n; j++ {",
-      "new": "for j := i + 1; j < n && j == i+1; j++ {"
+      "old": "for _, j := range unnamed[x+1:] {",
+      "new": "for _, j := range unnamed[x+1 : min(x+2, len(unnamed))] {"
     },
     {
       "name": "quoted attribute values never emptied, so a quoted `>` ends a tag",
@@ -1030,8 +1030,8 @@
     {
       "name": "the narrow hidden-element reading not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "out := []string{hiddenKindRe.ReplaceAllString(s, \"\")}",
-      "new": "var out []string"
+      "old": "if f(hiddenKindRe.ReplaceAllString(s, \"\")) {",
+      "new": "if false && f(hiddenKindRe.ReplaceAllString(s, \"\")) {"
     },
     {
       "name": "hidden elements dropped only all at once, never the first ones alone",
@@ -1068,6 +1068,78 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "\tb.left -= len(s) + 1\n\treturn b.left >= 0",
       "new": "\tb.left -= len(s) + 1\n\treturn true"
+    },
+    {
+      "name": "a character code never read as its character",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "mathCharCode(s, m[1], w); codes && ok {",
+      "new": "mathCharCode(s, m[1], w); false && codes && ok {"
+    },
+    {
+      "name": "a character code's control word never read as one the tool does not name",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if plain := mathTokens(p, false); !slices.Equal(plain, toks) {",
+      "new": "if plain := mathTokens(p, false); false && !slices.Equal(plain, toks) {"
+    },
+    {
+      "name": "a control word's argument never taken into the bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if toks[i].arg > toks[i].end {",
+      "new": "if false && toks[i].arg > toks[i].end {"
+    },
+    {
+      "name": "a control word the tool does not name never read alone as a bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, i := range unnamed {\n\t\tfor _, take := range modes(i) {",
+      "new": "for _, i := range unnamed[:0] {\n\t\tfor _, take := range modes(i) {"
+    },
+    {
+      "name": "a closing bracket word's argument never taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif pick.takeClose {\n",
+      "new": "\t\t\tif false && pick.takeClose {\n"
+    },
+    {
+      "name": "an opening bracket word's argument never taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif pick.takeOpen {\n",
+      "new": "\t\t\tif false && pick.takeOpen {\n"
+    },
+    {
+      "name": "a hidden reading built past a spent budget",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif f(b.String()) {\n\t\t\t\treturn true\n\t\t\t}\n",
+      "new": "\t\t\tif f(b.String()) && false {\n\t\t\t\treturn true\n\t\t\t}\n"
+    },
+    {
+      "name": "a hidden reading charged to no budget",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\t\t\tif !b.take(e) {\n\t\t\t\t\t\treturn true\n\t\t\t\t\t}\n\t\t\t\t\thave[e] = true\n\t\t\t\t\tshown = append(shown, e)\n\t\t\t\t\treturn false",
+      "new": "\t\t\t\t\thave[e] = true\n\t\t\t\t\tshown = append(shown, e)\n\t\t\t\t\treturn false"
+    },
+    {
+      "name": "a \\unicode code not decoded",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tcase `\\unicode`:\n",
+      "new": "\tcase `\\unicode-never`:\n"
+    },
+    {
+      "name": "a \\mathchar code read whole, not by its low byte",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tv &= 0xff\n",
+      "new": "\t\t\tv &= 0xffffff\n"
+    },
+    {
+      "name": "an escaped bar read as a control symbol the tool does not name",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "`\\rvert`: \"|\", `\\|`: \"|\",",
+      "new": "`\\rvert`: \"|\","
+    },
+    {
+      "name": "an element's end found by matching every tag after it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tt := elementTagRe.FindStringSubmatchIndex(s[pos:])\n\t\t\tif t == nil {\n\t\t\t\tbreak\n\t\t\t}\n",
+      "new": "\t\t\tall := elementTagRe.FindAllStringSubmatchIndex(s[pos:], -1)\n\t\t\tif len(all) == 0 {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tt := all[0]\n"
     }
   ]
 }

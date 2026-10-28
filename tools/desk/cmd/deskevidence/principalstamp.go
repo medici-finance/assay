@@ -576,7 +576,7 @@ func (b *readingBudget) take(s string) bool {
 // with HTML tags and emphasis, strikethrough, code and escape characters removed, and entities
 // decoded, read once with the text of each element a sanitizer can drop kept and dropped, and
 // apart from those, of the elements a renderer hides by default kept and dropped (see
-// hiddenReadings); each of those once more from each place a renderer starts a new line at
+// eachHiddenReading); each of those once more from each place a renderer starts a new line at
 // (see lineBreakRe); and each of those once more for each math reading the tool takes (see
 // mathDecodings). Each is read once as it stands and once with every character that renders
 // as nothing dropped (see rendersBlank) and the words that lead it and cannot be a login
@@ -631,15 +631,22 @@ func eachShownTextWithin(s string, limit int, f func(string) bool) bool {
 				took[r], have[r] = true, true
 				sanitized := droppedElementRe.ReplaceAllString(r, "")
 				shown := []string{r}
+				// keep adds a reading not yet taken, charged to the budget before the next is
+				// built, and reports whether the budget is spent.
+				keep := func(e string) bool {
+					if have[e] {
+						return false
+					}
+					if !b.take(e) {
+						return true
+					}
+					have[e] = true
+					shown = append(shown, e)
+					return false
+				}
 				for _, base := range []string{r, sanitized} {
-					for _, e := range append([]string{base}, hiddenReadings(base)...) {
-						if !have[e] {
-							if !b.take(e) {
-								return true
-							}
-							have[e] = true
-							shown = append(shown, e)
-						}
+					if keep(base) || eachHiddenReading(base, keep) {
+						return true
 					}
 				}
 				for i, n := 0, len(shown); i < n; i++ {
@@ -738,15 +745,19 @@ var (
 // white space, a slash or a closing quote.
 const hiddenOpen = `<\s*(rp|datalist|dialog)\b[^>]*>|<\s*([a-z][a-z0-9-]*)\b[^>]*?[\s/"']hidden\b[^>]*>`
 
-// hiddenReadings returns s read without the elements a renderer hides by default, beside s as
-// written: once without every element hiddenKindRe matches, and, with the elements hiddenOpenRe
-// opens taken in order both to the first closing tag after each (see hiddenElementRe) and to
-// the closing tag that matches it (see hiddenSpans), once without the first one, once without
-// the first two, and so on to all of them. Whether a renderer hides an element can differ from
-// one element to the next, so text inside a later element is read as shown after earlier ones
-// are hidden.
-func hiddenReadings(s string) []string {
-	out := []string{hiddenKindRe.ReplaceAllString(s, "")}
+// eachHiddenReading calls f with s read without the elements a renderer hides by default,
+// until f returns true, and reports whether it did: once without every element hiddenKindRe
+// matches, and, with the elements hiddenOpenRe opens taken in order both to the first closing
+// tag after each (see hiddenElementRe) and to the closing tag that matches it (see
+// hiddenSpans), once without the first one, once without the first two, and so on to all of
+// them. Whether a renderer hides an element can differ from one element to the next, so text
+// inside a later element is read as shown after earlier ones are hidden. Each reading is built
+// only after f has taken the one before it, so a caller that charges each reading to a budget
+// stops the building as soon as the budget is spent.
+func eachHiddenReading(s string, f func(string) bool) bool {
+	if f(hiddenKindRe.ReplaceAllString(s, "")) {
+		return true
+	}
 	for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1), hiddenSpans(s)} {
 		for k := 1; k <= len(spans); k++ {
 			var b strings.Builder
@@ -756,10 +767,12 @@ func hiddenReadings(s string) []string {
 				last = sp[1]
 			}
 			b.WriteString(s[last:])
-			out = append(out, b.String())
+			if f(b.String()) {
+				return true
+			}
 		}
 	}
-	return out
+	return false
 }
 
 // hiddenSpans returns the byte ranges of the elements in s a renderer hides by default (see
@@ -779,8 +792,16 @@ func hiddenSpans(s string) [][]int {
 		name := s[at+m[g] : at+m[g+1]]
 		start, rest := at+m[0], at+m[1]
 		end, depth := len(s), 1
-		for _, t := range elementTagRe.FindAllStringSubmatchIndex(s[rest:], -1) {
-			if !strings.EqualFold(s[rest+t[4]:rest+t[5]], name) {
+		// Tags are matched one at a time from the opening tag on, so finding an element's end
+		// reads only as far as that end, and the elements of a text cost no more than one pass.
+		for pos := rest; ; {
+			t := elementTagRe.FindStringSubmatchIndex(s[pos:])
+			if t == nil {
+				break
+			}
+			from := pos
+			pos += t[1]
+			if !strings.EqualFold(s[from+t[4]:from+t[5]], name) {
 				continue
 			}
 			if t[3] > t[2] {
@@ -789,7 +810,7 @@ func hiddenSpans(s string) [][]int {
 				depth++
 			}
 			if depth == 0 {
-				end = rest + t[1]
+				end = pos
 				break
 			}
 		}
@@ -978,18 +999,65 @@ func mathReadings(d string, runs [][]int, add func(string) bool) bool {
 
 // mathTexts calls add with each reading of s as math, until add returns true, and reports
 // whether it did: s read by mathText with its white space kept and dropped, and each of those
-// once more for each two control words or symbols mathGlyphs does not name, in order, read as
-// an opening and a closing bracket.
+// once more for each control word or symbol the tool reads as neither a named glyph nor a
+// character code (see mathTokens), read alone as an opening and alone as a closing bracket,
+// and for each two of those, in order, read as an opening and a closing bracket. A control
+// word read as a bracket is read both with the argument after it shown and with it taken into
+// the bracket (see mathArgEnd), since a renderer can typeset a word and its argument as one
+// character. When s holds a character code, all of that is read once with each code read as
+// its character and once with its control word read as one the tool does not name, so a
+// renderer that does not typeset the code is read as well and no reading is lost.
 func mathTexts(s string, add func(string) bool) bool {
 	for _, collapse := range []bool{false, true} {
-		if add(mathText(s, collapse, -1, -1)) {
+		p := mathPrepare(s, collapse)
+		toks := mathTokens(p, true)
+		if mathPicks(p, collapse, toks, add) {
 			return true
 		}
-		n := len(unnamedMarkup(s, collapse))
-		for i := 0; i < n; i++ {
-			for j := i + 1; j < n; j++ {
-				if add(mathText(s, collapse, i, j)) {
-					return true
+		if plain := mathTokens(p, false); !slices.Equal(plain, toks) {
+			if mathPicks(p, collapse, plain, add) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// mathPicks calls add with mathText's reading of p for each pick mathTexts describes over
+// toks, until add returns true, and reports whether it did.
+func mathPicks(p string, collapse bool, toks []mathToken, add func(string) bool) bool {
+	if add(mathText(p, collapse, toks, mathPick{open: -1, close: -1})) {
+		return true
+	}
+	var unnamed []int
+	for i, t := range toks {
+		if t.unnamed {
+			unnamed = append(unnamed, i)
+		}
+	}
+	// modes returns the argument readings of token i: shown, and taken into the bracket when
+	// an argument follows it.
+	modes := func(i int) []bool {
+		if toks[i].arg > toks[i].end {
+			return []bool{false, true}
+		}
+		return []bool{false}
+	}
+	for _, i := range unnamed {
+		for _, take := range modes(i) {
+			if add(mathText(p, collapse, toks, mathPick{open: i, close: -1, takeOpen: take})) ||
+				add(mathText(p, collapse, toks, mathPick{open: -1, close: i, takeClose: take})) {
+				return true
+			}
+		}
+	}
+	for x, i := range unnamed {
+		for _, j := range unnamed[x+1:] {
+			for _, ti := range modes(i) {
+				for _, tj := range modes(j) {
+					if add(mathText(p, collapse, toks, mathPick{open: i, close: j, takeOpen: ti, takeClose: tj})) {
+						return true
+					}
 				}
 			}
 		}
@@ -998,11 +1066,13 @@ func mathTexts(s string, add func(string) bool) bool {
 }
 
 // mathGlyphs are the control words and symbols a renderer typesets in math as a character a
-// login or its tag can hold, each with that character.
+// login or its tag can hold, each with that character. `\|` is read as `|`, the character a
+// table cell shows for it, which no reader takes for a bracket; a renderer typesets it in math
+// as a double bar, which is not one either.
 var mathGlyphs = map[string]string{
 	`\lbrack`: "[", `\rbrack`: "]", `\lbrace`: "{", `\rbrace`: "}", `\{`: "{", `\}`: "}",
 	`\_`: "_", `\$`: "$", `\#`: "#", `\&`: "&", `\%`: "%",
-	`\vert`: "|", `\lvert`: "|", `\rvert`: "|",
+	`\vert`: "|", `\lvert`: "|", `\rvert`: "|", `\|`: "|",
 }
 
 // mathPrepare returns s as mathText reads it before its markup: with collapse set, with its
@@ -1014,58 +1084,242 @@ func mathPrepare(s string, collapse bool) string {
 	return s
 }
 
-// unnamedMarkup returns the byte ranges, in s as mathPrepare returns it, of the control words
-// and symbols mathGlyphs does not name.
-func unnamedMarkup(s string, collapse bool) [][]int {
-	s = mathPrepare(s, collapse)
-	var out [][]int
+// mathToken is one match of mathMarkupRe in a text read as math, from at to end. A control
+// word or symbol mathGlyphs names, or one that typesets a character code (see mathCharCode),
+// is named and typesets as glyph; a character code's end takes in its argument. Any other
+// control word or symbol is unnamed, and arg is the end of the argument after it (see
+// mathArgEnd), or end when none follows. Any other match (a brace, backtick or sub- or
+// superscript sign) typesets as nothing.
+type mathToken struct {
+	at, end, arg int
+	glyph        string
+	named        bool
+	unnamed      bool
+}
+
+// mathTokens returns the tokens of s in order (see mathToken), with codes set reading
+// character codes as their characters; a match inside a character code's argument is then part
+// of that code and no token of its own. With codes unset, a character code's control word is
+// read as unnamed.
+func mathTokens(s string, codes bool) []mathToken {
+	var out []mathToken
+	last := 0
 	for _, m := range mathMarkupRe.FindAllStringIndex(s, -1) {
-		if _, ok := mathGlyphs[s[m[0]:m[1]]]; !ok && s[m[0]] == '\\' {
-			out = append(out, m)
+		if m[0] < last {
+			continue
 		}
+		w := s[m[0]:m[1]]
+		t := mathToken{at: m[0], end: m[1], arg: m[1]}
+		if g, ok := mathGlyphs[w]; ok {
+			t.glyph, t.named = g, true
+		} else if g, end, ok := mathCharCode(s, m[1], w); codes && ok {
+			t.glyph, t.named, t.end, t.arg = g, true, end, end
+		} else if w[0] == '\\' {
+			t.unnamed = true
+			t.arg = mathArgEnd(s, m[1])
+		}
+		out = append(out, t)
+		last = t.end
 	}
 	return out
 }
 
-// mathText returns s as a renderer can typeset it in math: each control word or symbol
-// mathGlyphs names as its character, the open-th and close-th of those it does not name (see
-// unnamedMarkup) as an opening and a closing bracket when open is not negative, and every other
-// match of mathMarkupRe as nothing. With collapse set, its entities are decoded and its white
-// space dropped, as math drops the white space between the symbols it typesets.
-func mathText(s string, collapse bool, open, close int) string {
-	s = mathPrepare(s, collapse)
+// mathPick names the tokens (by index into mathTokens, or -1 for none) mathText reads as an
+// opening and a closing bracket, and whether each takes its argument into the bracket.
+type mathPick struct {
+	open, close         int
+	takeOpen, takeClose bool
+}
+
+// mathText returns s, as mathPrepare returns it, as a renderer can typeset it in math: each
+// named token (see mathToken) as its glyph, the tokens pick names as an opening and a closing
+// bracket (with the argument after each dropped when pick says it takes it), and every other
+// token as nothing. With collapse set, its white space is dropped, as math drops the white
+// space between the symbols it typesets.
+func mathText(s string, collapse bool, toks []mathToken, pick mathPick) string {
 	var b strings.Builder
-	last, k := 0, 0
-	for _, m := range mathMarkupRe.FindAllStringIndex(s, -1) {
-		b.WriteString(s[last:m[0]])
-		last = m[1]
-		w := s[m[0]:m[1]]
-		if g, ok := mathGlyphs[w]; ok {
-			b.WriteString(g)
+	last := 0
+	for i, t := range toks {
+		if t.at < last {
 			continue
 		}
-		if w[0] != '\\' {
-			continue
-		}
+		b.WriteString(s[last:t.at])
+		last = t.end
 		switch {
-		case open >= 0 && k == open:
+		case t.named:
+			b.WriteString(t.glyph)
+		case i == pick.open:
 			b.WriteString("[")
-		case open >= 0 && k == close:
+			if pick.takeOpen {
+				last = t.arg
+			}
+		case i == pick.close:
 			b.WriteString("]")
+			if pick.takeClose {
+				last = t.arg
+			}
 		}
-		k++
 	}
 	b.WriteString(s[last:])
-	s = b.String()
+	out := b.String()
 	if collapse {
-		s = strings.Map(func(r rune) rune {
+		out = strings.Map(func(r rune) rune {
 			if unicode.IsSpace(r) {
 				return -1
 			}
 			return r
-		}, s)
+		}, out)
 	}
-	return s
+	return out
+}
+
+// mathSpaces returns the first index at or after i in s that is not ASCII white space.
+func mathSpaces(s string, i int) int {
+	for i < len(s) && strings.IndexByte(" \t\r\n", s[i]) >= 0 {
+		i++
+	}
+	return i
+}
+
+// mathOptions returns the end of the optional arguments (`[...]`, each up to its first `]`)
+// at or after i in s, after white space, or i when none is there; ok is false when one does
+// not close.
+func mathOptions(s string, i int) (int, bool) {
+	j := mathSpaces(s, i)
+	for j < len(s) && s[j] == '[' {
+		k := strings.IndexByte(s[j:], ']')
+		if k < 0 {
+			return i, false
+		}
+		j = mathSpaces(s, j+k+1)
+	}
+	return j, true
+}
+
+// mathGroup returns the end of the brace group that opens at s[i], counting the groups
+// nested inside it and skipping escaped braces, or len(s) when it does not close.
+func mathGroup(s string, i int) int {
+	depth := 0
+	for j := i; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return j + 1
+			}
+		}
+	}
+	return len(s)
+}
+
+// mathNumber returns the end of a character code's number at s[i] and its value: `"` and hex
+// digits (uppercase, as TeX reads them), `'` and octal digits, decimal digits, or a backtick and the character (or control
+// symbol) it names; ok is false when none is there.
+func mathNumber(s string, i int) (end int, v int64, ok bool) {
+	if i >= len(s) {
+		return i, 0, false
+	}
+	digits := func(from, base int, set string) (int, int64, bool) {
+		j := from
+		for j < len(s) && strings.IndexByte(set, s[j]) >= 0 {
+			j++
+		}
+		if j == from || j-from > 8 {
+			return i, 0, false
+		}
+		n, err := strconv.ParseInt(s[from:j], base, 64)
+		return j, n, err == nil
+	}
+	switch c := s[i]; {
+	case c == '"':
+		return digits(i+1, 16, "0123456789ABCDEF")
+	case c == '\'':
+		return digits(i+1, 8, "01234567")
+	case c >= '0' && c <= '9':
+		return digits(i, 10, "0123456789")
+	case c == '`':
+		j := i + 1
+		if j < len(s) && s[j] == '\\' {
+			j++
+		}
+		if j >= len(s) {
+			return i, 0, false
+		}
+		r, size := utf8.DecodeRuneInString(s[j:])
+		return j + size, int64(r), true
+	}
+	return i, 0, false
+}
+
+// mathCharCode reports whether control word w, which ends at s[i], typesets a character a
+// renderer reads from a code after it, and returns that character and the end of the code:
+// `\unicode` with optional arguments and a braced decimal, or hex led by `x` or `0x`, code;
+// `\char` with a number (see mathNumber); and `\mathchar` with a number whose low byte names
+// the character. A code that holds no valid character is not read as one.
+func mathCharCode(s string, i int, w string) (string, int, bool) {
+	var end int
+	var v int64
+	switch w {
+	case `\unicode`:
+		j, ok := mathOptions(s, i)
+		if !ok || j >= len(s) || s[j] != '{' {
+			return "", 0, false
+		}
+		end = mathGroup(s, j)
+		if end > len(s) || s[end-1] != '}' {
+			return "", 0, false
+		}
+		code := strings.TrimSpace(s[j+1 : end-1])
+		base := 10
+		switch {
+		case strings.HasPrefix(code, "x"), strings.HasPrefix(code, "X"):
+			code, base = code[1:], 16
+		case strings.HasPrefix(code, "0x"), strings.HasPrefix(code, "0X"):
+			code, base = code[2:], 16
+		}
+		if code == "" || len(code) > 8 {
+			return "", 0, false
+		}
+		n, err := strconv.ParseInt(code, base, 64)
+		if err != nil {
+			return "", 0, false
+		}
+		v = n
+	case `\char`, `\mathchar`:
+		var ok bool
+		if end, v, ok = mathNumber(s, mathSpaces(s, i)); !ok {
+			return "", 0, false
+		}
+		if w == `\mathchar` {
+			v &= 0xff
+		}
+	default:
+		return "", 0, false
+	}
+	if v <= 0 || v > utf8.MaxRune || !utf8.ValidRune(rune(v)) {
+		return "", 0, false
+	}
+	return string(rune(v)), end, true
+}
+
+// mathArgEnd returns the end of the argument a renderer can read after a control word that
+// ends at s[i]: optional arguments, then a brace group (see mathGroup) or a number (see
+// mathNumber), after white space; or i when none follows.
+func mathArgEnd(s string, i int) int {
+	j, ok := mathOptions(s, i)
+	if !ok || j >= len(s) {
+		return i
+	}
+	if s[j] == '{' {
+		return mathGroup(s, j)
+	}
+	if end, _, ok := mathNumber(s, j); ok {
+		return end
+	}
+	return i
 }
 
 // leftmostReadings calls add with each reading of d that pairs its runs of `$` from the left,
