@@ -229,7 +229,9 @@ if args[:2] == ['image', 'inspect']:
         self.assertFalse((self.out / 'release-images.json').exists())
         calls = self.recorded()
         self.assertFalse(any('"push"' in s or '"manifest"' in s for s in calls))
-        self.assertEqual(sum(s.startswith('scan ') for s in calls), 6)
+        self.assertEqual(sum(s.startswith('scan ') for s in calls), 7)
+        self.assertIn('scan --prepare', calls)
+        self.assertLess(calls.index('scan --prepare'), next(i for i, s in enumerate(calls) if '"build"' in s))
         # Eight amd64 images and two runner platforms report a version; both
         # runner platforms run the capability probe.
         self.assertEqual(sum('"run"' in s for s in calls), 12)

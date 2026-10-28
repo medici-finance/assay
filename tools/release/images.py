@@ -106,6 +106,9 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         shutil.copyfile(path, stage / "desk-tools" / path.name)
         (stage / "desk-tools" / path.name).chmod(path.stat().st_mode)
     (bins / "bugs-gc").unlink()
+    # Explicit, digest-pinned scanner acquisition precedes image builds. The
+    # scanner itself runs offline and never pulls tools on a scan invocation.
+    run("sh", root / "containers/scripts/layer-secret-scan.sh", "--prepare")
     run("docker", "build", "--platform", "linux/amd64", *stamps,
         "--build-arg", "BINARY_STAGE=released", "-t", refs["desk-tools"],
         "-f", root / "Dockerfile", root)

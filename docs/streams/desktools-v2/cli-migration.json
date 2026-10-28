@@ -7,6 +7,31 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "pattern": "containers/scripts/image_secret_scan.py",
+      "class": "library",
+      "reason": "internal implementation loaded by the existing layer-secret-scan.sh entrypoint; no standalone main guard or independent operator parser; the shell entrypoint retains desktools-v2/54 ownership (#3203)"
+    },
+    {
+      "pattern": "containers/scripts/compare_secret_scanners.py",
+      "class": "test",
+      "reason": "source-only comparison instrument for retained scanner fixtures and diagnostic artifacts; never installed or released as an operator CLI (#3203)"
+    },
+    {
+      "pattern": "containers/scripts/image_secret_scan_mutate.py",
+      "class": "test",
+      "reason": "developer mutation runner for disposable scanner implementation copies, invoked by the existing mutation wrapper (#3203)"
+    },
+    {
+      "pattern": "containers/scripts/image_secret_scan_test.py",
+      "class": "test",
+      "reason": "unit and pinned-engine integration fixtures invoked by the existing scanner test wrappers; never an operator CLI (#3203)"
+    },
+    {
+      "pattern": "containers/scripts/verify_image_secret_baseline.py",
+      "class": "test",
+      "reason": "offline provenance acceptance instrument over checksum-pinned upstream archives; no baseline enrollment or operator release command (#3203)"
+    },
+    {
       "class": "test",
       "pattern": "containers/k8s/compatibility/desk-session.test.sh",
       "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"

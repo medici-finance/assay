@@ -232,17 +232,43 @@ material. Concretely, an image-producing change must not:
   for example by a second `COPY` or by replacing the file with a directory.
   The earlier layer still contains the credential.
 
-`scripts/layer-secret-scan.sh <image>` walks `docker history`, the image config
-environment, and every layer's filesystem for PEM blocks, GitHub token prefixes
-(`ghp_`, `ghs_`, `github_pat_`), and model API-key shapes (`sk-ant-`, `sk-`),
-exiting non-zero on any hit. It extracts and scans each layer on its own, never
-a merged view of the image, so whatever a later layer does to a path cannot
-hide what an earlier layer wrote there. `scripts/layer-secret-scan.test.sh` is
-its mutation proof: it bakes an obviously-fake key into throwaway fixture
-images, including keys that a later layer overwrites or replaces, and asserts
-the scan goes red, so the scan is known to fire and is not a control that only
-ever passes. The scan is fail-closed: an image it cannot read in full exits 2,
-never clean, and the test holds it to that with fixtures it must refuse.
-`scripts/layer-secret-scan.mutate.sh` runs that test against mutated copies of
-the scan, a merged-view scan and one per fail-closed step, and requires each
-fixture to fail against its own mutant.
+`scripts/layer-secret-scan.sh <image>` delegates credential detection to the
+version-and-digest-pinned Gitleaks CLI. The primary source-code scan remains
+`leaksweep-pattern.yml`, using the repository's existing `.gitleaks.toml`.
+The image gate separately covers packaging: image configuration (including
+history), copied text files, and every layer independently. Later overwrites,
+whiteouts or directory replacements cannot hide an earlier layer's text.
+
+The image adapter preserves raw file bytes and uses Gitleaks' normal binary
+handling. It does not search compiled Go string tables, project binary bytes
+into text, or maintain compiler-packing exceptions. A source scan and packaging
+scan are complementary controls; neither is a certificate that arbitrary
+compiled, encoded or encrypted content contains no credential.
+
+All stock Gitleaks rules remain enabled. The standard redacted baseline in
+`scripts/image-secret-baseline.json` records verified upstream source/test-data
+findings. Its inventory records the upstream distribution and whole-file hash.
+Each scanner input's identity includes its logical image path and **every file
+byte**. Changing any byte or using another path invalidates the baseline; no
+rule family or directory is exempt. Baseline changes require upstream archive
+checksum verification and review, never automatic enrollment of new findings.
+
+Run `sh scripts/layer-secret-scan.sh --prepare` explicitly to fetch the pinned
+scanner image. That operation prints its download target before contact. The
+release producer prepares it before building images. A scan invocation uses
+`--pull never` and runs Gitleaks with no network or inherited credentials.
+
+Exit 0 means no non-baselined findings, exit 1 means findings, and exit 2 means
+incomplete scanning. A runtime-generated synthetic canary proves detection ran;
+scanner errors, unreadable archives, missing members, corrupt blob digests,
+malformed reports and missing canaries fail closed. Image-controlled ignore
+files and inline suppression comments cannot affect the scanner policy.
+
+`scripts/layer-secret-scan.test.sh` exercises the pinned engine with generated
+private keys and valid-format synthetic provider tokens. The traversal tests
+cover earlier layers, overwrites, whiteouts, links, mode-000 files and malformed
+archives without extracting image paths onto the host.
+`scripts/layer-secret-scan.mutate.sh` proves the tests reject a last-layer-only
+scan, an ignored digest, a missing-canary pass and dropped findings.
+See [the scanner comparison](secret-scanner-comparison.md) for the measurements,
+coverage boundary, baseline provenance and reproduction instructions.
