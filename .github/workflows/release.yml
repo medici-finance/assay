@@ -1646,6 +1646,16 @@ jobs:
           status=0
           installed="$(docker run --privileged --rm --network none "$BINFMT_IMAGE" --uninstall qemu-aarch64 --install arm64 2>&1)" || status=$?
           printf '%s\n' "$installed"
+          # A read-only registration interface is a runner security boundary,
+          # not a stale handler. Do not try a writable mount or remount here.
+          if grep -Fq '/proc/sys/fs/binfmt_misc/register' <<<"$installed" && grep -Fq 'read-only file system' <<<"$installed"; then
+            echo "::error::The runner registration filesystem is read-only. The runner owner must resolve the security decision: provide an approved emulation path or use native arm64 builds and checks. Do not remount or unmask the registration interface in this workflow. Stopping before any image is built."
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::The pinned binfmt installer failed (exit ${status}). Stopping before the arm64 probe or any image build."
+            exit 1
+          fi
           if ! grep -qx 'installing: arm64 OK' <<<"$installed"; then
             echo "::error::The pinned binfmt installer did not register its arm64 emulator: no 'installing: arm64 OK' line in its output (exit ${status}). If it reports 'qemu-aarch64 already registered', a stale handler on this node survived the uninstall: unregister it on the runner host (echo -1 > /proc/sys/fs/binfmt_misc/qemu-aarch64) and rerun. Stopping before any image is built."
             exit 1

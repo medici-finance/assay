@@ -492,13 +492,14 @@ if args[:2] == ['image', 'inspect']:
         # Models the pinned installer (cmd/binfmt/main.go at e29e7d72): it logs
         # one line per uninstall and install to stderr, prints its status JSON
         # to stdout, and exits 0 even when a registration fails. Only a failed
-        # container start exits non-zero. The probe answers per FAKE_PROBE_*.
+        # container start exits non-zero. Also model an interrupted installer
+        # after its success line, to prove that partial output cannot mask a
+        # non-zero exit. The probe answers per FAKE_PROBE_*.
         fake.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
                         'case "$*" in *--install*)\n'
-                        '  [ "$FAKE_START" = 0 ] || exit "$FAKE_START"\n'
                         '  printf "%s" "$FAKE_LOG" >&2\n'
                         '  echo \'{"supported":["linux/amd64"],"emulators":[]}\'\n'
-                        '  exit 0;;\nesac\n'
+                        '  exit "$FAKE_START";;\nesac\n'
                         '[ "$FAKE_PROBE_EXIT" = 0 ] || exit "$FAKE_PROBE_EXIT"\n'
                         'echo "$FAKE_ARCH"\n')
         fake.chmod(0o755)
@@ -507,6 +508,11 @@ if args[:2] == ['image', 'inspect']:
         replaced = 'uninstalling: qemu-aarch64 OK\ninstalling: arm64 OK\n'
         stale = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 qemu-aarch64 already registered\n'
         refused = 'uninstalling: qemu-aarch64 not found\ninstalling: arm64 EPERM opening /proc/sys/fs/binfmt_misc/register check permissions?\n'
+        # Exact registration failure from release dry run 40777382211. This
+        # tool still exits zero; the filesystem diagnostic must stop the job.
+        read_only = ('uninstalling: qemu-aarch64 not found\n'
+                     'installing: arm64 Cannot open /proc/sys/fs/binfmt_misc/register: '
+                     'open /proc/sys/fs/binfmt_misc/register: read-only file system\n')
         no_install = 'error: cannot mount binfmt_misc filesystem at /proc/sys/fs/binfmt_misc: operation not permitted\n'
         not_installed = "no 'installing: arm64 OK' line"
         not_working = '::error::arm64 emulation is not working'
@@ -519,9 +525,12 @@ if args[:2] == ['image', 'inspect']:
             # not be accepted in place of the pinned one.
             'stale-handler-survives': ('0', stale, '0', 'aarch64', base, 1, 'unregister it on the runner host', False),
             'register-refused': ('0', refused, '0', 'aarch64', base, 1, not_installed, False),
+            'register-read-only': ('0', read_only, '0', 'aarch64', base, 1, 'runner registration filesystem is read-only', False),
+            'read-only-despite-success-line': ('0', read_only + fresh, '0', 'aarch64', base, 1, 'runner registration filesystem is read-only', False),
             'binfmt-not-mountable': ('0', no_install, '0', 'aarch64', base, 1, not_installed, False),
             'ok-for-another-arch-only': ('0', 'installing: riscv64 OK\n', '0', 'aarch64', base, 1, not_installed, False),
             'container-fails-to-start': ('125', '', '0', 'aarch64', base, 1, 'exit 125', False),
+            'success-line-with-nonzero-exit': ('137', fresh, '0', 'aarch64', base, 1, 'exit 137', False),
             'wrong-arch': ('0', fresh, '0', 'x86_64', base, 1, not_working, True),
             'probe-fails': ('0', fresh, '125', '', base, 1, not_working, True),
             'unpinned-base': ('0', fresh, '0', 'aarch64', 'golang:1.2.3-bookworm', 1, 'no single digest-pinned RUNNER_BASE', False),
@@ -539,6 +548,9 @@ if args[:2] == ['image', 'inspect']:
                              FAKE_ARCH=arch, BINFMT_IMAGE='binfmt:x@sha256:' + 'b' * 64))
                 self.assertEqual(result.returncode, code, result.stdout + result.stderr)
                 self.assertIn(message, result.stdout)
+                if name.startswith('register-read-only') or name == 'read-only-despite-success-line':
+                    self.assertIn('runner owner', result.stdout)
+                    self.assertIn('security decision', result.stdout)
                 if ref == base:
                     expected = [installer] + ([prober] if probed else [])
                     self.assertEqual(calls.read_text().splitlines(), expected)
