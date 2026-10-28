@@ -62,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.52@sha256:64f131ec208def087b50565a4ddd407b95bd89ac418a86597ad1bac1d29047d3
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.64@sha256:cc2ab44053b22c981c5ab3149d36c4f248c3968fa22b38f75f161193b270df24
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -74,7 +74,8 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # (made over the uncompressed tar, by the git maintainer's release key), BEFORE
 # copying anything from it. Then set both ARGs from the release's entry and add
 # the same pair to knownGitTarballs in
-# tools/desk/internal/deskkit/gitfloor_test.go.
+# tools/desk/internal/deskkit/gitfloor_test.go, and set the same two ARGs in
+# images/verify-runner/Dockerfile (a test requires the two pairs to match).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
 ARG GIT_VERSION=2.56.0
 ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
@@ -126,9 +127,9 @@ ARG TARGETARCH=amd64
 #   NODE_VERSION — Node LTS; the runtime the interactive agent CLI installs onto.
 #                 Checksums: https://nodejs.org/dist/v<version>/SHASUMS256.txt
 #                 (signed by the Node release keys: SHASUMS256.txt.asc)
-ARG GO_VERSION=1.27.2
-ARG GO_SHA256_AMD64=ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5
-ARG GO_SHA256_ARM64=94f3e30b8e374bc285e7dadc11e0865726b9bc6e85b841ccceaabc0214c6b7c8
+ARG GO_VERSION=1.27.3
+ARG GO_SHA256_AMD64=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
+ARG GO_SHA256_ARM64=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
 ARG GH_VERSION=2.63.2
 ARG GH_SHA256_AMD64=912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00
 ARG GH_SHA256_ARM64=0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb

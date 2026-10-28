@@ -761,6 +761,49 @@ Findings:
 
 VERIFY: BLOCKED — row 4 (live GitLab read-back under the auditor PAT) could not be checked: it needs a human-provisioned credential and a live instance, and its command still needs re-authoring. Rows 2, 3 and 5 pass as written; row 1 passed in two of three runs (the red was an unrelated timing race); row 6 passes vacuously. 5 of 6 rows exit 0; 4 of 6 proven. No implementation defect. Blocker: medici-finance/assay#1794.
 
+### Independent run 2026-10-24 (claude-opus-5-5, strong) — container-netns admission bracket plus host row
+
+Separate run under a fresh admission (attestation medici-finance/assay#4295). It credits nothing from the runs above. Container rows 1, 2, 3 and 5 ran in one closed admission bracket; row 6 ran on the host because it reads git history; row 4 was not selected (reason below).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 sandbox=container-netns | sha256:56ae93d600b1 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | pass exit=0 sandbox=container-netns | sha256:0bd55cd6b562 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | pass exit=0 sandbox=container-netns | sha256:ec1cad003216 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:98685d6717c495aecd71bc3b8cb782aa9cc7dc0ac1332b029f60eb2c3a1c1104
+Container-Image: sha256:c2e32c7ff99f67951174e8ff835d928d8999b1bb2ecdc7c63d3775528178640e
+Verification-Attestation: medici-finance/assay#4295 run=e4e9d5170f18923aa1d5dbabe11e7384f0098ed7e22f495f69153640c6eea9c9 source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=e4e9d5170f18923aa1d5dbabe11e7384f0098ed7e22f495f69153640c6eea9c9 source=385cb29e5682dcb9a886b298076f722b4823ec1b tree=sha256:98685d6717c495aecd71bc3b8cb782aa9cc7dc0ac1332b029f60eb2c3a1c1104 witness=sha256:cffa6ef21f36e9fdc846a8099550927defce4bf67c3d6ffd4ed1db3a44fdcc89 opened=2026-10-24T17:12:43Z closed=2026-10-24T17:53:06Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:f61c66ccf12b | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682+dirty (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4295 run=e4e9d5170f18923aa1d5dbabe11e7384f0098ed7e22f495f69153640c6eea9c9 source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+
+Host and lane. darwin-arm64 host, Docker 29.8.2 (6 CPU), statusgen v1.0.59 as installed. Rows 1, 2, 3 and 5 ran in the pinned verify-runner v1.0.59 image (digest above, linux/amd64 under emulation, go1.27.2) with no network, a read-only root and the checkout mounted read-only. Row 6 ran on the host because it reads git history, which the container mount does not carry.
+
+Row 4 was not selected. It needs a live GitLab instance and an auditor personal access token that a human provisions, and its command mints that token through desktoken. No GitLab API base is configured for this run and the checkout's origin is a GitHub remote. The row's command is still open for re-authoring (medici-finance/assay#1794, re-authoring tracker medici-finance/assay#1927), and the auditor's minimum roles are still stated rather than measured (medici-finance/assay#1946). The row's claim is unproven.
+
+Row 1 is red in this lane, and the red is not in the code this brief changed. A diagnostic re-run of the same command under the same container settings (outside the bracket, no credit) reproduced it. Eight command packages failed. Six of them hit the default 10-minute per-package test timeout: the image runs amd64 under emulation on a host shared with other verifier containers. The other failures are tests that are not hermetic. They resolve the forge from the checkout's origin remote or from the roster, which the container does not have ("cannot resolve which forge serves example-org/agents: no ASSAY_REPO_FORGES entry names it, and the origin remote's host is absent, unreadable, ..."). Some also run statusgen lint and get a refused configuration. None of the failing tests is a GitLab hardening read, and the packages that rows 2 and 3 target pass by name in the same bracket. Row 1 could not be checked in this lane. That is not a fail.
+
+Row 6 passes vacuously: 0 corroborated, 0 disproved, 5 unchecked as unchanged since the merge-base.
+
+Supplemental mutation (no credit): a container run of TestForgeGitlabGolden under a compile overlay. The overlay makes a tier-gated 403 or 404 in the hardening read return an empty JSON document with no error. The test went red in three subtests (push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404) and exited 1. The unmutated test passes, as row 2 shows. So the golden test catches the tier-gated could-not-check path being turned into a silent empty read.
+
+Risk values at this head:
+- Hardening read paths projects/%s, projects/%s/push_rule, projects/%s/approvals, and the list paths projects/%s/protected_branches and projects/%s/protected_tags (forge_gitlab.go:2601-2608): DERIVED. These are GitLab's REST v4 resource paths, and the golden test in row 2 pins them.
+- gitlabMaxHardeningPage = 10 (forge_gitlab.go:2615) and gitlabPerPage = 100 (forge_gitlab.go:465): NAMED. These are reversible ceilings that fail closed past the cap, so they rank last.
+- Tier-gated kinds {push-rules, approvals} (forge_gitlab.go:2621), a 403 or 404 on them mapped to could-not-check (forge_gitlab.go:2680-2681), and an empty body refused (forge_gitlab.go:2687): DERIVED from GitLab's tier matrix. Rows 2 and 3 exercise them.
+- hardeningKindForge partition (forge.go:1360): DERIVED, a closed vocabulary that the coverage test checks.
+- Adopter-doc Required cells: main-no-force false, main-push-no-one 0, main-merge-maintainers 40, release-tags 40 (adopting-assay-gitlab.md:1119-1122). DERIVED: GitLab access level 0 is No one and 40 is Maintainer. The push-rules rows are not available — Premium (adopting-assay-gitlab.md:1126-1127), which row 5 counts.
+- Auditor roles Reporter (20) and Maintainer (40) (adopting-assay-gitlab.md:142, role table near :1063-1068): NAMED, NOT DERIVED. The doc says so itself at :1070 ("a stated minimum, not a measured one"). Tracked as medici-finance/assay#1946.
+
+Findings: the cmd test packages under tools/desk are not hermetic. They read the ambient origin remote and roster, so row 1 cannot go green in the sanctioned no-network container lane. Under amd64 emulation, the default package timeout is also too short for several packages. Neither finding touches this brief's implementation.
+
+**VERIFY: BLOCKED** — row 4 (live GitLab read-back under a human-provisioned auditor PAT) could not be checked, and its command still needs the medici-finance/assay#1794 re-authoring. In the closed container bracket, rows 2, 3 and 5 pass. Row 1 is red for lane reasons (non-hermetic command tests, and package timeouts under emulation), not for anything in this brief. Row 6 passes vacuously. No implementation defect. Blocker: medici-finance/assay#1794.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer answers: with the checklist's `not available` short-circuit removed, does the backend's

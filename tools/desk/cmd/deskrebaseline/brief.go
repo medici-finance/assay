@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -226,47 +228,16 @@ func parseVerifyRows(content string) []verifyRow {
 // twin of extractSection: applyRebaseline needs the section's bounds in the FULL line slice so
 // its in-place rewrite lands on the right line, not a copy of just the section.
 func verifySectionBounds(lines []string) (lo, hi int) {
-	lo = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Verify" {
-			lo = i + 1
-			break
-		}
-	}
-	if lo < 0 {
+	lo, hi, ok := briefdoc.SectionBounds(lines, "Verify", true)
+	if !ok {
 		return -1, -1
-	}
-	hi = len(lines)
-	for i := lo; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
-			hi = i
-			break
-		}
 	}
 	return lo, hi
 }
 
 // extractSection returns the body between an exact `## <heading>` line and the next `## `.
 func extractSection(content, heading string) string {
-	lines := strings.Split(content, "\n")
-	start := -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == heading {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	var out []string
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
-			break
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
+	return briefdoc.Section(content, strings.TrimPrefix(heading, "## "), heading == "## Verify")
 }
 
 // headerIndex maps lower-cased header cell names to their column positions.

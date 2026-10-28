@@ -185,7 +185,7 @@ func TestHomedInSupersedesPhantom(t *testing.T) {
 		s := writeStream(t, root, "gtm", "Active stream.\n",
 			"08", "The deliverable lands in another repo.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo", HomedIn: "medici-finance/assay"}}
-		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, nil, nil); len(got) != 0 {
 			t.Fatalf("a valid homed-in must suppress the work-moved phantom NOTICE; got %v", got)
 		}
 	})
@@ -195,7 +195,7 @@ func TestHomedInSupersedesPhantom(t *testing.T) {
 		s := writeStream(t, root, "gtm", "Active stream.\n",
 			"08", "The deliverable lands in another repo.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo"}}
-		got := boardHonestyNotices([]*Stream{s}, nil, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, nil, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomOutOfRepo) {
 			t.Fatalf("without homed-in the phantom must still surface; got %v", got)
 		}
@@ -206,7 +206,7 @@ func TestHomedInSupersedesPhantom(t *testing.T) {
 		s := writeStream(t, root, "oss", "Active stream.\n", "08", "Plain body.\n")
 		s.Briefs = []Brief{{Num: "08", Status: "todo", HomedIn: "medici-finance/assay"}}
 		merged := []mergedPR{{Number: 1, Subject: "Merge pull request #1 from x/brief/oss-08", Briefs: []string{"oss/08"}}}
-		got := boardHonestyNotices([]*Stream{s}, merged, nil)
+		got := boardHonestyNotices(root, []*Stream{s}, merged, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomMergedUnflipped) {
 			t.Fatalf("homed-in must not mask a merged-unflipped row; got %v", got)
 		}

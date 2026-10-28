@@ -36,12 +36,18 @@ sources:
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): no `deskusage` command under tools/desk/cmd/; no usage/token record is written at or after claim release by deskclaim-ref (claim.go:261 cmdRelease deletes the ref only), deskdispatch (dispatch.go:1120 releaseClaim) or the worker prompt's release line (prompt.go:453 writeReleaseClaim); the only token field anywhere is desk-supervision/13's per-session beacon `resource.tokens` (vitals.go:67-73), which is a live session vital, not a per-dispatch record"
   - "re-checked 2026-10-13 @ bcc02252e (origin/main): still no `deskusage` command; `loopadmin/runner/usage.go` exists (graph-execution/20) and is its own Go module (`loopadmin/go.mod`), so this brief matches its JSON keys and never imports it"
 consumers:
-  - "tools/desk/cmd/deskusage/ (planned — new verb `record` + `summary`): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/usage.go (planned — record type, store resolution, strict reader): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/rosterconfig.go (knownRosterKeys gains ASSAY_USAGE_DIR): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/rosterconfig.go and statusgen/testdata/roster_coupling.json (statusgen's twin of the roster key set): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "plugins/assay/skills/worker-desk/SKILL.md (the refill-on-completion step records usage): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md (deskusage row + the ASSAY_USAGE_DIR key): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/internal/deskkit/dispatchrecord.go: fixed-here (dispatch-owner latest lookup tolerates historical damage and refuses an ambiguous tail)"
+  - ".cursor/skills/worker-desk/SKILL.md: fixed-here (canonical Cursor writer refreshes the generated completion guidance)"
+  - ".cursor/assay-managed.json: fixed-here (canonical Cursor writer refreshes the ownership digest)"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here (production command route; the offline mutation replay lives under the scanner's existing testdata exclusion)"
+  - "docs/streams/desktools-v2/brief-56-migrate-deskperf-to-cobra-and-viper.md: fixed-here (remaining shared CLI qualification routed to the existing owner; both-command Verify selectors)"
+  - "tools/desk/internal/deskkit/audittoolkey.go: fixed-here (register the local command in the existing audit tool catalogue)"
+  - "tools/desk/cmd/deskusage/ (new verb `record` + `summary`): fixed-here"
+  - "tools/desk/internal/deskkit/usage.go (record type, store resolution, strict reader): fixed-here"
+  - "tools/desk/internal/deskkit/rosterconfig.go (knownRosterKeys gains ASSAY_USAGE_DIR): fixed-here"
+  - "statusgen/rosterconfig.go and statusgen/testdata/roster_coupling.json (statusgen's twin of the roster key set): fixed-here"
+  - "plugins/assay/skills/worker-desk/SKILL.md (the refill-on-completion step records usage): fixed-here"
+  - "tools/desk/README.md (deskusage row + the ASSAY_USAGE_DIR key): fixed-here"
   - "docs/records-and-retention.md (lists this record class): out-of-scope (desk-supervision/35 owns that page and lists every analysis record; this brief only supplies the location, writer and schema it will cite)"
   - "desksupervise reclaim and deskdispatch's lifecycle-failure release (dispatch.go:379/418/495): out-of-scope (no agent run completed, so no harness usage figure exists to record; a reclaimed run's cost stays unrecorded rather than estimated)"
   - "review and verify agent dispatches (pr-review-desk, verify-desk): out-of-scope (deferred to an unauthored follow-up — the same verb serves them, but this brief scopes the worker pool only, per the driver's ruling)"
@@ -53,15 +59,19 @@ consumers:
 
 ## Context
 files:
-- **add** `tools/desk/internal/deskkit/usage.go` (planned) — `UsageRecord` type (schema `usage-v1`), store-directory resolution, append writer, strict reader.
-- **add** `tools/desk/internal/deskkit/usage_test.go` (planned).
-- **add** `tools/desk/cmd/deskusage/main.go` (planned), `tools/desk/cmd/deskusage/record.go` (planned),
-  `tools/desk/cmd/deskusage/summary.go` (planned) and their tests — the verb.
+- **edit** `tools/desk/internal/deskkit/dispatchrecord.go` — own latest dispatch lookup alongside the existing append-only store reader.
+- **regenerate** `.cursor/skills/worker-desk/SKILL.md` and `.cursor/assay-managed.json` with `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay`; never hand-edit the generated copy or its digest.
+- **add** `tools/desk/cmd/deskusage/testdata/mutations.py` — production-overlay mutation replay, run with `python3 tools/desk/cmd/deskusage/testdata/mutations.py`.
+- **add** `tools/desk/internal/deskkit/usage.go` — `UsageRecord` type (schema `usage-v1`), store-directory resolution, append writer, strict reader.
+- **add** `tools/desk/internal/deskkit/usage_test.go`.
+- **edit** `tools/desk/internal/deskkit/audittoolkey.go` — register the local command with the existing audit owner.
+- **add** `tools/desk/cmd/deskusage/main.go`, `tools/desk/cmd/deskusage/record.go`,
+  `tools/desk/cmd/deskusage/summary.go` and their tests — the verb.
 - **edit** `tools/desk/internal/deskkit/rosterconfig.go` — `EnvUsageDir = "ASSAY_USAGE_DIR"` and its entry in `knownRosterKeys()` (line 536).
 - **edit** `statusgen/rosterconfig.go` (`scanKnownRosterKeys`, line 457) and `statusgen/testdata/roster_coupling.json` — the twin of the new key (the file's own KEEP-IN-SYNC rule).
 - **edit** `plugins/assay/skills/worker-desk/SKILL.md` — the "Fill to N, refill on completion" bullet (line 127) gains the record step.
 - **edit** `tools/desk/README.md` — a `deskusage` row in the tool table and the `ASSAY_USAGE_DIR` key.
-- **add** `changelog/desk-supervision-34.md` (planned).
+- **add** `changelog/desk-supervision-34.md`.
 
 facts:
 - **Who releases the claim, and who sees the usage figure (read 2026-10-06 @ 1fbf1153f).** The
@@ -152,7 +162,7 @@ facts:
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. **Record type (`tools/desk/internal/deskkit/usage.go` (planned)).** `UsageRecord{Schema "usage-v1", TS (RFC3339 UTC),
+1. **Record type (`tools/desk/internal/deskkit/usage.go`).** `UsageRecord{Schema "usage-v1", TS (RFC3339 UTC),
    DispatchRef, Repo (owner/name), Item (`<stream>/<NN>` or `issue-<N>`), Tier, InputTokens,
    OutputTokens, TotalTokens, CostMicros, WallSeconds}` with JSON keys `input_tokens`,
    `output_tokens`, `total_tokens`, `cost_micros`, `wall_seconds` — the five counts are `*VitalField`. NO other field: no
@@ -203,7 +213,7 @@ facts:
 | 3 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageSummary_RefusesPollutedStore$' -v > "${TMPDIR:-/tmp}/b34-polluted.out" 2>&1 && grep -F -e '--- PASS: TestUsageSummary_RefusesPollutedStore' "${TMPDIR:-/tmp}/b34-polluted.out"` | exit 0; a store with one hand-appended line carrying a `prompt` key → `summary` exits 6 naming that line number; a store of valid lines → aggregates printed with no `dispatch_ref` in the output (the reader layer, with the writer bypassed) | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageStore_RefusesGitWorkTree$' -v > "${TMPDIR:-/tmp}/b34-gitdir.out" 2>&1 && grep -F -e '--- PASS: TestUsageStore_RefusesGitWorkTree' "${TMPDIR:-/tmp}/b34-gitdir.out"` | exit 0; `ASSAY_USAGE_DIR` pointing inside a temp dir carrying `.git` → refused, nothing written; `ASSAY_USAGE_DIR` a symlink whose target is inside a temp dir carrying `.git` → refused, nothing written; unset → resolves under the (test-overridden) state dir | check:ci +mutation |
 | 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageRecord_ThreeState$' -v > "${TMPDIR:-/tmp}/b34-3state.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_ThreeState' "${TMPDIR:-/tmp}/b34-3state.out"` | exit 0; omitted count → JSON `null`; `could-not-check` → that string; measured `0` → `0`; the five JSON keys are exactly `input_tokens`, `output_tokens`, `total_tokens`, `cost_micros`, `wall_seconds`; a vendor model name as `--tier` → refused | check:ci |
-| 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage_RecordToSummaryFlow$' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && grep -F -e '--- PASS: TestUsage_RecordToSummaryFlow' "${TMPDIR:-/tmp}/b34-flow.out"` | exit 0; roster key → store dir → three `record` calls (two items, two tiers) → `summary --by tier --json` shows the right counts, sums and measured/null tallies; a `--claim-key` call resolves to the `dispatch_ref` of the LATEST `dispatched` line in a fixture dispatch-record store (two `dispatched` lines for one key, the later one wins), and each stored `dispatch_ref` equals the one desk-supervision/28's `MintDispatchRef` produced for that fixture line — never a bare claim key; a `--claim-key` with no `dispatched` line, a `--repo` that differs from the resolved record, and a positional ref passed together with `--claim-key` are each refused (exit 5, store byte-identical) | check:ci +flow |
+| 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && test "$(grep -c -e '^--- PASS: TestUsage_RecordToSummaryFlow ' -e '^--- PASS: TestUsageClaimKeyDispatchRecovery ' "${TMPDIR:-/tmp}/b34-flow.out")" -eq 2` | exit 0; roster key → store dir → three `record` calls (two items, two tiers) → `summary --by tier --json` shows the right counts, sums and measured/null tallies; a `--claim-key` call resolves to the `dispatch_ref` of the LATEST `dispatched` line in a fixture dispatch-record store (two `dispatched` lines for one key, the later one wins), and each stored `dispatch_ref` equals the one desk-supervision/28's `MintDispatchRef` produced for that fixture line — never a bare claim key; historical torn/obsolete lines do not wedge a later valid matching dispatch, added fields remain compatible, and an ambiguous invalid tail refuses until a later valid matching dispatch restores certainty; a `--claim-key` with no `dispatched` line, a `--repo` that differs from the resolved record, and a positional ref passed together with `--claim-key` are each refused (exit 5, store byte-identical) | check:ci +flow |
 | 7 | `(cd statusgen && go test . -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-sg-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-sg-roster.out") && (cd tools/desk && go test ./internal/deskkit/ -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-dk-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-dk-roster.out") && grep -F -e 'ASSAY_USAGE_DIR' statusgen/testdata/roster_coupling.json` | exit 0 (the new key is in the coupling vector and both binaries' key-schema coupling tests pass) | check:ci +neighbour |
 | 8 | `grep -n 'deskusage record' plugins/assay/skills/worker-desk/SKILL.md && grep -n -i 'transcript' plugins/assay/skills/worker-desk/SKILL.md` | exit 0; the record step sits in the refill-on-completion bullet and the same passage forbids transcript content | check |
 | 9 | `grep -n 'func cmdRelease' tools/desk/cmd/deskclaim-ref/claim.go && ! grep -rn -i -e 'deskusage' -e 'UsageRecord' -e 'usage-v1' tools/desk/cmd/deskclaim-ref/ tools/desk/cmd/deskdispatch/` | exit 0; `cmdRelease` exists and neither the claim tool nor deskdispatch references the usage verb or record — brief 34 adds nothing to them (the claim of Context fact 1 dereferenced against code; desk-supervision/28's own `released`-record edit to the same file is deliberately out of this row's scope) | check +dereference |

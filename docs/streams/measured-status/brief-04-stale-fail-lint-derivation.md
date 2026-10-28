@@ -263,7 +263,33 @@ All of these are reversible lint-routing knobs, fixed by an edit and a release.
 RISK-VALUE: DERIVED — date.AddDate(0, 0, 1) = 1 day @ statusgen/stalefail.go:111 — Evidence dates are day-granular, so a same-day commit cannot be ordered against them. Counting only commits from the next UTC day or later as stale avoids rounding an unknown order to stale. Its one error mode is an over-call for a same-local-day edit west of UTC, and that routes to a re-verify, never to a sign-off.
 
 **VERIFY: PASS** — 5/5 rows pass at 05dc9fbc88f2b1b23cd78bebc8634c564327eca4 (statusgen verifyrun write-mode witness).
+### Re-verification — VERIFY: PASS — 2026-10-27 (merged main 52719b9592b4)
 
+Non-implementer re-verification on merged main 52719b9592b4443a784d246813117bf4023fb410, admitted by the dispatcher's pre-work check (attestation line below). Gate: model; all four risk answers no. Delivery: #2238, merge 8e20f91571c9 (parent 40d0063ef8a0, resolved from the forge). The table below is the `statusgen verifyrun` witness (v1.0.63, darwin arm64, go1.27.2, git 2.56.0), run from the admitted home on a clean tree, exactly as the tool printed it. No Verify row is classed check:ci, so the network-off container sandbox does not apply. No row carries a risk-bearing, live, mutating or end-to-end tag and no brief-wide risk answer is yes, so no row is risk-bearing and no fail-first witness is owed. Since 05dc9fbc88f2, stalefail.go, its test, the three fixture trees and the mutation script are unchanged; brieffile.go changed in four commits, and its only call into the waiting-brief route (waitingBriefNotice) is unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1` | pass exit=0 | sha256:4fe86a6f9705 | 2026-10-27 | assay-verifier-app[bot] @ 52719b9592b4 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -c '^--- PASS: TestStaleFailVsMissingCard'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-27 | assay-verifier-app[bot] @ 52719b9592b4 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `ls statusgen/testdata/*stale*fail* statusgen/testdata/*missing*card* >/dev/null 2>&1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 52719b9592b4 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -c 'stale FAIL'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-27 | assay-verifier-app[bot] @ 52719b9592b4 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && bash testdata/stalefail-mutation.sh` | pass exit=0 | sha256:88eb56247c87 | 2026-10-27 | assay-verifier-app[bot] @ 52719b9592b4 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4566 run=3b0887f1be44e1026b6ec66c69a7109a719ee41c72d300911e4958c21d569dd7 source=52719b9592b4443a784d246813117bf4023fb410 brief=docs/streams/measured-status/brief-04-stale-fail-lint-derivation.md model=claude-opus-5-5 tier=strong
+
+Supplemental, no credit: a hand run of every row under `bash -o pipefail` gave the same exits. Row 1 printed "ok github.com/medici-finance/assay/statusgen 0.434s"; rows 2 and 4 each printed 1; row 3 matched the stale-fail and missing-card fixture dirs and stalefail-mutation.sh; row 5 printed "unclassified waiting-brief route in planted_route_wRLZ2W.go:plantedRoute" then "PASS: the planted second route was detected". The verbose test log carries three distinct route lines, one per subtest (stale-fail, missing-card, current-fail, each --- PASS): "has stale FAIL — newest relevant main commit ed659a6 postdates Evidence 2026-08-01; a non-implementer RE-VERIFY supersedes it", "sign-off card missing — verify-desk lands the marker / verify-gate-open files the card" and "is gate:human at implemented but has no decision-issue — file one via --decision-issues". The tree was clean after every row.
+
+Risk-bearing values. Risk metadata is present and all four answers are no, including irreversible: no. Enumerated over the 8e20f91571c9 diff to brieffile.go and stalefail.go, re-located at 52719b9592b4:
+- date.AddDate(0, 0, 1) @ statusgen/stalefail.go:111 — a fix commit counts only if it lands on a later UTC day than the Evidence date
+- failHeadingRe = ^#{3,6}[ \t] @ statusgen/stalefail.go:12 — the Evidence run-heading depth
+- status set {in-progress, implemented, verified} @ statusgen/stalefail.go:164
+- ref order {refs/remotes/origin/main, refs/heads/main} @ statusgen/stalefail.go:81
+- is-shallow-repository must equal "false" @ statusgen/stalefail.go:77, otherwise could-not-check
+
+All of these are reversible lint-routing knobs, fixed by an edit and a release.
+
+RISK-VALUE: DERIVED — date.AddDate(0, 0, 1) = 1 day @ statusgen/stalefail.go:111 — Evidence dates are day-granular, so a same-day commit cannot be ordered against them. Counting only commits from the next UTC day or later as stale avoids rounding an unknown order to stale. Its one error mode is an over-call for a same-local-day edit west of UTC, and that routes to a re-verify, never to a sign-off.
+
+**VERIFY: PASS** — 5/5 rows pass at 52719b9592b4443a784d246813117bf4023fb410 (statusgen verifyrun witness).
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

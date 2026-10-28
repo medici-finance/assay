@@ -62,6 +62,8 @@ package deskkit
 import (
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/deskcore/issueflow"
 )
 
 // RaisedByPrefix is the label prefix carrying the provenance stamp. It is the ONE spelling
@@ -191,40 +193,12 @@ func RaisedByOf(labels []string) (role string, state RaisedByState) {
 // raised-by metric: a `to:` inbox that collapses "no addressee" and "two conflicting
 // addressees" into one bucket routes on a guess.
 func stampOf(labels []string, prefix string) (role string, state RaisedByState) {
-	found := ""
-	count := 0
-	empty := false
-	for _, l := range labels {
-		name := strings.ToLower(strings.TrimSpace(l))
-		if !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		count++
-		r := strings.TrimSpace(strings.TrimPrefix(name, prefix))
-		if r == "" {
-			empty = true
-			continue
-		}
-		if found != "" && found != r {
-			// Two DIFFERENT roles: conflicting provenance/addressee, adjudicating is not
-			// this package's call.
-			return "", RaisedByIndeterminate
-		}
-		found = r
+	role, unknown := issueflow.Stamp(labels, prefix)
+	if unknown {
+		return "", RaisedByIndeterminate
 	}
-	switch {
-	case count == 0:
+	if role == "" {
 		return "", RaisedByUnknown
-	case empty:
-		// A stamp with no role half is malformed. It is not Unknown — something DID try
-		// to record a role and produced an unreadable answer, and those two need
-		// different remedies.
-		return "", RaisedByIndeterminate
-	case found == "":
-		return "", RaisedByIndeterminate
-	default:
-		// count may exceed 1 here only when every stamp named the SAME role (a
-		// duplicate label is not a conflict).
-		return found, RaisedByStamped
 	}
+	return role, RaisedByStamped
 }

@@ -42,6 +42,8 @@ func TestInteractiveOwnerFixture(t *testing.T) {
 
 func TestInteractiveOwnerCrashRefusesCadence(t *testing.T) {
 	dir := t.TempDir()
+	cell := &Cell{Name: "sample", Dir: dir, Kind: "house"}
+	hashes := retainedHistory(t, cell, 10)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestInteractiveOwnerFixture$")
 	cmd.Env = fixtureProcessEnv("CELL_INTERACTIVE_FIXTURE=owner", "CELL_INTERACTIVE_DIR="+dir)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
@@ -77,6 +79,13 @@ func TestInteractiveOwnerCrashRefusesCadence(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = cmd.Wait()
+	if _, err := cell.prepareLaunch(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cell.stopCadences(); !errors.Is(err, cellcadence.ErrUnfinished) {
+		t.Fatalf("interrupted down accepted dirty owner: %v", err)
+	}
+	assertHistory(t, hashes)
 	l, err := cellcadence.Acquire(stateDir)
 	if err != nil {
 		t.Fatal(err)

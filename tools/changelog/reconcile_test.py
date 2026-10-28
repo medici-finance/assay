@@ -94,6 +94,36 @@ class ReconcileGate(unittest.TestCase):
         self.head = self.commit()
         self.check(0)
 
+    # regression: #4516
+    def test_unchanged_withdrawn_rows_do_not_block_live_reconciliation(self):
+        self.git('reset', '--hard', self.base)
+        original = README.replace(' | in-progress | ', ' | withdrawn | ')
+        self.write(PATH, original)
+        self.base = self.commit()
+        self.event['pull_request']['base']['sha'] = self.base
+        self.write(PATH, original.replace(' | todo | ', ' | implemented | '))
+        self.head = self.commit()
+        self.check(0)
+
+    # regression: #4516
+    def test_withdrawal_and_revival_keep_the_normal_requirement(self):
+        original_base = self.base
+        for before, after in [('todo', 'withdrawn'), ('withdrawn', 'implemented'),
+                              ('withdrawn', 'todo'), ('withdrawn', 'unrecognized')]:
+            with self.subTest(before=before, after=after):
+                self.git('reset', '--hard', original_base)
+                original = README.replace(' | in-progress | ', ' | '+before+' | ')
+                self.write(PATH, original)
+                self.base = self.commit()
+                self.event['pull_request']['base']['sha'] = self.base
+                changed = original.replace(' | todo | ', ' | implemented | ', 1)
+                rows = changed.splitlines(keepends=True)
+                rows = [row.replace(' | '+before+' | ', ' | '+after+' | ')
+                        if row.startswith('| 02 |') else row for row in rows]
+                self.write(PATH, ''.join(rows))
+                self.head = self.commit()
+                self.check(1)
+
     # regression: #2686
     def test_second_stream_does_not_hide_foreign_prose(self):
         self.git('reset', '--hard', self.base)

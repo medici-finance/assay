@@ -412,6 +412,54 @@ func countDispatched(path, claimKey string) (int, error) {
 	return n, nil
 }
 
+// LatestUsageDispatch resolves the latest append-order dispatched event, never a release.
+// Historical torn lines must not wedge this append-only store. An invalid line
+// after the selected dispatch makes the join ambiguous: it could contain a newer
+// dispatch for this claim. Only a later valid matching dispatch restores certainty.
+// Unknown fields are tolerated; selected records still pass the owner's validator.
+func LatestUsageDispatch(key string) (DispatchRecord, error) {
+	path, e := DispatchRecordsPath()
+	if e != nil {
+		return DispatchRecord{}, e
+	}
+	f, e := openRosterBeaconFile(path, false)
+	if e != nil {
+		return DispatchRecord{}, Refused("no dispatch record available for usage claim")
+	}
+	defer f.Close()
+	var latest DispatchRecord
+	found := false
+	ambiguous := false
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 4096), 1024*1024)
+	for sc.Scan() {
+		var r DispatchRecord
+		if json.Unmarshal(sc.Bytes(), &r) != nil {
+			ambiguous = true
+			continue
+		}
+		if r.ClaimKey == key && r.Event == DispatchEventDispatched {
+			if ValidateDispatchRecord(r) != nil {
+				ambiguous = true
+				continue
+			}
+			latest = r
+			found = true
+			ambiguous = false
+		}
+	}
+	if e = sc.Err(); e != nil {
+		return latest, e
+	}
+	if !found || latest.DispatchRef == nil {
+		return latest, Refused("no dispatched record for usage claim")
+	}
+	if ambiguous {
+		return DispatchRecord{}, Refused("latest dispatch for usage claim is ambiguous after invalid record")
+	}
+	return latest, nil
+}
+
 // WorktreeDispatchRef returns the `assay.dispatchRef` deskdispatch recorded in the current
 // worktree's config, or "" when there is none (not a worktree, the extension is off, the key is
 // absent). Like the run key, it is read from the worktree the verb runs in, never from a flag.

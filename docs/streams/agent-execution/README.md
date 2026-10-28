@@ -2,7 +2,7 @@
 stream: agent-execution
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
 track: platform
 issues: [2500]
@@ -14,19 +14,20 @@ spec: docs/proposals/non-ci-architecture/27-agent-execution-environments.md
 
 Deliver portable, qualified execution through the existing runner, workspace, coordination
 and effect owners. The [future-state amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md)
-is the controlling specification. These are authored implementation obligations; every
-brief begins todo and no runtime is activated. The stream is parked: its controlling
-amendment is a requested proposal, not an approved spec, so admission to dispatch is
-pending. Activation needs that amendment's own approval provenance recorded on its spec;
-the earlier revision-bound architecture decision does not supply it. Later adoption and
-activation gates stay separate, and existing human and deployment gates still bind consumers.
+is the controlling specification. Approval of amendment 27 for implementation and activation
+of this stream are proposed by [PR #4349](https://github.com/medici-finance/assay/pull/4349)
+and take effect on the maintainer's merge of it, the ruling record under lifecycle §8.4.
+The existing nine briefs retain their statuses,
+dependencies, individual human decisions and independent verification requirements.
+Stream admission does not activate a runtime or approve a concrete custody or deployment
+profile. Later adoption, profile qualification and activation gates remain separate.
 
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Qualified harness, model and backend capability contract](brief-01-qualified-execution-profile.md) | 1 | M | todo | — | — |
+| 01 | [Qualified harness, model and backend capability contract](brief-01-qualified-execution-profile.md) | 1 | M | implemented | — | — |
 | 02 | [Prepared-environment receipts and reusable workspace port](brief-02-prepared-environment-receipts.md) | 2 | M | todo | — | — |
 | 03 | [Enforce qualified profiles and workspace readiness in local execution](brief-03-local-readiness-enforcement.md) | 8 | M | todo | — | — |
 | 04 | [Qualify restored execution against ownership and external effects](brief-04-recovery-effect-qualification.md) | 12 | M | todo | — | — |
@@ -62,7 +63,7 @@ graph-execution/20 -> 01 -> 02 ---------> 06 AX offline feasibility (independent
 graph-execution/26 -> 22 + 02 -> 03 local readiness/capability enforcement
 graph-execution/21 + 25 + 03 -> 04 integrated recovery -> 05 truthful lifecycle
 graph-execution/27 -------------------------------> 05
-graph-execution/21 + 25 + 03 -> 08 Kubernetes profile (parked, separately gated)
+graph-execution/21 + 25 + 03 -> 08 Kubernetes profile (separately gated)
 ```
 
 The inherited integration head still includes graph-execution/02 independent verification
@@ -124,8 +125,10 @@ can be modified by a generated composition. Core /01–05 remain independent of 
 [Brief 08](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md)
 adds one executor profile through the existing supervisor after /03 and graph-execution/21,
 /25 (wave 12). It does not block the interim local evidence pilot. Offline adapter proof
-and later disposable-cluster qualification are distinct. The stream remains parked; neither
-the new brief nor the user's implementation-planning request activates a cluster profile.
+and later disposable-cluster qualification are distinct. That authoring did not activate the stream or a cluster profile.
+Stream admission under amendment 27 takes effect on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349); it activates no cluster
+profile, and separate profile and deployment gates remain.
 
 ## Interactive Kubernetes standing profile — 20 October 2026
 
@@ -135,9 +138,10 @@ Existing /08 additionally follows /09 for shared transport, retaining its distin
 verifier Job restrictions and controller/publication prerequisites. /09 -> desk-containers/28
 -> /29 supplies the in-cluster operator and complete five-role qualification. No native
 Windows dependency or second runtime owner. Current optimization, custody and unknown-stop
-contracts remain. The stream stays parked pending its controlling amendment's admission;
-authoring /09 does not activate a profile.
-
+contracts remain. Authoring /09 did not activate a profile, and neither does stream
+activation under amendment 27, which takes effect on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349); /09's individual human
+decision and qualification requirements remain.
 
 ## Pi Durable runner investigation — 22 October 2026
 
@@ -145,7 +149,7 @@ authoring /09 does not activate a profile.
 adds a wave-1 offline experiment after the implemented graph-execution/20 runner contract.
 The fresh source check at `ecc895ce2dd5989ff2119fb7aeeed5e1e0b8761e` found the runner kit
 and no supervisor or workflow implementation; those absent components are not its first
-blocker. The stream remains parked under its controlling amendment's approval gate.
+blocker. Stream admission under amendment 27 activates no runtime or profile, and this brief adds none.
 
 The experiment uses real Pi durable tasks with scripted models and synthetic effects to
 produce a go/no-go/unknown decision, recovery evidence and a concrete omission/deletion

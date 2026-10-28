@@ -1,2 +1,0 @@
-### Fixed
-- A plain `statusgen --lint` (no `--forge`) no longer reads origin's branch heads or decays dead claims through the drive-snapshot region check: that check now uses the run's own claim read. Offline, a region that matches only by assuming an unread claim (a ref its In-flight list needs claimed, or a todo brief a live claim would move to In-flight) is reported could-not-check, never drift and never a clean pass; `--lint --forge` reads the claims and decides (#3323).

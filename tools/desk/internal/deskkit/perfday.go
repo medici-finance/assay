@@ -116,7 +116,7 @@ type PerfToolRequests struct {
 // forgeCountDay reads one record's forge count for the by-day view: forgeCount's pooling,
 // extended to perf-v3 records, whose http counter spends the same budget.
 func forgeCountDay(r PerfRecord) (calls int64, measured, ok bool) {
-	if r.Schema == perfrec.SchemaV3 {
+	if r.Schema == perfrec.SchemaV3 || r.Schema == perfrec.SchemaV4 {
 		v, has := r.Counters[perfrec.CounterHTTP]
 		return v, has && v >= 0, true
 	}
@@ -173,7 +173,7 @@ func SummarisePerfDays(recs []PerfRecord, permission perfrec.Profile, filter per
 	s.V3Duplicates, s.V3Conflicts, s.V3Invalid = sel.Duplicates, sel.Conflicts, sel.Invalid
 	selected := append([]PerfRecord(nil), kept...)
 	for _, r := range recs {
-		if IsPerfStep(r) || r.Schema == perfrec.SchemaV3 {
+		if IsPerfStep(r) || r.Schema == perfrec.SchemaV3 || r.Schema == perfrec.SchemaV4 {
 			continue
 		}
 		if filter.Used() {

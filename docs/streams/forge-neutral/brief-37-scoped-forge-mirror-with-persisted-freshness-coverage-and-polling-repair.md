@@ -12,10 +12,11 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 5
+version: 6
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph
@@ -179,6 +180,18 @@ The mirror stays unactivated and the brief stays held until answered.
   harness for an added table, stop and report NEEDS_CONTEXT. Do not build a second store.
 - Stop at `implemented`; an independent verifier owns verified and done.
 
+## Candidate and priority amendment — 2026-10-23
+
+Serve the existing planner's complete scoped candidate observations through this mirror
+owner, as specified in efficiency spec §2.1 and A11–A12. One ingestion/refresh owner supplies
+all compatible role clients; policy/time/capacity-only reselection does not enumerate GH.
+Keep full initial/periodic inventory, event/poll repair, removals, permission and freshness
+coverage. No outage fallback poller per caller and no zero-cost producer assumption.
+Retain all held/unknown and priority-unmapped source records; projections do not become
+policy or dispatch authority. Reuse the existing reviewcoverage_test fixture surface to
+measure repeated consumers and changed facts. The direct-reader bridge remains independent;
+existing completed batching/conditional requests are baseline, not this brief's new saving.
+
 ## Task
 
 1. **Mirror model (`forgeread/mirror`).** Define typed records: scope (provider, host, repository,
@@ -307,6 +320,7 @@ provider transports only.
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
+| 22 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorPlannerReuse$' ./... > "$o" && grep -F -- '--- PASS: TestMirrorPlannerReuse ' "$o")` | exit 0; named PASS. compatible prose/discrete consumers query the same mirror cutoff without new provider reads; one changed item refreshes affected scope, and partial/removal/access/expiry failures cannot yield complete idle. Competing caller pollers or hidden producer attempts fail; final refresh requests remain explicit. |
 
 ## Pre-mortem
 

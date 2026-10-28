@@ -309,6 +309,10 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ## Scrubbed cells — `--kind scrubbed`
 
+Cell-owned Kimi/provider credentials and an optional Herdr display are described in
+[cellctl-scrubbed-providers.md](cellctl-scrubbed-providers.md). These opt-in paths retain
+the private session and composed environment described below.
+
 A house cell keeps the operator's real `HOME` on purpose (*Why the session keeps the real `HOME`*
 above) — the desks ARE the operator's desks. A **scrubbed** cell is the opposite case: a harness
 that must run on THIS laptop but must NOT inherit anything of the launching shell — no real
@@ -370,8 +374,13 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
 
+A configured cell-owned provider adds its endpoint, token and model aliases to the final
+harness environment only, after the secret-free launch plan. Herdr/provider launches
+set `ASSAY_COCKPIT=tmux` for child worktree handling. These additions never import host
+credentials; see the linked provisioning and lifecycle contract above.
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are mutually exclusive — only the active harness's variable
-is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
+is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no inherited `ANTHROPIC_*`, no `AWS_*`, and no
 wholesale parent `PATH` — the harness's own directory is the ONE parent-derived `PATH` element,
 resolved once (`command -v`) before the launch switches to `env -i`, and named rather than
 inherited wholesale.
@@ -769,8 +778,10 @@ cockpit in its environment as `ASSAY_COCKPIT`:
 - The cell's value always wins over an `ASSAY_COCKPIT` the launching shell happened to carry.
 - `cellctl check <cell>` prints the value and the arm it selects on the line after the cockpit row:
   `ok    ASSAY_COCKPIT=tmux exported into every role window (worker-desk worktree arm: plain git worktree add, no cockpit CLI needed)`.
-- A scrubbed cell composes its own environment and opens no cockpit, so its windows carry none. Nor
-  does an `--automate` run (below), which the cockpit launches, not `cellctl`.
+- A scrubbed cell retains private tmux as process owner; an explicit Herdr setting
+  displays that session. Its child worktree handler uses tmux (plain git), as described
+  in the scrubbed provider/display contract.
+- An `--automate` run (below) carries no cockpit value; the cockpit launches it.
 
 With no cell at all, nothing exports `ASSAY_COCKPIT`, and the worker-desk step keeps its own
 presence-on-PATH order. That skill also accepts `supacode` and `plain` as values an operator may
@@ -1522,7 +1533,8 @@ processes are not configuration.
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
 | `ASSAY_PERF_PROFILE`, `ASSAY_PERF_SESSION_ID`, `ASSAY_PERF_AGENT_ID`, `ASSAY_PERF_PARENT_AGENT_ID`, `ASSAY_PERF_PARENT_INVOCATION_ID`, `ASSAY_PERF_ROLE`, `ASSAY_PERF_WORK`, `DESK_LOOP` | descriptive context for one invocation, validated from the launching environment; never persistent cell or machine defaults |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
-| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
+| `DESK_TOOLS_HOTFIX` | locates the hotfix overlay directory for one run of `cellctl hotfix`, shim generation and `deskboot`; the directory must be root-owned wherever it is, so no file names it |
+| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `SUDO_USER`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
 | `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLOP_FIXTURE_TRACE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,

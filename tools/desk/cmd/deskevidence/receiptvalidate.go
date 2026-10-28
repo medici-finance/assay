@@ -117,7 +117,8 @@ func validateReceiptInputsCoverDeliverables(root string, wr deskkit.WakeReceipt)
 	if err != nil {
 		return err
 	}
-	scope, err := deskkit.ResolveDeclaredScope(declared, tree)
+	local, siblings := deskkit.SplitSiblingDeclarations(declared)
+	scope, err := deskkit.ResolveDeclaredScope(local, tree)
 	if err != nil {
 		return err
 	}
@@ -127,7 +128,11 @@ func validateReceiptInputsCoverDeliverables(root string, wr deskkit.WakeReceipt)
 				" for " + wr.Brief + " (declared in ## Context files: at " + sha + ")")
 		}
 	}
-	return nil
+	// Not dead code: on this validator path this is the only check that binds
+	// a ../<sibling>/ declaration (TestSiblingCoverageValidator). In the full
+	// landing flow the writer re-derivation in deskkit.BuildOutcomeRecord also
+	// refuses an unbound sibling, earlier.
+	return deskkit.CheckSiblingCoverage(siblings, wr.Inputs)
 }
 
 // --- (b) blocker_ref must be an actual reference ------------------------------------------

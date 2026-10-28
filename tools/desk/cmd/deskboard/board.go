@@ -466,7 +466,7 @@ const maxFilePages = 40 // 4000 entries; GitHub's own /files cap is 3000
 // complete=false is not an error — the caller degrades CLOSED per-PR (risk-classed,
 // and RE-REVIEW rather than MERGE-CURR) instead of failing the whole board, so one
 // enormous PR cannot brick the desk's sweep.
-func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bool, err error) {
+func fetchChangedFiles(repo string, num int, expectedHead ...string) (files map[string]bool, complete bool, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
 		return nil, false, ferr
@@ -476,6 +476,9 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	pr, perr := f.GetPullRequest(fr, num)
 	if perr != nil {
 		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read PR metadata for %s#%d", repo, num), perr)
+	}
+	if len(expectedHead) > 0 && pr.HeadSHA != expectedHead[0] {
+		return nil, false, deskkit.Unverifiable("changed-file metadata head differs from frozen queue head; refresh required", nil)
 	}
 	changed, ferr2 := f.ListChangedFiles(fr, num)
 	if ferr2 != nil {
@@ -1127,12 +1130,12 @@ var mergeStateDisplay = reviewflow.MergeStateDisplay
 // unreadable mergeStateStatus) were silently converted into positive verdicts and
 // nothing could see it. TestClassify_ActionInventory drives the real payload shapes
 // through THIS function, not through a hand-built classifyInput.
-func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string) classifyInput {
-	var checks []reviewflow.CheckFact
+func classificationFacts(p prBase, rs reviewState, ciRequired bool, zeroCI string) reviewflow.ClassificationFacts {
+	checks := []reviewflow.CheckFact{}
 	for _, c := range deskkit.LatestRunPerName(p.StatusCheckRollup, check.groupKey, check.recencyKey) {
 		checks = append(checks, reviewflow.CheckFact{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
 	}
-	in := (reviewflow.ClassificationFacts{Change: reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, Reviews: reviewflow.ReviewState{
+	return reviewflow.ClassificationFacts{Change: reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, Reviews: reviewflow.ReviewState{
 		BodyEditReverified:     rs.bodyEditReverified,
 		Ever:                   rs.ever,
 		AtHead:                 rs.atHead,
@@ -1144,7 +1147,11 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		LastReviewAt:           rs.lastReviewAt,
 		SuspectNoOp:            rs.suspectNoOp,
 		ExternalPrereqDeclared: rs.externalPrereqDeclared,
-	}, CIRequired: ciRequired, ZeroCI: zeroCI}).ClassifyInput()
+	}, CIRequired: ciRequired, ZeroCI: zeroCI}
+}
+
+func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string) classifyInput {
+	in := classificationFacts(p, rs, ciRequired, zeroCI).ClassifyInput()
 	return classifyInput{
 		ever:                    in.Ever,
 		atHead:                  in.AtHead,
@@ -1643,6 +1650,8 @@ func fetchAndMapGateScores() (map[string]int, error) {
 // concurrent sweep shares no mutable state — the merge happens after the sweep, in a
 // deterministic order (see cmdActions).
 type actionsPartial struct {
+	resolved []resolvedReview
+
 	rows        []actionRow
 	external    []externalRow
 	currentOpen []string // every open PR id seen (quarantined included) — tombstone input
@@ -1654,6 +1663,7 @@ type actionsPartial struct {
 // operation the per-repo → product → full hierarchy is built from: repo partials merge
 // into a product-level partial, product partials merge into the full one.
 func (p *actionsPartial) merge(o actionsPartial) {
+	p.resolved = append(p.resolved, o.resolved...)
 	p.rows = append(p.rows, o.rows...)
 	p.external = append(p.external, o.external...)
 	p.currentOpen = append(p.currentOpen, o.currentOpen...)
@@ -1666,6 +1676,8 @@ func (p *actionsPartial) merge(o actionsPartial) {
 // row. It is what the per-PR fan-out returns; assembling the partial from the outcomes in
 // PR-list order keeps the result byte-identical to the old serial loop.
 type prOutcome struct {
+	resolved *resolvedReview
+
 	id       string
 	external *externalRow
 	row      *actionRow
@@ -1683,7 +1695,7 @@ type prOutcome struct {
 // any global semaphore. It fails CLOSED exactly as the old serial body did: any read/parse
 // error is wrapped-and-repo/PR-named and propagates to fail the whole run, deterministically
 // (lowest-index PR first).
-func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
+func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, qualified ...bool) (actionsPartial, error) {
 	var part actionsPartial
 	// repo-level: fetchReviewQueue lists ALL open PRs for the repo AND their reviews in one
 	// read — nothing about the repo can be classified without it, so failing the whole run
@@ -1700,6 +1712,7 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 	// #2421: the previous sweep's per-PR facts for this repo (prfacts.go). Saved only when the
 	// whole repo classified, so a failed sweep never replaces good facts with partial ones.
 	facts := loadPRFacts(repo)
+	facts.qualified = len(qualified) > 0 && qualified[0]
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
 		rv, have := queued[p.Number]
 		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now, facts)
@@ -1718,6 +1731,7 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 		part.openList = append(part.openList, oc.id)
 		if oc.row != nil {
 			part.rows = append(part.rows, *oc.row)
+			part.resolved = append(part.resolved, *oc.resolved)
 		}
 	}
 	return part, nil
@@ -1790,6 +1804,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// contract instead of a second degrade mechanism.
 	var rs reviewState
 	var staleGrantNote string
+	var laneReviews []review
 	reviews, err := snapReviews, error(nil)
 	if !haveReviews {
 		reviews, err = fetchReviews(repo, p.Number)
@@ -1811,6 +1826,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 				"its committer date: re-anchored from an older head, they verify nothing here (#3093)",
 				stale, short(p.HeadRefOid))
 		}
+		laneReviews = grantReviews
 		rs = reduceReviews(grantReviews, p.HeadRefOid)
 		rs = applyBodyEditReverification(rs, grantReviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
@@ -2004,7 +2020,8 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		}
 	}
 
-	return prOutcome{id: id, row: &actionRow{
+	resolved := resolveObservation(p, rs, laneReviews, ciRequired, zeroState, in, score, len(degradeReasons) == 0)
+	return prOutcome{id: id, resolved: &resolved, row: &actionRow{
 		Repo: repo, Number: p.Number, Title: p.Title, Action: action,
 		Draft: p.IsDraft, CIPass: pass, CIPending: pending, CIFail: fail,
 		CIUnknown: unknownChecks, CIZero: zeroState, CIZeroDetail: zeroDetail,

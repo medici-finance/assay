@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"regexp/syntax"
 	"strconv"
 	"strings"
 )
@@ -68,6 +69,13 @@ var (
 		regexp.MustCompile(`(?i)\bnot\s+blocked\b`),
 	}
 
+	// A derived literal-prefix filter rejects ordinary prose before the lexicon is
+	// tried. This is only a rejection filter: matching still uses the original
+	// lexicon order, not the earliest alternative in the union. Derive the filter
+	// from the lexicon itself so a new admitted phrase cannot be omitted.
+	orderingGateCandidate = newOrderingCandidateFilter(orderingGateLexicon)
+	orderingGateNegated   = orderingPatternUnion(orderingGateNegations)
+
 	// Ref extractors (design §6.1 step 2). A typed `<stream>/<NN>` id, a numeric
 	// range/chain (`05–07`, `05→07`), and a `brief-NN` mention. Bare standalone
 	// numbers are intentionally NOT extracted — they manufacture spurious pairs.
@@ -89,6 +97,140 @@ var (
 	orderingGraphViewBeginRe = regexp.MustCompile(`<!--\s*graph:.*:begin`)
 	orderingGraphViewEndRe   = regexp.MustCompile(`<!--\s*graph:.*:end`)
 )
+
+// orderingPatternUnion shares one rejection scan across unchanged regex rules.
+// The standard regexp engine owns matching; this adds no second prose grammar.
+func orderingPatternUnion(patterns []*regexp.Regexp) *regexp.Regexp {
+	parts := make([]string, len(patterns))
+	for i, pattern := range patterns {
+		parts[i] = "(?:" + pattern.String() + ")"
+	}
+	return regexp.MustCompile(strings.Join(parts, "|"))
+}
+
+// orderingCandidateFilter is a conservative rejection filter, never a verdict.
+// On ASCII prose it searches literal prefixes derived by Go's regexp parser.
+// Non-ASCII input (including Unicode simple-fold equivalents), or a regex whose
+// first consumed expression is not a mandatory literal, uses the full union.
+// No independent list of gate words or Unicode folding rules is maintained.
+type orderingCandidateFilter struct {
+	full     *regexp.Regexp
+	prefixes []orderingLiteralPrefix
+	ascii    bool
+}
+type orderingLiteralPrefix struct {
+	text string
+	fold bool
+}
+
+func newOrderingCandidateFilter(patterns []*regexp.Regexp) orderingCandidateFilter {
+	f := orderingCandidateFilter{full: orderingPatternUnion(patterns), ascii: true}
+	for _, pattern := range patterns {
+		tree, err := syntax.Parse(pattern.String(), syntax.Perl)
+		if err != nil {
+			f.ascii = false
+			break
+		}
+		prefixes, ok := orderingMandatoryPrefixes(tree)
+		if !ok {
+			f.ascii = false
+			break
+		}
+		f.prefixes = append(f.prefixes, prefixes...)
+	}
+	return f
+}
+
+// orderingMandatoryPrefixes returns a covering set for the first literal each
+// successful alternative must consume. It declines any nullable or unfamiliar
+// expression rather than guessing: the caller then uses the original regexp.
+func orderingMandatoryPrefixes(tree *syntax.Regexp) ([]orderingLiteralPrefix, bool) {
+	switch tree.Op {
+	case syntax.OpLiteral:
+		text := string(tree.Rune)
+		if text == "" || !orderingASCII(text) {
+			return nil, false
+		}
+		fold := tree.Flags&syntax.FoldCase != 0
+		if fold {
+			text = strings.ToLower(text)
+		}
+		return []orderingLiteralPrefix{{text: text, fold: fold}}, true
+	case syntax.OpCapture:
+		return orderingMandatoryPrefixes(tree.Sub[0])
+	case syntax.OpAlternate:
+		var prefixes []orderingLiteralPrefix
+		for _, sub := range tree.Sub {
+			p, ok := orderingMandatoryPrefixes(sub)
+			if !ok {
+				return nil, false
+			}
+			prefixes = append(prefixes, p...)
+		}
+		return prefixes, len(prefixes) > 0
+	case syntax.OpConcat:
+		for _, sub := range tree.Sub {
+			switch sub.Op {
+			case syntax.OpEmptyMatch, syntax.OpBeginLine, syntax.OpEndLine,
+				syntax.OpBeginText, syntax.OpEndText, syntax.OpWordBoundary, syntax.OpNoWordBoundary:
+				continue
+			}
+			return orderingMandatoryPrefixes(sub)
+		}
+	}
+	return nil, false
+}
+
+func orderingASCII(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] >= 128 {
+			return false
+		}
+	}
+	return true
+}
+
+func (f orderingCandidateFilter) MatchString(line string) bool {
+	if !f.ascii || !orderingASCII(line) {
+		return f.full.MatchString(line)
+	}
+	lower := ""
+	for _, prefix := range f.prefixes {
+		text := line
+		if prefix.fold {
+			if lower == "" {
+				lower = strings.ToLower(line)
+			}
+			text = lower
+		}
+		if strings.Contains(text, prefix.text) {
+			return true
+		}
+	}
+	return false
+}
+
+// orderingGateMatch preserves the original lexicon's priority and exact span.
+// The derived filter only skips prose that cannot match an admitted rule.
+func orderingGateMatch(line string) (loc, size int) {
+	if !orderingGateCandidate.ascii || !orderingASCII(line) {
+		// Preserve the exact old path for inputs the literal filter declines.
+		// In particular, Unicode gate-heavy prose pays no extra union scan.
+		for _, re := range orderingGateNegations {
+			if re.MatchString(line) {
+				return -1, 0
+			}
+		}
+	} else if !orderingGateCandidate.MatchString(line) || orderingGateNegated.MatchString(line) {
+		return -1, 0
+	}
+	for _, re := range orderingGateLexicon {
+		if idx := re.FindStringIndex(line); idx != nil {
+			return idx[0], idx[1] - idx[0]
+		}
+	}
+	return -1, 0
+}
 
 // orderingGateEdges builds the undirected adjacency of every TYPED edge in the
 // current root — `depends:` and `unblocks:` from brief-v1 frontmatter, both
@@ -242,26 +384,7 @@ func orderingGateNotices(streams []*Stream) []string {
 					continue
 				}
 
-				negated := false
-				for _, re := range orderingGateNegations {
-					if re.MatchString(line) {
-						negated = true
-						break
-					}
-				}
-				if negated {
-					continue
-				}
-
-				loc := -1
-				var hitLen int
-				for _, re := range orderingGateLexicon {
-					if idx := re.FindStringIndex(line); idx != nil {
-						loc = idx[0]
-						hitLen = idx[1] - idx[0]
-						break
-					}
-				}
+				loc, hitLen := orderingGateMatch(line)
 				if loc < 0 {
 					continue // no gate lexicon hit
 				}
