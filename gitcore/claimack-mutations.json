@@ -1,4 +1,5 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null . && (cd ../tools/desk && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskclaim-ref)",
   "test": "GOWORK=off go test . -run 'TestAck|TestClaimTrace|TestClaimEmptyAck|TestClaimAckMatrix' -count=1 -timeout 45s && (cd ../tools/desk && GOWORK=off go test ./cmd/deskclaim-ref -run 'TestAck|TestClaimTrace|TestClaimEmptyAck|TestClaimAckMatrix' -count=1 -timeout 45s)",
   "control": {
     "name": "accept an empty decoded acknowledgment",

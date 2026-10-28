@@ -35,11 +35,27 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	if !ok || shallow {
 		return fail("complete local Git history is required (no fetch is attempted)")
 	}
-	actual, err := git("rev-parse", "--verify", delivery+"^{commit}")
+	out, err, supported := commitReadOutput(gitCoreForCommits(root, delivery), delivery)
+	actual := strings.TrimSpace(string(out))
+	if !supported {
+		actual, err = git("rev-parse", "--verify", delivery+"^{commit}")
+	}
 	if err != nil || actual != delivery {
 		return fail("delivery is not a commit in local history")
 	}
-	parent, err := git("rev-parse", "--verify", delivery+"^1")
+	read := gitCoreForCommits(root, delivery)
+	parent := ""
+	if read.err != nil {
+		err = read.err
+	} else if read.native != "" {
+		parent, err = git("rev-parse", "--verify", delivery+"^1")
+	} else {
+		parents, parentErr := read.repo.ParentHashes(delivery)
+		err = parentErr
+		if len(parents) != 0 {
+			parent = parents[0]
+		}
+	}
 	if err != nil || parent != base {
 		return fail("base must be the delivery's first parent; wider or empty history ranges are refused")
 	}

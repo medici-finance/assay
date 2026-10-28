@@ -79,7 +79,11 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 	}
 	ref := ""
 	for _, candidate := range []string{"refs/remotes/origin/main", "refs/heads/main"} {
-		if exec.Command("git", "-C", root, "rev-parse", "--verify", candidate+"^{commit}").Run() == nil {
+		_, err, supported := commitReadOutput(ordinaryCommitRead(root, candidate), candidate)
+		if !supported {
+			err = exec.Command("git", "-C", root, "rev-parse", "--verify", candidate+"^{commit}").Run()
+		}
+		if err == nil {
 			ref = candidate
 			break
 		}

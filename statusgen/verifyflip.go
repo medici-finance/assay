@@ -1145,7 +1145,11 @@ const flipAbsent = "\x00absent"
 // can equal; any other git failure is an error.
 func flipEvidenceAt(dir, rev, base string) (string, error) {
 	if historyGit(dir, "cat-file", "-e", rev+":./"+base).Run() != nil {
-		if historyGit(dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run() != nil {
+		_, err, supported := commitReadOutput(gitCoreForCommits(dir, rev), rev)
+		if !supported {
+			err = historyGit(dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run()
+		}
+		if err != nil {
 			return "", fmt.Errorf("git cannot resolve %s in %s", rev, dir)
 		}
 		return flipAbsent, nil

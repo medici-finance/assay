@@ -2831,7 +2831,7 @@ func originOwnerRepo(url string) string {
 // toplevel. A root outside any repository is not refused: its witness token
 // is `no-git`, which no comparison credits.
 func verifyrunRootBelowToplevel(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	out, err := gitPrefixOutput(root)
 	if err != nil {
 		if gitCurrentSHA(root) != "" {
 			return fmt.Sprintf("refusing --root %s: where it sits in its git repository could not be read (git rev-parse --show-prefix failed), and a witness must be taken at the repository's toplevel", root)

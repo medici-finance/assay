@@ -302,3 +302,59 @@ func provenanceParents(root, rev string) ([]string, error) {
 	}
 	return read.repo.ParentHashes(rev)
 }
+
+// ordinaryCommitRead applies the qualified commit selector scope to the ordinary
+// native profile. It observes capabilities only; unsupported calls keep their
+// original argv at the caller, and actual reader errors never request a retry.
+func ordinaryCommitRead(root, rev string) gitCoreRead {
+	if nativeCommitSelector(rev) {
+		return gitCoreRead{native: "revision selector outside qualified exact commit scope"}
+	}
+	read := ordinaryGitCore(root)
+	if read.err != nil || read.native != "" {
+		return read
+	}
+	// Resolve's qualified fully-named-ref semantics include native ref expansion;
+	// unlike an exact object id, a name must not be prematurely treated as an OID.
+	if strings.HasPrefix(rev, "refs/") {
+		return read
+	}
+	why, err := read.repo.CommitTreeReadReason(rev)
+	if err != nil {
+		return gitCoreRead{err: err}
+	}
+	if why != "" {
+		return gitCoreRead{native: why}
+	}
+	return read
+}
+
+// commitReadOutput preserves rev-parse's successful full-id framing around the
+// one canonical Resolve API. false means a positively preselected native
+// capability, never an in-process read failure. Native argv remains caller-owned.
+func commitReadOutput(read gitCoreRead, rev string) ([]byte, error, bool) {
+	if read.err != nil {
+		return nil, read.err, true
+	}
+	if read.native != "" {
+		return nil, nil, false
+	}
+	hash, err := read.repo.Resolve(rev)
+	if err != nil {
+		return nil, err, true
+	}
+	return []byte(hash.String() + "\n"), nil, true
+}
+
+// gitPrefixOutput is the ordinary-profile counterpart of provenanceRootPrefix.
+// Discovery and environment policies stay with the existing read owner.
+func gitPrefixOutput(root string) ([]byte, error) {
+	read := ordinaryGitCore(root)
+	if read.err != nil {
+		return nil, read.err
+	}
+	if read.native != "" {
+		return exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	}
+	return []byte(read.prefix + "\n"), nil
+}

@@ -1,4 +1,5 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/gitmaintenance && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskmerge && (cd ../../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
   "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs|TestFetchHookKeepsVerdict|TestFetchNoHookListVerdict|TestFetchCompletionWarning' -count=1 -timeout=120s",
   "control": {
     "name": "CONTROL invert producer completion proof",

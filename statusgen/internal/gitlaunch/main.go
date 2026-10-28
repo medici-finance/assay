@@ -43,7 +43,7 @@ type inventory struct {
 
 // These are the existing native seams plus typed adapters that retain explicit
 // unsupported-profile branches. Both direct calls and aliases are inspected.
-var nativeSeams = map[string]bool{"historyGit": true, "gitOut": true, "git": true, "coverageGit": true, "gitShowObject": true, "gitMergeBaseOut": true, "provenanceShowObject": true, "repoTopLevel": true, "provenanceRepoTop": true, "provenanceParents": true, "provenanceRootPrefix": true, "gitCurrentSHA": true, "isShallowRepository": true, "gitHeadOutput": true, "gitShallowOutput": true, "baselineGit": true}
+var nativeSeams = map[string]bool{"historyGit": true, "gitOut": true, "git": true, "coverageGit": true, "gitShowObject": true, "gitMergeBaseOut": true, "provenanceShowObject": true, "repoTopLevel": true, "provenanceRepoTop": true, "provenanceParents": true, "provenanceRootPrefix": true, "gitCurrentSHA": true, "isShallowRepository": true, "gitHeadOutput": true, "gitShallowOutput": true, "gitPrefixOutput": true, "baselineGit": true}
 
 type bindings struct {
 	info   *types.Info
