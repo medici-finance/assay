@@ -2,9 +2,9 @@
 brief: assay:assay:desk-tools:46
 title: "Reuse accepted verification inputs to stop repeated PASS dispatch"
 why: "Failed and blocked receipts already avoid needless reruns. Successful work still needs a trustworthy input identity so an unchanged PASS can be continued instead of re-verified, while a changed deliverable is checked again."
-wave: 2
-depends: ["desk-tools/45"]
-unblocks: ["desk-tools/47", "desk-tools/51"]
+wave: 3
+depends: ["desk-tools/45", "statusgen/37"]
+unblocks: ["desk-tools/47", "desk-tools/51", "verification-handoff/05"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -14,13 +14,15 @@ issues: []
 schema: brief-v2
 authored: "2026-10-17 maintainer-directed verify-flow refresh"
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/desk-tools/README.md"
   - "freshness-checked 2026-10-17 @ 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae"
 exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 2
+version: 3
 id: a178d182-a26e-4f77-b1eb-bb405edc5f6d
 consumers:
   - "tools/desk/cmd/verifyloop/flow_46_test.go: follow-up desk-tools/46 (planned test contract)"
@@ -69,6 +71,36 @@ Default if no answer: none — blocks until answered.
 Hold the change.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: accepted-run scheduling identity.** Depend on statusgen/37's fixed-delivery writer/reader
+integration and /45's canonical queue. Use the existing accepted receipt/outcome and statusgen seam;
+do not independently reparse binding tags, compare test scope or select a delivery.
+
+- Bind reuse to admitted D/A, the real W, independently accepted row observations and applicable
+  conditions/tools. E or H movement and bookkeeping-only repairs alone do not invalidate D proof. A
+  relevant criteria/source/condition change affects the relevant obligations; unknown identity stays
+  unknown. Source repair creates an admitted successor delivery, not a relabelled old pass. -
+  Separate eligible test observations from permission to close. Preserve core passes when
+  context/recording is held, but never turn missing consumer coverage, missing approval or a
+  same-context later failure into PASS. Table-only fallback remains incomplete scheduling
+  information, never full acceptance credit. - Extend `flow_46` fixtures with unchanged D through
+  unrelated H/E movement, affected-row invalidation, a later applicable failure, a forged
+  same-runner pass and the historical empty-consumer case. A matching accepted run becomes /47
+  continuation; blocked historical proof retains its existing /02 repair owner. No repeated model
+  verification merely to finish an owed write.
+
+### Existing task obligations
 
 1. Extend the existing accepted outcome/receipt representation for successful runs; do not add a competing verified-at log or scheduling receipt. Record the exact Verify definition, declared input revisions, applicable tool version, source run/witness, runner and source revision.
 2. A current independently accepted PASS with matching inputs becomes continuation work, not fresh model dispatch. Changed table, declared file tree, relevant sibling input or applicable tool must invalidate reuse. Unknown/unreadable inputs or untrusted/ambiguous provenance cannot prove unchangedness.

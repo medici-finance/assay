@@ -3,26 +3,51 @@ brief: assay:assay:statusgen:29
 title: "Run the existing structural row checks before writing a new brief"
 why: "The authoring generator can still write rows that the linter later calls broken. Refusing these rows before any file is written prevents repair work at its cheapest point."
 wave: 2
-depends: ["statusgen/27"]
-unblocks: ["statusgen/35"]
-effort: M
+depends: ["statusgen/27", "statusgen/36"]
+unblocks: ["statusgen/35", "desk-tools/51"]
+effort: L
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 authored: "2026-10-17 by the maintainer-directed lint-debt refresh"
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "docs/streams/statusgen/README.md"
   - "freshness-checked 2026-10-17 @ 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae"
 exec-tier: strong
 exec-tier-why: "Cross-artifact classification, rewrite semantics and consumer verification must agree."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: 11564430-4dfa-4343-8c70-057c17b3eb1d
 gate-why: "Changes tooling behavior relied on by adopters. Human sign-off confirms the new authoring or repair behavior preserves historical evidence and the existing closure gates."
 decision-trigger: start
 consumers:
+  - "changelog/lifecycle-preflight.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/declared-changes.json: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/README.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "ci/staged-workflows/lifecycle-preflight.yml: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "docs/brief-template.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "docs/consumer-delivery-checks.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "docs/lifecycle-preflight.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/internal/deskkit/citrigger_test.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskdispatch/reviewlane_test.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskflip/lifecycle-mutations.json: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskflip/deskflip_test.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskflip/main.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskflip/flip.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskflip/lifecycle_test.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "tools/desk/cmd/deskflip/lifecycle.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/README.md: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/main.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/lifecycle-preflight-mutations.json: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/lifecycleworkflow_test.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/lifecyclepreflight_test.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
+  - "statusgen/lifecyclepreflight.go: follow-up statusgen/29 (fixed-delivery planning amendment; implementation owed)"
   - "statusgen/newbrief.go: follow-up statusgen/29 (this brief; change is owed at implementation)"
   - "statusgen/newbrief_test.go: follow-up statusgen/29 (this brief; change is owed at implementation)"
   - "statusgen/verifyrows.go: follow-up statusgen/29 (this brief; change is owed at implementation)"
@@ -35,7 +60,7 @@ consumers:
 
 ## Context
 
-files: statusgen/newbrief.go, statusgen/newbrief_test.go, statusgen/verifyrows.go, plugins/assay/skills/author-brief/SKILL.md, plugins/assay/skills/worker-desk/SKILL.md, changelog/newbrief-row-refusal.md
+files: statusgen/newbrief.go, statusgen/newbrief_test.go, statusgen/verifyrows.go, plugins/assay/skills/author-brief/SKILL.md, plugins/assay/skills/worker-desk/SKILL.md, changelog/newbrief-row-refusal.md, `statusgen/lifecyclepreflight.go` (planned), `statusgen/lifecyclepreflight_test.go` (planned), `statusgen/lifecycleworkflow_test.go` (planned), `statusgen/lifecycle-preflight-mutations.json` (planned), `statusgen/main.go`, `statusgen/README.md`, `tools/desk/cmd/deskflip/lifecycle.go` (planned), `tools/desk/cmd/deskflip/lifecycle_test.go` (planned), `tools/desk/cmd/deskflip/flip.go`, `tools/desk/cmd/deskflip/main.go`, `tools/desk/cmd/deskflip/deskflip_test.go`, `tools/desk/cmd/deskflip/lifecycle-mutations.json` (planned), `tools/desk/cmd/deskdispatch/references/review-prompt.md`, `tools/desk/cmd/deskdispatch/reviewlane_test.go`, `tools/desk/internal/deskkit/citrigger_test.go`, `plugins/assay/skills/pr-review-desk/SKILL.md`, `docs/lifecycle-preflight.md` (planned), `docs/consumer-delivery-checks.md`, `docs/brief-template.md`, `ci/staged-workflows/lifecycle-preflight.yml` (planned), `ci/staged-workflows/README.md`, `ci/staged-workflows/declared-changes.json`, `changelog/lifecycle-preflight.md` (planned)
 facts:
 - Rule membership, exclusions and derivable/author-owed dispositions are defined by the [public rule-family inventory](README.md#public-rule-family-inventory); use that shared inventory for this brief's Task and Verify acceptance.
 - newbrief already derives risk, gate, wave and inverse edges, refuses placeholders/unusable commands, and writes atomically.
@@ -73,6 +98,42 @@ Hold the change; no sign-off is inferred.
 - Stop at implementation; an independent verifier records the execution evidence.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: prospective review context and authoring consumers (I-4).** Consume /36's binding/criteria
+contract. Adopt and finish existing PR 4139 in its current owners, including its tests and staged
+workflow; do not create a second preflight or classifier. This is also the existing authoring
+generator/kit's owner for new post-merge consumer rows that name the symbolic binding from the
+start.
+
+- At the review desk's existing ready flip, assess the actual reviewed head, approved criteria,
+  source/scope/consumers, post-merge command runnability and required conditions. D does not exist
+  yet: check the prospective attribution and binding contract, never fabricate its SHA. Recheck on
+  changed head/material context. This context assessment grants no Verify acceptance. - Finish
+  trusted producer/head binding for the preflight signal, trusted-base ruling/alias resolution,
+  adopter applicability and all outstanding PR 4139 findings. Reuse one lifecycle/row evaluator
+  through the existing statusgen, deskflip, review prompt/skill and workflow adapters. Do not turn
+  an unsupported adopter into an implicit bypass or impose a new universal gate. - Update the
+  existing authoring kit, template and consumer-check guidance to use the supported symbolic form
+  only after the compatible reader/writer is released. Historical rows stay with /38's explicitly
+  approved compatibility assessment; do not bulk rewrite original commands. - Extend
+  `TestNewBriefRowRefusal` and the existing prospective/deskflip suites with a meaningful post-merge
+  delivery, absent binding plan, wrong producer/head, changed review context, unchanged legacy
+  adopter and a planted second bad row. Existing Verify package tests must execute the prospective
+  integration cases. Workflow promotion and custody remain human-owned; /51 consumes the released
+  context/action contract.
+
+### Existing task obligations
 
 1. Apply all applicable structural row checks and identifier checks to the rendered candidate before the first write. Resolve explicitly planned names without treating a planned name as evidence that a test exists.
 2. On refusal, name the rule and remedy and leave the brief, inverse dependencies and generated board byte-identical. Preserve supported sh, cmd and pwsh semantics; do not run commands or require undeclared operating systems during authoring.

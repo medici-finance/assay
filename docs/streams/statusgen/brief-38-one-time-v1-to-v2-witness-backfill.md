@@ -4,18 +4,20 @@ title: "One-time v1-to-v2 witness backfill where the witnessed content is still 
 why: "Thirty verified briefs are stuck on v1 witnesses whose inputs never changed. Where the witnessed commit is in the commit list of the merged change request that landed the verifier's Evidence, and the brief declares its inputs, a v2 record can be derived from that commit's tree without re-running anything. Every other brief stays v1 and is re-witnessed."
 wave: 3
 depends: ["statusgen/37"]
-unblocks: []
+unblocks: ["desk-tools/51", "verification-handoff/06", "statusgen/35"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
 issues: [2026, 3105, 3658]
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 authored: "2026-10-20 by the-desk (design brief for the witness-staleness class)"
 gate-why: "A backfilled record asserts what an old run read without re-running it. The driver decides whether that assertion may release a brief or only document it."
 decision-trigger: start
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "medici-finance/assay#3105 — the stuck verified-to-done report"
   - "medici-finance/assay#3658 — squash-orphaned record shas; the 95 existing records are append-only and are not rewritten"
   - "docs/streams/statusgen/brief-36-content-bound-witness-schema-v2-reader.md and docs/streams/statusgen/brief-37-content-bound-witness-schema-v2-writers.md — the schema, seams and writers"
@@ -48,7 +50,7 @@ files:
 
 facts (source and date in frontmatter):
 - At 75cc11f14 the dry run refuses 30 verified briefs (build-less-brittle 02, 04, 05, 06, 09, 10, 11; contributor-trust 04; desk-supervision 17, 18, 19, 27; desk-tools 15, 23; desktools-v2 05, 09, 12, 14, 15, 61; graph-execution 09, 20; harness-portability 06; iso-9001 03; quality 19; statusgen 15, 17, 19, 22; windows-port 00). Four claims in build-less-brittle 04, 05, 06 and 09 are refused because the Verify row's command changed after the witness. Eight of the briefs have `+dirty` witnesses.
-- A v1 Runner cell names a short commit. A squash merge leaves that commit off main, but the forge keeps the merged change request's commit list and head ref (GitHub `refs/pull/<N>/head`, GitLab `refs/merge-requests/<iid>/head`), so the commit is usually still fetchable. The change request that landed the verifier's Evidence line is found by blaming that line to its first-parent landing commit; statusgen/36's seam reports it as `landing_cr`.
+- A v1 Runner cell names a short commit. A squash merge leaves that commit off main, but the forge keeps the merged change request's commit list and head ref (GitHub pull-request head refs (refs/pull/<N>/head), GitLab merge-request head refs (refs/merge-requests/<iid>/head)), so the commit is usually still fetchable. The change request that landed the verifier's Evidence line is found by blaming that line to its first-parent landing commit; statusgen/36's seam reports it as `landing_cr`.
 - Authenticity of a v1 witness rests on who authored its Evidence line (statusgen's Evidence-actor check, tamper-evident rather than tamper-proof) and on the existing independence and verifier-floor reads; statusgen/36's seam reports both (`evidence_actor`, `independent`).
 - A `+dirty` v1 witness ran on content that no commit holds, so its inputs cannot be recovered.
 - No v1 run was in a network-less runner, and no v1 run recorded its tool versions. statusgen/36's environment policy decides whether a back-filled record may release; under that brief's default (option 2), and under its option 4, none does.
@@ -111,6 +113,42 @@ Read statusgen/36 and statusgen/37 in full, `witnessseam.go` (planned), the Evid
 Release is decided only by statusgen/36's reader. A back-filled record can release only when the recorded rulings are statusgen/36 option 1 or 3 AND this brief's option 1, and every reader step holds; under any other combination it is reported as `witness-rerun-owed`.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: bounded historical compatibility and witness backfill.** Consume /37's independently
+produced historical binding and /36's D/A eligibility; no new historical resolver, approval path or
+global grandfather exception. Code fixtures may use known metadata while /31 prepares actual legacy
+metadata dispositions; missing declarations still hold the affected record, not the whole feature.
+
+- Classify each original-table cohort before credit: correctly bound applicable observations; named
+  unpinned consumer rows; bare unscoped consumer rows; wrong explicit ranges/changed criteria;
+  unknown W/conditions; and completed records. Named/unscoped compatibility requires the exact
+  approved historical-subject policy. Unchanged command text is not proof that adding D preserves
+  effective subject. - Preserve all old observations, output hashes, execution revisions and
+  outcomes. Recover v2 content records only where original provenance/content really exists and the
+  environment policy permits credit. With unknown equivalence or lost artifacts, retain the
+  observation and arrange fresh independent proof at D through the existing Verify owner; never
+  manufacture a historical run. - A meaningful consumer observation must use independently bound D
+  and its exact parent. Original empty-diff passes get no retroactive consumer credit. Changed
+  commands remain on the exact protected route; already verified-but-not-done entries continue
+  against admitted D/A, while completed records retain existing cutoff rules. - Extend the existing
+  backfill fixtures with desktools-v2/23 and apps-installer/10 shapes (original PRs 4559/4561,
+  tracked on 4560), the approved-amendment boundary in desk-tools/38 (4562/4563), and
+  desk-supervision/13 with two disproved routes. No case is automatically cleared from reported
+  counts. Hand off actual active cohort execution/reporting to /35, retained failures to handoff/02
+  and repair rechecks to handoff/05.
+
+### Existing task obligations
 
 1. Implement `deskevidence backfill` as above, using only `witnessseam.go` (planned) for statusgen reads and digests.
 2. Add a `ChangeCommits(repo, id)` read (full shas) and the merged state to the forge-neutral layer for GitHub and GitLab, with fake-forge tests on both.

@@ -1,0 +1,1 @@
+- Plan fixed-delivery verification with separate main health; assign binding, acceptance, review context, continuation and historical recovery to existing briefs, add reciprocal dependencies and qualification ownership, and retain original Verify/Evidence without implementing runtime.

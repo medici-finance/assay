@@ -2,9 +2,9 @@
 brief: assay:assay:desk-tools:51
 title: "Drive the verifier skill from the current queue and landing contract"
 why: "The skill still asks agents to assemble their own answer from scattered mechanics. Once the tool contract exists, a short lane-to-action table should direct each run through the implemented path."
-wave: 4
-depends: ["desk-tools/45", "desk-tools/46", "desk-tools/47", "desk-tools/48", "desk-tools/49", "desk-tools/50", "desk-tools/52"]
-unblocks: ["graph-execution/27"]
+wave: 5
+depends: ["desk-tools/45", "desk-tools/46", "desk-tools/47", "desk-tools/48", "desk-tools/49", "desk-tools/50", "desk-tools/52", "statusgen/29", "statusgen/38"]
+unblocks: ["graph-execution/27", "verification-handoff/06"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -14,6 +14,8 @@ issues: []
 schema: brief-v2
 authored: "2026-10-17 maintainer-directed verify-flow refresh"
 sources:
+  - "docs/proposals/fixed-delivery-verification/README.md — fixed-delivery completion amendment, 2026-10-27; planning only"
+  - "freshness-checked 2026-10-27 @ 9a58a792c; existing PR 4579 and source/caller work map"
   - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
   - "docs/streams/desk-tools/README.md"
   - "freshness-checked 2026-10-17 @ 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae"
@@ -21,7 +23,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 4
+version: 5
 id: af2553b5-b208-4d3d-aab1-5d8c518b2add
 consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/51 (register the skill-body cross-module read; existing CI already runs on every push and pull request)"
@@ -84,6 +86,39 @@ Preserve final pending-hold head checks and all landing gates. Compare the prose
 already-declared flow_51_test surface; graph-execution/27 subsequently proves its discrete binding and document qualified pins before changing live recipes.
 
 ## Task
+
+### Fixed-delivery completion amendment — 2026-10-27
+
+This is a planning amendment under [fixed-delivery
+verification](../../proposals/fixed-delivery-verification/README.md), not runtime implementation or
+activation. Preserve the original Verify table and Evidence. The changed fixed-subject,
+historical-subject and row-reuse policy waits for the precise existing authority decisions; an old
+decision token grants none of these changes. Existing approved work retains its original contract.
+At pickup, pin this brief/version, the controlling contracts, actual producer/consumer versions and
+open PRs; adapt or hold only the affected slice. No new evaluator, record store, desk, tracer or
+qualification stage is authorized.
+
+**Owner: the released role/action contract.** Consume statusgen/29's reviewed prospective-context
+behavior, /38's historical compatibility and /46–47's real continuation. Retain /45, /48, /49, /50
+and /52 dependencies. Do not implement their policies in skill prose.
+
+- State the two parts using existing surfaces: context/source/consumers/scope/conditions versus
+  original tests and their observations. Review owns context readiness at its existing ready flip;
+  the independent Verify owner accepts D/A and records at E; CI owns H health. A context hold
+  preserves valid observations while still holding closure. - Document historical context assessment
+  at the existing review-to-Verify handoff (no retroactive ready flip), recoverable versus missing
+  proof, meaningful consumer checks, exact amendment authority and continuation of
+  verified-but-not-done work. Route genuine failures through the existing handoff/repair owners; do
+  not reinterpret all blockers as metadata. - Extend `flow_51` against real plan/help/version
+  outputs: identical admitted inputs produce identical next actions, absent producers/unsupported
+  versions stay unknown, later H health cannot replace D evidence, and an owed write selects
+  continuation rather than model redispatch. Include the released compatibility matrix and actual
+  installed identities; publication is not installation or activation. - Hand off complete path
+  qualification to verification-handoff/06 after the tools and this contract exist. Update only
+  existing shipped role/reference consumers; no new desk, command-policy engine or standing
+  verification gate.
+
+### Existing task obligations
 
 The repair-reader extension above is part of this brief’s implementation Task and its
 flow_51 acceptance, not an implicit obligation of /45 or /47. The added repair.go consumer
