@@ -168,3 +168,9 @@ The admission layer has four rules:
 The layer is not yet active. Nothing on the dispatch path consults it. Binding it at the
 dispatch boundary is graph-execution/14, behind its own human gate. Until then it changes
 no behaviour, and the three layers above remain the whole of what is enforced.
+
+## Effect recovery boundary
+
+| Contract | Enforced boundary and attribution limit |
+|---|---|
+| drainloop declared-effect recovery | Before every Apply, reconcile the authoritative receipt; require durable EFFECT-INTENT (or an atomic intent/claim-generation handoff), then record completion. The adapter-specific idempotency/fencing guarantee depends on the provider's actual dedupe and ownership enforcement. Unknown outcomes hold wherever deduplication or authoritative absence cannot be enforced; stale pending generations reconcile or hold. Bypasses are only attributed, never an unconditional exactly-once guarantee. |
