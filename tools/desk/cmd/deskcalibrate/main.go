@@ -230,7 +230,7 @@ func runSample(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) 
 	}
 	o := sampleOpts{
 		month: v.String("month"), vendor: v.String("vendor"), human: v.String("human"),
-		reviewerVendor: resolveReviewerVendor(v.String("reviewer-vendor"), v.String("roster-vendor")),
+		reviewerVendor: resolveReviewerVendor(v.String("reviewer-vendor"), rosterVendor(v)),
 		prs:            v.String("prs"), candidatesFile: v.String("candidates-file"), n: v.Int("n"),
 	}
 	if strings.TrimSpace(o.month) == "" {
@@ -239,8 +239,9 @@ func runSample(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) 
 	if v.Source("seed") != cli.Flag {
 		return deskkit.Refused("--seed is required and recorded — an unseeded sample is not reproducible")
 	}
-	if o.seed, err = strconv.ParseInt(v.String("seed"), 0, 64); err != nil {
-		return deskkit.Refused(fmt.Sprintf("invalid value %q for flag --seed: parse error", v.String("seed")))
+	seed := v.String("seed")
+	if o.seed, err = strconv.ParseInt(seed, 0, 64); err != nil {
+		return deskkit.Refused(fmt.Sprintf("invalid value %q for flag --seed: parse error", seed))
 	}
 	if err := runStartup(stderr, pre); err != nil {
 		return err
@@ -260,8 +261,11 @@ func runReport(set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) 
 	if err := runStartup(stderr, pre); err != nil {
 		return err
 	}
-	return reportFn(results, v.String("roster-vendor"), stdout)
+	return reportFn(results, rosterVendor(v), stdout)
 }
+
+// rosterVendor is the roster's ASSAY_REVIEWER_VENDOR, read through its env-only binding.
+func rosterVendor(v *cli.Values) string { return v.String("roster-vendor") }
 
 // resolveReviewerVendor prefers an explicit --reviewer-vendor, else the roster's
 // ASSAY_REVIEWER_VENDOR. A missing value is left empty; CheckIndependence turns
