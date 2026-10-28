@@ -102,6 +102,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // ---------------------------------------------------------------------------
@@ -326,6 +328,7 @@ const (
 	witnessCellCommand = 1
 	witnessCellResult  = 2
 	witnessCellOutput  = 3
+	witnessCellDate    = 4
 	witnessCellRunner  = 5
 	witnessCellCount   = 6
 )
@@ -386,12 +389,12 @@ func witnessCommandOf(text string) string {
 	return codeSpan(cells[witnessCellCommand])
 }
 
-// witnessTreeRe lifts the tree token that follows the Runner cell's ` @ `
-// marker (witness.row() writes `<runner> @ <tree>`, optionally followed by one
-// or more parenthetical qualifiers). It stops at the first space or `(` so a
-// trailing on-behalf-of/RunnerSource parenthetical is never swallowed into the
-// tree token.
-var witnessTreeRe = regexp.MustCompile(`@\s*([^\s(]+)`)
+// The tree token follows the Runner cell's ` @ ` marker (witness.row() writes
+// `<runner> @ <tree>`, optionally followed by one or more parenthetical
+// qualifiers). evaluation.ParseRunnerCell, the one Runner-cell parser, stops it
+// at the first space or `(` so a trailing on-behalf-of/RunnerSource
+// parenthetical is never swallowed into the tree token; for a v2 cell it is the
+// schema marker `[w2]`, which no git revision resolves.
 
 // witnessTreeOf lifts the tree SHA (possibly `+dirty`/`+unknown`-suffixed, or
 // `no-git`) a witness row recorded — graph-execution/03's coverage rule reads
@@ -403,11 +406,7 @@ func witnessTreeOf(text string) string {
 	if cells == nil {
 		return ""
 	}
-	m := witnessTreeRe.FindStringSubmatch(cells[witnessCellRunner])
-	if m == nil {
-		return ""
-	}
-	return m[1]
+	return evaluation.ParseRunnerCell(cells[witnessCellRunner]).Tree
 }
 
 // ---------------------------------------------------------------------------
@@ -1391,7 +1390,17 @@ type verifyRow struct {
 // values equal the ordinals must still compare equal. --rows reads that bit
 // from numberedVerifyRows' parallel slice instead (desktools-v2/74).
 func briefVerifyRows(verifySection string) []verifyRow {
-	return verifyRowsOf(verifySection, nil)
+	return verifyRowsOf(verifySection, nil, nil)
+}
+
+// briefVerifyRowsWithClassCells is briefVerifyRows plus, index for index, each
+// row's Class cell as authored (trimmed) — the text a witness-v2 record's
+// class_sha256 digests (statusgen/36). It is a parallel slice for the same
+// reason the `#` bit is: verifyRow's equality must not change.
+func briefVerifyRowsWithClassCells(verifySection string) ([]verifyRow, []string) {
+	var classCells []string
+	rows := verifyRowsOf(verifySection, nil, &classCells)
+	return rows, classCells
 }
 
 // numberedVerifyRows is briefVerifyRows plus, index for index, whether each
@@ -1399,13 +1408,14 @@ func briefVerifyRows(verifySection string) []verifyRow {
 // which --rows refuses to select by.
 func numberedVerifyRows(verifySection string) ([]verifyRow, []bool) {
 	var numbered []bool
-	rows := verifyRowsOf(verifySection, &numbered)
+	rows := verifyRowsOf(verifySection, &numbered, nil)
 	return rows, numbered
 }
 
 // verifyRowsOf parses the Verify rows; when numbered is non-nil it also
-// appends each row's `#`-cell bit to it.
-func verifyRowsOf(verifySection string, numbered *[]bool) []verifyRow {
+// appends each row's `#`-cell bit to it, and when classCells is non-nil each
+// row's trimmed Class cell.
+func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
@@ -1430,6 +1440,9 @@ func verifyRowsOf(verifySection string, numbered *[]bool) []verifyRow {
 		rows = append(rows, row)
 		if numbered != nil {
 			*numbered = append(*numbered, v != "")
+		}
+		if classCells != nil {
+			*classCells = append(*classCells, strings.TrimSpace(r.Class))
 		}
 	})
 	return rows

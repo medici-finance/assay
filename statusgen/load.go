@@ -73,6 +73,10 @@ var reservedRegisterNames = map[string]bool{
 	// spec/registers-v1.md §7, so an adopter tree that has not yet re-pinned this literal
 	// name still skips it via that declaration.
 	"verify-outcomes": true,
+	// witnesses (statusgen/36): one v2 witness record per run under
+	// <stream>/<NN>/ (evaluation.WitnessRecordDir) — a register of records, not
+	// a stream board.
+	"witnesses": true,
 }
 
 // selfDeclaredRegisterRe matches the canonical self-declaration a register's

@@ -199,6 +199,15 @@ jobs:
         if: matrix.shard == 'rest'
         run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
 
+      # The witness skew tests (statusgen/36 Verify rows 5 and 6) compare against
+      # a real prior release binary and FAIL when SG_OLD_BIN is unset. The
+      # script downloads the pinned baseline, checks its sha256 against that
+      # release's own checksums.txt (never a typed digest) and exports
+      # SG_OLD_BIN through GITHUB_ENV. Ruling: medici-finance/assay#4459.
+      - name: Fetch the statusgen skew baseline (checksum-verified)
+        if: matrix.shard == 'rest'
+        run: bash statusgen/fetch-baseline.sh statusgen-linux-amd64 "${RUNNER_TEMP}/sg-baseline"
+
       # Run before the all-module sweep: statusgen alone does not depend on the
       # desk child compiled by its offline bridge test. Match the release gate.
       - name: Test and vet statusgen
