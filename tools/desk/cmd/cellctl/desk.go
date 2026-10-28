@@ -46,6 +46,12 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		die("unknown role '%s'", role)
 	}
 
+	if c.kubeSelected() {
+		c.kubeOptions(o)
+		c.kubeStart(role)
+		return
+	}
+
 	// --model overrides the cell.env pin for THIS run only; DESK_MODEL_OVERRIDE is the
 	// equivalent env form for a wrapper that cannot pass a flag, and an explicit --model wins
 	// when both are given. The command layer already resolved that order (cobra.go).

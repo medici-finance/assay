@@ -1,0 +1,304 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": {
+    "name": "the-desk",
+    "namespace": "assay-desks"
+  },
+  "spec": {
+    "replicas": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "assay.dev/profile": "compatibility-cellctl"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "the-desk",
+            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "args": [
+              "/usr/local/bin/desk-session"
+            ],
+            "env": [
+              {
+                "name": "ASSAY_COMPAT_LAUNCH_ID",
+                "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
+              },
+              {
+                "name": "ASSAY_COMPAT_INIT_ID",
+                "value": "REQUIRES_COLD_PREPARATION_ID"
+              },
+              {
+                "name": "ASSAY_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "readinessProbe": {
+              "exec": {
+                "command": [
+                  "/usr/local/bin/desk-session",
+                  "--ready"
+                ]
+              },
+              "periodSeconds": 2,
+              "timeoutSeconds": 1,
+              "failureThreshold": 1
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File"
+          }
+        ]
+      }
+    }
+  }
+}
+---
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": {
+    "name": "intake-desk",
+    "namespace": "assay-desks"
+  },
+  "spec": {
+    "replicas": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "assay.dev/profile": "compatibility-cellctl"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "intake-desk",
+            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "args": [
+              "/usr/local/bin/desk-session"
+            ],
+            "env": [
+              {
+                "name": "ASSAY_COMPAT_LAUNCH_ID",
+                "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
+              },
+              {
+                "name": "ASSAY_COMPAT_INIT_ID",
+                "value": "REQUIRES_COLD_PREPARATION_ID"
+              },
+              {
+                "name": "ASSAY_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "readinessProbe": {
+              "exec": {
+                "command": [
+                  "/usr/local/bin/desk-session",
+                  "--ready"
+                ]
+              },
+              "periodSeconds": 2,
+              "timeoutSeconds": 1,
+              "failureThreshold": 1
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File"
+          }
+        ]
+      }
+    }
+  }
+}
+---
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": {
+    "name": "worker-desk",
+    "namespace": "assay-desks"
+  },
+  "spec": {
+    "replicas": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "assay.dev/profile": "compatibility-cellctl"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "worker-desk",
+            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "args": [
+              "/usr/local/bin/desk-session"
+            ],
+            "env": [
+              {
+                "name": "ASSAY_COMPAT_LAUNCH_ID",
+                "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
+              },
+              {
+                "name": "ASSAY_COMPAT_INIT_ID",
+                "value": "REQUIRES_COLD_PREPARATION_ID"
+              },
+              {
+                "name": "ASSAY_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "readinessProbe": {
+              "exec": {
+                "command": [
+                  "/usr/local/bin/desk-session",
+                  "--ready"
+                ]
+              },
+              "periodSeconds": 2,
+              "timeoutSeconds": 1,
+              "failureThreshold": 1
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File"
+          }
+        ]
+      }
+    }
+  }
+}
+---
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": {
+    "name": "pr-review-desk",
+    "namespace": "assay-desks"
+  },
+  "spec": {
+    "replicas": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "assay.dev/profile": "compatibility-cellctl"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "pr-review-desk",
+            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "args": [
+              "/usr/local/bin/desk-session"
+            ],
+            "env": [
+              {
+                "name": "ASSAY_COMPAT_LAUNCH_ID",
+                "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
+              },
+              {
+                "name": "ASSAY_COMPAT_INIT_ID",
+                "value": "REQUIRES_COLD_PREPARATION_ID"
+              },
+              {
+                "name": "ASSAY_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "readinessProbe": {
+              "exec": {
+                "command": [
+                  "/usr/local/bin/desk-session",
+                  "--ready"
+                ]
+              },
+              "periodSeconds": 2,
+              "timeoutSeconds": 1,
+              "failureThreshold": 1
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File"
+          }
+        ]
+      }
+    }
+  }
+}
+---
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": {
+    "name": "verify-desk",
+    "namespace": "assay-desks"
+  },
+  "spec": {
+    "replicas": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "assay.dev/profile": "compatibility-cellctl"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "verify-desk",
+            "image": "REQUIRES_BUILT_CANDIDATE_IMAGE",
+            "args": [
+              "/usr/local/bin/desk-session"
+            ],
+            "env": [
+              {
+                "name": "ASSAY_COMPAT_LAUNCH_ID",
+                "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
+              },
+              {
+                "name": "ASSAY_COMPAT_INIT_ID",
+                "value": "REQUIRES_COLD_PREPARATION_ID"
+              },
+              {
+                "name": "ASSAY_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "readinessProbe": {
+              "exec": {
+                "command": [
+                  "/usr/local/bin/desk-session",
+                  "--ready"
+                ]
+              },
+              "periodSeconds": 2,
+              "timeoutSeconds": 1,
+              "failureThreshold": 1
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File"
+          }
+        ]
+      }
+    }
+  }
+}

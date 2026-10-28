@@ -859,6 +859,126 @@ Ranking: revision-shape bounds first, then exit codes, then the search bound and
   - The 2026-09-30 amendment says file non-overlap is not proof. A row that reads docs/streams, such as row 9's lint, could keep a reused pass after an edit there.
 
 **VERIFY: BLOCKED** — check-definition: row 10 (medici-finance/assay#1927, still open). Its `; echo rc=$?` masks the exit status its Expect is read against, and on merged main it prints rc=2 (could-not-check), never a pass. Witness at 61eb62a4a61b: the other 13 rows pass exit=0 (10 in the bracketed network-off container, digest match; 3 on the host). Coverage stays held on row 10 until medici-finance/assay#1927 re-authors it.
+### Non-implementer verifier re-run — 2026-10-28 claude-opus-5-5 verifier at c70ef7d2cf63 (container + host verifyrun witness; blocked on row 10, check-definition, medici-finance/assay#1927)
+
+A fresh, independent claude-opus-5-5 verifier (tier strong) ran this pass against merged main c70ef7d2cf636bcadb0605e8fb20145cf0cd99b2. Frontmatter: `gate: model`, `risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}`. `deskdispatch --check-verifier` admitted the run (rc=0, attestation medici-finance/assay#4745) before any row ran. Times are UTC, 2026-10-28:
+- The admission bracket opened at 02:04:44Z.
+- Container rows ran 02:04:51Z to 02:05:37Z.
+- The bracket closed at 02:05:47Z.
+- Host rows ran 02:05:56Z to 02:06:58Z.
+- Supplemental readings and mutation probes finished by 02:12Z.
+
+The home was a clean detached checkout of that commit for both witnesses, and `git status --short` was empty after each step. The delivery is the merge 909101d1aa202a00e7c18a1788a49f51031de9ff of medici-finance/assay#1682, read from the forge; its first parent is de45ad17171acfb56230b708921dfac8b02945cb.
+
+**Grounding, from the brief before any diff was read.** The result vocabulary has six values. could-not-run maps to could-not-check and holds. A witness at another revision is wrong-revision and holds. A join needs a +flow row or holds on integration-check. observe is declared in the pattern spec and schema. autoflip refuses an unreleased brief and names the claim. The CLI exits 0, or 2 on an unreadable tree. Advice is never a witness. A changed acceptance or policy dependency holds the claim. An old-head pass never releases a new subject.
+
+**Delivered code since the prior source (61eb62a4a61b).**
+- statusgen/coverage.go and the coverage files under statusgen/evaluation (coverage.go, coverage_api.go, coverage_repo.go, identity.go) are unchanged.
+- statusgen/autoflip.go moved its link-trailer parsing onto a shared trailer scanner. The coverage precondition is unchanged: autoflip still computes the coverage evaluation before any flip (autoflip.go:1094).
+- statusgen/lifecycle.go gained a repository-qualified PR label for cross-repository deliveries. The witness precedence is unchanged.
+- statusgen/evaluation gained selectedclosure.go, a shared closure-adapter grammar. It is not part of the coverage evaluation.
+- verifyrun.go's tree-SHA truncation is the same code, now at statusgen/verifyrun.go:1236-1237.
+- spec/lifecycle-v1.md, spec/workflow-pattern-v1.md and schemas/workflow-pattern-v1.json are unchanged.
+
+**Fail-first.** No Verify row's Command or Expect carries a risk-bearing, live, mutating or end-to-end tag, and the brief-wide risk block is all no. statusgen therefore selects no row for a fail-first base run, and none was needed. The +mutation rows are covered by the supplemental mutation probes below, which earn no acceptance credit.
+
+**Lane split.** The two selections are disjoint and together cover all 14 rows.
+- Container witness: rows 1, 2, 3, 4, 5, 8, 11, 12, 13 and 14. These are the Go test rows.
+- Host witness: rows 6, 7, 9 and 10. These read the whole tree and its git history, and rows 6, 9 and 10 call statusgen on PATH.
+
+**Container witness (rows 1, 2, 3, 4, 5, 8, 11, 12, 13, 14).**
+- Sequence: host `statusgen verifyrun --open-bracket`, then `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,5,8,11,12,13,14` in the container, then host `--close-bracket`. `statusgen verifyrun --bracket-digest` on the closed witness printed verdict=match (span-lines tree-digest:1, container-image:1, attestation:1), rc=0.
+- Container: `--network none`, the engine's default seccomp profile, the home and the repository's git directory mounted read-only, a tmpfs over the git directory's worktrees folder, the Go module cache mounted read-only, and an exec-enabled tmpfs at /tmp. GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly.
+- Image: the local image assay-verify:go1.27 (go1.27.2 linux/arm64); its id is the Container-Image line below. It has no registry digest.
+- statusgen in the container: the v1.0.64 release linux-amd64 binary (emulated), sha256 e8003bb7c67f…, which matches the release checksums. On the host: the v1.0.64 release darwin-arm64 binary, sha256 da6d6b4f34aa…, which also matches.
+- A build-only probe before the bracket confirmed the module cache was complete offline. It earns no credit.
+- Rows 13 and 14 hash to the empty-output digest because their commands redirect the test log to a temp file and print nothing on success.
+
+The block directly below is the closed witness file, byte for byte.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestCoverage ./...` | pass exit=0 sandbox=container-netns | sha256:53de317b040e | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | pass exit=0 sandbox=container-netns | sha256:ebd732c7464f | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | pass exit=0 sandbox=container-netns | sha256:41818624132f | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | pass exit=0 sandbox=container-netns | sha256:491d2a6bed68 | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | pass exit=0 sandbox=container-netns | sha256:b2c446600618 | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | pass exit=0 sandbox=container-netns | sha256:64284ee35cf7 | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | pass exit=0 sandbox=container-netns | sha256:60c8a4dd972b | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | pass exit=0 sandbox=container-netns | sha256:0ce960bc2b0a | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoveragePolicyDependencyChanged.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoverageReuseDoesNotRetargetPass.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " "$wi_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:072f7e7885df0fecfa2b035a4ca52e6d71721e5c5e72763ecc496d4b683c361f
+Container-Image: sha256:955fd6c46c93ee746d8f560b4c90b172a759d2543337d8173cdaabcd2013bca4
+Verification-Attestation: medici-finance/assay#4745 run=4274698a3346a475a743b06da7d3dff52a2854092af820b3134c8918fa0eb6b7 source=c70ef7d2cf636bcadb0605e8fb20145cf0cd99b2 brief=docs/streams/graph-execution/brief-03-evidence-coverage-rule.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=4274698a3346a475a743b06da7d3dff52a2854092af820b3134c8918fa0eb6b7 source=c70ef7d2cf636bcadb0605e8fb20145cf0cd99b2 tree=sha256:072f7e7885df0fecfa2b035a4ca52e6d71721e5c5e72763ecc496d4b683c361f witness=sha256:da77dd1b879910861672b21daca924bdf23d3031e657cbbb423c64569a2927a4 opened=2026-10-28T02:04:44Z closed=2026-10-28T02:05:47Z before=receipt after=check-verifier
+
+**Host witness (rows 6, 7, 9, 10).**
+- Command: `statusgen verifyrun --brief <this brief> --rows 6,7,9,10`, in write mode at the home root. It exited 1 because of row 10.
+- Host: git 2.56.0, KUBECONFIG=/dev/null, with no cluster contact.
+- The table below is exactly what verifyrun wrote. The brief was then restored to its attested bytes, so this landing is the only place the table appears.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | pass exit=0 | sha256:64406a519e57 | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | pass exit=0 | sha256:38af6536faaa | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:1658bedebefe | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | fail exit=0 | sha256:6f5828139db3 | 2026-10-28 | assay-verifier-app[bot] @ c70ef7d2cf63 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4745 run=4274698a3346a475a743b06da7d3dff52a2854092af820b3134c8918fa0eb6b7 source=c70ef7d2cf636bcadb0605e8fb20145cf0cd99b2 brief=docs/streams/graph-execution/brief-03-evidence-coverage-rule.md model=claude-opus-5-5 tier=strong
+
+**Row 10's fail cell is the check definition, not an observed failure.**
+- verifyrun's note for row 10 was "exit 0, expected 2". It read the Expect's "exit 2 (could-not-check) on a fully merged main" clause as an exit-status contract.
+- The authored command ends in `; echo rc=$?`, so its process exit status is always 0. The real statusgen status is only the printed `rc=` line, and no exit status the command can produce satisfies that reading.
+- The direct re-run below printed rc=2 with the same could-not-check reason as on 2026-10-21 and 2026-10-25. That is the merged-main outcome the Expect accepts and says must be recorded as such, never as a pass.
+- So row 10 is could-not-check. It is neither a pass nor a disproved obligation.
+
+**Supplemental readings (no acceptance credit).** Each is a direct re-run of the row's own command in the same clean home after the witnesses, with the same binary on PATH.
+- Row 10 printed: "statusgen: --consumers: COULD-NOT-CHECK: assay:assay:graph-execution:03 is not in the diff against c70ef7d2cf636bcadb0605e8fb20145cf0cd99b2, and the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery. No routing claim was corroborated and none was disproved." It then printed rc=2.
+  - With the delivery passed explicitly (`--delivery` 909101d1aa20, the medici-finance/assay#1682 merge, and `--base` de45ad17171a, its first parent): 4 routing claims corroborated, 0 disproved, 2 unchecked (the two out-of-scope entries), rc=0.
+  - Nothing in the delivered work is disproved. Only the authored row cannot pass on merged main.
+- Row 9 printed `LINT: PASS`, rc=0, with 0 PROBLEM lines; none of its 2091 NOTICE lines names this brief.
+- Row 6 exited 0 and printed exactly the six permitted results.
+  - Tree-wide: 570 briefs, 4638 claims, 46 pass claims, 0 briefs released.
+  - This brief is held. 12 claims are wrong-revision against the 2026-10-25 witness at 61eb62a4a61b (.claude-plugin/marketplace.json differs between the two trees and there is no dependency manifest), row 7's claim is pass (reused: none of the paths it reads changed), and row 10's claim is fail, with the reason "the witness records a failure".
+- Row 7's counts were 9, 5 and 2.
+
+**Supplemental mutation probes (no acceptance credit).** Each ran in a separate no-hardlinks clone of the source commit outside the home, with host Go 1.27.2, a throwaway HOME, the real module and build caches, offline and with -count=1. The unmutated clone passed both named tests.
+- Row 3: making the could-not-run case in statusgen/evaluation/coverage.go:437 return pass instead of could-not-check turns TestCoverageCouldNotCheckIsNotPass into FAIL.
+- Row 13: making depFingerprintSame in statusgen/evaluation/coverage.go report "same" for every policy and build dependency turns TestCoveragePolicyDependencyChanged into FAIL.
+
+**Reasoning.** Thirteen of the fourteen rows pass under a tree-stamped verifyrun witness on merged main c70ef7d2cf63:
+- 10 rows in the bracketed network-off container (digest match).
+- 3 rows on the host.
+
+Row 10 is could-not-check, for the reason above. The repair is to re-author its check definition so the command's exit status carries statusgen's status, and so the row can run on merged main, for example by passing `--delivery`/`--base`. That repair is tracked on medici-finance/assay#1927, which was still open when read during this run. Coverage stays held on row 10 until then. Row 6 shows the same thing from the evaluator's side: this brief's claims are not released.
+
+**Risk-bearing values.** The trigger did not fire: risk metadata is present, irreversible is no, and the change is statusgen tooling. The values were enumerated anyway, re-read at c70ef7d2cf63, over statusgen/coverage.go, statusgen/evaluation/coverage.go, coverage_api.go, coverage_repo.go, identity.go and the verifyrun truncation. The coverage evaluation files are byte-unchanged since 61eb62a4a61b, so every derivation from the 2026-10-25 run still holds; only the verifyrun truncation line moved. Every entry can be reversed by an edit and a redeploy.
+
+Ranking: revision-shape bounds first, then exit codes, then the search bound and the version label.
+- RISK-VALUE: DERIVED — TreeSHALen = 12 @ statusgen/evaluation/coverage_api.go:22.
+  - statusgen/coverage.go:51 aliases it, and statusgen/verifyrun.go:1236-1237 truncates to it. The witness writer and the coverage reader therefore share one constant.
+  - With 12 hex digits, the chance that a random tree SHA matches by coincidence is 2^-48.
+- RISK-VALUE: DERIVED — hexRevisionRe = `^[0-9a-fA-F]{12,40}$` @ statusgen/evaluation/coverage.go:516.
+  - The lower bound equals TreeSHALen, the exact length verifyrun writes. 40 is a full SHA-1 id.
+  - Hex-only stops a symbolic ref from tracking HEAD. A longer token is refused, and that can only hold a claim, never release it.
+- RISK-VALUE: DERIVED — minRevisionTokenLen = TreeSHALen (12) @ statusgen/evaluation/coverage.go:502. It is the same floor; a shorter token resolves could-not-check.
+- RISK-VALUE: DERIVED — acceptance revision length 40 or 64, lowercase hex only @ statusgen/evaluation/coverage.go:388.
+  - These are full SHA-1 and SHA-256 object ids, the two git object formats.
+  - An abbreviated or symbolic value resolves could-not-check, so a wrong value can only over-hold.
+- RISK-VALUE: DERIVED — coverageExitOK = 0, coverageExitCouldNot = 2 @ statusgen/coverage.go:308-309.
+  - This is Task 5's literal contract: "Exit 0; exit 2 on an unreadable tree".
+  - Row 6's witness observed exit 0 on the real tree.
+- RISK-VALUE: DERIVED — DefaultMaxLandingCandidates = 1000 @ statusgen/evaluation/coverage_repo.go:105.
+  - It is the cost bound on the squash-landing search. A witness past the bound is could-not-check, never assumed landed, so the bound can only over-hold.
+  - It is a reversible operational knob and ranks last.
+- RISK-VALUE: DERIVED — EvaluatorVersion = "statusgen-evaluation/3" @ statusgen/evaluation/identity.go:13.
+  - It is a label, not a threshold. It must change whenever a verdict can change for the same observations.
+  - Its exact value carries no bound.
+- RISK-VALUE: NAMED, NOT DERIVED — isBoardBookkeepingPath: p == "STATUS.md" or prefix "docs/streams/" @ statusgen/evaluation/coverage.go:766-767 — routed for human judgment on medici-finance/assay#2339 (open, needs-decision), not counted as a row failure.
+  - A change made only under docs/streams, or only to STATUS.md, never stales a witness unless the brief declares that artifact.
+  - The 2026-09-30 amendment says file non-overlap is not proof. A row that reads docs/streams, such as row 9's lint, could keep a reused pass after an edit there.
+
+**VERIFY: BLOCKED** — check-definition: row 10 (medici-finance/assay#1927, still open). Its `; echo rc=$?` masks the exit status its Expect is read against, and on merged main it prints rc=2 (could-not-check), never a pass. Witness at c70ef7d2cf63: the other 13 rows pass exit=0 (10 in the bracketed network-off container, digest match; 3 on the host). Coverage stays held on row 10 until medici-finance/assay#1927 re-authors it.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
