@@ -33,6 +33,7 @@ consumers:
   - "containers/k8s/testdata/: follow-up desk-containers/31"
   - "containers/base/Dockerfile: follow-up desk-containers/31"
   - "docs/cellctl.md: follow-up desk-containers/31"
+  - "docs/cellctl-cli-reference.md: follow-up desk-containers/31"
   - "docs/docker.md: follow-up desk-containers/31"
   - "docs/streams/desktools-v2/cli-migration.json: follow-up desk-containers/31"
   - "managed operator and supervisor contracts: out-of-scope (existing desk-containers/28–29 and graph-execution owners retain their stronger promises)"
@@ -64,6 +65,7 @@ files:
 - containers/base/Dockerfile (package the compatibility launcher in a newly identified candidate image)
 - containers/k8s/check.py and containers/k8s/testdata/ (extend existing offline profile checking and hostile fixtures)
 - docs/cellctl.md and docs/docker.md (actual lifecycle, custody and manual recovery limits)
+- docs/cellctl-cli-reference.md (generated command reference, checked against the registered tree)
 - docs/streams/desktools-v2/cli-migration.json (route the new CLI surface through the existing owner registry)
 - changelog/desk-containers-31-kubernetes-compatibility.md (planned)
 
