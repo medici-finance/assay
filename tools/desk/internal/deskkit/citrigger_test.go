@@ -193,7 +193,7 @@ func TestPerfRunnerCI(t *testing.T) {
 }
 
 // TestDeskdImageContractCI holds the same public-layout guarantee for the
-// deskd build contract (cell-api/08): its registry row's workflow reaches the
+// deskd build contract: its registry row's workflow reaches the
 // tools/desk shard on pull_request and push, and no path filter hides the
 // Makefile, Windows script or images/deskd/ edits it reads.
 func TestDeskdImageContractCI(t *testing.T) {
@@ -387,7 +387,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"Makefile", "images/deskd/Dockerfile", "images/deskd/Dockerfile.dockerignore"},
 			runInvokes: deskShardInvokes,
-			why:        "the deskd build contract (cell-api/08) parses the root Makefile and the deskd Dockerfile and ignore file; the unconditional build-test floor runs it on any edit to them",
+			why:        "the deskd build contract parses the root Makefile and the deskd Dockerfile and ignore file; the unconditional build-test floor runs it on any edit to them",
 		},
 		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",

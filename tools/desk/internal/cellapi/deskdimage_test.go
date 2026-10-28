@@ -1,5 +1,5 @@
-// Package cellapi holds the cell-api stream's tests. This file is the static
-// build contract for the deskd binary and image (cell-api/08): it parses the
+// Package cellapi holds tests for the deskd service packaging. This file is the
+// static build contract for the deskd binary and image: it parses the
 // real images/deskd/Dockerfile, its BuildKit ignore file and the root Makefile,
 // and holds every property of the local, digest-pinned, credential-free,
 // push-free build. The same checker then runs over one negative fixture per
