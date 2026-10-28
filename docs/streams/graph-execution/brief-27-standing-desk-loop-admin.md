@@ -10,6 +10,9 @@ depends:
 - desk-supervision/34
 - desk-tools/39
 - desk-tools/42
+- desk-tools/45
+- desk-tools/43
+- desk-tools/51
 unblocks:
 - agent-execution/05
 - "agent-execution/09"
@@ -25,6 +28,7 @@ issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
 sources:
+- "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
 - "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
 - "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
 - "freshness-checked 2026-10-20 @ eb82d5b62 (merged main, installed v1.0.51); the 2026-10-18 v1.0.49 install recorded source 3cb57291e"
@@ -41,7 +45,7 @@ consumers:
 - 'workflow/controller: out-of-scope (separate caller delivered by graph-execution/21)'
 - 'plugins/assay/skills/worker-desk/SKILL.md desk-supervision/34 usage-record step: follow-up graph-execution/27 (this brief; for an enrolled worker role the step is skipped because the /26 journal records that run''s usage; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/cmd/deskusage/ record path (desk-supervision/34''s verb; the enrolled-worker skip): follow-up graph-execution/27 (this brief; `deskusage record` writes nothing for an enrolled worker role, Verify row 5; flips to fixed-here when the implementation edits the path)'
-version: 7
+version: 9
 id: af7e88a8-b411-40f9-b205-6b93f04ebed8
 ---
 
@@ -77,6 +81,25 @@ and a typed SDK client where a process boundary enforces authority or isolation.
 progression, process supervision and effect execution remain distinct; a shared binary or
 library grants no additional role. Preserve the existing independent fence, no-store standing
 mode, process-launch audit and cross-journal recovery tests. No cell taxonomy dependency is added.
+
+## Candidate and priority amendment — 2026-10-23
+
+Bind one role-qualified candidate-plus-priority planning entrypoint in the existing
+internal/deskclient composition surface for both prose/skill and discrete clients. Compose
+reviewflow (/39), issueflow (/42), canonical verify queue (/45), existing worker lanes and
+coordinator policy; do not promote their meanings into a new universal score or clone them
+inside loopadmin. Both paths consume identical candidate/policy/evaluator/time/capacity
+inputs and return the same ordered proposals, held/unknown dispositions and reasons.
+
+Separate observation invalidation/due collection from SelectQueue/refill. A completion or
+priority change can rerun pure selection with zero GH calls. Source membership, permission,
+expiry and changed facts use the existing bounded refresh/hold contract; a full pool is not
+permission to skip due liveness/STOP checks. Preserve Loop and review reactor interfaces,
+claim authority, bounded judgment and live admission/effect rechecks. Keep unqualified roles
+explicitly unavailable instead of parsing planner prose or claiming five-role parity from
+mocks. /45 is a real prerequisite and its reciprocal edge is added with this amendment.
+Add the named case in the already-declared internal/deskclient test scope. Use /44's ranked
+cost cohorts; no new scheduler, service, credential store or graph-instance prerequisite.
 
 ## Task
 
@@ -173,6 +196,7 @@ Existing custody, rollout, legacy rollback and human gates remain unchanged.
 | 7 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskUnchangedWaitNoModel$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskUnchangedWaitNoModel ' "$o")` | exit 0; named PASS. All five production role adapters with Codex and Claude fixtures perform due non-model checks but start zero model jobs for unchanged queues, pending CI, repeated errors/events and viewer attach. A changed eligible item starts exactly once and a freed slot refills. Mutation: invoke a model on an unchanged queue/CI tick; the named test fails. |
 | 8 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskBoundedJobsAndUsage$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskBoundedJobsAndUsage ' "$o")` | exit 0; named PASS. Actual role/adapter flow keeps unrelated item histories separate, preserves prior findings and independent lanes, attributes supervisor plus child usage once, and keeps missing telemetry unknown. Mutation: hide child usage or carry an unrelated completed-item conversation into the next assignment; the named test fails. |
 | 9 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskQualifiedLoopRetirement$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskQualifiedLoopRetirement ' "$o")` | exit 0; named PASS. Enrolled review mode uses code-owned progression and exactly one routine watcher while non-enrolled mode remains compatible; independent final reads and held unknown-stop rollback remain. Mutation: leave the legacy model conductor active beside the enrolled client; the named test fails. |
+| 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskPlannerParity$' ./... > "$o" && grep -F -- '--- PASS: TestDeskPlannerParity ' "$o")` | exit 0; named PASS. all five actual role bindings give equal ranked/selected/held results to prose and discrete clients on identical observations and policy; pure refill/reprioritization adds zero GH attempts. Second-root, capped, unmapped, duplicate, key-order and denied fixtures plus moved-head admission discriminate a copied ranker, repeated collection or omitted source. |
 
 ## Pre-mortem and dispatch checks
 

@@ -248,8 +248,8 @@ func (g *GitHubForge) doJSON(method, path string, in, out any) error {
 	return err
 }
 
-// doJSONHeader is doJSON returning the response headers too, for the ONE caller that needs
-// the forge's own pagination signal (ListOpenIssues reads `Link: rel="next"`).
+// doJSONHeader is doJSON returning the response headers too, including the forge's
+// own pagination signal (`Link: rel="next"`).
 //
 // A degraded transport never yields a SHORTER answer with a nil error (#1032): the body
 // read's error is kept — a connection cut mid-transfer hands back whatever arrived, which
@@ -259,39 +259,9 @@ func (g *GitHubForge) doJSON(method, path string, in, out any) error {
 // reads an issue's absence from the open-issue listing as evidence about that issue, so a
 // listing this seam hands back must be the whole listing or an error.
 func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Header, error) {
-	rc, err := g.restClient()
+	resp, capture, err := g.requestJSON(method, path, in)
 	if err != nil {
 		return nil, err
-	}
-	var bodyReader io.Reader
-	pointsSelected := false
-	if path == "/graphql" && g.Observer.Sink != nil && g.baseURL() == GitHubAPIBase {
-		in, pointsSelected = ghPointInput(in)
-	}
-	if in != nil {
-		b, merr := json.Marshal(in)
-		if merr != nil {
-			return nil, Unverifiable("cannot marshal request body", merr)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-	ctx := context.Background()
-	var capture *pointCapture
-	if pointsSelected {
-		// go-gh sanitizes JSON through another response-body wrapper. Keep the
-		// observation handle on this operation rather than asserting the body's
-		// concrete type after library response processing.
-		capture = &pointCapture{}
-		ctx = context.WithValue(ctx, pointCaptureKey{}, capture)
-	}
-	resp, rerr := rc.RequestWithContext(ctx, method, g.baseURL()+path, bodyReader)
-	if rerr != nil {
-		var he *ghapi.HTTPError
-		if errors.As(rerr, &he) {
-			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
-				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
-		}
-		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
 	defer resp.Body.Close()
 	raw, readErr := io.ReadAll(resp.Body)
@@ -310,6 +280,46 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		}
 	}
 	return resp.Header, nil
+}
+
+// requestJSON owns the existing admitted request path for both ordinary JSON
+// reads and streaming, fixed-shape observations. The caller closes the body.
+func (g *GitHubForge) requestJSON(method, path string, in any) (*http.Response, *pointCapture, error) {
+	rc, err := g.restClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	var bodyReader io.Reader
+	pointsSelected := false
+	if path == "/graphql" && g.Observer.Sink != nil && g.baseURL() == GitHubAPIBase {
+		in, pointsSelected = ghPointInput(in)
+	}
+	if in != nil {
+		b, merr := json.Marshal(in)
+		if merr != nil {
+			return nil, nil, Unverifiable("cannot marshal request body", merr)
+		}
+		bodyReader = bytes.NewReader(b)
+	}
+	ctx := context.Background()
+	var capture *pointCapture
+	if pointsSelected {
+		// go-gh sanitizes JSON through another response-body wrapper. Keep the
+		// observation handle on this operation rather than asserting the body's
+		// concrete type after library response processing.
+		capture = &pointCapture{}
+		ctx = context.WithValue(ctx, pointCaptureKey{}, capture)
+	}
+	resp, rerr := rc.RequestWithContext(ctx, method, g.baseURL()+path, bodyReader)
+	if rerr != nil {
+		var he *ghapi.HTTPError
+		if errors.As(rerr, &he) {
+			return nil, nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
+		}
+		return nil, nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
+	}
+	return resp, capture, nil
 }
 
 // hasNextLink reports whether a REST response's `Link` header advertises another page
@@ -346,6 +356,7 @@ type ghPullWire struct {
 		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"head"`
 	Base struct {
+		SHA  string          `json:"sha"`
 		Ref  string          `json:"ref"`
 		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"base"`
@@ -577,6 +588,7 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		Labels:       labels,
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
+		BaseSHA:      w.Base.SHA,
 		BaseRef:      w.Base.Ref,
 		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
 		// Only a merged pull has a merge commit; an open pull's merge_commit_sha is a
@@ -686,6 +698,9 @@ func (g *GitHubForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullR
 // prefixed with `repo:{o}/{r} is:issue`, so the caller supplies free text and the backend owns
 // the scope qualifiers — the closed-surface property (no caller-supplied search syntax).
 func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	if in.FilingKey != "" {
+		return g.searchFilingKey(repo, in)
+	}
 	if in.DecisionGateMarkers {
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err
@@ -1181,6 +1196,11 @@ const (
 // ghIssueEventsRespWire decodes ONE page of IssueEventsQuery. A null `issue` (wrong number,
 // or no access) is distinguished from an issue with no comments — the pointer is nil in the
 // first case, which the caller maps to could-not-check rather than "no events".
+type ghIssueCommentNode struct {
+	CreatedAt string    `json:"createdAt"`
+	Author    *gqlActor `json:"author"`
+}
+
 type ghIssueEventsRespWire struct {
 	Data struct {
 		Repository struct {
@@ -1190,10 +1210,7 @@ type ghIssueEventsRespWire struct {
 						HasNextPage bool   `json:"hasNextPage"`
 						EndCursor   string `json:"endCursor"`
 					} `json:"pageInfo"`
-					Nodes []struct {
-						CreatedAt string    `json:"createdAt"`
-						Author    *gqlActor `json:"author"`
-					} `json:"nodes"`
+					Nodes []ghIssueCommentNode `json:"nodes"`
 				} `json:"comments"`
 			} `json:"issue"`
 		} `json:"repository"`
@@ -1237,20 +1254,10 @@ func (g *GitHubForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayl
 				"could-not-check: %s carries no issue at number %d, so its comment thread could not be read",
 				repo.Slug(), number), nil)
 		}
-		for i := range iss.Comments.Nodes {
-			n := &iss.Comments.Nodes[i]
-			if n.CreatedAt == "" {
-				continue
-			}
-			ct, err := parseTrustTime(n.CreatedAt)
-			if err != nil {
-				return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), err)
-			}
-			var id int64
-			if n.Author != nil {
-				id = n.Author.DatabaseID
-			}
-			events = append(events, ContentEvent{Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct})
+		var err error
+		events, err = appendIssueEvents(events, iss.Comments.Nodes, repo, number)
+		if err != nil {
+			return nil, err
 		}
 		if !iss.Comments.PageInfo.HasNextPage {
 			return &TrustPayload{Events: events, Complete: true}, nil
@@ -1264,6 +1271,24 @@ func (g *GitHubForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayl
 		}
 	}
 	return &TrustPayload{Events: events, Complete: false}, nil
+}
+
+func appendIssueEvents(events []ContentEvent, nodes []ghIssueCommentNode, repo ForgeRepo, number int) ([]ContentEvent, error) {
+	for _, n := range nodes {
+		if n.CreatedAt == "" {
+			continue
+		}
+		ct, err := parseTrustTime(n.CreatedAt)
+		if err != nil {
+			return nil, Unverifiable(fmt.Sprintf("cannot read issue-event createdAt for %s#%d", repo.Slug(), number), err)
+		}
+		var id int64
+		if n.Author != nil {
+			id = n.Author.DatabaseID
+		}
+		events = append(events, ContentEvent{Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct})
+	}
+	return events, nil
 }
 
 // trustEvents runs one trust-gate GraphQL query through the backend's own authenticated
@@ -2179,13 +2204,7 @@ func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	if strings.TrimSpace(sha) == "" {
 		return nil, Unverifiable("GetCommit needs a non-empty sha for "+repo.Slug(), nil)
 	}
-	var w ghCommitWire
-	path := fmt.Sprintf("/repos/%s/%s/commits/%s", repo.Owner, repo.Name, sha)
-	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
-	}
-	rc := w.toRepoCommit()
-	return &rc, nil
+	return g.commitWithFiles(repo, sha)
 }
 
 // ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
@@ -2249,24 +2268,7 @@ func (g *GitHubForge) CompareRefs(repo ForgeRepo, base, head string) (*RefCompar
 	if strings.TrimSpace(base) == "" || strings.TrimSpace(head) == "" {
 		return nil, Unverifiable("CompareRefs needs both base and head for "+repo.Slug(), nil)
 	}
-	var w ghCompareWire
-	path := fmt.Sprintf("/repos/%s/%s/compare/%s...%s", repo.Owner, repo.Name, base, head)
-	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
-	}
-	out := &RefComparison{Status: w.Status, AheadBy: w.AheadBy, BehindBy: w.BehindBy}
-	for _, c := range w.Commits {
-		out.Commits = append(out.Commits, c.toRepoCommit())
-	}
-	// The unpaginated compare can stop at 250 commits. The count is evidence,
-	// never treat a missing count or a short read as an empty interval.
-	out.CommitsComplete = w.TotalCommits != nil && len(w.Commits) == *w.TotalCommits
-	for _, f := range w.Files {
-		out.Files = append(out.Files, ChangedFile{
-			Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status,
-		})
-	}
-	return out, nil
+	return g.compareWithHistory(repo, base, head)
 }
 
 // ghSearchWire is the /search/issues read shape (only the fields consumed). The search API

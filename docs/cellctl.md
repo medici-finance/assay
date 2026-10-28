@@ -309,6 +309,10 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ## Scrubbed cells — `--kind scrubbed`
 
+Cell-owned Kimi/provider credentials and an optional Herdr display are described in
+[cellctl-scrubbed-providers.md](cellctl-scrubbed-providers.md). These opt-in paths retain
+the private session and composed environment described below.
+
 A house cell keeps the operator's real `HOME` on purpose (*Why the session keeps the real `HOME`*
 above) — the desks ARE the operator's desks. A **scrubbed** cell is the opposite case: a harness
 that must run on THIS laptop but must NOT inherit anything of the launching shell — no real
@@ -370,8 +374,13 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
 
+A configured cell-owned provider adds its endpoint, token and model aliases to the final
+harness environment only, after the secret-free launch plan. Herdr/provider launches
+set `ASSAY_COCKPIT=tmux` for child worktree handling. These additions never import host
+credentials; see the linked provisioning and lifecycle contract above.
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are mutually exclusive — only the active harness's variable
-is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
+is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no inherited `ANTHROPIC_*`, no `AWS_*`, and no
 wholesale parent `PATH` — the harness's own directory is the ONE parent-derived `PATH` element,
 resolved once (`command -v`) before the launch switches to `env -i`, and named rather than
 inherited wholesale.
@@ -769,8 +778,10 @@ cockpit in its environment as `ASSAY_COCKPIT`:
 - The cell's value always wins over an `ASSAY_COCKPIT` the launching shell happened to carry.
 - `cellctl check <cell>` prints the value and the arm it selects on the line after the cockpit row:
   `ok    ASSAY_COCKPIT=tmux exported into every role window (worker-desk worktree arm: plain git worktree add, no cockpit CLI needed)`.
-- A scrubbed cell composes its own environment and opens no cockpit, so its windows carry none. Nor
-  does an `--automate` run (below), which the cockpit launches, not `cellctl`.
+- A scrubbed cell retains private tmux as process owner; an explicit Herdr setting
+  displays that session. Its child worktree handler uses tmux (plain git), as described
+  in the scrubbed provider/display contract.
+- An `--automate` run (below) carries no cockpit value; the cockpit launches it.
 
 With no cell at all, nothing exports `ASSAY_COCKPIT`, and the worker-desk step keeps its own
 presence-on-PATH order. That skill also accepts `supacode` and `plain` as values an operator may
@@ -1517,12 +1528,14 @@ processes are not configuration.
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
+| `CELL_KUBERNETES_CONFIG` | binds one cell to its explicit Kubernetes compatibility profile and approved target |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
 | `ASSAY_PERF_PROFILE`, `ASSAY_PERF_SESSION_ID`, `ASSAY_PERF_AGENT_ID`, `ASSAY_PERF_PARENT_AGENT_ID`, `ASSAY_PERF_PARENT_INVOCATION_ID`, `ASSAY_PERF_ROLE`, `ASSAY_PERF_WORK`, `DESK_LOOP` | descriptive context for one invocation, validated from the launching environment; never persistent cell or machine defaults |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
-| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
+| `DESK_TOOLS_HOTFIX` | locates the hotfix overlay directory for one run of `cellctl hotfix`, shim generation and `deskboot`; the directory must be root-owned wherever it is, so no file names it |
+| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `SUDO_USER`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
 | `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLOP_FIXTURE_TRACE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,
@@ -1963,3 +1976,99 @@ it creates the container. No upload or performance payload expansion is enabled.
 Logging remains optional and best-effort. Enabled does not prove the sink is writable or
 that every invocation completed. Inspect the local perf day file and report coverage; missing
 samples are unknown, never zero. No tool installation or live role restart occurs during tests.
+
+
+## Trusted compatibility Kubernetes desks
+
+`CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
+sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
+The closed schema and unresolved example are in
+`containers/k8s/compatibility/`. The example is not deployable: image, agent,
+initialization and actual operator values need qualification. A missing or invalid
+explicit profile makes no API operation. There is no ambient context discovery,
+credential-plugin execution, proxy, insecure TLS or redirect fallback.
+
+Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
+an approved new image release and custodian-owned preparation. It inherits the
+historical five-role package and retains its Secrets, PVCs and network floor;
+all five workloads install at zero replicas. Only exact-name StatefulSet/scale
+reads and updates, Pod reads and named-container attach are in the operator
+Role. This does not authorize Secret access, arbitrary Pod creation, exec,
+port forwarding, debug, RBAC mutation or a managed operator. The operator is
+already a custodian of each selected role's PEM, model credential and transcript.
+Effective terminal, log, node and downstream-log access must meet that boundary.
+
+Prepare the retained volume with the approved pinned Claude-compatible package,
+its version manifest, role instructions, repository/toolchain inputs and the exact
+launch descriptor. The descriptor hash is both the operator profile's `launch_id`
+and the image launch environment value. Its initial prompt reads the baked role
+skill and starts that role under existing STOP, claim and human gates. The child
+is launched once with its pinned model and instructions. The same descriptor binds
+the cell; the launcher stamps the existing cell, role, loop and session markers
+for the child so cell-scoped STOP and role/claim controls retain their owners; no package installer,
+plugin enable command or second agent invocation runs during boot. Explicit
+`desk-session --prepare` creates cold history only where no history exists.
+Ordinary boot never invents first-boot permission from absent history.
+
+For a prepared cell named `example`, the bounded sequence is:
+
+```sh
+cellctl check example
+cellctl up example --plan --json
+cellctl up example --json
+cellctl attach example worker-desk
+# Detach: Ctrl-] then type detach and press Enter.
+cellctl attach example worker-desk
+cellctl status example
+cellctl down example worker-desk
+cellctl up example --role worker-desk --json
+```
+
+Check, dry run and plan remain offline. Ordinary up starts a proven cold/clean
+execution or keeps the exact current one. Apply uses the existing cell-op-v1
+terminal confirmation, re-measure and one-time plan consumption. It grants no
+new authority and has no blanket-consent flag. Host model/provider/cockpit,
+cadence and role-context overrides are refused by this pinned profile. Existing
+STOP flags and local lease/checkpoint/orphan state are checked before remote
+start; selecting the profile never clears a local role or claim.
+
+Attach is presentation only: input, output and resize are withheld until the
+native stream upgrade is followed by an exact execution recheck. Reconnect,
+detach or connection loss never scales a workload, invokes another agent, resends
+the initial prompt or signals an agent. A slow detached presentation keeps a
+bounded display tail; the container runtime owns transcript retention. The
+existing transcript custody restrictions apply to logs and collectors too.
+Ctrl-] is reserved for the local detach command. Unknown escape text is forwarded
+without that control byte, so ordinary text is retained without permitting an
+attach terminal to enter the supervisor's controlled-stop protocol.
+
+Down requires an operator terminal. Its plan explicitly asks the custodian to
+confirm that the role is interactively idle and all claims/effects are reconciled
+where no machine signal exists; a known busy/unmeasured signal still holds it.
+The execution-bound supervisor frame stops and reaps the complete private Linux
+process namespace, including detached/reparented descendants. Only then may the
+launcher retain clean history and a clean termination message. Cellctl must see
+that exact container ID terminate with the matching message before scale-down
+or a new execution. A clean last-termination state can prove the old container
+even if Kubernetes already restarted a held container in the same Pod.
+
+Missing/corrupt history, same-Pod restart, changed container ID/restart count,
+partition, absent Pod, surviving work or lost termination acknowledgement stays
+held. Scale/delete acceptance and Ready/NotReady are not stop proof. Do not
+force-delete, reset history, release claims or retry a replacement automatically.
+The custodian must first reconcile the old execution, downstream effects and
+claimed work through the existing manual controls. Unknown means held.
+
+Receipts at `run/kubecompat/<role>.json` bind the cell, role, profile digest,
+namespace, StatefulSet UID, Pod UID, container name/ID, restart count and image.
+They are writable observations, not authority. Filesystem retention, process
+continuation and conversation continuation are separate: a PVC only proves the
+filesystem part. A new clean Pod starts a new agent execution; this profile makes
+no conversation-resume or unattended crash/partition recovery promise.
+
+The source checkpoint deliberately carries an unbuilt candidate record.
+`sh containers/k8s/check.sh --compatibility-cellctl --self-test` can pass hostile
+synthetic fixtures while still returning `could-not-check` for the actual
+candidate. Only a genuine protected-release manifest digest and its release
+record can remove that image hold. Runtime/model usefulness and effective
+custody remain the separate qualification step.

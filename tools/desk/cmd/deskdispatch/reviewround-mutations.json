@@ -3,8 +3,8 @@
   "control": {
     "name": "never run the round read",
     "file": "cmd/deskdispatch/dispatch.go",
-    "old": "if reviewKit(o.kit) && o.pr > 0 {\n\t\tround, herr := prepareReviewRound(o, plan, repo)",
-    "new": "if false && reviewKit(o.kit) && o.pr > 0 {\n\t\tround, herr := prepareReviewRound(o, plan, repo)"
+    "old": "if reviewKit(o.kit) && o.pr > 0 {",
+    "new": "if false && reviewKit(o.kit) && o.pr > 0 {"
   },
   "mutations": [
     {
@@ -220,8 +220,8 @@
     {
       "name": "wiring: a worker dispatch reads the round",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "if reviewKit(o.kit) && o.pr > 0 {\n\t\tround, herr := prepareReviewRound(o, plan, repo)",
-      "new": "if o.pr > 0 {\n\t\tround, herr := prepareReviewRound(o, plan, repo)"
+      "old": "if reviewKit(o.kit) && o.pr > 0 {",
+      "new": "if o.pr > 0 {"
     },
     {
       "name": "wiring: the round is read but not handed to the prompt",

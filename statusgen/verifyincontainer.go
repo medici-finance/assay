@@ -333,9 +333,13 @@ func composeDockerArgs(inv containerInvocation) []string {
 // buildInnerCommand reconstructs the command run INSIDE the container: the same
 // verifyrun invocation, minus --in-container (the inner run does the real work),
 // with the brief addressed by its path under /work. The pass-through flags mirror
-// what the outer run parsed.
-func buildInnerCommand(briefRel string, check, dryRun, ci bool, timeout string) []string {
+// what the outer run parsed, including a --rows selector (desktools-v2/74),
+// passed through unchanged; rows "" adds nothing.
+func buildInnerCommand(briefRel string, check, dryRun, ci bool, timeout, rows string) []string {
 	inner := []string{"statusgen", "verifyrun", "--brief", briefRel}
+	if rows != "" {
+		inner = append(inner, "--rows", rows)
+	}
 	if check {
 		inner = append(inner, "--check")
 	}
@@ -354,7 +358,8 @@ func buildInnerCommand(briefRel string, check, dryRun, ci bool, timeout string) 
 // runInContainer is the `--in-container` entry point, called from runVerifyrun
 // after flag parsing. It resolves the pin, refuses fail-closed on anything
 // unpinned, composes the docker argv, and execs docker, streaming its output.
-func runInContainer(briefPath, root, envFile string, check, dryRun, ci bool, timeout string, stdout, stderr *os.File) int {
+// rows is the outer run's --rows value, passed to the inner run ("" for none).
+func runInContainer(briefPath, root, envFile string, check, dryRun, ci bool, timeout, rows string, stdout, stderr *os.File) int {
 	pin, err := readHarnessPin(root)
 	if err != nil {
 		fmt.Fprintln(stderr, "statusgen verifyrun --in-container:", err)
@@ -413,7 +418,7 @@ func runInContainer(briefPath, root, envFile string, check, dryRun, ci bool, tim
 		root:     absRoot,
 		briefRel: briefRel,
 		envFile:  envFile,
-		inner:    buildInnerCommand(briefRel, check, dryRun, ci, timeout),
+		inner:    buildInnerCommand(briefRel, check, dryRun, ci, timeout, rows),
 		uid:      hostUID(),
 		gid:      hostGID(),
 		identity: identity,

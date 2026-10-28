@@ -364,7 +364,11 @@ build-test job runs this guard on every PR and main push.
 The live `release.yml` and its identical staged twin build binary artifacts
 first, then use one protected `release` job to build/check/push all nine images
 and publish the immutable GitHub release. The job holds `contents: write` and
-`packages: write` behind one `release` Environment approval. It serializes on
+`packages: write` behind one `release` Environment approval, plus `id-token: write`
+and `attestations: write` for the SLSA build-provenance attestation it makes over
+every published asset before the tag is written; it publishes the Sigstore bundle
+beside each asset as `<asset>.sigstore.json` and refuses to publish a release
+missing one (`tools/release/bundles.py`). No other job holds either permission. It serializes on
 the normalized umbrella version before registry absence checks; image and
 reference validation finish before the tag or GitHub release is written.
 

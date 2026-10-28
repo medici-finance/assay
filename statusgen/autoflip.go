@@ -154,6 +154,8 @@ package main
 // TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -162,7 +164,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -489,34 +490,36 @@ func bulkMigrationReason(shape prShape) string {
 // briefLikeTrailerRe matches a `Brief:` or `Authors:` trailer line (deskkit's
 // trailer grammar: the key, a colon, then non-empty content on the same line).
 // The first group is the key, the second the trimmed value.
-var briefLikeTrailerRe = regexp.MustCompile(`^[ \t]*(Brief|Authors):[ \t]*(\S.*?)[ \t]*$`)
 
 // parseBriefLikeTrailers reads the Brief:/Authors: trailer lines in a PR body,
 // skipping fenced code blocks — the same fence-aware grammar as prlink.go's
 // ClassifyPRLink, so a trailer shown as a documentation example inside a code
 // sample is never counted as a real one. It returns the count of both kinds
 // (the bulk-shape signal) and the canonical key of each `Brief:` value (the
-// attribution signal).
+// attribution signal). It is parseLinkTrailers without the `Issue:` count.
 func parseBriefLikeTrailers(body string) (count int, briefs []string) {
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		m := briefLikeTrailerRe.FindStringSubmatch(strings.TrimRight(raw, "\r"))
-		if m == nil {
-			continue
-		}
-		count++
-		if m[1] == "Brief" {
-			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(m[2], ".,;:")))
+	count, briefs, _ = parseLinkTrailers(body)
+	return count, briefs
+}
+
+// parseLinkTrailers is the one fence-aware link-trailer read. count and briefs
+// are exactly parseBriefLikeTrailers' (the Brief:/Authors: count
+// bulkMigrationReason reads never includes an `Issue:` line); issues is the
+// number of `Issue:` trailers, returned SEPARATELY because only the --backfill
+// walk reads it (derived-board/10 amendment B, #2703).
+func parseLinkTrailers(body string) (count int, briefs []string, issues int) {
+	for _, t := range trailers.Scan([]byte(body)) {
+		switch t.Kind {
+		case trailers.TrailerIssue:
+			issues++
+		case trailers.TrailerAuthors:
+			count++
+		case trailers.TrailerBrief:
+			count++
+			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(t.Value, ".,;:")))
 		}
 	}
-	return count, briefs
+	return count, briefs, issues
 }
 
 // candidateVerdict is attributeCandidate's judgement of one merged, approved
@@ -539,29 +542,43 @@ const (
 // only ever asked about a candidate that is merged AND App-approved at its own
 // merged head (decideModelFlip checks that first), so a walk-past can change
 // which approved PR is credited but never whether an approval was required.
+// After the bulk-migration check its verdict is the shared trailer predicate's.
 func attributeCandidate(shape prShape, briefID string) (candidateVerdict, string) {
 	if why := bulkMigrationReason(shape); why != "" {
 		return candidateWalkPast, why
 	}
+	return linkTrailerVerdict(shape.BriefTrailers, shape.Briefs, briefID)
+}
+
+// linkTrailerVerdict is the ONE trailer rule shared by attributeCandidate and the
+// --backfill walk (briefauthoring.go's backfillTrailerWalkPast, derived-board/10
+// amendment B), so the two readers cannot drift apart on what a trailer means. It is
+// a variable only so a test can replace it and watch both callers change.
+var linkTrailerVerdict = judgeLinkTrailers
+
+// judgeLinkTrailers judges a candidate by its link trailers alone: briefTrailers is
+// its Brief:/Authors: count and briefs the canonical key of each `Brief:` value
+// (parseLinkTrailers).
+func judgeLinkTrailers(briefTrailers int, briefs []string, briefID string) (candidateVerdict, string) {
 	want := canonicalBriefKey(briefID)
 	switch {
-	case len(shape.Briefs) == 0 && shape.BriefTrailers > 0:
+	case len(briefs) == 0 && briefTrailers > 0:
 		return candidateWalkPast, "it carries only `Authors:` trailers — a brief-AUTHORING PR, not a delivery"
-	case len(shape.Briefs) == 0:
+	case len(briefs) == 0:
 		return candidateUnattributable, fmt.Sprintf("it carries no `Brief:` trailer, so whether it delivered %s is not a readable fact", want)
 	}
 	names := false
-	for _, b := range shape.Briefs {
+	for _, b := range briefs {
 		if b == want {
 			names = true
 		}
 	}
 	switch {
 	case !names:
-		return candidateWalkPast, fmt.Sprintf("its `Brief:` trailer names %s, not %s", strings.Join(shape.Briefs, ", "), want)
-	case len(shape.Briefs) > 1:
+		return candidateWalkPast, fmt.Sprintf("its `Brief:` trailer names %s, not %s", strings.Join(briefs, ", "), want)
+	case len(briefs) > 1:
 		return candidateUnattributable, fmt.Sprintf("it carries %d `Brief:` trailers (%s) — a PR body links exactly one brief",
-			len(shape.Briefs), strings.Join(shape.Briefs, ", "))
+			len(briefs), strings.Join(briefs, ", "))
 	}
 	return candidateCredit, ""
 }

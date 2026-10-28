@@ -295,6 +295,7 @@ sources: ["fixture"]
 		{"bad-blocked-by", base + "blocked-by: coffee\n", "blocked-by"},
 		{"bad-measures", base + "measures: nonsense-queue\n", "measures"},
 		{"bad-homed-in", base + "homed-in: not-a-repo\n", "homed-in"},
+		{"independence-override-not-string", base + "independence-override: 5\n", "independence-override"},
 		{"risk-unknown-key", strings.Replace(base, "sensitive-data: no}", "sensitive-data: no, made-up: no}", 1), "made-up"},
 		{"risk-non-boolean", strings.Replace(base, "regulatory: no", "regulatory: maybe", 1), "regulatory"},
 		{"wave-not-integer", strings.Replace(base, "wave: 0", "wave: soon", 1), "wave"},

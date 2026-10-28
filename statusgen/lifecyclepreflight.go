@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
 )
 
 type preflightBrief struct {
@@ -400,14 +402,9 @@ func pathRelative(root, path string) string {
 // preflightHasCrossRepoDelivery reports an unfenced, non-empty
 // Cross-repo-brief: trailer line.
 func preflightHasCrossRepoDelivery(body string) bool {
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		line := strings.TrimSpace(raw)
-		if !inFence && strings.HasPrefix(line, "Cross-repo-brief:") && strings.TrimSpace(strings.TrimPrefix(line, "Cross-repo-brief:")) != "" {
+	for _, src := range trailers.OutsideFences(body) {
+		line := strings.TrimSpace(src.Text)
+		if strings.HasPrefix(line, "Cross-repo-brief:") && strings.TrimSpace(strings.TrimPrefix(line, "Cross-repo-brief:")) != "" {
 			return true
 		}
 	}
@@ -418,17 +415,9 @@ func preflightHasCrossRepoDelivery(body string) bool {
 // permissive unlinked classification intentionally ignores an empty trailer;
 // admission must distinguish that malformed declaration from a genuine exemption.
 func preflightDeliveryRefs(body string) ([]string, error) {
-	inFence := false
 	declarations := 0
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		line := strings.TrimSpace(raw)
+	for _, src := range trailers.OutsideFences(body) {
+		line := strings.TrimSpace(src.Text)
 		if strings.HasPrefix(line, "Brief:") {
 			declarations++
 			if strings.TrimSpace(strings.TrimPrefix(line, "Brief:")) == "" {

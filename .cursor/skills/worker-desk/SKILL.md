@@ -12,7 +12,7 @@ in its own window as a standing loop — ONE window at capacity replaces running
 
 **The stream board is a derived, generated surface** — this
 desk opens the PR carrying its link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` for
-issue-only work with no brief); it never hand-edits a stream README's Briefs table.
+issue-only work with no brief, or its resolving form `Fixes: #<N>` when merging should close the issue — never for an issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): such work links with `Issue: #<N>` and the close stays on the human-only path); it never hand-edits a stream README's Briefs table.
 
 **The invariants this loop assumes** (state them once wherever your repo keeps house rules, and do not
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
@@ -129,7 +129,16 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
     unset state is also the rollback. A raw harness launch that does not go through `deskdispatch`
     is outside this enforcement, exactly as it is outside the durable claim.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
-  NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
+  NEEDS_CONTEXT), before refilling run `deskusage record --claim-key <the claim key the dispatch used>`
+  with `--repo`, `--item`, `--tier` (the dispatched tier), and only the usage counts the completion
+  notification itself reports (`--input-tokens`, `--output-tokens`, `--total-tokens`, `--cost-micros`,
+  `--wall-seconds`); omit absent counts. Never read, quote or pass worker transcript, prompt or tool
+  output. Token flags take integer token counts, `--cost-micros` takes integer millionths of the
+  currency unit, and `--wall-seconds` takes integer seconds. Omit a figure unless the notification
+  reports it in that exact unit; never relabel milliseconds as seconds or currency units as micros.
+  These figures are not for ranking agents or people. Log a refusal verbatim and continue the refill;
+  never re-attempt the record another way.
+  Then dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
   not a state of the queue: re-sweep §Sources of work with each source's own instrument. Where every
   visible row really is claimed, in flight or capped, §WIP-capped — re-check, never stop applies. The
@@ -456,14 +465,17 @@ window stops, hands back, or asks the driver for direction.
    (`ratelimit.go`, `BreakerTrip = 5`, 15-minute cooldown) — so an idempotent write on five quiet
    ticks in a row opens the breaker with nothing having failed. Read freely; write only what a real
    change earns.
-4. **Refills stay inside the write budgets.** `deskpr create` and `deskfile new` share one repo-wide
+4. **Refills stay inside the write budgets.** `deskpr create` and an unbound `deskfile new` share one repo-wide
    ceiling of 20 per rolling hour, so a full 8-slot refill each half hour already spends most of it on
    one repo and leaves little for rework pushes on the same repo. Pace refills against that; exit 4
    names a `RetryAfter` — sleep it and attempt ONCE, never retry-loop. A workflow-bound filing
    (`deskfile new --for-pr <owner>/<repo>#<N> --brief <id>`, an issue an open PR's review or
    verification requires) is not counted by the per-session filing budget, so a spent budget never
-   defers it; it still spends this repo-wide ceiling (two writes per filing, with the back-link) and a
-   per-role, per-PR cap when one is configured (off by default).
+   defers it, and it does not spend the fixed ceiling above: it meets the per-PR outward-write tier
+   (two writes per filing, with the back-link), a separate repo-wide backstop of its own
+   (`write.bound.repo_hour`, 60 per repository per hour by default, never off; `deskfile attach
+   --kind mr` replies are held by it too) and a per-role, per-PR cap when one is configured (off by
+   default).
 5. **The tick still reports.** One line per §Output contract, and the sweep obligations of the HARD
    GATE are unaffected by a quiet queue.
 
@@ -537,7 +549,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no
   link trailer at all — exactly one `Brief: <stream>/<NN>`, or `Issue: #<N>` for issue-only work
-  that delivers no brief (a briefs-AUTHORING PR carries `Authors: <stream>/<NN>[, …]` instead) — and that refusal at write time is the enforcement, not a follow-up edit
+  that delivers no brief (a briefs-AUTHORING PR carries `Authors: <stream>/<NN>[, …]` instead). `Fixes: #<N>` — also `Closes:` / `Resolves:` — is the same link in its
+  resolving form: merging into the default branch closes the issue, where `Issue: #<N>` leaves it
+  open; it is never for an issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): such work links with `Issue: #<N>` and the close stays on the human-only path. — and that refusal at write time is the enforcement, not a follow-up edit
   to the stream README. `implemented` appears the instant that PR merges. `statusgen` derives both
   cells from the trailer plus the PR's own state — this
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
@@ -978,7 +992,7 @@ relay onto the tracker, nor does a durable escalation ride the lane alone. A fil
 PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
 `deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
 count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
-configured) and the outward-write ceiling, and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME

@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"sort"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,25 +17,14 @@ import (
 
 // maintenance is an inspection unless --apply is explicit. The periodic prune
 // owner calls the same engine with its independent common-directory cadence.
-func cmdObjectMaintenance(args []string) (err error) {
+func runObjectMaintenance(o objectsOpts) (err error) {
 	ac := &auditCtx{verb: "maintain"}
 	defer func() { ac.finalize(err) }()
-	fs := flag.NewFlagSet("maintenance", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	repo := fs.String("repo", "", "repository worktree to inspect (default current directory)")
-	apply := fs.Bool("apply", false, "perform bounded offline maintenance when due")
-	dry := fs.Bool("dry-run", false, "read-only inventory and task plan (the default)")
-	asJSON := fs.Bool("json", false, "emit the full report as JSON on stdout")
-	interval := fs.Duration("min-interval", gitmaintenance.DefaultInterval, "minimum time between attempts for the common Git directory")
-	timeout := fs.Duration("timeout", gitmaintenance.DefaultTimeout, "total inventory and task time budget")
-	positionals, parseErr := parseInterspersed(fs, args)
-	if parseErr != nil {
-		if deskkit.IsHelpRequest(parseErr) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("refused: invalid maintenance flags: " + parseErr.Error())
-	}
-	if len(positionals) != 0 || (*apply && *dry) {
+	// The one Cobra tree (cli.go) parsed the flags (durations included) and refused any
+	// positional before this handler ran; the contradiction and bounds stay domain refusals.
+	repo, apply, dry, asJSON := &o.repo, &o.apply, &o.dryRun, &o.json
+	interval, timeout := &o.interval, &o.timeout
+	if *apply && *dry {
 		return deskkit.Refused("refused: maintenance takes no positional arguments; --apply and --dry-run are contradictory")
 	}
 	if *interval < time.Hour || *timeout < time.Second || *timeout > 5*time.Minute {

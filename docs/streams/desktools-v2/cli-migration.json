@@ -8,6 +8,21 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/desk-session.test.sh",
+      "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/desk-session.test.py",
+      "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/fake-agent.fixture.py",
+      "reason": "desk-containers/31 synthetic offline agent used only by the bounded PID1 fixture, never packaged or released as an agent"
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s",
       "reason": "desk-containers/06 source-only YAML-to-JSON test adapter invoked by the offline packaging checker; Go main is run from the existing desk module, never installed or released as an operator CLI"
     },
@@ -62,9 +77,34 @@
       "reason": "release-owned in-image Python capability probe invoked only by tools/release/images.py before publication; never installed or exposed as an operator CLI (#3469)"
     },
     {
+      "class": "test",
+      "pattern": "images/verify-runner/stage-source.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's init container with the argument list the admission policy fixes, to stage the source a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/stage-cache.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's container with the argument list the admission policy fixes, to fill the module cache a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/witness.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it in a cluster witness Job to run one brief's Verify rows offline; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images_contract.py",
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/bundles.py",
+      "reason": "internal release provenance-bundle check imported by fixed release workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3094)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/bundles_test.py",
+      "reason": "offline provenance-bundle and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#3094)"
     },
     {
       "class": "test",
@@ -90,6 +130,16 @@
       "class": "test",
       "pattern": "tools/release/go_cache_mutation.py",
       "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/sbom.py",
+      "reason": "internal release SBOM writer imported by the fixed release workflow Python call; no shebang, main guard, argument parser or independent operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/sbom_test.py",
+      "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
     },
     {
       "class": "test",
@@ -165,6 +215,11 @@
       "class": "test",
       "pattern": "statusgen/domain/mutate.py",
       "reason": "source-only offline mutation runner owned by graph-execution/28; copies declared domain sources and fixtures into disposable directories and requires bounded Go tests to fail on planted defects; never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "statusgen/domain/mutate_test.py",
+      "reason": "offline regression for issue #4116; tests the domain mutation snapshot dependency closure and rejects setup failures as behavioral kills; invoked by the statusgen test suite, never an operator CLI"
     },
     {
       "class": "test",
@@ -485,13 +540,16 @@
         "docs/cellctl-model-policy.md",
         "docs/cellctl-provider-defaults.md",
         "tools/cellctl/tests/provider.test.sh",
-        "tools/cellctl/tests/parity.test.sh"
+        "tools/cellctl/tests/parity.test.sh",
+        "containers/k8s/compatibility/cellctl-config.schema.json",
+        "containers/k8s/components/compatibility-cellctl/README.md"
       ],
-      "parser": "manual os.Args parsing",
+      "parser": "Cobra typed command tree",
       "complexity": "complex",
       "basis": "8889 LOC, ~34 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/16",
-      "state": "migrated"
+      "state": "migrated",
+      "reason": "desk-containers/31 adds explicitly selected Kubernetes compatibility transport and attach-only command; legacy routes remain"
     },
     {
       "executable": "clusterguard",
@@ -697,7 +755,7 @@
       "complexity": "simple",
       "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskclaim",
@@ -906,11 +964,11 @@
         "tools/desk/README.md",
         "tools/desk/internal/regression/MANIFEST.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "1980 LOC, ~8 verbs, ~15 flags at 3ad1ad83c871",
       "owner": "desktools-v2/23",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskflip",
@@ -1004,7 +1062,7 @@
       "complexity": "simple",
       "basis": "1057 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/35",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "desklabel",
@@ -1293,7 +1351,7 @@
       "complexity": "simple",
       "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrelease",
@@ -1557,11 +1615,11 @@
         "tools/desk/internal/deskkit/pushtransport-mutations.json",
         "docs/cellctl.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "4684 LOC, ~7 verbs, ~18 flags at 3ad1ad83c871",
       "owner": "desktools-v2/22",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "fanoutloop",
@@ -1621,7 +1679,7 @@
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar-action.sh",
@@ -1639,7 +1697,8 @@
       "complexity": "simple",
       "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/muhar"
     },
     {
       "executable": "opmetrics",
@@ -1655,7 +1714,7 @@
       "complexity": "simple",
       "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "repohardenguard",
@@ -2619,6 +2678,63 @@
       "basis": "406 lines at 056d7b634c12",
       "owner": "desktools-v2/55",
       "state": "pending"
+    },
+    {
+      "executable": "deskusage",
+      "path": "tools/desk/cmd/deskusage",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "docs/streams/desk-supervision/brief-34-worker-usage-counts.md"
+      ],
+      "parser": "Cobra through tools/desk/internal/cli; generic owner fixture qualification pending",
+      "complexity": "simple",
+      "basis": "2 verbs (record, summary), 11 command flags; record semantics belong to desk-supervision/34, shared CLI qualification to this owner",
+      "owner": "desktools-v2/56",
+      "state": "pending"
+    },
+    {
+      "executable": "desk-session.sh",
+      "path": "containers/k8s/compatibility/desk-session.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "image-owned compatibility PID1 launcher in the five role images",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/k8s/components/compatibility-cellctl/workloads.yaml",
+        "tools/desk/internal/kubecompat/native/client.go",
+        "docs/cellctl.md",
+        "docs/docker.md"
+      ],
+      "parser": "POSIX fixed argv forwarding",
+      "complexity": "simple",
+      "basis": "bounded launch/retained-history/PTY/stop adapter; no scheduler or work authority",
+      "owner": "desk-containers/31",
+      "state": "exempt",
+      "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
+    },
+    {
+      "executable": "desk-session.py",
+      "path": "containers/k8s/compatibility/desk-session.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "image-owned compatibility PID1 launcher in the five role images",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/k8s/components/compatibility-cellctl/workloads.yaml",
+        "tools/desk/internal/kubecompat/native/client.go",
+        "docs/cellctl.md",
+        "docs/docker.md"
+      ],
+      "parser": "Python argparse typed boot/readiness/preparation protocol",
+      "complexity": "simple",
+      "basis": "bounded launch/retained-history/PTY/stop adapter; no scheduler or work authority",
+      "owner": "desk-containers/31",
+      "state": "exempt",
+      "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
     }
   ]
 }

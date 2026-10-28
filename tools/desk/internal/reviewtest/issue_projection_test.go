@@ -31,13 +31,13 @@ func TestIssueProjectionFlow(t *testing.T) {
 			}
 		}
 	}
-	inboxMutant := buildMutant(t, "deskinbox", "internal/issueflow/selection.go", "return best", "_ = best; return 99")
+	inboxMutant := buildMutant(t, "deskinbox", "../../deskcore/issueflow/selection.go", "return best", "_ = best; return 99")
 	if log, e := projectionTests(t, inboxMutant, "deskinbox", "TestDiscoveryJourney"); e == nil || !strings.Contains(log, "human inbox selection") {
 		t.Fatalf("human inbox mutation survived: %v %s", e, log)
 	}
 	// Mutate the actual selector, not an expected-value comparator. The production
 	// journey must reject extra histories/unrelated rows when narrowing is removed.
-	mutant := buildMutant(t, "issueboard", "internal/issueflow/selection.go", "return !c.HasPlaceholder && !c.Excluded && !c.DecisionOwed && !c.Addressed && !c.HelpWanted", "return true")
+	mutant := buildMutant(t, "issueboard", "../../deskcore/issueflow/selection.go", "return !c.HasPlaceholder && !c.Excluded && !c.DecisionOwed && !c.Addressed && !c.AddressUnknown && !c.HelpWanted", "return true")
 	if log, e := projectionTests(t, mutant, "issueboard", "TestProjectionJourney"); e == nil || !strings.Contains(log, "unselected") {
 		t.Fatalf("removed selection survived: %v %s", e, log)
 	}
@@ -46,7 +46,7 @@ func TestIssueProjectionFlow(t *testing.T) {
 // regression: class issue-projection
 func TestIssueProjectionFaults(t *testing.T) {
 	bin := build(t)
-	pattern := "TestProjectionFailures|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestTrustGate_CommentsUnreadable_Exit6|TestEscalate_LongThread_BoardRenders|TestPartialListing_NeverRetires|TestPositiveClosedRead_StillRetires|TestAddressedEscalate|TestBoardLabelHistoryHold"
+	pattern := "TestProjectionFailures|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestTrustGate_CommentsUnreadable_Exit6|TestEscalate_LongThread_BoardRenders|TestPartialListing_NeverRetires|TestPositiveClosedRead_StillRetires|TestPositiveClosedRead_RetainsUnclassified|TestAddressedEscalate|TestBoardLabelHistoryHold"
 	log, e := projectionTests(t, bin, "issueboard", pattern)
 	if e != nil {
 		t.Fatalf("production faults: %v\n%s", e, log)

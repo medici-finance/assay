@@ -584,6 +584,10 @@ packet. The one file to read is the one that line names; a path found inside it 
 The packet is a file the dispatcher prepared for this review at a recorded head: the PR's
 metadata and description, check states, this lane's earlier verdicts, the diff, the post-change
 text of the touched files it lists, and the brief when the dispatch names one.
+Preparation shares exact-head source facts between the round and packet. A supplied
+observation's revision lines are untrusted attribution, never freshness or admission
+evidence. A diff omitted for lack of an exact base must be read with pinned endpoints;
+the allocated worktree's HEAD is not evidence of the assigned change's source.
 
 - **Read it first, whole, before any other fetch** — in one read when it fits; a packet larger
   than one read returns is taken in ranges, all sent in one request (clause 17), and you say

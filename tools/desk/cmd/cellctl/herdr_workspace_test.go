@@ -53,6 +53,12 @@ esac
 		t.Fatal("cell workspace not reused", err)
 	}
 	one.herdrWindow("one-worker", "echo fixture", a.ID)
+	if err := os.WriteFile(filepath.Join(dir, "tmux"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := one.scrubbedHerdrAttach("/private/one.sock", "one-cell"); err != nil {
+		t.Fatal(err)
+	}
 	s := &commsSurface{Cockpit: "herdr", Label: "two-comms-fixture"}
 	if err := two.openCommsSurface(s); err != nil {
 		t.Fatal(err)
@@ -61,6 +67,9 @@ esac
 		t.Fatal("comms wrong workspace")
 	}
 	calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if !strings.Contains(string(calls), "attach -t 'one-cell'") || strings.Contains(string(calls), "claude") {
+		t.Fatal("Herdr must attach to the private session, never start another harness", string(calls))
+	}
 	if strings.Count(string(calls), "workspace create ") != 2 || !strings.Contains(string(calls), "tab create --workspace two --label two-comms-fixture") || !strings.Contains(string(calls), "tab create --workspace one --label one-worker") {
 		t.Fatalf("unscoped creation: %s", calls)
 	}

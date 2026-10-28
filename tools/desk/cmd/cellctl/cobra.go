@@ -112,7 +112,7 @@ func rawVerb(args []string) bool {
 		return false
 	}
 	switch a[0] {
-	case "model-policy", "cache-run", "container-run", "defaults", "comms-reader":
+	case "model-policy", "cache-run", "container-run", "defaults", "hotfix", "comms-reader", "scrubbed-run":
 		return true
 	}
 	return false
@@ -171,11 +171,11 @@ func runTreeSelected(args []string, sink func(perfrec.Context)) (code int) {
 		// A flag-less verb parses no flags; its help (decision entry 5) is the help verb's.
 		args, flagless = append(append([]string{}, args[:i]...), "help", args[i]), false
 	}
-	if i+2 == len(args) && args[i] == "defaults" && (args[i+1] == "-h" || args[i+1] == "--help") {
+	if i+2 == len(args) && (args[i] == "defaults" || args[i] == "hotfix") && (args[i+1] == "-h" || args[i+1] == "--help") {
 		// defaults reads its words by exact comparison, so the tree parses no flags for it and
 		// Cobra never sees its help flag. Its sole help word is the help verb's, which reads no
 		// roster (decision entries 1 and 9); any other line keeps the verb's own comparison.
-		args = append(append([]string{}, args[:i]...), "help", "defaults")
+		args = append(append([]string{}, args[:i]...), "help", args[i])
 	}
 	if i < len(args) {
 		verbWords = append([]string{}, args[i+1:]...)
@@ -482,8 +482,8 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
-		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
 	cellopFixtureCommands(root)
@@ -754,6 +754,10 @@ func upCmd() *cobra.Command {
 		if v.Bool("plan") && cmd.Flags().Changed("apply") {
 			die("up: --plan and --apply are exclusive")
 		}
+		if c.kubeSelected() {
+			c.kubeUp(cmd, v, lastBare(args[1:]))
+			return nil
+		}
 		if v.Bool("plan") {
 			upPlan(cmd, c, c.upTargets(v.Strings("role"), v.Bool("no-the-desk")))
 			return nil
@@ -785,6 +789,14 @@ func downCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		given := len(args) > 1 || cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit")
+		c := loadCell(cell)
+		if c.kubeSelected() {
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("compatibility down refuses host cockpit/deskd flags")
+			}
+			c.kubeDown(cmd, args[1:])
+			return nil
+		}
 		cmdDown(cell, resolve(set, nil), args[1:], given)
 		return nil
 	}

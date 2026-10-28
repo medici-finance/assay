@@ -11,7 +11,7 @@ placeholder briefs; **worker-desk** dispatches workers that implement them behin
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
 **The stream board is a derived, generated surface** — this
-desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>` or `Issue: #<N>`) that
+desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` / its resolving form `Fixes: #<N>`, never the latter for a decision-gate issue) that
 feed it; it never edits a board row itself.
 
 Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
@@ -61,7 +61,7 @@ identity. Three desk-specific residues `deskboot` does not carry:
    is COULD-NOT-CHECK, not an empty world. Cross-repo deliverables land as draft PRs in the
    report/product repos; pair-review each with its in-repo status-flip PR.
 
-2. **Run the board — `deskboard actions`** (a read-only instrument over `gh`; JSON by default,
+2. **Read the complete classified queue using the qualified recipe below (or the supported legacy `deskboard actions` recipe)** (a read-only instrument over `gh`; JSON by default,
    `--table` for a human read). One ACTION per open PR across the repo set, MERGE-NOW leading,
    computed from current head vs the head of the desk's latest review, the CI rollup, the
    `mergeStateStatus` four-state and the reviewer bot's review STATE at head — the desk's flip
@@ -90,7 +90,32 @@ identity. Three desk-specific residues `deskboot` does not carry:
      ONLY "review notes recorded internally; maintainer follow-up required". Non-sensitive findings
      post publicly as normal.
 
-3. **Arm BOTH watchers via `capability:durable-monitor` — each a durable, re-arming watcher that survives across turns** (check
+3. **Arm the watchers once through `capability:durable-monitor`**, after checking
+   existing handles. Use the [qualified review observation recipe](../../references/desk-common.md#review-observation-handoff)
+   when the producer/plugin matrix supports it. Its classified watcher owns the one
+   queue collection, emits `REVIEW-PLAN` plus `REVIEW-OBSERVATION`, and supplies the
+   independent due liveness wake even when no `PR-EVENT` changed. The event baseline,
+   stop checks, missed completion recovery and monitor-health obligations remain.
+   Do not run another routine foreground queue/actions/prs scan on a compatible cutoff.
+   Keep one owner for each watch; follow [supervision and context](../../references/desk-common.md#supervision-and-context).
+   On an incompatible pin or a complete-cycle hold, retain the supported legacy recipe
+   described in that reference. Never silently omit a quarantined or degraded PR to make
+   the new recipe succeed, or run both collection/effect paths in the same cycle.
+   A fresh actionable PR is a review trigger at any age; the `UNREVIEWED` alarm is a
+   monitor-health incident, not an age threshold before dispatch.
+
+   **Guard lines bind both supported recipes.** Use the shipped `pr-monitor.sh`;
+   do NOT hand-write the poll. **Never a disowned shell loop** (`... & disown`):
+   arm it through the durable monitor so a failed watcher is observable.
+   Arm with `DESK_LOOP` exported. Each repo read uses its own per-repo role token
+   minted from that loop and scoped to one read — never the ambient `gh` login,
+   never an inherited `GH_TOKEN`. A failed mint is could-not-check, never
+   "no open PRs". **Never substitute `deskboard prs --quiet`** for the classified
+   liveness/review-trigger sweep: `prs` carries no review state and cannot see
+   NEEDS-REVIEW. These safeguards remain resident here when using the shared recipe.
+
+   **Supported legacy recipe — these lines bind it unchanged.**
+   **Arm BOTH watchers via `capability:durable-monitor` — each a durable, re-arming watcher that survives across turns** (check
    what is already armed first; never arm a second of either). The **event monitor** is the
    shipped `plugins/assay/scripts/pr-monitor.sh` — do NOT hand-write the poll. It reads each
    repo's open PRs once (`gh pr list --state open --limit <N> --json
@@ -154,9 +179,9 @@ not own.
 ## HARD GATE — no idle claim without a fresh board sweep
 
 **An idle claim is a claim about the QUEUE, and the only evidence about the queue is a fresh
-`deskboard actions` sweep.** Before this desk EVER says "nothing in flight", "idle", "caught up",
+classified sweep (`review-queue` in the qualified recipe, `actions` in the supported legacy recipe).** Before this desk EVER says "nothing in flight", "idle", "caught up",
 "queue empty" or "current", it is a HARD PRECONDITION that it has *just* swept and that the sweep
-reports **zero NEEDS-REVIEW and zero RE-REVIEW** (both numbers on the `actionable:` line). No fresh
+reports **zero NEEDS-REVIEW and zero RE-REVIEW** (the validated shared plan Idle counts, or both numbers on the legacy `actionable:` line). No fresh
 sweep → no idle claim. Full stop.
 
 **"My dispatched reviewers finished" is NOT evidence the queue is empty.** A reviewer completing
@@ -293,6 +318,11 @@ failure this section prevents**, and there is no state in this loop called "the 
   issued together run concurrently), up to N; never dispatch-one-then-wait-then-the-next. A
   risk-classed PR takes TWO slots — correctness and security — in the SAME turn, not security after
   the correctness verdict.
+- **Preparation handoff:** supported `deskdispatch --kit review --observation FILE`
+  consumes advisory exact-subject attribution and shares round/packet preparation.
+  Reuse the qualified watcher artifact; do not add a collection sweep or bypass
+  claims/model admission to populate the flag. Legacy mode omits the flag. Read the packet once, refetch
+  omitted material only, and preserve the review prompt's independent head/check reads.
 - **Fill to N** at the risk-keyed tier; a risk-classed PR's separate `/security-review` agent
   occupies its own slot. **Refill on completion fills ALL free slots, not one:** the instant a
   reviewer finishes (verdict posted, or errored), sweep and dispatch every actionable `(PR, lane)`
@@ -310,7 +340,9 @@ failure this section prevents**, and there is no state in this loop called "the 
   `:public` allowed-repos entry) are never parallelised around.
 - **Never stop-and-wait.** When actionable = 0, do not exit — the watchers keep the loop alive. "I
   dispatched everything I saw" is not a stop condition and is not an idle claim (§HARD GATE).
-- **Priority within a refill:** RE-REVIEW before NEEDS-REVIEW at the same score (the worker is
+- **Priority within a refill:** use the shared plan’s ordered selected proposals. The
+  supported legacy recipe retains its prior board ordering, unchanged:
+  RE-REVIEW before NEEDS-REVIEW at the same score (the worker is
   waiting on the desk), otherwise board order (gate-score, oldest first). Priority decides which
   rows take the free slots when rows outnumber slots; it never serialises rows that could all take a
   free slot now.
@@ -319,7 +351,25 @@ failure this section prevents**, and there is no state in this loop called "the 
 
 One cycle = sweep → plan → act.
 
-Write each sweep to a per-invocation scratch file and pass its path — never a fixed name in a
+Use the [shared review observation handoff](../../references/desk-common.md#review-observation-handoff).
+The current approved selection policy, current time, complete requested scope and
+available proposal capacity are explicit inputs. Both this prose desk and the discrete
+`reviewloop` bridge consume the same `PlanCandidates` result. Execute only `selected`
+proposals in their returned policy order; do not sort by operation key, re-rank locally,
+or infer work from priorities absent from the candidate population. A selected proposal
+is advisory: lane admission, live claims, model checks and consequential readbacks still
+run at execution. Proposal capacity is not a lane-slot grant; retain the existing
+per-lane slot accounting below, including both independent lanes where required.
+
+The watcher observation is passed unchanged to preparation. Completion or priority changes
+rerun the offline planner on an applicable observation; due freshness, scope or source-policy
+changes require refresh or a visible hold. Exit 6 is could-not-check, never idle. Driver
+cutover remains human-gated; source recipe qualification does not switch an installed desk.
+Use per-invocation scratch files, never a fixed name in a shared scratch dir.
+In the legacy recipe, planner exit 6 is BLIND, never "all clear"; without `--prs`
+every outward verb is SUPPRESSED as could-not-check.
+
+**Supported legacy recipe — unchanged.** Write each sweep to a per-invocation scratch file and pass its path — never a fixed name in a
 shared scratch dir (desk-shell.md §Scratch files):
 
 ```bash
@@ -351,6 +401,18 @@ as the planner and acts on its rows.
   ```bash
   deskdispatch <alias>--pr-<N> --kit review --tier strong|any --model <actual-model> --repo <owner/repo> --pr <N>
   deskdispatch <alias>--pr-<N>--security --kit review --tier strong --model <actual-model> --repo <owner/repo> --pr <N>   # risk-classed only, SAME turn
+  ```
+
+  Those two lines are the supported legacy recipe's form.
+  The following examples are for a **successful qualified cycle only**. Set
+  `OBSERVATION` to that cycle's emitted `REVIEW-OBSERVATION` path; never reuse an
+  earlier cycle's value after a hold or rollback. In the **legacy recipe**, unset
+  `OBSERVATION` and omit the entire `--observation FILE` pair from both commands.
+
+  ```bash
+  OBSERVATION="<current successful cycle's REVIEW-OBSERVATION path>"
+  deskdispatch <alias>--pr-<N> --kit review --tier strong|any --model <actual-model> --repo <owner/repo> --pr <N> --observation "$OBSERVATION"
+  deskdispatch <alias>--pr-<N>--security --kit review --tier strong --model <actual-model> --repo <owner/repo> --pr <N> --observation "$OBSERVATION"   # risk-classed only, SAME turn
   ```
 
   `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
@@ -928,7 +990,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
      briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
      (issue-only work that delivers no brief — e.g. a pin bump / re-pin PR, which by construction
-     carries no brief). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
+     carries no brief). `Fixes: #<N>` (also `Closes:` / `Resolves:`, or `Fixes: <owner>/<repo>#<N>`
+     for another repository) is the RESOLVING form of `Issue:` — the same single link, which
+     GitHub also honours as a closing keyword, so merging closes the issue; it satisfies the gate
+     exactly as `Issue:` does, so it is not bounced for lacking a `Brief:` line. It is NOT acceptable when it names an
+     issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): GitHub would close that issue at merge under
+     the merging human's name, bypassing the human-only close path. A resolving trailer (`Fixes:` / `Closes:` / `Resolves:`, with or
+     without a colon) naming such an issue is a `--request-changes` finding — ask for `Issue: #<N>`. A public PR also never names a
+     private repository's issue in its link trailer (the cross-repository form would publish that reference and close the issue). With a colon it
+     IS the link, so it may not sit beside a `Brief:`, `Authors:`, `Cross-repo-brief:` or `Issue:`
+     line (a brief-delivering PR that also closes an issue uses the colon-less `Closes #N`). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
      `requireTrailer` enforce, so an `Issue: #<N>`- or `Authors:`-only body is fully compliant and
      must NOT be bounced for lacking a `Brief:` line. The reverse IS a finding: a docs-only PR that
      only adds brief files, board READMEs and changelog fragments but carries `Brief:` makes the
@@ -942,7 +1013,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      catch this, so a PR that reached review with this shape
      is either pre-gate or had its body edited around the writer check — flag it regardless.
      Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
-     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>` or `Issue: #<N>` line; the board can't
+     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>`, `Issue: #<N>` or `Fixes: #<N>` line; the board can't
      link this PR to its work item without it." (`deskpr create` already refuses to open a PR with
      no trailer, so this bounce is the second layer for the no-trailer class only. A PR that carries
      `Issue: #<N>` satisfied that gate legitimately — it is NOT evidence a refusal was routed
@@ -1103,8 +1174,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   standard error. Credit a row only on `credit=credited`, never on `verdict=match` alone. The
   record must be in the brief's own repository and authored by the dispatcher; a login-only
   verifier match, a shallow clone, a missing roster or an unreadable record is
-  `credit=could-not-check`, which is not credit. Otherwise reject the row as unattested. Known limits: version 2 (cross-repository) receipts are
-  refused in container mode; a linked worktree's git directory is not mounted in the container, so
+  `credit=could-not-check`, which is not credit. Otherwise reject the row as unattested. A version-2 (cross-repository) bracket is admitted with
+  both repositories named in its attestation line. `--credit` credits it only when both
+  repositories pass the repository checks: the tracking repository, where the record lives, is
+  the brief's own, and the source repository (`source-repo=`) is in the configured repository
+  set; otherwise it answers `credit=not-credited`. Known limits: a linked worktree's git directory is not mounted in the container, so
   rows that need git history must run on the host; the in-container digest is only as
   trustworthy as the pinned image that computes it; and condition 1 reads the commit author git
   records, which is author-asserted attribution, not authorization: whoever can commit to the brief can write
@@ -1305,7 +1379,7 @@ relay onto the tracker, nor does a durable escalation ride the lane alone. A fil
 PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
 `deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
 count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
-configured) and the outward-write ceiling, and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
