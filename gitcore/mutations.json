@@ -41,7 +41,7 @@
       "name": "the scrubber keeps C1 control characters",
       "file": "claimref.go",
       "old": "\t\t\tif unicode.IsControl(r) {",
-      "new": "\t\t\tif r < 0x20 || r == 0x7f {"
+      "new": "\t\t\tif unicode.IsControl(r) && r <= 0x7f {"
     },
     {
       "name": "the class guard stops recognising a receive-pack request builder",
