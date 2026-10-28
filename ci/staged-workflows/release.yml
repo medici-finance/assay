@@ -557,11 +557,17 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
-      # Same baseline step as ci.yml: the witness skew tests fail when
-      # SG_OLD_BIN is unset, so the release gate needs it too.
-      - name: Fetch the statusgen skew baseline (checksum-verified)
+      # The witness skew tests (statusgen/36 Verify rows 5 and 6) fail when
+      # SG_OLD_BIN is unset, so the release gate needs the baseline too. ci.yml
+      # downloads the checksum-verified release binary; this runner cannot reach
+      # the release-asset CDN (see header), so the same baseline is BUILT here
+      # from source at the commit v1.0.52 points at, pinned by full SHA (the
+      # script refuses any other). Needs only github.com git + the module proxy.
+      # Ruling: medici-finance/assay#4459.
+      - name: Build the statusgen skew baseline from source (v1.0.52, pinned commit)
         if: matrix.leg == 'statusgen'
-        run: bash statusgen/fetch-baseline.sh statusgen-linux-amd64 "${RUNNER_TEMP}/sg-baseline"
+        # v1.0.52^{} = 2718fc978b7454f0f2aa422e1236fb6ad543e0d2
+        run: bash statusgen/fetch-baseline.sh --from-source 2718fc978b7454f0f2aa422e1236fb6ad543e0d2 "${RUNNER_TEMP}/sg-baseline"
 
       # statusgen is its own Go module at statusgen/. Same commands the PR-time
       # ci.yml runs for it, from that module root.

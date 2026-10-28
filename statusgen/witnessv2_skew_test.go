@@ -2,8 +2,9 @@ package main
 
 // witnessv2_skew_test.go — statusgen/36 Verify rows 5 and 6, both against a
 // REAL prior release binary ($SG_OLD_BIN, built by the Verify command from a
-// release tag, or in CI the same tag's published binary, checksum-verified by
-// fetch-baseline.sh), never the changed code and never a golden file the
+// release tag; in CI fetch-baseline.sh supplies the same tag's published
+// binary, checksum-verified, or on the release runner builds it from source at
+// the tag's pinned commit), never the changed code and never a golden file the
 // changed code produced.
 //
 // Row 5 (version skew): a v2 witness the new reader releases is REFUSED by the
@@ -27,9 +28,10 @@ import (
 
 // oldStatusgenBin returns $SG_OLD_BIN. An unset variable FAILS the test in
 // every environment, CI included: a skip would let the skew guard disappear
-// silently. CI exports SG_OLD_BIN from the pinned baseline release binary,
-// downloaded and checked against that release's checksums.txt by
-// statusgen/fetch-baseline.sh.
+// silently. CI exports SG_OLD_BIN from the pinned baseline via
+// statusgen/fetch-baseline.sh: the release binary checked against that
+// release's checksums.txt, or (release runner) built from source at the tag's
+// pinned commit.
 func oldStatusgenBin(t *testing.T) string {
 	t.Helper()
 	bin := os.Getenv("SG_OLD_BIN")
