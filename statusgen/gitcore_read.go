@@ -57,6 +57,13 @@ func openGitCoreRead(root string) gitCoreRead {
 	if format != gitcore.BuildObjectFormat() {
 		return gitCoreRead{native: "runtime repository hash format differs from go-git's build format"}
 	}
+	why, err = gitcore.NativeRepositoryReadReason(top)
+	if err != nil {
+		return gitCoreRead{err: err}
+	}
+	if why != "" {
+		return gitCoreRead{native: why}
+	}
 	r, err := gitcore.Open(top)
 	if err != nil {
 		return gitCoreRead{err: err}

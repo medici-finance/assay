@@ -14,6 +14,9 @@ import (
 
 // regression: #2395
 func TestGoGitReadParity(t *testing.T) {
+	t.Run("reftable-discovery", coreReftableParity)
+	t.Run("nested-dotgit-discovery", coreNestedDotGitParity)
+	t.Run("repository-metadata-errors", coreRepositoryProfileErrors)
 	t.Run("blob-bytes-and-errors", TestGitShowObjectMatchesExec)
 	t.Run("run-lifetime", TestGitReadSessionEndsWithRun)
 	t.Run("strict-raw-author", TestVflipAmbiguousAuthor)

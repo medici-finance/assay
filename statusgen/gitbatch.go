@@ -45,14 +45,35 @@ var errGitObjectMissing = errors.New("git object missing")
 
 // gitReadSession is one run's git read memo plus its batch readers.
 type gitReadSession struct {
-	core       map[string]gitCoreRead // canonical repositories, scoped to this existing run owner
-	coreMu     sync.Mutex             // exact-base callers can already hold mu; never recursively acquire it
-	mu         sync.Mutex
-	batches    map[string]*catFileBatch    // per root; nil entry = could not start, use exec
-	objects    map[string]gitReadResult    // root + "\x00" + spec
-	mergeBases map[string]gitReadResult    // root + "\x00" + a + "\x00" + b
-	exactBases map[string]string           // root + "\x00" + ref -> mergeBaseExact answer ("" = unresolved)
-	claims     map[string]*claimBranchRead // one remote branch/decay observation per root
+	core          map[string]gitCoreRead // canonical repositories, scoped to this existing run owner
+	coreMu        sync.Mutex             // exact-base callers can already hold mu; never recursively acquire it
+	mu            sync.Mutex
+	batches       map[string]*catFileBatch    // per root; nil entry = could not start, use exec
+	objects       map[string]gitReadResult    // root + "\x00" + spec
+	mergeBases    map[string]gitReadResult    // root + "\x00" + a + "\x00" + b
+	exactBases    map[string]string           // root + "\x00" + ref -> mergeBaseExact answer ("" = unresolved)
+	claims        map[string]*claimBranchRead // one remote branch/decay observation per root
+	staleFailLogs map[string][]byte           // successful native history bytes; fresh context and argv key
+}
+
+// staleFailRead shares only the expensive raw read. Every brief still applies
+// its own issue, path and date policy. A failed command is never sticky, and a
+// caller cannot mutate the next caller's answer. The callback executes native
+// Git directly and cannot reenter this session's readers while mu is held.
+func (s *gitReadSession) staleFailRead(key string, read func() ([]byte, error)) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if out, ok := s.staleFailLogs[key]; ok {
+		return cloneBytes(out), nil
+	}
+	out, err := read()
+	if err == nil {
+		if s.staleFailLogs == nil {
+			s.staleFailLogs = map[string][]byte{}
+		}
+		s.staleFailLogs[key] = cloneBytes(out)
+	}
+	return out, err
 }
 
 // activeGitReads is the session run() opened, or nil outside one.

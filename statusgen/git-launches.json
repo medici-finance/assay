@@ -1,5 +1,5 @@
 {
-  "direct_ceiling": 84,
+  "direct_ceiling": 83,
   "dynamic_ceiling": 12,
   "seam_ceiling": 103,
   "reasons": {
@@ -844,13 +844,8 @@
       "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
     },
     "s169": {
-      "operation": "exec.Command(\"git\", args...)",
-      "why": "This constructed argv performs the existing bounded/range or first-parent history walk. Canonical PathHistory is an unfiltered committer-time walk and is not the native selection/rendering contract. Preserve the original history verdict rather than implement another history engine.",
-      "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
-    },
-    "s170": {
-      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", parents[0]+\"..\"+fields[1], \"--format=%B\")",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "operation": "ordinary native stale-FAIL context (config/ref snapshot), first-parent/path history and merge-body range logs",
+      "why": "Native Git still owns config/includes, symbolic refs, path simplification, first-parent and short-endpoint range semantics. Successful raw log bytes are shared only inside the existing run session, with physical repository/cwd, fresh selected-main ID, native effective config/ref namespace and full environment/argv binding. Per-brief issue/date/path decisions remain independent. Failed reads are retryable; unqualified profiles remain uncached. TestStaleFailHistoryQueryReuse records the repeated-read regression; config, namespace, failure and run-boundary controls retain verdicts.",
       "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
     },
     "s171": {
@@ -2010,15 +2005,9 @@
     },
     {
       "key": "stalefail.go::newestFailFix::direct#2",
-      "expression": "exec.Command(\"git\", args...)",
+      "expression": "exec.Command(\"git\", append([]string{\"-C\", root}, args...)...)",
       "disposition": "retained",
       "reason": "s169"
-    },
-    {
-      "key": "stalefail.go::newestFailFix::direct#3",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", parents[0]+\"..\"+fields[1], \"--format=%B\")",
-      "disposition": "retained",
-      "reason": "s170"
     },
     {
       "key": "stalefail.go::newestFailFix::seam#1",

@@ -74,7 +74,9 @@ files:
   `statusgen/gitbatch.go`, `statusgen/gitinfo.go`, `statusgen/verifyflip.go`,
   `statusgen/registercorroborate.go` and the other Git read call sites
 - `statusgen/scripts/count-git-launch.sh`, `statusgen/internal/gitlaunch/`,
-  `statusgen/git-launches.json`, `statusgen/gogit-mutations.json` and their named parity/counter controls
+  `statusgen/git-launches.json`, `statusgen/gogit-mutations.json`,
+  `statusgen/history-mutations.json`, `statusgen/stalefail_history_test.go`,
+  `statusgen/gogit_discovery_parity_test.go` and their named parity/counter controls
 - `docs/streams/desktools-v2/cli-migration.json` (the two exact /76 test routes only),
   `tools/desk/internal/clicontract/gitlaunch_test.go`
 - `tools/go-analysis/pins.env` (explicitly authorized Go-loader repair using existing Go 1.27.1 archive pins)
@@ -95,6 +97,11 @@ ordinary and provenance profiles separately: provenance keeps its original repos
 locator stripping and replacement/graft isolation. A positively observed unsupported
 profile selects native execution before the operation; an in-process read error remains
 uncertainty and never triggers a native retry.
+
+The existing invocation reader also shares successful stale-FAIL native log bytes,
+bound to physical repository, selected main, effective native configuration/reference
+namespace and exact arguments/environment. Each brief retains its own issue, path and
+date decision. Failures are retryable; unsupported profiles stay uncached.
 
 Native retention is operation-specific. The generic blob accessor using full commit
 decoding has observed raw-header/path-selector gaps; the selected diff reader has

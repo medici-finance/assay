@@ -51,6 +51,9 @@ func (r *Repo) NativeDiscoveryReason() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if why := nativeRepositoryReadReason(cfg); why != "" {
+		return why, nil
+	}
 	if cfg.Raw.HasSection("include") || cfg.Raw.HasSection("includeIf") {
 		return "native discovery config includes are not merged by the selected reader", nil
 	}

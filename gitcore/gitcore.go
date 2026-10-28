@@ -663,7 +663,8 @@ func List(opts ListOpts) ([]*plumbing.Reference, error) {
 
 // Toplevel returns the working tree root containing dir, matching
 // `git rev-parse --show-toplevel`: it walks UP from dir to find the nearest ancestor
-// holding a ".git" entry, so it works from any subdirectory of a worktree.
+// holding a repository-shaped ".git" entry, so a stray empty directory does not
+// hide a valid parent repository. Invalid gitdir pointer files remain errors.
 //
 // This does not open the repository at all (no git.PlainOpenWithOptions, so the
 // extensionTolerantStorer workaround Open needs does not apply here — there is
@@ -675,8 +676,28 @@ func Toplevel(dir string) (string, error) {
 	}
 	cur := abs
 	for {
-		if _, statErr := os.Stat(filepath.Join(cur, ".git")); statErr == nil {
-			return resolveSymlinksBestEffort(cur), nil
+		entry := filepath.Join(cur, ".git")
+		info, statErr := os.Stat(entry)
+		if statErr == nil {
+			gitDir := entry
+			if !info.IsDir() {
+				gitDir, err = readGitdirPointer(entry, cur)
+				if err != nil {
+					return "", fmt.Errorf("gitcore: toplevel %s: %w", dir, err)
+				}
+			}
+			valid, checkErr := repositoryDirectory(gitDir)
+			if checkErr != nil {
+				return "", fmt.Errorf("gitcore: toplevel %s: %w", dir, checkErr)
+			}
+			if valid {
+				return resolveSymlinksBestEffort(cur), nil
+			}
+			if !info.IsDir() {
+				return "", fmt.Errorf("gitcore: toplevel %s: gitdir target is not a repository", dir)
+			}
+		} else if !os.IsNotExist(statErr) {
+			return "", fmt.Errorf("gitcore: toplevel %s: %w", dir, statErr)
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {

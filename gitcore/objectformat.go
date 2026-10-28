@@ -11,6 +11,31 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/hash"
 )
 
+// repositoryReadConfig observes the common configuration with the existing parser.
+func repositoryReadConfig(dir string) (*config.Config, error) {
+	top, err := Toplevel(dir)
+	if err != nil {
+		return nil, err
+	}
+	common, err := CommonDir(top)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(filepath.Join(common, "config"))
+	if err != nil {
+		return nil, err
+	}
+	cfg, readErr := config.ReadConfig(f)
+	closeErr := f.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	return cfg, nil
+}
+
 // ObjectFormat reads the local repository's declared hash format through the same
 // configuration parser as Open. It reads the common config for linked worktrees.
 // It must run before Open: this pinned go-git selects its hash implementation at
@@ -18,25 +43,9 @@ import (
 // Only a positively observed mismatch permits a caller's native compatibility
 // path; an unreadable/invalid configuration remains an error.
 func ObjectFormat(dir string) (string, error) {
-	top, err := Toplevel(dir)
+	cfg, err := repositoryReadConfig(dir)
 	if err != nil {
 		return "", err
-	}
-	common, err := CommonDir(top)
-	if err != nil {
-		return "", err
-	}
-	f, err := os.Open(filepath.Join(common, "config"))
-	if err != nil {
-		return "", err
-	}
-	cfg, readErr := config.ReadConfig(f)
-	closeErr := f.Close()
-	if readErr != nil {
-		return "", readErr
-	}
-	if closeErr != nil {
-		return "", closeErr
 	}
 	// v5.19.3's Unmarshal preserves this in Raw but does not populate the typed
 	// Extensions.ObjectFormat field. Use its existing case-insensitive codec.

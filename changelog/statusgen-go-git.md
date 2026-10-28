@@ -12,3 +12,8 @@ through named native seams. The original counter entrypoint enforces an immutabl
 ceiling independently for each category. Source counts describe constructions, not
 runtime launch counts or performance. Each remaining operation records its capability or public-output boundary and caller owner;
 human acceptance and independent verification are still required.
+
+- Reuse repeated stale-FAIL history queries within one lint invocation while preserving
+each brief's verdict and native repository/configuration boundaries. Preselect native
+reads for unsupported repository extensions, and preserve parent discovery past stray
+nested Git directories.
