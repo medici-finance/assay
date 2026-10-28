@@ -128,10 +128,14 @@ numeric App ID.
 
 The Dockerfile owns the direct Debian bookworm package pins. Their risk assessment
 is recorded on [issue 3469](https://github.com/medici-finance/assay/issues/3469#issuecomment-6272973965).
-The row tools `jq`, `shellcheck` and `tmux` are pinned the same way, because rows
-run offline and cannot fetch a tool they call
+The row tools `jq`, `shellcheck` and `tmux` are separate direct Debian pins, added because
+rows run offline and cannot fetch a tool they call
 ([issue 4684](https://github.com/medici-finance/assay/issues/4684),
-[issue 4318](https://github.com/medici-finance/assay/issues/4318)).
+[issue 4318](https://github.com/medici-finance/assay/issues/4318)). Issue 3469 does not
+cover them; their risk summary (publisher, exact versions and release dates, permissions,
+persistence, transitive packages) is recorded on #4771. The `jq` pin is a
+`bookworm-security` version, which the archive drops once superseded, so that build fails
+closed and needs a reviewed pin update sooner than the others.
 Apt resolves transitive dependencies from the base suite during the approved build;
 `/usr/local/share/verify-runner/packages.txt` records every installed Debian package
 and version in the immutable image, including transitive dependencies and Python.

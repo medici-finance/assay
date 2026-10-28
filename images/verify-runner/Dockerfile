@@ -68,7 +68,8 @@ FROM ${RUNNER_BASE}
 #
 # Row tools (#4684, #4318): rows run with no network, so a tool a row or the code
 # under test shells out to must already be here. jq, shellcheck and tmux are
-# Debian packages pinned like the Python ones; check.py proves each one runs.
+# Debian packages with exact pins; their risk summary is issue #4771 (not #3469).
+# check.py proves each one runs.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       python3-yaml=6.0-3+b2 \
