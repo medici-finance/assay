@@ -287,6 +287,18 @@ func makeGateCard(root string, bf *BriefFile, purpose string) gateCard {
 		c.Unavailable = "brief identity unresolved"
 		return c
 	}
+	// Older offline configurations may omit the home slug. Resolve that
+	// link scope from the same local registry, never a network lookup or guess.
+	if c.Repository == "" {
+		if reg, present, err := loadGraphRepos(root); err == nil && present {
+			if self, err := loadMigrateRegistry(root); err == nil {
+				entry := reg.Aliases[self.self]
+				if !entry.Unpublished {
+					c.Repository = entry.Repo
+				}
+			}
+		}
+	}
 	rel, err := filepath.Rel(root, bf.Path)
 	if err != nil {
 		c.Unavailable = "brief path unresolved"
