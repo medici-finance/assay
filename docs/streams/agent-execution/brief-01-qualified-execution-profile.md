@@ -188,6 +188,34 @@ Verdict accounting: 4 required rows. Rows 1–3 pass, witnessed in the bracket. 
 
 **VERIFY: BLOCKED** — 3 of 4 rows pass; row 4's consumers check cannot reach the delivery from the admitted merged-main home (COULD-NOT-CHECK, exit 2) and still needs a reviewed row-definition repair pinning --delivery and its first-parent --base.
 
+### Independent reverification — 2026-10-27
+
+Fresh independent run after the exact human approval recorded on issue #4703. Source 384d5eda2ca230e7e748750fdaed6ba4d1d50ed8; gpt-6.1-sol, strong. Native pre-work admission is record #4704. Installed host statusgen and deskdispatch are v1.0.63. The container used the digest recorded below, with network none and the engine default seccomp profile. All source files remained read-only during execution. Historical Evidence is preserved.
+
+Verification-Table: delivery=65ca2b848584b1ccde22f28afa4137767317fe4b base=b1a7e42333a4384da45d399bc723e33f4dc3a3f7 original=6ae7933e2f92aecce05ac80858690a1e31ba304b
+Acceptance-Transition: amendment=04c831abcd9dffa7f4ef86fce2d1c91231eda221 approval=https://github.com/medici-finance/assay/issues/4703#issuecomment-6455692591
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --root . --consumers --brief agent-execution/01 --delivery 65ca2b848584b1ccde22f28afa4137767317fe4b --base b1a7e42333a4384da45d399bc723e33f4dc3a3f7 > "$consumer_out" && cat "$consumer_out" && grep -Fqx -- "summary: 6 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing" "$consumer_out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4704 run=d61352f30225d34b46bdbe6c942b9a3922485483fbb4ccaa8bd78e77e808521e source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 brief=docs/streams/agent-execution/brief-01-qualified-execution-profile.md model=gpt-6.1-sol tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionProfileV1Compatibility$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionProfileV1Compatibility " "$execution_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionProfilePreservationFlow$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionProfilePreservationFlow " "$execution_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionProfileBindingAndSchema$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionProfileBindingAndSchema " "$execution_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:6963ad5593dc6a427eb55e64b98194a327862d2882567ed257475fd4810eb876
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4704 run=d61352f30225d34b46bdbe6c942b9a3922485483fbb4ccaa8bd78e77e808521e source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 brief=docs/streams/agent-execution/brief-01-qualified-execution-profile.md model=gpt-6.1-sol tier=strong
+Admission-Bracket: run=d61352f30225d34b46bdbe6c942b9a3922485483fbb4ccaa8bd78e77e808521e source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 tree=sha256:6963ad5593dc6a427eb55e64b98194a327862d2882567ed257475fd4810eb876 witness=sha256:1fe92b207b76786253ab9306fe859f748dee91ae139b57aa6f242227d1aef8e1 opened=2026-10-27T23:02:08Z closed=2026-10-27T23:03:55Z before=receipt after=check-verifier
+
+**VERIFY: BLOCKED** — 3 of 4 original obligations have fresh execution witnesses; row 4 could not run on the Darwin host because its check:ci class requires Linux unshare. The native acceptance-transition resolver independently corroborated the exact human approval, and original rows 1–3 passed inside the closed container admission bracket. Row 4 requires a supported independently admitted Linux host with git history and unshare; mounting host Git custody into the container or weakening the row sandbox is outside this run. Row 4's executor gap is tracked on #4327 (the container lane does not mount a linked worktree's git directory) and #1800 (the darwin host has no network-off sandbox). No acceptance obligation was observed failing, and no lifecycle advancement is claimed.
+
+No blocked outcome record landed for this run. The outcome writer's mandatory dry-run (`deskevidence --outcome-record --dry-run`) refused with exit 5, "unsupported Context files: declaration tail": this brief's Context `files:` line ends in a prose tail after its last path, which the declared-scope parser does not accept. That refusal class is tracked on #3697. Context is outside the verifier lane and was not edited; the record is held until the declaration parses.
+
+Risk-value procedure: gate model, all risk answers no; the delivery diff contains no configured risk-classed path or changed house-pinned hard constraint. No risk-bearing-value trigger was found.
+
 ## Review
 
 Gate: model. Review exact-subject evidence, compatibility, independent failure controls and cross-component flow. Implementation verification grants no live activation or merge authority.
