@@ -36,7 +36,9 @@ id: 3535fcb8-1d38-4a68-b59d-202985f32264
 # Brief 07 — rollout + backfill
 
 ## Context
-files: **per consumer repo, one PR each; this repo first**
+The files below are touched per consumer repo, one PR each; this repo first.
+
+files:
 - `.assay-versions` — re-pinned to v1.0.0 by `upgrade-assay` (sha256 from the published release's `checksums.txt`, harvested not typed).
 - **the repo's statusgen regen workflow** — `reconcile` step + read permissions + schedule, exactly the YAML from the migration's release note.
 - `docs/streams/*/README.md`, `docs/streams/*/brief-*.md` — migrated by the migration op.

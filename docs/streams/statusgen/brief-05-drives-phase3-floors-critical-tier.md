@@ -59,7 +59,9 @@ is the authority.
 
 ## Context
 
-files: **(created/extended by this phase)**
+This phase creates or extends the files below.
+
+files:
 - `statusgen/nextup.go` — the **2-pass fill**: drive-boosted picks take at most `driveSlotCap` (15) of the `spanOfControl` (20) slots on the first pass; the held-back drive picks fall to the second pass and increment the wired-but-empty `HeldByDriveCap` bucket (mirrors `HeldByStreamCap`). The per-stream `effectiveCap = min(driveStreamCap, maxConcurrent)` where `maxConcurrent` is the stream's declared `MaxConcurrent` (always wins). `spanOfControl` = 20 and `perStreamCap` = 4 are UNCHANGED. The Next-up ordering becomes lexicographic **`(criticalTier, score)`** — the critical tier ranks above every score, the drive term re-ranks only WITHIN a tier.
 - `statusgen/drivecritical.go` (new) — the hard critical-tier derivation, machine-only, never self-declared: `main-red` (statusgen already knows CI-red), `security/leak` (a **stamped** label — new signal 1), `high-unblocks` (`blockedCount ≥ 3`, via the existing `buildRevDeps`/`blockedCount`), and `reviewer-finding` remediation. Pure, deterministic. No intensity — `surge` included — can pass it.
 - `statusgen/drives.go` — the new tunable-heuristic const block members beside `driveFocusWeight`/`maxConcurrentDrives`/`driveCoverageThreshold`: `driveSlotCap` (15 of 20) and the worker floor constant the skill mirrors (`driveWorkerCap` 6 of 8). The optional per-stream `driveStreamCap` manifest field (fail-neutral parse) that `effectiveCap` mins against `MaxConcurrent`.

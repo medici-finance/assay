@@ -39,7 +39,9 @@ id: f0fe4b8c-e52a-48de-b008-6ef2379354e1
 
 ## Context
 
-files: **(the three `references/*.md` files below plus the banned-tokens config are CREATED by dep 04 (HP/04) and only AMENDED here.)**
+The three `references/*.md` files below plus the banned-tokens config are CREATED by dep 04 (HP/04) and only AMENDED here.
+
+files:
 - **amend** `docs/streams/harness-portability/README.md` — add ONE capability name to the machine-readable `assay:capability-vocabulary` comment block (and keep the prose list in "The seam" §1 in step, per the block's own note). This is the vocab amendment; `tools/harnesslint` reads the closed set from this block, so it MUST land in this PR. Also add the brief-11 row + status-table entry (this file is both the vocab source and the stream README).
 - **amend** `plugins/assay/references/claude-code.md` — add a `capability:durable-monitor` row to the Capability → mechanism table (mechanism = the `Monitor` tool, `persistent: true`, `TaskList` to check for an existing monitor before arming a second).
 - **amend** `plugins/assay/references/codex.md` — add the same capability row with its **degradation cell** authored from the measured facts (HP/01 §3.6/§3.7), and note in the affected per-skill Codex cells that the liveness monitor degrades to event-driven + fixed-cadence sweep.
