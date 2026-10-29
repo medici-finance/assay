@@ -19,6 +19,7 @@ type protectedPlan struct {
 	Added     []checkFinding
 	Original  string            // authenticated immutable acceptance-definition revision
 	Revisions map[string]string // approved per-row amendments; omitted rows retain Original
+	Changes   string            // derived changed-column receipt; never approval input
 }
 
 func closureSatisfied(f checkFinding) bool {
@@ -187,12 +188,15 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		return refuse("original table differs from pre-delivery baseline; independent re-derivation is required")
 	}
 	var revisions map[string]string
+	var changes string
 	if strings.Contains(evidence, "Acceptance-Transition:") {
 		var why string
+		originalVerify := baseline
 		baseline, revisions, why = acceptanceTransition(paths[0], verify, fullEvidence, evidence, delivery, base, original, baseline, delivered, proposal == "", read)
 		if why != "" {
 			return refuse(why)
 		}
+		changes = acceptanceChanges(originalVerify, baseline, revisions)
 		delivered = verify
 	}
 	if strings.TrimSpace(verify) != strings.TrimSpace(delivered) {
@@ -251,7 +255,7 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		}
 		added = append(added, checkFinding{row.ID, stateAuthorAdded, "supplemental row; no acceptance credit (immutable original table preserved)"})
 	}
-	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions}, ""
+	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions, Changes: changes}, ""
 }
 
 // acceptanceRecordKind classifies a verifyrun --acceptance-record descriptor.
@@ -300,19 +304,18 @@ func originalDefinitionDrift(baseline, delivered string) string {
 // derivation reads every marker in the committed Evidence and refuses
 // distinct triples. why is empty on success.
 func deliveryCoordinates(dir, delivery, base, original string) (parents []string, why string) {
-	head, err := historyGit(dir, "rev-parse", "--verify", "HEAD^{commit}").Output()
-	if err != nil || !isObjectID(strings.TrimSpace(string(head))) {
+	head, ok := (coverageRepo{root: dir}).ResolveCommit("HEAD")
+	if !ok || !isObjectID(head) {
 		return nil, "cannot resolve HEAD as an immutable commit"
 	}
-	bases, err := flipMergeBases(dir, delivery, strings.TrimSpace(string(head)))
+	bases, err := flipMergeBases(dir, delivery, head)
 	if err != nil || len(bases) != 1 || bases[0] != delivery {
 		return nil, "delivery is absent or not an ancestor of HEAD"
 	}
-	out, err := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", delivery).Output()
+	parents, err = provenanceParents(dir, delivery)
 	if err != nil {
 		return nil, "cannot read delivery parents"
 	}
-	parents = strings.Fields(string(out))
 	var expected string
 	switch len(parents) {
 	case 1:
@@ -334,7 +337,7 @@ func deliveryCoordinates(dir, delivery, base, original string) (parents []string
 	if !isObjectID(parents[0]) {
 		return nil, "delivery first parent is not an immutable object id"
 	}
-	mainline, err := historyGit(dir, "rev-list", "--first-parent", "--end-of-options", strings.TrimSpace(string(head)), "^"+parents[0]).Output()
+	mainline, err := historyGit(dir, "rev-list", "--first-parent", "--end-of-options", head, "^"+parents[0]).Output()
 	if err != nil {
 		return nil, "cannot read the immutable first-parent delivery history"
 	}
@@ -378,4 +381,25 @@ func protectedClosureProblems(streams []*Stream) []string {
 		}
 	}
 	return problems
+}
+
+// acceptanceChanges describes the exact approved columns from authenticated
+// snapshots. It is output only: neither descriptors nor witnesses can supply it.
+func acceptanceChanges(original, effective string, revisions map[string]string) string {
+	old := map[string]verifyRow{}
+	for _, row := range briefVerifyRows(original) {
+		old[row.ID] = row
+	}
+	var changes []string
+	for _, row := range briefVerifyRows(effective) {
+		if revisions[row.ID] == "" {
+			continue
+		}
+		column := "Command"
+		if row.Expect != old[row.ID].Expect {
+			column = "Expect"
+		}
+		changes = append(changes, row.ID+"="+column)
+	}
+	return strings.Join(changes, ",")
 }

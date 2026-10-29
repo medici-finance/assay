@@ -349,7 +349,10 @@ The launch is `env -i` plus an explicit allowlist — the parent shell contribut
 default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
 `tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
 live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it):
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The last two
+rows, the cell database pointer, are the Go program's alone: they are present only when `cell.env`
+sets `CELL_DB_DSN`, no parity fixture sets it, and so the oracle's set and every parity plan are
+unchanged:
 
 | Variable | Value |
 |---|---|
@@ -373,6 +376,8 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
+| ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
+| PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final
 harness environment only, after the secret-free launch plan. Herdr/provider launches
@@ -508,6 +513,19 @@ On a machine with a `$CELLS_ROOT/defaults.env`, two rows say that the file was r
 managed Go cache's setting came from (see *Machine-wide defaults*). They print directly under the
 `[check]` header — for a container cell, which prints no such header, after its `[model]` lines
 and before the container's own check. They are never a `MISS`.
+
+**Cell database rows** — only when `cell.env` sets `CELL_DB_DSN` (with it unset, no row is
+printed, so the transcript of a cell with no database is unchanged): the DSN carries no password
+(no `password=` keyword, including one inside a quoted `dbname` value, and no password in URI
+userinfo, including a URI given as the `dbname` value — the value is withheld when it does, and
+`desk` refuses the launch rather than compose it), and
+`CELL_DB_PASSFILE` is set, absolute, readable and mode `0600` or `0400` (the same mode helper as the
+PEM rows). On a `container` cell the key is a `MISS` naming the gap: a container cell's plan
+carries no such environment or mount yet. A Kubernetes compatibility cell (`CELL_KIND=k8s` with
+`CELL_KUBERNETES_CONFIG`) that sets `CELL_DB_DSN` or `CELL_DB_PASSFILE` is refused by `desk`, `up`
+and `check`, naming the key and never its value: that profile composes no database environment. The mode keeps out other OS users only; these rows never
+claim that cells are separated from each other (see [`docs/postgres.md`](postgres.md) §Isolation
+boundary).
 
 Run it after `new`, and again after any key or token rotation.
 
@@ -1379,6 +1397,8 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
+| `CELL_DB_DSN` | the cell's own PostgreSQL database, as a libpq connection string with **no password** (for example `host=127.0.0.1 port=5432 dbname=cell_example_cell user=cell_example_cell sslmode=disable`); when set, every role window gets it as `ASSAY_CELL_DB_DSN`; unset, the cell has no database and nothing is composed (see [`docs/postgres.md`](postgres.md)) |
+| `CELL_DB_PASSFILE` | the absolute path of that database's pgpass file (mode `0600` or `0400`, outside the repository); exported as `PGPASSFILE` when `CELL_DB_DSN` is set, so libpq reads the password itself and it is never an environment value or an argv element |
 
 ### Machine-wide defaults — `defaults.env`
 
@@ -1528,6 +1548,8 @@ processes are not configuration.
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
+| `CELL_DB_DSN`, `CELL_DB_PASSFILE` | one cell's database and its credential file: each cell has its own role and database ([docs/postgres.md](postgres.md)) |
+| `CELL_KUBERNETES_CONFIG` | binds one cell to its explicit Kubernetes compatibility profile and approved target |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
@@ -1975,3 +1997,99 @@ it creates the container. No upload or performance payload expansion is enabled.
 Logging remains optional and best-effort. Enabled does not prove the sink is writable or
 that every invocation completed. Inspect the local perf day file and report coverage; missing
 samples are unknown, never zero. No tool installation or live role restart occurs during tests.
+
+
+## Trusted compatibility Kubernetes desks
+
+`CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
+sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
+The closed schema and unresolved example are in
+`containers/k8s/compatibility/`. The example is not deployable: image, agent,
+initialization and actual operator values need qualification. A missing or invalid
+explicit profile makes no API operation. There is no ambient context discovery,
+credential-plugin execution, proxy, insecure TLS or redirect fallback.
+
+Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
+an approved new image release and custodian-owned preparation. It inherits the
+historical five-role package and retains its Secrets, PVCs and network floor;
+all five workloads install at zero replicas. Only exact-name StatefulSet/scale
+reads and updates, Pod reads and named-container attach are in the operator
+Role. This does not authorize Secret access, arbitrary Pod creation, exec,
+port forwarding, debug, RBAC mutation or a managed operator. The operator is
+already a custodian of each selected role's PEM, model credential and transcript.
+Effective terminal, log, node and downstream-log access must meet that boundary.
+
+Prepare the retained volume with the approved pinned Claude-compatible package,
+its version manifest, role instructions, repository/toolchain inputs and the exact
+launch descriptor. The descriptor hash is both the operator profile's `launch_id`
+and the image launch environment value. Its initial prompt reads the baked role
+skill and starts that role under existing STOP, claim and human gates. The child
+is launched once with its pinned model and instructions. The same descriptor binds
+the cell; the launcher stamps the existing cell, role, loop and session markers
+for the child so cell-scoped STOP and role/claim controls retain their owners; no package installer,
+plugin enable command or second agent invocation runs during boot. Explicit
+`desk-session --prepare` creates cold history only where no history exists.
+Ordinary boot never invents first-boot permission from absent history.
+
+For a prepared cell named `example`, the bounded sequence is:
+
+```sh
+cellctl check example
+cellctl up example --plan --json
+cellctl up example --json
+cellctl attach example worker-desk
+# Detach: Ctrl-] then type detach and press Enter.
+cellctl attach example worker-desk
+cellctl status example
+cellctl down example worker-desk
+cellctl up example --role worker-desk --json
+```
+
+Check, dry run and plan remain offline. Ordinary up starts a proven cold/clean
+execution or keeps the exact current one. Apply uses the existing cell-op-v1
+terminal confirmation, re-measure and one-time plan consumption. It grants no
+new authority and has no blanket-consent flag. Host model/provider/cockpit,
+cadence and role-context overrides are refused by this pinned profile. Existing
+STOP flags and local lease/checkpoint/orphan state are checked before remote
+start; selecting the profile never clears a local role or claim.
+
+Attach is presentation only: input, output and resize are withheld until the
+native stream upgrade is followed by an exact execution recheck. Reconnect,
+detach or connection loss never scales a workload, invokes another agent, resends
+the initial prompt or signals an agent. A slow detached presentation keeps a
+bounded display tail; the container runtime owns transcript retention. The
+existing transcript custody restrictions apply to logs and collectors too.
+Ctrl-] is reserved for the local detach command. Unknown escape text is forwarded
+without that control byte, so ordinary text is retained without permitting an
+attach terminal to enter the supervisor's controlled-stop protocol.
+
+Down requires an operator terminal. Its plan explicitly asks the custodian to
+confirm that the role is interactively idle and all claims/effects are reconciled
+where no machine signal exists; a known busy/unmeasured signal still holds it.
+The execution-bound supervisor frame stops and reaps the complete private Linux
+process namespace, including detached/reparented descendants. Only then may the
+launcher retain clean history and a clean termination message. Cellctl must see
+that exact container ID terminate with the matching message before scale-down
+or a new execution. A clean last-termination state can prove the old container
+even if Kubernetes already restarted a held container in the same Pod.
+
+Missing/corrupt history, same-Pod restart, changed container ID/restart count,
+partition, absent Pod, surviving work or lost termination acknowledgement stays
+held. Scale/delete acceptance and Ready/NotReady are not stop proof. Do not
+force-delete, reset history, release claims or retry a replacement automatically.
+The custodian must first reconcile the old execution, downstream effects and
+claimed work through the existing manual controls. Unknown means held.
+
+Receipts at `run/kubecompat/<role>.json` bind the cell, role, profile digest,
+namespace, StatefulSet UID, Pod UID, container name/ID, restart count and image.
+They are writable observations, not authority. Filesystem retention, process
+continuation and conversation continuation are separate: a PVC only proves the
+filesystem part. A new clean Pod starts a new agent execution; this profile makes
+no conversation-resume or unattended crash/partition recovery promise.
+
+The source checkpoint deliberately carries an unbuilt candidate record.
+`sh containers/k8s/check.sh --compatibility-cellctl --self-test` can pass hostile
+synthetic fixtures while still returning `could-not-check` for the actual
+candidate. Only a genuine protected-release manifest digest and its release
+record can remove that image hold. Runtime/model usefulness and effective
+custody remain the separate qualification step.

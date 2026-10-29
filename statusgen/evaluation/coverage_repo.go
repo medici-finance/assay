@@ -112,6 +112,11 @@ type evalCtx struct {
 	repo       Repo
 	maxLanding int
 	landed     map[string]landedResult
+	// v2 is the witness-v2 read cache (witness.go); policy and forge are the
+	// caller's environment rule and optional forge seam.
+	v2     *v2Ctx
+	policy WitnessPolicy
+	forge  Forge
 }
 
 func newEvalCtx(repo Repo, maxLanding int) *evalCtx {
@@ -121,7 +126,7 @@ func newEvalCtx(repo Repo, maxLanding int) *evalCtx {
 	if maxLanding <= 0 {
 		maxLanding = DefaultMaxLandingCandidates
 	}
-	return &evalCtx{repo: repo, maxLanding: maxLanding, landed: map[string]landedResult{}}
+	return &evalCtx{repo: repo, maxLanding: maxLanding, landed: map[string]landedResult{}, v2: newV2Ctx()}
 }
 
 type landedResult struct {

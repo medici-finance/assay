@@ -208,6 +208,7 @@ func TestPrincipalStampReadsBodyNotFrontmatter(t *testing.T) {
 	for _, tc := range []struct {
 		name, base, content, want string
 		code                      int
+		why                       string // a refusal's detail must name it ("" = any refusal)
 	}{
 		{name: "different-human", base: head,
 			content: head + "| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (on-behalf-of human:colleague) |\n",
@@ -222,7 +223,7 @@ func TestPrincipalStampReadsBodyNotFrontmatter(t *testing.T) {
 		{name: "unclosed-frontmatter",
 			content: "---\nschema: brief-v1\n\n# Brief\n\n## Evidence\n\n| # | Result | Date | Runner |\n|---|---|---|---|\n" +
 				"| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (forge-identity) |\n",
-			code: deskkit.ExitRefused},
+			code: deskkit.ExitRefused, why: "frontmatter block that never closes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := setupStamp(t, true)
@@ -236,6 +237,9 @@ func TestPrincipalStampReadsBodyNotFrontmatter(t *testing.T) {
 			if tc.code != deskkit.ExitOK {
 				if f.putCalls != 0 {
 					t.Fatalf("a refused landing still wrote %d time(s):\n%s", f.putCalls, f.putContent)
+				}
+				if got := lastAudit(t).Detail; !strings.Contains(got, tc.why) {
+					t.Fatalf("refusal detail lacks %q: %q", tc.why, got)
 				}
 				return
 			}

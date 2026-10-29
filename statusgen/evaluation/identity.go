@@ -10,7 +10,7 @@ import (
 // EvaluatorVersion names the evaluator generation. It changes whenever a
 // verdict can change for the same observations; the policy digest below covers
 // the constants that are data rather than code.
-const EvaluatorVersion = "statusgen-evaluation/3"
+const EvaluatorVersion = "statusgen-evaluation/4"
 
 // Identity says which evaluator produced a verdict: the same observations
 // under the same Identity yield the same verdicts, byte for byte.
@@ -41,6 +41,13 @@ func policyText() string {
 		"verify-written=" + strings.Join(verifyWrittenPatterns(), ","),
 		"flow-obligation=" + ObligationFlow,
 		"join-rule=" + RuleJoinMissingFlow,
+		"witness-v2-policy-default=" + strconv.Itoa(int(WitnessPolicyDefault.effective())),
+		"witness-v2-container=" + WitnessRunnerContainer,
+		"witness-v2-pin-file=" + WitnessPinFile,
+		"witness-v2-record-dir=" + WitnessRecordDir,
+		"witness-v2-module-files=" + strings.Join(moduleFileNames, ",") + ",requirements*.txt",
+		"witness-v2-landing-forms=" + landingFormsText(),
+		"witness-v2-network-tools=" + strings.Join(sortedKeys(networkTools), ","),
 	}, "\n")
 }
 

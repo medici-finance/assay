@@ -1,0 +1,5 @@
+# The repo root as build context exposes every file in the checkout.
+want: context-not-deskd
+file: Makefile
+replace: "-t \"assay-deskd:$$tag\" deskd; \\"
+with: "-t \"assay-deskd:$$tag\" .; \\"

@@ -1,0 +1,26 @@
+# statusgen/36 row 10 — witness digest / Runner-cell grammar has ONE owner,
+# statusgen/evaluation. Each line: path | pattern | reason. A hit outside the
+# library must be listed here with the reason it is not a second witness
+# parser; a listed entry that no longer matches fails the test.
+statusgen/coverage_witness.go | git-tree-read | port adapter: implements evaluation.WitnessRepo by shelling git; supplies bytes and OIDs only, never judges
+statusgen/coverage_witness.go | record-dir | port adapter: lists record files at a revision through the library's directory constant
+statusgen/coverage_repo.go | git-tree-read | v1 coverage repo adapter: tree listing and entry lookup for the coverage evaluation, not witness content
+statusgen/briefinfo.go | git-tree-read | flag name check-attribution matched the check-attr substring; no git read
+statusgen/decisiongatehold.go | git-tree-read | decision-gate hold reads brief files at a revision; unrelated to witnesses
+statusgen/idvalidate.go | git-tree-read | brief-id validation lists tree paths; unrelated to witnesses
+statusgen/mergecheck.go | git-tree-read | merge check lists files in a merge; unrelated to witnesses
+statusgen/registers.go | git-tree-read | register discovery reads tree paths; unrelated to witnesses
+statusgen/verifyrows.go | git-tree-read | advisory text inside a lint message; no git read
+statusgen/verifyrun.go | runner-at-split | splits a git author email at the at-sign for a local-part identity; not a Runner cell
+statusgen/witnessdigest.go | record-field-key | witnessdigest verb output struct: prints library results as JSON, computes nothing itself
+tools/desk/cmd/deskevidence/decisiongate.go | git-tree-read | decision-gate file listing; unrelated to witnesses
+tools/desk/cmd/deskevidence/outcome.go | git-tree-read | outcome record file listing; not a witness digest
+tools/desk/cmd/deskevidence/outcomerecord.go | git-tree-read | outcome record blob reads; not a witness digest
+tools/desk/cmd/deskpathguard/rederive.go | git-tree-read | path-guard tree read; unrelated to witnesses
+tools/desk/cmd/verifyloop/pending.go | git-tree-read | pending-queue tree listing; informational only, judged by statusgen
+tools/desk/internal/cellscratch/snapshot.go | git-tree-read | scratch snapshot; unrelated to witnesses
+tools/desk/internal/deskkit/verifiersource.go | git-tree-read | verifier source checkout reads; unrelated to witnesses
+tools/desk/internal/deskkit/verifiertrackingcheckout.go | git-tree-read | tracking checkout read; unrelated to witnesses
+tools/desk/internal/gitexec/gitexec.go | git-tree-read | generic git exec helper; unrelated to witnesses
+gitcore/gittest/golden.go | git-tree-read | test golden helper compiled as a non-test file; unrelated to witnesses
+statusgen/internal/gitlaunch/main.go | git-tree-read | ratchet-base existence probe for the launch inventory file; unrelated to witnesses

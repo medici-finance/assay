@@ -1,0 +1,84 @@
+{
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null . && (cd ../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestStaleFailHistory.*|TestGoGitReadParity)$' . && (cd ../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestToplevel.*|TestRepositoryRead.*)$' .)",
+  "control": {
+    "name": "CONTROL issue-specific verdict accepts another issue repair",
+    "file": "stalefail.go",
+    "old": "if !issue.Match(messages) {",
+    "new": "if !issue.Match(messages) && false {"
+  },
+  "mutations": [
+    {
+      "name": "successful native history query reruns instead of sharing",
+      "file": "gitbatch.go",
+      "old": "if out, ok := s.staleFailLogs[key]; ok {",
+      "new": "if out, ok := s.staleFailLogs[key]; ok && false {"
+    },
+    {
+      "name": "failed native history read becomes a cached success",
+      "file": "gitbatch.go",
+      "old": "out, err := read()\n\tif err == nil {",
+      "new": "out, err := read()\n\tif true {"
+    },
+    {
+      "name": "first caller can corrupt stored history",
+      "file": "gitbatch.go",
+      "old": "s.staleFailLogs[key] = cloneBytes(out)",
+      "new": "s.staleFailLogs[key] = out"
+    },
+    {
+      "name": "cache hit can corrupt following history",
+      "file": "gitbatch.go",
+      "old": "return cloneBytes(out), nil",
+      "new": "return out, nil"
+    },
+    {
+      "name": "native effective configuration dropped from history identity",
+      "file": "stalefail.go",
+      "old": "json.Marshal([]any{physical, cwd, ref, mainID, config, refs})",
+      "new": "json.Marshal([]any{physical, cwd, ref, mainID, config[:0], refs})"
+    },
+    {
+      "name": "symbolic native reference namespace dropped from history identity",
+      "file": "stalefail.go",
+      "old": "json.Marshal([]any{physical, cwd, ref, mainID, config, refs})",
+      "new": "json.Marshal([]any{physical, cwd, ref, mainID, config, refs[:0]})"
+    },
+    {
+      "name": "physical object database identity dropped from history key",
+      "file": "stalefail.go",
+      "old": "json.Marshal([]any{physical, cwd, ref, mainID, config, refs})",
+      "new": "json.Marshal([]any{physical[:0], cwd, ref, mainID, config, refs})"
+    },
+    {
+      "name": "unsupported extension is opened before native selection",
+      "file": "gitcore_read.go",
+      "old": "why, err = gitcore.NativeRepositoryReadReason(top)",
+      "new": "why, err = \"\", nil"
+    },
+    {
+      "name": "stray directory treated as repository",
+      "file": "../gitcore/gitcore.go",
+      "old": "valid, checkErr := repositoryDirectory(gitDir)",
+      "new": "valid, checkErr := true, error(nil); _ = gitDir"
+    },
+    {
+      "name": "empty or garbage HEAD accepted as repository identity",
+      "file": "../gitcore/repositorydiscovery.go",
+      "old": "if err != nil || !validHead {",
+      "new": "if err != nil || (!validHead && false) {"
+    },
+    {
+      "name": "HEAD header boundary reads one extra byte",
+      "file": "../gitcore/repositorydiscovery.go",
+      "old": "var prefix [255]byte",
+      "new": "var prefix [256]byte"
+    },
+    {
+      "name": "explicit empty format confused with missing default",
+      "file": "../gitcore/repositoryprofile.go",
+      "old": "cfg.Raw.Section(\"core\").HasOption(\"repositoryformatversion\") && cfg.Raw.Section(\"core\").Option(\"repositoryformatversion\") == \"\"",
+      "new": "cfg.Raw.Section(\"core\").HasOption(\"repositoryformatversion\") && cfg.Raw.Section(\"core\").Option(\"repositoryformatversion\") == \"\" && false"
+    }
+  ]
+}

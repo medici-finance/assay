@@ -232,6 +232,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// `inputs:` Context field (statusgen/36): the declaration reads, and the
+	// literal-path lower bound over each Verify row's Command.
+	problems = append(problems, witnessInputsProblems(root, checkStreams)...)
 	ph.enter("lint")
 	// Split-flag conservation: a child brief may not carry a weaker gate/risk flag
 	// than the brief it was split from (splitflags.go). checkStreams is the scoped
@@ -1360,6 +1363,11 @@ func main() {
 	// witnessNotices); producing one is always an explicit invocation.
 	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
 		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	// `statusgen witnessdigest` — the canonical v2 content digests of a brief at
+	// a revision (witnessdigest.go, statusgen/36); read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "witnessdigest" {
+		exitProcess(runWitnessDigest(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))

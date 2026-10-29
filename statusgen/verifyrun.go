@@ -102,6 +102,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // ---------------------------------------------------------------------------
@@ -326,6 +328,7 @@ const (
 	witnessCellCommand = 1
 	witnessCellResult  = 2
 	witnessCellOutput  = 3
+	witnessCellDate    = 4
 	witnessCellRunner  = 5
 	witnessCellCount   = 6
 )
@@ -386,12 +389,12 @@ func witnessCommandOf(text string) string {
 	return codeSpan(cells[witnessCellCommand])
 }
 
-// witnessTreeRe lifts the tree token that follows the Runner cell's ` @ `
-// marker (witness.row() writes `<runner> @ <tree>`, optionally followed by one
-// or more parenthetical qualifiers). It stops at the first space or `(` so a
-// trailing on-behalf-of/RunnerSource parenthetical is never swallowed into the
-// tree token.
-var witnessTreeRe = regexp.MustCompile(`@\s*([^\s(]+)`)
+// The tree token follows the Runner cell's ` @ ` marker (witness.row() writes
+// `<runner> @ <tree>`, optionally followed by one or more parenthetical
+// qualifiers). evaluation.ParseRunnerCell, the one Runner-cell parser, stops it
+// at the first space or `(` so a trailing on-behalf-of/RunnerSource
+// parenthetical is never swallowed into the tree token; for a v2 cell it is the
+// schema marker `[w2]`, which no git revision resolves.
 
 // witnessTreeOf lifts the tree SHA (possibly `+dirty`/`+unknown`-suffixed, or
 // `no-git`) a witness row recorded — graph-execution/03's coverage rule reads
@@ -403,11 +406,7 @@ func witnessTreeOf(text string) string {
 	if cells == nil {
 		return ""
 	}
-	m := witnessTreeRe.FindStringSubmatch(cells[witnessCellRunner])
-	if m == nil {
-		return ""
-	}
-	return m[1]
+	return evaluation.ParseRunnerCell(cells[witnessCellRunner]).Tree
 }
 
 // ---------------------------------------------------------------------------
@@ -1266,7 +1265,7 @@ func briefTreeSHA(root, brief string) string {
 // HEAD is to brief, and brief differs from its HEAD blob only inside the
 // `## Evidence` section the brief parser bounds (evidenceSectionSpan).
 func evidenceOnlyChange(root, brief string) bool {
-	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	top, err := repoTopLevel(root)
 	if err != nil {
 		return false
 	}
@@ -1391,7 +1390,17 @@ type verifyRow struct {
 // values equal the ordinals must still compare equal. --rows reads that bit
 // from numberedVerifyRows' parallel slice instead (desktools-v2/74).
 func briefVerifyRows(verifySection string) []verifyRow {
-	return verifyRowsOf(verifySection, nil)
+	return verifyRowsOf(verifySection, nil, nil)
+}
+
+// briefVerifyRowsWithClassCells is briefVerifyRows plus, index for index, each
+// row's Class cell as authored (trimmed) — the text a witness-v2 record's
+// class_sha256 digests (statusgen/36). It is a parallel slice for the same
+// reason the `#` bit is: verifyRow's equality must not change.
+func briefVerifyRowsWithClassCells(verifySection string) ([]verifyRow, []string) {
+	var classCells []string
+	rows := verifyRowsOf(verifySection, nil, &classCells)
+	return rows, classCells
 }
 
 // numberedVerifyRows is briefVerifyRows plus, index for index, whether each
@@ -1399,13 +1408,14 @@ func briefVerifyRows(verifySection string) []verifyRow {
 // which --rows refuses to select by.
 func numberedVerifyRows(verifySection string) ([]verifyRow, []bool) {
 	var numbered []bool
-	rows := verifyRowsOf(verifySection, &numbered)
+	rows := verifyRowsOf(verifySection, &numbered, nil)
 	return rows, numbered
 }
 
 // verifyRowsOf parses the Verify rows; when numbered is non-nil it also
-// appends each row's `#`-cell bit to it.
-func verifyRowsOf(verifySection string, numbered *[]bool) []verifyRow {
+// appends each row's `#`-cell bit to it, and when classCells is non-nil each
+// row's trimmed Class cell.
+func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
@@ -1430,6 +1440,9 @@ func verifyRowsOf(verifySection string, numbered *[]bool) []verifyRow {
 		rows = append(rows, row)
 		if numbered != nil {
 			*numbered = append(*numbered, v != "")
+		}
+		if classCells != nil {
+			*classCells = append(*classCells, strings.TrimSpace(r.Class))
 		}
 	})
 	return rows
@@ -1540,13 +1553,18 @@ func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, run
 // in `unshare --net`. sandboxContainerNetns skips that wrapper — the run is
 // already inside a --network none container — and so FIRST runs the
 // loopback-only precheck, once, before any row: if it refuses, every row that
-// would execute is recorded could-not-run with the reason, never run.
+// would execute is recorded could-not-run with the reason, never run. It also
+// reads, once, which of the tree's module requirements the image's baked
+// module cache lacks (#4683, modcachegap.go): a row that then exits non-zero
+// naming one of them stopped on module resolution, so it is could-not-run.
 func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	refused := ""
+	var gaps []modGap
 	if sandbox == sandboxContainerNetns {
 		if ok, why := loopbackOnlyPrecheck(listInterfacesFn); !ok {
 			refused = containerNetnsRefusedNote(why)
 		}
+		gaps = runModuleCacheGap(root)
 	}
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
@@ -1602,6 +1620,9 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
 			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			if hit := gapsNamedIn(res.output, gaps); !res.couldNotRun && res.exit != 0 && len(hit) > 0 {
+				res.couldNotRun, res.reason = true, modCacheGapNote(hit)
+			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -2598,12 +2619,17 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// keeps the strict check: even an Evidence-only edit (an earlier run's
 		// uncommitted witnesses) refuses it, and a transition run records its
 		// rows on a committed tree before any container bracket is opened.
-		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
-		if err != nil || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
+		full, ok := (coverageRepo{root: root}).ResolveCommit("HEAD")
+		if !ok || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
 			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
 			return verifyrunExitCouldNot
 		}
-		executionTree = strings.TrimSpace(string(full))
+		executionTree = full
+	}
+	if netnsContainer {
+		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
+			fmt.Fprintln(stderr, modCacheGapNotice(gaps))
+		}
 	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
@@ -2631,6 +2657,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	table := witnessTable(ws)
 	if transitionDescriptor != "" {
 		table = transitionDescriptor + "\n\n" + table
+		if protectedExecution.Changes != "" {
+			table = "Acceptance-Changes: " + protectedExecution.Changes + "\n" + table
+		}
 	}
 	if containerTree != "" {
 		// The pre-row digest says which tree the rows started on; this one says
@@ -2831,7 +2860,7 @@ func originOwnerRepo(url string) string {
 // toplevel. A root outside any repository is not refused: its witness token
 // is `no-git`, which no comparison credits.
 func verifyrunRootBelowToplevel(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	out, err := gitPrefixOutput(root)
 	if err != nil {
 		if gitCurrentSHA(root) != "" {
 			return fmt.Sprintf("refusing --root %s: where it sits in its git repository could not be read (git rev-parse --show-prefix failed), and a witness must be taken at the repository's toplevel", root)
@@ -2851,7 +2880,7 @@ func repoRootFor(briefPath string) string {
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
 	}
-	if out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output(); err == nil {
+	if out, err := repoTopLevel(dir); err == nil {
 		if top := strings.TrimSpace(string(out)); top != "" {
 			return top
 		}

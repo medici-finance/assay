@@ -1,24 +1,35 @@
-// Cursor packaging: generate the Cursor-native resident-rules delivery artifact
-// (plugins/assay/cursor/assay.mdc — a `.cursor/rules/*.mdc` always-apply rule)
-// from the single resident-rules source, enforce the same closed coverage rule
-// codex packaging uses (every skill packaged or excluded-with-reason, ported from
-// SOURCES.yaml), and assert packaging↔binding consistency (every packaged skill
-// has a degradation cell in the Cursor binding file). Derived, never hand-ported:
-// `cursor --check` regenerates to memory and diffs against the committed artifact,
-// so a hand-edit or a source edited without regenerating reddens CI rather than
-// shipping a divergent rule set (harness-portability/12).
+// Cursor packaging: generate the Cursor delivery artifacts from the single
+// sources — the Cursor-native resident-rules rule (plugins/assay/cursor/assay.mdc,
+// a `.cursor/rules/*.mdc` always-apply rule) from resident-rules.md, and the
+// Cursor plugin manifest (plugins/assay/.cursor-plugin/plugin.json) from the
+// Claude manifest — enforce the same closed coverage rule codex packaging uses
+// (every skill packaged or excluded-with-reason, ported from SOURCES.yaml), and
+// assert packaging↔binding consistency (every packaged skill has a degradation
+// cell in the Cursor binding file). Derived, never hand-ported: `cursor --check`
+// regenerates to memory and diffs against the committed artifacts, so a
+// hand-edit, a planted version skew, or a source edited without regenerating
+// reddens CI rather than shipping a divergent rule set or a stale manifest
+// (harness-portability/12, #4775).
 //
-// Cursor is LIGHTER than Codex packaging: Cursor consumes `SKILL.md`, `AGENTS.md`,
-// and `.cursor/rules/*.mdc` directly from the repo tree (HP/12 §2.10), so there is
-// no per-harness plugin manifest to generate — the packaging IS the instruction
-// files. The one generated artifact is the `.mdc` resident-rules rule; the same
-// coverage + binding discipline the codex verb runs guards the skill set and the
-// Cursor binding file. Cursor also reads the shared Codex `AGENTS.md` fragment
-// natively (HP/12 §2.1), so the adopt flow offers either channel. Per Ian's
-// 2026-08-26 ruling, both Cursor surfaces are targeted, headless-first.
+// Two Cursor install routes read this bundle. The copy-skills route
+// (`deskinstall --harness cursor`) places SKILL.md skills and the `.mdc` rule
+// into an adopter's `.cursor/` tree. The Cursor plugin route (a team
+// marketplace import of this repository) reads `.cursor-plugin/marketplace.json`
+// at the repository root, follows the `assay` entry's `source` to
+// plugins/assay, and reads plugins/assay/.cursor-plugin/plugin.json there
+// (https://cursor.com/docs/reference/plugins). The manifest's `version` is the
+// one version location for that route: the root marketplace entry carries none,
+// so the release stamp has exactly one Cursor file to move and the two cannot
+// skew. With `--root` (not `--bundle`) this verb also generates and checks the
+// root marketplace, derived from the Claude marketplace catalog.
+//
+// Cursor also reads the shared Codex `AGENTS.md` fragment natively (HP/12 §2.1),
+// so the adopt flow offers either resident-rules channel. Per Ian's 2026-08-26
+// ruling, both Cursor surfaces are targeted, headless-first.
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -36,7 +47,9 @@ const cursorPackagingMarker = "<!-- assay:cursor-packaging"
 type cursorPaths struct {
 	bundle      string // the plugins/assay dir (or a --bundle override)
 	residentSrc string // resident-rules.md — the single resident-rules source
-	outRule     string // cursor/assay.mdc — the generated artifact
+	outRule     string // cursor/assay.mdc — the generated rule
+	metaSource  string // .claude-plugin/plugin.json — the single metadata source
+	outManifest string // .cursor-plugin/plugin.json — the generated Cursor plugin manifest
 	packaging   string // cursor/packaging.md — the coverage roster
 	binding     string // references/cursor.md — the per-skill degradation cells
 	skillsDir   string // skills/ — the bundle tree
@@ -47,6 +60,8 @@ func cursorPathsFor(bundle string) cursorPaths {
 		bundle:      bundle,
 		residentSrc: filepath.Join(bundle, "resident-rules.md"),
 		outRule:     filepath.Join(bundle, "cursor", "assay.mdc"),
+		metaSource:  filepath.Join(bundle, ".claude-plugin", "plugin.json"),
+		outManifest: filepath.Join(bundle, ".cursor-plugin", "plugin.json"),
 		packaging:   filepath.Join(bundle, "cursor", "packaging.md"),
 		binding:     filepath.Join(bundle, "references", "cursor.md"),
 		skillsDir:   filepath.Join(bundle, "skills"),
@@ -56,11 +71,14 @@ func cursorPathsFor(bundle string) cursorPaths {
 // cursorCmd implements the `cursor` verb. Exit codes are the three-state
 // instrument (docs/three-state-instrument-rule.md), same contract as `codex`:
 //
-//	0 — clean: rule written, or --check found it identical to what the source
-//	    would generate.
-//	1 — drift: --check found the committed .mdc differs from the source (a
-//	    hand-edit, or a source edited without regenerating).
-//	2 — could-not-check: the resident source is missing/unparseable, the roster is
+//	0 — clean: artifacts written, or --check found each identical to what its
+//	    source would generate.
+//	1 — drift: --check found a committed artifact (the .mdc rule, the Cursor
+//	    plugin manifest, or — in --root mode — the root Cursor marketplace)
+//	    differs from its source (a hand-edit, a planted version skew, or a source
+//	    edited without regenerating).
+//	2 — could-not-check: the resident source, the Claude manifest, or (in --root
+//	    mode) the Claude marketplace catalog is missing/unparseable, the roster is
 //	    missing/unparseable, a skill on disk is unaccounted-for in the roster
 //	    (coverage), or a packaged skill has no degradation cell in the Cursor
 //	    binding (packaging↔binding skew). None of these is a pass.
@@ -124,49 +142,186 @@ func cursorCmd(args []string) int {
 		return exitCouldNotCheck
 	}
 
-	// The Header's {{VERSION}} token derives from the plugin manifest, same
-	// rule the `resident` verb applies (#730) — read it only when the
-	// Header actually carries the placeholder.
-	var version string
-	if strings.Contains(s.Header, versionPlaceholder) {
-		meta, err := readClaudeManifest(filepath.Join(bundleDir, ".claude-plugin", "plugin.json"))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "harnessgen cursor: could-not-check: %v\n", err)
-			return exitCouldNotCheck
-		}
-		version = meta.Version
-	}
-
-	// Generate the rule bytes from the resident source.
-	want, err := cursorRules(s, version)
+	// (5) Metadata source — the Claude manifest is the single source for the
+	// Cursor manifest AND for the Header's {{VERSION}} token (#730). Missing or
+	// unparseable is could-not-check: a Cursor manifest cannot be generated
+	// without it.
+	meta, err := readClaudeManifest(p.metaSource)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "harnessgen cursor: could-not-check: %v\n", err)
 		return exitCouldNotCheck
 	}
 
-	if *check {
-		got, err := os.ReadFile(p.outRule)
+	// Generate the rule bytes from the resident source.
+	rule, err := cursorRules(s, meta.Version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "harnessgen cursor: could-not-check: %v\n", err)
+		return exitCouldNotCheck
+	}
+
+	outs := []cursorOutput{
+		{path: p.outRule, want: rule, what: "rule", source: "the resident source"},
+		{path: p.outManifest, want: renderCursorManifest(meta), what: "manifest", source: "the metadata source"},
+	}
+
+	// (6) Root marketplace — only when the bundle is resolved from --root, since
+	// a bare --bundle has no repository root to place it under.
+	if *bundle == "" {
+		catalog := filepath.Join(*root, ".claude-plugin", "marketplace.json")
+		mkt, err := renderCursorMarketplace(catalog, meta.Name, "./"+filepath.ToSlash(filepath.Join("plugins", "assay")))
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "harnessgen cursor --check: could-not-check: cannot read committed rule %s (%v)\n", p.outRule, err)
+			fmt.Fprintf(os.Stderr, "harnessgen cursor: could-not-check: %v\n", err)
 			return exitCouldNotCheck
 		}
-		if string(got) != want {
-			fmt.Fprintf(os.Stderr, "harnessgen cursor --check: DRIFT — committed rule %s differs from the resident source; run `go run ./tools/harnessgen cursor` and commit\n", p.outRule)
-			return exitDrift
+		outs = append(outs, cursorOutput{
+			path: filepath.Join(*root, ".cursor-plugin", "marketplace.json"), want: mkt,
+			what: "marketplace", source: "the Claude marketplace catalog",
+		})
+	}
+
+	if *check {
+		rc := exitClean
+		for _, o := range outs {
+			got, err := os.ReadFile(o.path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "harnessgen cursor --check: could-not-check: cannot read committed %s %s (%v)\n", o.what, o.path, err)
+				return exitCouldNotCheck
+			}
+			if string(got) != o.want {
+				fmt.Fprintf(os.Stderr, "harnessgen cursor --check: DRIFT — committed %s %s differs from %s; run `go run ./tools/harnessgen cursor` and commit\n", o.what, o.path, o.source)
+				rc = exitDrift
+				continue
+			}
+			fmt.Printf("harnessgen cursor --check: clean — %s matches %s\n", o.path, o.source)
 		}
-		fmt.Printf("harnessgen cursor --check: clean — %s matches the resident source\n", p.outRule)
-		return exitClean
+		return rc
 	}
 
 	// Write mode.
-	if err := os.MkdirAll(filepath.Dir(p.outRule), 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "harnessgen cursor: %v\n", err)
-		return exitCouldNotCheck
+	for _, o := range outs {
+		if err := os.MkdirAll(filepath.Dir(o.path), 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "harnessgen cursor: %v\n", err)
+			return exitCouldNotCheck
+		}
+		if err := os.WriteFile(o.path, []byte(o.want), 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "harnessgen cursor: %v\n", err)
+			return exitCouldNotCheck
+		}
+		fmt.Printf("wrote %s\n", o.path)
 	}
-	if err := os.WriteFile(p.outRule, []byte(want), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "harnessgen cursor: %v\n", err)
-		return exitCouldNotCheck
-	}
-	fmt.Printf("wrote %s\n", p.outRule)
 	return exitClean
+}
+
+// cursorOutput is one generated artifact: where it lives, the bytes its source
+// would generate, and the words a drift report names it by.
+type cursorOutput struct {
+	path, want, what, source string
+}
+
+// cursorManifest is the generated .cursor-plugin/plugin.json. Field ORDER is the
+// byte order of the committed file. Only fields Cursor's plugin reference
+// documents are emitted (https://cursor.com/docs/reference/plugins), and the
+// file carries exactly one "version" key so the release stamp's in-place rewrite
+// is byte-identical to regenerating.
+//
+// Component fields are explicit rather than left to folder discovery, because a
+// specified field REPLACES discovery for that component:
+//   - rules: the generated always-apply resident-rules rule.
+//   - skills: the ./skills/ tree — the packaged set, which the coverage rule
+//     above proves equals the tree (an excluded skill must be absent from disk).
+//   - commands: none. Discovery would otherwise load commands/README.md as a
+//     command; the copy-skills route ships no commands either.
+//   - hooks: none. The bundle's hooks/hooks.json is the Claude Code
+//     SessionStart hook; on Cursor the resident rules arrive via the rule above.
+type cursorManifest struct {
+	Name        string         `json:"name"`
+	Version     string         `json:"version"`
+	Description string         `json:"description"`
+	Author      author         `json:"author"`
+	Homepage    string         `json:"homepage"`
+	Repository  string         `json:"repository"`
+	License     string         `json:"license"`
+	Keywords    []string       `json:"keywords"`
+	Rules       string         `json:"rules"`
+	Skills      string         `json:"skills"`
+	Commands    []string       `json:"commands"`
+	Hooks       map[string]any `json:"hooks"`
+}
+
+func renderCursorManifest(meta claudeManifest) string {
+	return encodeJSON(cursorManifest{
+		Name:        meta.Name,
+		Version:     meta.Version,
+		Description: meta.Description,
+		Author:      meta.Author,
+		Homepage:    meta.Homepage,
+		Repository:  meta.Repository,
+		License:     meta.License,
+		Keywords:    meta.Keywords,
+		Rules:       "./cursor/assay.mdc",
+		Skills:      "./skills/",
+		Commands:    []string{},
+		Hooks:       map[string]any{},
+	})
+}
+
+// cursorMarketplace is the generated root .cursor-plugin/marketplace.json, the
+// file a Cursor team-marketplace import reads first. Its plugin entry carries
+// NO version: Cursor merges the per-plugin manifest over the entry ("manifest
+// values take precedence"), so the plugin manifest is the one version location
+// and the release stamp has nothing here to move.
+type cursorMarketplace struct {
+	Name    string                   `json:"name"`
+	Owner   cursorMarketplaceOwner   `json:"owner"`
+	Plugins []cursorMarketplaceEntry `json:"plugins"`
+}
+
+type cursorMarketplaceOwner struct {
+	Name string `json:"name"`
+}
+
+type cursorMarketplaceEntry struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+// renderCursorMarketplace derives the root Cursor marketplace from the Claude
+// marketplace catalog: the catalog's name and owner, and one entry naming the
+// plugin and its source directory. The catalog must list the plugin at that
+// source, so the two marketplaces cannot point at different trees.
+func renderCursorMarketplace(catalogPath, plugin, source string) (string, error) {
+	b, err := os.ReadFile(catalogPath)
+	if err != nil {
+		return "", fmt.Errorf("reading marketplace catalog %s: %w", catalogPath, err)
+	}
+	var c struct {
+		Name  string `json:"name"`
+		Owner struct {
+			Name string `json:"name"`
+		} `json:"owner"`
+		Plugins []struct {
+			Name   string `json:"name"`
+			Source string `json:"source"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(b, &c); err != nil {
+		return "", fmt.Errorf("marketplace catalog %s is unparseable: %w", catalogPath, err)
+	}
+	if strings.TrimSpace(c.Name) == "" || strings.TrimSpace(c.Owner.Name) == "" {
+		return "", fmt.Errorf("marketplace catalog %s has no name/owner.name", catalogPath)
+	}
+	found := false
+	for _, e := range c.Plugins {
+		if e.Name == plugin && e.Source == source {
+			found = true
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("marketplace catalog %s lists no %q entry with source %q", catalogPath, plugin, source)
+	}
+	return encodeJSON(cursorMarketplace{
+		Name:    c.Name,
+		Owner:   cursorMarketplaceOwner{Name: c.Owner.Name},
+		Plugins: []cursorMarketplaceEntry{{Name: plugin, Source: source}},
+	}), nil
 }
