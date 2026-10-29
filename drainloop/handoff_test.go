@@ -131,6 +131,12 @@ func TestEffectIntentOutboxHandoff(t *testing.T) {
 			if len(p.records) != count {
 				t.Fatal("stale pending entry replayed")
 			}
+			if found && len(j.pending) != 0 {
+				t.Fatalf("a found authoritative receipt must complete the older entry, pending=%d", len(j.pending))
+			}
+			if !found && len(j.pending) != 1 {
+				t.Fatalf("a held stale entry must stay pending, pending=%d", len(j.pending))
+			}
 		})
 	}
 	t.Run("transaction-fails-closed", func(t *testing.T) {

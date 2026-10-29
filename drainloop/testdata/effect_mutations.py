@@ -41,6 +41,8 @@ mutations = [
      'if len(plans[idx]) > 0 && it.Payload["kind"] == "effect" {', "TestDeclaredEffectCannotBypassJournal"),
     ("stale-generation-unchecked", "effect.go", "old.Event.Generation != generation",
      'old.Event.Generation == "impossible-generation"', "TestEffectIntentOutboxHandoff"),
+    ("stale-found-completion-dropped", "effect.go", "event.Generation = old.Event.Generation",
+     "_ = old", "TestEffectIntentOutboxHandoff"),
     ("non-atomic-intent", "effect.go", "err = handoff.CommitIntent(ctx, Intent{Event: event})",
      "err = c.Journal.Record(event)", "TestEffectIntentOutboxHandoff"),
     ("outbox-falls-back", "engine.go", "if c.RequireHandoff {",

@@ -97,9 +97,7 @@ a house wires its own implementation behind the interface.
 | `Journal` | `Config.Journal` | scheduling events remain best-effort; declared effects require durable `EFFECT-INTENT` before Apply |
 | Effects / handoff | `Config.Effects`, `Config.RequireHandoff` | authoritative receipt reconciliation and mandatory intent; optional atomic claim-generation/outbox handoff |
 | `RetryPolicy` | [`retry.go`](./retry.go) | the three-state retry taxonomy (transient / deterministic / **could-not-classify → route to a human**), with bounded attempts and backoff; a facility your `Land`/re-selection consults, kept off the six-method contract on purpose |
-| `Timeouts` | [`effect.go`](./effect.go) | `Effect`, `Receipt`, stable operation coordinates and mandatory reconciliation |
-| [`handoff.go`](./handoff.go) | transactional intent/claim-generation outbox contract |
-| [`journal.go`](./journal.go) | the schedule-to-start / start-to-close / heartbeat liveness taxonomy; the type lives here, enforcement (which reads live infra) is yours |
+| `Timeouts` | [`journal.go`](./journal.go) | the schedule-to-start / start-to-close / heartbeat liveness taxonomy; the type lives here, enforcement (which reads live infra) is yours |
 
 ### Effect layer
 
