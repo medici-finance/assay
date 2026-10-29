@@ -1,1 +1,2 @@
 - Move stale-FAIL merge-range graph reads into the shared Git library, preserving native abbreviation-shadowing profiles and fail-closed graph errors.
+- Reuse a per-run indexed ancestry graph and preserve symbolic replacement references in ordinary native-profile selection.

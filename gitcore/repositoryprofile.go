@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 // NativeRepositoryReadReason observes local declarations before Open can reject
@@ -43,4 +44,26 @@ func nativeRepositoryReadReason(cfg *config.Config) string {
 		return fmt.Sprintf("repository extension %q requires native Git", name)
 	}
 	return ""
+}
+
+// NativeReplacementReadReason observes names of every reference type. Refs() is
+// intentionally a hash-reference API and cannot establish absence of symbolic
+// replacement references. No replacement is resolved or applied by this owner.
+func (r *Repo) NativeReplacementReadReason() (string, error) {
+	iter, err := r.repo.References()
+	if err != nil {
+		return "", err
+	}
+	defer iter.Close()
+	reason := ""
+	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		if strings.HasPrefix(string(ref.Name()), "refs/replace/") {
+			reason = "replacement reference namespace requires native history semantics"
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return reason, nil
 }

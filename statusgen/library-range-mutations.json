@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestLibraryStaleFailRange' .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestLibraryStaleFailRange.*|TestStaleFailHistorySymbolicReplace)$' .",
   "control": {
     "name": "CONTROL range bypasses canonical library and starts native",
     "file": "stalefail.go",
@@ -31,6 +31,12 @@
       "file": "stalefail.go",
       "old": "rows, err := read.repo.CommitRange(base, fullTip)\n\tif err != nil {\n\t\treturn nil, err",
       "new": "rows, err := read.repo.CommitRange(base, fullTip)\n\tif err != nil {\n\t\treturn native(\"log\", base+\"..\"+tip, \"--format=%B\")"
+    },
+    {
+      "name": "symbolic replacement namespace ignored",
+      "file": "../gitcore/repositoryprofile.go",
+      "old": "if strings.HasPrefix(string(ref.Name()), \"refs/replace/\") {",
+      "new": "if strings.HasPrefix(string(ref.Name()), \"refs/replace/\") && false {"
     }
   ]
 }

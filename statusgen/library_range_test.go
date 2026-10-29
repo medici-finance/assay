@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLibraryStaleFailRange(t *testing.T) {
@@ -21,7 +22,7 @@ func TestLibraryStaleFailRange(t *testing.T) {
 		calls++
 		return exec.Command("git", append([]string{"-C", root}, args...)...).Output()
 	}
-	got, err := staleFailRangeMessages(root, base, tip[:7], tip, false, native)
+	got, err := staleFailRangeMessages(ordinaryGitCore(root), base, tip[:7], tip, false, native)
 	if err != nil || calls != 0 {
 		t.Fatalf("library range used native or failed: calls=%d %v", calls, err)
 	}
@@ -32,12 +33,12 @@ func TestLibraryStaleFailRange(t *testing.T) {
 			t.Fatalf("query %q changed: %q want %q", pattern, got, want)
 		}
 	}
-	_, err = staleFailRangeMessages(root, base, tip[:7], tip, true, native)
+	_, err = staleFailRangeMessages(ordinaryGitCore(root), base, tip[:7], tip, true, native)
 	if err != nil || calls != 1 {
 		t.Fatalf("formatting observation lost: calls=%d %v", calls, err)
 	}
 	runGit(t, root, "branch", tip[:7], base)
-	got, err = staleFailRangeMessages(root, base, tip[:7], tip, false, native)
+	got, err = staleFailRangeMessages(ordinaryGitCore(root), base, tip[:7], tip, false, native)
 	want = parityGitBytes(t, root, "log", base+".."+tip[:7], "--format=%B")
 	if err != nil || calls != 2 || !bytes.Equal(got, want) {
 		t.Fatalf("shadowing name did not retain native: calls=%d got=%q want=%q err=%v", calls, got, want, err)
@@ -63,12 +64,12 @@ func TestLibraryStaleFailRangeEncodingAndGap(t *testing.T) {
 		calls++
 		return exec.Command("git", append([]string{"-C", root}, args...)...).Output()
 	}
-	got, err := staleFailRangeMessages(root, base, tip[:7], tip, false, native)
+	got, err := staleFailRangeMessages(ordinaryGitCore(root), base, tip[:7], tip, false, native)
 	want := parityGitBytes(t, root, "log", base+".."+tip[:7], "--format=%B")
 	if err != nil || calls != 1 || !bytes.Equal(got, want) {
 		t.Fatalf("encoding rendering changed: calls=%d %q want %q err=%v", calls, got, want, err)
 	}
-	_, err = staleFailRangeMessages(root, base, tip[:7], tip, true, native)
+	_, err = staleFailRangeMessages(ordinaryGitCore(root), base, tip[:7], tip, true, native)
 	if err != nil || calls != 2 {
 		t.Fatalf("native formatting profile lost: calls=%d %v", calls, err)
 	}
@@ -80,7 +81,30 @@ func TestLibraryStaleFailRangeEncodingAndGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := calls
-	if _, err := staleFailRangeMessages(root, base, tip[:7], tip, false, native); err == nil || calls != before {
+	if _, err := staleFailRangeMessages(ordinaryGitCore(root), base, tip[:7], tip, false, native); err == nil || calls != before {
 		t.Fatalf("graph failure retried native or became success: calls=%d err=%v", calls, err)
+	}
+}
+
+func TestStaleFailHistorySymbolicReplace(t *testing.T) {
+	root, landing := staleHistoryFixture(t)
+	side := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", landing+"^2")))
+	tree := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", side+"^{tree}")))
+	parent := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", side+"^")))
+	replacement := strings.TrimSpace(string(parityGitBytes(t, root, "commit-tree", tree, "-p", parent, "-m", "no issue reference")))
+	runGit(t, root, "update-ref", "refs/heads/replacement-candidate", replacement)
+	runGit(t, root, "symbolic-ref", "refs/replace/"+side, "refs/heads/replacement-candidate")
+	previous := activeGitReads
+	activeGitReads = nil
+	want, wok := newestFailFix(root, &BriefFile{Issues: []int{72}}, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC))
+	activeGitReads = previous
+	if !wok || want != "" {
+		t.Fatalf("native symbolic replacement fixture failed: %q %v", want, wok)
+	}
+	end := beginGitReadSession()
+	defer end()
+	got, gok := newestFailFix(root, &BriefFile{Issues: []int{72}}, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC))
+	if got != want || gok != wok {
+		t.Fatalf("symbolic replacement changed main-history verdict: got=%q/%v want=%q/%v", got, gok, want, wok)
 	}
 }

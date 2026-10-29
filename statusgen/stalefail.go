@@ -143,6 +143,13 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 			}
 		}
 	}
+	// Match the existing per-brief native context lifetime. Qualify the ordinary
+	// reader once after its config/ref snapshot, rather than rediscovering that
+	// same profile for every merge range examined by this one main-history query.
+	rangeRead := gitCoreRead{}
+	if !formattingNative {
+		rangeRead = ordinaryGitCore(root)
+	}
 	var newest time.Time
 	sha := ""
 	read := func(extra []string, issue *regexp.Regexp) bool {
@@ -175,7 +182,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 				// A merge need not repeat the issue named by the repair it
 				// introduces. Attribute those newly reachable issue references
 				// to the landing commit, without consulting unmerged branches.
-				messages, err := staleFailRangeMessages(root, parents[0], fields[1], fields[4], formattingNative, native)
+				messages, err := staleFailRangeMessages(rangeRead, parents[0], fields[1], fields[4], formattingNative, native)
 				if err != nil {
 					return false
 				}
@@ -242,11 +249,10 @@ func waitingBriefNotice(root, path string, bf *BriefFile, status string) string 
 // canonical Git owner. The native summary has already selected the displayed
 // abbreviation; a shadowing native ref preserves the original range command.
 // All actual object/graph errors remain could-not-check, with no native retry.
-func staleFailRangeMessages(root, base, tip, fullTip string, formattingNative bool, native func(...string) ([]byte, error)) ([]byte, error) {
+func staleFailRangeMessages(read gitCoreRead, base, tip, fullTip string, formattingNative bool, native func(...string) ([]byte, error)) ([]byte, error) {
 	if formattingNative {
 		return native("log", base+".."+tip, "--format=%B")
 	}
-	read := ordinaryGitCore(root)
 	if read.err != nil {
 		return nil, read.err
 	}

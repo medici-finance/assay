@@ -152,14 +152,12 @@ func ordinaryGitCore(root string) gitCoreRead {
 	if r.err != nil || r.native != "" {
 		return r
 	}
-	refs, err := r.repo.Refs()
+	why, err := r.repo.NativeReplacementReadReason()
 	if err != nil {
 		return gitCoreRead{err: err}
 	}
-	for name := range refs {
-		if strings.HasPrefix(name, "refs/replace/") {
-			return gitCoreRead{native: "ordinary read honors replacement objects"}
-		}
+	if why != "" {
+		return gitCoreRead{native: why}
 	}
 	common, err := gitcore.CommonDir(root)
 	if err != nil {
