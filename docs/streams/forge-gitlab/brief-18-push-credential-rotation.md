@@ -105,13 +105,11 @@ and `check` shares the probes' by-id comparator, so liveness has no independent 
 liveness claim below that names part A is contingent on that merge.
 
 files:
-- `tools/desk/cmd/deskfleet/pushtoken.go` (new): the `push-token` subcommand, its `rotate` and
-  `check` modes, the redacting secret type, preflight, install, read-back, containment and
-  proof.
-- `tools/desk/cmd/deskfleet/pushtoken_test.go` (new) and `tools/desk/cmd/deskfleet/fake_test.go`: the fake GitLab gains the access-token, variable, self-information and receive-pack routes.
-- `tools/desk/cmd/deskfleet/main.go`: usage text and dispatch.
-- `tools/desk/cmd/deskfleet/mutations.json`: the named mutations below.
-- `docs/adopting-assay-gitlab.md`: §2c rotation procedure; one line in §5.
+- **add** `tools/desk/cmd/deskfleet/pushtoken.go` — the `push-token` subcommand, its `rotate` and `check` modes, the redacting secret type, preflight, install, read-back, containment and proof.
+- `tools/desk/cmd/deskfleet/pushtoken_test.go` (new) and `tools/desk/cmd/deskfleet/fake_test.go` — the fake GitLab gains the access-token, variable, self-information and receive-pack routes.
+- `tools/desk/cmd/deskfleet/main.go` — usage text and dispatch.
+- `tools/desk/cmd/deskfleet/mutations.json` — the named mutations below.
+- `docs/adopting-assay-gitlab.md` — §2c rotation procedure; one line in §5.
 - `changelog/forge-gitlab-18-push-credential-rotation.md` (planned).
 
 layering: flat tool, one new file in an existing command. The meaningful rules are pure
@@ -204,7 +202,7 @@ Every defended item maps to a Verify row in the pre-mortem table below.
 
 ### Risk-files cross-read
 
-`files:` sits under `tools/desk/cmd/deskfleet/`, a credential-handling path. The four answers
+The `files:` block sits under `tools/desk/cmd/deskfleet/`, a credential-handling path. The four answers
 were read against it, not defaulted:
 - **sensitive-data: yes.** The verb holds a repository-write credential in memory, and the
   rotator credential it runs under has `api` scope. `check` runs under a separate read-only

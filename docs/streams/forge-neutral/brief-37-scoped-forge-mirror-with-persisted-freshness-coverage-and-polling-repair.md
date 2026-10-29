@@ -59,8 +59,7 @@ files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `to
 `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/sharedread.go`,
 `tools/desk/internal/deskkit/mirrorsource.go` (new) and tests,
 `tools/desk/internal/deskkit/forge_surface_deskread_test.go`, `docs/streams/forge-gitlab/inventory.md`,
-`workflow/store/` (planned by graph-execution/19; mirror tables, migration and the
-graph-execution/28 fact-completeness mapping),
+`workflow/store/` (planned by graph-execution/19; mirror tables, migration and the graph-execution/28 fact-completeness mapping),
 `statusgen/testdata/regressionfloor/` (planned by graph-execution/29; one case),
 `changelog/forge-mirror-polling.md` (new).
 

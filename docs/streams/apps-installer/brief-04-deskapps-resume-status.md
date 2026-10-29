@@ -35,8 +35,7 @@ id: 6d3dad6c-3dcf-4e4f-b02e-fb171d909da6
 
 ## Context
 files:
-- `tools/desk/cmd/deskapps/state.go` (transitions), `resume.go`, `status.go`, `verbs.go` (page →
-  CLI verbs), tests.
+- `tools/desk/cmd/deskapps/state.go` (transitions), `tools/desk/cmd/deskapps/resume.go`, `tools/desk/cmd/deskapps/status.go`, `tools/desk/cmd/deskapps/verbs.go` (page → CLI verbs) and tests.
 - `tools/desk/cmd/deskapps/page/` — the throttle banner, the console strip, the Resume / Close buttons, the Retry and Cancel controls.
 - `docs/desk-tools/deskapps.md` (planned).
 

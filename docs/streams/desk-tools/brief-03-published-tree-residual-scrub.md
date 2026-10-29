@@ -61,9 +61,7 @@ typed `depends:` edge remains. The mechanical scrub may be prepared in parallel,
 Verify rows run against a tree with all of those landed.
 
 ## Context
-files: the residual-scrub edit surface across `tools/desk` compiled-source doc-comments and test
-fixtures (worked from the private cold-read record — the greps are the contract, not restated
-here), plus the leak-sweep token set (ADD-only ratchet).
+files: `tools/desk/` — the residual-scrub edit surface across `tools/desk` compiled-source doc-comments and test fixtures (worked from the private cold-read record — the greps are the contract, not restated here), plus the leak-sweep token set (ADD-only ratchet).
 
 facts:
 - `leaksweep run --tree DIR` is three-state and TOKENS-ONLY, case-sensitive — which is exactly

@@ -75,23 +75,14 @@ id: 4fe790c9-8daa-4d17-9987-207436c0bb7f
 ## Context
 
 files:
-- **create** `tools/desk/cmd/deskfleet/renew.go` (planned) and `renew_test.go` (planned) (the `renew` subcommand), plus
-  any stub-server additions to windows-port/08's `fake_test.go` (planned).
-- **create** one importable package under `tools/desk/internal/` (name it for what it holds, the
-  fleet tables, and give the name in the PR body). **Move** `fleetRoles`, `fleetLabels`, the PAT-day
-  default, the naming helpers and the project-settings constants into it from
-  `tools/desk/cmd/deskfleet/tables.go` (planned) — created by windows-port/08.
-- **edit** `tools/desk/cmd/deskfleet/{main.go,provision.go,labels.go,tables.go,tables_parity_test.go}`
-  so they read the moved package and so the parity tests cover the settings they miss today.
-- **edit** `tools/desk/internal/avatar/avatar_test.go` (or add a test beside it) so the avatar role
-  list is checked against the Go-owned table.
-- **edit** `tools/desk/README.md` and `docs/adopting-assay-gitlab.md` §2g (add the verb; leave the
-  script's text in place, because brief 17 removes it).
-- **create** `changelog/<branch-slug>.md`.
-- **do NOT** edit `tools/renew-fleet-gitlab-tokens.sh`, `tools/fleet-gitlab-roles.sh`,
-  `tools/create-fleet-gitlab.sh` or their `_test.sh` suites. In this brief they are the parity
-  oracle. windows-port/17 retires them.
-- **do NOT** edit `tools/desk/internal/deskkit/custodyacl.go` or `custodyowner_*.go`.
+- **create** `tools/desk/cmd/deskfleet/renew.go` (planned) and `tools/desk/cmd/deskfleet/renew_test.go` (planned) (the `renew` subcommand) and `tools/desk/cmd/deskfleet/fake_test.go` (planned) — plus any stub-server additions to windows-port/08's `fake_test.go` (planned).
+- **create** `tools/desk/internal/` and **move from** `tools/desk/cmd/deskfleet/tables.go` (planned) — one importable package under `tools/desk/internal/` (name it for what it holds, the fleet tables, and give the name in the PR body). **Move** `fleetRoles`, `fleetLabels`, the PAT-day default, the naming helpers and the project-settings constants into it from `tools/desk/cmd/deskfleet/tables.go` (planned) — created by windows-port/08.
+- **edit** `tools/desk/cmd/deskfleet/{main.go,provision.go,labels.go,tables.go,tables_parity_test.go}` — so they read the moved package and so the parity tests cover the settings they miss today.
+- **edit** `tools/desk/internal/avatar/avatar_test.go` — or add a test beside it, so the avatar role list is checked against the Go-owned table.
+- **edit** `tools/desk/README.md` and `docs/adopting-assay-gitlab.md` (§2g) — add the verb; leave the script's text in place, because brief 17 removes it.
+- **create** — `changelog/<branch-slug>.md`.
+- **do NOT edit** `tools/renew-fleet-gitlab-tokens.sh`, `tools/fleet-gitlab-roles.sh`, `tools/create-fleet-gitlab.sh` and `tools/{renew-fleet-gitlab-tokens,create-fleet-gitlab}_test.sh` (none of them) — not those scripts or their `_test.sh` suites. In this brief they are the parity oracle. windows-port/17 retires them.
+- **do NOT edit** `tools/desk/internal/deskkit/custodyacl.go` and `tools/desk/internal/deskkit/custodyowner_*.go` (neither) — not `custodyacl.go` or `custodyowner_*.go`.
 
 facts:
 - **Prerequisite state (2026-09-25).** windows-port/08's implementation, `deskfleet` (`provision`,

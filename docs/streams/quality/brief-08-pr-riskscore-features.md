@@ -31,18 +31,11 @@ id: 6e7f7c8f-5a8a-4cbe-a7e0-0734b9b09565
 ## Context
 
 files:
-- NEW `qualgen/pr.go` (planned) (+ `qualgen/pr_test.go` (planned)) — the `pr <n>` mode: resolve the file set a
-  PR touches, join each file to its M1 features + M2 defect density, emit a per-file feature
-  record as JSON.
-- NEW `qualgen/features.go` (planned) (+ `qualgen/features_test.go` (planned)) — the shared feature-assembly the
-  `pr` and `check` (brief 09) modes both call: given a file path, return its
-  `FileFeatures` (hotspot percentile, defect density, ownership, coupling partners, measured
-  flags). Factor it here so brief 09 reuses it rather than forking.
-- CONSUMES `qualgen/hotspot.go` (planned) / ownership / coupling from briefs 02–03 (M1 aggregates in
-  `docs/quality/metrics.jsonl`) and `qualgen/szz.go` (planned)'s `DefectDensity` from brief 07.
-- READS the target PR's touched-file set through the same repo/history access the miner uses
-  (a merged PR's file set, or an open PR's head-vs-base diff).
-- OUTPUT is JSON to stdout (a feed, not a committed artifact) — a consumer captures it.
+- **add** `qualgen/pr.go` (planned) (+ `qualgen/pr_test.go`, planned) — the `pr <n>` mode: resolve the file set a PR touches, join each file to its M1 features + M2 defect density, emit a per-file feature record as JSON.
+- **add** `qualgen/features.go` (planned) (+ `qualgen/features_test.go`, planned) — the shared feature-assembly the `pr` and `check` (brief 09) modes both call: given a file path, return its `FileFeatures` (hotspot percentile, defect density, ownership, coupling partners, measured flags). Factor it here so brief 09 reuses it rather than forking.
+- **consumes** `qualgen/hotspot.go` (planned) and `qualgen/szz.go` (planned) — `qualgen/hotspot.go` / ownership / coupling from briefs 02–03 (M1 aggregates in `docs/quality/metrics.jsonl`) and `qualgen/szz.go`'s `DefectDensity` from brief 07.
+- **reads** — the target PR's touched-file set through the same repo/history access the miner uses (a merged PR's file set, or an open PR's head-vs-base diff).
+- **output** — JSON to stdout (a feed, not a committed artifact); a consumer captures it.
 
 facts:
 - feature set per touched file (spec §9.1): `hotspot_percentile` (this file's rank in the

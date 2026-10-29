@@ -146,12 +146,12 @@ and the verbs must refuse rather than fall back to a raw call"*).
 files:
 - `tools/desk/cmd/desklabel/` (new) — `main.go`, `verbs.go` (`add`/`rm`), `vocabulary.go` (the role-ownership table), `forge.go` (session-role custody wiring, the deskclose/deskfile precedent).
 - `tools/desk/internal/deskkit/forge.go` — `ApplyIssueLabels`, the one op this brief adds.
-- `tools/desk/internal/deskkit/forge_github.go`, `forge_gitlab.go` — both backends implement it.
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — both backends implement it.
 - `docs/streams/forge-gitlab/inventory.md` — row 38.
 - `tools/desk/README.md` — the Tool reference table, `desklabel`'s row.
 
-**Why the risk answers are all `no`.** `desklabel` mints no new custody path: it reuses
-`ForgeFor`/`SetGitHubCustodyMinter` exactly as `deskclose` does (brief 13's already-human-gated
+**Why the risk answers are all `no`.** `desklabel` mints no new custody path: it reuses `ForgeFor`/`SetGitHubCustodyMinter`
+exactly as `deskclose` does (brief 13's already-human-gated
 precedent), so no credential decision is made here. Every write is a label — idempotent,
 reversible, and bounded to a closed, reviewed-in-this-PR vocabulary; there is no close, no
 merge, no push, and no path to a "human-decided" forgery (see the vocabulary's explicit

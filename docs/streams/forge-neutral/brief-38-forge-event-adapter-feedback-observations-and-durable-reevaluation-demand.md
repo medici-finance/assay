@@ -50,8 +50,7 @@ consumers:
 ## Context
 
 files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/events/` (new), `forgeread/mirror/` (feedback kinds, hint intake), `forgeread/events/reviewrepair_test.go` (planned)
-`tools/desk/internal/deskkit/mirrorsource.go` (planned) and tests, `workflow/store/` (planned by
-graph-execution/19; delivery inbox, the pending-feedback use and the graph-execution/28 mapping),
+`tools/desk/internal/deskkit/mirrorsource.go` (planned) and tests, `workflow/store/` (planned by graph-execution/19; delivery inbox, the pending-feedback use and the graph-execution/28 mapping),
 `forgeread/README.md`,
 `changelog/forge-events-reevaluation.md` (new).
 

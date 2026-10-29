@@ -40,17 +40,10 @@ id: e6344fc6-7d65-4972-9db5-a0596f802298
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/forge_github.go` — re-seat the GitHub `Forge` implementation
-  on `github.com/cli/go-gh/v2` (its `pkg/api` REST + GraphQL clients and `pkg/auth`
-  resolution) in place of hand-rolled `net/http` and any shelled-`gh` path left by brief 01.
-- `tools/desk/internal/deskkit/forge_github_test.go` (planned) — the golden corpus from brief 01,
-  re-run unchanged against the go-gh-backed backend (same scenario names, same expectations).
-- `tools/desk/cmd/deskpr/exec.go`, `tools/desk/cmd/deskfile/exec.go`,
-  `tools/desk/cmd/deskclose/exec.go` — the forge operations these tools reach via
-  `exec.Command("gh", …)` (inventory ops 8, 12, 13: `gh pr create --draft`,
-  `gh issue create`, `gh issue close`) move onto the backend; the shelled-gh forge path is
-  deleted, not left dormant.
-- `go.mod` / `go.sum` — add the `go-gh` dependency (vendored/pinned per repo convention).
+- `tools/desk/internal/deskkit/forge_github.go` — re-seat the GitHub `Forge` implementation on `github.com/cli/go-gh/v2` (its `pkg/api` REST + GraphQL clients and `pkg/auth` resolution) in place of hand-rolled `net/http` and any shelled-`gh` path left by brief 01.
+- `tools/desk/internal/deskkit/forge_github_test.go` (planned) — the golden corpus from brief 01, re-run unchanged against the go-gh-backed backend (same scenario names, same expectations).
+- `tools/desk/cmd/deskpr/exec.go`, `tools/desk/cmd/deskfile/exec.go`, `tools/desk/cmd/deskclose/exec.go` — the forge operations these tools reach via `exec.Command("gh", …)` (inventory ops 8, 12, 13: `gh pr create --draft`, `gh issue create`, `gh issue close`) move onto the backend; the shelled-gh forge path is deleted, not left dormant.
+- `tools/desk/go.mod` and `tools/desk/go.sum` — add the `go-gh` dependency (vendored/pinned per repo convention).
 
 single-point-of-failure: the golden corpus is again the one control proving the transport
 swap changed no observable behavior — the SAME scenarios brief 01 pinned for the extracted

@@ -30,22 +30,10 @@ id: 588a9f77-9bdb-4b99-a92b-435b4eaaefa5
 ## Context
 
 files:
-- NEW `qualgen/m4/forensics.go` (planned) (+ `forensics_test.go`) — the session-forensics
-  join: for each PR in the M1/M2 corpus, gather the harness telemetry of the session(s)
-  that produced it and join it to that PR's M1 churn/rework outcome (quality/02) and M2
-  defect outcome (quality/07); emit per-harness-behavior correlations — which behaviors
-  predict defective or churn-heavy PRs. Measures the scaffolding, not the model.
-- NEW `qualgen/telemetry/source.go` (planned) — the pluggable `TelemetrySource` interface:
-  given a session/PR key, return typed telemetry records (retries, context length,
-  tool-call churn, interruptions, refusals) OR a three-state could-not-measure. No concrete
-  data source is named here — the interface is the seam.
-- NEW `qualgen/telemetry/fileadapter.go` (planned) (+ `fileadapter_test.go`) — the
-  file-based REFERENCE adapter shipped IN-TREE: reads a documented telemetry JSONL layout
-  from an operator-supplied path (`--telemetry <path>`). This adapter is the OSS-ability
-  proof — the interface plus one working, generic adapter, with no house-private source
-  wired in.
-- CONSUMES `qualgen/m1/*` (planned) churn outcomes (quality/02) and `qualgen/m2/*` (planned) traces + defect
-  density (quality/07), joined by PR number + merge SHA + stream/task ID.
+- **add** `qualgen/m4/forensics.go` (planned) (+ `forensics_test.go`) — the session-forensics join: for each PR in the M1/M2 corpus, gather the harness telemetry of the session(s) that produced it and join it to that PR's M1 churn/rework outcome (quality/02) and M2 defect outcome (quality/07); emit per-harness-behavior correlations — which behaviors predict defective or churn-heavy PRs. Measures the scaffolding, not the model.
+- **add** `qualgen/telemetry/source.go` (planned) — the pluggable `TelemetrySource` interface: given a session/PR key, return typed telemetry records (retries, context length, tool-call churn, interruptions, refusals) OR a three-state could-not-measure. No concrete data source is named here — the interface is the seam.
+- **add** `qualgen/telemetry/fileadapter.go` (planned) (+ `fileadapter_test.go`) — the file-based REFERENCE adapter shipped IN-TREE: reads a documented telemetry JSONL layout from an operator-supplied path (`--telemetry <path>`). This adapter is the OSS-ability proof — the interface plus one working, generic adapter, with no house-private source wired in.
+- **consumes** `qualgen/m1/*` (planned) (churn outcomes, quality/02) and `qualgen/m2/*` (planned) (traces + defect density, quality/07) — joined by PR number + merge SHA + stream/task ID.
 
 facts:
 - **OSS boundary (load-bearing).** The CODE is OSS: the `TelemetrySource` interface AND

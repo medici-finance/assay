@@ -33,7 +33,7 @@ exec-tier-why: >-
 
 ## Context
 files: `tools/skillslint/conformance.go` (planned), `tools/skillslint/conformance_test.go` (planned),
-`tools/skillslint/testdata/conformance/**` (planned), `tools/skillslint/main.go`,
+`tools/skillslint/testdata/conformance/` (planned), `tools/skillslint/main.go`,
 `tools/skillslint/README.md`, `plugins/assay/skills/install/SKILL.md`,
 `plugins/assay/skills/pr-review-desk/SKILL.md`,
 `changelog/harness-portability-17-skill-frontmatter-conformance-lint.md` (planned)

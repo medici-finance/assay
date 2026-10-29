@@ -36,27 +36,15 @@ id: 50b3b541-ec92-4096-adf2-8972cd67b846
 ## Context
 
 files:
-- NEW `qualgen/go.mod` (planned) — a new Go module, statusgen-sibling. Declares `go-git`
-  as its history-access dependency (no cgo, no libgit2). This is the module every later
-  `quality/*` brief extends.
-- NEW `qualgen/main.go` (planned) — CLI entry. Dispatches the four modes `mine`,
-  `report`, `pr <n>`, `check <paths>`. In this brief only `mine` has behavior; the other
-  three are recognized, parse their flags, and emit a `not yet implemented` NOTICE
-  (mode scaffolding, no behavior).
-- NEW `qualgen/measure.go` (planned) (+ `measure_test.go`) (planned) — the first-class three-state
-  output type (the interface contract, below). Every metric value the tool ever emits is
-  wrapped in this type.
-- NEW `qualgen/commit.go` (planned) (+ `commit_test.go`) (planned) — the internal `Commit` record
-  type (the commit table).
-- NEW `qualgen/diff.go` (planned) (+ `diff_test.go`) (planned) — the internal `FileDiff` / `Hunk` /
-  `LineChange` record types (the diff table).
-- NEW `qualgen/store.go` (planned) (+ `store_test.go`) (planned) — the single-writer artifact store:
-  append-only JSONL writer + reader over the tracking root, plus the mine header/manifest.
-- NEW `qualgen/mine.go` (planned) (+ `mine_test.go`) (planned) — the `mine` mode: full + incremental
-  extraction, horizon recording.
-- NEW `qualgen/report.go` (planned), `qualgen/pr.go` (planned), `qualgen/check.go` (planned) — mode stubs that
-  parse flags and NOTICE `not yet implemented`. Filled by later briefs.
-- NEW `qualgen/testdata/` (planned) — fixtures built by the test harness (see Task step 6).
+- **add** `qualgen/go.mod` (planned) — a new Go module, statusgen-sibling. Declares `go-git` as its history-access dependency (no cgo, no libgit2). This is the module every later `quality/*` brief extends.
+- **add** `qualgen/main.go` (planned) — CLI entry. Dispatches the four modes `mine`, `report`, `pr <n>`, `check <paths>`. In this brief only `mine` has behavior; the other three are recognized, parse their flags, and emit a `not yet implemented` NOTICE (mode scaffolding, no behavior).
+- **add** `qualgen/measure.go` (planned) (+ `measure_test.go`) (planned) — the first-class three-state output type (the interface contract, below). Every metric value the tool ever emits is wrapped in this type.
+- **add** `qualgen/commit.go` (planned) (+ `commit_test.go`) (planned) — the internal `Commit` record type (the commit table).
+- **add** `qualgen/diff.go` (planned) (+ `diff_test.go`) (planned) — the internal `FileDiff` / `Hunk` / `LineChange` record types (the diff table).
+- **add** `qualgen/store.go` (planned) (+ `store_test.go`) (planned) — the single-writer artifact store: append-only JSONL writer + reader over the tracking root, plus the mine header/manifest.
+- **add** `qualgen/mine.go` (planned) (+ `mine_test.go`) (planned) — the `mine` mode: full + incremental extraction, horizon recording.
+- **add** `qualgen/report.go` (planned), `qualgen/pr.go` (planned), `qualgen/check.go` (planned) — mode stubs that parse flags and NOTICE `not yet implemented`. Filled by later briefs.
+- **add** `qualgen/testdata/` (planned) — fixtures built by the test harness (see Task step 6).
 
 facts:
 - module: a NEW `qualgen/` Go module (Go generics required for the three-state type; target

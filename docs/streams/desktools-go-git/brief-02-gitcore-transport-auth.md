@@ -36,16 +36,10 @@ id: f8f94893-c6ec-4e20-916a-ff31eb579350
 ## Context
 
 files:
-- NEW `tools/desk/internal/gitcore/gitcore.go` (planned) (+ `gitcore_test.go`) — open / resolve /
-  refs / objects / diff / log helpers over go-git, plus the transport verbs
-  `Fetch` / `Push` / `List`.
-- NEW `tools/desk/internal/gitcore/auth.go` (planned) — the `BasicAuth` builder that takes an
-  in-memory installation token and returns
-  `&githttp.BasicAuth{Username: "x-access-token", Password: token}`.
-- `tools/desk/go.mod` + `tools/desk/go.sum` — add `github.com/go-git/go-git/v5` pinned
-  `>= v5.13`; `go mod tidy`.
-- `docs/streams/desktools-go-git/inventory.md` (planned) — tick the op families this layer now
-  covers.
+- **add** `tools/desk/internal/gitcore/gitcore.go` (planned) (+ `gitcore_test.go`) — open / resolve / refs / objects / diff / log helpers over go-git, plus the transport verbs `Fetch` / `Push` / `List`.
+- **add** `tools/desk/internal/gitcore/auth.go` (planned) — the `BasicAuth` builder that takes an in-memory installation token and returns `&githttp.BasicAuth{Username: "x-access-token", Password: token}`.
+- `tools/desk/go.mod` + `tools/desk/go.sum` — add `github.com/go-git/go-git/v5` pinned `>= v5.13`; `go mod tidy`.
+- `docs/streams/desktools-go-git/inventory.md` (planned) — tick the op families this layer now covers.
 
 facts:
 - Import path for transport auth: `githttp

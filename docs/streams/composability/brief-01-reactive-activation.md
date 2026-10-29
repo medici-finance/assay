@@ -34,11 +34,8 @@ id: a7513cbd-6ab8-472f-8360-4b953b40e489
 files:
 - **edit** `tools/desk/internal/deskkit/` — the shared config loader (the roster-config and app-config readers): split the single fail-closed path into (a) trust-surface validation, unchanged and fail-closed, and (b) per-key extension validation whose result is recorded per key rather than thrown.
 - **create** `tools/desk/internal/deskkit/activation.go` (planned) — given the parsed manifests (brief 00's parser) and the per-key validation results, compute ACTIVE / INACTIVE per component and the reason for each INACTIVE one.
-- **edit** the verb entrypoint shared by the desk commands so that a verb belonging to an
-  INACTIVE component refuses with `could-not-check: assay/<component> inactive — <key> <reason>`
-  before doing any work.
-- **edit** `tools/desk/component.yaml` (planned) and the role-skill manifests only if the inventory shows
-  a verb-to-component mapping the manifests do not yet carry.
+- **edit** — the verb entrypoint shared by the desk commands so that a verb belonging to an INACTIVE component refuses with `could-not-check: assay/<component> inactive — <key> <reason>` before doing any work.
+- **edit** `tools/desk/component.yaml` (planned) — and the role-skill manifests only if the inventory shows a verb-to-component mapping the manifests do not yet carry.
 - **edit** `docs/adopting-assay.md` (roster section) — one paragraph: what an invalid extension key now does (deactivates its dependents, reported) vs. what an invalid trust key still does (refuses).
 
 facts:

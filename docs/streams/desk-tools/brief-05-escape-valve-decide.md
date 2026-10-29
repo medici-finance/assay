@@ -34,7 +34,7 @@ brief lands the primitive + contract only; consumer adoption is a separate follo
 
 ## Context
 files: `tools/desk/internal/deskkit/decide.go` (new) + `tools/desk/internal/deskkit/decide_test.go`,
-`docs/streams/desk-tools/decide.md` (planned) (new — the contract doc).
+`docs/streams/desk-tools/decide.md` (planned) (new) — the contract doc.
 
 single-point-of-failure: the enum validator — behind it: the fail-closed default (an invalid or
 absent answer never acts, it falls to the pre-declared conservative option) and the

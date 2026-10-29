@@ -43,10 +43,7 @@ per-role / per-cell keys injected via mounted sealed secrets) — the two share 
 but neither blocks the other's design.
 
 ## Context
-files (design artifact): this brief is the design of record. The follow-on implementation
-brief-set (named under **Deliverables** below) will land the render verb, the pod resolution path,
-the sealed-secret mount contract, and the migration — each its own brief with its own executable
-Verify table.
+files: `docs/streams/desk-tools/brief-06-roster-from-deployment.md` — (design artifact): this brief is the design of record. The follow-on implementation brief-set (named under **Deliverables** below) will land the render verb, the pod resolution path, the sealed-secret mount contract, and the migration — each its own brief with its own executable Verify table.
 
 single-point-of-failure: the resolved config's SOURCE OF TRUTH. Today that is a hand-kept
 `roster.env`; the direction moves it to `cells.yaml` (the cell registry, which already declares the

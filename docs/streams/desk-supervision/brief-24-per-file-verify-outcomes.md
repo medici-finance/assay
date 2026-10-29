@@ -71,24 +71,16 @@ consumers:
 ## Context
 
 files:
-- **add** `tools/desk/internal/deskkit/verifyoutcomes.go` (planned) + `verifyoutcomes_test.go` (planned) — the desk-side reader choke point and the record-name function.
+- **add** `tools/desk/internal/deskkit/verifyoutcomes.go` (planned) + `tools/desk/internal/deskkit/verifyoutcomes_test.go` (planned) — the desk-side reader choke point and the record-name function.
 - **edit** `tools/desk/cmd/verifyloop/briefscan.go` — `readOutcomeSidecar` (line 240) and `readWakeReceipts` (line 384) read through the choke point.
-- **edit** `tools/desk/cmd/deskevidence/deskevidence.go`, `main.go`, `outcome.go`,
-  `verifiedgate.go` + tests — the per-record writer, the class guard, the cap override retired.
+- **edit** `tools/desk/cmd/deskevidence/{deskevidence,main,outcome,verifiedgate}.go` and tests — the per-record writer, the class guard, the cap override retired.
 - **add** `tools/desk/cmd/deskevidence/concurrency_test.go` (planned) — the mergeability proxy test.
-- **edit** `statusgen/verifyoutcomes.go`, `statusgen/load.go` (line 64, `reservedRegisterNames`),
-  `statusgen/main.go` (subcommand dispatch); **add** `statusgen/outcomessplit.go` (planned) +
-  `statusgen/outcomessplit_test.go` (planned).
-- **add** `docs/streams/verify-outcomes/<stream>/*.json` (the split records) and
-  `docs/streams/verify-outcomes/README.md` (planned) (declares "register, not a stream").
-- **edit** `docs/streams/desk-supervision/verify-wake-v1.md`, `repair-obligation-v1.md`,
-  `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`,
-  `tools/desk/README.md`.
-- **add** `migrations/0004-<from>-to-<to>-per-file-verify-outcomes.md` (planned; the version span is
-  the release that carries this change).
-- **edit at retirement (Task step 8)** `.gitattributes`, `statusgen/verifyoutcomes_union_test.go`;
-  **delete** `docs/streams/verify-outcomes.jsonl`.
-- **add** `changelog/<branch>.md` — the fragment this repo enforces.
+- **edit** `statusgen/verifyoutcomes.go`, `statusgen/load.go` (line 64, `reservedRegisterNames`), `statusgen/main.go` (subcommand dispatch); **add** `statusgen/outcomessplit.go` (planned) + `statusgen/outcomessplit_test.go` (planned).
+- **add** `docs/streams/verify-outcomes/*/*.json` (the split records, one directory per `<stream>`) and `docs/streams/verify-outcomes/README.md` (planned) (declares "register, not a stream").
+- **edit** `docs/streams/desk-supervision/verify-wake-v1.md`, `docs/streams/desk-supervision/repair-obligation-v1.md`, `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`, `tools/desk/README.md`.
+- **add** — `migrations/0004-<from>-to-<to>-per-file-verify-outcomes.md` (planned; the version span is the release that carries this change).
+- **edit at retirement (Task step 8)** `.gitattributes`, `statusgen/verifyoutcomes_union_test.go`; **delete** `docs/streams/verify-outcomes.jsonl`.
+- **add** — `changelog/<branch>.md` — the fragment this repo enforces.
 
 facts (2026-09-27 @ b227b4076; re-establish from the named files and commands at pickup):
 - **Why the union driver does not help.** `.gitattributes:23` sets

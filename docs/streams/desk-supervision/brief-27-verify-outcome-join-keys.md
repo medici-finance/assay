@@ -56,29 +56,12 @@ consumers:
 
 ## Context
 files:
-- **edit** `docs/streams/desk-supervision/verify-wake-v1.md` — the new fields, labelling `prs` and
-  `dispatch_ref` verifier-asserted, the failure-record requirement, what "complete" means for a
-  verify-wake-v1 `verified` record (Task 2), the key-uniqueness input rule (Task 2), the redaction
-  rules for private and non-private
-  registers including the history caveat (Task 4), the GitLab ancestry fallback; Migration notes
-  older records are not backfilled.
-- **edit** `tools/desk/internal/deskkit/verifywake.go` — `WakeReceipt` gains `PRs []DeliveredPR`
-  (`DeliveredPR{Repo string; Number int; MergeSHA string; Withheld string}`, all `omitempty`),
-  `PRsUnknownReason`, `VerifierTier`, `Started`, `Finished`, `RowsPassed`, `RowsTotal`
-  (`rows_passed`/`rows_total`, today read by no Go code), `RowResults`, `DispatchRef`,
-  `DispatchRefSHA256`. NEW code beside `Complete()`: a helper that returns the name of the FIRST
-  field `Complete()` would fail on, in `Complete()`'s own check order (Task 2's refusal names it;
-  `Complete()` itself returns only a bool and stays unchanged).
-- **edit** `tools/desk/cmd/deskevidence/outcomerecord.go`, `receiptvalidate.go` + tests — the
-  input-shape refusals (key uniqueness first), the reordered admission and forge handle, the forge
-  dereference, the redaction behind a package-level function variable (as `forgeForFn` and
-  `publicRepoGateFn` already are) so a test can substitute the rewrite, and step 5's TARGET-TIE
-  check (Tasks 2–5).
-- **edit** `plugins/assay/skills/verify-desk/SKILL.md` — the outcome-record paragraphs (around the
-  "Since #882, `deskevidence --outcome-record` REFUSES" paragraph and the FAIL-path paragraph).
+- **edit** `docs/streams/desk-supervision/verify-wake-v1.md` — the new fields, labelling `prs` and `dispatch_ref` verifier-asserted, the failure-record requirement, what "complete" means for a verify-wake-v1 `verified` record (Task 2), the key-uniqueness input rule (Task 2), the redaction rules for private and non-private registers including the history caveat (Task 4), the GitLab ancestry fallback; Migration notes older records are not backfilled.
+- **edit** `tools/desk/internal/deskkit/verifywake.go` — `WakeReceipt` gains `PRs []DeliveredPR` (`DeliveredPR{Repo string; Number int; MergeSHA string; Withheld string}`, all `omitempty`), `PRsUnknownReason`, `VerifierTier`, `Started`, `Finished`, `RowsPassed`, `RowsTotal` (`rows_passed`/`rows_total`, today read by no Go code), `RowResults`, `DispatchRef`, `DispatchRefSHA256`. NEW code beside `Complete()`: a helper that returns the name of the FIRST field `Complete()` would fail on, in `Complete()`'s own check order (Task 2's refusal names it; `Complete()` itself returns only a bool and stays unchanged).
+- **edit** `tools/desk/cmd/deskevidence/outcomerecord.go`, `tools/desk/cmd/deskevidence/receiptvalidate.go` and tests — the input-shape refusals (key uniqueness first), the reordered admission and forge handle, the forge dereference, the redaction behind a package-level function variable (as `forgeForFn` and `publicRepoGateFn` already are) so a test can substitute the rewrite, and step 5's TARGET-TIE check (Tasks 2–5).
+- **edit** `plugins/assay/skills/verify-desk/SKILL.md` — the outcome-record paragraphs (around the "Since #882, `deskevidence --outcome-record` REFUSES" paragraph and the FAIL-path paragraph).
 - **edit** `tools/desk/README.md` — the deskevidence section.
-- **edit** `docs/streams/verify-outcomes/README.md` — its "optional" receipt wording becomes
-  "required on new records" and it links verify-wake-v1.md for fields instead of listing them.
+- **edit** `docs/streams/verify-outcomes/README.md` — its "optional" receipt wording becomes "required on new records" and it links verify-wake-v1.md for fields instead of listing them.
 - **add** `changelog/desk-supervision-27.md` (planned).
 
 facts:

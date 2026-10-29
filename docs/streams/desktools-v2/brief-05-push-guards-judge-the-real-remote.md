@@ -48,10 +48,10 @@ id: a8da9afb-a695-4ee1-bbb0-87064d9eae86
 ## Context
 
 files:
-- `tools/desk/cmd/deskpushguard/main.go`, `foreigncommit.go`, `registerid.go` — take the remote from the hook's first argument.
+- `tools/desk/cmd/deskpushguard/{main,foreigncommit,registerid}.go` — take the remote from the hook's first argument.
 - `tools/desk/internal/deskkit/pushtransport.go` (+ the two callers) — resolve the effective URL.
-- NEW/extended `_test.go` beside each.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
+- **NEW/extended** `tools/desk/cmd/deskpushguard/*_test.go`, `tools/desk/internal/deskkit/pushtransport*_test.go` — `_test.go` beside each.
+- **`changelog/<branch>.md`** — the per-PR fragment this repository requires.
 
 single-point-of-failure: each guard IS a single evaluation, and this brief does not add a second
 guard; it makes each evaluation true. The independent layer behind both is server-side: branch

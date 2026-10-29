@@ -42,11 +42,11 @@ consumers:
 ## Context
 
 files:
-- NEW `tools/desk/internal/cli/` — Cobra constructors, command-local Viper binding and test fixtures.
-- NEW `tools/desk/internal/clicontract/` — executable discovery, migration-registry validation and reusable black-box checks.
+- **NEW** `tools/desk/internal/cli/` — Cobra constructors, command-local Viper binding and test fixtures.
+- **NEW** `tools/desk/internal/clicontract/` — executable discovery, migration-registry validation and reusable black-box checks.
 - `tools/desk/go.mod`, `tools/desk/go.sum` — pinned upstream dependencies.
-- NEW `docs/streams/desktools-v2/cli-contract.md` (planned) and `cli-migration.json`.
-- `docs/streams/desktools-v2/README.md`, `brief-16-*.md`, `brief-17-*.md` and NEW bounded migration briefs starting at the next free number.
+- **NEW** `docs/streams/desktools-v2/cli-contract.md` (planned) and `docs/streams/desktools-v2/cli-migration.json`.
+- `docs/streams/desktools-v2/README.md`, `docs/streams/desktools-v2/brief-16-*.md`, `docs/streams/desktools-v2/brief-17-*.md` — and NEW bounded migration briefs starting at the next free number.
 - `changelog/cli-foundation.md` (planned).
 
 facts:

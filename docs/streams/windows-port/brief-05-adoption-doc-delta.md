@@ -41,14 +41,8 @@ id: 3b8c1c71-09a2-42cb-8990-8acaf32ebeff
 ## Context
 
 files:
-- **amend** `docs/adopting-assay.md` — add the Windows walkthrough. Mirror the existing
-  per-scenario structure: the runbook already routes green-field / existing-suite / carve-out;
-  the Windows axis is orthogonal (an adopter on Windows follows their scenario AND the Windows
-  install section), so the cleanest shape is a **`## Windows adopters` section** the scenario
-  sections cross-reference at the install step, not a fourth scenario.
-- **amend** `plugins/assay/skills/install/SKILL.md` — update the §Scope "Windows deferred" note to
-  point at the now-real path. This is the one cross-file edit this brief owns (the shared-value
-  note that install briefs 03 deliberately left for the doc delta).
+- **amend** `docs/adopting-assay.md` — add the Windows walkthrough. Mirror the existing per-scenario structure: the runbook already routes green-field / existing-suite / carve-out; the Windows axis is orthogonal (an adopter on Windows follows their scenario AND the Windows install section), so the cleanest shape is a **`## Windows adopters` section** the scenario sections cross-reference at the install step, not a fourth scenario.
+- **amend** `plugins/assay/skills/install/SKILL.md` — update the §Scope "Windows deferred" note to point at the now-real path. This is the one cross-file edit this brief owns (the shared-value note that install briefs 03 deliberately left for the doc delta).
 
 facts:
 - **The doc has no per-OS axis today.** It is per-scenario; OS handling hides inside

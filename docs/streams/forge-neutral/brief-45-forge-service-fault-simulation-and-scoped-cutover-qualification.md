@@ -51,8 +51,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/integration/` (planned), `workflow/store/forgejourney_test.go` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `ci/staged-workflows/forge-service.yml` (planned), `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `docs/forge-service-cutover.md` (planned), `docs/proposals/non-ci-architecture/20-amendment-manifest.md`, `changelog/forge-service-qualification.md` (planned), `tools/desk/internal/forgeservice/integration/reviewjourney_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files: `tools/desk/internal/forgeservice/integration/` (planned), `workflow/store/forgejourney_test.go` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `ci/staged-workflows/forge-service.yml` (planned), `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `docs/forge-service-cutover.md` (planned), `docs/proposals/non-ci-architecture/20-amendment-manifest.md`, `changelog/forge-service-qualification.md` (planned), `tools/desk/internal/forgeservice/integration/reviewjourney_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - 37/38 remain mirror/event owners. 40 supplies authenticated local serving; 41 owns the write-through adapters; 42/43 supply exact-source and derived-cache behavior.

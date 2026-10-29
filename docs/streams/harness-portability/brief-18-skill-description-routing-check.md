@@ -41,8 +41,8 @@ exec-tier-why: >-
 
 ## Context
 files: `tools/skillslint/routing.go` (planned), `tools/skillslint/routing_test.go` (planned),
-`tools/skillslint/routing/<skill>.yaml` (planned), `tools/skillslint/routing/baseline.yaml` (planned) — the bundle fixture,
-`tools/skillslint/testdata/routing/**` (planned), `tools/skillslint/main.go`,
+`tools/skillslint/routing/*.yaml` (planned; one `<skill>.yaml` per skill), `tools/skillslint/routing/baseline.yaml` (planned) — the bundle fixture,
+`tools/skillslint/testdata/routing/` (planned), `tools/skillslint/main.go`,
 `tools/skillslint/README.md`, `changelog/harness-portability-18-skill-description-routing-check.md` (planned)
 facts:
 - sibling: `harness-portability/17` adds per-skill length limits and a repeatable `--skills-dir <dir>`

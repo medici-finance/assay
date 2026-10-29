@@ -28,11 +28,8 @@ id: d178703f-dbb2-49ef-afb4-c9e266da8869
 ## Context
 
 files:
-- `tools/desk/cmd/deskpushguard/foreigncommit.go` — `gitOut` seam: `log --format`, `merge-base`
-  (`--is-ancestor`), `rev-list --parents`, `cat-file -e`, `branch -r --contains`,
-  `ls-tree -r --name-only`.
-- `tools/desk/cmd/deskpushguard/registerid.go` — `cat-file -e`, `show <sha>:<path>`,
-  `branch -r`, `diff`, `rev-parse`.
+- `tools/desk/cmd/deskpushguard/foreigncommit.go` — `gitOut` seam: `log --format`, `merge-base` (`--is-ancestor`), `rev-list --parents`, `cat-file -e`, `branch -r --contains`, `ls-tree -r --name-only`.
+- `tools/desk/cmd/deskpushguard/registerid.go` — `cat-file -e`, `show <sha>:<path>`, `branch -r`, `diff`, `rev-parse`.
 - `tools/desk/cmd/deskpushguard/main.go` — `remote get-url`, `rev-parse` reads.
 - `docs/streams/desktools-go-git/inventory.md` (planned) — tick migrated op families.
 
