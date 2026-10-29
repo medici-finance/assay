@@ -490,6 +490,11 @@ type ContentEvent struct {
 	AuthorID  int64
 	CreatedAt time.Time
 	EditedAt  time.Time
+	// ForgeBot is the forge's own bot flag for the author, where the read carries it: the
+	// GraphQL trust reads (GitHub __typename "Bot", GitLab `bot`; collectEvents). False is
+	// also what a read that does not carry the flag reports, so it never widens anything:
+	// it is consulted only to REFUSE an ASSAY_ASSERTED_HUMANS login the forge marks a bot.
+	ForgeBot bool `json:",omitempty"`
 }
 
 // Blessed evaluates a blessing for an item whose AUTHOR is untrusted. A blessing
@@ -526,8 +531,15 @@ func Blessed(bodyEditedAt time.Time, events []ContentEvent) bool {
 	if !EffectiveConfig().Configured() {
 		return false
 	}
+	asserted := EffectiveConfig().AssertedHumans
 	facts := make([]trustcore.Event, 0, len(events))
 	for _, e := range events {
+		// The forge's bot flag wins over a human-name assertion: an asserted login the forge
+		// marks a bot is neither the authority nor a trusted author on this event.
+		if trustcore.AssertionOverruled(asserted, e.Author, e.ForgeBot) {
+			facts = append(facts, trustcore.Event{Created: e.CreatedAt, Edited: e.EditedAt})
+			continue
+		}
 		facts = append(facts, trustcore.Event{Authority: IsBlessAuthorityIDStrict(e.Author, e.AuthorID), Trusted: trustedContentAuthor(e.Author, e.AuthorID), Created: e.CreatedAt, Edited: e.EditedAt})
 	}
 	return trustcore.Blessed(bodyEditedAt, facts)

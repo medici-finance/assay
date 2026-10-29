@@ -171,7 +171,12 @@ carries push rights the Developer level deliberately withholds.
 | Session actor | the account the agent/`glab` session authenticates as | e.g. `gitlab-second-human.token` | interactive API; **must not** merge protected `main` if it is only Developer |
 | Role fleet | one SA per Assay role | `gitlab-<role>.token` (see §2 copies) | minted desk writes |
 
-Never put a `*-bot` login in `ASSAY_TRUSTED_LOGINS` — the roster loader refuses that mix.
+Never put a `*-bot` login in `ASSAY_TRUSTED_LOGINS` — the roster loader refuses that mix. A
+role service account is never a human; the one exception is a **human** whose own username
+ends in `-bot` or `-app`, rostered through a pinned `ASSAY_ASSERTED_HUMANS=<username>:<user id>`
+entry (see `docs/adopting-assay.md`, "A human whose username ends in `-bot` or `-app`"). GitLab
+marks service accounts with its own `bot` flag, and the desk tools' trust read refuses an
+asserted username the forge marks that way.
 Role tokens are not the session git identity.
 
 **Commit identity vs role identity.** `deskroster preflight --role worker` may require the
