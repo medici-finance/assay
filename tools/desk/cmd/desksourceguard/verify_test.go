@@ -312,6 +312,105 @@ func TestPrefixMatchIsExact(t *testing.T) {
 	}
 }
 
+// TestBinaryPinSpellings pins which `.assay-versions` lines count as this
+// platform's desk-tools binary pin: the suffixless `desk-tools-<platform>` line
+// and the installer's `desk-tools-<platform>.tar.gz` line, in that order, each
+// looked up in full. Every other line (another component, another platform,
+// a longer name that merely starts the same way) stays unreachable, and no
+// matching line is still a could-not-check, never a pass.
+//
+// regression: #4862
+func TestBinaryPinSpellings(t *testing.T) {
+	const tag = "desk-tools/v0.2.2"
+	const other = "desk-tools/v0.0.1"
+	src := func(t string) string { return fmt.Sprintf("desk-tools-source %s %s\n", t, goodCommit) }
+	line := func(name, t string) string { return fmt.Sprintf("%s %s %s\n", name, t, fakeBinDigest) }
+
+	// Lines that pin something else for the same platform. None may stand in for
+	// the linux-amd64 desk-tools pin.
+	strangers := line("statusgen-linux-amd64", tag) +
+		line("deskd-linux-amd64.tar.gz", tag) +
+		line("desk-tools-linux-amd64-debug.tar.gz", tag) +
+		line("desk-tools-linux-amd64.tar.gz.sigstore.json", tag) +
+		line("desk-tools-linux-arm64.tar.gz", tag) +
+		line("desk-tools", tag)
+
+	cases := []struct {
+		name     string
+		platform string
+		pins     string
+		wantCode int
+		wantMsg  string
+	}{
+		{
+			name:     "installer tarball line resolves",
+			platform: "linux-amd64",
+			pins:     line("desk-tools-linux-amd64.tar.gz", tag) + src(tag),
+			wantCode: deskkit.ExitOK,
+		},
+		{
+			name:     "suffixless line still resolves",
+			platform: "linux-amd64",
+			pins:     line("desk-tools-linux-amd64", tag) + src(tag),
+			wantCode: deskkit.ExitOK,
+		},
+		{
+			name:     "suffixless line wins over the tarball line",
+			platform: "linux-amd64",
+			pins:     line("desk-tools-linux-amd64.tar.gz", other) + line("desk-tools-linux-amd64", tag) + src(tag),
+			wantCode: deskkit.ExitOK,
+		},
+		{
+			name:     "tarball tag is checked against the source pin",
+			platform: "linux-amd64",
+			pins:     line("desk-tools-linux-amd64.tar.gz", other) + src(tag),
+			wantCode: deskkit.ExitRefused,
+			wantMsg:  "desk-tools-linux-amd64.tar.gz names tag " + other,
+		},
+		{
+			name:     "other components' lines stay unreachable",
+			platform: "linux-amd64",
+			pins:     strangers + src(tag),
+			wantCode: deskkit.ExitUnverifiable,
+			wantMsg:  "no desk-tools-linux-amd64 pin",
+		},
+		{
+			name:     "a non-platform token selects no line",
+			platform: "source",
+			pins:     src(tag),
+			wantCode: deskkit.ExitUnverifiable,
+			wantMsg:  "no desk-tools binary pin",
+		},
+		{
+			name:     "malformed tarball line fails closed",
+			platform: "linux-amd64",
+			pins:     "desk-tools-linux-amd64.tar.gz " + tag + "\n" + src(tag),
+			wantCode: deskkit.ExitUnverifiable,
+			wantMsg:  `malformed "desk-tools-linux-amd64.tar.gz" pin`,
+		},
+		{
+			name:     "malformed suffixless line is never skipped",
+			platform: "linux-amd64",
+			pins:     "desk-tools-linux-amd64 " + tag + "\n" + line("desk-tools-linux-amd64.tar.gz", tag) + src(tag),
+			wantCode: deskkit.ExitUnverifiable,
+			wantMsg:  `malformed "desk-tools-linux-amd64" pin`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, tc.pins, goodCommit, goodCommit[:7])
+			var out strings.Builder
+			err := verify(options{repoRoot: f.root, source: f.src, platform: tc.platform}, f.stamp, &out)
+			if got := deskkit.ExitCodeOf(err); got != tc.wantCode {
+				t.Fatalf("exit code %d, want %d (err: %v)", got, tc.wantCode, err)
+			}
+			if tc.wantMsg != "" && (err == nil || !strings.Contains(err.Error(), tc.wantMsg)) {
+				t.Fatalf("refusal must explain itself with %q; got: %v", tc.wantMsg, err)
+			}
+		})
+	}
+}
+
 // TestMissingPinFileFailsClosed — a consumer with no pin file at all is not
 // "unpinned by default", it is unverifiable.
 func TestMissingPinFileFailsClosed(t *testing.T) {
