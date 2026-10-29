@@ -1190,6 +1190,8 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	b.WriteString(renderCardLinks(makeGateCard(root, bf, cardAcceptance)))
 	fmt.Fprintf(&b, "## Human sign-off required — %s\n\n", bf.Brief)
 	fmt.Fprintf(&b, "**%s**\n\n", bf.Title)
+	head := b.String()
+	b.Reset() // authored rationale is cuttable; card identity and close prompts are not
 
 	// gate-why (gate-why-rationale): the authored reason THIS brief is gated,
 	// surfaced above the mechanical yes-key list so the human reads a real
@@ -1223,7 +1225,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	// The lifted sections are unbounded; capIssueBody holds the whole body
 	// under the forge limit without touching the header above or the
 	// checklist below (#4091).
-	sections := verifySections(body, bf.Evidence)
+	sections := append([]string{b.String()}, verifySections(body, bf.Evidence)...)
 
 	var tail strings.Builder
 	tail.WriteString("### Before you close\n\n")
@@ -1232,7 +1234,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	tail.WriteString("- [ ] I accept this brief as done\n\n")
 	tail.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
 		"`). Only a human closer is honored.\n")
-	return capIssueBody(b.String(), sections, tail.String(), briefLinkAtCommit(root, rel))
+	return capIssueBody(head, sections, tail.String(), briefLinkAtCommit(root, rel))
 }
 
 // verifySections renders the Verify and Evidence sections a verify-gate card
@@ -1293,6 +1295,12 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 		fmt.Fprintf(&b, "The recorded model verify pass becomes the Verified stamp; the human closer becomes the Reviewed stamp.\n\n")
 	}
 
+	// Preserve the generated identity/transition header. Authored rationale
+	// can be as large as the brief itself and must share the section budget,
+	// otherwise adding card links can evict the mandatory close prompts.
+	head := b.String()
+	b.Reset()
+
 	// gate-why
 	if gw := strings.TrimSpace(bf.GateWhy); gw != "" {
 		fmt.Fprintf(&b, "> **Why you're being asked to sign off:** %s\n\n", gw)
@@ -1317,12 +1325,12 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	}
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
-	head := b.String()
+	intro := b.String()
 
 	// Every section below is lifted from the brief and unbounded; each is a
 	// cuttable unit for capIssueBody, which keeps the header above and the
 	// generated prompts and checklist below whole (#4091).
-	sections := verifySections(body, bf.Evidence)
+	sections := append([]string{intro}, verifySections(body, bf.Evidence)...)
 
 	// UNRUN/deferred rows — surfaced prominently.
 	if ur := unrunRowsText(bf.Evidence); ur != "" {
