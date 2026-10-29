@@ -48,7 +48,11 @@ var (
 )
 
 func (r coverageRepo) InRepository() bool {
-	return coverageGit(r.root, "rev-parse", "--git-dir").Run() == nil
+	read := gitCoreFor(r.root)
+	if read.native != "" {
+		return coverageGit(r.root, "rev-parse", "--git-dir").Run() == nil
+	}
+	return read.err == nil
 }
 
 func (r coverageRepo) ResolveObject(token string) (string, bool) {
@@ -60,19 +64,42 @@ func (r coverageRepo) ResolveObject(token string) (string, bool) {
 }
 
 func (r coverageRepo) ResolveCommit(token string) (string, bool) {
-	out, err := coverageGit(r.root, "rev-parse", "--verify", "--quiet", "--end-of-options", token+"^{commit}").Output()
+	if nativeCommitSelector(token) {
+		out, err := coverageGit(r.root, "rev-parse", "--verify", "--quiet", "--end-of-options", token+"^{commit}").Output()
+		if err != nil {
+			return "", false
+		}
+		return strings.TrimSpace(string(out)), true
+	}
+	read := gitCoreForCommits(r.root, token)
+	if strings.HasPrefix(token, "refs/") {
+		read = gitCoreFor(r.root)
+	}
+	if read.err != nil {
+		return "", false
+	}
+	if read.native != "" {
+		out, err := coverageGit(r.root, "rev-parse", "--verify", "--quiet", "--end-of-options", token+"^{commit}").Output()
+		return strings.TrimSpace(string(out)), err == nil
+	}
+	h, err := read.repo.Resolve(token)
 	if err != nil {
 		return "", false
 	}
-	return strings.TrimSpace(string(out)), true
+	return h.String(), true
 }
 
 func (r coverageRepo) IsShallow() (shallow, ok bool) {
-	out, err := coverageGit(r.root, "rev-parse", "--is-shallow-repository").Output()
-	if err != nil {
+	read := gitCoreFor(r.root)
+	if read.err != nil {
 		return false, false
 	}
-	return strings.TrimSpace(string(out)) != "false", true
+	if read.native != "" {
+		out, err := coverageGit(r.root, "rev-parse", "--is-shallow-repository").Output()
+		return strings.TrimSpace(string(out)) != "false", err == nil
+	}
+	// Fresh canonical metadata observation proved the shallow file absent.
+	return false, true
 }
 
 func (r coverageRepo) MergeBase(a, b string) evaluation.History {
@@ -128,11 +155,26 @@ func (r coverageRepo) TreeFiles(rev string) []string {
 	if ok {
 		return files
 	}
-	out, err := coverageGit(r.root, "ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options", rev).Output()
-	if err != nil {
+	read := gitCoreForCommits(r.root, rev)
+	if read.err != nil {
 		return nil
 	}
-	files = splitNUL(out)
+	if read.native != "" {
+		out, err := coverageGit(r.root, "ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options", rev).Output()
+		if err != nil {
+			return nil
+		}
+		files = splitNUL(out)
+	} else {
+		entries, err := read.repo.TreeEntries(rev, true, false)
+		if err != nil {
+			return nil
+		}
+		files = make([]string, 0, len(entries))
+		for _, e := range entries {
+			files = append(files, e.Path)
+		}
+	}
 	repoCacheMu.Lock()
 	treeFilesCache[key] = files
 	repoCacheMu.Unlock()
@@ -149,11 +191,27 @@ func (r coverageRepo) TreeModes(rev string) ([]evaluation.TreeEntry, bool) {
 	if ok {
 		return got, true
 	}
-	out, err := coverageGit(r.root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
-	if err != nil {
+	read := gitCoreForCommits(r.root, rev)
+	if read.err != nil {
 		return nil, false
 	}
 	var entries []evaluation.TreeEntry
+	var out []byte
+	if read.native == "" {
+		got, err := read.repo.TreeEntries(rev, true, false)
+		if err != nil {
+			return nil, false
+		}
+		for _, e := range got {
+			entries = append(entries, evaluation.TreeEntry{Mode: e.Mode, Path: e.Path})
+		}
+	} else {
+		var err error
+		out, err = coverageGit(r.root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
+		if err != nil {
+			return nil, false
+		}
+	}
 	for _, e := range splitNUL(out) {
 		meta, name, found := strings.Cut(e, "\t")
 		f := strings.Fields(meta)
@@ -192,11 +250,11 @@ func (r coverageRepo) RootPrefix() (string, bool) {
 	if ok {
 		return got, true
 	}
-	out, err := coverageGit(r.root, "rev-parse", "--show-prefix").Output()
+	prefix, err := provenanceRootPrefix(r.root)
 	if err != nil {
 		return "", false
 	}
-	prefix := strings.TrimSpace(string(out))
+
 	repoCacheMu.Lock()
 	rootPrefixCache[r.root] = prefix
 	repoCacheMu.Unlock()

@@ -125,7 +125,7 @@ go-git walks repeated PER CANDIDATE, and most of that is work no gate reads — 
 walk to render a commit COUNT inside a skip string nothing parses, an unmemoized ancestor walk
 that runs to exhaustion for the 19-in-20 candidates that are genuinely unmerged, and a full
 `Status()` over ~4,100 files run BEFORE the merge gate that would have held the worktree anyway.
-This is the same defect the stream's own `tools/desk/internal/gitcore/contains.go` header
+This is the same defect the stream's own [pre-lift containment reader](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/contains.go) header
 already diagnoses and fixes for a different caller, so the brief takes the same shape: ONE walk
 per sweep into an
 ancestor-hash set, the merge gate ahead of `Status()`, one shared object cache, and the count

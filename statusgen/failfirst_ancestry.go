@@ -30,13 +30,39 @@ var commitIsAncestor = func(root, base, of string) (bool, string) {
 	if !isObjectID(of) {
 		return false, "the merge-base of HEAD and origin/main could not be resolved"
 	}
-	full, err := gitOut(root, "rev-parse", "--verify", "--quiet", base+"^{commit}")
+	read := gitCoreRead{native: "abbreviated witness base retains native disambiguation"}
+	if isObjectID(base) {
+		read = ordinaryGitCore(root)
+	}
+	var full string
+	var err error
+	if read.err != nil {
+		return false, "it names no commit in this clone"
+	}
+	if read.native == "" {
+		why, e := read.repo.CommitTreeReadReason(base)
+		if e != nil {
+			return false, "it names no commit in this clone"
+		}
+		if why != "" {
+			read.native = why
+		}
+	}
+	if read.native == "" {
+		hash, e := read.repo.Resolve(base)
+		full = hash.String()
+		err = e
+	} else {
+		full, err = gitOut(root, "rev-parse", "--verify", "--quiet", base+"^{commit}")
+	}
+
 	if err != nil || !isObjectID(full) {
 		return false, "it names no commit in this clone"
 	}
 	if full == of {
 		return true, ""
 	}
+
 	cmd := exec.Command("git", "-C", root, "merge-base", "--is-ancestor", full, of)
 	err = cmd.Run()
 	if err == nil {

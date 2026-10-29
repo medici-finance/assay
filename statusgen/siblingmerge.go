@@ -502,7 +502,7 @@ func checkSiblingCheckout(path string) (ok bool, reason string) {
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
 		return false, fmt.Sprintf("%s is not a git directory (no .git)", path)
 	}
-	out, err := exec.Command("git", "-C", path, "rev-parse", "--is-shallow-repository").Output()
+	out, err := gitShallowOutput(path)
 	if err != nil {
 		return false, fmt.Sprintf("git rev-parse --is-shallow-repository failed at %s: %v", path, err)
 	}

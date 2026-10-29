@@ -1265,7 +1265,7 @@ func briefTreeSHA(root, brief string) string {
 // HEAD is to brief, and brief differs from its HEAD blob only inside the
 // `## Evidence` section the brief parser bounds (evidenceSectionSpan).
 func evidenceOnlyChange(root, brief string) bool {
-	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	top, err := repoTopLevel(root)
 	if err != nil {
 		return false
 	}
@@ -2619,12 +2619,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// keeps the strict check: even an Evidence-only edit (an earlier run's
 		// uncommitted witnesses) refuses it, and a transition run records its
 		// rows on a committed tree before any container bracket is opened.
-		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
-		if err != nil || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
+		full, ok := (coverageRepo{root: root}).ResolveCommit("HEAD")
+		if !ok || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
 			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
 			return verifyrunExitCouldNot
 		}
-		executionTree = strings.TrimSpace(string(full))
+		executionTree = full
 	}
 	if netnsContainer {
 		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
@@ -2860,7 +2860,7 @@ func originOwnerRepo(url string) string {
 // toplevel. A root outside any repository is not refused: its witness token
 // is `no-git`, which no comparison credits.
 func verifyrunRootBelowToplevel(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	out, err := gitPrefixOutput(root)
 	if err != nil {
 		if gitCurrentSHA(root) != "" {
 			return fmt.Sprintf("refusing --root %s: where it sits in its git repository could not be read (git rev-parse --show-prefix failed), and a witness must be taken at the repository's toplevel", root)
@@ -2880,7 +2880,7 @@ func repoRootFor(briefPath string) string {
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
 	}
-	if out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output(); err == nil {
+	if out, err := repoTopLevel(dir); err == nil {
 		if top := strings.TrimSpace(string(out)); top != "" {
 			return top
 		}
