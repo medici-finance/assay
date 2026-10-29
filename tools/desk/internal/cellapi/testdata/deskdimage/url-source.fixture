@@ -1,0 +1,5 @@
+# A file fetched by URL instead of from the reviewed context.
+want: url-source
+file: Dockerfile
+replace: "COPY go.mod go.sum ./\n"
+with: "COPY go.mod go.sum ./\nADD https://example.com/tool.tar.gz /tmp/\n"

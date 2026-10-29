@@ -81,7 +81,7 @@ Two disciplines the engine enforces rather than requests:
 
 - **A failed dispatch does not abort the drain.** It is landed as `VerdictError` and its claim
   released, so one bad item cannot freeze the pool. See `TestDispatchFailureLandsAndContinues`.
-- **Claiming is the single dedupe chokepoint.** A claim held elsewhere is a skip, never a
+- **Claiming is the dispatch dedupe chokepoint.** A claim held elsewhere is a skip, never a
   second dispatch. See `TestClaimCollisionSkipsItem`.
 
 ## Optional layers (opt-in, deskkit-free)
@@ -94,9 +94,66 @@ a house wires its own implementation behind the interface.
 |-------|-------|--------------|
 | `WorkEvidence` | `Config.Evidence` | probe before claim — if the work is already done elsewhere, land it without dispatch; a could-not-check probe SKIPS rather than duplicates |
 | author-not-runner guard | `Config.RunnerID` + `CheckAuthorRunner` | an item whose `Implementer` equals the runner is routed to `Land` as held, never dispatched to its own author |
-| `Journal` | `Config.Journal` | a structured `Event` per scheduling decision — attribution derived from the run, for replay |
+| `Journal` | `Config.Journal` | scheduling events remain best-effort; declared effects require durable `EFFECT-INTENT` before Apply |
+| Effects / handoff | `Config.Effects`, `Config.RequireHandoff` | authoritative receipt reconciliation and mandatory intent; optional atomic claim-generation/outbox handoff |
 | `RetryPolicy` | [`retry.go`](./retry.go) | the three-state retry taxonomy (transient / deterministic / **could-not-classify → route to a human**), with bounded attempts and backoff; a facility your `Land`/re-selection consults, kept off the six-method contract on purpose |
 | `Timeouts` | [`journal.go`](./journal.go) | the schedule-to-start / start-to-close / heartbeat liveness taxonomy; the type lives here, enforcement (which reads live infra) is yours |
+
+### Effect layer
+
+`Effects(Item)` declares **every** external operation, including effects attached to
+an artifact/check/decision node. Discovery is side-effect-free; a discovery error
+SKIPs that item. Zero declarations use the ordinary `Loop.Dispatch` path. For a
+nonempty declaration the engine owns `Effect.Apply` and returns a structured result
+to `Land`; the adapter must not repeat those operations in `Loop.Dispatch`.
+The six-method Loop interface is unchanged.
+
+Queues supply a stable `RunID` and a fresh `AttemptID` for each selected attempt;
+retries retain the run. `Effect.Key()` binds run, operation, target and subject,
+excluding attempt and claim generation. `OperationKey` is the versioned helper for
+those coordinates. Keys must be nonempty and unique within an item; successful
+receipts must echo the key and carry the authoritative record's reference.
+
+The order is **reconcile → intent → apply → done**. Every delivery, including
+`Retry == 0`, looks up its authoritative receipt first. This covers lost journal
+history and duplicate queue entries without relying on a process-local cache.
+A found receipt emits `RECONCILE` and `EFFECT-DONE` without Apply. An unreadable,
+unsupported or invalid receipt holds as `reconcile could-not-check`. A provider's
+`found=false, err=nil` promises definitive absence and that application is safe
+under its provider-specific dedupe/fencing boundary. An adapter unable to establish
+that promise returns an error. Lookup followed by Apply is not an atomic provider
+transaction: concurrent executors still need provider dedupe/fencing.
+
+For a declared effect, a missing Journal refuses before any item in the selected
+pass is claimed/dispatched. `EFFECT-INTENT` records RunID, AttemptID and Key durably
+before Apply; recording failure lands `VerdictError` with journal evidence and no
+external write. All other event kinds stay best-effort, including `EFFECT-DONE`:
+a dropped completion is recovered by the next authoritative lookup. An unknown
+Apply result holds; `EffectFailure` distinguishes a provider-proven failure with
+no external change. Success lands pass. Neither an unknown outcome nor an
+unavailable journal licenses automatic replay.
+
+A Journal implementing `TransactionalJournal` supplies `Generation`, `Pending`
+and `CommitIntent`. After the item is claimed, CommitIntent atomically checks
+current ownership and commits its admitted claim generation with `EFFECT-INTENT`.
+It must not overwrite an older pending generation. Resume reads the store's
+pending entries and reconciles first. A superseded pending generation with an
+absent receipt holds; a found authoritative receipt can complete that older entry.
+Malformed/foreign or unreadable pending state holds. Commit failure never applies.
+`Record(EFFECT-DONE)` completes only its matching key/generation, and a lost write
+leaves that intent pending. This is a store-neutral seam for the PostgreSQL outbox
+consumer; drainloop adds no database driver and no per-effect Git append.
+
+`RequireHandoff` refuses Run **before queue selection** unless the journal
+implements that seam; it never falls back to another store or an ordinary journal.
+The interface is a contract, not a proof of a real store's atomicity. `handoff_test.go`
+uses an in-memory transactional fake; database durability remains its consumer's
+qualification. `Config.Context` carries caller cancellation/deadlines to the effect
+and handoff adapters (nil uses Background).
+
+Recovery mutations are reproducible with `python3 testdata/effect_mutations.py`
+from this module. Each mutant must fail a named runtime assertion and the harness
+restores the source even on failure; it rejects compile-only failures.
 
 ## Files
 
@@ -108,6 +165,8 @@ a house wires its own implementation behind the interface.
 | [`adapters.go`](./adapters.go) | `MemoryQueue` + an echoing dispatcher — the stand-in adapters |
 | [`evidence.go`](./evidence.go) | `WorkEvidence`, `CheckAuthorRunner` — the pre-dispatch gates |
 | [`retry.go`](./retry.go) | `RetryPolicy` and the three-state `Class` taxonomy |
+| [`effect.go`](./effect.go) | `Effect`, `Receipt`, stable operation coordinates and mandatory reconciliation |
+| [`handoff.go`](./handoff.go) | transactional intent/claim-generation outbox contract |
 | [`journal.go`](./journal.go) | `Journal`/`Event` sink and the `Timeouts` liveness taxonomy |
 | [`cmd/demo`](./cmd/demo) | a runnable demonstration |
 | `*_test.go` | the negative tests: claim collision, dispatch failure, held item, could-not-check tier, the opt-in layers, and the deskkit-free assertion |

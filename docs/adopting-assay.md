@@ -20,8 +20,8 @@ Apps, protected-branch push-access lists in place of ruleset bypass, the runner,
 variables — is [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md); the two files are
 the per-forge halves of one flow, and a GitLab adopter reads both. `gh` and `glab` are optional
 convenience CLIs on their own forge and no install step requires either (see the `assay:install`
-skill, *Optional forge CLIs*). **Cursor has no `/plugin` path**;
-use [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Codex has
+skill, *Optional forge CLIs*). **Cursor has no `/plugin` path**: it has its own plugin
+marketplace route and a versioned copy-skills route; see [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Codex has
 no Claude `/plugin` path either**, and its resident rules travel in `AGENTS.md` rather than a
 session hook; use [Running Assay on Codex](#running-assay-on-codex). **Native
 Windows** follows [Windows adopters](#windows-adopters) at the install step (release assets, or
@@ -35,7 +35,7 @@ a from-source pin).
 | GitHub | Claude Code | native Windows | Turnkey skill **plus** [Windows adopters](#windows-adopters) (channel E release, or channel D source) |
 | GitLab (any edition you will actually run) | Claude Code | macOS / Linux | Turnkey `assay:install` below for the forge-neutral half (acquisition, `statusgen init` writing `.gitlab-ci.yml`, pins, instruction-file bindings) **plus** [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half (tier, service accounts, protected branch, runner, CI/CD variables) — read its tier ladder before provisioning anything. No `gh` and no `glab` needed. |
 | GitLab | other harnesses | any | [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) for the GitLab half, then this file for CORE and the harness row below |
-| GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): copy skills + `references/`, no marketplace install |
+| GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): versioned copy-skills + `references/` (pins a release), or a Cursor team-marketplace import (follows a branch) |
 | GitHub or GitLab | Codex (CLI) | any | [Codex section](#running-assay-on-codex): skills into `.agents/skills/`, the `AGENTS.md` fragment, the `multi_agent` flag; not the Claude `/plugin` commands |
 
 A Windows + GitLab + Cursor boot is a **real combination**. It is three documented arms, not
@@ -52,7 +52,7 @@ true shape on this page and not at step four:
 | **Principals** | **2** — one human, one automation | The human merges and rules on gates; the automation identity is what the fleet runs *as*. They must be distinct (the two-principals prerequisite; GitHub Apps or GitLab service accounts for the automation side). |
 | **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
 | **Supported platform** | **GitHub** (this file's identity half); **GitLab** (its identity half is [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)) | The install flow is shared; this page's identity and protection half is GitHub-shaped (Apps, rulesets). GitLab substitutes service accounts for Apps. Self-managed Community Edition is not the same as gitlab.com Free — read the GitLab doc's edition + read-back rules before claiming controls. |
-| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex CLI** (copy-skills + `AGENTS.md` fragment + the `multi_agent` flag) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only — Cursor has no marketplace install, and Codex's is its own `codex plugin marketplace` surface. Codex CLI's default `workspace-write` sandbox makes the implementer skills **refuse**; see the [Codex section](#running-assay-on-codex). |
+| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex CLI** (copy-skills + `AGENTS.md` fragment + the `multi_agent` flag) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only — Cursor's plugin route is a team-marketplace import that follows a branch, and Codex's is its own `codex plugin marketplace` surface. Codex CLI's default `workspace-write` sandbox makes the implementer skills **refuse**; see the [Codex section](#running-assay-on-codex). |
 
 **Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
 `pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
@@ -1779,8 +1779,22 @@ instructions run on any agent that reads them — the capability table in
 [how-assay-works.md](./how-assay-works.md) gives the concrete mapping per harness. Capability
 bindings: [`plugins/assay/references/cursor.md`](../plugins/assay/references/cursor.md).
 
-**There is no Cursor marketplace / `/plugin` install.** Do not run the Claude Code
-`/plugin marketplace add` commands in Cursor and call the harness unsupported when they no-op.
+**Cursor has no `/plugin marketplace add`.** Do not run the Claude Code `/plugin`
+commands in Cursor and call the harness unsupported when they no-op. Cursor has two
+routes of its own, and they track different things:
+
+- **Versioned copy-skills (below) pins a release.** It places the bundle of one umbrella
+  tag, and `.cursor/assay-managed.json` records that release's plugin `version`. Read the
+  field to see what a repo holds; `upgrade-assay --harness cursor` moves it to the latest
+  stable tag or a named one. Pick this route when you need to know which release you run.
+- **The Cursor plugin follows a branch.** This repo carries a Cursor marketplace at
+  `.cursor-plugin/marketplace.json`, pointing at `plugins/assay/.cursor-plugin/plugin.json`.
+  Assay is not in the public Cursor Marketplace, so the route is a Teams/Enterprise
+  **Import from Repo**. Cursor re-indexes the tracked branch on push (Auto Refresh) or
+  on **Refresh**. It does not use the manifest `version` to decide on updates, and its
+  docs describe no tag pinning. The default branch carries the *next* patch version
+  after each release, so an import that tracks it reports that unreleased version.
+
 The in-editor agent is the path most adopters actually use; headless `cursor-agent` remains the
 automation/smoke surface (brief 13) and is **not** a prerequisite for copying skills.
 
@@ -1816,8 +1830,9 @@ Both routes run before `assay:install`, because they place that skill into Curso
 
 **Upgrade an existing adopter.** Use the existing version resolver and migration
 runner through `upgrade-assay --root <repo> --harness cursor --to vX.Y.Z --fetch --dry-run`.
-Inspect the plan, then apply the same command without `--dry-run`; finish with
-`--check`. A Cursor upgrade places the verified bundle before advancing
+Omit `--to` to select the latest stable umbrella tag. The command prints the release
+the inventory records beside the one selected. Inspect the plan, then apply the same
+command without `--dry-run`; finish with `--check`. A Cursor upgrade places the verified bundle before advancing
 `.assay-versions` and does not print Claude marketplace commands. `--check` is
 read-only and reports drift with exit 1; unavailable or unverifiable bundles refuse.
 A same-version upgrade still verifies the bundle and checks/repairs missing generated
@@ -1825,7 +1840,8 @@ files. It never silently overwrites local edits.
 
 **Ownership.** `.cursor/skills/`, sibling `.cursor/references/`, and
 `.cursor/rules/assay.mdc` come from the canonical bundle. Generated text identifies
-its source. `.cursor/assay-managed.json` records owned file hashes; it is generated,
+its source. `.cursor/assay-managed.json` records owned file hashes and the placed plugin `version`
+(absent only for a source tree with no plugin manifest); it is generated,
 not an authorization boundary against a writer who can change the repository.
 Sync retires only previously owned, unchanged files no longer in the source set.
 Unrelated files and bytes outside the bounded `AGENTS.md` bindings are preserved.

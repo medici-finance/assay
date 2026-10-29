@@ -9,6 +9,8 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
+delivery:
+  - {in: "assay#4494", covers: partial, note: "authoring only: Verify-row rewrite and changelog, none of the deliverable"}
 schema: brief-v2
 version: 1
 authored: 2026-10-24 by maintainer-directed mutation review

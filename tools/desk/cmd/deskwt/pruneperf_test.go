@@ -31,7 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // perfN reads the fixture size for this run.

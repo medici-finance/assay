@@ -1,0 +1,5 @@
+# Without the daemon check a missing builder is not a named could-not-check.
+want: no-builder-check
+file: Makefile
+replace: "\t@docker info >/dev/null 2>&1 || { echo \"deskd-image: could-not-check: the docker daemon is unreachable; no image was built\" >&2; exit 2; }\n"
+with: ""

@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assay.dev/schemas/cell-kube-compat-v1.json",
+  "title": "Explicit trusted compatibility Kubernetes cell",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "cell",
+    "namespace",
+    "kubeconfig",
+    "context",
+    "endpoint",
+    "tls_server_name",
+    "ca_sha256",
+    "custody",
+    "roles"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cell-kube-compat-v1"
+    },
+    "cell": {
+      "type": "string",
+      "minLength": 1
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kubeconfig": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "endpoint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tls_server_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ca_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "custody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator",
+        "terminal",
+        "logs",
+        "nodes",
+        "downstream_logs"
+      ],
+      "properties": {
+        "operator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "terminal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logs": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nodes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "downstream_logs": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "the-desk",
+        "intake-desk",
+        "worker-desk",
+        "pr-review-desk",
+        "verify-desk"
+      ],
+      "properties": {
+        "the-desk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "agent",
+            "version_manifest",
+            "workdir",
+            "statefulset",
+            "pod",
+            "container",
+            "image",
+            "launch_id",
+            "agent_sha256",
+            "agent_version",
+            "model",
+            "instructions",
+            "instructions_sha256",
+            "initialization_id",
+            "initial_prompt",
+            "cell"
+          ],
+          "properties": {
+            "agent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version_manifest": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workdir": {
+              "type": "string",
+              "minLength": 1
+            },
+            "statefulset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "container": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "launch_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initialization_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initial_prompt": {
+              "const": "Read /opt/assay/plugin/skills/the-desk/SKILL.md and run that role under its existing STOP, claim and human gates."
+            },
+            "cell": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]+$"
+            }
+          }
+        },
+        "intake-desk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "agent",
+            "version_manifest",
+            "workdir",
+            "statefulset",
+            "pod",
+            "container",
+            "image",
+            "launch_id",
+            "agent_sha256",
+            "agent_version",
+            "model",
+            "instructions",
+            "instructions_sha256",
+            "initialization_id",
+            "initial_prompt",
+            "cell"
+          ],
+          "properties": {
+            "agent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version_manifest": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workdir": {
+              "type": "string",
+              "minLength": 1
+            },
+            "statefulset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "container": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "launch_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initialization_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initial_prompt": {
+              "const": "Read /opt/assay/plugin/skills/intake-desk/SKILL.md and run that role under its existing STOP, claim and human gates."
+            },
+            "cell": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]+$"
+            }
+          }
+        },
+        "worker-desk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "agent",
+            "version_manifest",
+            "workdir",
+            "statefulset",
+            "pod",
+            "container",
+            "image",
+            "launch_id",
+            "agent_sha256",
+            "agent_version",
+            "model",
+            "instructions",
+            "instructions_sha256",
+            "initialization_id",
+            "initial_prompt",
+            "cell"
+          ],
+          "properties": {
+            "agent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version_manifest": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workdir": {
+              "type": "string",
+              "minLength": 1
+            },
+            "statefulset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "container": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "launch_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initialization_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initial_prompt": {
+              "const": "Read /opt/assay/plugin/skills/worker-desk/SKILL.md and run that role under its existing STOP, claim and human gates."
+            },
+            "cell": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]+$"
+            }
+          }
+        },
+        "pr-review-desk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "agent",
+            "version_manifest",
+            "workdir",
+            "statefulset",
+            "pod",
+            "container",
+            "image",
+            "launch_id",
+            "agent_sha256",
+            "agent_version",
+            "model",
+            "instructions",
+            "instructions_sha256",
+            "initialization_id",
+            "initial_prompt",
+            "cell"
+          ],
+          "properties": {
+            "agent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version_manifest": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workdir": {
+              "type": "string",
+              "minLength": 1
+            },
+            "statefulset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "container": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "launch_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initialization_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initial_prompt": {
+              "const": "Read /opt/assay/plugin/skills/pr-review-desk/SKILL.md and run that role under its existing STOP, claim and human gates."
+            },
+            "cell": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]+$"
+            }
+          }
+        },
+        "verify-desk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "agent",
+            "version_manifest",
+            "workdir",
+            "statefulset",
+            "pod",
+            "container",
+            "image",
+            "launch_id",
+            "agent_sha256",
+            "agent_version",
+            "model",
+            "instructions",
+            "instructions_sha256",
+            "initialization_id",
+            "initial_prompt",
+            "cell"
+          ],
+          "properties": {
+            "agent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version_manifest": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workdir": {
+              "type": "string",
+              "minLength": 1
+            },
+            "statefulset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "container": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "launch_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "agent_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initialization_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "initial_prompt": {
+              "const": "Read /opt/assay/plugin/skills/verify-desk/SKILL.md and run that role under its existing STOP, claim and human gates."
+            },
+            "cell": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]+$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

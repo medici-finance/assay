@@ -72,6 +72,13 @@ func TestNoAmbientEnvTokenRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the ambient-token guard could not scan the desk tree: %v — could-not-check, NOT clean", err)
 	}
+	lifted, err := scanAmbientTokenReads(liftedGitTreeRoot)
+	if err != nil {
+		t.Fatalf("the ambient-token guard could not scan lifted Git source: %v — could-not-check, NOT clean", err)
+	}
+	for _, key := range lifted {
+		found = append(found, "gitcore/"+key)
+	}
 	if len(found) == 0 {
 		t.Fatal("the scan found no ambient-token reader at all, not even the permitted ones — a scanner " +
 			"that sees nothing certifies everything; re-point deskTreeRoot")

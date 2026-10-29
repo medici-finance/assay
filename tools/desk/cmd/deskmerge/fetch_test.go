@@ -7,10 +7,10 @@ import (
 
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
+	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/gitcore/gittest"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/gitexec"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // stubFetch replaces both fetch seams: fetchFn records what it was asked for (and never
