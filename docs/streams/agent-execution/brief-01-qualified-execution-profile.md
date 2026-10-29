@@ -25,7 +25,7 @@ id: "b402ec83-8a07-4551-b382-5dc017a45315"
 
 ## Context
 
-files: `spec/loop-admin-execution-profile-v1.md` (planned), `schemas/loop-admin-execution-profile-v1.json` (planned), `loopadmin/runner/executionprofile.go` (planned), `loopadmin/runner/executionprofile_test.go` (planned), `loopadmin/runner/conformance/`, `loopadmin/testdata/executionprofile/` (planned), `loopadmin/testdata/mutations.json`, `loopadmin/README.md`. All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
+files: `spec/loop-admin-execution-profile-v1.md` (planned), `schemas/loop-admin-execution-profile-v1.json` (planned), `loopadmin/runner/executionprofile.go` (planned), `loopadmin/runner/executionprofile_test.go` (planned), `loopadmin/runner/conformance/`, `loopadmin/testdata/executionprofile/` (planned), `loopadmin/testdata/mutations.json`, `loopadmin/README.md` — All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
 
 single-point-of-failure: required-extension validation at the client boundary — backed by the adapter capability check and caller-owned current-profile validation, each exercised with the upper check bypassed.
 

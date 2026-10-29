@@ -25,7 +25,7 @@ consumers: ["spec/review-assessment-v1.md: follow-up review-profiles/01", "schem
 
 ## Context
 
-files: `spec/review-assessment-v1.md` (planned), `schemas/review-assessment-v1.json` (planned), `tools/desk/internal/reviewprofile/contract.go` (planned), `tools/desk/internal/reviewprofile/contract_test.go` (planned), `tools/desk/internal/reviewprofile/testdata/` (planned). New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
+files: `spec/review-assessment-v1.md` (planned), `schemas/review-assessment-v1.json` (planned), `tools/desk/internal/reviewprofile/contract.go` (planned), `tools/desk/internal/reviewprofile/contract_test.go` (planned), `tools/desk/internal/reviewprofile/testdata/` (planned) — New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
 
 facts:
 - At the pinned main there are four review lanes, existing advisory design-fit and architectural fitness tests; no calibrated performance/architecture routing policy exists.
