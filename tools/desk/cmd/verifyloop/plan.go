@@ -20,11 +20,15 @@ package main
 // plan it has always been.
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
+	"github.com/medici-finance/assay/tools/desk/internal/verifyflow"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -118,12 +122,13 @@ type planCounts struct {
 
 // planDoc is the plan value. Everything either renderer prints is read off it.
 type planDoc struct {
-	Version   int        `json:"version"`
-	Multi     bool       `json:"multiRoot"`
-	BaseQueue string     `json:"baseQueue"` // "off" | "on"
-	Roots     []planRoot `json:"roots"`
-	Items     []planItem `json:"items"`
-	Counts    planCounts `json:"counts"`
+	CandidateObservation *verifyflow.Observation `json:"candidateObservation,omitempty"`
+	Version              int                     `json:"version"`
+	Multi                bool                    `json:"multiRoot"`
+	BaseQueue            string                  `json:"baseQueue"` // "off" | "on"
+	Roots                []planRoot              `json:"roots"`
+	Items                []planItem              `json:"items"`
+	Counts               planCounts              `json:"counts"`
 	// Skipped counts roots that contributed nothing (skipped + unreadable).
 	Skipped int `json:"skippedRoots"`
 	// Complete is false when the plan is not the whole queue: a root was skipped or unreadable,
@@ -139,17 +144,7 @@ type planDoc struct {
 // --- canonical base ---------------------------------------------------------------------
 
 // baseRow is the subset of a `statusgen --gate-scores` row the plan composes with.
-type baseRow struct {
-	Brief        string `json:"brief"`
-	Status       string `json:"status"`
-	QueueVersion int    `json:"queueVersion"`
-	QueueClass   string `json:"queueClass"`
-	QueueBucket  string `json:"queueBucket"`
-	QueueOwner   string `json:"queueOwner"`
-	QueueNextAct string `json:"queueNextAct"`
-	QueueValid   bool   `json:"queueValid"`
-	QueueWhy     string `json:"queueWhy"`
-}
+type baseRow = verifyqueue.Row
 
 // baseQueueRows reads one root's canonical rows. It is a package var ONLY as the test seam
 // (the fixture tests serve the shared statusgen golden through it); production runs the
@@ -176,7 +171,7 @@ var baseQueueRows = func(root string) ([]baseRow, error) {
 }
 
 // queueContractVersion is the statusgen queue contract this binary composes with.
-const queueContractVersion = 1
+const queueContractVersion = verifyqueue.Version
 
 // baseLookup is one root's canonical reading, keyed <stream>/<NN>.
 type baseLookup struct {
@@ -193,7 +188,7 @@ func readBase(root string) baseLookup {
 	b := baseLookup{state: baseCanonical, rows: map[string]baseRow{}}
 	unsupported := 0
 	for _, r := range rows {
-		if r.QueueVersion != queueContractVersion || r.QueueClass == "" {
+		if !verifyqueue.Supported(r.QueueVersion, r.QueueClass) {
 			unsupported++
 			continue
 		}
@@ -258,19 +253,8 @@ func applyBase(it loopengine.Item, disp disposition, reason string, b *baseLooku
 		return dispCouldNotCheck, "canonical queue: " + why, &planBase{Class: "unclassified", Note: b.reason}
 	}
 	pb := baseOf(row)
-	if !row.QueueValid {
-		return dispCouldNotCheck, "canonical queue: unreadable — " + firstNonEmpty(row.QueueWhy, row.QueueNextAct), pb
-	}
-	switch row.QueueClass {
-	case "judgment-dispatch":
-		return disp, reason, pb
-	case "human-action":
-		if disp == dispDispatchForEvidence {
-			return disp, reason, pb
-		}
-	}
-	return dispBaseHeld, fmt.Sprintf("canonical queue: %s (%s, owner %s): %s",
-		row.QueueClass, firstNonEmpty(row.QueueBucket, "-"), firstNonEmpty(row.QueueOwner, "-"), row.QueueNextAct), pb
+	joined, why := verifyflow.Compose(disp.String(), reason, &row)
+	return dispositionOf(joined), why, pb
 }
 
 func baseOf(r baseRow) *planBase {
@@ -456,6 +440,9 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 			}
 		}
 	}
+	if o.baseQueue {
+		doc.CandidateObservation = observeCandidates(doc, items, bases, o.root, v.RootRepo, v.wakeNow())
+	}
 	return doc, nil
 }
 
@@ -541,4 +528,49 @@ func renderPlanJSON(p *planDoc) error {
 	}
 	_, err = fmt.Fprintf(os.Stdout, "%s\n", b)
 	return err
+}
+
+// observeCandidates is the collection adapter, not another classifier. It records
+// the existing overlays and canonical rows for the pure shared planner. The repair
+// lane is explicitly unknown until /51 supplies its complete discovery result.
+func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*baseLookup, root, repo string, now time.Time) *verifyflow.Observation {
+	o := &verifyflow.Observation{Schema: verifyflow.Schema, Evaluator: verifyflow.Evaluator,
+		Provenance: "verifyloop canonical queue and overlay observation", Collected: now,
+		WholeScope: doc.Multi, Requested: []string{}, Coverage: []verifyflow.Coverage{}, Candidates: []verifyflow.Candidate{}}
+	rootRepos := map[string]string{}
+	for _, r := range doc.Roots {
+		id := firstNonEmpty(r.Repo, r.Path, "unresolved-root")
+		o.Requested = append(o.Requested, id)
+		rootRepos[r.Path] = id
+		state := "complete"
+		if r.State != rootHealthy || r.Queue != baseCanonical {
+			state = "unknown"
+		}
+		o.Coverage = append(o.Coverage, verifyflow.Coverage{Repository: id, Lane: verifyflow.Awaiting, State: state, Reason: r.Reason + r.QueueReason},
+			verifyflow.Coverage{Repository: id, Lane: verifyflow.Repair, State: "unknown", Reason: "Evidence repair discovery belongs to desk-tools/51"})
+	}
+	for i, it := range items {
+		path := firstNonEmpty(payloadValue(it, "root"), root)
+		id := firstNonEmpty(payloadValue(it, "repo"), repo, rootRepos[path])
+		c := verifyflow.Candidate{Subject: verifyflow.Subject{Repository: id, Brief: itemKey(it), Revision: it.TargetSHA},
+			Aliases: []string{it.ID}, Sources: []string{verifyflow.Awaiting}, Order: i}
+		if b := bases[path]; b != nil {
+			c.Base = b.rows[itemKey(it)]
+		}
+		// Use the outcome already computed by buildPlan. An explicit refusal or tier
+		// error is a hard hold; no second TierPolicy or mutable input read is performed.
+		for _, pi := range doc.Items {
+			if pi.ID == it.ID {
+				c.Overlay = firstNonEmpty(pi.Overlay, pi.Disposition, pi.Kind)
+				c.Reason = pi.Reason
+				break
+			}
+		}
+		o.Candidates = append(o.Candidates, c)
+	}
+	// Bind the exact collected content, including coverage, without treating a
+	// timestamp or a mutable branch name as a source revision.
+	raw, _ := json.Marshal(o)
+	o.Revision = fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+	return o
 }

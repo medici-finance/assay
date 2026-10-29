@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1203,29 +1204,7 @@ func runGateScores(root string) int {
 	// yields "" and the field is omitted.
 	repo, _ := rootRepo(streams)
 	// JSON rows for deskboard consumption.
-	type row struct {
-		Brief        string `json:"brief"`
-		Score        int    `json:"score"`
-		BlockedCount int    `json:"blockedCount"`
-		Stream       string `json:"stream"`
-		Status       string `json:"status"`
-		Repo         string `json:"repo,omitempty"`
-		// Queue contract (desk-tools/45, awaiting_bucket.go queueFor): the
-		// CURRENT owned-bucket classification, additive after the legacy
-		// fields. queueVersion lets a consumer refuse a shape it does not
-		// know; queueValid=false with queueWhy marks a could-not-check row
-		// (unknown, never zero).
-		QueueVersion      int    `json:"queueVersion"`
-		QueueClass        string `json:"queueClass"`
-		QueueBucket       string `json:"queueBucket,omitempty"`
-		QueueOwner        string `json:"queueOwner,omitempty"`
-		QueueNextAct      string `json:"queueNextAct,omitempty"`
-		QueueGate         string `json:"queueGate,omitempty"`
-		QueueRisk         bool   `json:"queueRisk"`
-		QueueIrreversible bool   `json:"queueIrreversible"`
-		QueueValid        bool   `json:"queueValid"`
-		QueueWhy          string `json:"queueWhy,omitempty"`
-	}
+	type row = verifyqueue.Row
 	rows := make([]row, 0, len(gates))
 	for _, g := range gates {
 		br := g.Brief
