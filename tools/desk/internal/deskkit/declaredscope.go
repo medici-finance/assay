@@ -535,14 +535,78 @@ func CheckSiblingCoverage(siblings []string, inputs map[string]string) error {
 }
 
 // DeclaredScope has one membership digest per canonical declaration, and every
-// existing file it selects. No bytes are taken from a different tree.
+// existing file it selects. Dirs maps every path a declaration observed as a
+// directory (a literal directory, or one a glob matched) to its sorted members.
+// No bytes are taken from a different tree.
 type DeclaredScope struct {
 	Files  []string
 	Shapes map[string]string
+	Dirs   map[string][]string
+}
+
+// Uncovered returns the selected files that inputs does not cover with a digest:
+// neither a file:<path> key nor a file:<dir>/ key for a declared directory holding
+// it. Presence only; the values are bound elsewhere (re-derivation, the wake read).
+func (s DeclaredScope) Uncovered(inputs map[string]string) []string {
+	covered := map[string]bool{}
+	for dir, members := range s.Dirs {
+		if _, ok := inputs[DirInputKey(dir)]; ok {
+			for _, f := range members {
+				covered[f] = true
+			}
+		}
+	}
+	var out []string
+	for _, f := range s.Files {
+		if _, ok := inputs[inputKeyFilePrefix+f]; !ok && !covered[f] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// DirInputKey is the content input key of a declared directory: file:<dir>/. Its value
+// is DirInputDigest over every member, so one key covers what one file:<member> key per
+// member covered before #4865. The trailing slash keeps the digest where the pattern
+// sweep's generic-api-key rule never reads it as a secret: that rule's identifier cannot
+// span a slash, and nothing follows the last one.
+func DirInputKey(dir string) string { return inputKeyFilePrefix + dir + "/" }
+
+// ParseDirInputKey returns the directory a file:<dir>/ key names. It strips exactly one
+// slash and never normalises: a file key without one, an empty or non-canonical
+// directory, or a double slash is ok=false.
+func ParseDirInputKey(key string) (string, bool) {
+	rest, found := strings.CutPrefix(key, inputKeyFilePrefix)
+	if !found {
+		return "", false
+	}
+	dir, slash := strings.CutSuffix(rest, "/")
+	if !slash || !canonicalRepoPath(dir) {
+		return "", false
+	}
+	return dir, true
+}
+
+// DirInputDigest binds a directory's membership AND each member's content: sha256 over
+// the sorted members' "<path>\x00<sha256 of its bytes>" terms, NUL-joined. Adding,
+// removing, renaming or editing any member changes it. digest returns a member's content
+// digest (a symlink's link text, as git stores it).
+func DirInputDigest(members []string, digest func(string) (string, error)) (string, error) {
+	sorted := append([]string(nil), members...)
+	sort.Strings(sorted)
+	terms := make([]string, 0, len(sorted))
+	for _, f := range sorted {
+		d, err := digest(f)
+		if err != nil {
+			return "", err
+		}
+		terms = append(terms, f+"\x00"+d)
+	}
+	return Sha256Hex([]byte(strings.Join(terms, "\x00"))), nil
 }
 
 func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScope, error) {
-	result := DeclaredScope{Shapes: map[string]string{}}
+	result := DeclaredScope{Shapes: map[string]string{}, Dirs: map[string][]string{}}
 	files := map[string]bool{}
 	work := 0
 	consume := func(n int) error {
@@ -637,6 +701,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 					files[f] = true
 					shape = append(shape, "blob:"+f)
 				}
+				result.Dirs[p] = members
 			default:
 				return result, Refused("refused: unsupported declared input kind " + kind + " for " + p)
 			}
@@ -703,6 +768,10 @@ func (rr *RootRevisionReader) CheckReceiptScope(receipt WakeReceipt) error {
 	for k, v := range receipt.Inputs {
 		if strings.HasPrefix(k, InputKeyScopePrefix) && !scopeDigestFormat.MatchString(v) {
 			return fmt.Errorf("%s value is not a scope digest", k)
+		}
+		// The same holds for a file:<dir>/ key (#4865): its value is a digest or nothing.
+		if strings.HasPrefix(k, inputKeyFilePrefix) && strings.HasSuffix(k, "/") && !scopeDigestFormat.MatchString(v) {
+			return fmt.Errorf("%s value is not a directory digest", k)
 		}
 	}
 	// Only local declarations carry scope: keys. A ../<sibling>/ declaration is
