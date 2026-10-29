@@ -1,0 +1,86 @@
+# The implementation workflow pattern: implementer produces a change,
+# an independent reviewer checks it, desk clears the gate the risk class
+# requires, an independent verifier proves the merged result, desk closes.
+#
+# This is the shape `worker-desk` -> `pr-review-desk` -> `verify-desk` already
+# runs; the pattern states it as one reviewed, versioned artifact rather than
+# leaving it implicit across three skills' procedure text.
+#
+# Validate: `statusgen patterns --lint --root .` (Go) and, independently,
+# `python3 -c 'import json,yaml,jsonschema; jsonschema.validate(yaml.safe_load(open("spec/workflow-patterns/implementation-v1.yaml")), json.load(open("schemas/workflow-pattern-v1.json")))'`.
+schema: workflow-pattern-v1
+pattern: implementation
+version: 1
+risk-input:
+  low: [review]
+  standard: [review, verify]
+  elevated: [review, verify]
+  human: [review, verify]
+nodes:
+  - id: implement
+    kind: artifact
+    role: worker
+    inputs:
+      - {artifact: brief, revision: brief.version}
+    outputs: [branch, draft-pr]
+    evidence:
+      - {kind: command, claim: "Verify rows pass", mandatory: true}
+    effects:
+      - {kind: push, target: branch}
+      - {kind: pr-open, target: draft-pr}
+    budget: {attempts: 2}
+    outcomes:
+      wait: [review-pending]
+      fail: [needs-context, blocked]
+  - id: review
+    kind: check
+    role: reviewer
+    inputs:
+      - {artifact: draft-pr}
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "the reviewer App APPROVED the head commit", mandatory: true}
+    effects:
+      - {kind: comment, target: approval}
+    outcomes:
+      wait: [changes-requested]
+      fail: [findings-unaddressed]
+  - id: merge
+    kind: effect
+    role: desk
+    inputs:
+      - {artifact: approval}
+    outputs: [merge-commit]
+    evidence:
+      - {kind: command, claim: "the risk-input gate for this brief's risk class is satisfied", mandatory: true}
+    effects:
+      - {kind: dispatch, target: merge-commit}
+    outcomes:
+      wait: [checks-pending]
+      fail: [conflicting]
+  - id: verify
+    kind: check
+    role: verifier
+    inputs:
+      - {artifact: merge-commit}
+    outputs: [verified-record]
+    evidence:
+      - {kind: witness, claim: "the Verify table's commands were re-run against the merged commit and pass", mandatory: true}
+    effects:
+      - {kind: comment, target: verified-record}
+    outcomes:
+      fail: [could-not-check]
+  - id: close
+    kind: decision
+    role: desk
+    inputs:
+      - {artifact: verified-record}
+    outputs: [closed]
+    evidence:
+      - {kind: command, claim: "the brief's status cell reads done", mandatory: false}
+edges:
+  - {from: implement, to: review}
+  - {from: review, to: merge}
+  - {from: merge, to: verify}
+  - {from: verify, to: close}
+join: verify
