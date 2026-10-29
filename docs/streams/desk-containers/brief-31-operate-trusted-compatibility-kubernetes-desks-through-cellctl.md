@@ -11,6 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: Terminal access to a compatibility desk includes custody of its role PEM, model credential and session transcript. The human confirms the concrete operator, image, boot and stop design preserves those existing boundaries and does not claim managed candidate isolation.
 decision-trigger: spec
 decision-issue: 4766
+ruling: https://github.com/medici-finance/assay/issues/4766#issuecomment-6476854395
 issues: []
 schema: brief-v2
 version: 1
