@@ -11,7 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/9 | 2026-10-27 |  |
+| [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/9 | 2026-10-29 |  |
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-10-27 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/15 | 2026-10-28 |  |
 | [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/8 | 2026-10-29 |  |
@@ -143,7 +143,7 @@ _Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ea8bd8375 2026-10-29T16:43:36Z_
+_last regen: 572943069 2026-10-29T16:56:18Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -164,7 +164,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ea8bd8375 2026-10-29T16:43:36Z_
+_last regen: 572943069 2026-10-29T16:56:18Z_
 
 **Progress:** 36/94 brief items done.
 
@@ -404,7 +404,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| agent-execution | 01 [exec:strong] | implemented | 8010 | 14 | — | verify-desk | triage, then re-bucket | — | — |
+| agent-execution | 01 [exec:strong] | implemented | 8000 | 14 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-containers | 16 [exec:strong] | implemented | 6500 | 11 | — | verify-desk | dispatch one judge | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5010 | 6 | — | verify-desk | triage, then re-bucket | — | — |
 | comms-core | 01 [exec:strong] | implemented | 4530 | 5 | — | verify-desk | triage, then re-bucket | — | — |
