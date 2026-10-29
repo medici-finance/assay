@@ -149,3 +149,32 @@ func TestStaleFailNativeEncodingKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestReferenceSnapshotHistoryIndependent(t *testing.T) {
+	for _, profile := range []string{"replace", "graft", "both"} {
+		t.Run(profile, func(t *testing.T) {
+			root, tip := staleHistoryFixture(t)
+			base := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", tip+"^1")))
+			if profile != "graft" {
+				runGit(t, root, "update-ref", "refs/replace/"+tip, base)
+			}
+			if profile != "replace" {
+				if err := os.WriteFile(filepath.Join(root, ".git", "info", "grafts"), []byte(tip+"\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := parityGitBytes(t, root, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)")
+			calls := 0
+			native := func(args ...string) ([]byte, error) {
+				calls++
+				return exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+			}
+			end := beginGitReadSession()
+			defer end()
+			got, err := staleFailReferenceOutput(root, native)
+			if err != nil || calls != 0 || !bytes.Equal(got, want) {
+				t.Fatalf("reference-only profile %s changed bytes or started native: calls=%d %q want %q %v", profile, calls, got, want, err)
+			}
+		})
+	}
+}

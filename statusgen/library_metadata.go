@@ -57,7 +57,7 @@ func gitLastPathTimeOutput(root, rel string) ([]byte, error) {
 // staleFailReferenceOutput re-observes refs on each query. Native config bytes
 // remain native; only the reference observation moves into the shared owner.
 func staleFailReferenceOutput(root string, native func(...string) ([]byte, error)) ([]byte, error) {
-	read := ordinaryGitCore(root)
+	read := referenceGitCore(root)
 	if read.err != nil {
 		return nil, read.err
 	}

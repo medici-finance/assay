@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestGoGitReadParity/last-path-time-and-reference-snapshot$' .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestGoGitReadParity/(last-path-time-and-reference-snapshot|reference-snapshot-history-independent)$' .",
   "control": {
     "name": "CONTROL metadata abandons canonical history",
     "file": "library_metadata.go",
@@ -19,6 +19,12 @@
       "file": "library_metadata.go",
       "old": "return referenceSnapshotOutput(read.repo)",
       "new": "return native(\"for-each-ref\", \"--format=%(refname)%00%(objectname)%00%(symref)\")"
+    },
+    {
+      "name": "reference-only read unnecessarily selects history policy",
+      "file": "library_metadata.go",
+      "old": "read := referenceGitCore(root)",
+      "new": "read := ordinaryGitCore(root)"
     }
   ]
 }

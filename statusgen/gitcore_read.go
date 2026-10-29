@@ -139,16 +139,23 @@ func observeHistoryProfile(read gitCoreRead) gitCoreRead {
 	return read
 }
 
-// Ordinary reads historically honor native Git's repository-location and
-// replacement profiles. go-git intentionally does not implement them. Keep that
-// explicitly selected profile native rather than quietly hardening its answer.
-func ordinaryGitCore(root string) gitCoreRead {
+// referenceGitCore qualifies repository selection for ref enumeration. Grafts
+// and replacement references affect history, not refname/objectname/symref fields.
+// The history-specific checks remain in ordinaryGitCore for history consumers.
+func referenceGitCore(root string) gitCoreRead {
 	for _, key := range append(historyRepoEnv, "GIT_REPLACE_REF_BASE", "GIT_GRAFT_FILE") {
 		if _, present := os.LookupEnv(key); present {
 			return gitCoreRead{native: "native Git environment selects repository/object/history state"}
 		}
 	}
-	r := gitCoreFor(root)
+	return gitCoreFor(root)
+}
+
+// Ordinary reads historically honor native Git's repository-location and
+// replacement profiles. go-git intentionally does not implement them. Keep that
+// explicitly selected profile native rather than quietly hardening its answer.
+func ordinaryGitCore(root string) gitCoreRead {
+	r := referenceGitCore(root)
 	if r.err != nil || r.native != "" {
 		return r
 	}
