@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestReferenceSnapshot.*|TestLastPathCommit.*|TestAbbreviationCommonDirShadow)$' .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestReferenceSnapshot.*|TestLastPathCommit.*|TestAbbreviationCommonDirShadow|TestMetadata.*)$' .",
   "control": {
     "name": "CONTROL reference object names zeroed",
     "file": "metadatarefs.go",
@@ -49,6 +49,18 @@
       "file": "rangehistory.go",
       "old": "for _, dir := range []string{gitDir, common} {",
       "new": "for _, dir := range []string{gitDir, common} {\n if dir != gitDir { continue }"
+    },
+    {
+      "name": "repeated immutable commit facts decoded again",
+      "file": "metadatarefs.go",
+      "old": "if cached, ok := r.metadataCommits[id]; ok {",
+      "new": "if cached, ok := r.metadataCommits[id]; ok && false {"
+    },
+    {
+      "name": "immutable trees decoded again for each query",
+      "file": "metadatarefs.go",
+      "old": "r.metadataTrees[c.TreeHash] = tree",
+      "new": "_ = tree"
     }
   ]
 }

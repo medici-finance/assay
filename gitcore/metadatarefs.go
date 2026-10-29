@@ -69,8 +69,13 @@ type PathMetadata struct {
 	// NativeReason is a positively observed header profile; never a read failure.
 	NativeReason string
 }
+type metadataCommit struct {
+	Hash, TreeHash plumbing.Hash
+	ParentHashes   []plumbing.Hash
+	when           time.Time
+}
 type metadataQueueItem struct {
-	commit *object.Commit
+	commit *metadataCommit
 	serial int
 }
 type metadataQueue []metadataQueueItem
@@ -78,10 +83,10 @@ type metadataQueue []metadataQueueItem
 func (q metadataQueue) Len() int { return len(q) }
 func (q metadataQueue) Less(i, j int) bool {
 	a, b := q[i], q[j]
-	if a.commit.Committer.When.Equal(b.commit.Committer.When) {
+	if a.commit.when.Equal(b.commit.when) {
 		return a.serial < b.serial
 	}
-	return a.commit.Committer.When.After(b.commit.Committer.When)
+	return a.commit.when.After(b.commit.when)
 }
 func (q metadataQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
 func (q *metadataQueue) Push(x any)   { *q = append(*q, x.(metadataQueueItem)) }
@@ -96,11 +101,20 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 		return nil, fmt.Errorf("gitcore: nonliteral repository path")
 	}
 	literalPath = path.Clean(literalPath)
+	r.metadataMu.Lock()
+	defer r.metadataMu.Unlock()
+	if r.metadataCommits == nil {
+		r.metadataCommits = map[plumbing.Hash]*metadataCommit{}
+		r.metadataTrees = map[plumbing.Hash]*object.Tree{}
+	}
 	h, err := r.Resolve(rev)
 	if err != nil {
 		return nil, err
 	}
-	load := func(id plumbing.Hash) (*object.Commit, string, error) {
+	load := func(id plumbing.Hash) (*metadataCommit, string, error) {
+		if cached, ok := r.metadataCommits[id]; ok {
+			return cached, "", nil
+		}
 		raw, err := r.RawCommit(id.String())
 		if err != nil {
 			return nil, "", err
@@ -131,7 +145,9 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 		if committer != "committer "+encoded.String() {
 			return nil, "noncanonical committer signature requires native timestamp semantics", nil
 		}
-		return c, "", nil
+		node := &metadataCommit{Hash: c.Hash, TreeHash: c.TreeHash, ParentHashes: append([]plumbing.Hash(nil), c.ParentHashes...), when: c.Committer.When}
+		r.metadataCommits[id] = node
+		return node, "", nil
 	}
 	head, why, err := load(h)
 	if err != nil {
@@ -144,7 +160,7 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 	heap.Init(q)
 	serial := 0
 	seen := map[plumbing.Hash]bool{}
-	push := func(c *object.Commit) {
+	push := func(c *metadataCommit) {
 		if !seen[c.Hash] {
 			seen[c.Hash] = true
 			heap.Push(q, metadataQueueItem{c, serial})
@@ -153,16 +169,21 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 	}
 	push(head)
 	states := map[plumbing.Hash]string{}
-	at := func(c *object.Commit) (string, error) {
+	at := func(c *metadataCommit) (string, error) {
 		if v, ok := states[c.TreeHash]; ok {
 			return v, nil
 		}
 		if literalPath == "." {
 			return c.TreeHash.String(), nil
 		}
-		tree, e := c.Tree()
-		if e != nil {
-			return "", e
+		tree, ok := r.metadataTrees[c.TreeHash]
+		if !ok {
+			var e error
+			tree, e = r.repo.TreeObject(c.TreeHash)
+			if e != nil {
+				return "", e
+			}
+			r.metadataTrees[c.TreeHash] = tree
 		}
 		entry, e := tree.FindEntry(literalPath)
 		if errors.Is(e, object.ErrEntryNotFound) || errors.Is(e, object.ErrDirectoryNotFound) {
@@ -182,7 +203,7 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 		if e != nil {
 			return nil, e
 		}
-		parents := []*object.Commit{}
+		parents := []*metadataCommit{}
 		same := false
 		for _, ph := range c.ParentHashes {
 			parent, why, e := load(ph)
@@ -198,13 +219,13 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 			}
 			parents = append(parents, parent)
 			if value == pvalue {
-				parents = []*object.Commit{parent}
+				parents = []*metadataCommit{parent}
 				same = true
 				break
 			}
 		}
 		if !same && (len(c.ParentHashes) > 0 || value != "") {
-			return &PathMetadata{ID: c.Hash.String(), CommitterTime: c.Committer.When}, nil
+			return &PathMetadata{ID: c.Hash.String(), CommitterTime: c.when}, nil
 		}
 		for _, parent := range parents {
 			push(parent)
