@@ -66,7 +66,7 @@ parked on its own terms. A recorded dependency or passed unit test cannot lift t
 | 05 | [Package the deskd image and generic Kubernetes service profile](brief-05-package-the-deskd-image-and-generic-kubernetes-service-profile.md) | 14 | M | todo | — | — |
 | 06 | [Bind the in-cluster cellctl operator to the public service](brief-06-bind-the-in-cluster-cellctl-operator-to-the-public-service.md) | 15 | M | todo | — | — |
 | 07 | [Qualify handover rollback and last-consumer retirement](brief-07-qualify-handover-rollback-and-last-consumer-retirement.md) | 16 | M | todo | — | — |
-| 08 | [Build the deskd binary and image from public source through the Makefile](brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md) | 0 | M | todo | — | — |
+| 08 | [Build the deskd binary and image from public source through the Makefile](brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Bounded refactor map
