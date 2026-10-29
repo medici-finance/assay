@@ -1,2 +1,0 @@
-- Complete bounded GitHub reviewed-head history and commit-file reads through the shared adapter, preserving deskboard's RE-REVIEW fallback whenever evidence is incomplete or inconsistent.
-- A later-page failure in the shared GitHub `GetCommit`/`CompareRefs` reads keeps the page-1 commit metadata and compare status and reports the file or commit list incomplete; only a page-1 failure or an identity/metadata change between pages is an error.
