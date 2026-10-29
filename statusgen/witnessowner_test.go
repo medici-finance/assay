@@ -112,12 +112,12 @@ func ownerViolations(hits []ownerHit, allow map[[2]string]string) (unlisted []ow
 	return unlisted, stale
 }
 
-// repoWitnessSources loads every non-test Go file of statusgen and tools/desk
-// outside statusgen/evaluation, keyed by repo-relative path.
+// repoWitnessSources loads every non-test Go file of statusgen, tools/desk and the
+// lifted gitcore module outside statusgen/evaluation, keyed by repo-relative path.
 func repoWitnessSources(t *testing.T) map[string]string {
 	t.Helper()
 	files := map[string]string{}
-	for _, base := range []struct{ dir, prefix string }{{".", "statusgen"}, {filepath.Join("..", "tools", "desk"), "tools/desk"}} {
+	for _, base := range []struct{ dir, prefix string }{{".", "statusgen"}, {filepath.Join("..", "tools", "desk"), "tools/desk"}, {filepath.Join("..", "gitcore"), "gitcore"}} {
 		err := filepath.WalkDir(base.dir, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err

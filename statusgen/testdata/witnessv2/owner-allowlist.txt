@@ -22,4 +22,5 @@ tools/desk/internal/cellscratch/snapshot.go | git-tree-read | scratch snapshot; 
 tools/desk/internal/deskkit/verifiersource.go | git-tree-read | verifier source checkout reads; unrelated to witnesses
 tools/desk/internal/deskkit/verifiertrackingcheckout.go | git-tree-read | tracking checkout read; unrelated to witnesses
 tools/desk/internal/gitexec/gitexec.go | git-tree-read | generic git exec helper; unrelated to witnesses
+gitcore/gittest/golden.go | git-tree-read | test golden helper compiled as a non-test file; unrelated to witnesses
 statusgen/internal/gitlaunch/main.go | git-tree-read | ratchet-base existence probe for the launch inventory file; unrelated to witnesses

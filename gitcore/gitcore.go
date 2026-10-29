@@ -21,6 +21,7 @@ package gitcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -661,6 +662,10 @@ func List(opts ListOpts) ([]*plumbing.Reference, error) {
 // full note. remote.origin.url is the one config key this package DOES read (via RemoteURL,
 // below): remotes are never worktree-scoped in this house's actual usage.
 
+// ErrNotRepository is wrapped by Toplevel when no ancestor holds a repository-shaped .git
+// entry, so a caller can tell "outside any checkout" from "found a .git that is invalid".
+var ErrNotRepository = errors.New("not a git repository")
+
 // Toplevel returns the working tree root containing dir, matching
 // `git rev-parse --show-toplevel`: it walks UP from dir to find the nearest ancestor
 // holding a repository-shaped ".git" entry, so a stray empty directory does not
@@ -701,7 +706,7 @@ func Toplevel(dir string) (string, error) {
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
-			return "", fmt.Errorf("gitcore: toplevel %s: not a git repository (or any parent up to /)", dir)
+			return "", fmt.Errorf("gitcore: toplevel %s: %w (or any parent up to /)", dir, ErrNotRepository)
 		}
 		cur = parent
 	}

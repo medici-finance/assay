@@ -31,6 +31,7 @@ package deskkit
 // become a refusal — see CheckVerbActivation's doc comment.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -360,21 +361,25 @@ func VerbActivationRefusal(root string) string {
 }
 
 // verbActivationRoot resolves the tree root CheckVerbActivation discovers
-// component.yaml under. It is best-effort on purpose: a desk verb can run
-// from any working directory, including one outside any git checkout at all
-// (an operator's home directory, a CI runner's tool cache), and that must
-// degrade to "no activation information" rather than a refusal — see
-// CheckVerbActivation.
-func verbActivationRoot() (string, bool) {
+// component.yaml under. Being outside any checkout is best-effort on purpose:
+// a desk verb can run from any working directory (an operator's home
+// directory, a CI runner's tool cache), and that must degrade to "no
+// activation information" rather than a refusal — see CheckVerbActivation.
+// A .git entry that IS present but is not a usable repository is different:
+// the walk-up error is returned so the caller refuses instead of proceeding.
+func verbActivationRoot() (root string, found bool, err error) {
 	wd, err := os.Getwd()
 	if err != nil {
-		return "", false
+		return "", false, nil
 	}
 	top, err := gitcore.Toplevel(wd)
-	if err != nil {
-		return "", false
+	if errors.Is(err, gitcore.ErrNotRepository) {
+		return "", false, nil
 	}
-	return top, true
+	if err != nil {
+		return "", false, err
+	}
+	return top, true, nil
 }
 
 // CheckVerbActivation is the call every desk command's main() makes right
@@ -388,7 +393,11 @@ func verbActivationRoot() (string, bool) {
 // here"; the trust surface's own RosterUnconfiguredError() callers remain the
 // authority on trust itself.
 func CheckVerbActivation(w io.Writer) bool {
-	root, ok := verbActivationRoot()
+	root, ok, err := verbActivationRoot()
+	if err != nil {
+		fmt.Fprintf(w, "could-not-check: verb activation cannot be determined — the working tree's .git is not a usable repository: %v\n", err)
+		return false
+	}
 	if !ok {
 		return true
 	}
