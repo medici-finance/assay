@@ -430,7 +430,7 @@ func TestScopeWrappedFilesProse(t *testing.T) {
 	for name, prose := range map[string]string{
 		// The reported shape: a paragraph wrapping onto "files in ...".
 		"reported": "Scope is the generated\nfiles in the public tree. Three items were flagged on #631 as out-of-scope for hp/14 and ruled\nout here.\n\n",
-		"capital":  "Files under `tools/` are\nfiles that out-of-scope work never touches.\n\n",
+		"capital":  "Files under the tools tree are\nfiles that out-of-scope work never touches.\n\n",
 		// Planted second site: the fenced-region marker check.
 		"fenced": "facts:\n```text\nexample wraps onto\nfiles in the example tree.\n```\n\n",
 	} {
@@ -463,6 +463,25 @@ func TestScopeWrappedFilesProse(t *testing.T) {
 	} {
 		if paths, err := BriefDeclaredFiles("## Context\n" + line + "\n"); ExitCodeOf(err) != ExitRefused {
 			t.Errorf("%q: got %v %v; want refusal", line, paths, err)
+		}
+	}
+}
+
+// regression: sec-4809-1 — a "files" line whose tail carries a colon or a
+// backtick may be a declaration, so it is refused rather than read as prose.
+func TestScopeLabelledFilesRefuse(t *testing.T) {
+	for _, content := range []string{
+		"## Context\nfiles to update:\n- `tools/a.go`\n",
+		"## Context\nFiles in this change: `tools/a.go`, `tools/b.go`\n",
+		"## Context\nfiles named `tools/a.go` and `tools/b.go`\n",
+		"## Context\n- files to touch: `tools/a.go`\n",
+		"## Context\nfiles we add: tools/b.go\n",
+		"## Context\nfiles:\n- `tools/a.go`\n\nfiles to create: `tools/b.go`\n",
+		"## Context\n```text\nfiles to update: tools/a.go\n```\n",
+		"## Context\n```text\nfiles named `tools/a.go` here\n```\n",
+	} {
+		if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
 		}
 	}
 }

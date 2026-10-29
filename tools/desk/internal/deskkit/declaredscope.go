@@ -250,9 +250,15 @@ func scopeBroadFilesMarker(line string) bool {
 
 // scopeProseTail reports a tail that continues a sentence: a plain word (letters,
 // with inner hyphens or apostrophes) followed by more text, as in a paragraph
-// hard-wrapped onto "files in the public tree. ...". A path, quote, list mark,
-// parenthetical or lone word after "files" is never prose.
+// hard-wrapped onto "files in the public tree. ...". A tail carrying a colon or a
+// backtick may be a labelled declaration, so it is never prose; nor is a quote,
+// list mark, parenthetical, lone word or a first token holding a path character.
+// A bare extensionless path ("files docs tools/a.go") is indistinguishable from
+// a word here and reads as prose.
 func scopeProseTail(tail string) bool {
+	if strings.ContainsAny(tail, ":`") {
+		return false
+	}
 	words := strings.Fields(tail)
 	if len(words) < 2 {
 		return false
