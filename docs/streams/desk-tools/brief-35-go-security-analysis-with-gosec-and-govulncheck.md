@@ -47,17 +47,7 @@ consumers:
 
 ## Context
 
-files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned),
-`scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned),
-`docs/runsheets/go-security-ci-hunk.md` (planned), `changelog/go-analysis-security.md` (planned); module manifests
-and source only for small measured security fixes with version-specific dependency admission.
-Also `qualgen/{mine,artifacts,report,init}.go` and their tests, `qualgen/goanalysis.go` (planned),
-`qualgen/goanalysis_test.go` (planned), `qualgen/testdata/goanalysis/` (planned),
-`ci/staged-workflows/assay-qualgen.yml` `docs/report-packs.md` and `docs/go-engineering.md`.
-The human also edits `.github/workflows/assay-qualgen.yml` and `.github/workflows/ci.yml` on the implementation branch after the worker's
-final commit. Existing findings become individually recorded debt; structural fixes are linked follow-up
-work, not a demand to rewrite the repository before rollout. No blanket exemption or weakening
-of an existing security gate is authorized.
+files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned), `scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned), `docs/runsheets/go-security-ci-hunk.md` (planned), `changelog/go-analysis-security.md` (planned), `qualgen/{mine,artifacts,report,init}.go`, `qualgen/goanalysis.go` (planned), `qualgen/goanalysis_test.go` (planned), `qualgen/testdata/goanalysis/` (planned), `ci/staged-workflows/assay-qualgen.yml`, `docs/report-packs.md`, `docs/go-engineering.md`, `.github/workflows/assay-qualgen.yml`, `.github/workflows/ci.yml` — module manifests and source only for small measured security fixes with version-specific dependency admission. Also `qualgen/{mine,artifacts,report,init}.go` and their tests, `qualgen/goanalysis.go` (planned), `qualgen/goanalysis_test.go` (planned), `qualgen/testdata/goanalysis/` (planned), `ci/staged-workflows/assay-qualgen.yml` `docs/report-packs.md` and `docs/go-engineering.md`. The human also edits `.github/workflows/assay-qualgen.yml` and `.github/workflows/ci.yml` on the implementation branch after the worker's final commit. Existing findings become individually recorded debt; structural fixes are linked follow-up work, not a demand to rewrite the repository before rollout. No blanket exemption or weakening of an existing security gate is authorized.
 
 facts:
 - The merged Go policy selects gosec through golangci-lint and a separate govulncheck tool.

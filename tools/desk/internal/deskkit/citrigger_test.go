@@ -364,6 +364,9 @@ func ciCrossModuleRegistry() []ciEntry {
 			runInvokes: []string{"cd statusgen && go test ./... && go vet ./..."},
 			why:        "the completion regression reads the retained evidence record; unfiltered source CI runs statusgen tests on evidence-only edits",
 		},
+		{test: "tools/desk/internal/deskkit/declaredscope_corpus_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"docs/streams"}, runInvokes: deskShardInvokes,
+			why: "the Context files: ratchet (#3697) parses every brief and its list under docs/streams; a docs-only diff is exactly the one that adds a refused declaration, and the unfiltered desk shards run it on every pull request"},
 		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema coverage and actual Go/Python launch hash parity; workflow has no path filter"},
 
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,

@@ -42,7 +42,7 @@ consumers:
 
 ## Context
 
-files: `deskcore/writepolicy/` (planned), `deskcore/archtest/`, `tools/desk/cmd/writeguard/`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/write-policy.md`, `docs/write-policy-consumers.md` (planned), `docs/contracts.md`, `tools/desk/README.md`, `changelog/write-policy.md` (planned). Release/CI dependency readers and paths are re-enumerated at pickup.
+files: `deskcore/writepolicy/` (planned), `deskcore/archtest/`, `tools/desk/cmd/writeguard/`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/write-policy.md`, `docs/write-policy-consumers.md` (planned), `docs/contracts.md`, `tools/desk/README.md`, `changelog/write-policy.md` (planned) — Release/CI dependency readers and paths are re-enumerated at pickup.
 
 facts:
 - `Config`, `Verdict`, path checking and shell classification currently live in writeguard's `package main`; the types are not an importable consumer API.

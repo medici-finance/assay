@@ -53,16 +53,7 @@ consumers:
 
 ## Context
 
-files: `spec/workflow-patterns/implementation-v1.yaml`, `statusgen/testdata/patterns/good-implementation-v1.yaml`,
-`statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-pattern-v1.md`,
-`schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v1.json`, `statusgen/patterns.go`,
-`statusgen/patterns_test.go`, `statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml` (planned),
-`statusgen/testdata/patterns/bad-human-role-not-decision.yaml` (planned),
-`statusgen/testdata/patterns/bad-floor-effect-target.yaml` (planned), `spec/workflow-instance-v1.md`,
-`schemas/workflow-instance-v1.json` and the embedded copy `TestInstanceSchemaParity` pins, `statusgen/instance.go`,
-`statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml` (every fixture that pins the pattern digest),
-`statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned),
-`docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned).
+files: `spec/workflow-patterns/implementation-v1.yaml`, `statusgen/testdata/patterns/good-implementation-v1.yaml`, `statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-pattern-v1.md`, `schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v1.json`, `statusgen/patterns.go`, `statusgen/patterns_test.go`, `statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml` (planned), `statusgen/testdata/patterns/bad-human-role-not-decision.yaml` (planned), `statusgen/testdata/patterns/bad-floor-effect-target.yaml` (planned), `spec/workflow-instance-v1.md`, `schemas/workflow-instance-v1.json`, `statusgen/instance.go`, `statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml`, `statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned), `docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned) — and the embedded copy `TestInstanceSchemaParity` pins, `statusgen/instance.go`, `statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml` (every fixture that pins the pattern digest), `statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned), `docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned).
 
 single-point-of-failure: no verified control confines the merge act to a human today — NONE until
 graph-execution/14 binds admission's human-floor refusal at dispatch (/14 depends on this brief and <!-- graph: encoded graph-execution/33→graph-execution/14 -->
