@@ -105,7 +105,7 @@ and `check` shares the probes' by-id comparator, so liveness has no independent 
 liveness claim below that names part A is contingent on that merge.
 
 files:
-- **add** `tools/desk/cmd/deskfleet/pushtoken.go` — the `push-token` subcommand, its `rotate` and `check` modes, the redacting secret type, preflight, install, read-back, containment and proof.
+- `tools/desk/cmd/deskfleet/pushtoken.go` (new) — the `push-token` subcommand, its `rotate` and `check` modes, the redacting secret type, preflight, install, read-back, containment and proof.
 - `tools/desk/cmd/deskfleet/pushtoken_test.go` (new) and `tools/desk/cmd/deskfleet/fake_test.go` — the fake GitLab gains the access-token, variable, self-information and receive-pack routes.
 - `tools/desk/cmd/deskfleet/main.go` — usage text and dispatch.
 - `tools/desk/cmd/deskfleet/mutations.json` — the named mutations below.
