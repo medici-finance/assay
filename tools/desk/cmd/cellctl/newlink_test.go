@@ -243,7 +243,7 @@ func TestNewHouseLinkFailRollback(t *testing.T) {
 	newLinker = func() linker { return l }
 
 	stderr := captureStderr(t, func() {
-		assertDies(t, "link failure", func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787") })
+		assertDies(t, "link failure", func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787", houseForge{}) })
 	})
 	if !strings.Contains(stderr, "removed the partial cell") || !strings.Contains(stderr, "Developer Mode") {
 		t.Fatalf("refusal lacks the cleanup note or the remediation: %q", stderr)
@@ -256,7 +256,7 @@ func TestNewHouseLinkFailRollback(t *testing.T) {
 	}
 
 	newLinker = hostLinker
-	captureStdout(t, func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787") })
+	captureStdout(t, func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787", houseForge{}) })
 	if link, _ := os.Readlink(filepath.Join(root, "c", "home", ".config", "assay")); link != cfg {
 		t.Fatalf("retry did not scaffold the cell: config link %q", link)
 	}
@@ -264,7 +264,7 @@ func TestNewHouseLinkFailRollback(t *testing.T) {
 	// A pre-existing cell dir is refused through newHouse too, and its contents survive.
 	sentinel := filepath.Join(root, "c", "sentinel")
 	must(t, os.WriteFile(sentinel, []byte("keep"), 0o644))
-	assertDies(t, "pre-existing", func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787") })
+	assertDies(t, "pre-existing", func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787", houseForge{}) })
 	if !exists(sentinel) || !exists(filepath.Join(root, "c", "cell.env")) {
 		t.Fatal("a refusal over a pre-existing cell deleted something")
 	}
