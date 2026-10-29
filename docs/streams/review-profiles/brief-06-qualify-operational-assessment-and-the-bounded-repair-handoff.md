@@ -25,7 +25,7 @@ consumers: ["docs/review-profile-operations.md: follow-up review-profiles/06", "
 
 ## Context
 
-files: `docs/review-profile-operations.md` (planned), `tools/desk/internal/reviewprofile/operations.go` (planned), `tools/desk/internal/reviewprofile/operations_test.go` (planned), `tools/desk/internal/reviewprofile/testdata/operations/` (planned), `docs/streams/continuing-operations/proposed-briefs.md`. New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
+files: `docs/review-profile-operations.md` (planned), `tools/desk/internal/reviewprofile/operations.go` (planned), `tools/desk/internal/reviewprofile/operations_test.go` (planned), `tools/desk/internal/reviewprofile/testdata/operations/` (planned), `docs/streams/continuing-operations/proposed-briefs.md` — New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
 
 facts:
 - At the pinned main there are four review lanes, existing advisory design-fit and architectural fitness tests; no calibrated performance/architecture routing policy exists.
