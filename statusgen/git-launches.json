@@ -165,7 +165,7 @@
     },
     "s033": {
       "operation": "historyGit(cc.dir, \"blame\", \"--line-porcelain\", \"-L\", fmt.Sprintf(\"%d,%d\", c.header, c.bracket), \"--\", cc.base)",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
       "owner": "statusgen/containercredit.go — method.provenance caller maintainer"
     },
     "s034": {
@@ -365,7 +365,7 @@
     },
     "s073": {
       "operation": "historyGit(root, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", start, end), \"--\", rel)",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
       "owner": "statusgen/evidenceactor.go — blameEvidenceAuthors caller maintainer"
     },
     "s074": {
@@ -515,7 +515,7 @@
     },
     "s103": {
       "operation": "historyGit(root, \"blame\", \"--porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", lineNo, lineNo), \"HEAD\", \"--\", slashPath)",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
       "owner": "statusgen/gitinfo.go — frontmatterKeyLineProvenance caller maintainer"
     },
     "s104": {
@@ -844,8 +844,8 @@
       "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
     },
     "s169": {
-      "operation": "ordinary native stale-FAIL context (config/ref snapshot), first-parent/path history and merge-body range logs",
-      "why": "Native Git still owns config/includes, symbolic refs, path simplification, first-parent and short-endpoint range semantics. Successful raw log bytes are shared only inside the existing run session, with physical repository/cwd, fresh selected-main ID, native effective config/ref namespace and full environment/argv binding. Per-brief issue/date/path decisions remain independent. Failed reads are retryable; unqualified profiles remain uncached. TestStaleFailHistoryQueryReuse records the repeated-read regression; config, namespace, failure and run-boundary controls retain verdicts.",
+      "operation": "ordinary native stale-FAIL context/config, first-parent/path summary; canonical typed merge-range message reads on the supported profile",
+      "why": "Merge-range graph work uses gitcore.CommitRange with full immutable endpoints, shared decoded facts and copied parent slices. The native summary supplies its full ID separately from the displayed abbreviation. Reference-name shadowing and declared message-encoding/format profiles positively retain the original range command; actual graph errors never retry. Config/ref context and first-parent/path summary remain native. TestLibraryStaleFailRange and TestCommitRange cover graph parity, missing objects, result isolation and actual zero-native flow; original stale-FAIL controls remain.",
       "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
     },
     "s171": {
@@ -910,7 +910,7 @@
     },
     "s183": {
       "operation": "historyGit(dir, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", first, last), \"--\", base)",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
       "owner": "statusgen/verifyflip.go — flipProvenance caller maintainer"
     },
     "s184": {
@@ -995,7 +995,7 @@
     },
     "s200": {
       "operation": "historyGit(w.root, \"blame\", \"--line-porcelain\", \"-L\", strconv.Itoa(start)+\",\"+strconv.Itoa(end), \"--\", filepath.ToSlash(rel))",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
       "owner": "statusgen/coverage_json.go — method.citingLines caller maintainer"
     },
     "s201": {

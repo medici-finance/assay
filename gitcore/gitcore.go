@@ -69,6 +69,10 @@ type Repo struct {
 	// RefsContaining (see contains.go); reachMu guards its construction.
 	reachMu  sync.Mutex
 	reachIdx *reachIndex
+
+	// Immutable commit facts shared by range queries within this Repo lifetime.
+	graphMu      sync.Mutex
+	graphCommits map[string]RangeCommit
 }
 
 // Open opens the repository rooted at dir (an exact repo/worktree root — like

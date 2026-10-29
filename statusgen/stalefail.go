@@ -114,6 +114,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 	// An unsupported profile or failed optional observation leaves the original
 	// native reads uncached; it never changes a checked/could-not-check outcome.
 	context := ""
+	formattingNative := true
 	native := func(args ...string) ([]byte, error) {
 		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
 		if context == "" || activeGitReads == nil || len(args) == 0 || args[0] != "log" {
@@ -132,6 +133,9 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 		cwd, cwdErr := os.Getwd()
 		config, configErr := native("config", "--null", "--list", "--show-origin", "--show-scope")
 		refs, refsErr := native("for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)")
+		if configErr == nil {
+			formattingNative = strings.Contains(strings.ToLower(string(config)), "i18n.logoutputencoding") || strings.Contains(strings.ToLower(string(config)), "i18n.commitencoding")
+		}
 		if pathErr == nil && physicalErr == nil && cwdErr == nil && configErr == nil && refsErr == nil {
 			bound, err := json.Marshal([]any{physical, cwd, ref, mainID, config, refs})
 			if err == nil {
@@ -144,7 +148,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 	read := func(extra []string, issue *regexp.Regexp) bool {
 		// First-parent path history measures when the main tree changed, including
 		// a merge whose feature-side repair predates the failed main run.
-		args := []string{"log", "--first-parent", ref, "--format=%ct%x00%h%x00%B%x00%P%x00%x1e"}
+		args := []string{"log", "--first-parent", ref, "--format=%ct%x00%h%x00%B%x00%P%x00%H%x00%x1e"}
 		args = append(args, extra...)
 		out, err := native(args...)
 		if err != nil {
@@ -152,7 +156,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 		}
 		for _, record := range strings.Split(string(out), "\x1e") {
 			fields := strings.Split(strings.TrimSpace(record), "\x00")
-			if len(fields) < 4 {
+			if len(fields) < 5 {
 				continue
 			}
 			sec, err := strconv.ParseInt(fields[0], 10, 64)
@@ -171,7 +175,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 				// A merge need not repeat the issue named by the repair it
 				// introduces. Attribute those newly reachable issue references
 				// to the landing commit, without consulting unmerged branches.
-				messages, err := native("log", parents[0]+".."+fields[1], "--format=%B")
+				messages, err := staleFailRangeMessages(root, parents[0], fields[1], fields[4], formattingNative, native)
 				if err != nil {
 					return false
 				}
@@ -232,4 +236,43 @@ func waitingBriefNotice(root, path string, bf *BriefFile, status string) string 
 		return fmt.Sprintf("%s: brief %s sign-off card missing — verify-desk lands the marker / verify-gate-open files the card", path, bf.Brief)
 	}
 	return fallback
+}
+
+// staleFailRangeMessages moves graph work, not log output formatting, into the
+// canonical Git owner. The native summary has already selected the displayed
+// abbreviation; a shadowing native ref preserves the original range command.
+// All actual object/graph errors remain could-not-check, with no native retry.
+func staleFailRangeMessages(root, base, tip, fullTip string, formattingNative bool, native func(...string) ([]byte, error)) ([]byte, error) {
+	if formattingNative {
+		return native("log", base+".."+tip, "--format=%B")
+	}
+	read := ordinaryGitCore(root)
+	if read.err != nil {
+		return nil, read.err
+	}
+	if read.native != "" {
+		return native("log", base+".."+tip, "--format=%B")
+	}
+	why, err := read.repo.NativeAbbreviationReason(tip)
+	if err != nil {
+		return nil, err
+	}
+	if why != "" {
+		return native("log", base+".."+tip, "--format=%B")
+	}
+	rows, err := read.repo.CommitRange(base, fullTip)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.NativeMessageReason != "" {
+			return native("log", base+".."+tip, "--format=%B")
+		}
+	}
+	var messages strings.Builder
+	for _, row := range rows {
+		messages.WriteString(row.Message)
+		messages.WriteByte('\n')
+	}
+	return []byte(messages.String()), nil
 }
