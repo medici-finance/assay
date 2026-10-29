@@ -1,0 +1,5 @@
+# MAKEFLAGS gaining -i (in a flag group) runs every target as make -i.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\nMAKEFLAGS += -ki\n"
