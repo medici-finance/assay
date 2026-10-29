@@ -52,7 +52,7 @@ id: 079eab46-d529-4d71-9ff9-b74478aa6e63
 
 ## Context
 files:
-- `tools/desk/cmd/deskapps/manifest.go`, `manifest_test.go`, `bindings_test.go` (team cases).
+- `tools/desk/cmd/deskapps/manifest.go`, `tools/desk/cmd/deskapps/manifest_test.go`, `tools/desk/cmd/deskapps/bindings_test.go` (team cases).
 - `tools/desk/cmd/deskapps/page/tier.html`, `tools/desk/cmd/deskapps/page/setup.html` (team-tier copy).
 - `tools/desk/cmd/deskclose/superseded_test.go` (one new case, no production change).
 - `docs/streams/apps-installer/design.md`, `docs/streams/apps-installer/README.md` — §2 Screen 0 table and §1 rule 4; the tier table in `docs/streams/apps-installer/README.md`.

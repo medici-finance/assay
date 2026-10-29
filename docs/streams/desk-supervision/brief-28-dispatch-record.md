@@ -48,11 +48,11 @@ consumers:
 
 ## Context
 files:
-- **add** `tools/desk/internal/deskkit/dispatchrecord.go` (planned) + `dispatchrecord_test.go` (planned) — `DispatchRecord` type, `ValidateDispatchRecord`, `AppendDispatchRecord`, `MintDispatchRef`.
+- **add** `tools/desk/internal/deskkit/dispatchrecord.go` (planned) + `tools/desk/internal/deskkit/dispatchrecord_test.go` (planned) — `DispatchRecord` type, `ValidateDispatchRecord`, `AppendDispatchRecord`, `MintDispatchRef`.
 - **edit** `tools/desk/cmd/deskdispatch/dispatch.go` — mint the ref after step 1, record it at step 2, write the record at step 5.
 - **edit** `tools/desk/cmd/deskdispatch/brief.go` — read `brief:`, `exec-tier:`, `effort:` with the existing regex extractor.
 - **add** `tools/desk/cmd/deskdispatch/dispatchrecord_test.go` (planned).
-- **edit** `tools/desk/cmd/deskclaim-ref/claim.go` — + a test — the `released` line.
+- **edit** `tools/desk/cmd/deskclaim-ref/claim.go`, `tools/desk/cmd/deskclaim-ref/releaserecord_test.go` — the `released` line, and the test that pins it.
 - **edit** `tools/desk/README.md` — deskdispatch and deskclaim-ref sections.
 - **add** `changelog/desk-supervision-28.md` (planned).
 

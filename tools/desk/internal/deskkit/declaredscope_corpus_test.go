@@ -18,7 +18,10 @@ package deskkit
 //   - a brief NOT on that list is refused (a new or newly broken
 //     declaration: fix the `files:` block, never add it to the list), or
 //   - a brief ON the list now parses or no longer exists (remove the entry,
-//     so the list only ever shrinks).
+//     so no stale entry survives).
+//
+// An ADDED entry is not refused mechanically: listing a refused brief
+// silences it, and review of the list's diff is the only check on that.
 //
 // The fix for a refused brief is to rewrite its Context `files:` block in
 // the grammar BriefDeclaredFiles reads; the parser is deliberately not

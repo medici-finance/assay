@@ -33,7 +33,7 @@ id: a45786fd-217c-4794-9e43-1391edcd0d95
 
 ## Context
 files:
-- `tools/desk/internal/avatar/generate.go` — (team case of `specsFor`), its tests.
+- `tools/desk/internal/avatar/generate.go` (team case of `specsFor`), `tools/desk/internal/avatar/team_test.go` — the generator and its team-tier tests.
 - `tools/desk/internal/avatar/avatar_test.go` (`TestGenerateTeamNamesAndCount` asserts exactly 2 team tiles and the names read/act: update it to 3 and add `-review`).
 - `tools/desk/internal/avatar/testdata/golden/team-20px.png` (the 20 px strip golden `TestGolden20px` compares against; it gains a third tile and must be regenerated).
 - `tools/desk/cmd/deskavatar/main.go` — (the `--tier` help text: "team (read+act)").
