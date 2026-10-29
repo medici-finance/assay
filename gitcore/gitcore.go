@@ -75,7 +75,7 @@ type Repo struct {
 	graphIDs   map[string]int
 	graphNodes []rangeNode
 
-	// Metadata shares only immutable full-ID facts and owner-private trees.
+	// Metadata shares only immutable full-ID facts and trees internal to this reader.
 	// Ref names/HEAD and capability profiles are observed afresh by each call.
 	// metadataMu also protects go-git's private lazy subtree memo in these trees.
 	metadataMu      sync.Mutex
