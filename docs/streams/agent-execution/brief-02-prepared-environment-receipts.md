@@ -25,7 +25,7 @@ id: "d3782f80-bb6f-4b7d-9ed5-36994224e9d9"
 
 ## Context
 
-files: `spec/prepared-environment-v1.md` (planned), `schemas/prepared-environment-v1.json` (planned), `loopadmin/workspace/` (planned), `loopadmin/testdata/workspace/` (planned), `loopadmin/testdata/mutations.json`, `loopadmin/README.md`. All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
+files: `spec/prepared-environment-v1.md` (planned), `schemas/prepared-environment-v1.json` (planned), `loopadmin/workspace/` (planned), `loopadmin/testdata/workspace/` (planned), `loopadmin/testdata/mutations.json`, `loopadmin/README.md` — All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
 
 single-point-of-failure: readiness receipt validation — backed by the workspace adapter checking actual revision/configuration and supervisor current-authority checks in /03.
 

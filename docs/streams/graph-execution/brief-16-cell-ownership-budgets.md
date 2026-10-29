@@ -58,7 +58,7 @@ id: db922112-28f0-44c0-b120-9d6c4f56e103
 
 ## Context
 
-files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned). Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned).
+files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned), `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned) — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned).
 
 facts: 04 owns basic effect receipts and reconcile-before-retry. This extension adds ownership/budgets without replacing that protocol or widening the six-method Loop interface.
 

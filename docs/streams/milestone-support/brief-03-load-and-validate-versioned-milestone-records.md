@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/milestones.go` (planned), `statusgen/milestones_test.go` (planned), `statusgen/parse.go`, `statusgen/model.go`, `statusgen/testdata/milestone-support/03/` (planned), `schemas/milestone-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `changelog/milestone-support-03.md` (planned), `statusgen/testdata/milestone-support/03-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/milestones.go` (planned), `statusgen/milestones_test.go` (planned), `statusgen/parse.go`, `statusgen/model.go`, `statusgen/testdata/milestone-support/03/` (planned), `schemas/milestone-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `changelog/milestone-support-03.md` (planned), `statusgen/testdata/milestone-support/03-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
