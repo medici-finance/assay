@@ -79,6 +79,14 @@ const (
 	EnvBlessLogin = "ASSAY_BLESS_LOGIN"
 	// EnvTrustedLogins carries trusted HUMAN authors, comma-separated `login[:id]`.
 	EnvTrustedLogins = "ASSAY_TRUSTED_LOGINS"
+	// EnvAssertedHumans carries pinned `login:id` assertions that a login ending in -bot or
+	// -app is a HUMAN (deskcore/trust assert.go owns the grammar and every refusal). It
+	// waives ONLY the name-shape check, ONLY on an ASSAY_TRUSTED_LOGINS or ASSAY_BLESS_LOGIN
+	// entry carrying the same login AND the same id; a [bot] / app/ rendering is never
+	// waivable. The loader is offline and cannot read the forge's bot flag: at load the
+	// pinned id is the control. At run time a forge-marked bot still loses wherever the
+	// read carries the forge's actor kind (Blessed, via ContentEvent.ForgeBot).
+	EnvAssertedHumans = trustcore.HumanAssertionsKey
 	// EnvTrustedBotSlugs carries trusted App slugs, comma-separated
 	// `[role=]slug[:id]`. The optional `role=` prefix additionally binds a desk
 	// role (reviewer / verifier / worker / desk …) to that App, which is what
@@ -806,6 +814,17 @@ type Config struct {
 	// get the new per-key, non-aborting treatment — see Ext, below.
 	UnknownKeys []string
 
+	// AssertedHumans is the parsed ASSAY_ASSERTED_HUMANS set (lowercased login → pinned id),
+	// and AssertionUses records, per asserted login, which keys' entries the waiver applied
+	// to. Both render in the echo, so every waiver is visible in the run and its digest.
+	AssertedHumans trustcore.HumanAssertions
+	AssertionUses  map[string][]string
+
+	// Dropped is set only on a REFUSED configuration: one line per ASSAY_ key that carried a
+	// value and was not applied, with the reason (trustcore.DroppedKeys). A refused roster
+	// still loads nothing; this only names what the refusal discarded.
+	Dropped []string
+
 	// Ext carries the per-key OUTCOME of every extension key this loader
 	// validates (rosterconfig.go's TRUST/EXTENSION split, this brief),
 	// keyed by its canonical `assay.roster.ext.<name>` catalogue name (see
@@ -1045,7 +1064,8 @@ func LoadConfig(class ToolClass) Config {
 	if len(problems) > 0 {
 		// A source-level problem (bad permissions, unreadable file) refuses
 		// everything: see the fail-closed note in the package comment.
-		return Config{Class: class, Source: source, Problems: append(problems, cfg.Problems...)}
+		all := append(problems, cfg.Problems...)
+		return Config{Class: class, Source: source, Problems: all, Dropped: trustcore.DroppedKeys(vals, all)}
 	}
 	return cfg
 }
@@ -1060,7 +1080,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
 		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
 		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
-		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir,
+		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir, EnvAssertedHumans,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -1186,17 +1206,18 @@ func looksLikeBot(login string) bool { return trustcore.LooksLikeBot(login) }
 
 func parseConfig(class ToolClass, source string, vals map[string]string) Config {
 	cfg := Config{
-		UsageDir:    vals[EnvUsageDir],
-		Class:       class,
-		Source:      source,
-		Humans:      map[string]int64{},
-		StampLogins: map[string]int64{},
-		Bots:        map[string]int64{},
-		BotIdents:   map[string]BotIdentity{},
-		RoleBots:    map[string]string{},
-		Logins:      map[string]bool{},
-		Repos:       map[string]repoPolicy{},
-		HumanLogins: map[string]string{},
+		UsageDir:      vals[EnvUsageDir],
+		Class:         class,
+		Source:        source,
+		Humans:        map[string]int64{},
+		StampLogins:   map[string]int64{},
+		Bots:          map[string]int64{},
+		BotIdents:     map[string]BotIdentity{},
+		RoleBots:      map[string]string{},
+		Logins:        map[string]bool{},
+		Repos:         map[string]repoPolicy{},
+		HumanLogins:   map[string]string{},
+		AssertionUses: map[string][]string{},
 	}
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -1298,6 +1319,16 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		}
 	}
 
+	// --- pinned human-name assertions (after the bot slugs: an assertion may not name a
+	// login the roster registers for a bot account; before the humans: they consume it) ---
+	botLogins := map[string]bool{}
+	for l := range cfg.Logins {
+		botLogins[l] = true
+	}
+	assertions, aProblems := trustcore.ParseHumanAssertions(vals[EnvAssertedHumans], botLogins)
+	problems = append(problems, aProblems...)
+	cfg.AssertedHumans = assertions
+
 	// --- trusted humans ---
 	for _, entry := range splitList(vals[EnvTrustedLogins]) {
 		login, id, ok := splitIdentity(entry)
@@ -1307,10 +1338,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			continue
 		}
 		if looksLikeBot(login) {
-			bad("%s lists %q, which renders as a bot/App account. App identities belong in %s "+
-				"(where their rendered forms are derived), not in the human roster",
-				EnvTrustedLogins, login, EnvTrustedBotSlugs)
-			continue
+			if !cfg.AssertedHumans.Waives(login, id) {
+				bad("%s lists %q, which renders as a bot/App account. App identities belong in %s "+
+					"(where their rendered forms are derived), not in the human roster%s",
+					EnvTrustedLogins, login, EnvTrustedBotSlugs, trustcore.RefusalHint(login))
+				continue
+			}
+			cfg.AssertionUses[login] = append(cfg.AssertionUses[login], EnvTrustedLogins)
 		}
 		cfg.Humans[login] = id
 		cfg.Logins[login] = true
@@ -1367,14 +1401,17 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 					"(unlike its siblings): a deleted login can be re-registered by an attacker, and the "+
 					"blessing authority is the highest-value target for that. Refusing, exactly as if it "+
 					"were unset", EnvBlessLogin, raw)
-			case looksLikeBot(login):
+			case looksLikeBot(login) && !cfg.AssertedHumans.Waives(login, id):
 				bad("%s=%q names a bot/App/shared-agent account. The blessing is the authorisation "+
 					"half of the trust gate and has to be a HUMAN act — an App that could bless would "+
-					"admit external text into its own queue. Refusing", EnvBlessLogin, raw)
+					"admit external text into its own queue. Refusing%s", EnvBlessLogin, raw, trustcore.RefusalHint(login))
 			case inBotSet:
 				bad("%s=%q is also listed in %s. A trusted App is a trusted AUTHOR; it must never be "+
 					"the blessing authority", EnvBlessLogin, raw, EnvTrustedBotSlugs)
 			default:
+				if looksLikeBot(login) {
+					cfg.AssertionUses[login] = append(cfg.AssertionUses[login], EnvBlessLogin)
+				}
 				cfg.Bless = Identity{Login: login, ID: id}
 				// The blessing authority is trusted in its own right.
 				cfg.Humans[login] = id
@@ -1382,6 +1419,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			}
 		}
 	}
+	problems = append(problems, trustcore.UnusedProblems(cfg.AssertedHumans, cfg.AssertionUses,
+		EnvTrustedLogins, EnvBlessLogin)...)
 
 	// --- allowed repos, the WRITE boundary ---
 	//
@@ -1805,7 +1844,10 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], extAccumulator{})
 
 	if len(problems) > 0 {
-		return Config{Class: class, Source: source, Problems: problems}
+		// Fail closed, P1: a refused roster loads NOTHING, however well-formed its other keys
+		// are. Dropped only names what the refusal discarded, so the echo can say why a
+		// configured key reads empty.
+		return Config{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems)}
 	}
 	return cfg
 }
@@ -2085,6 +2127,15 @@ func (c Config) EffectiveConfigLines() []string {
 		// the role bindings above (#643).
 		fmt.Sprintf("assay-config: %s=%s", EnvGitLabSessionEmails, strings.Join(c.GitLabSessionEmails, ",")),
 	}
+	if len(c.AssertedHumans) > 0 {
+		// Every human-name assertion and the keys it waived the name check for. A waiver is
+		// an identity decision, so it renders in full like the role bindings. The line is
+		// present only when an assertion loaded: a roster without the key echoes (and
+		// digests) exactly as before, and a refused value is named in its REFUSED and
+		// DROPPED lines instead.
+		lines = append(lines, fmt.Sprintf("assay-config: %s=%s", EnvAssertedHumans,
+			trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)))
+	}
 	if len(c.UnknownKeys) > 0 {
 		// Not a refusal on its own (a non-ASSAY_ key may legitimately share the file
 		// with the guards' own variables), but it must never be silent: an admin whose
@@ -2094,6 +2145,9 @@ func (c Config) EffectiveConfigLines() []string {
 	}
 	for _, p := range c.Problems {
 		lines = append(lines, "assay-config: REFUSED — "+p)
+	}
+	for _, d := range c.Dropped {
+		lines = append(lines, "assay-config: DROPPED "+d)
 	}
 	return lines
 }

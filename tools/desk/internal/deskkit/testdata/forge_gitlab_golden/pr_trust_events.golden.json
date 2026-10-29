@@ -31,7 +31,8 @@
         "Author": "assay-reviewer-bot",
         "AuthorID": 41987965,
         "CreatedAt": "2026-09-03T10:00:00Z",
-        "EditedAt": "2026-09-03T11:00:00Z"
+        "EditedAt": "2026-09-03T11:00:00Z",
+        "ForgeBot": true
       }
     ],
     "Complete": true

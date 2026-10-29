@@ -219,11 +219,17 @@ func ConfigDigest(lines []string) string {
 // state the full block's first line carries, the leading 12 hex digits of the digest, and the
 // sizes of the identity and scope sets.
 func compactConfigLine(c Config, sum string) string {
+	// A human-name assertion is counted on the one-line form too, so a waiver is visible
+	// without the full block. Absent, the line stays byte-identical to its earlier shape.
+	asserted := ""
+	if n := len(c.AssertedHumans); n > 0 {
+		asserted = fmt.Sprintf(" asserted=%d", n)
+	}
 	return fmt.Sprintf("assay-config: class=%s source=%s configured=%t digest=sha256:%s "+
-		"humans=%d bots=%d roles=%d repos=%d (full: %s=full)",
+		"humans=%d bots=%d roles=%d repos=%d%s (full: %s=full)",
 		c.Class, c.Source, c.Configured(), sum[:12],
 		len(c.Humans), len(c.BotIdents), len(c.RoleBots), len(c.Repos)+len(c.RepoPatterns),
-		EnvConfigEcho)
+		asserted, EnvConfigEcho)
 }
 
 // echoInCI reports whether the process runs on a CI runner, for the echo only. It is wider than

@@ -142,9 +142,15 @@ func authorizedByIdentity(login string, id int64, typ string) bool {
 	if !c.Configured() {
 		return false
 	}
-	// Desk App identity: type Bot, or a login rendering as a bot/App. Only a
-	// REGISTERED bot rendering is trusted, and a supplied id must match its pin.
-	if typ == "Bot" || scanLooksLikeBot(lower) {
+	// A login the roster asserts is a human (ASSAY_ASSERTED_HUMANS) takes the human path,
+	// id-pinned below — unless the forge's own actor kind marks it a bot, which wins.
+	if _, asserted := c.AssertedHumans[lower]; asserted {
+		if trustcore.ForgeMarkedBot(typ) {
+			return false
+		}
+	} else if typ == "Bot" || scanLooksLikeBot(lower) {
+		// Desk App identity: type Bot, or a login rendering as a bot/App. Only a
+		// REGISTERED bot rendering is trusted, and a supplied id must match its pin.
 		return trustedAuthorID(login, id)
 	}
 	// Human authorized author: login in the set AND id-pinned match.
@@ -276,6 +282,7 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 		if n.Author != nil {
 			e.login = n.Author.Login
 			e.id = n.Author.DatabaseID
+			e.forgeBot = trustcore.ForgeMarkedBot(n.Author.Typename)
 			if n.Author.Typename == "Bot" {
 				// GraphQL Bot actors carry the BARE slug; re-suffix to the REST
 				// rendering so a plain User squatting a slug stays untrusted.
@@ -290,11 +297,16 @@ func evalIssueBlessing(raw []byte) (bool, error) {
 // blessEvent is one comment's trust-relevant content: its author identity (a Bot
 // already re-suffixed to the "<slug>[bot]" REST rendering) and its creation and
 // content-edit times (zero when never edited).
+//
+// forgeBot is the forge's own bot flag for the author where the read carried it (the GraphQL
+// __typename here; the deskread envelope's authorBot). It is consulted only to REFUSE a
+// human-name assertion: false is also what a read without the flag reports.
 type blessEvent struct {
-	login   string
-	id      int64
-	created time.Time
-	edited  time.Time
+	login    string
+	id       int64
+	forgeBot bool
+	created  time.Time
+	edited   time.Time
 }
 
 // deskreadIssueBlessChecker is the --scan-issues issueBlessChecker since #1255: the
@@ -333,8 +345,14 @@ func evalBlessingEvents(bodyEdited time.Time, events []blessEvent, complete bool
 	if !complete {
 		return false, nil
 	}
+	asserted := scanEffectiveConfig().AssertedHumans
 	facts := make([]trustcore.Event, 0, len(events))
 	for _, e := range events {
+		// The forge's bot flag wins over a human-name assertion (keep in sync with deskkit.Blessed).
+		if trustcore.AssertionOverruled(asserted, e.login, e.forgeBot) {
+			facts = append(facts, trustcore.Event{Created: e.created, Edited: e.edited})
+			continue
+		}
 		facts = append(facts, trustcore.Event{Authority: isBlessAuthorityID(e.login, e.id), Trusted: trustedAuthorID(e.login, e.id), Created: e.created, Edited: e.edited})
 	}
 	return trustcore.Blessed(bodyEdited, facts), nil
