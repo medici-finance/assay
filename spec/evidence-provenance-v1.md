@@ -9,9 +9,13 @@ same semantic owner, `S-verification-domain`.
 This is a pure record and duty-applicability contract. It authenticates no actor,
 verifies no signature, mints no role, key, grant or credential, waives no duty and
 activates no consumer. No admission, publication or export path reads it yet.
-Whether admission and publication must require corroborated provenance or keep it
-report-only is a pending human decision (#4800). Until that is recorded, no
-consumer may claim a stronger independence guarantee from these records.
+The maintainer selected corroborated provenance (option 1) in
+[decision #4800](https://github.com/medici-finance/assay/issues/4800#issuecomment-6481737472).
+Admission and publication consumers (/14 and /25) must require trusted corroboration
+when they implement this contract. This records the selected direction, not activation
+or qualification of a deployed consumer. The delivered design is transcribed in
+[DR-evidence-provenance](../docs/streams/decisions/DR-evidence-provenance.md);
+that record still needs its own identifier-bound human ratification.
 
 ## Why
 

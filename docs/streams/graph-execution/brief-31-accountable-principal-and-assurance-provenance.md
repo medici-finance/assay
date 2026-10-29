@@ -13,7 +13,9 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: Identity/delegation provenance affects acceptance; the owner confirms the declared trust profile and privacy scope without treating role attribution as independent approval.
 decision-trigger: start
-issues: []
+decision-issue: 4800
+design: DR-evidence-provenance
+issues: [4800]
 schema: brief-v2
 version: 1
 id: 83d2df63-42b8-4e12-9b6a-c202e0a0a2aa
@@ -28,7 +30,7 @@ exec-tier: strong
 exec-tier-why: Independence, delegation and assurance claims cross identity, evidence and publication boundaries.
 domain: complicated
 consumers:
-  - "spec/evidence-provenance-v1.md, schemas/evidence-provenance-v1.json, statusgen/domain, statusgen/testdata/domain/provenance: follow-up graph-execution/31"
+  - "spec/evidence-provenance-v1.md, schemas/evidence-provenance-v1.json, statusgen/domain, statusgen/testdata/domain/provenance: fixed-here (delivered by PR #4801)"
   - "tools/desk/internal/deskkit/graphadmission.go: follow-up graph-execution/14"
   - "workflow/publication: follow-up graph-execution/25"
   - "control exports: follow-up graph-execution/15 (consume proof class; no certification claim)"
