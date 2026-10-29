@@ -116,6 +116,39 @@ func (b bindings) strings(e ast.Expr, seen map[types.Object]bool) ([]string, boo
 	return out, unknown
 }
 
+// stdImporter is a variable so a test can withhold the standard library.
+var stdImporter = func() types.Importer { return importer.Default() }
+
+// bindingImports are the standard packages whose resolved objects decide what
+// the scanner counts: os/exec identifies every launch definition and os the
+// null-device and environment bindings. If one of them does not load, every
+// launch resolved through it silently disappears, so the scan reports
+// could-not-check rather than an empty inventory. A raw count of zero then can
+// never be read as "all sites retired" and fed back into a lowered ceiling.
+var bindingImports = map[string]bool{"os/exec": true, "os": true}
+
+// incompleteBindingImports turns an unresolved binding import into a refusal.
+// Other type-check diagnostics (module-local imports the default importer
+// cannot load, build-tag skew) stay non-verdicts; the module build is separate.
+func incompleteBindingImports(errs []error) error {
+	var missing []string
+	for _, err := range errs {
+		te, ok := err.(types.Error)
+		if !ok || !strings.HasPrefix(te.Msg, "could not import ") {
+			continue
+		}
+		path, _, _ := strings.Cut(strings.TrimPrefix(te.Msg, "could not import "), " ")
+		if bindingImports[path] {
+			missing = append(missing, path)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("could-not-check: standard import(s) %s did not resolve, so Git launch sites cannot be identified; this is not an inventory result and no ceiling may be lowered from it (with GOFLAGS=-trimpath the importer needs GOROOT set to the output of go env GOROOT; otherwise check the Go toolchain install)", strings.Join(missing, ", "))
+}
+
 func scanFile(name string, src []byte) ([]site, error) {
 	return scanFiles(map[string][]byte{name: src})
 }
@@ -143,8 +176,12 @@ func scanFiles(sources map[string][]byte) ([]site, error) {
 		return nil, nil
 	}
 	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
-	cfg := types.Config{Importer: importer.Default(), Error: func(error) {}}
+	var typeErrs []error
+	cfg := types.Config{Importer: stdImporter(), Error: func(err error) { typeErrs = append(typeErrs, err) }}
 	_, _ = cfg.Check("source-inventory", fset, files, info)
+	if err := incompleteBindingImports(typeErrs); err != nil {
+		return nil, err
+	}
 	bound := bindings{info: info, values: map[types.Object][]ast.Expr{}}
 	for _, f := range files {
 		ast.Inspect(f, func(n ast.Node) bool {

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,5 +162,67 @@ func TestLocalNativeSeam(t *testing.T) {
 	}
 	if err := verify(got, inventory{}); err == nil {
 		t.Fatal("local seam calls not rejected")
+	}
+}
+
+// TestScanRefusesWhenBindingImportMissing pins that an unresolved os/exec is a
+// could-not-check refusal, never an empty inventory that verify would call
+// "retired" and invite the operator to lower the ceiling.
+func TestScanRefusesWhenBindingImportMissing(t *testing.T) {
+	real := stdImporter
+	defer func() { stdImporter = real }()
+	stdImporter = func() types.Importer {
+		return importerFunc(func(path string) (*types.Package, error) {
+			return nil, fmt.Errorf("export data for %s withheld", path)
+		})
+	}
+	src := `package p;import "os/exec";func planted(){exec.Command("git","status")}`
+	got, err := scanFile("planted.go", []byte(src))
+	if err == nil || !strings.Contains(err.Error(), "could-not-check") || !strings.Contains(err.Error(), "os/exec") || len(got) != 0 {
+		t.Fatalf("withheld os/exec must refuse, got %v %v", got, err)
+	}
+	if strings.Contains(err.Error(), "retired") {
+		t.Fatalf("refusal must not read as a retired-site result: %v", err)
+	}
+	// A module-local import the standard importer cannot load is not a refusal.
+	stdImporter = real
+	local := `package p;import "example.invalid/mod/other";import "os/exec";func planted(){other.X();exec.Command("git","status")}`
+	if got, err := scanFile("local.go", []byte(local)); err != nil || len(got) != 1 {
+		t.Fatalf("unresolved local import must not refuse: %v %v", got, err)
+	}
+}
+
+type importerFunc func(string) (*types.Package, error)
+
+func (f importerFunc) Import(path string) (*types.Package, error) { return f(path) }
+
+// TestRealTreeInventory runs scan and verify on the checked-in statusgen tree,
+// so the down-only inventory claim is enforced by go test and not only by the
+// counter script. A scan that finds nothing is a failure, never a clean tree.
+func TestRealTreeInventory(t *testing.T) {
+	root := filepath.Join("..", "..")
+	got, err := scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct := 0
+	for _, s := range got {
+		if strings.Contains(s.Key, "::direct#") {
+			direct++
+		}
+	}
+	if direct == 0 {
+		t.Fatalf("scan found no literal Git spawn definitions in %d sites; the inventory cannot be read as clean", len(got))
+	}
+	data, err := os.ReadFile(filepath.Join(root, "git-launches.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inv inventory
+	if err := json.Unmarshal(data, &inv); err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(got, inv); err != nil {
+		t.Fatal(err)
 	}
 }

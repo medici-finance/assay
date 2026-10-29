@@ -1,7 +1,7 @@
 {
   "direct_ceiling": 83,
   "dynamic_ceiling": 12,
-  "seam_ceiling": 103,
+  "seam_ceiling": 109,
   "reasons": {
     "s001": {
       "operation": "historyGit(dir, \"rev-list\", \"--first-parent\", \"HEAD\", \"^\"+delivery)",
@@ -992,6 +992,36 @@
       "operation": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
       "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
       "owner": "statusgen/verifyrun.go — witnessOriginRepo caller maintainer"
+    },
+    "s200": {
+      "operation": "historyGit(w.root, \"blame\", \"--line-porcelain\", \"-L\", strconv.Itoa(start)+\",\"+strconv.Itoa(end), \"--\", filepath.ToSlash(rel))",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/coverage_json.go — method.citingLines caller maintainer"
+    },
+    "s201": {
+      "operation": "historyGit(w.root, \"rev-list\", \"--first-parent\", \"--ancestry-path\", \"--reverse\", commit+\"..\"+w.tip)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/coverage_json.go — method.landingCR caller maintainer"
+    },
+    "s202": {
+      "operation": "historyGit(w.root, \"show\", \"-s\", \"--format=%P%x1f%B\", landing)",
+      "why": "Native commit-message rendering remains at this operation: the %P and %B format fields are read together from one native show so the landing commit's parent shape and body come from the same object. The canonical decoded Log contract does not claim byte-identical message rendering. This does not claim a typed read is impossible.",
+      "owner": "statusgen/coverage_json.go — method.landingCR caller maintainer"
+    },
+    "s203": {
+      "operation": "historyGit(w.root, \"rev-parse\", \"--verify\", \"-q\", ref+\"^{commit}\")",
+      "why": "Native exact-selector resolution remains at this operation: the ref+^{commit} spelling with --verify -q is the existing reference resolution the first-parent walk starts from. Unsupported selectors keep the original argv; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_json.go — method.readFirstParents caller maintainer"
+    },
+    "s204": {
+      "operation": "historyGit(w.root, \"rev-list\", \"--first-parent\", w.tip)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/coverage_json.go — method.readFirstParents caller maintainer"
+    },
+    "s205": {
+      "operation": "coverageGit(root, append([]string{\"-c\", \"core.attributesFile=\" + os.DevNull, \"-c\", \"core.quotePath=false\"}, args...)...)",
+      "why": "Native witness constructor: it wraps the existing coverageGit seam with core.attributesFile=/dev/null and core.quotePath=false, then adds GIT_NO_REPLACE_OBJECTS and GIT_ATTR_NOSYSTEM so a v2 digest does not depend on machine-level attribute configuration. It adds no operation of its own; every witness read (ls-tree, check-attr) keeps the original argv through coverageGit.",
+      "owner": "statusgen/coverage_witness.go — witnessGit caller maintainer"
     }
   },
   "sites": [
@@ -1230,6 +1260,36 @@
       "reason": "s039"
     },
     {
+      "key": "coverage_json.go::method.citingLines::seam#1",
+      "expression": "historyGit(w.root, \"blame\", \"--line-porcelain\", \"-L\", strconv.Itoa(start)+\",\"+strconv.Itoa(end), \"--\", filepath.ToSlash(rel))",
+      "disposition": "retained",
+      "reason": "s200"
+    },
+    {
+      "key": "coverage_json.go::method.landingCR::seam#1",
+      "expression": "historyGit(w.root, \"rev-list\", \"--first-parent\", \"--ancestry-path\", \"--reverse\", commit+\"..\"+w.tip)",
+      "disposition": "retained",
+      "reason": "s201"
+    },
+    {
+      "key": "coverage_json.go::method.landingCR::seam#2",
+      "expression": "historyGit(w.root, \"show\", \"-s\", \"--format=%P%x1f%B\", landing)",
+      "disposition": "retained",
+      "reason": "s202"
+    },
+    {
+      "key": "coverage_json.go::method.readFirstParents::seam#1",
+      "expression": "historyGit(w.root, \"rev-parse\", \"--verify\", \"-q\", ref+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s203"
+    },
+    {
+      "key": "coverage_json.go::method.readFirstParents::seam#2",
+      "expression": "historyGit(w.root, \"rev-list\", \"--first-parent\", w.tip)",
+      "disposition": "retained",
+      "reason": "s204"
+    },
+    {
       "key": "coverage_repo.go::coverageGit::direct#1",
       "expression": "exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...)",
       "disposition": "retained",
@@ -1318,6 +1378,12 @@
       "expression": "coverageGit(r.root, \"show\", \"--end-of-options\", rev+\":./\"+briefRel)",
       "disposition": "retained",
       "reason": "s054"
+    },
+    {
+      "key": "coverage_witness.go::witnessGit::seam#1",
+      "expression": "coverageGit(root, append([]string{\"-c\", \"core.attributesFile=\" + os.DevNull, \"-c\", \"core.quotePath=false\"}, args...)...)",
+      "disposition": "retained",
+      "reason": "s205"
     },
     {
       "key": "crossroot.go::integrationTip::direct#1",
