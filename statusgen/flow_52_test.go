@@ -49,7 +49,8 @@ func TestFlowCard(t *testing.T) {
 	t.Run("identity and revisions", flowCardIdentity)
 	t.Run("shared marker fixtures", flowCardMarkers)
 	t.Run("independent authority", flowCardAuthority)
-
+	t.Run("legacy readability", flowCardLegacy)
+	t.Run("verify rationale budget", flowCardBudget)
 }
 
 func flowCardIdentity(t *testing.T) {
@@ -129,9 +130,26 @@ func flowCardMarkers(t *testing.T) {
 		{name: "foreign alias", edit: func(c *gateCard) { c.Brief = "house:other:sdlc:18" }},
 		{name: "mixed subject", edit: func(c *gateCard) { c.Local = "sdlc/19" }},
 		{name: "no revision", edit: func(c *gateCard) { c.Version = 0 }},
-		{name: "fenced", body: func(s string) string { return "```text\n" + s + "\n```" }},
+		// Card text in code or a quote is not a card: it neither narrows nor
+		// grants, so the legacy marker decides — a foreign purpose there is inert.
+		{name: "fenced", edit: func(c *gateCard) { c.Purpose = cardAcceptance }, body: func(s string) string {
+			return "```text\n" + strings.TrimSuffix(s, dhMarker) + "\n```\n" + dhMarker
+		}, valid: true},
+		{name: "fenced only", body: func(s string) string { return "```text\n" + strings.TrimSuffix(s, dhMarker) + "\n```" }},
 		{name: "duplicate", body: func(s string) string { return s + s }},
-		{name: "quoted", body: func(s string) string { return strings.Replace(s, cardPrefix, "> "+cardPrefix, 1) }},
+		{name: "quoted", edit: func(c *gateCard) { c.Repository = "other/repo" }, body: func(s string) string {
+			return strings.Replace(s, cardPrefix, "> "+cardPrefix, 1)
+		}, valid: true},
+		{name: "quoted only", body: func(s string) string {
+			return strings.Replace(strings.TrimSuffix(s, dhMarker), cardPrefix, "> "+cardPrefix, 1)
+		}},
+		{name: "legacy prose mention", body: func(string) string { return dhMarker + "\nThe `assay-card:` line is informational only.\n" }, valid: true},
+		{name: "legacy bare mention", body: func(string) string { return dhMarker + "\nSee assay-card: for details.\n" }, valid: true},
+		{name: "card prose mention", body: func(s string) string { return s + "\nThe `assay-card:` line is informational only.\n" }, valid: true},
+		{name: "crlf card", body: func(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }, valid: true},
+		{name: "crlf legacy", body: func(string) string { return "Decision needed.\r\n" + dhMarker + "\r\n" }, valid: true},
+		{name: "crlf mismatch", edit: func(c *gateCard) { c.Purpose = cardAcceptance }, body: func(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }},
+		{name: "crlf duplicate", body: func(s string) string { return strings.ReplaceAll(s+s, "\n", "\r\n") }},
 		{name: "trailing JSON", body: func(s string) string { return strings.Replace(s, "} -->", "} {} -->", 1) }},
 		{name: "truncated", body: func(s string) string { return strings.Replace(s, "} -->", "}", 1) }},
 		{name: "malicious field", body: func(s string) string { return strings.Replace(s, `"version":1`, `"version":1,"acceptance":true`, 1) }},
@@ -213,4 +231,49 @@ func flowCardAuthority(t *testing.T) {
 	o := vfDefaults()
 	o.evidence = strings.Replace(o.evidence, vfRow2, strings.Replace(vfRow2, vfSHA, "0123456789ab", 1), 1)
 	vfRefuses(t, o, "sha mismatch")
+}
+
+// The --corroborate record path is the second caller of the decision-issue
+// binding; legacy readability must hold there end to end, not only in the
+// shared classifier.
+func flowCardLegacy(t *testing.T) {
+	card := gateCard{Schema: "gate-card/v1", Purpose: cardDecision, Brief: rrBriefID, Local: rrBriefID, Repository: rlRepo, Version: 1}
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"prose mention": {"A human decision is needed.\n\n" + rlMarker + "\n" + rrBriefMarker + "\nThe `assay-card:` line is informational only.\n", 0},
+		"crlf card":     {strings.ReplaceAll(renderCardLinks(card)+rlMarker+"\n"+rrBriefMarker+"\n", "\n", "\r\n"), 0},
+		"crlf foreign":  {strings.ReplaceAll(strings.Replace(renderCardLinks(card), rlRepo, "other/repo", 1)+rlMarker+"\n"+rrBriefMarker+"\n", "\n", "\r\n"), 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := rrBoundForge()
+			f.issueBody = rlIssueJSON(tc.body)
+			root := rrSetup(t, f)
+			if got := runCorroborateRecord(root, rlFile, rrBriefRel); got != tc.want {
+				t.Fatalf("corroborate exit=%d want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// Authored rationale shares the cuttable budget; only the generated header
+// and the close prompts are kept whole.
+func flowCardBudget(t *testing.T) {
+	root, _ := loadVGStreams(t)
+	bf, ok, err := parseBriefFile(filepath.Join(root, "docs/streams/vg/brief-01-human-verified.md"))
+	if err != nil || !ok {
+		t.Fatalf("parse: %v", err)
+	}
+	bf.GateWhy = strings.Repeat("reason ", 10000)
+	bf.Why = strings.Repeat("value ", 2000)
+	body := renderVerifyBody(root, bf)
+	if n := vgcUnits(body); n >= vgcForgeLimit {
+		t.Fatalf("body is %d characters, not under the forge's %d limit", n, vgcForgeLimit)
+	}
+	for _, keep := range []string{"<!-- verify-gate: ", cardPrefix, "### Before you close", "- [ ] I accept this brief as done"} {
+		if !strings.Contains(body, keep) {
+			t.Errorf("body lost %q", keep)
+		}
+	}
 }

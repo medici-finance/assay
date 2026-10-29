@@ -1185,9 +1185,14 @@ func prLinks(body string) []string {
 // awaiting human sign-off. Fully offline: everything is lifted from the brief
 // file plus the static repo slug.
 func renderVerifyBody(root string, bf *BriefFile) string {
+	return renderVerifyWith(root, bf, makeGateCard(root, bf, cardAcceptance))
+}
+
+// renderVerifyWith renders the body around a card the caller built once.
+func renderVerifyWith(root string, bf *BriefFile, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
-	b.WriteString(renderCardLinks(makeGateCard(root, bf, cardAcceptance)))
+	b.WriteString(renderCardLinks(card))
 	fmt.Fprintf(&b, "## Human sign-off required — %s\n\n", bf.Brief)
 	fmt.Fprintf(&b, "**%s**\n\n", bf.Title)
 	head := b.String()
@@ -1275,10 +1280,10 @@ func briefLinkAtCommit(root, rel string) func() string {
 // card by the same route (implemented + recorded **VERIFY: PASS**) and close the
 // same way — the Verified cell is stamped from the recorded model run, the Reviewed
 // cell from the human closer — so the body is otherwise identical.
-func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) string {
+func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
-	b.WriteString(renderCardLinks(makeGateCard(root, bf, cardAcceptance)))
+	b.WriteString(renderCardLinks(card))
 	if irreversible {
 		fmt.Fprintf(&b, "## Human sign-off required (irreversible) — %s\n\n", bf.Brief)
 	} else {
@@ -1425,13 +1430,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				if existing[marker] {
 					continue
 				}
+				card := makeGateCard(root, bf, cardAcceptance)
 				out = append(out, verifyIssue{
-					Card:   makeGateCard(root, bf, cardAcceptance),
+					Card:   card,
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderVerifyBody(root, bf),
+					Body:   renderVerifyWith(root, bf, card),
 				})
 				continue
 			}
@@ -1453,13 +1459,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				if existing[marker] {
 					continue
 				}
+				card := makeGateCard(root, bf, cardAcceptance)
 				out = append(out, verifyIssue{
-					Card:   makeGateCard(root, bf, cardAcceptance),
+					Card:   card,
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes"),
+					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes", card),
 				})
 			}
 		}

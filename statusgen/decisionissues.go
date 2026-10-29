@@ -72,9 +72,15 @@ func loadDecisionMarkers(path string) (map[string]bool, error) {
 // on each answer, and links. Fully offline: everything is lifted from the brief
 // file plus the static repo slug.
 func renderDecisionBody(root string, bf *BriefFile, row *Brief) string {
+	return renderDecisionWith(root, bf, row, makeGateCard(root, bf, cardDecision))
+}
+
+// renderDecisionWith renders the body around a card the caller built once, so
+// the payload's Card field and the body's card line are one value.
+func renderDecisionWith(root string, bf *BriefFile, row *Brief, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", decisionMarker(bf.Brief)) // briefid:raw identity marker; open issues carry the raw id, dedupe must match
-	b.WriteString(renderCardLinks(makeGateCard(root, bf, cardDecision)))
+	b.WriteString(renderCardLinks(card))
 
 	// Situation
 	fmt.Fprintf(&b, "## Situation\n\n")
@@ -189,13 +195,14 @@ func decisionIssues(root string, streams []*Stream, existing map[string]bool) []
 			if existing[marker] {
 				continue
 			}
+			card := makeGateCard(root, bf, cardDecision)
 			out = append(out, decisionIssue{
-				Card:   makeGateCard(root, bf, cardDecision),
+				Card:   card,
 				Brief:  bf.Brief,
 				Title:  issueTitle("needs-decision: ", bf.Brief, bf.Title),
 				Labels: []string{decisionLabel},
 				Marker: marker,
-				Body:   renderDecisionBody(root, bf, row),
+				Body:   renderDecisionWith(root, bf, row, card),
 			})
 		}
 	}
@@ -366,45 +373,62 @@ func renderCardLinks(c gateCard) string {
 }
 
 // readGateCard is opt-in: legacy markers remain readable, but a present typed
-// card must be one literal, complete record. Quoted, duplicate and unknown
-// records cannot silently fall back to legacy authority.
+// card must be one literal, complete record. A body carries a card only when a
+// non-code line starts with the card prefix; a mention of the marker name in
+// prose, a quote or code is not a card and leaves the legacy marker to decide.
+// A card line that is present but malformed, duplicated or unknown never falls
+// back to legacy authority.
+//
+// Scope: the emitters in this package write a decision-purpose card only into
+// needs-decision bodies and an acceptance card only into verify-gate bodies.
+// The one reader, briefIssueRulesOn, judges decision-gate bodies, which no
+// emitter here writes a card into, and the verify-gate close workflow keys on
+// its marker alone. So in this package the card is informational for readers;
+// the reader constrains only a card a filer or a person adds to a
+// decision-gate body.
 func readGateCard(body string) (*gateCard, error) {
-	if !strings.Contains(body, "assay-card:") {
+	// A forge web edit stores CRLF; card and marker checks read one form.
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	prose := stripCode(body)
+	var lines []string
+	for _, line := range strings.Split(prose, "\n") {
+		if strings.HasPrefix(line, cardPrefix) {
+			lines = append(lines, line)
+		}
+	}
+	switch {
+	case len(lines) == 0:
 		return nil, nil
-	}
-	if strings.Count(body, "assay-card:") != 1 {
+	case len(lines) > 1 || strings.Count(prose, cardPrefix) != 1:
+		// A second record, even mid-line, makes the present card ambiguous.
 		return nil, fmt.Errorf("ambiguous card links")
+	case !strings.HasSuffix(lines[0], " -->"):
+		return nil, fmt.Errorf("malformed card links")
 	}
-	for _, line := range strings.Split(stripCode(body), "\n") {
-		if !strings.HasPrefix(line, cardPrefix) || !strings.HasSuffix(line, " -->") {
-			continue
-		}
-		raw := strings.TrimSuffix(strings.TrimPrefix(line, cardPrefix), " -->")
-		var c gateCard
-		dec := json.NewDecoder(strings.NewReader(raw))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&c); err != nil {
-			return nil, err
-		}
-		if (c.Purpose == cardDecision && verifyMarkerRe.MatchString(body)) || (c.Purpose == cardAcceptance && (decisionGateMarkerRe.MatchString(body) || decisionMarkerRe.MatchString(body))) {
-			return nil, fmt.Errorf("combined cards are unsupported")
-		}
-		if c.Schema != "gate-card/v1" || (c.Purpose != cardDecision && c.Purpose != cardAcceptance) || c.Brief == "" || !refInRepoBriefRe.MatchString(c.Local) || c.Version < 1 {
-			return nil, fmt.Errorf("invalid card links")
-		}
-		// Canonical identity may be local or v2; neither may name a different item.
-		if c.Brief != c.Local {
-			// Keep the full ID (including alias) for the existing repository-aware
-			// classifier; this check only checks internal consistency, never resolves it.
-			_, alias, stream, num, ok := parseBriefV2ID(c.Brief)
-			if !ok || alias == "" || stream+"/"+num != c.Local {
-				return nil, fmt.Errorf("mixed card identities")
-			}
-		}
-		if dec.Decode(new(any)) != io.EOF {
-			return nil, fmt.Errorf("trailing card data")
-		}
-		return &c, nil
+	raw := strings.TrimSuffix(strings.TrimPrefix(lines[0], cardPrefix), " -->")
+	var c gateCard
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&c); err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("malformed card links")
+	if (c.Purpose == cardDecision && verifyMarkerRe.MatchString(body)) || (c.Purpose == cardAcceptance && (decisionGateMarkerRe.MatchString(body) || decisionMarkerRe.MatchString(body))) {
+		return nil, fmt.Errorf("combined cards are unsupported")
+	}
+	if c.Schema != "gate-card/v1" || (c.Purpose != cardDecision && c.Purpose != cardAcceptance) || c.Brief == "" || !refInRepoBriefRe.MatchString(c.Local) || c.Version < 1 {
+		return nil, fmt.Errorf("invalid card links")
+	}
+	// Canonical identity may be local or v2; neither may name a different item.
+	if c.Brief != c.Local {
+		// Keep the full ID (including alias) for the existing repository-aware
+		// classifier; this check only checks internal consistency, never resolves it.
+		_, alias, stream, num, ok := parseBriefV2ID(c.Brief)
+		if !ok || alias == "" || stream+"/"+num != c.Local {
+			return nil, fmt.Errorf("mixed card identities")
+		}
+	}
+	if dec.Decode(new(any)) != io.EOF {
+		return nil, fmt.Errorf("trailing card data")
+	}
+	return &c, nil
 }
