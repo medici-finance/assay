@@ -34,6 +34,7 @@ const verifyReviewer = "human:reviewer"
 // sign-off (verified → done gate). The workflow feeds title/labels/body
 // straight to `gh issue create`; marker is the idempotency key.
 type verifyIssue struct {
+	Card   gateCard `json:"card"`
 	Brief  string   `json:"brief"`
 	Title  string   `json:"title"`
 	Labels []string `json:"labels"`
@@ -1186,6 +1187,7 @@ func prLinks(body string) []string {
 func renderVerifyBody(root string, bf *BriefFile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
+	b.WriteString(renderCardLinks(makeGateCard(root, bf, cardAcceptance)))
 	fmt.Fprintf(&b, "## Human sign-off required — %s\n\n", bf.Brief)
 	fmt.Fprintf(&b, "**%s**\n\n", bf.Title)
 
@@ -1274,6 +1276,7 @@ func briefLinkAtCommit(root, rel string) func() string {
 func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
+	b.WriteString(renderCardLinks(makeGateCard(root, bf, cardAcceptance)))
 	if irreversible {
 		fmt.Fprintf(&b, "## Human sign-off required (irreversible) — %s\n\n", bf.Brief)
 	} else {
@@ -1415,6 +1418,7 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 					continue
 				}
 				out = append(out, verifyIssue{
+					Card:   makeGateCard(root, bf, cardAcceptance),
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
@@ -1442,6 +1446,7 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 					continue
 				}
 				out = append(out, verifyIssue{
+					Card:   makeGateCard(root, bf, cardAcceptance),
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
