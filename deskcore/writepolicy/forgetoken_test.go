@@ -23,6 +23,8 @@ func TestAmbientForgeTokenClassify(t *testing.T) {
 		{">out.txt gh auth token", true},
 		{"gh auth token>/dev/null", true},
 		{"gh auth status --show-token=false", false},
+		{"gh auth status --show-token=true", true},
+		{"gh auth status --show-token=TRUE", true},
 		{"gh auth status -a", false},
 		{"gh auth login --with-token <<< token", false},
 		{"gh auth refresh", false},
@@ -214,6 +216,62 @@ func TestForgeUndecidedRefused(t *testing.T) {
 	} {
 		if got, st := forgeTokenReadStats(cmd); got != want || st.exhausted {
 			t.Errorf("%q: read = %v (exhausted %v), want %v", cmd, got, st.exhausted, want)
+		}
+	}
+}
+
+// regression: #4821
+func TestForgeArithHeredoc(t *testing.T) {
+	// A `((` is arithmetic only when its text closes with `))` the way bash
+	// decides it; otherwise it opens nested subshells, and a `<<` after it is
+	// a heredoc. Reading it as arithmetic anyway lexes the heredoc's body as
+	// commands, and an apostrophe there opens a quote that runs past the
+	// delimiter line and hides the read after it.
+	for _, tc := range []struct {
+		cmd  string
+		want bool
+	}{
+		// Nested subshells, then a data heredoc: the read after it is judged.
+		{"((true); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
+		{"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'", false},
+		// Text the scan cannot read as a parenthesis count: undecided.
+		{"((\"$n\"); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
+		{"((\"x\"<<E))\ngh auth token\nE", true},
+		// Confirmed arithmetic: its `<<` is a shift, so the next line runs.
+		{"((x<<E))\ngh auth token\nE", true},
+		{"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE", false},
+		{"for ((i=0; i<2; i++)); do echo $i; done\ncat > n.md <<'E'\ngh auth token\nE", false},
+	} {
+		if got := forgeTokenRead(tc.cmd); got != tc.want {
+			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
+		}
+	}
+}
+
+// regression: #4821
+func TestForgeShiftSiblings(t *testing.T) {
+	// The defect class: a `<<` the scan reads as a heredoc (or not) where the
+	// shell reads it the other way. Each refused shape runs the read in bash
+	// or zsh; each allowed one is the same construct, placed.
+	for _, tc := range []struct {
+		cmd  string
+		want bool
+	}{
+		{"x=$(( \"$y\" <<'E'\n$(gh auth token)\nE\n))", true},
+		{"x=$((1<<2)); cat > n.md <<'E'\nit's gh auth token\nE", false},
+		{"echo $[1<<E]\ngh auth token\nE]", true},
+		{"echo ${x:-<<E}\ngh auth token\nE}", true},
+		{"echo ${x:-y}; cat > n.md <<'E'\ngh auth token\nE", false},
+		{"a[x<<E]=1\ngh auth token\nE]=1", true},
+		{"a[1]=2; cat > n.md <<'E'\ngh auth token\nE", false},
+		// A heredoc in a substitution whose body holds the closing paren.
+		{"x=$(cat <<'E'\n) it's\nE\n); gh auth token; echo 'ok'", true},
+		{"x=$(cat <<'E'\nit's\nE\n); echo \"$x\"", false},
+		// `<((` is a process substitution holding a subshell, not arithmetic.
+		{"cat <((cat <<'E'\nit's\nE\n) ); gh auth token; echo 'ok'", true},
+	} {
+		if got := forgeTokenRead(tc.cmd); got != tc.want {
+			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
 		}
 	}
 }

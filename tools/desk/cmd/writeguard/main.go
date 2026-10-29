@@ -112,13 +112,20 @@ func run(stdin io.Reader) (Verdict, error) {
 	// not a path, so a session outside any git checkout is refused the same.
 	// A tool_input that does not decode stays a no-decision error (fail open),
 	// exactly as it was in the switch below.
+	// The Bash call is classified once here and the same value is evaluated
+	// below: the classification reads only the call and the hook's own
+	// context (cwd, home, environment), none of which discovery changes.
 	var bash bashToolInput
+	var classified *classifiedCall
 	if in.ToolName == "Bash" {
 		if err := json.Unmarshal(in.ToolInput, &bash); err != nil {
 			return Verdict{}, err
 		}
-		if v, refused := ambientTokenRefusal(bash.Command); refused {
-			return v, nil
+		if bash.Command != "" && deskSession() {
+			classified = classifyCall(in.ToolName, bash.Command, in.Cwd)
+			if v, refused := ambientTokenRefusal(classified); refused {
+				return v, nil
+			}
 		}
 	}
 
@@ -173,7 +180,7 @@ func run(stdin io.Reader) (Verdict, error) {
 		return Verdict{}, nil
 	}
 
-	v, _, _ := cfg.evaluate(in.ToolName, target)
+	v, _, _ := cfg.evaluateWith(classified, in.ToolName, target)
 	return v, nil
 }
 

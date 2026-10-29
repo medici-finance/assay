@@ -79,16 +79,13 @@ func deskSession() bool {
 }
 
 // ambientTokenRefusal refuses a Bash command that runs the gh CLI's token read
-// while this is a desk session (#4821); outside one the hook stays silent. The
-// decision is writepolicy's lexical scan of the raw command, and a scan that
-// cannot finish (nesting past its depth limit, or past its work budget) is
-// refused the same.
-func ambientTokenRefusal(command string) (Verdict, bool) {
-	if command == "" || !deskSession() {
-		return Verdict{}, false
-	}
-	cl := writepolicy.Classify(writepolicy.Request{Tool: "Bash", Target: command}, writepolicy.LexicalContext{})
-	if !cl.ReadsAmbientForgeToken() {
+// (#4821); run calls it only in a desk session, so outside one the hook stays
+// silent. call is the call's one classification (classifyCall), shared with
+// the path policy. The decision is writepolicy's lexical scan of the raw
+// command, and a scan that cannot finish (nesting past its depth limit, or
+// past its work budget) is refused the same.
+func ambientTokenRefusal(call *classifiedCall) (Verdict, bool) {
+	if !call.cl.ReadsAmbientForgeToken() {
 		return Verdict{}, false
 	}
 	return Verdict{
@@ -98,6 +95,6 @@ This Bash call runs `+"`gh auth token`"+` (or asks gh to print its stored token)
   %s
 The gh CLI's stored login belongs to whichever account last authenticated on this machine, not to this session's role identity. A desk session (DESK_LOOP or DESK_SESSION is set) never reads or uses it, not even for a read-only call.
 The ONLY sanctioned credential path is your role's minted token: desktoken <role>. It prints the path of a token file; pass that file's contents as GH_TOKEN to the one command that needs it, and never print or export the token.
-If the mint fails or comes back empty, STOP and report it. Do not fall back to the stored login, another account, or another way of reading the same token: a block is a stop signal, and substitution is an escalation-worthy policy violation.`, command),
+If the mint fails or comes back empty, STOP and report it. Do not fall back to the stored login, another account, or another way of reading the same token: a block is a stop signal, and substitution is an escalation-worthy policy violation.`, call.target),
 	}, true
 }

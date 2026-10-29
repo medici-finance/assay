@@ -339,6 +339,8 @@ var ambientClasses = map[string][]string{
 	"show-token-bool": {
 		"gh auth status -h example.com --show-token=1",
 		"gh auth status -h example.com --show-token=t",
+		"gh auth status -h example.com --show-token=true",
+		"gh auth status --show-token=TRUE",
 	},
 	"computed-word": {
 		`cli=gh; "$cli" auth token`,
@@ -440,5 +442,35 @@ func TestAmbientTokenScanDeadline(t *testing.T) {
 		requireAmbientRefusal(t, r.v, r.err, cmd[:40])
 	case <-time.After(3 * time.Second):
 		t.Fatalf("%d-byte command: no decision within 3s (a hook timeout fails open)", len(cmd))
+	}
+}
+
+// regression: #4821
+func TestAmbientTokenArithHeredoc(t *testing.T) {
+	// A `((` that bash reads as nested subshells must not make the hook read
+	// the heredoc after it as commands: an apostrophe in the body would then
+	// quote away the read on the lines after the delimiter.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for _, cmd := range []string{
+		"((true); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'",
+		"((x<<E))\ngh auth token\nE",
+		"x=$(cat <<'E'\n) it's\nE\n); gh auth token; echo 'ok'",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
+	}
+	for _, cmd := range []string{
+		"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'",
+		"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		if err != nil {
+			t.Fatalf("%q: run: %v", cmd, err)
+		}
+		if v.Block {
+			t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
+		}
 	}
 }
