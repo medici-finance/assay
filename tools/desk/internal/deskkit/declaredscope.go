@@ -233,6 +233,12 @@ func scopeMarkerText(line string) string {
 	}
 }
 
+// scopeBroadFilesMarker reports a line that looks like a files field without
+// being the accepted "files:" form, so the caller refuses it instead of reading
+// a malformed declaration as an empty scope. Whitespace after "files" is always
+// a marker, hard-wrapped prose included: neither the line nor its neighbours
+// can tell a sentence from a declaration that lost its colon (sec-4809-1). A
+// brief whose prose wraps onto "files " is reflowed, not exempted (#4199).
 func scopeBroadFilesMarker(line string) bool {
 	if !strings.HasPrefix(line, "files") {
 		return false

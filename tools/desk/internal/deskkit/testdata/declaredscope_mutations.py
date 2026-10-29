@@ -28,6 +28,7 @@ entries=[
  ("fence-declaration", 'if context && (block || endedByBlank) {', 'if false {', '^TestScopeFenceIntegrity$'),
  ("fence-hidden-heading", 'else if strings.HasPrefix(line, "## ") {', 'else if false {', '^TestScopeFenceIntegrity$'),
  ("fence-hidden-marker", 'else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line)) {', 'else if false {', '^TestScopeFenceIntegrity$'),
+ ("whitespace-marker", 'return tail == "" || strings.ContainsAny(tail[:1], ":*_`(") || tail != strings.TrimLeftFunc(tail, unicode.IsSpace)', 'return tail == "" || strings.ContainsAny(tail[:1], ":*_`(")', '^TestScope(ContinuationPositions|WrappedFilesRefuse|LabelledFilesRefuse|UnwrappedFilesRefuse)$'),
  ("section-indent", 'return nil, Refused("refused: indented section heading in Context cannot end declared scope")', '// planted indented section boundary', '^TestScopeIndentedSectionRefuses$'),
  ("section-html", 'return nil, Refused("refused: HTML may hide a section boundary in declared files scope")', '// planted hidden HTML boundary', '^TestScopeHTMLSectionBoundaryRefuses$'),
 ]
