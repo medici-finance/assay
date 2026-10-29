@@ -185,7 +185,6 @@ docs/streams/statusgen/brief-13-cadenced-roadmap-artifacts.md
 docs/streams/statusgen/brief-14-vacuous-gotest-run-lint.md
 docs/streams/statusgen/brief-16-label-removal-hold.md
 docs/streams/statusgen/brief-17-risk-high-label-gate.md
-docs/streams/statusgen/brief-18-gate-mismatch-notice.md
 docs/streams/windows-port/brief-01-release-build-matrix.md
 docs/streams/windows-port/brief-02-portability-audit.md
 docs/streams/windows-port/brief-03-install-path.md
