@@ -307,8 +307,9 @@ it, the other classes demote it, and it never gains flip authority. Without --ba
 is exactly the overlay plan.
 
 Under --base-queue, the JSON also includes candidateObservation for the pure
-internal/verifyflow.PlanCandidates API. It binds the observed rows, overlays, exact supplied
-subject revisions and root/source coverage. Policy owner/revision, time cutoff and capacity
+internal/verifyflow.PlanCandidates API. It binds the observed rows, overlays, exact subject
+revisions (--sha or the item's source snapshot, else in multi-root mode its root's merged-main
+snapshot) and root/source coverage. Policy owner/revision, time cutoff and capacity
 are explicit planner inputs, never read from ambient state. An explicit --root is a scoped
 observation, not proof that all roots are idle. Evidence-repair discovery remains unknown
 until the repair-discovery owner supplies that lane; empty Awaiting alone never establishes desk idle.

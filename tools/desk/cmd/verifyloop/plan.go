@@ -20,7 +20,6 @@ package main
 // plan it has always been.
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"github.com/medici-finance/assay/statusgen/verifyqueue"
@@ -170,6 +169,14 @@ var baseQueueRows = func(root string) ([]baseRow, error) {
 	return rows, nil
 }
 
+// rootRevision reads one root's merged-main snapshot: the exact commit its canonical rows
+// describe, for a same-repository candidate the plan carries no --sha for (multi-root mode
+// refuses --sha). It is a package var ONLY as the test seam; production uses the existing
+// read-only verifier snapshot, which refuses a checkout that is not at fetched origin/main.
+var rootRevision = func(root string) (repo, sha string, err error) {
+	return deskkit.VerifierRepositorySnapshot(root)
+}
+
 // queueContractVersion is the statusgen queue contract this binary composes with.
 const queueContractVersion = verifyqueue.Version
 
@@ -290,6 +297,7 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 		doc.BaseQueue = "on"
 	}
 	bases := map[string]*baseLookup{} // by root path
+	revisions := map[string]string{}  // by root path; absent = no exact revision observed
 
 	if o.multi {
 		if strings.TrimSpace(o.sha) != "" {
@@ -341,6 +349,12 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 			stop()
 			bases[r.Path] = &b
 			r.Queue, r.QueueReason = b.state, b.reason
+			// A root whose snapshot cannot be read, or whose origin is not the configured
+			// repository, carries no revision: its candidates stay could-not-check.
+			if repo, sha, err := rootRevision(r.Path); err == nil && sha != "" &&
+				(r.Repo == "" || strings.EqualFold(repo, r.Repo)) {
+				revisions[r.Path] = sha
+			}
 		}
 	}
 
@@ -441,7 +455,7 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 		}
 	}
 	if o.baseQueue {
-		doc.CandidateObservation = observeCandidates(doc, items, bases, o.root, v.RootRepo, v.wakeNow())
+		doc.CandidateObservation = observeCandidates(doc, items, bases, revisions, o.root, v.RootRepo, v.wakeNow())
 	}
 	return doc, nil
 }
@@ -533,13 +547,16 @@ func renderPlanJSON(p *planDoc) error {
 // observeCandidates is the collection adapter, not another classifier. It records
 // the existing overlays and canonical rows for the pure shared planner. The repair
 // lane is explicitly unknown until /51 supplies its complete discovery result.
-func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*baseLookup, root, repo string, now time.Time) *verifyflow.Observation {
+// A candidate's revision is its item's exact target (--sha, or a cross-repository
+// deliverable's source snapshot), else its own root's merged-main snapshot.
+func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*baseLookup, revisions map[string]string, root, repo string, now time.Time) *verifyflow.Observation {
 	o := &verifyflow.Observation{Schema: verifyflow.Schema, Evaluator: verifyflow.Evaluator,
 		Provenance: "verifyloop canonical queue and overlay observation", Collected: now,
 		WholeScope: doc.Multi, Requested: []string{}, Coverage: []verifyflow.Coverage{}, Candidates: []verifyflow.Candidate{}}
 	rootRepos := map[string]string{}
-	for _, r := range doc.Roots {
-		id := firstNonEmpty(r.Repo, r.Path, "unresolved-root")
+	for i, r := range doc.Roots {
+		// An unresolved root is numbered by position so two never share one id.
+		id := firstNonEmpty(r.Repo, r.Path, fmt.Sprintf("unresolved-root-%d", i+1))
 		o.Requested = append(o.Requested, id)
 		rootRepos[r.Path] = id
 		state := "complete"
@@ -552,7 +569,7 @@ func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*
 	for i, it := range items {
 		path := firstNonEmpty(payloadValue(it, "root"), root)
 		id := firstNonEmpty(payloadValue(it, "repo"), repo, rootRepos[path])
-		c := verifyflow.Candidate{Subject: verifyflow.Subject{Repository: id, Brief: itemKey(it), Revision: it.TargetSHA},
+		c := verifyflow.Candidate{Subject: verifyflow.Subject{Repository: id, Brief: itemKey(it), Revision: firstNonEmpty(it.TargetSHA, revisions[path])},
 			Aliases: []string{it.ID}, Sources: []string{verifyflow.Awaiting}, Order: i}
 		if b := bases[path]; b != nil {
 			c.Base = b.rows[itemKey(it)]
@@ -568,9 +585,8 @@ func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*
 		}
 		o.Candidates = append(o.Candidates, c)
 	}
-	// Bind the exact collected content, including coverage, without treating a
-	// timestamp or a mutable branch name as a source revision.
-	raw, _ := json.Marshal(o)
-	o.Revision = fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+	// Bind the exact collected content, including coverage. The collection time is
+	// excluded, so identical content collected twice has one revision.
+	o.Revision = verifyflow.ContentRevision(*o)
 	return o
 }

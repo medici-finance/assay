@@ -4,6 +4,8 @@
 package verifyflow
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"sort"
@@ -22,6 +24,15 @@ const (
 	Held     = "queue-held"
 )
 
+// Authority is the ceiling a proposal would carry if a caller dispatched it. A
+// proposal itself grants nothing; the field keeps judgment work (flip-eligible)
+// apart from Evidence-only work, which both reach "deferred" and "selected".
+const (
+	AuthorityFlip     = "flip"
+	AuthorityEvidence = "evidence-only"
+	AuthorityNone     = "none"
+)
+
 // Compose is the existing demotion-only base/overlay join. It cannot turn a
 // held overlay into a dispatch, and Evidence-only never gains flip authority.
 func Compose(overlay, reason string, row *verifyqueue.Row) (string, string) {
@@ -32,7 +43,7 @@ func Compose(overlay, reason string, row *verifyqueue.Row) (string, string) {
 		return Unknown, "canonical queue: no supported classification"
 	}
 	if !row.QueueValid || row.QueueClass == verifyqueue.Unreadable {
-		return Unknown, "canonical queue: unreadable — " + row.QueueWhy
+		return Unknown, "canonical queue: unreadable — " + firstNonEmpty(row.QueueWhy, row.QueueNextAct)
 	}
 	switch row.QueueClass {
 	case verifyqueue.Judgment:
@@ -42,7 +53,25 @@ func Compose(overlay, reason string, row *verifyqueue.Row) (string, string) {
 			return overlay, reason
 		}
 	}
-	return Held, fmt.Sprintf("canonical queue: %s (%s, owner %s): %s", row.QueueClass, row.QueueBucket, row.QueueOwner, row.QueueNextAct)
+	return Held, fmt.Sprintf("canonical queue: %s (%s, owner %s): %s",
+		row.QueueClass, firstNonEmpty(row.QueueBucket, "-"), firstNonEmpty(row.QueueOwner, "-"), row.QueueNextAct)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// joinReason joins two reason clauses without a dangling separator.
+func joinReason(a, b string) string {
+	if a == "" || b == "" {
+		return a + b
+	}
+	return a + "; " + b
 }
 
 type Subject struct {
@@ -69,8 +98,10 @@ type Candidate struct {
 	Order   int             `json:"order"` // existing collector order, retained as tie breaker
 }
 type Observation struct {
-	Schema     string      `json:"schema"`
-	Evaluator  string      `json:"evaluator"`
+	Schema    string `json:"schema"`
+	Evaluator string `json:"evaluator"`
+	// Revision is ContentRevision of the observation. PlanCandidates recomputes it
+	// and refuses a mismatch: a consistency check, not an authenticity control.
 	Revision   string      `json:"revision"`
 	Provenance string      `json:"provenance"`
 	Collected  time.Time   `json:"collected"`
@@ -94,6 +125,7 @@ type Policy struct {
 type Decision struct {
 	Candidate      Candidate `json:"candidate"`
 	Disposition    string    `json:"disposition"`
+	Authority      string    `json:"authority"` // flip, evidence-only or none; never granted by the plan
 	Reason         string    `json:"reason"`
 	Priority       int       `json:"priority"`
 	PriorityMapped bool      `json:"priorityMapped"`
@@ -115,6 +147,20 @@ type Plan struct {
 
 func key(repo, brief string) string { return repo + ":" + brief }
 
+// ContentRevision is the sha256 digest of the observation's JSON with Revision and
+// Collected cleared, so identical content collected at two times has one revision.
+// It detects an observation edited without resealing; anyone holding the content
+// can recompute it, so it is not a signature or an authenticity control.
+func ContentRevision(o Observation) string {
+	o.Revision = ""
+	o.Collected = time.Time{}
+	raw, err := json.Marshal(o)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+}
+
 // PlanCandidates is a pure function over the complete authorized observation and
 // explicit approved policy, clock/freshness cutoff and capacity. Approval is a
 // caller-owned fact; this validates structure, never fabricates a human ruling.
@@ -126,6 +172,9 @@ func PlanCandidates(o Observation, p Policy, now, oldest time.Time, capacity int
 		p.Evaluator != Evaluator || strings.TrimSpace(p.Owner) == "" || strings.TrimSpace(p.Revision) == "" || p.Priorities == nil ||
 		(p.Unmapped != "observed-score" && p.Unmapped != "hold") || capacity < 0 || now.IsZero() || oldest.IsZero() || oldest.After(now) {
 		return plan, fmt.Errorf("unsupported or incomplete observation/policy/time/capacity")
+	}
+	if o.Revision != ContentRevision(o) {
+		return plan, fmt.Errorf("observation revision does not match its content")
 	}
 	fresh := !o.Collected.IsZero() && !o.Collected.Before(oldest) && !o.Collected.After(now)
 	if !fresh {
@@ -162,7 +211,7 @@ func PlanCandidates(o Observation, p Policy, now, oldest time.Time, capacity int
 		for _, lane := range []string{Awaiting, Repair} {
 			c, ok := coverage[key(repo, lane)]
 			if !ok || c.State != "complete" {
-				plan.Gaps = append(plan.Gaps, repo+" "+lane+": coverage unknown or incomplete; "+c.Reason)
+				plan.Gaps = append(plan.Gaps, repo+" "+lane+": "+joinReason("coverage unknown or incomplete", c.Reason))
 			}
 		}
 	}
@@ -212,7 +261,7 @@ func PlanCandidates(o Observation, p Policy, now, oldest time.Time, capacity int
 		if !mapped {
 			score = c.Base.Score
 		}
-		d := Decision{Candidate: c, Priority: score, PriorityMapped: mapped, Disposition: "held", Reason: c.Reason}
+		d := Decision{Candidate: c, Priority: score, PriorityMapped: mapped, Disposition: "held", Authority: AuthorityNone, Reason: c.Reason}
 		disposition, why := Compose(c.Overlay, c.Reason, &c.Base)
 		d.Reason = why
 		known := fresh && c.Subject.Revision != "" && len(c.Sources) > 0 && c.Base.Brief == c.Subject.Brief && (c.Base.Repo == "" || c.Base.Repo == c.Subject.Repository)
@@ -224,17 +273,24 @@ func PlanCandidates(o Observation, p Policy, now, oldest time.Time, capacity int
 		switch {
 		case !known || !verifyqueue.Supported(c.Base.QueueVersion, c.Base.QueueClass) || !c.Base.QueueValid || disposition == Unknown:
 			d.Disposition = Unknown
-			d.Reason = "candidate identity, source coverage or canonical classification unavailable; " + why
+			d.Reason = joinReason("candidate identity, source coverage or canonical classification unavailable", why)
 			plan.Gaps = append(plan.Gaps, k+": "+d.Reason)
 		case disposition == Held && (c.Base.QueueClass == verifyqueue.Paused || c.Base.QueueClass == verifyqueue.Parked):
 			d.Disposition = "watch"
 		case disposition == Dispatch || disposition == Evidence:
 			d.Disposition = "deferred"
 			d.Reason = "eligible proposal awaits capacity"
+			d.Authority = AuthorityFlip
+			if disposition == Evidence {
+				d.Authority = AuthorityEvidence
+			}
 		}
-		if !mapped && p.Unmapped == "hold" && d.Disposition != "could-not-check" {
+		// The hold policy governs only eligible proposals. Watched (paused/parked),
+		// held and unknown rows keep their disposition, so it cannot create owed work.
+		if !mapped && p.Unmapped == "hold" && d.Disposition == "deferred" {
 			d.Disposition = "held"
-			d.Reason += "; priority unmapped"
+			d.Authority = AuthorityNone
+			d.Reason = joinReason(d.Reason, "priority unmapped")
 		}
 		plan.Candidates = append(plan.Candidates, d)
 	}

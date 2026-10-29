@@ -26,6 +26,12 @@
       "new": "if owed && capacity > 0 {"
     },
     {
+      "name": "multi-root candidate loses its root revision",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "Revision: firstNonEmpty(it.TargetSHA, revisions[path])}",
+      "new": "Revision: it.TargetSHA}"
+    },
+    {
       "name": "future class reported as supported",
       "file": "../../statusgen/verifyqueue/queue.go",
       "old": "\treturn false\n}",
