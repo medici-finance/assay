@@ -1649,7 +1649,11 @@ func runDecisionGate(root, prsArg, baseRef string) int {
 	repo := repoFromOriginAtFn(root)
 	var rs []decisionGateResult
 	if baseRef != "" {
-		out, err := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", strings.TrimSpace(baseRef)+"^{commit}").Output()
+		token := strings.TrimSpace(baseRef)
+		out, err, supported := commitReadOutput(ordinaryCommitRead(root, token), token)
+		if !supported {
+			out, err = exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", strings.TrimSpace(baseRef)+"^{commit}").Output()
+		}
 		base := strings.TrimSpace(string(out))
 		if err != nil || base == "" {
 			rs = []decisionGateResult{{Board: "(board)", Refused: true,

@@ -8,7 +8,7 @@ import (
 
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // forgegit_test.go — ForgeGitEndpointFor (#1197): the ONE builder the live claim listing and

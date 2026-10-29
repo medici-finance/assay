@@ -29,9 +29,9 @@ func TestReviewPrepareFlow(t *testing.T) {
 	prepareAcceptance(t, "TestReviewPrepareDispatchWiring")
 	prepareAcceptance(t, "TestReviewPrepareKeys")
 	prepareAcceptance(t, "TestReviewPrepareDiffCoverage")
-	prepareAcceptance(t, "TestFileAtBoundedPreflight", "./internal/gitcore")
-	prepareAcceptance(t, "TestDiffBoundedPreflight", "./internal/gitcore")
-	prepareAcceptance(t, "TestPreparationExactObjects", "./internal/gitcore")
+	prepareAcceptance(t, "TestFileAtBoundedPreflight", "github.com/medici-finance/assay/gitcore")
+	prepareAcceptance(t, "TestDiffBoundedPreflight", "github.com/medici-finance/assay/gitcore")
+	prepareAcceptance(t, "TestPreparationExactObjects", "github.com/medici-finance/assay/gitcore")
 	prepareAcceptance(t, "TestGitLabPreparationBase", "./internal/deskkit")
 	if os.Getenv("ASSAY_REVIEW_CONTRACT_MUTANT") != "1" {
 		t.Run("mutation", func(t *testing.T) {
@@ -39,11 +39,11 @@ func TestReviewPrepareFlow(t *testing.T) {
 			contractMutation(t, "cmd/deskdispatch/packet_review.go", "diff, derr := fg.ChangeDiff(fr, pr)", "diff, derr := fg.ChangeDiff(fr, pr); if p,ok:=fg.(*preparedReview);ok && p.localDiffSkipped!=\"\" {out.Omit(\"diff\",packet.SizeUnknown,p.localDiffSkipped);return out,nil}", "^TestReviewPrepareDiffCoverage$", "local resource fallback dropped collected patches", "./cmd/deskdispatch")
 			contractMutation(t, "internal/deskkit/forge_gitlab.go", "BaseSHA:           mr.DiffRefs.BaseSha,", "BaseSHA: \"\",", "^TestGitLabPreparationBase$", "GitLab exact base was discarded", "./internal/deskkit")
 
-			contractMutation(t, "internal/gitcore/filebounded.go", "return r.repo.CommitObject(plumbing.NewHash(id))", "resolved,e:=r.Resolve(id);if e!=nil{return nil,e};return r.repo.CommitObject(resolved)", "^TestPreparationExactObjects$", "missing exact file object accepted a reference substitute", "./internal/gitcore")
+			contractMutation(t, "../../gitcore/filebounded.go", "return r.repo.CommitObject(plumbing.NewHash(id))", "resolved,e:=r.Resolve(id);if e!=nil{return nil,e};return r.repo.CommitObject(resolved)", "^TestPreparationExactObjects$", "missing exact file object accepted a reference substitute", "github.com/medici-finance/assay/gitcore")
 
-			contractMutation(t, "internal/gitcore/filebounded.go", "entry, e := tree.FindEntry(path)", "_, earlyErr := tree.File(path); if earlyErr != nil {return \"\",false,earlyErr}; entry, e := tree.FindEntry(path)", "^TestFileAtBoundedPreflight$", "over-cap loose blob inflated before refusal", "./internal/gitcore")
-			contractMutation(t, "internal/gitcore/filebounded.go", "if entry.Mode != filemode.Regular && entry.Mode != filemode.Executable {", "if false && entry.Mode != filemode.Regular && entry.Mode != filemode.Executable {", "^TestFileAtBoundedPreflight$", "non-regular blob loaded before mode refusal", "./internal/gitcore")
-			contractMutation(t, "internal/gitcore/filebounded.go", "if n < 0 || n > budget-total {", "if false && (n < 0 || n > budget-total) {", "^TestDiffBoundedPreflight$", "diff inflated blobs before budget refusal", "./internal/gitcore")
+			contractMutation(t, "../../gitcore/filebounded.go", "entry, e := tree.FindEntry(path)", "_, earlyErr := tree.File(path); if earlyErr != nil {return \"\",false,earlyErr}; entry, e := tree.FindEntry(path)", "^TestFileAtBoundedPreflight$", "over-cap loose blob inflated before refusal", "github.com/medici-finance/assay/gitcore")
+			contractMutation(t, "../../gitcore/filebounded.go", "if entry.Mode != filemode.Regular && entry.Mode != filemode.Executable {", "if false && entry.Mode != filemode.Regular && entry.Mode != filemode.Executable {", "^TestFileAtBoundedPreflight$", "non-regular blob loaded before mode refusal", "github.com/medici-finance/assay/gitcore")
+			contractMutation(t, "../../gitcore/filebounded.go", "if n < 0 || n > budget-total {", "if false && (n < 0 || n > budget-total) {", "^TestDiffBoundedPreflight$", "diff inflated blobs before budget refusal", "github.com/medici-finance/assay/gitcore")
 			contractMutation(t, "cmd/deskdispatch/reviewcontext.go", "if p.filesRead {", "if false && p.filesRead {", "^TestReviewPrepareAdaptersFlow$", "shared changed files were fetched twice", "./cmd/deskdispatch")
 			contractMutation(t, "cmd/deskdispatch/reviewcontext.go", "p.local.FileAtBounded(in.Ref, in.File, packet.DefaultPerItemCap)", `p.local.FileAtBounded(func() string { h, _ := p.local.Resolve("HEAD"); return h.String() }(), in.File, packet.DefaultPerItemCap)`, "^TestReviewPrepareAdaptersFlow$", "packet did not use assigned-head bytes", "./cmd/deskdispatch")
 			contractMutation(t, "cmd/deskdispatch/reviewcontext.go", "if v, ok := p.content[key]; ok {", "if v, ok := p.content[key]; false && ok {", "^TestReviewPrepareKeys$", "immutable provider content read repeated", "./cmd/deskdispatch")

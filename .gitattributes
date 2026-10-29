@@ -29,6 +29,8 @@ docs/streams/verify-outcomes.jsonl merge=union
 
 # Generator inputs and byte-compared outputs must survive Windows checkout intact.
 plugins/assay/.codex-plugin/plugin.json text eol=lf
+plugins/assay/.cursor-plugin/plugin.json text eol=lf
+.cursor-plugin/marketplace.json text eol=lf
 plugins/assay/cursor/assay.mdc text eol=lf
 plugins/assay/hooks/resident-rules.payload.txt text eol=lf
 tools/harnessgen/testdata/payload.golden.txt text eol=lf

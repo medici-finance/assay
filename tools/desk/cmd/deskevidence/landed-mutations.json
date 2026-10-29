@@ -1,4 +1,5 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskevidence && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/deskkit && (cd ../../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
   "test": "go test ./cmd/deskevidence ./internal/deskkit -run 'Landed|PinnedEvidence' -count=1 -timeout=90s",
   "control": {
     "name": "frozen attribution history",
@@ -21,7 +22,7 @@
     },
     {
       "name": "remote baseline dropped",
-      "file": "internal/gitcore/checkout.go",
+      "file": "../../gitcore/checkout.go",
       "old": "r.repo.Storer.SetReference(baseline)",
       "new": "r.repo.Storer.RemoveReference(baseline.Name())"
     },

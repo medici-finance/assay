@@ -112,8 +112,8 @@
     {
       "name": "a transition run accepts an Evidence-only edit (strict tree check dropped)",
       "file": "verifyrun.go",
-      "old": "\t\tif err != nil || strings.Contains(executionTree, \"+\") || strings.Contains(treeSHA(root), \"+\") {",
-      "new": "\t\tif err != nil || strings.Contains(executionTree, \"+\") {"
+      "old": "\t\tif !ok || strings.Contains(executionTree, \"+\") || strings.Contains(treeSHA(root), \"+\") {",
+      "new": "\t\tif !ok || strings.Contains(executionTree, \"+\") {"
     },
     {
       "name": "the host lane stamps treeSHA again (an Evidence-only edit reads +dirty)",

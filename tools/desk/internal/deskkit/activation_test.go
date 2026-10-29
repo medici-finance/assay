@@ -9,6 +9,7 @@ package deskkit
 import (
 	"bytes"
 	"fmt"
+	"github.com/medici-finance/assay/gitcore/gitstub"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -347,9 +348,7 @@ func TestVerbActivationRefusal_UndiscoverableRootProceeds(t *testing.T) {
 // exposes, since it resolves its own root via gitcore.Toplevel(cwd)).
 func TestCheckVerbActivation_PrintsAndReportsFalseWhenInactive(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	gitstub.Repo(t, dir)
 	writeManifest(t, dir, "test/desk-tools", []string{"assay.desk.verbs"},
 		[]string{"assay.roster.trust"}, nil)
 	withRoster(t, map[string]string{})
@@ -369,6 +368,36 @@ func TestCheckVerbActivation_PrintsAndReportsFalseWhenInactive(t *testing.T) {
 	}
 	if !strings.HasPrefix(strings.TrimSpace(buf.String()), "could-not-check:") {
 		t.Fatalf("printed message = %q, want a could-not-check: line", buf.String())
+	}
+}
+
+// TestCheckVerbActivation_RejectedGitFailsClosed pins the discovery-failure arm:
+// a .git that gitcore rejects (here a .git file that is not a gitdir pointer) is
+// "cannot be determined", which refuses — it must never degrade to "no repository,
+// proceed", because that would let a corrupted checkout skip activation.
+func TestCheckVerbActivation_RejectedGitFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("invalid fixture gitdir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withRoster(t, map[string]string{})
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if CheckVerbActivation(&buf) {
+		t.Fatal("CheckVerbActivation = true with a rejected .git — want false (fail closed)")
+	}
+	got := strings.TrimSpace(buf.String())
+	if !strings.HasPrefix(got, "could-not-check:") || !strings.Contains(got, "not a usable repository") {
+		t.Fatalf("printed message = %q, want a could-not-check: line naming the unusable repository", got)
 	}
 }
 

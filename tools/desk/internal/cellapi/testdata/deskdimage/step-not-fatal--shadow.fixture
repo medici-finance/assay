@@ -1,0 +1,5 @@
+# A shell function named sh shadows the scan's interpreter, so the scan never runs.
+want: step-not-fatal
+file: Makefile
+replace: "\t@set -eu; \\\n\tsha="
+with: "\t@set -eu; sh() { :; }; \\\n\tsha="

@@ -53,10 +53,13 @@ def modules(root):
 
 def coverage(mods):
     result = [(m, 'linux', 'amd64', '') for m in mods]
-    if 'tools/desk' in mods:
-        result += [('tools/desk', 'windows', 'amd64', ''),
-                   ('tools/desk', 'darwin', 'arm64', ''),
-                   ('tools/desk', 'linux', 'amd64', 'parity')]
+    # gitcore retains every platform/tag tuple it had inside tools/desk.
+    # Keep the desk scans too: lifting one owner does not narrow either scope.
+    for module in ['tools/desk', 'gitcore']:
+        if module in mods:
+            result += [(module, 'windows', 'amd64', ''),
+                       (module, 'darwin', 'arm64', ''),
+                       (module, 'linux', 'amd64', 'parity')]
     return result
 
 

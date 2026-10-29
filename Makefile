@@ -13,6 +13,17 @@
 #                matches what a downloaded desk-tools release tarball gives an
 #                adopter (#850) with no special case either side.
 #
+# deskd-build  : unprivileged local build of the deskd service binary into
+#                deskd/dist/deskd (GOWORK=off, -trimpath). Safe for agents/CI;
+#                writes nothing outside deskd/dist/.
+# deskd-image  : LOCAL image build only. `docker build -f images/deskd/Dockerfile`
+#                with the deskd/ context, tagged assay-deskd:<full source SHA>
+#                (`-dirty` when deskd/ or images/deskd/ has uncommitted changes),
+#                then the per-image layer-secret scan. The tag is a local build
+#                name, never an artifact pin; this target never pushes, logs in
+#                or exports to a registry. No docker or no daemon is a named
+#                could-not-check and a non-zero exit, never a success.
+#
 # Version stamp: SourceSHA + BuiltAt are embedded via -ldflags so every audit
 # record and --version shows exactly which source a binary was built from.
 #
@@ -39,7 +50,7 @@ LDFLAGS  := -X $(DESK_PKG).SourceSHA=$(SHA) -X $(DESK_PKG).BuiltAt=$(BUILT_AT)
 
 DESK_CMDS := $(wildcard $(DESK_DIR)/cmd/*)
 
-.PHONY: build-all desk-build desk-install desk-manifest desk-hook-install desk-test skillslint guardrail-sync paired-versions
+.PHONY: build-all desk-build desk-install desk-manifest desk-hook-install desk-test deskd-build deskd-image skillslint guardrail-sync paired-versions
 
 SKILLSLINT_DIR       := tools/skillslint
 PAIREDVERSIONS_DIR   := tools/pairedversions
@@ -125,6 +136,26 @@ desk-hook-install:
 ## desk-test: run the deskkit test suite (incl. negative-path refusal tests)
 desk-test:
 	@cd $(DESK_DIR) && go test ./... -count=1
+
+## deskd-build: local unprivileged build of the deskd service into deskd/dist/.
+deskd-build:
+	@cd deskd && GOWORK=off go build -trimpath -o dist/deskd ./cmd/deskd
+	@echo "deskd-build: built deskd/dist/deskd"
+
+## deskd-image: LOCAL image build of deskd (context deskd/), then the layer-secret
+## scan. Never pushes, logs in or exports to a registry.
+deskd-image:
+	@command -v docker >/dev/null 2>&1 || { echo "deskd-image: could-not-check: docker is not on PATH; no image was built" >&2; exit 2; }
+	@docker info >/dev/null 2>&1 || { echo "deskd-image: could-not-check: the docker daemon is unreachable; no image was built" >&2; exit 2; }
+	@set -eu; \
+	sha="$$(git rev-parse HEAD)"; \
+	tag="$$sha"; \
+	if [ -n "$$(git status --porcelain -- deskd images/deskd)" ]; then tag="$$sha-dirty"; fi; \
+	echo "deskd-image: building assay-deskd:$$tag (local only)"; \
+	docker build -f images/deskd/Dockerfile --build-arg "REVISION=$$tag" -t "assay-deskd:$$tag" deskd; \
+	echo "deskd-image: layer-secret scan of assay-deskd:$$tag"; \
+	sh containers/scripts/layer-secret-scan.sh "assay-deskd:$$tag"; \
+	echo "deskd-image: built and scanned assay-deskd:$$tag (local image; not a pin)"
 
 ## skillslint: validate the desk-role skill homes under plugins/assay/skills/,
 ## check EVERY *.md under plugins/ for an unresolved house value in a driver

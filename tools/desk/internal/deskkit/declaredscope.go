@@ -17,6 +17,45 @@ import (
 // Older readers cannot resolve this additive key and report could-not-check.
 const InputKeyScopePrefix = "scope:"
 
+// scopeDigestFormat is exactly what ResolveDeclaredScope writes as a scope: value.
+var scopeDigestFormat = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func scopeDeclIsGlob(decl string) bool { return strings.ContainsAny(decl, "*?[") }
+
+// ScopeInputKey is the input key for a canonical declaration whose literal path was
+// observed as kind. A literal directory ("tree") is keyed with a trailing slash; a
+// literal file, an absent literal and every glob keep scope:<decl>. The slash belongs
+// to the key, never to the declaration, and the digest is the same either way.
+func ScopeInputKey(decl, kind string) string {
+	if !scopeDeclIsGlob(decl) && kind == "tree" {
+		return InputKeyScopePrefix + decl + "/"
+	}
+	return InputKeyScopePrefix + decl
+}
+
+// ParseScopeInputKey returns the canonical declaration a scope: key names, and whether
+// the key was in the directory (trailing slash) form. It strips at most one slash and
+// never normalises: an empty declaration, a double slash, a non-canonical declaration
+// or a slash-form glob (never emitted) is ok=false.
+func ParseScopeInputKey(key string) (decl string, dirForm bool, ok bool) {
+	rest, found := strings.CutPrefix(key, InputKeyScopePrefix)
+	if !found {
+		return "", false, false
+	}
+	decl, dirForm = strings.CutSuffix(rest, "/")
+	if decl == "" || strings.HasSuffix(decl, "/") {
+		return "", false, false
+	}
+	if dirForm && scopeDeclIsGlob(decl) {
+		return "", false, false
+	}
+	canonical, err := expandDeclaration(decl)
+	if err != nil || len(canonical) != 1 || canonical[0] != decl {
+		return "", false, false
+	}
+	return decl, dirForm, true
+}
+
 const maxScopePaths = 4096
 const maxScopeWork = 32768
 
@@ -358,6 +397,17 @@ func expandDeclaration(decl string) ([]string, error) {
 	if len(decl) == 0 || len(decl) > 4096 || strings.ContainsAny(decl, "\\:<>") || strings.Contains(decl, "...") || strings.Contains(decl, "…") || strings.Contains(decl, "**") || strings.IndexFunc(decl, unicode.IsSpace) >= 0 || strings.IndexFunc(decl, unicode.IsControl) >= 0 {
 		return bad()
 	}
+	// The sibling form is decided on the declaration as written: a brace or
+	// glob can never produce or choose the ../<sibling>/ prefix.
+	// Defence in depth, not dead code: the per-path SiblingDeclaration and
+	// canonicalRepoPath checks below are the primary guard and refuse the same
+	// shapes; this precheck also refuses before any brace is expanded.
+	sibling := strings.HasPrefix(decl, "../")
+	if sibling {
+		if i := strings.IndexByte(decl[3:], '/'); i < 0 || !siblingName(decl[3:3+i]) {
+			return bad()
+		}
+	}
 	pending := []string{decl}
 	var out []string
 	for len(pending) > 0 {
@@ -385,7 +435,18 @@ func expandDeclaration(decl string) ([]string, error) {
 			continue
 		}
 		p = strings.TrimSuffix(p, "/")
-		if !canonicalRepoPath(p) || strings.ContainsAny(p, "{},`\"'") {
+		check := p
+		if sibling {
+			_, rel, ok := SiblingDeclaration(p)
+			// Defence in depth, not dead code: the precheck above and the
+			// canonicalRepoPath(rel) check below (an empty rel fails it) are
+			// the primary guards; keep this explicit refusal beside them.
+			if !ok {
+				return bad()
+			}
+			check = rel
+		}
+		if !canonicalRepoPath(check) || strings.ContainsAny(p, "{},`\"'") {
 			return bad()
 		}
 		if _, err := path.Match(p, ""); err != nil {
@@ -408,6 +469,69 @@ func canonicalRepoPath(p string) bool {
 		}
 	}
 	return true
+}
+
+// A cross-repository brief names its deliverables beside the tracking checkout,
+// as ../<sibling>/<path>. That is the ONLY accepted form containing "..": exactly
+// one leading ../, a literal repository-name segment, then a canonical path. It
+// is never read from any tree. A receipt covers it only through the immutable
+// repo-source:<owner>/<sibling> commit its run bound (CheckSiblingCoverage).
+var siblingNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+func siblingName(name string) bool {
+	return siblingNamePattern.MatchString(name) && name != "." && name != ".." && name != ".git"
+}
+
+// SiblingDeclaration splits a ../<sibling>/<path> declaration. Every other
+// shape, including any further "..", reports ok=false.
+func SiblingDeclaration(decl string) (sibling, rel string, ok bool) {
+	rest, found := strings.CutPrefix(decl, "../")
+	if !found {
+		return "", "", false
+	}
+	sibling, rel, found = strings.Cut(rest, "/")
+	// path.Clean(decl) != decl is defence in depth, not dead code: siblingName
+	// and canonicalRepoPath(rel) are the primary guard against every
+	// noncanonical shape it would also catch.
+	if !found || !siblingName(sibling) || !canonicalRepoPath(rel) || path.Clean(decl) != decl {
+		return "", "", false
+	}
+	return sibling, rel, true
+}
+
+// SplitSiblingDeclarations separates the declarations this tree resolves from
+// the sibling-repository ones only a cross-repository source binding covers.
+func SplitSiblingDeclarations(declarations []string) (local, siblings []string) {
+	for _, decl := range declarations {
+		if _, _, ok := SiblingDeclaration(decl); ok {
+			siblings = append(siblings, decl)
+		} else {
+			local = append(local, decl)
+		}
+	}
+	return local, siblings
+}
+
+// CheckSiblingCoverage requires every sibling declaration to name exactly one
+// repo-source:<owner>/<sibling> input. That key pins the whole deliverable
+// commit, so any change to it wakes the receipt; a sibling the run did not bind
+// is refused rather than resolved anywhere else.
+func CheckSiblingCoverage(siblings []string, inputs map[string]string) error {
+	for _, decl := range siblings {
+		// A malformed declaration has no name, so nothing binds it.
+		name, _, _ := SiblingDeclaration(decl)
+		bound := 0
+		for k, v := range inputs {
+			repo, isSource := strings.CutPrefix(k, InputKeyRepoSourcePrefix)
+			if _, repoName := splitRepo(repo); isSource && name != "" && strings.TrimSpace(v) != "" && strings.EqualFold(repoName, name) {
+				bound++
+			}
+		}
+		if bound != 1 {
+			return Refused("refused: Context files: path " + fmt.Sprintf("%q", decl) + " names a sibling repository this run's cross-repository source does not bind")
+		}
+	}
+	return nil
 }
 
 // DeclaredScope has one membership digest per canonical declaration, and every
@@ -439,8 +563,12 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 		if len(canonical) != 1 || canonical[0] != decl {
 			return result, Refused("refused: noncanonical input scope declaration")
 		}
+		if _, _, ok := SiblingDeclaration(decl); ok {
+			return result, Refused("refused: Context files: path " + fmt.Sprintf("%q", decl) + " names a sibling repository; it never resolves against this tree")
+		}
 		paths := []string{decl}
-		if strings.ContainsAny(decl, "*?[") {
+		literalKind := ""
+		if scopeDeclIsGlob(decl) {
 			// List only below the literal prefix; match files AND directories,
 			// then expand matched directories recursively, as literal directories do.
 			i := strings.IndexAny(decl, "*?[")
@@ -485,6 +613,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 				return result, Unverifiable("cannot resolve declared input "+p, err)
 			}
 			shape = append(shape, kind+":"+p)
+			literalKind = kind
 			switch kind {
 			case "":
 			case "blob":
@@ -516,7 +645,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 			}
 		}
 		sort.Strings(shape)
-		result.Shapes[InputKeyScopePrefix+decl] = Sha256Hex([]byte(strings.Join(shape, "\x00")))
+		result.Shapes[ScopeInputKey(decl, literalKind)] = Sha256Hex([]byte(strings.Join(shape, "\x00")))
 	}
 	for f := range files {
 		result.Files = append(result.Files, f)
@@ -569,12 +698,28 @@ func (rr *RootRevisionReader) CheckReceiptScope(receipt WakeReceipt) error {
 	if err != nil {
 		return err
 	}
-	for _, decl := range declarations {
-		if receipt.Inputs[InputKeyScopePrefix+decl] == "" {
+	// A slash-form key's value sits where the pattern sweep's generic rule no longer
+	// looks, so refuse to read any scope: value that is not the producer's digest.
+	for k, v := range receipt.Inputs {
+		if strings.HasPrefix(k, InputKeyScopePrefix) && !scopeDigestFormat.MatchString(v) {
+			return fmt.Errorf("%s value is not a scope digest", k)
+		}
+	}
+	// Only local declarations carry scope: keys. A ../<sibling>/ declaration is
+	// covered by its repo-source: commit below; ranging over every declaration
+	// here would report each sibling as missing scope and disable sibling briefs.
+	local, siblings := SplitSiblingDeclarations(declarations)
+	for _, decl := range local {
+		plain := receipt.Inputs[InputKeyScopePrefix+decl] != ""
+		dir := !scopeDeclIsGlob(decl) && receipt.Inputs[InputKeyScopePrefix+decl+"/"] != ""
+		if plain && dir {
+			return fmt.Errorf("ambiguous scope key for %s: both scope:%s and scope:%s/ are present", decl, decl, decl)
+		}
+		if !plain && !dir {
 			return fmt.Errorf("missing declared scope %s; fresh admission and observation required", decl)
 		}
 	}
-	return nil
+	return CheckSiblingCoverage(siblings, receipt.Inputs)
 }
 
 func (r rootScopeTree) safePath(rel string) (string, error) {

@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/perfrec"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"gopkg.in/yaml.v3"
 )
 

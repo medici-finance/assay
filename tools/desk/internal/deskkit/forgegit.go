@@ -29,7 +29,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // ForgeGitEndpoint is what a gitcore caller needs to list or fetch from repo as role: the

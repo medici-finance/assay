@@ -1,0 +1,5 @@
+# The image is no longer the local assay-deskd:<sha> name.
+want: tag-not-local
+file: Makefile
+replace: "-t \"assay-deskd:$$tag\""
+with: "-t \"deskd:$$tag\""

@@ -47,8 +47,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // sourceArtifact is the `.assay-versions` artifact name carrying the source pin.
