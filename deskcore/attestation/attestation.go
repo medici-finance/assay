@@ -23,7 +23,9 @@ const Preamble = "Dispatcher-owned pre-work attestation. This record contains NO
 var hex64Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var creditHexCommitRe = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 var creditCheckoutRe = regexp.MustCompile(`^autocrlf=(true|false|input) eol=(lf|crlf|native)$`)
-var siblingRepoRe = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
+// siblingRepoRe is owner/repo; neither segment may be dot-only ("." or "..").
+var siblingRepoRe = regexp.MustCompile(`^[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*/[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
 
 func CheckoutOK(s string) bool { return creditCheckoutRe.MatchString(s) }
 

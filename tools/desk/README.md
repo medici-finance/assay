@@ -6356,7 +6356,13 @@ record carries one `repo-source:<owner/name>` key per bound sibling. Each siblin
 declared paths are covered only by that sibling's own key; delivery PRs in a bound sibling
 must be ancestors of that sibling's commit. A sibling without a single configured root at
 its fetched `origin/main`, or one a public tracking repository may not name, stays
-unbound, and its paths still refuse the record.
+unbound, and its paths still refuse the record; prepare prints one `NOTICE` per unbound
+sibling naming it and why.
+
+Fetch every declared sibling root (and check out its `origin/main`) before prepare: a
+sibling bound at a stale `origin/main` makes a later Evidence landing refuse any of that
+sibling's delivery PRs merged after the bound commit, naming the repository, the merge
+commit and the bound source. The fix is a fresh fetch and a new run, never a relaxed join.
 
 Migration: `wake_schema` does not bump. The key vocabulary is unchanged; a record simply
 carries more than one `repo-source:` key, and every reader since the key was introduced

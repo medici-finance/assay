@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -215,7 +216,7 @@ func checkAdmittedDeliveryPRs(fg deskkit.Forge, receipt deskkit.VerifierReceipt,
 			return deskkit.Unverifiable("cannot compare delivery PR with admitted deliverable source", err)
 		}
 		if compared == nil || (compared.Status != "identical" && compared.Status != "ahead") {
-			return deskkit.Refused("delivery PR is not in the admitted deliverable source")
+			return deskkit.Refused(fmt.Sprintf("delivery PR is not in the admitted deliverable source: %s merge %s is not contained in %s@%s; fetch that root's origin/main before preparing the run", entry.Repo, entry.MergeSHA, entry.Repo, source))
 		}
 	}
 	return nil

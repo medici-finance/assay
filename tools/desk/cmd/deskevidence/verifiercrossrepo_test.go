@@ -352,6 +352,10 @@ func TestSiblingDeliveryJoin(t *testing.T) {
 		if (err == nil) != (status == "identical") {
 			t.Fatalf("%s: %v", status, err)
 		}
+		// The refusal names the sibling, its merge and its bound source.
+		if err != nil && !strings.Contains(err.Error(), third+" merge "+jMerge+" is not contained in "+third+"@"+thirdSHA) {
+			t.Fatalf("refusal does not name the stale sibling: %v", err)
+		}
 		if len(f.joinReads) != 1 || !strings.Contains(f.joinReads[0], "..."+thirdSHA) {
 			t.Fatalf("sibling delivery not compared with its own source: %v", f.joinReads)
 		}

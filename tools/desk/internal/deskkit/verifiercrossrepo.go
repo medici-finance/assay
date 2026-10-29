@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"crypto/rand"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,19 +212,28 @@ func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
 	return nil
 }
 
+// verifierSiblingNotice receives one line per declared sibling Prepare leaves
+// unbound; tests replace it.
+var verifierSiblingNotice = func(msg string) { fmt.Fprintln(os.Stderr, msg) }
+
 // verifierSiblingSources binds, for each further ../<sibling>/ repository the
 // tracking brief declares, the one configured root of that name at its fetched
 // origin/main (#4876); the run's own SourceRepo already covers its name. A
 // sibling with no single clean, publishable, fetched root is left unbound, so
-// its non-pass outcome record is refused exactly as before, never guessed.
+// its non-pass outcome record is refused exactly as before, never guessed; a
+// NOTICE names the sibling and why, so the operator can fetch and re-prepare.
 func verifierSiblingSources(trackingRepo, sourceRepo string, brief []byte) string {
 	decl, err := BriefDeclaredFiles(string(brief))
 	if err != nil {
 		return ""
 	}
 	_, siblings := SplitSiblingDeclarations(decl)
+	if len(siblings) == 0 {
+		return ""
+	}
 	roots, err := ConfiguredRoots()
-	if err != nil || len(siblings) == 0 {
+	if err != nil {
+		verifierSiblingNotice("NOTICE: declared sibling repositories left unbound: configured roots unreadable: " + err.Error())
 		return ""
 	}
 	bound := map[string]string{}
@@ -241,37 +251,42 @@ func verifierSiblingSources(trackingRepo, sourceRepo string, brief []byte) strin
 			}
 		}
 		if len(match) != 1 {
+			verifierSiblingNotice(fmt.Sprintf("NOTICE: declared sibling ../%s/ left unbound: %d configured roots carry that name, want exactly one", name, len(match)))
 			continue
 		}
-		if head, ok := verifierSiblingHead(trackingRepo, match[0]); ok {
-			bound[match[0].Repo] = head
+		head, why := verifierSiblingHead(trackingRepo, match[0])
+		if why != "" {
+			verifierSiblingNotice("NOTICE: declared sibling " + match[0].Repo + " left unbound: " + why)
+			continue
 		}
+		bound[match[0].Repo] = head
 	}
 	return attestation.FormatSiblingSources(bound)
 }
 
 // verifierSiblingHead is a sibling root's HEAD when it is the fetched
-// origin/main, by the same checks the wake reader applies to a repo-source key.
-func verifierSiblingHead(trackingRepo string, r RootConfig) (string, bool) {
+// origin/main, by the same checks the wake reader applies to a repo-source key;
+// otherwise it says why the sibling stays unbound.
+func verifierSiblingHead(trackingRepo string, r RootConfig) (string, string) {
 	if verifierVisibility(trackingRepo, r.Repo) != nil {
-		return "", false
+		return "", "the tracking repository cannot publish it"
 	}
 	_, root, err := verifierHome(r.Path)
 	if err != nil || verifierRepoIdentity(root, r.Repo) != nil {
-		return "", false
+		return "", "its configured root is not a checkout whose origin is " + r.Repo
 	}
 	head, err := verifierGit(root, "rev-parse", "HEAD")
 	if err != nil {
-		return "", false
+		return "", "its HEAD is unreadable"
 	}
 	if main, err := verifierGit(root, "rev-parse", "refs/remotes/origin/main"); err != nil || main != head {
-		return "", false
+		return "", "its HEAD is not the fetched origin/main; fetch and check out origin/main, then prepare again"
 	}
 	checkout, err := readVerifierCheckout(root)
 	if err != nil || verifierNoReplacements(root) != nil || verifierNoLocalAttributes(root) != nil || verifierOwnWorkTree(root) != nil || verifierSourceClosure(root, head, checkout, nil) != nil {
-		return "", false
+		return "", "its checkout is not clean"
 	}
-	return head, true
+	return head, ""
 }
 
 func verifierCrossRepoCheck(root, brief string, r verifierLocal, phase verifierPhase) error {

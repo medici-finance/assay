@@ -99,6 +99,10 @@ func TestSiblingSourcesBinding(t *testing.T) {
 		{"example-org/one@" + c, false},     // the source repository again
 		{"other-org/ONE@" + c, false},       // its name in another owner
 		{"example-org/tracker@" + c, false}, // the tracking repository
+		{"./two@" + c, false},               // dot-only owner
+		{"example-org/..@" + c, false},      // dot-only name
+		{"example-org/.@" + c, false},
+		{"example-org/.two@" + c, true}, // a dot inside a segment stays legal
 	} {
 		b := base
 		b.SiblingSources = tc.siblings

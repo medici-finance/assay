@@ -19,7 +19,7 @@ func twoSiblingVisibility(t *testing.T, tracking string) {
 	cfgMu.Lock()
 	previous, once := cfgValue, cfgOnce
 	cfgValue = parseConfig(ClassWrite, "offline fixture", parseDotenv(strings.ReplaceAll(raisedByFixtureRoster, "example-desk-app", "example-desk")+
-		"\nASSAY_ALLOWED_REPOS=example-org/one:ci:public,example-org/two:ci:public,example-org/three:ci:private,example-org/tracking:ci:"+tracking+"\n"))
+		"\nASSAY_ALLOWED_REPOS=example-org/one:ci:public,example-org/two:ci:public,example-org/three:ci:private,mirror-org/two:ci:public,example-org/tracking:ci:"+tracking+"\n"))
 	cfgOnce = true
 	cfgMu.Unlock()
 	t.Cleanup(func() { cfgMu.Lock(); cfgValue, cfgOnce = previous, once; cfgMu.Unlock() })
@@ -60,23 +60,31 @@ func TestTwoSiblingRecord(t *testing.T) {
 
 // A declared sibling whose source the run did not bind is still refused, and
 // a sibling source never stands in for a different or undeclared repository.
+// Every guard case also binds a valid example-org/two, so coverage holds and
+// the guard the case names is the only refusal left.
 // regression: #4876
 func TestSiblingSourceMissing(t *testing.T) {
 	twoSiblingRoster(t)
-	for name, siblings := range map[string]map[string]string{
-		"none":            nil,
-		"undeclared":      {"example-org/three": siblingTwoSource},
-		"short commit":    {"example-org/two": "89abcdef"},
-		"empty commit":    {"example-org/two": ""},
-		"repeats source":  {"example-org/one": siblingTwoSource},
-		"tracking repo":   {"example-org/tracking": siblingTwoSource},
-		"outside the set": {"fork-org/two": siblingTwoSource},
+	withTracking := twoSiblingFiles + "\n- `../tracking/t.go`"
+	for _, tc := range []struct {
+		name, files string
+		siblings    map[string]string
+	}{
+		{"none", twoSiblingFiles, nil},
+		{"undeclared", twoSiblingFiles, map[string]string{"example-org/two": siblingTwoSource, "example-org/three": siblingTwoSource}},
+		{"short commit", twoSiblingFiles, map[string]string{"example-org/two": "89abcdef"}},
+		{"empty commit", twoSiblingFiles, map[string]string{"example-org/two": ""}},
+		{"repeats source", twoSiblingFiles, map[string]string{"example-org/two": siblingTwoSource, "example-org/one": siblingTwoSource}},
+		{"tracking repo", withTracking, map[string]string{"example-org/two": siblingTwoSource, "example-org/tracking": siblingTwoSource}},
+		{"outside the set", twoSiblingFiles, map[string]string{"fork-org/two": siblingTwoSource}},
 	} {
-		in := siblingTestInput()
-		in.SiblingSources = siblings
-		if _, err := siblingTestBuild(t, twoSiblingFiles, in); ExitCodeOf(err) != ExitRefused {
-			t.Errorf("%s: got %v; want explicit refusal", name, err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			in := siblingTestInput()
+			in.SiblingSources = tc.siblings
+			if _, err := siblingTestBuild(t, tc.files, in); ExitCodeOf(err) != ExitRefused {
+				t.Errorf("got %v; want explicit refusal", err)
+			}
+		})
 	}
 	same := wakeTestInput()
 	same.SiblingSources = map[string]string{"example-org/two": siblingTwoSource}
@@ -122,32 +130,55 @@ func TestTwoSiblingPlanner(t *testing.T) {
 	}
 }
 
-// Prepare binds a further declared sibling only at its configured root's
-// fetched origin/main, and only where the tracking repository may name it.
+// Prepare binds a further declared sibling only at its one configured root of
+// that name, whose origin is that repository, at the fetched origin/main, and
+// only where the tracking repository may name it; every sibling it leaves
+// unbound gets one NOTICE saying why.
 // regression: #4876
 func TestPrepareBindsSibling(t *testing.T) {
 	const brief = "docs/streams/sample/brief-01-check.md"
 	body := "# Plan\n\n## Context\n\nfiles:\n- `../one/source.txt`\n- `../two/b.go`\n- `../three/c.go`\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt` | exit 0 |\n\n## Evidence\n\nPending.\n"
+	onlyThree := func(_, three string) string { return "example-org/three@" + three }
 	for _, tc := range []struct {
 		name, tracking string
 		moved          bool
-		want           func(two, three string) string
+		// roots maps the fixtures to the configured roots.
+		roots  func(two, three, mirror string) string
+		want   func(two, three string) string
+		notice string
 	}{
-		{"fetched", "private", false, func(two, three string) string { return "example-org/three@" + three + ",example-org/two@" + two }},
-		{"unfetched", "private", true, func(_, three string) string { return "example-org/three@" + three }},
+		{"fetched", "private", false, nil, func(two, three string) string { return "example-org/three@" + three + ",example-org/two@" + two }, ""},
+		{"unfetched", "private", true, nil, onlyThree, "example-org/two left unbound: its HEAD is not the fetched origin/main"},
 		// A public tracking repository never names a private sibling.
-		{"public tracking", "public", false, func(two, _ string) string { return "example-org/two@" + two }},
+		{"public tracking", "public", false, nil, func(two, _ string) string { return "example-org/two@" + two }, "example-org/three left unbound: the tracking repository cannot publish it"},
+		// Two roots named two under different owners: neither is chosen.
+		{"ambiguous", "private", false, func(two, three, mirror string) string {
+			return "example-org/two=" + two + ",example-org/three=" + three + ",mirror-org/two=" + mirror
+		}, onlyThree, "../two/ left unbound: 2 configured roots"},
+		// A root keyed example-org/two whose origin is another repository.
+		{"misidentified", "private", false, func(_, three, mirror string) string {
+			return "example-org/two=" + mirror + ",example-org/three=" + three
+		}, onlyThree, "example-org/two left unbound: its configured root is not a checkout whose origin is example-org/two"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			twoSiblingVisibility(t, tc.tracking)
+			var notices []string
+			previous := verifierSiblingNotice
+			verifierSiblingNotice = func(msg string) { notices = append(notices, msg) }
+			t.Cleanup(func() { verifierSiblingNotice = previous })
 			home := crossRepoGitFixture(t, "example-org/one", "source.txt", "observed\n")
 			two := crossRepoGitFixture(t, "example-org/two", "b.go", "package two\n")
 			three := crossRepoGitFixture(t, "example-org/three", "c.go", "package three\n")
+			mirror := crossRepoGitFixture(t, "mirror-org/two", "b.go", "package two\n")
 			if tc.moved {
 				attestGit(t, two, "commit", "--allow-empty", "-m", "not yet fetched")
 			}
 			tracking := crossRepoGitFixture(t, "example-org/tracking", brief, body)
-			t.Setenv(RootsEnv, "example-org/two="+two+",example-org/three="+three)
+			roots := "example-org/two=" + two + ",example-org/three=" + three
+			if tc.roots != nil {
+				roots = tc.roots(two, three, mirror)
+			}
+			t.Setenv(RootsEnv, roots)
 			if err := PrepareVerifierAttestation(home, "example-org/one", filepath.Join(tracking, brief), "gpt-6-astra", "strong"); err != nil {
 				t.Fatal(err)
 			}
@@ -162,9 +193,50 @@ func TestPrepareBindsSibling(t *testing.T) {
 			if r.Binding.SiblingSources != want {
 				t.Fatalf("sibling sources %q, want %q", r.Binding.SiblingSources, want)
 			}
+			if tc.notice == "" && len(notices) != 0 || tc.notice != "" && (len(notices) != 1 || !strings.Contains(notices[0], tc.notice)) {
+				t.Errorf("notices %q, want one naming %q", notices, tc.notice)
+			}
 			if err := verifierLocalCheck(home, r.Binding.Brief, r, verifierExecution); err != nil {
 				t.Fatalf("bound run no longer checks: %v", err)
 			}
 		})
+	}
+}
+
+// A run that bound a private sibling under a private tracking repository is
+// refused at check time once the tracking repository becomes public, although
+// the deliverable itself stays publishable there.
+// regression: #4876
+func TestSiblingVisibilityCheck(t *testing.T) {
+	twoSiblingRoster(t)
+	previous := verifierSiblingNotice
+	verifierSiblingNotice = func(string) {}
+	t.Cleanup(func() { verifierSiblingNotice = previous })
+	const brief = "brief.md"
+	home := crossRepoGitFixture(t, "example-org/one", "source.txt", "source\n")
+	three := crossRepoGitFixture(t, "example-org/three", "c.go", "package three\n")
+	tracking := crossRepoGitFixture(t, "example-org/tracking", brief, "# Plan\n\n## Context\n\nfiles:\n- `../one/source.txt`\n- `../three/c.go`\n\n## Evidence\n\nPending.\n")
+	t.Setenv(RootsEnv, "example-org/three="+three)
+	if err := PrepareVerifierAttestation(home, "example-org/one", filepath.Join(tracking, brief), "gpt-6-astra", "strong"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := verifierLoad(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(r.TrackingHome)) })
+	if !strings.HasPrefix(r.Binding.SiblingSources, "example-org/three@") {
+		t.Fatalf("private sibling not bound: %q", r.Binding.SiblingSources)
+	}
+	f := &verifierForge{actor: "example-desk[bot]"}
+	if _, err := IssueVerifierAttestation(home, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CheckVerifierAttestationWithForge(home, brief, f); err != nil {
+		t.Fatalf("untampered run refused: %v", err)
+	}
+	twoSiblingVisibility(t, "public")
+	if _, err := CheckVerifierAttestationWithForge(home, brief, f); err == nil || !strings.Contains(err.Error(), "cannot publish the deliverable repository binding") {
+		t.Fatalf("private sibling under a public tracking repository: %v", err)
 	}
 }
