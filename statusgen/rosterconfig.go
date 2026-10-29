@@ -1326,7 +1326,12 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", scanEnvStreamCap, streamCapEcho(c.StreamCap, c.StreamCapSet)),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvCriticalStampAuthorities, criticalStampAuthoritiesEcho(c.CriticalStampAuthorities, c.CriticalStampAuthoritiesSet)),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvGitLabDisplayNames, strings.Join(gitlabDisplayNames, ",")),
-		fmt.Sprintf("assay-config: %s=%s", scanEnvAssertedHumans, trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)),
+	}
+	if len(c.AssertedHumans) > 0 {
+		// Present only when an assertion loaded, as in deskkit: a roster without the key
+		// echoes (and digests) exactly as before.
+		lines = append(lines, fmt.Sprintf("assay-config: %s=%s", scanEnvAssertedHumans,
+			trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)))
 	}
 	// Product config (non-ASSAY_) echoes under its own prefix via the build-tagged
 	// hook; empty in the default (open-core) build.

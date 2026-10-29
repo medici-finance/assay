@@ -41,6 +41,15 @@ func TestScanAssertPinnedLoads(t *testing.T) {
 	if !strings.Contains(echo, "assay-config: "+scanAssertKey+"=ops-bot:5005 (name check waived for ") {
 		t.Fatalf("assertion use not echoed:\n%s", echo)
 	}
+	plain := scanAssertBase(map[string]string{scanEnvBlessLogin: "ada:1001", scanEnvTrustedLogins: "ada:1001"})
+	delete(plain, scanAssertKey)
+	pc := scanParseConfig(scanClassReadOnly, "test", plain)
+	if !pc.Configured() {
+		t.Fatalf("plain roster refused: %q", pc.Problems)
+	}
+	if e := strings.Join(pc.EffectiveConfigLines(), "\n"); strings.Contains(e, scanAssertKey) {
+		t.Fatalf("a roster without the key echoes it:\n%s", e)
+	}
 }
 
 // regression: #4817

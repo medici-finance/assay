@@ -2126,9 +2126,15 @@ func (c Config) EffectiveConfigLines() []string {
 		// count) — a widening on an identity gate must be as visible in the run as
 		// the role bindings above (#643).
 		fmt.Sprintf("assay-config: %s=%s", EnvGitLabSessionEmails, strings.Join(c.GitLabSessionEmails, ",")),
+	}
+	if len(c.AssertedHumans) > 0 {
 		// Every human-name assertion and the keys it waived the name check for. A waiver is
-		// an identity decision, so it renders in full like the role bindings.
-		fmt.Sprintf("assay-config: %s=%s", EnvAssertedHumans, trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)),
+		// an identity decision, so it renders in full like the role bindings. The line is
+		// present only when an assertion loaded: a roster without the key echoes (and
+		// digests) exactly as before, and a refused value is named in its REFUSED and
+		// DROPPED lines instead.
+		lines = append(lines, fmt.Sprintf("assay-config: %s=%s", EnvAssertedHumans,
+			trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)))
 	}
 	if len(c.UnknownKeys) > 0 {
 		// Not a refusal on its own (a non-ASSAY_ key may legitimately share the file

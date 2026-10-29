@@ -192,6 +192,11 @@ func TestAssertEchoed(t *testing.T) {
 	if line := compactConfigLine(c, ConfigDigest(c.EffectiveConfigLines())); !strings.Contains(line, " asserted=1 ") {
 		t.Fatalf("compact echo does not count the assertion: %q", line)
 	}
+	// A roster without the key echoes exactly as before: no line, so no digest change.
+	plain := strings.Join(assertParse(assertBase(nil)).EffectiveConfigLines(), "\n")
+	if strings.Contains(plain, assertKey) {
+		t.Fatalf("a roster without the key echoes it:\n%s", plain)
+	}
 }
 
 // regression: #4817
