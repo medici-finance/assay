@@ -23,6 +23,30 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.66 — 2026-10-29
+
+### Added
+- Repeatable credential-free statusgen workloads and source-mutation parity checks for existing invocation-local parse reuse, including explicit measurement coverage and unavailable-state limits.
+
+### Fixed
+- `cellctl check` on a gitlab house cell reports the gh config link `n/a` (as on a k8s gitlab cell) instead of a `MISS`, and `cellctl new --kind house` honours `--forge gitlab`: it writes `CELL_FORGE=gitlab` with the GitLab endpoint and never links a gh config. An unknown `--forge` on a house cell is now refused (#4817).
+- `cellctl desk` now exports a GitLab cell's own API base into the claude and cursor role windows as `GITLAB_API_BASE`, so `desktoken` inside the window mints against the cell's configured base. The base is the cell's `cell.env` `GITLAB_API_BASE`, or its `FORGE_API_BASE` when only that is set, and it wins over a value the launching shell carried. A cell whose `cell.env` states neither leaves the inherited environment unchanged, and cellctl's compiled forge defaults are never forwarded.
+- `deskboot`'s first-sweep-prereqs step and `deskboard`'s drift banner now accept the
+- `desksourceguard` now reads the desk-tools binary pin under both spellings the shared
+
+### Changed
+- Add `ASSAY_ASSERTED_HUMANS`, a pinned `login:id` roster key that lets a human whose username
+- Add a source inventory for literal Git definitions, unresolved executables and callers
+- Add an authoring-time ratchet over the brief corpus (`TestBriefScopeRatchet`): every
+- Lift the existing canonical gitcore implementation into an importable sibling module
+- Reuse repeated stale-FAIL history queries within one lint invocation while preserving
+- Rewrite the Context `files:` block of 66 briefs whose wrapped or prose declarations the
+- The declared-scope parser behind `deskevidence --outcome-record` keeps refusing every `## Context`
+  line that starts with "files" followed by whitespace and is not the accepted `files:` form,
+  hard-wrapped prose included, at both the Context-line and the fenced-region marker checks. New
+  regression tests pin that refusal. A brief refused this way is fixed by reflowing the paragraph so
+  no line starts with "files", not by loosening the parser.
+
 ## v1.0.65 — 2026-10-29
 
 ### Added
