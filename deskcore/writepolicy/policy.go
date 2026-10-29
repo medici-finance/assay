@@ -87,10 +87,12 @@ func (c Classification) PathTokens() []string { return append([]string(nil), c.t
 func (c Classification) Masked() string       { return c.masked }
 
 // ReadsAmbientForgeToken reports whether the classified Bash command runs the
-// gh CLI's token read (`gh auth token` in any executed form). It is lexical
-// only; whether that is refused is the adapter's gate (forgetoken.go).
+// gh CLI's token read in one of the executed forms forgetoken.go judges (the
+// forms its tests pin; the classes it does not judge are listed in
+// docs/write-policy.md). It is lexical only; whether that is refused is the
+// adapter's gate.
 func (c Classification) ReadsAmbientForgeToken() bool {
-	return forgeTokenRead(c.masked, c.request.Target, 0)
+	return forgeTokenRead(c.request.Target)
 }
 
 type PathRequest struct{ Input string }

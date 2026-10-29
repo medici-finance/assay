@@ -89,25 +89,67 @@ sanctioned path and says a failed or empty mint is a stop to report.
 - **Placement.** It runs right after the Bash input decodes, before checkout
   discovery: it guards a credential, not a path, so a session outside any checkout
   is refused too. Malformed hook input or tool input stays a no-decision (fail open).
-- **What matches.** A gh word in command position, after the existing
-  assignment/wrapper skipping, whose first positional is `auth` and a later one
-  `token`, case-insensitively. Substitutions (`$( … )`, backticks, quoted or not),
-  `sh -c`/`eval` scripts and shell-fed heredocs are lexed as commands. Quoting,
-  escaping or a line continuation inside a word does not hide it.
+- **What matches.** The refusal covers the executed forms the lexer
+  (`deskcore/writepolicy/forgetoken.go`) judges, and its tests pin each one. It is a
+  lexical backstop, not a shell, and it does not claim every executed form. The read
+  is a gh invocation whose first positional is `auth` and a later positional is
+  `token` (case-insensitive). The other read forms are `gh auth status` asked to
+  print the token (`--show-token`, any true spelling of it, or a short cluster with
+  `-t`), `gh auth git-credential`, and `gh config get … oauth_token`. A gh flag's
+  value (`-u`, `-h`, `-s`, …) is not a positional, so `gh auth switch --user token`
+  is allowed. The executed forms judged are:
+  - a command word after assignments, redirections and reserved words;
+  - every word after a command wrapper or runner, or after a command word computed
+    at run time, each tried once, so the scan stays linear;
+  - the scripts of a shell's `-c`, `eval`, `env -S`, and runners that hand their
+    argument to a shell;
+  - here-strings fed to a shell, and text piped into a shell;
+  - substitutions, quoted or not;
+  - heredoc bodies whose introducing line names a shell anywhere (piped, wrapped,
+    or after an assignment).
+
+  Quoting (including ANSI-C `$'…'` with escapes decoded, and locale `$"…"`),
+  escaping, or a line continuation inside a word does not hide the read. A word
+  with one part computed at run time (parameter expansion, a substitution, brace
+  expansion, a glob) may stand for any one component of the read. One such
+  component with the rest literal is judged a read.
 - **Inert data.** Masking conventions hold: comments, heredoc bodies written to a
   non-shell under a quoted delimiter, and quoted prose (`git commit -m "…"`) do not
   match. An unquoted argument such as `echo gh auth token` is not a gh invocation.
-  An unterminated quote, or nesting too deep to lex, fails closed.
-- **Not covered.** gh aliases, scripts that read the token on the hook's behalf, and
-  other ways to read the stored credential (its config file, a keychain query, a git
-  credential helper). The refusal is a client-side backstop; it is not the only control.
+- **Fails closed (desk-decided).** Where the lexer cannot finish, it refuses rather
+  than allows. This is a departure from the policy's allow-and-log default, and it
+  is recorded on the PR that added it. The cases are an unterminated quote (lexed as
+  a command), nesting deeper than eight levels, and a scan that exhausts its work
+  budget. The budget is linear in the command's length, so the hook always decides.
+  For depth and budget, the text is judged by whether it names gh, auth and token
+  at all. Text piped or here-string-fed into a shell is lexed even when the
+  shell also has `-c`, so a shell that ignores its stdin can still be refused.
+- **Not covered.** The following are not judged and stay allowed:
+  - process substitution feeding a shell, or a script sourced with `source` / `.`;
+  - shell input read from a file or device whose text is not on the command line;
+  - a read with more than one component computed at run time, and a show-token
+    flag computed at run time;
+  - arguments supplied at run time by another command (for example `xargs`);
+  - other paths that turn a string into a command: tool aliases (including git
+    aliases), build-tool evaluation, interpreter one-liners, OS scripting bridges,
+    and encoded shell commands;
+  - gh aliases;
+  - scripts that read the token on the caller's behalf;
+  - other ways to read the stored credential: its config file, a keychain query,
+    or a git credential helper;
+  - harness tools other than Bash;
+  - remote or container execution.
+
+  The refusal is a client-side backstop. It is not the only control.
 
 | # | Verify | Method | Expected |
 |---|---|---|---|
-| 1 | Hook-level refusal, variants, silence and fail-open | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientToken' -count=1` | PASS |
-| 2 | Core classification, including the depth fail-closed | `cd deskcore && go test ./writepolicy/ -run TestAmbientForgeTokenClassify -count=1` | PASS |
+| 1 | Hook-level refusal, variants, one test per judged class, allowed look-alikes, silence and fail-open | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientToken' -count=1` | PASS |
+| 2 | Core classification, including the depth fail-closed and ANSI-C decoding | `cd deskcore && go test ./writepolicy/ -run 'TestAmbientForgeTokenClassify\|TestForgeANSICDecode' -count=1` | PASS |
 | 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/ambient-token-unmatched' -count=1` | PASS (mutant caught) |
 | 4 | Operator `!` input is untouched (paired control, manual; re-run after any harness change) | One session, hook armed, `DESK_LOOP` or `DESK_SESSION` set in the hook's environment. (a) The agent runs a control command through its Bash tool, e.g. `gh auth token >/dev/null`. (b) The operator types the identical command with the `!` prefix in the same session. | (a) refused with `ambient forge credential read`; (b) runs with no refusal. A refusal in (b) means the harness now routes operator input through PreToolUse: stop and re-decide the gate. |
+| 5 | Wrapper chains are judged in linear work, and the hook decides a long chain within its deadline | `cd deskcore && go test ./writepolicy/ -run TestForgeWrapperChainLinear -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run TestAmbientTokenWrapperChain -count=1` | PASS |
+| 6 | Budget exhaustion fails closed on a command naming the read, and allows one that does not | `cd deskcore && go test ./writepolicy/ -run TestForgeBudgetFailsClosed -count=1` | PASS |
 
 ## Consumers and migration
 
