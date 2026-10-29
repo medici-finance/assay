@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/medici-finance/assay/deskcore/writepolicy"
@@ -68,4 +69,34 @@ Write ONLY inside your own worktree (%s). Never write to the shared checkout via
 			home, tool, c.SharedRoot, target, home) +
 			"\n" + blockEvasionGuidance,
 	}
+}
+
+// deskSession reports whether the hook's OWN environment marks a desk session:
+// DESK_LOOP or DESK_SESSION non-empty. The core reads no environment, so this
+// gate is the adapter's (docs/write-policy.md, "Core and adapters").
+func deskSession() bool {
+	return os.Getenv("DESK_LOOP") != "" || os.Getenv("DESK_SESSION") != ""
+}
+
+// ambientTokenRefusal refuses a Bash command that runs the gh CLI's token read
+// while this is a desk session (#4821); outside one the hook stays silent. The
+// decision is writepolicy's lexical classification over the same masking every
+// other Bash check uses.
+func ambientTokenRefusal(command string) (Verdict, bool) {
+	if command == "" || !deskSession() {
+		return Verdict{}, false
+	}
+	cl := writepolicy.Classify(writepolicy.Request{Tool: "Bash", Target: command}, writepolicy.LexicalContext{})
+	if !cl.ReadsAmbientForgeToken() {
+		return Verdict{}, false
+	}
+	return Verdict{
+		Block: true,
+		Reason: fmt.Sprintf(`writeguard: BLOCKED — ambient forge credential read.
+This Bash call runs `+"`gh auth token`"+` (or asks gh to print its stored token):
+  %s
+The gh CLI's stored login belongs to whichever account last authenticated on this machine, not to this session's role identity. A desk session (DESK_LOOP or DESK_SESSION is set) never reads or uses it, not even for a read-only call.
+The ONLY sanctioned credential path is your role's minted token: desktoken <role>. It prints the path of a token file; pass that file's contents as GH_TOKEN to the one command that needs it, and never print or export the token.
+If the mint fails or comes back empty, STOP and report it. Do not fall back to the stored login, another account, or another way of reading the same token: a block is a stop signal, and substitution is an escalation-worthy policy violation.`, command),
+	}, true
 }

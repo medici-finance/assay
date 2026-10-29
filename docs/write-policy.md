@@ -75,6 +75,40 @@ A deny from the core cannot be cleared by a callout or adapter. Keep existing ho
 JSON/exit/stdout behavior, including structured JSON denial on exit zero. Managed
 decisions do not replace OS/harness confinement or operator activation gates.
 
+## Ambient forge-credential refusal
+
+A Bash call that runs the gh CLI's token read (`gh auth token`, or `gh auth status`
+asked to print the token) is refused while the hook's own environment has
+`DESK_LOOP` or `DESK_SESSION` non-empty; with neither set the hook stays silent.
+The stored gh login is whichever account last authenticated on the machine, never
+the session's role identity. The refusal names `desktoken <role>` as the only
+sanctioned path and says a failed or empty mint is a stop to report.
+
+- **Split.** The core classifies (`Classification.ReadsAmbientForgeToken`, pure and
+  lexical); the adapter reads the two variables and renders the refusal.
+- **Placement.** It runs right after the Bash input decodes, before checkout
+  discovery: it guards a credential, not a path, so a session outside any checkout
+  is refused too. Malformed hook input or tool input stays a no-decision (fail open).
+- **What matches.** A gh word in command position, after the existing
+  assignment/wrapper skipping, whose first positional is `auth` and a later one
+  `token`, case-insensitively. Substitutions (`$( … )`, backticks, quoted or not),
+  `sh -c`/`eval` scripts and shell-fed heredocs are lexed as commands. Quoting,
+  escaping or a line continuation inside a word does not hide it.
+- **Inert data.** Masking conventions hold: comments, heredoc bodies written to a
+  non-shell under a quoted delimiter, and quoted prose (`git commit -m "…"`) do not
+  match. An unquoted argument such as `echo gh auth token` is not a gh invocation.
+  An unterminated quote, or nesting too deep to lex, fails closed.
+- **Not covered.** gh aliases, scripts that read the token on the hook's behalf, and
+  other ways to read the stored credential (its config file, a keychain query, a git
+  credential helper). The refusal is a client-side backstop; it is not the only control.
+
+| # | Verify | Method | Expected |
+|---|---|---|---|
+| 1 | Hook-level refusal, variants, silence and fail-open | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientToken' -count=1` | PASS |
+| 2 | Core classification, including the depth fail-closed | `cd deskcore && go test ./writepolicy/ -run TestAmbientForgeTokenClassify -count=1` | PASS |
+| 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/ambient-token-unmatched' -count=1` | PASS (mutant caught) |
+| 4 | Operator `!` input is untouched (paired control, manual; re-run after any harness change) | One session, hook armed, `DESK_LOOP` or `DESK_SESSION` set in the hook's environment. (a) The agent runs a control command through its Bash tool, e.g. `gh auth token >/dev/null`. (b) The operator types the identical command with the `!` prefix in the same session. | (a) refused with `ambient forge credential read`; (b) runs with no refusal. A refusal in (b) means the harness now routes operator input through PreToolUse: stop and re-decide the gate. |
+
 ## Consumers and migration
 
 | Consumer | Disposition / owner | Retirement proof |
