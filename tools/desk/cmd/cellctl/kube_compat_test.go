@@ -153,6 +153,19 @@ func TestKubeCompatParity(t *testing.T) {
 	if got.Code == 0 || s.Calls != 0 {
 		t.Fatal("unsupported declared role context ignored", got)
 	}
+	for _, db := range []struct{ key, val string }{
+		{"CELL_DB_DSN", "postgres://cell_example@127.0.0.1:5432/cell_example?sslmode=verify-full"},
+		{"CELL_DB_DSN", "postgres://cell_example:hunter2@127.0.0.1:5432/cell_example"},
+		{"CELL_DB_PASSFILE", "/run/example/pgpass"},
+	} {
+		w.writeHouseEnv(t, "CELL_KIND=k8s\nCELL_KUBERNETES_CONFIG="+s.ProfilePath+"\n"+db.key+"="+db.val+"\n")
+		for _, args := range [][]string{{"desk", "example", "worker-desk"}, {"check", "example"}} {
+			got := w.run(t, nil, args...)
+			if got.Code == 0 || s.Calls != 0 || !strings.Contains(got.Stderr+got.Stdout, db.key) || strings.Contains(got.Stderr+got.Stdout, "hunter2") {
+				t.Fatal("host-only database key silently ignored or leaked on the compatibility path", db.key, args, got)
+			}
+		}
+	}
 	w.writeHouseEnv(t, "CELL_KIND=k8s\nCELL_KUBERNETES_CONFIG="+s.ProfilePath+"\n")
 	lease, e := cellcadence.AcquireRole(filepath.Join(w.cellDir, "run", "cadence", "worker-desk"), cellcadence.RoleLock{Cell: "example", Role: "worker-desk"})
 	if e != nil {
