@@ -422,3 +422,47 @@ func TestScopeLooseContinuation(t *testing.T) {
 		t.Fatalf("next field confused with loose list: %v %v", paths, err)
 	}
 }
+
+// regression: #4199 — hard-wrapped Context prose that puts "files " at
+// column zero is a sentence, not a field marker, at both marker sites.
+func TestScopeWrappedFilesProse(t *testing.T) {
+	const decl = "files:\n- `tools/a.go`\n- `tools/pkg/`\n"
+	for name, prose := range map[string]string{
+		// The reported shape: a paragraph wrapping onto "files in ...".
+		"reported": "Scope is the generated\nfiles in the public tree. Three items were flagged on #631 as out-of-scope for hp/14 and ruled\nout here.\n\n",
+		"capital":  "Files under `tools/` are\nfiles that out-of-scope work never touches.\n\n",
+		// Planted second site: the fenced-region marker check.
+		"fenced": "facts:\n```text\nexample wraps onto\nfiles in the example tree.\n```\n\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			tree := wakeTestTree()
+			tree.files[wakeTestBriefPath] = "# Brief\n\n## Context\n\n" + prose + decl + "\nfacts:\n- `tools/not-declared.go`\n"
+			raw, err := BuildOutcomeRecord(wakeTestRecord("verify-fail", BlockerImplementation, "#1"), wakeTestInput(), tree)
+			if err != nil {
+				t.Fatalf("wrapped prose refused the record: %v", err)
+			}
+			var r WakeReceipt
+			if err := json.Unmarshal(raw, &r); err != nil {
+				t.Fatal(err)
+			}
+			for _, p := range []string{"tools/a.go", "tools/pkg/one.go", "tools/pkg/sub/two.go"} {
+				if r.Inputs["file:"+p] == "" {
+					t.Errorf("omitted declared deliverable %s", p)
+				}
+			}
+			if _, ok := r.Inputs["file:tools/not-declared.go"]; ok {
+				t.Fatal("prose became a declaration")
+			}
+		})
+	}
+	// A declaration missing its colon is still refused, never read as prose.
+	for _, line := range []string{
+		"files tools/a.go", "Files tools/a.go and tests", "files `tools/a.go`",
+		"files - tools/a.go", "files\ttools/a.go", "files (new) tools/a.go",
+		"files docs", "files 1. tools/a.go",
+	} {
+		if paths, err := BriefDeclaredFiles("## Context\n" + line + "\n"); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q: got %v %v; want refusal", line, paths, err)
+		}
+	}
+}

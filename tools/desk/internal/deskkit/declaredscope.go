@@ -233,12 +233,36 @@ func scopeMarkerText(line string) string {
 	}
 }
 
+// scopeBroadFilesMarker reports a line that looks like a files field without
+// being the accepted "files:" form, so the caller refuses it rather than letting
+// a malformed declaration read as an empty scope. Whitespace after "files" stays
+// a marker ("files tools/a.go") unless the line is wrapped prose (#4199).
 func scopeBroadFilesMarker(line string) bool {
 	if !strings.HasPrefix(line, "files") {
 		return false
 	}
 	tail := strings.TrimPrefix(line, "files")
-	return tail == "" || strings.ContainsAny(tail[:1], ":*_`(") || tail != strings.TrimLeftFunc(tail, unicode.IsSpace)
+	if tail == "" || strings.ContainsAny(tail[:1], ":*_`(") {
+		return true
+	}
+	return tail != strings.TrimLeftFunc(tail, unicode.IsSpace) && !scopeProseTail(tail)
+}
+
+// scopeProseTail reports a tail that continues a sentence: a plain word (letters,
+// with inner hyphens or apostrophes) followed by more text, as in a paragraph
+// hard-wrapped onto "files in the public tree. ...". A path, quote, list mark,
+// parenthetical or lone word after "files" is never prose.
+func scopeProseTail(tail string) bool {
+	words := strings.Fields(tail)
+	if len(words) < 2 {
+		return false
+	}
+	for i, r := range words[0] {
+		if !unicode.IsLetter(r) && (i == 0 || (r != '-' && r != '\'')) {
+			return false
+		}
+	}
+	return true
 }
 
 func scopeListPrefix(line string) int {
