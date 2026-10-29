@@ -89,6 +89,32 @@ func (c *Cell) cellDBEnv(env []string) []string {
 	return env
 }
 
+// cellForgeEnvKeys is the explicit allowlist of forge endpoint keys a host role window carries
+// from its own cell.env (#4841). desktoken reads GITLAB_API_BASE from its process environment
+// and deliberately has no default, so a cell that sets its base only in cell.env could not
+// cold-mint from inside its own role window. Nothing else in the cell map is copied.
+var cellForgeEnvKeys = []string{"FORGE_API_BASE", "GITLAB_API_BASE"}
+
+// forgeEndpointEnv sets each cellForgeEnvKeys key the cell's own cell.env holds non-empty, over
+// any value the launching shell carried: the cell file is the cell's own statement of which
+// forge it talks to, the same precedence loadCell gives it. A key cell.env does not set (or sets
+// empty) leaves the inherited environment exactly as it was. cellctl's compiled forge defaults
+// (the gitlab.com fallback, the api.<host> derivation) are never forwarded, so desktoken's
+// refusal on an unconfigured GitLab base still stands.
+func (c *Cell) forgeEndpointEnv(env []string) []string {
+	for _, k := range cellForgeEnvKeys {
+		if c.Env.Source(k) != layerCellEnv {
+			continue
+		}
+		v := c.Env.Get(k)
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		env = envSet(env, k, v)
+	}
+	return env
+}
+
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
 // plugin on the claude arm, fetch the shared checkout under a lock, bring the role worktree up
 // to main, generate the shims, and exec the harness.
@@ -225,6 +251,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	// ASSAY_COCKPIT the launching shell happened to carry never outlives the cell's own value.
 	if cockpit.Cockpit != "" {
 		env = envSet(env, envAssayCockpit, cockpit.Cockpit)
+	}
+	// The cell's forge endpoint (#4841), on the claude and cursor arms; the codex arm composes its
+	// command environment from its own named allowlist and is left as it was.
+	if harness != "codex" {
+		env = c.forgeEndpointEnv(env)
 	}
 	var argv []string
 	if harness == "codex" {

@@ -256,6 +256,10 @@ var envKeyOtherReads = map[string]envOtherRead{
 		why: "a provider's endpoint, token variable name or model"},
 	"Source(providerVar(name, suffix))@provider.go:providerValue": {provider: true,
 		why: "which file supplied the provider value just read"},
+	"Get(k)@launch.go:forgeEndpointEnv": {keys: cellForgeEnvKeys,
+		why: "a forge endpoint key the role window carries from cell.env (#4841)"},
+	"Source(k)@launch.go:forgeEndpointEnv": {keys: cellForgeEnvKeys,
+		why: "whether that forge key is a line of the cell's own cell.env, never a compiled default"},
 
 	// ── Env.Get handed to another package ──
 	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
