@@ -1,10 +1,11 @@
 package gitcore
 
 import (
-	git "github.com/go-git/go-git/v5"
-	"github.com/medici-finance/assay/gitcore/gittest"
 	"strings"
 	"testing"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/medici-finance/assay/gitcore/gittest"
 )
 
 // This synthetic counterexample pins why native provenance blame is retained.

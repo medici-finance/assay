@@ -1,13 +1,17 @@
 package gitcore
 
 import (
-	"github.com/medici-finance/assay/gitcore/gittest"
+	"bytes"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitcore/gittest"
 )
 
 func TestCommitRangeParity(t *testing.T) {
@@ -127,6 +131,30 @@ func TestCommitRangeAbbreviationNamespaces(t *testing.T) {
 		}
 		if _, err := f.Git("update-ref", "-d", name); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestCommitRangeMessageProfiles(t *testing.T) {
+	f := gittest.NewFixture(t)
+	base := mustGitOutput(t, f, "rev-parse", "HEAD")
+	tree := mustGitOutput(t, f, "rev-parse", "HEAD^{tree}")
+	r, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range []struct{ header, message string }{{"encoding ISO-8859-1\n", "fix #72\n"}, {"", "before\x00#72\n"}} {
+		raw := fmt.Sprintf("tree %s\nparent %s\nauthor F <f@example.invalid> 1 +0000\ncommitter F <f@example.invalid> 1 +0000\n%s\n%s", tree, base, profile.header, profile.message)
+		cmd := exec.Command("git", "-C", f.Dir, "hash-object", "-t", "commit", "--literally", "-w", "--stdin")
+		cmd.Stdin = bytes.NewBufferString(raw)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := strings.TrimSpace(string(out))
+		rows, err := r.CommitRange(base, id)
+		if err != nil || len(rows) != 1 || rows[0].NativeMessageReason == "" {
+			t.Fatalf("message profile not classified: %v %v", rows, err)
 		}
 	}
 }

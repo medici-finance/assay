@@ -3,10 +3,11 @@ package gitcore
 import (
 	"errors"
 	"fmt"
-	"github.com/go-git/go-git/v5/plumbing"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 // RangeCommit is an immutable history fact, without log formatting or identity
@@ -75,6 +76,9 @@ func (r *Repo) rangeCommit(id string) (RangeCommit, error) {
 		return RangeCommit{}, err
 	}
 	row := RangeCommit{ID: id, Message: c.Message}
+	if strings.ContainsRune(c.Message, 0) {
+		row.NativeMessageReason = "binary message requires native log rendering"
+	}
 	raw, err := r.RawCommit(id)
 	if err != nil {
 		return RangeCommit{}, err

@@ -37,6 +37,12 @@
       "file": "rangehistory.go",
       "old": "return \"native revision name shadows object abbreviation\", nil",
       "new": "return \"\", nil"
+    },
+    {
+      "name": "binary message treated as native-formatted text",
+      "file": "rangehistory.go",
+      "old": "if strings.ContainsRune(c.Message, 0) {",
+      "new": "if strings.ContainsRune(c.Message, 0) && false {"
     }
   ]
 }
