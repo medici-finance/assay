@@ -51,7 +51,7 @@ files:
 - `tools/desk/internal/deskkit/confighome.go`
 - `tools/desk/internal/deskkit/custodylink.go`
 - `tools/desk/cmd/desktoken/`
-- `tools/desk/internal/forgeban/allowlist.go` and its existing package tests
+- `tools/desk/internal/forgeban/allowlist.go` — and its existing package tests
 - `tools/desk/README.md`
 - `docs/library-first.md`
 - `docs/contracts.md`

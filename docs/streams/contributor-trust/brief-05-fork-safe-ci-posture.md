@@ -58,21 +58,13 @@ version: 1
 ## Context
 
 files:
-- `tools/workflowaudit/` (new) — a checker over `.github/workflows/`: for each workflow, its
-  triggers, its permissions block, whether it can be triggered by a fork, whether it checks
-  out a pull-request head, and whether it can reach a secret or a self-hosted runner. Emits a
-  classification per workflow and exits non-zero on an unsafe combination.
-- `tools/workflowaudit/testdata/` — fixtures including a deliberately unsafe workflow
-  (`pull_request_target` plus a head checkout plus a secret) that the audit must reject.
+- `tools/workflowaudit/` (new) — a checker over `.github/workflows/`: for each workflow, its triggers, its permissions block, whether it can be triggered by a fork, whether it checks out a pull-request head, and whether it can reach a secret or a self-hosted runner. Emits a classification per workflow and exits non-zero on an unsafe combination.
+- `tools/workflowaudit/testdata/` — fixtures including a deliberately unsafe workflow (`pull_request_target` plus a head checkout plus a secret) that the audit must reject.
 - `.github/workflows/` — any correction the audit forces, in the same change.
-- `.github/workflows/fork-risky-paths.yml` (new) — labels a fork pull request whose diff
-  touches continuous-integration configuration, dependency lockfiles, install scripts or
-  container definitions. Metadata and diff-path reads only; never checks out the head.
-- `tools/desk/internal/deskkit/forkbuildguard.go` (new) — the desk-side refusal: a build or
-  test invoked against a fork head whose item is not blessed refuses, exit 5.
+- `.github/workflows/fork-risky-paths.yml` (new) — labels a fork pull request whose diff touches continuous-integration configuration, dependency lockfiles, install scripts or container definitions. Metadata and diff-path reads only; never checks out the head.
+- `tools/desk/internal/deskkit/forkbuildguard.go` (new) — the desk-side refusal: a build or test invoked against a fork head whose item is not blessed refuses, exit 5.
 - `plugins/assay/resident-rules.md` — one sentence noting the mechanical backstop.
-- `docs/fork-ci-posture.md` (planned) (new), `docs/contributor-trust.md` (planned), and
-  `changelog/contributor-trust-fork-ci.md` (new).
+- `docs/fork-ci-posture.md` (planned) (new), `docs/contributor-trust.md` (planned) and `changelog/contributor-trust-fork-ci.md` (new).
 
 single-point-of-failure: the maintainer's click on approve-and-run is the control that stands
 alone today. This design puts two independent layers behind it, failing for different reasons
