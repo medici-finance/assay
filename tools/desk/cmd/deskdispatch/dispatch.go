@@ -507,6 +507,7 @@ func dispatch(o dispatchOpts) error {
 	if idStamped {
 		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
 	}
+	held.home = home
 	if plan.detached {
 		o.say("%s OK: %s detached off origin/main (%s: no branch)%s", stepWorktreeCreate, home, o.kit, idSuffix)
 	} else {
@@ -616,6 +617,7 @@ func dispatch(o dispatchOpts) error {
 	}
 	if serr != nil {
 		if o.kit == "verifier" {
+			held.home = "" // retained on purpose, and the message below says how to recover it
 			released := held.release()
 			return held.settle(deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr))
 		}
@@ -1414,6 +1416,12 @@ type heldClaim struct {
 	tool, key    string
 	repo, phrase string
 	auth         claimAuth
+	// home is the worktree THIS run created, set once deskwt has named it and cleared when the
+	// run deliberately retains it. A post-claim abort leaves that worktree in place (removing
+	// it is `deskwt remove`'s decision, never this verb's — the allocation boundary admits no
+	// removal). Worker/verifier names are deterministic within a session; review homes
+	// are fresh per pass. settle names cleanup without making it a retry prerequisite.
+	home string
 }
 
 // release releases the claim once and returns releaseClaim's phrase; later calls return the
@@ -1429,10 +1437,20 @@ func (h *heldClaim) release() string {
 // non-nil one releases the claim — unless an abort path already did and named it in its own
 // message — and appends the outcome to the error, keeping its exit code.
 func (h *heldClaim) settle(err error) error {
-	if err == nil || h.phrase != "" {
+	if err == nil {
 		return err
 	}
-	note := fmt.Sprintf(" The dispatch claim %s was %s, so a re-run is not refused behind it.", h.key, h.release())
+	note := ""
+	if h.phrase == "" {
+		note = fmt.Sprintf(" The dispatch claim %s was %s, so a re-run is not refused behind it.", h.key, h.release())
+	}
+	if h.home != "" {
+		note += fmt.Sprintf(" The worktree %s created by this run is still in place; reclaim it with %s. "+
+			"Cleanup is needed before reusing this directory name; review passes use fresh names.", h.home, removeCommand(h.home))
+	}
+	if note == "" {
+		return err
+	}
 	if de, ok := err.(*deskkit.DeskError); ok {
 		cp := *de
 		cp.Msg += note

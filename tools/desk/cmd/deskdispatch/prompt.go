@@ -31,6 +31,8 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -229,6 +231,39 @@ func kitRole(kit string) (role string, ok bool) {
 	return "", false
 }
 
+// staleTargetRe captures the path in deskwt's target-directory refusal,
+// "refused: target already exists (never clobbered): <target>". The path is a `tracker-*`
+// name deskwt validated to a single safe segment; its parent can contain spaces.
+var staleTargetRe = regexp.MustCompile(`(?m)never clobbered\): ([^\r\n]+)`)
+
+// reclaimCommand is the exact command that reclaims the stale target deskwt named in its
+// refusal, so the operator pastes it instead of reconstructing a path (#2746). It is a
+// placeholder only when deskwt's message carried no absolute path to quote — never a guess.
+// `deskwt remove` itself refuses a directory that is not a registered worktree, or one with
+// tracked changes or unpushed commits; that refusal is the safety, so the command is the
+// right first move either way and its refusal says what to inspect next.
+func reclaimCommand(deskwtSaid string) string {
+	if m := staleTargetRe.FindStringSubmatch(deskwtSaid); m != nil && homeIsAbsolute(m[1]) {
+		return removeCommand(m[1])
+	}
+	return "`deskwt remove <path>`"
+}
+
+// removeCommand quotes a path as one shell argument, including a spaced parent.
+// Single quotes work in POSIX shells and PowerShell; an embedded quote needs the
+// platform's escape spelling. Simple paths retain the existing copyable spelling.
+func removeCommand(path string) string {
+	arg := path
+	if strings.ContainsAny(path, " \t\r\n'\"`$;&|()<>*?[]{}!#~") || (runtime.GOOS != "windows" && strings.Contains(path, "\\")) {
+		if runtime.GOOS == "windows" {
+			arg = "'" + strings.ReplaceAll(path, "'", "''") + "'"
+		} else {
+			arg = "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
+		}
+	}
+	return "`deskwt remove " + arg + "`"
+}
+
 // worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create
 // step, SELECTED BY KIT (#851) and, on the brief lane, BY WHAT DESKWT SAID (#1309 item 6).
 // The lanes fail for different reasons and the wrong hint misleads:
@@ -281,7 +316,7 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	case verifierKit(kit):
 		return "A verifier worktree is cut DETACHED off origin/main under its own name and touches no feature " +
 			"branch, so this is not a branch collision — most often the verifier's own target dir already exists " +
-			"from an earlier pass on the same session key; reclaim it (`deskwt remove <path>`) before re-dispatching."
+			"from an earlier pass on the same session key; reclaim it (" + reclaimCommand(deskwtSaid) + ") before re-dispatching."
 	// DIRECTORY collision, tested BEFORE any branch-shaped case. deskwt's target-dir refusal is
 	// "refused: target already exists (never clobbered): <target>" — it names no branch at all,
 	// but it does contain the substring "already exists", so a bare "already exists" test
@@ -299,7 +334,7 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	case strings.Contains(deskwtSaid, "never clobbered"):
 		return "The worktree TARGET DIRECTORY already exists and deskwt never clobbers one — this is a stale " +
 			"directory on this session key, NOT a branch collision and NOT a delivered brief, so do not look " +
-			"for a PR. Reclaim the directory deskwt named (`deskwt remove <path>`) and re-dispatch."
+			"for a PR. Reclaim the directory deskwt named (" + reclaimCommand(deskwtSaid) + ") and re-dispatch."
 	case strings.Contains(deskwtSaid, "CHECKED OUT in the worktree"):
 		return "The brief's branch " + branch + " is CHECKED OUT and ACTIVE in another worktree — an agent may " +
 			"still be working on it. Find that worktree (deskwt named it) and finish or reclaim it before " +

@@ -583,6 +583,20 @@ func runAdd(o addOpts) (err error) {
 	if merr := os.MkdirAll(filepath.Dir(target), 0o755); merr != nil {
 		return deskkit.Unverifiable("cannot create the sanctioned worktree parent dir "+filepath.Dir(target), merr)
 	}
+	// Reserve the leaf exclusively before git can write it. One cleanup path owns
+	// every subsequent failure; no caller can infer ownership from a path or stderr.
+	owned, oerr := reserveAddTarget(target)
+	if oerr != nil {
+		return oerr
+	}
+	defer owned.root.Close()
+	defer func() {
+		if err != nil {
+			if note := rollbackFailedAdd(guard, dir, target, owned); note != "" {
+				err = fmt.Errorf("%w%s", err, note)
+			}
+		}
+	}()
 	// Local-only verb: NO AllowWrite (deskkit/ratelimit.go "Verb classes"). Constructed
 	// argv only; no caller flag reaches git, and no --force exists.
 	if *detach {
@@ -596,10 +610,7 @@ func runAdd(o addOpts) (err error) {
 			return deskkit.Unverifiable("git worktree add failed at pinned commit "+*base, aerr)
 		}
 		if _, uerr := runGit(target, "branch", "--set-upstream-to", *upstream, br); uerr != nil {
-			if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {
-				return fmt.Errorf("%w; rollback failed: %v", uerr, rerr)
-			}
-			return deskkit.Unverifiable("cannot set pinned worktree upstream; worktree rolled back", uerr)
+			return deskkit.Unverifiable("cannot set pinned worktree upstream", uerr)
 		}
 	} else if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
 		// Name what was attempted. A failure here is the operator's work item, and a message
@@ -625,7 +636,6 @@ func runAdd(o addOpts) (err error) {
 	identityDetail := ""
 	if roleKey != "" {
 		if serr := setCommitIdentity(resolvePath(target), botName, botEmail); serr != nil {
-			_ = removeWorktreeDir(guard, dir, resolvePath(target))
 			return serr
 		}
 		identityDetail = "identity " + deskkit.RoleIdentityLabel(roleKey)
@@ -634,16 +644,11 @@ func runAdd(o addOpts) (err error) {
 		// and rolled back when git does not then resolve exactly that transport.
 		transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)
 		if terr != nil {
-			if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {
-				return fmt.Errorf("%w; rollback failed: %v", terr, rerr)
-			}
-			fmt.Fprintln(os.Stderr, "deskwt: worktree ROLLED BACK")
 			return terr
 		}
 		identityDetail += "; " + transportDetail
 	} else {
 		if serr := clearCommitIdentity(resolvePath(target)); serr != nil {
-			_ = removeWorktreeDir(guard, dir, resolvePath(target))
 			return serr
 		}
 		identityDetail = "identity CLEARED (no --role; a commit here fails closed until an identity is set)"
@@ -656,10 +661,7 @@ func runAdd(o addOpts) (err error) {
 	if _, herr := deskkit.RunHook(deskkit.HookAfterCreate, deskkit.HookEnv{
 		RunKey: name, Worktree: resolvePath(target), Repo: repo,
 	}); herr != nil {
-		// Roll back best-effort — the worktree is proven fresh (just created off the base),
-		// so removeWorktreeDir's plain delete+prune is safe. The hook error is what we return.
-		_ = removeWorktreeDir(guard, dir, resolvePath(target))
-		return deskkit.Unverifiable("after_create hook failed; worktree "+target+" rolled back", herr)
+		return deskkit.Unverifiable("after_create hook failed at "+target, herr)
 	}
 
 	// LOCK last: the rollbacks above delete the tree and prune its registration, and git

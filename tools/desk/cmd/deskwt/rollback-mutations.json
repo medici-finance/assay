@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskwt -run 'TestFailedAdd|TestRollback|TestAddReservationRace|TestAddRefLockRollback|TestLocalizedRace' -count=1 -timeout 90s",
+  "control": {
+    "name": "cleanup omitted",
+    "file": "cmd/deskwt/deskwt.go",
+    "old": "if note := rollbackFailedAdd(guard, dir, target, owned); note != \"\" {",
+    "new": "if note := \"\"; note != \"\" {"
+  },
+  "mutations": [
+    {
+      "name": "reservation accepts competing directory",
+      "file": "cmd/deskwt/rollbackadd.go",
+      "old": "os.Mkdir(target, 0o700)",
+      "new": "os.MkdirAll(target, 0o700)"
+    },
+    {
+      "name": "identity reads replacement instead of reservation",
+      "file": "cmd/deskwt/rollbackadd.go",
+      "old": "original, err := owned.root.Stat(\".\")",
+      "new": "original, err := os.Lstat(target)"
+    },
+    {
+      "name": "sanctioned guard skipped",
+      "file": "cmd/deskwt/rollbackadd.go",
+      "old": "rt, err := guard.check(target)",
+      "new": "rt, err := target, error(nil)"
+    }
+  ]
+}
