@@ -29,28 +29,25 @@ roll remains a separate downstream job under its own existing identity.
    `images/verify-runner/Dockerfile`.
    verify-runner is multi-arch: it is built once for `linux/amd64` and once for
    `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
-   binary, and each build's OS/architecture is read back before any check. The
-   arm64 build runs under emulation, so before any image is built the release
-   job registers it with the runner's Docker engine from a digest-pinned
-   `tonistiigi/binfmt` installer
-   ([issue 4784](https://github.com/medici-finance/assay/issues/4784)). The
-   installer first removes any `qemu-aarch64` handler already on the node, so
-   the pinned emulator is the one in force; an arm64 program started on the
-   same node during that brief gap fails. The installer exits 0 even when a
-   registration fails, so the job gates on its `installing: arm64 OK` output
-   line, then proves a `linux/arm64` container of the runner's own base image
-   reports `aarch64`, and stops with an error if either check fails. The other
-   eight images stay `linux/amd64`.
+   binary, and each build's OS/architecture is read back before any check.
+   No job registers emulation. The `linux/arm64` image is built and checked by
+   the `runner-arm64` job on a native `ubuntu-24.04-arm` runner
+   ([issue 4784](https://github.com/medici-finance/assay/issues/4784)). That
+   job holds `contents: read` only, has no registry login and an empty
+   `DOCKER_CONFIG`, and never pushes. It uploads two files as the
+   `release-runner-arm64` artifact: the saved image archive and a
+   `native-runner-v1` receipt naming the release version, source revision,
+   platform, tag, image ID and archive checksum.
 
-   The installer runs as a `--privileged` container. The digest pin is the
-   only control against a malicious installer image. Running it before the
-   registry login, with no secret in its step's environment, an empty
-   `DOCKER_CONFIG` and no network, only limits accidental exposure. None of
-   that protects the credentials the runner holds for the whole job from a
-   privileged container: the OIDC request token and URL that `id-token: write`
-   provides to every step, and the job's `GITHUB_TOKEN`. The registration
-   itself is kernel-wide on the runner node and persists into later steps and
-   later jobs.
+   The approved publisher downloads that artifact into a directory of its own,
+   never into the workspace holding the checksum-verified release inputs, and
+   admits only a directory holding exactly the archive and the receipt, both
+   regular files. Before it runs `docker load` it checks the receipt against
+   this release, the archive checksum, a single Docker save manifest naming
+   only the expected tag, and a single config whose digest is the receipt's
+   image ID. After the load it re-reads the platform and image ID. Any
+   mismatch stops the release before a registry write. The other eight images
+   stay `linux/amd64`.
 3. Check statusgen's version in all nine images, and in both runner
    platforms. Execute the release-owned
    `images/verify-runner/check.py` inside each built runner platform: import PyYAML and
