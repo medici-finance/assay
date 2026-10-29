@@ -14,6 +14,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: Identity/delegation provenance affects acceptance; the owner confirms the declared trust profile and privacy scope without treating role attribution as independent approval.
 decision-trigger: start
 decision-issue: 4800
+ruling: https://github.com/medici-finance/assay/issues/4800#issuecomment-6505931139
 design: DR-evidence-provenance
 issues: [4800]
 schema: brief-v2

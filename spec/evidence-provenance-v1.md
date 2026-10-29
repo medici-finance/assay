@@ -15,7 +15,7 @@ Admission and publication consumers (/14 and /25) must require trusted corrobora
 when they implement this contract. This records the selected direction, not activation
 or qualification of a deployed consumer. The delivered design is transcribed in
 [DR-evidence-provenance](../docs/streams/decisions/DR-evidence-provenance.md);
-that record still needs its own identifier-bound human ratification.
+ratified in the [identifier-bound human ruling](https://github.com/medici-finance/assay/issues/4800#issuecomment-6505931139).
 
 ## Why
 

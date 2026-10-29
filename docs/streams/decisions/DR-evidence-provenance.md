@@ -4,6 +4,7 @@ date: "2026-10-29"
 title: "Use corroborated evidence provenance and accountable-principal duty checks through the shared pure domain contract"
 consequence: major
 decided-by: "human:<name>"
+ruling: https://github.com/medici-finance/assay/issues/4800#issuecomment-6505931139
 alternatives:
   - "Keep provenance report-only (option 2 on decision #4800): not selected. Consumers could not claim the stronger independence guarantee until a later qualified profile. No additional human rationale for rejecting this option was recorded."
   - "Treat distinct provider Apps, keys or issuers as proof of independent duties: excluded by the accepted brief; accountable and delegating principals are the comparison, not credentials."
@@ -18,17 +19,19 @@ accepted:
 
 ## Status and recorded human direction
 
-**Proposed record; identifier-bound ratification is pending.** The maintainer already
-selected option 1 for graph-execution/31 in the unedited human comment on
-[decision #4800](https://github.com/medici-finance/assay/issues/4800#issuecomment-6481737472):
+**Ratified by the maintainer's unedited human comment on decision #4800:**
+
+> Approve DR-evidence-provenance for graph-execution/31
+
+[Identifier-bound ruling](https://github.com/medici-finance/assay/issues/4800#issuecomment-6505931139) (2026-10-29).
+The comment names both this record and the brief. It confirms the earlier
+[option-1 selection](https://github.com/medici-finance/assay/issues/4800#issuecomment-6481737472):
 
 > graph-execution/31: 1 — use corroborated provenance
 
-The decision is closed as human-decided. That comment does not name this DR identifier,
-so it records the selected option but is not asserted to satisfy registers-v1 §7.5
-for this newly transcribed record. No `ruling:` is supplied until a qualifying unedited
-human comment naming `DR-evidence-provenance` exists. No bot relay or PR review is
-substituted for it.
+The public `decided-by` placeholder is retained; the `ruling:` URL supplies the
+human provenance required by registers-v1 §7.5. No bot relay or PR review is
+substituted for that ruling.
 
 ## Delivered scope
 
@@ -50,8 +53,12 @@ The brief now names this design record and existing decision #4800. Task, Verify
 version, historical Evidence, gate and risk are unchanged. Its own delivered consumer
 route is recorded as fixed-here; external consumer work remains follow-up.
 
-The generated lifecycle row must remain todo while the design-record gate is
-unsatisfied. After a qualifying human ruling, bind its exact URL as `ruling:`, run the
-canonical reconciliation reader and retain its complete admitted proposal. Any
-implemented promotion comes through the native writer, not a manual board-cell edit.
-Independent verification and final human acceptance remain separate acts.
+The earlier todo hold came from lifecycle-v1 §4.5: the brief had no recorded
+`ruling:` for its decision issue. The offline design gate checks that the cited
+record exists; it does not itself corroborate its human ratification. This PR
+therefore binds the exact human ruling in both the record and the brief before
+landing, and explicitly checks the record's corroboration.
+
+Run the canonical reconciliation reader and retain its complete admitted proposal.
+Any implemented promotion comes through the native writer, not a manual board-cell
+edit. Independent verification and final human acceptance remain separate acts.
