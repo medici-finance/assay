@@ -532,3 +532,43 @@ func TestScopeUnwrappedFilesRefuse(t *testing.T) {
 		t.Errorf("silent partial scope: %q: %v %v", content, paths, err)
 	}
 }
+
+// regression: sec-4809-1 — no neighbouring line makes a "files " line prose:
+// hard-wrapped prose is refused like a label whose paths follow it, at both
+// marker sites and after a valid files: block. Reflowing is the remedy (#4199).
+func TestScopeWrappedFilesRefuse(t *testing.T) {
+	shapes := []string{
+		// Real hard-wrapped prose, the shape the issue reported.
+		"Scope is the generated\nfiles in the public tree. Three items were flagged\nout here.\n",
+		"Work under the tools tree touches\nFiles that other work never touches.\n",
+		// A label sentence whose paths follow on the next lines.
+		"Work in this item covers the\nfiles we edit\npkg/one.go\npkg/two.go\n",
+		"Our deliverable set is the\nfiles named here\n\n- `pkg/one.go`\n- `pkg/two.go`\n",
+		"This item edits these\nfiles in the tree\n\n- `pkg/one.go`\n",
+		"Work in this item covers the\nfiles we edit\n\npkg/one.go\n",
+		"Work in this item covers the\nfiles we edit and\npkg/one.go with pkg/two.go\n",
+		"Work in this item covers the deliverables,\nfiles we edit\npkg/one.go\n",
+		"This item also touches these\nfiles README and LICENSE\n",
+		"This item changes the\nfiles in pkg and cmd\n",
+		"This item touches the following\nfiles in the desk tree\n\n- pkg/one.go\n",
+		"Prose that wraps onto the\nfiles we edit\n\n1. pkg/one.go\n",
+		"Prose that wraps onto the\nfiles we edit\n`pkg/one.go`\n",
+	}
+	for _, shape := range shapes {
+		for _, content := range []string{
+			"## Context\n" + shape,
+			"## Context\n```text\n" + shape + "```\n",
+			"## Context\nfiles:\n- `pkg/kept.go`\n\n" + shape,
+			"## Context\n```text\n" + shape + "```\n\nfiles:\n- `pkg/kept.go`\n",
+		} {
+			if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+				t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
+			}
+		}
+	}
+	// The remedy: the same prose reflowed so no line starts with "files".
+	paths, err := BriefDeclaredFiles("## Context\nScope is the generated files\nin the public tree.\n\nfiles:\n- `pkg/kept.go`\n")
+	if err != nil || len(paths) != 1 || paths[0] != "pkg/kept.go" {
+		t.Fatalf("reflowed prose: got %v %v; want [pkg/kept.go]", paths, err)
+	}
+}
