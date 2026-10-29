@@ -1134,6 +1134,12 @@ func mergeEvidenceContent(remoteContent, evidence []byte) (merged []byte, alread
 	out := remoteStr[:idx] + evidenceMarker
 	if existingEvidence != "" {
 		out += existingEvidence + "\n"
+		// A fresh block that opens its own table starts after a blank line, so a renderer reads
+		// it as a new table, the way the lint does, rather than as rows of a table (or of the
+		// pipe-less line closing one) the section already ends with.
+		if opensTable(evidenceStr) {
+			out += "\n"
+		}
 	}
 	out += evidenceStr + "\n"
 	if evidenceEnd < len(remoteStr) {
@@ -1141,6 +1147,14 @@ func mergeEvidenceContent(remoteContent, evidence []byte) (merged []byte, alread
 	}
 
 	return []byte(out), alreadyPresent
+}
+
+// opensTable reports whether block begins with a table header: a `|`-led line with a separator
+// line under it, as the lint reads one.
+func opensTable(block string) bool {
+	lines := strings.SplitN(block, "\n", 3)
+	return len(lines) >= 2 && strings.HasPrefix(strings.TrimSpace(lines[0]), "|") &&
+		evidenceSeparatorRe.MatchString(strings.Trim(strings.TrimSpace(lines[1]), "|"))
 }
 
 // normalizeEvidenceText normalises a block or an Evidence section for the block-equivalence

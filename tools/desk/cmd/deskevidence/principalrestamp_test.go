@@ -361,6 +361,8 @@ func TestPrincipalStampRefusesControlInAnyLine(t *testing.T) {
 		{"non-table-line-holds-table", restampHead, "\nnote\r| # | Runner |\r|---|---|\r" + other + "\n", "line 8", "U+000D"},
 		{"c1-next-line", restampHead, "| 2 | `b` | 0 | ok\u0085 | 2026-10-14 | human:operator @ abc1234 |\n", "line 7", "U+0085"},
 		{"line-from-another-section", restampHead + "\n## Notes\n\n" + crRow + "\n", crRow + "\n", "line 7", "U+000D"},
+		// regression: #4075 — the heading line that ends the section is the landing's too.
+		{"section-ending-heading", restampHead, "\n## \r| # | Runner |\r|---|---|\r" + other + "\n", "line 8", "U+000D"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
