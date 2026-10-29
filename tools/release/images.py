@@ -22,7 +22,7 @@ def run(*args, capture=False):
                           stdout=subprocess.PIPE if capture else None).stdout
 
 
-def build_images(root, version, source, prefix, verify_image, artifacts, out, publish):
+def build_images(root, version, source, prefix, verify_image, artifacts, out, publish, *, native):
     if not re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
         raise ValueError("a bare umbrella vMAJOR.MINOR.PATCH is required")
     if not re.fullmatch(r"[0-9a-f]{40}", source):
@@ -30,6 +30,7 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
     for name in (prefix, verify_image):
         if not re.fullmatch(r"ghcr\.io/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*", name):
             raise ValueError("registry names must be untagged GHCR repository paths")
+    native = native_transport(native)
     root = Path(root).resolve()
     plugin = json.loads((root / "plugins/assay/.claude-plugin/plugin.json").read_text())
     if plugin.get("version") != version.removeprefix("v"):
@@ -123,7 +124,7 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
             "-f", root / f"containers/{name}/Dockerfile", root)
     # ARM64 is built and checked on a native runner. Import its exact checked
     # image; this publisher must never register an emulator or execute ARM64.
-    import_native_runner(artifacts, version, source, runner_refs["linux/arm64"])
+    import_native_runner(native, version, source, runner_refs["linux/arm64"])
     platform = "linux/amd64"
     ref = runner_refs[platform]
     build_runner(root, platform, ref)
@@ -250,8 +251,25 @@ def build_native_runner(root, version, source, verify_image, artifacts, out, pla
     (out / NATIVE_RECEIPT).write_text(json.dumps(receipt, indent=2) + "\n")
 
 
-def import_native_runner(artifacts, version, source, ref):
-    receipt = json.loads((artifacts / NATIVE_RECEIPT).read_text())
+def native_transport(native):
+    """Admit the native ARM64 transport directory, or raise. It is produced by a
+    job outside the approval gate, so it lives in a directory of its own and
+    nothing else may sit beside the archive and its receipt. A download into the
+    verified release inputs could replace one of those."""
+    if Path(native).is_symlink() or not Path(native).is_dir():
+        raise ValueError("native ARM64 transport directory is missing")
+    native = Path(native).resolve()
+    if sorted(entry.name for entry in native.iterdir()) != sorted((NATIVE_ARCHIVE, NATIVE_RECEIPT)):
+        raise ValueError("native ARM64 transport must hold exactly the archive and its receipt")
+    for name in (NATIVE_ARCHIVE, NATIVE_RECEIPT):
+        if (native / name).is_symlink() or not (native / name).is_file():
+            raise ValueError("native ARM64 transport files must be regular files")
+    return native
+
+
+def import_native_runner(native, version, source, ref):
+    native = native_transport(native)
+    receipt = json.loads((native / NATIVE_RECEIPT).read_text())
     expected = {"schema": "native-runner-v1", "version": version,
                 "source_revision": source, "platform": "linux/arm64", "ref": ref}
     if not isinstance(receipt, dict) or any(receipt.get(k) != v for k, v in expected.items()):
@@ -260,7 +278,7 @@ def import_native_runner(artifacts, version, source, ref):
     digest = receipt.get("archive_sha256", "")
     if not isinstance(image_id, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
         raise ValueError("native ARM64 receipt has no exact image ID")
-    archive = artifacts / NATIVE_ARCHIVE
+    archive = native / NATIVE_ARCHIVE
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or file_sha256(archive) != digest:
         raise ValueError("native ARM64 image archive checksum mismatch")
     # Docker load mutates the local image store. Admit exactly the transported

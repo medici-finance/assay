@@ -100,6 +100,9 @@ def publication_problems(text):
         'release-images.json verify-runner-image.txt checksums.txt; do',
         "publish=os.environ['DRY_RUN'] != 'true'",
         'persist-credentials: false',
+        'path: ${{ runner.temp }}/release-native-arm64-in',
+        'NATIVE: ${{ runner.temp }}/release-native-arm64-in',
+        "native=os.environ['NATIVE']",
         "trap 'rm -rf \"$DOCKER_CONFIG\" \"$SOURCE\"' EXIT",
     ]
     for value in required:
@@ -139,9 +142,11 @@ printf 'scan %s\\n' "$1" >> "$CALLS"
                 info.mode = 0o755
                 info.size = len(name)
                 out.addfile(info, io.BytesIO(name.encode()))
-        self.native_archive = self.inputs / 'verify-runner-linux-arm64.tar'
+        self.native = self.root / 'native-in'
+        self.native.mkdir()
+        self.native_archive = self.native / 'verify-runner-linux-arm64.tar'
         native_archive(self.native_archive)
-        self.native_receipt = self.inputs / 'verify-runner-linux-arm64.json'
+        self.native_receipt = self.native / 'verify-runner-linux-arm64.json'
         self.native_receipt.write_text(json.dumps({
             'schema': 'native-runner-v1', 'version': VERSION,
             'source_revision': SOURCE, 'platform': 'linux/arm64',
@@ -215,12 +220,14 @@ if args[:2] == ['image', 'inspect']:
         self.env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
                         CALLS=str(self.calls), PYTHONDONTWRITEBYTECODE='1')
 
-    def invoke(self, publish=False, mode=''):
+    def invoke(self, publish=False, mode='', native=None):
         code = ('from pathlib import Path; import sys; from images import build_images; '
-                'build_images(Path(sys.argv[1]), *sys.argv[2:8], sys.argv[8] == "publish")')
+                'build_images(Path(sys.argv[1]), *sys.argv[2:8], sys.argv[8] == "publish", '
+                'native=sys.argv[9])')
         return subprocess.run(['python3', '-c', code, str(self.root), VERSION, SOURCE,
                                'ghcr.io/example/assay', 'ghcr.io/example/verify-runner',
-                               str(self.inputs), str(self.out), 'publish' if publish else 'build'],
+                               str(self.inputs), str(self.out), 'publish' if publish else 'build',
+                               str(native or self.native)],
                               cwd=self.script.parent,
                               env=dict(self.env, MODE=mode), text=True, capture_output=True)
 
@@ -590,6 +597,43 @@ if args[:2] == ['image', 'inspect']:
                 calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
                 self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
 
+    def test_each_native_import_refusal_fires_before_any_load(self):
+        # Each case is well formed except for the one property under test, and
+        # names the refusal that must fire, so another guard cannot satisfy it.
+        config_name = NATIVE_ID.split(':')[1] + '.json'
+        manifest = json.dumps([{'Config': config_name, 'Layers': [],
+                                'RepoTags': ['ghcr.io/example/verify-runner:v1.2.3-linux-arm64']}]).encode()
+
+        def save(members):
+            with tarfile.open(self.native_archive, 'w') as archive:
+                for name, content in members:
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    archive.addfile(info, io.BytesIO(content))
+
+        cases = {
+            'config-differs': ([('manifest.json', manifest), (config_name, b'{"architecture":"amd64"}')],
+                               None, 'config differs from the checked image'),
+            'checksum-differs': ([('manifest.json', manifest), (config_name, NATIVE_CONFIG)],
+                                 hashlib.sha256(b'other bytes').hexdigest(),
+                                 'archive checksum mismatch'),
+            'two-manifests': ([('manifest.json', manifest), ('manifest.json', manifest),
+                               (config_name, NATIVE_CONFIG)],
+                              None, 'no single Docker save manifest'),
+        }
+        for name, (members, digest, message) in cases.items():
+            with self.subTest(case=name):
+                self.setUp()
+                save(members)
+                receipt = json.loads(self.native_receipt.read_text())
+                receipt['archive_sha256'] = digest or hashlib.sha256(self.native_archive.read_bytes()).hexdigest()
+                self.native_receipt.write_text(json.dumps(receipt))
+                result = self.invoke(True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn(message, result.stderr)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
+
     def test_imported_native_image_identity_must_match_before_publication(self):
         result = self.invoke(True, 'native-id-mismatch')
         self.assertNotEqual(result.returncode, 0, result.stdout)
@@ -597,6 +641,35 @@ if args[:2] == ['image', 'inspect']:
         self.assertTrue(any(c[0] == 'load' for c in calls))
         self.assertFalse(any(c[0] == 'push' for c in calls))
         self.assertFalse((self.out / 'release-images.json').exists())
+
+    def test_native_transport_must_hold_exactly_the_archive_and_receipt(self):
+        # S1: the transported files are admitted from a directory of their own.
+        # Anything beside them, a missing file or a link refuses before any load.
+        extra = self.native / 'checksums.txt'
+        extra.write_text('replacement')
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertFalse(any(c[:1] == ['load'] for c in
+                             (json.loads(s) for s in self.recorded() if s.startswith('['))))
+        extra.unlink()
+        moved = self.root / 'moved.json'
+        self.native_receipt.rename(moved)
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.native_receipt.symlink_to(moved)
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('regular files', result.stderr)
+        self.native_receipt.unlink()
+        moved.rename(self.native_receipt)
+        self.assertEqual(self.invoke().returncode, 0)
+
+    def test_native_transport_shared_with_the_verified_inputs_is_refused(self):
+        for name in ('verify-runner-linux-arm64.tar', 'verify-runner-linux-arm64.json'):
+            (self.inputs / name).write_bytes((self.native / name).read_bytes())
+        result = self.invoke(native=self.inputs)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('exactly the archive and its receipt', result.stderr)
+        self.assertFalse(any(c[:1] == ['load'] for c in
+                             (json.loads(s) for s in self.recorded() if s.startswith('['))))
 
     def test_native_arm64_workflow_precedes_the_approved_publisher(self):
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
@@ -619,6 +692,10 @@ if args[:2] == ['image', 'inspect']:
                 self.assertIn('name: release-runner-arm64', publisher)
                 self.assertLess(publisher.index('name: release-runner-arm64'),
                                 publisher.index('name: Build, verify and publish the release images'))
+                download = workflow_steps(publisher)['Download checked native arm64 image']
+                self.assertIn('path: ${{ runner.temp }}/release-native-arm64-in', download)
+                self.assertNotRegex(download, r'(?m)^          path: (\.|\$\{\{ github\.workspace \}\})$',
+                                    'the native image must not land in the verified inputs')
                 self.assertNotIn('BINFMT_IMAGE', text)
                 self.assertNotIn('--privileged', text)
 
@@ -642,6 +719,8 @@ if args[:2] == ['image', 'inspect']:
                               .replace('TEMP', 'Create and push the dispatched tag', 1),
             'ignored-image-failure': main.replace('Build, verify and publish the release images\n',
                                                   'Build, verify and publish the release images\n        continue-on-error: true\n', 1),
+            'native-into-workspace': main.replace('path: ${{ runner.temp }}/release-native-arm64-in', 'path: .', 1),
+            'native-not-passed': main.replace("native=os.environ['NATIVE']", "native=os.environ['INPUT']", 1),
             'unguarded-writer': main + '\n  other:\n    permissions:\n      packages: write\n',
             'missing-ref-check': main.replace('from tools.release.images_contract import RUNNER_PLATFORM, validate', 'removed', 1),
             'lenient-runner-platform': main.replace('runner_platforms=(RUNNER_PLATFORM,)', '', 1),
