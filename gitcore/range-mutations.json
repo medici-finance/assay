@@ -4,33 +4,33 @@
   "control": {
     "name": "CONTROL range includes excluded ancestry",
     "file": "rangehistory.go",
-    "old": "if _, omit := excluded[row.ID]; !omit {",
-    "new": "if _, omit := excluded[row.ID]; !omit || true {"
+    "old": "if !excluded[index] {\n\t\t\trow := r.graphNodes[index].record",
+    "new": "if true {\n\t\t\trow := r.graphNodes[index].record"
   },
   "mutations": [
     {
       "name": "excluded endpoint never validated",
       "file": "rangehistory.go",
-      "old": "excluded, err := r.rangeReachable(base)",
-      "new": "excluded, err := map[string]RangeCommit{}, error(nil); _ = base"
+      "old": "baseIndex, err := r.loadRangeNode(base, map[string]bool{})",
+      "new": "baseIndex, err := 0, error(nil)"
     },
     {
-      "name": "missing history parent becomes absence",
+      "name": "missing parent becomes absence",
       "file": "rangehistory.go",
-      "old": "return nil, fmt.Errorf(\"gitcore: range ancestry %s: %w\", id, err)",
-      "new": "continue"
+      "old": "if err != nil {\n\t\t\treturn 0, err\n\t\t}",
+      "new": "if err != nil {\n\t\t\tcontinue\n\t\t}"
     },
     {
-      "name": "cache hit returns shared parent slice",
+      "name": "returned parent slice aliases cached graph",
       "file": "rangehistory.go",
-      "old": "row.Parents = append([]string(nil), row.Parents...)\n\t\treturn row, nil",
-      "new": "return row, nil"
+      "old": "row.Parents = append([]string(nil), row.Parents...)",
+      "new": "row.Parents = row.Parents[:len(row.Parents)]"
     },
     {
-      "name": "new decoded commit exposes cached parent slice",
+      "name": "parent order reversed",
       "file": "rangehistory.go",
-      "old": "r.graphCommits[id] = row\n\trow.Parents = append([]string(nil), row.Parents...)",
-      "new": "r.graphCommits[id] = row"
+      "old": "row.Parents = append(row.Parents, parent.String())",
+      "new": "row.Parents = append([]string{parent.String()}, row.Parents...)"
     },
     {
       "name": "reference alias does not select native namespace",

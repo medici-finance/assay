@@ -24,53 +24,95 @@ type RangeCommit struct {
 // a process. The result is a set, not a promise about Git's display order. Every
 // traversed parent must be readable, including excluded ancestry: a storage gap
 // is uncertainty, never a confidently smaller set. Close the Repo at run end.
+type rangeNode struct {
+	record  RangeCommit
+	parents []int
+}
+
 func (r *Repo) CommitRange(base, tip string) ([]RangeCommit, error) {
 	if !plumbing.IsHash(base) || !plumbing.IsHash(tip) {
 		return nil, fmt.Errorf("gitcore: range requires full object IDs")
 	}
-	excluded, err := r.rangeReachable(base)
+	// One indexed immutable graph per Repo. Query-local membership is a compact
+	// bitmap, not a rebuilt string-keyed map of decoded records and parent slices.
+	r.graphMu.Lock()
+	defer r.graphMu.Unlock()
+	baseIndex, err := r.loadRangeNode(base, map[string]bool{})
 	if err != nil {
 		return nil, err
 	}
-	included, err := r.rangeReachable(tip)
+	tipIndex, err := r.loadRangeNode(tip, map[string]bool{})
 	if err != nil {
 		return nil, err
 	}
+	excluded := make([]bool, len(r.graphNodes))
+	pending := []int{baseIndex}
+	for len(pending) > 0 {
+		index := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if excluded[index] {
+			continue
+		}
+		excluded[index] = true
+		pending = append(pending, r.graphNodes[index].parents...)
+	}
+	visited := make([]bool, len(r.graphNodes))
+	pending = append(pending, tipIndex)
 	var out []RangeCommit
-	for _, row := range included {
-		if _, omit := excluded[row.ID]; !omit {
+	for len(pending) > 0 {
+		index := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if visited[index] {
+			continue
+		}
+		visited[index] = true
+		if !excluded[index] {
+			row := r.graphNodes[index].record
+			row.Parents = append([]string(nil), row.Parents...)
 			out = append(out, row)
+		}
+		// Even excluded nodes are already fully validated by loadRangeNode. Their
+		// parents are all excluded too, so there is no need to visit that subgraph.
+		if !excluded[index] {
+			pending = append(pending, r.graphNodes[index].parents...)
 		}
 	}
 	return out, nil
 }
 
-func (r *Repo) rangeReachable(tip string) (map[string]RangeCommit, error) {
-	seen := map[string]RangeCommit{}
-	pending := []string{tip}
-	for len(pending) > 0 {
-		id := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		row, err := r.rangeCommit(id)
-		if err != nil {
-			return nil, fmt.Errorf("gitcore: range ancestry %s: %w", id, err)
-		}
-		seen[id] = row
-		pending = append(pending, row.Parents...)
+// The caller holds graphMu. Publish an index only after every parent was read:
+// failed or cyclic ancestry is retryable uncertainty, never a cached small set.
+func (r *Repo) loadRangeNode(id string, visiting map[string]bool) (int, error) {
+	if index, ok := r.graphIDs[id]; ok {
+		return index, nil
 	}
-	return seen, nil
+	if visiting[id] {
+		return 0, fmt.Errorf("gitcore: cyclic range ancestry at %s", id)
+	}
+	visiting[id] = true
+	defer delete(visiting, id)
+	row, err := r.readRangeCommit(id)
+	if err != nil {
+		return 0, fmt.Errorf("gitcore: range commit %s: %w", id, err)
+	}
+	var parents []int
+	for _, parent := range row.Parents {
+		index, err := r.loadRangeNode(parent, visiting)
+		if err != nil {
+			return 0, err
+		}
+		parents = append(parents, index)
+	}
+	index := len(r.graphNodes)
+	r.graphNodes = append(r.graphNodes, rangeNode{record: row, parents: parents})
+	if r.graphIDs == nil {
+		r.graphIDs = map[string]int{}
+	}
+	r.graphIDs[id] = index
+	return index, nil
 }
 
-func (r *Repo) rangeCommit(id string) (RangeCommit, error) {
-	r.graphMu.Lock()
-	defer r.graphMu.Unlock()
-	if row, ok := r.graphCommits[id]; ok {
-		row.Parents = append([]string(nil), row.Parents...)
-		return row, nil
-	}
+func (r *Repo) readRangeCommit(id string) (RangeCommit, error) {
 	c, err := r.exactCommit(id)
 	if err != nil {
 		return RangeCommit{}, err
@@ -89,15 +131,9 @@ func (r *Repo) rangeCommit(id string) (RangeCommit, error) {
 			row.NativeMessageReason = "declared message encoding requires native log rendering"
 		}
 	}
-
 	for _, parent := range c.ParentHashes {
 		row.Parents = append(row.Parents, parent.String())
 	}
-	if r.graphCommits == nil {
-		r.graphCommits = map[string]RangeCommit{}
-	}
-	r.graphCommits[id] = row
-	row.Parents = append([]string(nil), row.Parents...)
 	return row, nil
 }
 

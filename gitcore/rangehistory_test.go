@@ -158,3 +158,52 @@ func TestCommitRangeMessageProfiles(t *testing.T) {
 		}
 	}
 }
+
+func TestCommitRangeHeaderParity(t *testing.T) {
+	f := gittest.NewFixture(t)
+	base := mustGitOutput(t, f, "rev-parse", "HEAD")
+	tree := mustGitOutput(t, f, "rev-parse", "HEAD^{tree}")
+	sig := "author F <f@example.invalid> 1 +0000\ncommitter F <f@example.invalid> 1 +0000\n"
+	headers := map[string]string{
+		"ordinary":         "tree " + tree + "\nparent " + base + "\n" + sig,
+		"duplicate-author": "tree " + tree + "\nparent " + base + "\n" + sig + "author Second <second@example.invalid> 2 +0000\n",
+		"no-identities":    "tree " + tree + "\nparent " + base + "\n",
+		"bad-tree":         "tree bad-tree\nparent " + base + "\n" + sig,
+		"no-tree":          "parent " + base + "\n" + sig,
+		"short-parent":     "tree " + tree + "\nparent ab\n" + sig,
+		"late-parent":      "tree " + tree + "\n" + sig + "parent " + base + "\n",
+		"bad-time":         "tree " + tree + "\nparent " + base + "\nauthor F <f@example.invalid> bad +0000\ncommitter F <f@example.invalid> bad +0000\n",
+	}
+	for name, header := range headers {
+		t.Run(name, func(t *testing.T) {
+			cmd := exec.Command("git", "-C", f.Dir, "hash-object", "-t", "commit", "--literally", "-w", "--stdin")
+			cmd.Stdin = bytes.NewBufferString(header + "\nfix #72\n")
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := strings.TrimSpace(string(out))
+			native, nerr := f.Git("log", base+".."+id, "--format=%H")
+			r, err := Open(f.Dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, gerr := r.CommitRange(base, id)
+			if (gerr == nil) != (nerr == nil) {
+				t.Fatalf("outcome parity: library=%v native=%v", gerr, nerr)
+			}
+			if gerr == nil {
+				var got []string
+				for _, row := range rows {
+					got = append(got, row.ID)
+				}
+				want := strings.Fields(native)
+				sort.Strings(got)
+				sort.Strings(want)
+				if strings.Join(got, "\n") != strings.Join(want, "\n") {
+					t.Fatalf("%v want %v", got, want)
+				}
+			}
+		})
+	}
+}

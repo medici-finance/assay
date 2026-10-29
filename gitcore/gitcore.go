@@ -71,8 +71,9 @@ type Repo struct {
 	reachIdx *reachIndex
 
 	// Immutable commit facts shared by range queries within this Repo lifetime.
-	graphMu      sync.Mutex
-	graphCommits map[string]RangeCommit
+	graphMu    sync.Mutex
+	graphIDs   map[string]int
+	graphNodes []rangeNode
 }
 
 // Open opens the repository rooted at dir (an exact repo/worktree root — like
