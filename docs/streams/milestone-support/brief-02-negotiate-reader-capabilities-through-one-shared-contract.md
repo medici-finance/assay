@@ -49,7 +49,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/readercaps/` (planned), `statusgen/briefschemaversions.go`, `statusgen/main.go`, `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/cmd/deskboard/`, `tools/desk/go.mod`, `spec/reader-capabilities-v1.md` (planned), `schemas/reader-capabilities-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `spec/brief-v1.md`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-02.md` (planned), `statusgen/testdata/milestone-support/02-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/readercaps/` (planned), `statusgen/briefschemaversions.go`, `statusgen/main.go`, `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/cmd/deskboard/`, `tools/desk/go.mod`, `spec/reader-capabilities-v1.md` (planned), `schemas/reader-capabilities-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `spec/brief-v1.md`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-02.md` (planned), `statusgen/testdata/milestone-support/02-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

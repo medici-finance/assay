@@ -66,11 +66,11 @@ an additive recognised-key entry is non-sensitive, the correction is to flip `se
 yes and take the human gate — not to leave the answers as-is with the disagreement unrecorded.
 
 files:
-- `tools/desk/cmd/clusterguard/` (NEW — a Go command in the existing `tools/desk` module)
+- `tools/desk/cmd/clusterguard/` (NEW: a Go command in the existing `tools/desk` module)
 - `tools/desk/internal/deskkit/rosterconfig.go` (declare + recognise the opt-in variable name)
 - `tools/desk/internal/forgeban/allowlist.go` (register the one pass-through exec site)
 - `tools/desk/README.md` (contract, verdict table, stated limits)
-- `docs/adopting-assay.md` (§ install-desk-tools — installing the shim directory, and the opt-in)
+- `docs/adopting-assay.md` (§ install-desk-tools: installing the shim directory, and the opt-in)
 
 facts:
 - guard-family precedent: `tools/desk/cmd/{writeguard,deskpushguard,desksourceguard,repohardenguard}`;

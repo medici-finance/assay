@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/milestoneacceptance.go` (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/milestoneacceptance.go` (planned), `statusgen/milestoneacceptance_test.go` (planned), `statusgen/decisionruling.go`, `statusgen/domain/`, `statusgen/testdata/milestone-support/06/` (planned), `spec/milestone-v1.md`, `changelog/milestone-support-06.md` (planned), `statusgen/testdata/milestone-support/06-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

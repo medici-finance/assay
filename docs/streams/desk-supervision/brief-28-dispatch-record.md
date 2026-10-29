@@ -52,7 +52,7 @@ files:
 - **edit** `tools/desk/cmd/deskdispatch/dispatch.go` — mint the ref after step 1, record it at step 2, write the record at step 5.
 - **edit** `tools/desk/cmd/deskdispatch/brief.go` — read `brief:`, `exec-tier:`, `effort:` with the existing regex extractor.
 - **add** `tools/desk/cmd/deskdispatch/dispatchrecord_test.go` (planned).
-- **edit** `tools/desk/cmd/deskclaim-ref/claim.go` + a test — the `released` line.
+- **edit** `tools/desk/cmd/deskclaim-ref/claim.go` — + a test — the `released` line.
 - **edit** `tools/desk/README.md` — deskdispatch and deskclaim-ref sections.
 - **add** `changelog/desk-supervision-28.md` (planned).
 

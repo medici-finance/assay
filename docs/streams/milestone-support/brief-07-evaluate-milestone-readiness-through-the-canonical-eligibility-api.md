@@ -41,7 +41,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/evaluation/`, `statusgen/nextup.go`, `statusgen/eligibility.go`, `statusgen/testdata/milestone-support/07/` (planned), `docs/library-first.md`, `changelog/milestone-support-07.md` (planned), `statusgen/testdata/milestone-support/07-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/evaluation/`, `statusgen/nextup.go`, `statusgen/eligibility.go`, `statusgen/testdata/milestone-support/07/` (planned), `docs/library-first.md`, `changelog/milestone-support-07.md` (planned), `statusgen/testdata/milestone-support/07-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

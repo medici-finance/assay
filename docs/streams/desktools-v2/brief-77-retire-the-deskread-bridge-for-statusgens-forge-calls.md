@@ -44,13 +44,10 @@ consumers:
 ## Context
 
 files:
-- `statusgen/forgeread.go` and its tests, `statusgen/go.mod`
-- `statusgen/claimdecay.go` (`trackedGitHubRepo`), `statusgen/claimdecay_github.go`,
-  `statusgen/claimdecay_gitlab.go`, `statusgen/doratiming.go`, `statusgen/ghfetch.go`,
-  `statusgen/forge.go`
+- `statusgen/forgeread.go`, `statusgen/go.mod` — and its tests, `statusgen/go.mod`
+- `statusgen/claimdecay.go` (`trackedGitHubRepo`), `statusgen/claimdecay_github.go`, `statusgen/claimdecay_gitlab.go`, `statusgen/doratiming.go`, `statusgen/ghfetch.go`, `statusgen/forge.go`
 - `statusgen/forgeclient_nogh_test.go` (planned), `statusgen/forge_offline_test.go` (planned)
-- `tools/desk/scripts/forge-ban.sh`, `tools/desk/internal/forgeban/allowlist.go` (the combined
-  gh/glab ratchet from desktools-v2/75)
+- `tools/desk/scripts/forge-ban.sh`, `tools/desk/internal/forgeban/allowlist.go` (the combined gh/glab ratchet from desktools-v2/75)
 - `docs/library-first.md`, `forgeread/README.md`
 - `changelog/statusgen-forge-library.md` (planned)
 

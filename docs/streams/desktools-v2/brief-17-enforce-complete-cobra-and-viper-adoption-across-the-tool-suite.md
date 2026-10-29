@@ -46,7 +46,7 @@ consumers:
 files:
 - `tools/desk/internal/clicontract/` — coverage, behavior conformance and negative controls.
 - `docs/streams/desktools-v2/cli-migration.json`, `cli-contract.md`, `README.md`.
-- Owning module test registries and `.github/workflows/ci.yml` (or the project's staged workflow-promotion artifact when direct workflow scope is unavailable).
+- `.github/workflows/ci.yml` — Owning module test registries and `.github/workflows/ci.yml` (or the project's staged workflow-promotion artifact when direct workflow scope is unavailable).
 - `changelog/cli-suite-conformance.md` (planned).
 
 facts:

@@ -67,21 +67,10 @@ id: dc58ba3f-4326-430a-b183-2a37d3843290
 ## Context
 
 files:
-- **add** `statusgen/verifyrun.go` flags `--in-container` and `--env-file`, and a new
-  `statusgen/verifyincontainer.go` — the launcher that composes a `docker run` argv and runs
-  `statusgen verifyrun` inside the pinned harness container against the checkout bind-mounted at
-  `/work`. New tests in `statusgen/verifyincontainer_test.go` (hermetic: a fake `docker` on PATH).
-- **add** a `harness:` block to `plugins/assay/paired-versions.yaml` — the witness-runner container
-  image, pinned by **tag AND digest**. The image is the SAME combined `desk-tools` Linux image the
-  desk containers run (statusgen ships in it — docs/docker.md); there is no separate `assay-harness`
-  image. The committed `digest:` is a fail-closed **placeholder** until a maintainer harvests the
-  real registry digest.
-- **add** two jobs to the staged `ci/staged-workflows/windows-ci-leg.yml` (a maintainer promotes it
-  into `.github/workflows/` — gate:human, same as windows-port/04): `verify-in-container` (the live
-  witness-lands proof) and a held `windows-verify-in-container` (native-Windows-Docker, BLOCKED).
-- **edit** `docs/adopting-assay.md` §Windows adopters — state that the container is THE supported
-  execution-witness runner on Windows and that native-Windows Verify rows use the `Shell` column
-  (#1427) only when a brief genuinely needs Windows-native shell behaviour, never as a default.
+- **add** `statusgen/verifyrun.go`, `statusgen/verifyincontainer.go` — flags `--in-container` and `--env-file`, and a new `statusgen/verifyincontainer.go` — the launcher that composes a `docker run` argv and runs `statusgen verifyrun` inside the pinned harness container against the checkout bind-mounted at `/work`. New tests in `statusgen/verifyincontainer_test.go` (hermetic: a fake `docker` on PATH).
+- `plugins/assay/paired-versions.yaml` — **add** a `harness:` block to `plugins/assay/paired-versions.yaml` — the witness-runner container image, pinned by **tag AND digest**. The image is the SAME combined `desk-tools` Linux image the desk containers run (statusgen ships in it — docs/docker.md); there is no separate `assay-harness` image. The committed `digest:` is a fail-closed **placeholder** until a maintainer harvests the real registry digest.
+- `ci/staged-workflows/windows-ci-leg.yml` — **add** two jobs to the staged `ci/staged-workflows/windows-ci-leg.yml` (a maintainer promotes it into `.github/workflows/` — gate:human, same as windows-port/04): `verify-in-container` (the live witness-lands proof) and a held `windows-verify-in-container` (native-Windows-Docker, BLOCKED).
+- **edit** `docs/adopting-assay.md` — §Windows adopters — state that the container is THE supported execution-witness runner on Windows and that native-Windows Verify rows use the `Shell` column (#1427) only when a brief genuinely needs Windows-native shell behaviour, never as a default.
 
 facts:
 - **verifyrun needs a POSIX pipefail shell; native Windows often lacks one.** verifyrun executes

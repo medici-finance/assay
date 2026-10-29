@@ -31,12 +31,7 @@ id: a82664a9-c0a8-456f-b152-66214afff2e1
 
 ## Context
 
-files: `statusgen/evaluation/` (new), `statusgen/eligibility.go`, `statusgen/coverage.go`,
-`statusgen/nextup.go`, `statusgen/drivefrontier.go`, their tests and model-loading helpers,
-`statusgen/testdata/evaluation/` (new), `statusgen/evaluation_contract_test.go` (new),
-`docs/contracts.md`, `tools/desk/internal/arch/` (existing owner/marker checks),
-`.github/workflows/assay-statusgen.yml`, `docs/library-first.md`,
-`changelog/statusgen-evaluation-library.md` (new).
+files: `statusgen/evaluation/` (new), `statusgen/eligibility.go`, `statusgen/coverage.go`, `statusgen/nextup.go`, `statusgen/drivefrontier.go`, `statusgen/testdata/evaluation/` (new), `statusgen/evaluation_contract_test.go` (new), `docs/contracts.md`, `tools/desk/internal/arch/`, `.github/workflows/assay-statusgen.yml`, `docs/library-first.md`, `changelog/statusgen-evaluation-library.md` (new) — their tests and model-loading helpers, `statusgen/testdata/evaluation/` (new), `statusgen/evaluation_contract_test.go` (new), `docs/contracts.md`, `tools/desk/internal/arch/` (existing owner/marker checks), `.github/workflows/assay-statusgen.yml`, `docs/library-first.md`, `changelog/statusgen-evaluation-library.md` (new).
 
 facts (403b8ec8c26b21b85d88b5faea4cff619550e602, 2026-10-08): eligibility and coverage
 are implemented in package main; eligibility imports os/filepath and coverage includes git
