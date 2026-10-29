@@ -15,7 +15,7 @@ decision-issue: 3752
 design: DR-write-policy-core
 ruling: "https://github.com/medici-finance/assay/issues/3752#issuecomment-6299695731"
 schema: brief-v2
-version: 1
+version: 2
 id: 26781d38-3bac-4c4e-8ba2-0688894744fb
 authored: 2026-10-18 by Codex planning session
 sources:
@@ -105,7 +105,7 @@ Named tests and paths below are implementation deliverables, not tests claimed t
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWriteHookParity$' ./cmd/writeguard > "$out" && grep -q '^--- PASS: TestWriteHookParity ' "$out")` | exit 0; real built hook and direct import use the same production evaluator/fixtures; golden legacy denial/no-decision/activation/callout behavior preserved. Plant skipped deny, exemption-before-sentinel, callout-clears-deny and a managed profile that inherits the legacy no-decision for unknown or missing allocation context in production; each must redden its case |
 | 3 | check:ci +flow +mutation | `(cd deskcore && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWritePolicyBoundary$' ./archtest > "$out" && grep -q '^--- PASS: TestWritePolicyBoundary ' "$out")` | exit 0; transitive effect/import checks plus explicit-input behavior; planted filesystem/helper, clock and command dependency each caught. No pure-library claim from an allowlist alone |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWritePolicyConsumers$' ./cmd/writeguard > "$out" && grep -q '^--- PASS: TestWritePolicyConsumers ' "$out")` | exit 0; source-bound census covers actual adapters/duplicates; added unregistered evaluator and stale consumer fail; external-module import builds offline from a supplied local module proxy with GOWORK=off and no relative replace |
-| 5 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 ./cmd/writeguard/...` | exit 0; inherited regression cases retained or explicitly mapped to equivalent owner tests; POSIX and Windows lexical fixtures; actual native support claimed only with corresponding evidence |
+| 5 | check:ci | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/writeguard/... && out=$(mktemp) && report=$(mktemp) && trap 'rm -f "$out" "$report"' 0 && GOWORK=off go test -count=1 -coverpkg=github.com/medici-finance/assay/deskcore/writepolicy -coverprofile="$out" -run '^TestCheck' ./cmd/writeguard && GOWORK=off go tool cover -func="$out" -o "$report" && awk '$2 == "Evaluate" && $3+0 > 0 {found=1} END {exit !found}' "$report")` | exit 0; inherited regression cases retained or explicitly mapped to equivalent owner tests; POSIX and Windows lexical fixtures; actual native support claimed only with corresponding evidence |
 
 ## Definition of Done
 
