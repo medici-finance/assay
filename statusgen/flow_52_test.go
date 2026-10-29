@@ -91,6 +91,12 @@ func flowCardIdentity(t *testing.T) {
 			}
 		})
 	}
+	t.Run("unsupported source profile", func(t *testing.T) {
+		t.Setenv("GIT_CONFIG_COUNT", "0")
+		if got := makeGateCard(root, bf, cardAcceptance); got.SourceRevision != "" || got.Unavailable == "" {
+			t.Fatalf("unsupported source profile must remain unknown: %+v", got)
+		}
+	})
 	// A source link must describe the emitted bytes, never a dirty tree as HEAD.
 	raw, _ := os.ReadFile(path)
 	if err := os.WriteFile(path, append(raw, []byte("\nChanged input.\n")...), 0o644); err != nil {

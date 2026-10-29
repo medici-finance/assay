@@ -305,11 +305,19 @@ func makeGateCard(root string, bf *BriefFile, purpose string) gateCard {
 		return c
 	}
 	rel = filepath.ToSlash(rel)
-	source := gitCurrentSHA(root)
+	// Advisory links use the canonical in-process reader only. Unsupported
+	// native profiles remain unknown; no native operation or fallback is added.
+	source := ""
 	var committed []byte
 	var readErr error
-	if source != "" {
-		committed, readErr = gitShowObject(root, source, rel)
+	read := ordinaryGitCore(root)
+	if read.err == nil && read.native == "" {
+		source, readErr = read.repo.HeadID()
+		if readErr == nil {
+			var content string
+			content, readErr = read.repo.FileAt(source, read.prefix+rel)
+			committed = []byte(content)
+		}
 	}
 	current, diskErr := os.ReadFile(bf.Path)
 	if source != "" && readErr == nil && diskErr == nil && bytes.Equal(committed, current) {
