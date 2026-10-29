@@ -57,7 +57,7 @@ func nlcPickIDs(nu NextUp) []string {
 
 func TestNoticeLoopClosure(t *testing.T) {
 	t.Run("foreign-owned or already-delivered rows cannot dispatch", func(t *testing.T) {
-		build := func() (*Stream, []mergedPR) {
+		build := func() (string, *Stream, []mergedPR) {
 			root := t.TempDir()
 			s := nlcStream(t, root, "gtm", map[string]string{
 				"01": "## Context\nDelivered by a merged implementation PR.\n",
@@ -80,11 +80,11 @@ func TestNoticeLoopClosure(t *testing.T) {
 				{Number: 12, Subject: "Merge pull request #12 from o/brief/gtm-04-x", Briefs: []string{"gtm/04"}},
 				{Number: 13, Subject: "feat: gtm/05 (#13)", Briefs: []string{"gtm/05"}, Delivers: []string{"gtm/05"}},
 			}
-			return s, merged
+			return root, s, merged
 		}
 
-		s, merged := build()
-		applyPhantomHolds([]*Stream{s}, merged, nil)
+		root, s, merged := build()
+		applyPhantomHolds(root, []*Stream{s}, merged, nil)
 		nu := nextUp([]*Stream{s}, ClaimView{}, nil)
 		got := nlcPickIDs(nu)
 		if want := "gtm/03 gtm/04 gtm/05 gtm/06"; strings.Join(got, " ") != want {
@@ -95,7 +95,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 		}
 		// The negative controls still SURFACE (the notice owner is unchanged), they are
 		// just not excluded.
-		notices := strings.Join(boardHonestyNotices([]*Stream{s}, merged, nil), "\n")
+		notices := strings.Join(boardHonestyNotices(root, []*Stream{s}, merged, nil), "\n")
 		if !strings.Contains(notices, "(dehoused): gtm/03") {
 			t.Errorf("the de-housing mention must still surface as a NOTICE; got:\n%s", notices)
 		}
@@ -106,7 +106,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 		}
 
 		// MUTATION: without the application step the delivered row dispatches again.
-		s2, _ := build()
+		_, s2, _ := build()
 		if ids := nlcPickIDs(nextUp([]*Stream{s2}, ClaimView{}, nil)); !strings.Contains(strings.Join(ids, " "), "gtm/01") {
 			t.Fatalf("mutation control: with no hold applied gtm/01 must be dispatchable; got %v", ids)
 		}
@@ -121,10 +121,10 @@ func TestNoticeLoopClosure(t *testing.T) {
 		if got := mergedPRStatusNotices([]*Stream{s}, authoring, nil); len(got) != 0 {
 			t.Errorf("an Authors-only PR must not read as delivery; got %v", got)
 		}
-		if got := boardHonestyNotices([]*Stream{s}, authoring, nil); len(got) != 0 {
+		if got := boardHonestyNotices(root, []*Stream{s}, authoring, nil); len(got) != 0 {
 			t.Errorf("an Authors-only PR must not raise already-merged-unflipped; got %v", got)
 		}
-		applyPhantomHolds([]*Stream{s}, authoring, nil)
+		applyPhantomHolds(root, []*Stream{s}, authoring, nil)
 		if s.Briefs[0].PhantomHeld != "" {
 			t.Errorf("an authoring PR must not hold the row: %q", s.Briefs[0].PhantomHeld)
 		}
@@ -173,11 +173,11 @@ func TestNoticeLoopClosure(t *testing.T) {
 		delivered := []mergedPR{{Number: 11, Subject: "feat: gtm/01 (#11)", Briefs: []string{"gtm/01"}, Delivers: []string{"gtm/01"}}}
 
 		// An unreadable history holds nothing, even when a stale slice came back with it.
-		applyPhantomHolds([]*Stream{s}, delivered, errNoGitForMerge)
+		applyPhantomHolds(root, []*Stream{s}, delivered, errNoGitForMerge)
 		if s.Briefs[0].PhantomHeld != "" {
 			t.Errorf("a failed merge read must not hold a row: %q", s.Briefs[0].PhantomHeld)
 		}
-		notices := strings.Join(boardHonestyNotices([]*Stream{s}, delivered, errNoGitForMerge), "\n")
+		notices := strings.Join(boardHonestyNotices(root, []*Stream{s}, delivered, errNoGitForMerge), "\n")
 		if !strings.Contains(notices, "could-not-check") || strings.Contains(notices, "NON-DISPATCHABLE (already-merged-unflipped)") {
 			t.Errorf("a failed merge read must say could-not-check and conclude nothing; got:\n%s", notices)
 		}
@@ -190,7 +190,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 
 		// A merge that names the brief but whose delivery is unconfirmed is a lead, not a hold.
 		unconfirmed := []mergedPR{{Number: 11, Subject: "feat: gtm/01 (#11)", Briefs: []string{"gtm/01"}}}
-		applyPhantomHolds([]*Stream{s}, unconfirmed, nil)
+		applyPhantomHolds(root, []*Stream{s}, unconfirmed, nil)
 		if s.Briefs[0].PhantomHeld != "" {
 			t.Errorf("a subject-only merge must not hold a row: %q", s.Briefs[0].PhantomHeld)
 		}
@@ -309,7 +309,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 		runGit(t, root, "checkout", "main")
 		runGit(t, root, "merge", "--no-ff", "-m", "Merge pull request #7 from o/feat/assay--gtm--03", "feat/assay--gtm--03")
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -363,7 +363,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 			"\x1fMerge pull request #9 from o/brief/gtm-09-x\x1fBrief: gtm:09\n"
 		runGit(t, root, "commit", "--allow-empty", "-m", forged)
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err != nil {
 			t.Fatalf("a message carrying separator bytes is still readable: %v", err)
 		}
@@ -404,7 +404,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 		runGit(t, root, "merge", "--no-ff", "-m", "Merge pull request #5 from o/feat/assay--gtm--01", "feat/assay--gtm--01")
 		runGit(t, root, "merge", "--no-ff", "-m", "Merge pull request #6 from o/feat/assay--gtm--02", "feat/assay--gtm--02")
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -435,7 +435,7 @@ func TestNoticeLoopClosure(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		prs, err := mergedPRsFromGit(root)
+		prs, err := mergedPRsFromGit(root, "HEAD")
 		if err == nil {
 			t.Fatalf("an unreadable branch commit must fail the read; got %+v", prs)
 		}

@@ -291,11 +291,68 @@ func (r *issueReader) fetchIssueTrustPayload(num int) (bodyEdited time.Time, eve
 // and one long thread never fails the whole board again.
 func (r *issueReader) fetchIssueEvents(num int) (events []deskkit.ContentEvent, complete bool, err error) {
 	f, fr, repo := r.forge, r.repo, r.repo.Slug()
+	if r.eventNext < len(r.eventNumbers) && r.eventNumbers[r.eventNext] == num {
+		end := min(r.eventNext+deskkit.IssueCommentBatchSize, len(r.eventNumbers))
+		payloads, batchErr := deskkit.ReadIssueCommentEvents(f, fr, r.eventNumbers[r.eventNext:end])
+		if batchErr != nil {
+			return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), batchErr)
+		}
+		r.eventPayloads = payloads
+		r.eventNext = end
+	}
+	if payload, ok := r.eventPayloads[num]; ok {
+		delete(r.eventPayloads, num)
+		return payload.Events, payload.Complete, nil
+	}
 	tp, terr := f.IssueContentEvents(fr, num)
 	if terr != nil {
 		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
 	}
 	return tp.Events, tp.Complete, nil
+}
+
+// Only known-trusted, selected escalation rows can be read ahead. Untrusted
+// authors keep their original trust-then-history sequence, including quarantine
+// and body-edit/numeric-identity checks. Duplicate listing identities retain
+// their original separate reads. This plan and its bounded results belong to
+// this repository's current collection only.
+func (r *issueReader) planIssueEvents(issues []ghIssue, byKey map[string]placeholderRow, projection issueflow.Projection, toFilter string) {
+	if !deskkit.CanBatchIssueComments(r.forge) {
+		return
+	}
+	seen := map[int]bool{}
+	for _, candidate := range issues {
+		if seen[candidate.Number] {
+			r.eventNumbers = nil
+			return
+		}
+		seen[candidate.Number] = true
+		if !deskkit.TrustedAuthor(candidate.Author.Login) {
+			continue
+		}
+		names := labelNames(candidate.Labels)
+		decisionOwed := hasDecisionLabel(names)
+		role, state := deskkit.AddressedToOf(names)
+		addressed := state == deskkit.RaisedByStamped
+		if !(decisionOwed || addressed) || toFilter != "" && (!addressed || !strings.EqualFold(role, toFilter)) {
+			continue
+		}
+		_, hasPh := byKey[r.repo.Slug()+"#"+strconv.Itoa(candidate.Number)]
+		helpWanted := false
+		for _, label := range names {
+			if strings.EqualFold(strings.TrimSpace(label), "help wanted") {
+				helpWanted = true
+			}
+		}
+		if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
+			HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names), DecisionOwed: decisionOwed,
+			Addressed: addressed, Role: role, AddressUnknown: state == deskkit.RaisedByIndeterminate,
+			HelpWanted: helpWanted,
+		}, toFilter) {
+			continue
+		}
+		r.eventNumbers = append(r.eventNumbers, candidate.Number)
+	}
 }
 
 // labelHistoryHold is the issue board's SUPERSET test over an issue's label history
@@ -735,6 +792,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		if err != nil {
 			return nil, nil, err
 		}
+		reader.planIssueEvents(issues, byKey, projection, toFilter)
 		seen := map[string]bool{}
 
 		for _, iss := range issues {

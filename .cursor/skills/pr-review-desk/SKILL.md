@@ -11,7 +11,7 @@ placeholder briefs; **worker-desk** dispatches workers that implement them behin
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
 **The stream board is a derived, generated surface** — this
-desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>` or `Issue: #<N>`) that
+desk reviews the diff and the PR body's link trailer (`Brief: <stream>/<NN>`, or `Issue: #<N>` / its resolving form `Fixes: #<N>`, never the latter for a decision-gate issue) that
 feed it; it never edits a board row itself.
 
 Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
@@ -984,7 +984,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
      briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
      (issue-only work that delivers no brief — e.g. a pin bump / re-pin PR, which by construction
-     carries no brief). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
+     carries no brief). `Fixes: #<N>` (also `Closes:` / `Resolves:`, or `Fixes: <owner>/<repo>#<N>`
+     for another repository) is the RESOLVING form of `Issue:` — the same single link, which
+     GitHub also honours as a closing keyword, so merging closes the issue; it satisfies the gate
+     exactly as `Issue:` does, so it is not bounced for lacking a `Brief:` line. It is NOT acceptable when it names an
+     issue carrying `needs-decision` or `human-decided` (or any decision-gate issue): GitHub would close that issue at merge under
+     the merging human's name, bypassing the human-only close path. A resolving trailer (`Fixes:` / `Closes:` / `Resolves:`, with or
+     without a colon) naming such an issue is a `--request-changes` finding — ask for `Issue: #<N>`. A public PR also never names a
+     private repository's issue in its link trailer (the cross-repository form would publish that reference and close the issue). With a colon it
+     IS the link, so it may not sit beside a `Brief:`, `Authors:`, `Cross-repo-brief:` or `Issue:`
+     line (a brief-delivering PR that also closes an issue uses the colon-less `Closes #N`). All three forms are the grammar `deskkit.ParseTrailers` and `deskpr`'s
      `requireTrailer` enforce, so an `Issue: #<N>`- or `Authors:`-only body is fully compliant and
      must NOT be bounced for lacking a `Brief:` line. The reverse IS a finding: a docs-only PR that
      only adds brief files, board READMEs and changelog fragments but carries `Brief:` makes the
@@ -998,7 +1007,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      catch this, so a PR that reached review with this shape
      is either pre-gate or had its body edited around the writer check — flag it regardless.
      Only a body carrying NEITHER form → `--request-changes`, one line: "PR body is missing its
-     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>` or `Issue: #<N>` line; the board can't
+     link trailer — add exactly one `Brief: <stream>/<NN>`, `Authors: <stream>/<NN>`, `Issue: #<N>` or `Fixes: #<N>` line; the board can't
      link this PR to its work item without it." (`deskpr create` already refuses to open a PR with
      no trailer, so this bounce is the second layer for the no-trailer class only. A PR that carries
      `Issue: #<N>` satisfied that gate legitimately — it is NOT evidence a refusal was routed
@@ -1159,8 +1168,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   standard error. Credit a row only on `credit=credited`, never on `verdict=match` alone. The
   record must be in the brief's own repository and authored by the dispatcher; a login-only
   verifier match, a shallow clone, a missing roster or an unreadable record is
-  `credit=could-not-check`, which is not credit. Otherwise reject the row as unattested. Known limits: version 2 (cross-repository) receipts are
-  refused in container mode; a linked worktree's git directory is not mounted in the container, so
+  `credit=could-not-check`, which is not credit. Otherwise reject the row as unattested. A version-2 (cross-repository) bracket is admitted with
+  both repositories named in its attestation line. `--credit` credits it only when both
+  repositories pass the repository checks: the tracking repository, where the record lives, is
+  the brief's own, and the source repository (`source-repo=`) is in the configured repository
+  set; otherwise it answers `credit=not-credited`. Known limits: a linked worktree's git directory is not mounted in the container, so
   rows that need git history must run on the host; the in-container digest is only as
   trustworthy as the pinned image that computes it; and condition 1 reads the commit author git
   records, which is author-asserted attribution, not authorization: whoever can commit to the brief can write

@@ -336,14 +336,184 @@ def scan_sources(paths):
     return len(paths)
 
 
+
+def compatibility_render():
+    component = HERE / 'components/compatibility-cellctl'
+    path = component / 'kustomization.yaml'
+    safe_file(path)
+    conf = yaml_docs(path.read_bytes())
+    need(len(conf) == 1 and conf[0] == {
+        'apiVersion': 'kustomize.config.k8s.io/v1beta1', 'kind': 'Kustomization',
+        'resources': ['../../base', 'rbac.yaml'], 'patches': [{'path': 'workloads.yaml'}]},
+        'compatibility component must use only reviewed local base/patch/RBAC')
+    for name in ['workloads.yaml', 'rbac.yaml', 'candidate.json', 'custody.json']:
+        safe_file(component / name)
+    version('kustomize')
+    return yaml_docs(success(run(['kustomize', 'build', str(component),
+                          '--load-restrictor=LoadRestrictionsRootOnly']), 'compatibility render'))
+
+
+def candidate_images():
+    component = HERE / 'components/compatibility-cellctl'
+    candidate = json.loads((component / 'candidate.json').read_bytes())
+    if candidate.get('state') != 'published':
+        raise Unavailable('compatibility candidate image is unbuilt/unpublished; actual immutable release pin required')
+    need(candidate.get('schema') == 'cell-kube-compat-candidate-v1', 'candidate contract differs')
+    record_path = component / 'candidate-release-images.json'
+    safe_file(record_path)
+    raw = record_path.read_bytes()
+    need(hashlib.sha256(raw).hexdigest() == candidate.get('record_sha256'), 'candidate release record pin differs')
+    record = json.loads(raw)
+    need(record.get('source_revision') == candidate.get('source_revision'), 'candidate source differs')
+    sys.path.insert(0, str(ROOT / 'tools/release'))
+    try:
+        from images_contract import validate
+    finally:
+        sys.path.pop(0)
+    refs = {item['name']: item['ref'] for item in record['images']}
+    try:
+        images = validate(record, record['version'], record['source_revision'],
+                          refs['verify-runner'] + '\n', 'medici-finance/assay')
+    except (KeyError, ValueError, TypeError) as error:
+        raise Invalid('candidate record is not actual release-images-v1') from error
+    need(candidate.get('images') == {role: images[role] for role in roles()}, 'candidate image consumers differ')
+    # Dereference the release's source locally: no GitHub/registry lookup. A source
+    # hash is evidence of source presence, never a substitute for manifest digests.
+    source = candidate['source_revision']
+    need(re.fullmatch('[a-f0-9]{40}', source), 'immutable candidate source required')
+    launcher = success(run(['git', 'show', source + ':containers/k8s/compatibility/desk-session.py']),
+                       'candidate source dereference')
+    need(b'pty.fork()' in launcher and b'compatibility launch and execution-group stop' in launcher,
+         'candidate source has no bounded actual-agent launcher')
+    historical = recorded_images()
+    need(all(images[role] != historical[role] for role in roles()), 'old shell-only image is not an agent candidate')
+    return images
+
+
+def compatibility_structured(docs, pins, custody):
+    need(custody == {'schema': 'cell-kube-compat-custody-v1',
+         'operator': 'existing-role-custodian-only', 'terminal': 'role-custodian',
+         'logs': 'role-custodian', 'nodes': 'role-custodian', 'downstream_logs': 'excluded',
+         'network': 'existing-default-deny-and-explicit-endpoint-allowlist',
+         'activation': 'held-pending-human-qualification'}, 'terminal/log/node/network custody declaration missing')
+    copied = json.loads(json.dumps(docs))
+    normal = [doc for doc in copied if doc['kind'] not in ['Role', 'RoleBinding']]
+    grants = [doc for doc in copied if doc['kind'] in ['Role', 'RoleBinding']]
+    need(len(grants) == 10, 'exact five role-custodian grants/bindings required')
+    old = recorded_images()
+    for role in roles():
+        workload = next((doc for doc in normal if doc.get('kind') == 'StatefulSet' and
+                         doc.get('metadata', {}).get('name') == role), None)
+        need(workload is not None, 'compatibility role missing')
+        spec = workload['spec']; pod = spec['template']['spec']; container = pod['containers'][0]
+        need(spec.get('replicas') == 0, 'installation workloads must be paused')
+        need(container.get('image') == pins[role] and pins[role] != old[role], 'actual new candidate image binding required')
+        need(container.get('args') == ['/usr/local/bin/desk-session'] and not container.get('command'),
+             'preserve credential entrypoint and select bounded agent launcher')
+        need(container.get('readinessProbe') == {'exec': {'command': ['/usr/local/bin/desk-session', '--ready']},
+             'periodSeconds': 2, 'timeoutSeconds': 1, 'failureThreshold': 1}, 'actual agent readiness probe required')
+        need(container.get('terminationMessagePath') == '/dev/termination-log' and
+             container.get('terminationMessagePolicy') == 'File', 'exact lower termination message required')
+        env = container.get('env', [])
+        by_name = {item.get('name'): item for item in env}
+        need(len(env) == 5 and len(by_name) == 5 and
+             by_name.get('ASSAY_POD_UID') == {'name': 'ASSAY_POD_UID', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.uid'}}},
+             'exact downward Pod UID and launch identity required')
+        for name in ['ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID']:
+            need(re.fullmatch('[a-f0-9]{64}', by_name.get(name, {}).get('value', '')), 'prepared launch identity missing')
+        need(spec['template']['metadata']['labels'].get('assay.dev/profile') == 'compatibility-cellctl', 'opt-in profile label missing')
+        # Reuse the historical base assertions for every unchanged custody/isolation
+        # constraint. These changes are in an in-memory comparison copy only.
+        spec['replicas'] = 1; container['image'] = old[role]; container.pop('args')
+        container['env'] = [by_name['ASSAY_DESK'], by_name['ASSAY_APP_PEM_FILE']]
+        spec['template']['metadata']['labels']['assay.dev/profile'] = 'compatibility'
+        for kind in ['Role', 'RoleBinding']:
+            matches = [doc for doc in grants if doc.get('kind') == kind and
+                       doc.get('metadata') == {'name': 'compat-custodian-' + role, 'namespace': 'assay-desks'}]
+            need(len(matches) == 1, 'role-custodian grant identity differs')
+            grant = matches[0]
+            if kind == 'Role':
+                expected = [
+                    {'apiGroups': ['apps'], 'resources': ['statefulsets'], 'resourceNames': [role], 'verbs': ['get']},
+                    {'apiGroups': ['apps'], 'resources': ['statefulsets/scale'], 'resourceNames': [role], 'verbs': ['get', 'update']},
+                    {'apiGroups': [''], 'resources': ['pods'], 'resourceNames': [role + '-0'], 'verbs': ['get']},
+                    {'apiGroups': [''], 'resources': ['pods/attach'], 'resourceNames': [role + '-0'], 'verbs': ['create']}]
+                need(grant.get('rules') == expected, 'broad/foreign-role/log/debug credential scope forbidden')
+            else:
+                need(grant.get('roleRef') == {'apiGroup': 'rbac.authorization.k8s.io', 'kind': 'Role', 'name': 'compat-custodian-' + role},
+                     'foreign custodian binding')
+                subjects = grant.get('subjects', [])
+                need(len(subjects) == 1 and set(subjects[0]) == {'apiGroup', 'kind', 'name'} and
+                     subjects[0].get('apiGroup') == 'rbac.authorization.k8s.io' and subjects[0].get('kind') == 'Group' and
+                     subjects[0].get('name') and not subjects[0]['name'].startswith('REQUIRES_'), 'existing custodian subject unresolved')
+    structured(normal)
+
+
+def compatibility_mutations(docs, pins, custody):
+    # Synthetic fixture pins prove discrimination only. candidate_images() is a
+    # separate mandatory gate before any actual-component checked-clean output.
+    import copy
+    def workloads(value):
+        return [item for item in value if item.get('kind') == 'StatefulSet']
+    cases = [
+        ('live-replicas', lambda value: workloads(value)[0]['spec'].update(replicas=1)),
+        ('old-shell-image', lambda value: workloads(value)[0]['spec']['template']['spec']['containers'][0].update(image=recorded_images()[roles()[0]])),
+        ('token-automount', lambda value: workloads(value)[0]['spec']['template']['spec'].update({'automountServiceAccountToken': True})),
+        ('missing-readiness', lambda value: workloads(value)[0]['spec']['template']['spec']['containers'][0].pop('readinessProbe')),
+        ('broad-mount', lambda value: workloads(value)[0]['spec']['template']['spec']['volumes'].append({'name': 'broad', 'hostPath': {'path': '/'}})),
+        ('wildcard-rbac', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][0].update(resources=['*'])),
+        ('foreign-attach', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][-1].update(resourceNames=['foreign-0'])),
+        ('log-read', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][-1].update(resources=['pods/log'])),
+        ('debug', lambda value: next(item for item in value if item['kind'] == 'Role')['rules'][-1].update(resources=['pods/ephemeralcontainers'])),
+        ('missing-network', lambda value: value.remove(next(item for item in value if item['kind'] == 'NetworkPolicy')))]
+    compatibility_structured(docs, pins, custody)
+    for name, mutate in cases:
+        changed = copy.deepcopy(docs); mutate(changed)
+        try:
+            compatibility_structured(changed, pins, custody)
+        except Invalid:
+            print('rejected: compatibility-' + name)
+        else:
+            raise Invalid('compatibility hostile fixture escaped: ' + name)
+    changed = dict(custody); changed.pop('logs')
+    try:
+        compatibility_structured(docs, pins, changed)
+    except Invalid:
+        print('rejected: compatibility-missing-log-custody')
+    else:
+        raise Invalid('missing custody fixture escaped')
+    print('checked-clean: compatibility mutation fixtures; actual candidate remains a separate gate')
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--base', action='store_true')
+    mode.add_argument('--compatibility-cellctl', action='store_true')
     mode.add_argument('--source-secrets', action='store_true')
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
-    if args.base:
+    if args.compatibility_cellctl:
+        docs = compatibility_render()
+        component = HERE / 'components/compatibility-cellctl'
+        custody = json.loads((component / 'custody.json').read_bytes())
+        if args.self_test:
+            fixture = json.loads(json.dumps(docs))
+            pins = {role: 'ghcr.io/medici-finance/assay/' + role + ':fixture@sha256:' + 'a' * 64 for role in roles()}
+            for item in fixture:
+                if item.get('kind') == 'StatefulSet':
+                    role = item['metadata']['name']
+                    container = item['spec']['template']['spec']['containers'][0]
+                    container['image'] = pins[role]
+                    for env in container['env']:
+                        if env['name'] in ['ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID']:
+                            env['value'] = 'b' * 64
+                if item.get('kind') == 'RoleBinding':
+                    item['subjects'][0]['name'] = 'synthetic-existing-custodian'
+            compatibility_mutations(fixture, pins, custody)
+        pins = candidate_images()
+        compatibility_structured(docs, pins, custody)
+        print('checked-clean: compatibility cellctl profile')
+    elif args.base:
         docs = yaml_docs(render())
         structured(docs)
         count = schema_check(docs)

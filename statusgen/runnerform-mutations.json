@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly)$' -count=1 -timeout 300s",
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
     "file": "verifyflip.go",
@@ -112,8 +112,8 @@
     {
       "name": "a transition run accepts an Evidence-only edit (strict tree check dropped)",
       "file": "verifyrun.go",
-      "old": "\t\tif err != nil || strings.Contains(executionTree, \"+\") || strings.Contains(treeSHA(root), \"+\") {",
-      "new": "\t\tif err != nil || strings.Contains(executionTree, \"+\") {"
+      "old": "\t\tif !ok || strings.Contains(executionTree, \"+\") || strings.Contains(treeSHA(root), \"+\") {",
+      "new": "\t\tif !ok || strings.Contains(executionTree, \"+\") {"
     },
     {
       "name": "the host lane stamps treeSHA again (an Evidence-only edit reads +dirty)",

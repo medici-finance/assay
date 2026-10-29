@@ -32,7 +32,7 @@ func gitLastTouch(root, relDir string) time.Time {
 // unavailable (e.g. a non-git checkout — testdata fixtures copied to a plain
 // tempdir have no .git, and that is not an error worth failing a run over).
 func gitCurrentSHA(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	out, err := gitHeadOutput(root)
 	if err != nil {
 		return ""
 	}

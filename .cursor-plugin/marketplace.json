@@ -1,0 +1,12 @@
+{
+  "name": "assay",
+  "owner": {
+    "name": "medici-finance"
+  },
+  "plugins": [
+    {
+      "name": "assay",
+      "source": "./plugins/assay"
+    }
+  ]
+}

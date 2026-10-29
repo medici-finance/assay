@@ -823,7 +823,16 @@ func rawCommitAuthor(dir, c string) (blameAuthor, error) {
 	if a, ok := rawCommitAuthors.Load(c); ok {
 		return a.(blameAuthor), nil
 	}
-	out, err := historyGit(dir, "cat-file", "commit", c).Output()
+	read := gitCoreFor(dir)
+	var out []byte
+	err := read.err
+	if err == nil {
+		if read.native != "" {
+			out, err = historyGit(dir, "cat-file", "commit", c).Output()
+		} else {
+			out, err = read.repo.RawCommit(c)
+		}
+	}
 	if err != nil {
 		return blameAuthor{}, fmt.Errorf("git cat-file commit %.12s: %v", c, err)
 	}
@@ -945,11 +954,8 @@ func historyGit(dir string, args ...string) *exec.Cmd {
 // shallow-aware path only ever RELAXES a reject to could-not-check, so failing that
 // signal closed keeps the ordinary tamper detection fully armed.
 func isShallowRepository(root string) bool {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "--is-shallow-repository").Output()
-	if err != nil {
-		return false
-	}
-	return strings.TrimSpace(string(out)) == "true"
+	out, err := gitShallowOutput(root)
+	return err == nil && strings.TrimSpace(string(out)) == "true"
 }
 
 // ---------------------------------------------------------------------------

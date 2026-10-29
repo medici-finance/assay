@@ -10,6 +10,7 @@ on:
       - 'tools/desk/internal/cellcache/**'
       - 'tools/desk/internal/gitexec/**'
       - 'tools/desk/internal/gitcore/**'
+      - 'gitcore/**'
       - 'tools/desk/cmd/deskwt/**'
       - 'tools/desk/go.mod'
       - 'tools/desk/go.sum'

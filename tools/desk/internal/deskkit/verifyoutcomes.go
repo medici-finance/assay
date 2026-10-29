@@ -503,7 +503,10 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 	if err != nil {
 		return nil, err
 	}
-	scope, err := ResolveDeclaredScope(declarations, tree)
+	// A ../<sibling>/ declaration is never read from this tree; it is covered
+	// below by the cross-repository source commit, or refused.
+	local, siblings := SplitSiblingDeclarations(declarations)
+	scope, err := ResolveDeclaredScope(local, tree)
 	if err != nil {
 		return nil, err
 	}
@@ -523,6 +526,9 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 			return nil, Refused("incomplete cross-repository outcome source")
 		}
 		inputs[InputKeyRepoSourcePrefix+in.SourceRepo] = in.Source
+	}
+	if err := CheckSiblingCoverage(siblings, inputs); err != nil {
+		return nil, err
 	}
 
 	id := Sha256Hex([]byte(strings.Join([]string{r.Brief, sha, r.TS, r.Outcome, r.BlockerKind, r.BlockerRef}, "\x00")))

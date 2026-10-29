@@ -30,16 +30,18 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
+	"strconv"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -76,44 +78,103 @@ This tool READS a human's private session transcripts and emits only aggregates.
 It never writes anything under the transcript tree.`
 
 func main() {
-	os.Exit(deskkit.PerfRun("opmetrics", nil, os.Args[1:], func([]string) int {
-		return run(os.Args[1:], os.Stdout, os.Stderr)
+	os.Exit(deskkit.PerfRun("opmetrics", nil, os.Args[1:], func(a []string) int {
+		return run(a, os.Stdout, os.Stderr)
 	}))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "opmetrics sourceSHA=%s builtAt=%s classifier=%s schema=%s releaseTag=%s\n",
-			sha, built, ClassifierVersion, SchemaVersion, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(stderr, usage)
-		return deskkit.ExitOK
-	}
+// guard is the kill switch, a variable so the contract tests can count it.
+var guard = deskkit.Guard
 
-	fs := flag.NewFlagSet("opmetrics", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	var transcripts multiFlag
-	fs.Var(&transcripts, "transcripts", "session transcripts dir (repeatable; default: every ~/.claude*/projects)")
-	var (
-		root      = fs.String("root", "", "repo root to write the day-file under")
-		date      = fs.String("date", "", "day to report, YYYY-MM-DD")
-		deskTools = fs.String("desk-tools", "", "desk-tools state dir holding roster/ and claims/")
-		ghFixture = fs.String("gh-fixture", "", "gh JSON export of merged PRs")
-		ghJSON    = fs.String("gh-json", "", "alias for --gh-fixture")
-		trend     = fs.Int("trend", 0, "compare against N prior day-files")
-		nowFlag   = fs.String("now", "", "RFC3339 instant staleness is measured from")
-		tz        = fs.String("tz", "", "IANA location the day boundary is measured in (default: local)")
-		toStdout  = fs.Bool("stdout", false, "print the JSON instead of writing the day-file")
-	)
-	if err := fs.Parse(args); err != nil {
+// collectFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var collectFn = collect
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+// versionLine is what --version and -version print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("opmetrics sourceSHA=%s builtAt=%s classifier=%s schema=%s releaseTag=%s",
+		sha, built, ClassifierVersion, SchemaVersion, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting opmetrics declares: flags and defaults only. It reads no
+// configuration file or environment variable for them.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		// Repeatable and never split: a comma is part of a path, as it always was.
+		{Key: "transcripts", Kind: cli.StringArray, Flag: "transcripts", Usage: "session transcripts dir (repeatable; default: every ~/.claude*/projects)"},
+		{Key: "root", Kind: cli.String, Flag: "root", Usage: "repo root to write the day-file under"},
+		{Key: "date", Kind: cli.String, Flag: "date", Usage: "day to report, YYYY-MM-DD"},
+		{Key: "desk-tools", Kind: cli.String, Flag: "desk-tools", Usage: "desk-tools state dir holding roster/ and claims/"},
+		{Key: "gh-fixture", Kind: cli.String, Flag: "gh-fixture", Usage: "gh JSON export of merged PRs"},
+		{Key: "gh-json", Kind: cli.String, Flag: "gh-json", Usage: "alias for --gh-fixture"},
+		{Key: "trend", Kind: cli.Int, Flag: "trend", Default: 0, Usage: "compare against N prior day-files"},
+		{Key: "now", Kind: cli.String, Flag: "now", Usage: "RFC3339 instant staleness is measured from"},
+		{Key: "tz", Kind: cli.String, Flag: "tz", Usage: "IANA location the day boundary is measured in (default: local)"},
+		{Key: "stdout", Kind: cli.Bool, Flag: "stdout", Default: false, Usage: "print the JSON instead of writing the day-file"},
+	}
+}
+
+// options are the checked values the collector runs with.
+type options struct {
+	date        string
+	day, now    time.Time
+	root        string
+	deskTools   string
+	ghFixture   string
+	transcripts []string
+	trend       int
+	toStdout    bool
+}
+
+func run(args []string, stdout, stderr io.Writer) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("opmetrics", "local operator-layer collector")
+		root.Long = usage
+		set := cli.Declare(root, bindings()...)
+		// Words after the flags are ignored, as before. A leading `help` word is the adapter's
+		// help command, so it never reaches this handler.
+		root.Args = cobra.ArbitraryArgs
+		root.RunE = func(_ *cobra.Command, _ []string) error {
+			if code := resolveAndCollect(set, stdout, stderr); code != deskkit.ExitOK {
+				return exitErr(code)
+			}
+			return nil
+		}
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy refusal code (5), not the adapter's default.
+		UsageExit:    deskkit.ExitRefused,
+		GoFlagCompat: true,
+	})
+}
+
+// resolveAndCollect resolves the settings, then runs the kill switch, the value checks and
+// the collector, in that order: the kill switch is the first gated action, exactly as every
+// other desk tool, and help never reaches it.
+func resolveAndCollect(set *cli.Set, stdout, stderr io.Writer) int {
+	v, err := set.Resolve(cli.Inputs{})
+	if err != nil {
+		fmt.Fprintln(stderr, "refused:", err)
 		return deskkit.ExitRefused
 	}
-
-	// The kill switch is the first gated action, exactly as every other desk tool.
-	if err := deskkit.Guard(); err != nil {
+	if onResolve != nil {
+		onResolve(v)
+	}
+	if err := guard(); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}
@@ -124,8 +185,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// which is not a property a metric may have. --tz pins it. Tests and the brief's
 	// Verify rows pass --tz UTC so the fixture timestamps mean one thing everywhere.
 	loc := time.Local
-	if *tz != "" {
-		l, lerr := time.LoadLocation(*tz)
+	if tz := v.String("tz"); tz != "" {
+		l, lerr := time.LoadLocation(tz)
 		if lerr != nil {
 			fmt.Fprintln(stderr, "refused: --tz is not a known IANA location")
 			return deskkit.ExitRefused
@@ -133,58 +194,70 @@ func run(args []string, stdout, stderr io.Writer) int {
 		loc = l
 	}
 
-	now := time.Now().In(loc)
-	if *nowFlag != "" {
-		t, err := time.Parse(time.RFC3339, *nowFlag)
+	o := options{
+		root:        v.String("root"),
+		date:        v.String("date"),
+		deskTools:   v.String("desk-tools"),
+		ghFixture:   v.String("gh-fixture"),
+		transcripts: v.Strings("transcripts"),
+		trend:       v.Int("trend"),
+		toStdout:    v.Bool("stdout"),
+	}
+	o.now = time.Now().In(loc)
+	if nowFlag := v.String("now"); nowFlag != "" {
+		t, err := time.Parse(time.RFC3339, nowFlag)
 		if err != nil {
 			fmt.Fprintln(stderr, "refused: --now is not RFC3339")
 			return deskkit.ExitRefused
 		}
-		now = t.In(loc)
+		o.now = t.In(loc)
 	}
-	if *date == "" {
-		*date = now.Format("2006-01-02")
+	if o.date == "" {
+		o.date = o.now.Format("2006-01-02")
 	}
-	day, err := time.ParseInLocation("2006-01-02", *date, loc)
-	if err != nil {
+	if o.day, err = time.ParseInLocation("2006-01-02", o.date, loc); err != nil {
 		fmt.Fprintln(stderr, "refused: --date is not YYYY-MM-DD")
 		return deskkit.ExitRefused
 	}
-	if *root == "" && !*toStdout {
+	if o.root == "" && !o.toStdout {
 		fmt.Fprintln(stderr, "refused: --root is required (or pass --stdout)")
 		return deskkit.ExitRefused
 	}
-	if *ghFixture == "" {
-		*ghFixture = *ghJSON
+	if o.ghFixture == "" {
+		o.ghFixture = v.String("gh-json")
 	}
-	if *trend < 0 {
+	if o.trend < 0 {
 		fmt.Fprintln(stderr, "refused: --trend must be >= 0")
 		return deskkit.ExitRefused
 	}
+	return collectFn(o, stdout, stderr)
+}
 
-	tdirs, err := resolveTranscripts(transcripts)
+// collect reads the inputs and writes (or prints) the day-file.
+func collect(o options, stdout, stderr io.Writer) int {
+	tdirs, err := resolveTranscripts(o.transcripts)
 	if err != nil {
 		// A resolution failure is not fatal: the operator block reports
 		// could-not-check and the rest of the day-file still lands.
 		fmt.Fprintln(stderr, "warning: "+err.Error())
 	}
-	sdir, err := resolveDeskTools(*deskTools)
+	sdir, err := resolveDeskTools(o.deskTools)
 	if err != nil {
 		fmt.Fprintln(stderr, "warning: "+err.Error())
 	}
 
 	rep := Build(Inputs{
-		Date:            *date,
-		Day:             day,
-		Now:             now,
+		Date:            o.date,
+		Day:             o.day,
+		Now:             o.now,
 		TranscriptsDirs: tdirs,
 		DeskToolsDir:    sdir,
-		GHJSON:          *ghFixture,
-		Root:            *root,
-		Trend:           *trend,
+		GHJSON:          o.ghFixture,
+		Root:            o.root,
+		Trend:           o.trend,
 	}, stderr)
 
-	if *toStdout {
+	if o.toStdout {
 		raw, merr := marshalReport(rep)
 		if merr != nil {
 			fmt.Fprintln(stderr, merr.Error())
@@ -194,7 +267,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return deskkit.ExitOK
 	}
 
-	path, _, werr := WriteReport(*root, *date, rep)
+	path, _, werr := WriteReport(o.root, o.date, rep)
 	if werr != nil {
 		fmt.Fprintln(stderr, "unverifiable: "+werr.Error())
 		return deskkit.ExitUnverifiable
@@ -202,12 +275,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintln(stdout, path)
 	return deskkit.ExitOK
 }
-
-// multiFlag collects a repeatable string flag in the order it was given.
-type multiFlag []string
-
-func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
-func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 // resolveTranscripts turns the --transcripts flag(s) into the list of roots to
 // read. Explicit flags win verbatim and in order. With none, the default is
@@ -222,7 +289,7 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 // the operator block then reports could-not-check with no readable root.
 func resolveTranscripts(flagVals []string) ([]string, error) {
 	if len(flagVals) > 0 {
-		return []string(flagVals), nil
+		return flagVals, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -70,7 +70,15 @@ publication receipt and retirement are separate observations. Execution can succ
 while acceptance is held; accepted work can await publication; Complete can retain a
 resource-retirement hold. Observation times and typed hold owners/events are explicit.
 This contract wires no runtime and changes no independent review, verification, human
-decision or publication gate. Complete applicability context remains graph-execution/30.
+decision or publication gate. [`evaluation-context-v1`](../spec/evaluation-context-v1.md) adds complete explicit
+source/fact/dependency frontiers, evaluator/query/options/policy/environment identities,
+access epoch, generation, cutoff and lease/access expiry. Its fingerprint identifies
+immutable derivation, not authority. Pure applicability holds incomplete inputs and
+requires reevaluation when membership, epochs, policies or generations change, or at
+the earliest expiry even with unchanged source hashes. Current admission independently
+checks authorization and authority; offline computation retains its snapshot cutoff.
+Planned admission /14 consumes current context; store /19 preserves original bounds
+on reload rather than renewing them. No production gate cache is activated.
 
 ## STATUS.md — a single-writer generated artifact
 
