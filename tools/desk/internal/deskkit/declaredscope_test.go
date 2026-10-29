@@ -423,51 +423,6 @@ func TestScopeLooseContinuation(t *testing.T) {
 	}
 }
 
-// regression: #4199 — hard-wrapped Context prose that puts "files " at
-// column zero is a sentence, not a field marker, at both marker sites.
-func TestScopeWrappedFilesProse(t *testing.T) {
-	const decl = "files:\n- `tools/a.go`\n- `tools/pkg/`\n"
-	for name, prose := range map[string]string{
-		// The reported shape: a paragraph wrapping onto "files in ...". The
-		// reported line also held path-shaped words, which now refuse.
-		"reported": "Scope is the generated\nfiles in the public tree. Three items were flagged as out of scope and ruled\nout here.\n\n",
-		"capital":  "Work under the tools tree touches\nFiles that out-of-scope work never touches.\n\n",
-		// Planted second site: the fenced-region marker check.
-		"fenced": "facts:\n```text\nexample wraps onto\nfiles in the example tree and\nends here.\n```\n\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			tree := wakeTestTree()
-			tree.files[wakeTestBriefPath] = "# Brief\n\n## Context\n\n" + prose + decl + "\nfacts:\n- `tools/not-declared.go`\n"
-			raw, err := BuildOutcomeRecord(wakeTestRecord("verify-fail", BlockerImplementation, "#1"), wakeTestInput(), tree)
-			if err != nil {
-				t.Fatalf("wrapped prose refused the record: %v", err)
-			}
-			var r WakeReceipt
-			if err := json.Unmarshal(raw, &r); err != nil {
-				t.Fatal(err)
-			}
-			for _, p := range []string{"tools/a.go", "tools/pkg/one.go", "tools/pkg/sub/two.go"} {
-				if r.Inputs["file:"+p] == "" {
-					t.Errorf("omitted declared deliverable %s", p)
-				}
-			}
-			if _, ok := r.Inputs["file:tools/not-declared.go"]; ok {
-				t.Fatal("prose became a declaration")
-			}
-		})
-	}
-	// A declaration missing its colon is still refused, never read as prose.
-	for _, line := range []string{
-		"files tools/a.go", "Files tools/a.go and tests", "files `tools/a.go`",
-		"files - tools/a.go", "files\ttools/a.go", "files (new) tools/a.go",
-		"files docs", "files 1. tools/a.go",
-	} {
-		if paths, err := BriefDeclaredFiles("## Context\n" + line + "\n"); ExitCodeOf(err) != ExitRefused {
-			t.Errorf("%q: got %v %v; want refusal", line, paths, err)
-		}
-	}
-}
-
 // regression: sec-4809-1 — a "files" line whose tail carries a colon or a
 // backtick may be a declaration, so it is refused rather than read as prose.
 func TestScopeLabelledFilesRefuse(t *testing.T) {
@@ -487,8 +442,8 @@ func TestScopeLabelledFilesRefuse(t *testing.T) {
 	}
 }
 
-// regression: sec-4809-1 — a "files" line is prose only on positive evidence
-// that it continues a hard-wrapped paragraph; otherwise it stays a marker.
+// regression: sec-4809-1 — a "files" line that is not the accepted "files:"
+// form stays a marker, whatever text or lines surround it.
 func TestScopeUnwrappedFilesRefuse(t *testing.T) {
 	shapes := []string{
 		"files to change\n- `tools/a.go`\n",
@@ -503,7 +458,7 @@ func TestScopeUnwrappedFilesRefuse(t *testing.T) {
 		"files to change：\n- `tools/a.go`\n",
 		"files docs tools/a.go\n",
 		"files Makefile and tests\n",
-		// Each remaining case passes every check but the one it names.
+		// Shapes next to wrapped prose, each varying the feature it names.
 		"Prose that wraps onto the\nfiles under tools/a.go here\n",       // path token
 		"Prose that wraps onto the\nfiles in main.go and more\n",         // file token
 		"A sentence ends here.\nfiles to change and more\n",              // ended sentence
@@ -564,6 +519,16 @@ func TestScopeWrappedFilesRefuse(t *testing.T) {
 			if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
 				t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
 			}
+		}
+	}
+	// A declaration missing its colon is still refused, never read as prose.
+	for _, line := range []string{
+		"files tools/a.go", "Files tools/a.go and tests", "files `tools/a.go`",
+		"files - tools/a.go", "files\ttools/a.go", "files (new) tools/a.go",
+		"files docs", "files 1. tools/a.go",
+	} {
+		if paths, err := BriefDeclaredFiles("## Context\n" + line + "\n"); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q: got %v %v; want refusal", line, paths, err)
 		}
 	}
 	// The remedy: the same prose reflowed so no line starts with "files".

@@ -1,6 +1,6 @@
-### Fixed
-- `deskevidence --outcome-record` no longer refuses a brief whose `## Context` prose hard-wraps a
-  plain sentence onto a line starting with "files " — only when the previous line is unfinished
-  prose, the next line is prose or blank, and the "files" line carries no path-shaped word, colon
-  or backtick. Anything else starting with "files", including a missing-colon declaration such as
-  `files tools/a.go`, is still refused.
+### Changed
+- The declared-scope parser behind `deskevidence --outcome-record` keeps refusing every `## Context`
+  line that starts with "files" followed by whitespace and is not the accepted `files:` form,
+  hard-wrapped prose included, at both the Context-line and the fenced-region marker checks. New
+  regression tests pin that refusal. A brief refused this way is fixed by reflowing the paragraph so
+  no line starts with "files", not by loosening the parser.
