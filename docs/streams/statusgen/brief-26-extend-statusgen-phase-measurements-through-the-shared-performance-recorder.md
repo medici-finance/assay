@@ -33,9 +33,16 @@ consumers:
   - "perfrec/: follow-up desktools-v2/61 (one shared recorder implementation)"
   - "tools/desk/cmd/deskperf/: follow-up statusgen/26 (read actual statusgen records)"
   - "tools/desk/cmd/deskread: out-of-scope (existing online credential boundary is retained; child benefits from desktools-v2/58 and /59)"
-  - "statusgen/contexthandoff/: follow-up statusgen/20 (reuse only explicit source-bound immutable input snapshots)"
+  - "statusgen/contexthandoff/: out-of-scope (resolver shipped in assay#3839; preserves independent source enumeration; no context index reuse API is added here)"
   - "qualgen/: out-of-scope (documented consumer candidate; no measured hotpath or new wrapper claimed)"
-  - "docs/telemetry.md: follow-up statusgen/26"
+  - "docs/telemetry.md: fixed-here (documents reuse and workload boundaries)"
+  - "statusgen/readmemo.go: fixed-here (split existing disk attempts into file and directory counts)"
+  - "statusgen/perfsnapshot_test.go: fixed-here (Verify 2 parity and production-owner mutations)"
+  - "statusgen/perfworkload_test.go: fixed-here (synthetic fresh-reference workload driver)"
+  - "statusgen/bench/: fixed-here (repeatable entrypoint, inventory and measured report)"
+  - "statusgen/testdata/perfworkload/: fixed-here (declared synthetic corpus)"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here (exact owned test route for the workload launcher)"
+  - "tools/desk/internal/clicontract/perfworkload_test.go: fixed-here (owner, neighbor, removed-route and shipping controls)"
 ---
 
 # Brief 26 — Extend statusgen phase measurements through the shared performance recorder
