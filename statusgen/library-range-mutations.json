@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestLibraryStaleFailRange.*|TestStaleFailHistorySymbolicReplace)$' .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestLibraryStaleFailRange.*|TestStaleFailHistorySymbolicReplace|TestStaleFailNativeEncodingKeys)$' .",
   "control": {
     "name": "CONTROL range bypasses canonical library and starts native",
     "file": "stalefail.go",
@@ -37,6 +37,18 @@
       "file": "../gitcore/repositoryprofile.go",
       "old": "if strings.HasPrefix(string(ref.Name()), \"refs/replace/\") {",
       "new": "if strings.HasPrefix(string(ref.Name()), \"refs/replace/\") && false {"
+    },
+    {
+      "name": "effective output encoding observation omitted",
+      "file": "stalefail.go",
+      "old": "strings.Contains(strings.ToLower(string(config)), \"i18n.logoutputencoding\") || strings.Contains(strings.ToLower(string(config)), \"i18n.commitencoding\")",
+      "new": "strings.Contains(strings.ToLower(string(config)), \"i18n.commitencoding\")"
+    },
+    {
+      "name": "effective commit encoding observation omitted",
+      "file": "stalefail.go",
+      "old": "strings.Contains(strings.ToLower(string(config)), \"i18n.logoutputencoding\") || strings.Contains(strings.ToLower(string(config)), \"i18n.commitencoding\")",
+      "new": "strings.Contains(strings.ToLower(string(config)), \"i18n.logoutputencoding\")"
     }
   ]
 }

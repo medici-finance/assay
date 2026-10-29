@@ -133,6 +133,13 @@ func TestCommitRangeAbbreviationNamespaces(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	name := "refs/remotes/" + short + "/HEAD"
+	if _, err := f.Git("symbolic-ref", name, "refs/heads/main"); err != nil {
+		t.Fatal(err)
+	}
+	if why, err := r.NativeAbbreviationReason(short); err != nil || why == "" {
+		t.Fatalf("remote HEAD alias lost: %q %v", why, err)
+	}
 }
 
 func TestCommitRangeMessageProfiles(t *testing.T) {

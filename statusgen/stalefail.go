@@ -132,7 +132,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 		physical, physicalErr := filepath.EvalSymlinks(absolute)
 		cwd, cwdErr := os.Getwd()
 		config, configErr := native("config", "--null", "--list", "--show-origin", "--show-scope")
-		refs, refsErr := native("for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)")
+		refs, refsErr := staleFailReferenceOutput(root, native)
 		if configErr == nil {
 			formattingNative = strings.Contains(strings.ToLower(string(config)), "i18n.logoutputencoding") || strings.Contains(strings.ToLower(string(config)), "i18n.commitencoding")
 		}

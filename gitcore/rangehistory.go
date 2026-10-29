@@ -153,10 +153,16 @@ func (r *Repo) NativeAbbreviationReason(token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Lstat(filepath.Join(gitDir, token)); err == nil {
-		return "native pseudo-ref shadows object abbreviation", nil
-	} else if !os.IsNotExist(err) {
+	common, err := CommonDir(r.dir)
+	if err != nil {
 		return "", err
+	}
+	for _, dir := range []string{gitDir, common} {
+		if _, err := os.Lstat(filepath.Join(dir, token)); err == nil {
+			return "native pseudo-ref shadows object abbreviation", nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
 	}
 	for _, name := range []string{"refs/" + token, "refs/tags/" + token, "refs/heads/" + token, "refs/remotes/" + token, "refs/remotes/" + token + "/HEAD"} {
 		_, err := r.repo.Reference(plumbing.ReferenceName(name), false)

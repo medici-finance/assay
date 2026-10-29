@@ -1,0 +1,54 @@
+{
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^(TestReferenceSnapshot.*|TestLastPathCommit.*|TestAbbreviationCommonDirShadow)$' .",
+  "control": {
+    "name": "CONTROL reference object names zeroed",
+    "file": "metadatarefs.go",
+    "old": "row.ObjectID = ref.Hash().String()",
+    "new": "row.ObjectID = plumbing.ZeroHash.String()"
+  },
+  "mutations": [
+    {
+      "name": "symbolic targets discarded",
+      "file": "metadatarefs.go",
+      "old": "row.SymbolicTarget = ref.Target().String()",
+      "new": "row.SymbolicTarget = \"\""
+    },
+    {
+      "name": "native symbolic depth ignored",
+      "file": "metadatarefs.go",
+      "old": "len(seen) >= 4 || seen[ref.Name()]",
+      "new": "seen[ref.Name()]"
+    },
+    {
+      "name": "reference ordering reversed",
+      "file": "metadatarefs.go",
+      "old": "rows[i].Name < rows[j].Name",
+      "new": "rows[i].Name > rows[j].Name"
+    },
+    {
+      "name": "TREESAME merge pruning removed",
+      "file": "metadatarefs.go",
+      "old": "if value == pvalue {",
+      "new": "if value == pvalue && false {"
+    },
+    {
+      "name": "mode-only changes hidden",
+      "file": "metadatarefs.go",
+      "old": "fmt.Sprintf(\"%o:%s\", entry.Mode, entry.Hash)",
+      "new": "fmt.Sprintf(\"%s\", entry.Hash)"
+    },
+    {
+      "name": "native signature profile becomes empty history",
+      "file": "metadatarefs.go",
+      "old": "if why != \"\" {\n\t\treturn &PathMetadata{NativeReason: why}, nil\n\t}\n\tq :=",
+      "new": "if why != \"\" {\n\t\treturn nil, nil\n\t}\n\tq :="
+    },
+    {
+      "name": "common-directory shadow omitted",
+      "file": "rangehistory.go",
+      "old": "for _, dir := range []string{gitDir, common} {",
+      "new": "for _, dir := range []string{gitDir, common} {\n if dir != gitDir { continue }"
+    }
+  ]
+}

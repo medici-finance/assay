@@ -355,13 +355,13 @@
     },
     "s071": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%h %cI\", \"--\", \"STATUS.md\")",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
-      "owner": "statusgen/drivedash.go — driveHeartbeatLine caller maintainer"
+      "why": "Canonical LastPathCommit selects the literal path metadata. This unchanged native log remains only for an observed unsupported repository or committer-header profile. Read errors never retry. TestGoGitReadParity/last-path-time-and-reference-snapshot compares output bytes.",
+      "owner": "statusgen/library_metadata.go — canonical metadata adapter"
     },
     "s072": {
-      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", rel)",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
-      "owner": "statusgen/drivewatchdog.go — gitBlobCommitTime caller maintainer"
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", row.ID)",
+      "why": "Only displayed abbreviation formatting remains native: core.abbrev and repository-wide object collision rules are not replaced by truncating a full ID. History selection and date facts use canonical LastPathCommit. The measured log start becomes one scalar formatter start, not a claimed removed process.",
+      "owner": "statusgen/library_metadata.go — canonical metadata adapter"
     },
     "s073": {
       "operation": "historyGit(root, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", start, end), \"--\", rel)",
@@ -534,9 +534,9 @@
       "owner": "statusgen/gitinfo.go — gitCurrentSHA caller maintainer"
     },
     "s107": {
-      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", relDir)",
-      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
-      "owner": "statusgen/gitinfo.go — gitLastTouch caller maintainer"
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", rel)",
+      "why": "Literal last-touch and board freshness reads use canonical LastPathCommit with native default TREESAME simplification, deletion/mode/directory coverage, fresh HEAD and object errors. This native branch preserves positively observed pathspec/environment/repository or noncanonical signature profiles. Actual read errors never retry.",
+      "owner": "statusgen/library_metadata.go — canonical metadata adapter"
     },
     "s108": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--reverse\", \"--format=%ae\", \"--\", relPath)",
@@ -1482,18 +1482,6 @@
       "reason": "s070"
     },
     {
-      "key": "drivedash.go::driveHeartbeatLine::direct#1",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%h %cI\", \"--\", \"STATUS.md\")",
-      "disposition": "retained",
-      "reason": "s071"
-    },
-    {
-      "key": "drivewatchdog.go::gitBlobCommitTime::direct#1",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", rel)",
-      "disposition": "retained",
-      "reason": "s072"
-    },
-    {
       "key": "evidenceactor.go::blameEvidenceAuthors::seam#1",
       "expression": "historyGit(root, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", start, end), \"--\", rel)",
       "disposition": "retained",
@@ -1698,12 +1686,6 @@
       "reason": "s106"
     },
     {
-      "key": "gitinfo.go::gitLastTouch::direct#1",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", relDir)",
-      "disposition": "retained",
-      "reason": "s107"
-    },
-    {
       "key": "gitinfo.go::gitPathFirstAuthorIdentity::direct#1",
       "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--reverse\", \"--format=%ae\", \"--\", relPath)",
       "disposition": "retained",
@@ -1798,6 +1780,24 @@
       "expression": "baselineGit(root, \"show\", base+\":statusgen/git-launches.json\")",
       "disposition": "retained",
       "reason": "s123"
+    },
+    {
+      "key": "library_metadata.go::gitLastPathHeartbeatOutput::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%h %cI\", \"--\", \"STATUS.md\")",
+      "disposition": "moved",
+      "reason": "s071"
+    },
+    {
+      "key": "library_metadata.go::gitLastPathHeartbeatOutput::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", row.ID)",
+      "disposition": "retained",
+      "reason": "s072"
+    },
+    {
+      "key": "library_metadata.go::gitLastPathTimeOutput::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", rel)",
+      "disposition": "moved",
+      "reason": "s107"
     },
     {
       "key": "linkcheck.go::method.build::direct#1",

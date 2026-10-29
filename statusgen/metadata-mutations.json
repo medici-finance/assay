@@ -1,0 +1,24 @@
+{
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestGoGitReadParity/last-path-time-and-reference-snapshot$' .",
+  "control": {
+    "name": "CONTROL metadata abandons canonical history",
+    "file": "library_metadata.go",
+    "old": "if read.native != \"\" || !literal {",
+    "new": "if read.native != \"\" || !literal || true {"
+  },
+  "mutations": [
+    {
+      "name": "successful metadata becomes no history",
+      "file": "library_metadata.go",
+      "old": "return []byte(fmt.Sprintf(\"%d\\n\", row.CommitterTime.Unix())), nil",
+      "new": "return nil, nil"
+    },
+    {
+      "name": "reference snapshot invokes native command",
+      "file": "library_metadata.go",
+      "old": "return referenceSnapshotOutput(read.repo)",
+      "new": "return native(\"for-each-ref\", \"--format=%(refname)%00%(objectname)%00%(symref)\")"
+    }
+  ]
+}
