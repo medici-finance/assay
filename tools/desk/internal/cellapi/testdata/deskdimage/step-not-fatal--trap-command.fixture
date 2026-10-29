@@ -1,0 +1,5 @@
+# A trap set through the command builtin rewrites the exit status like a bare trap.
+want: step-not-fatal
+file: Makefile
+replace: "\t@set -eu; \\\n\tsha="
+with: "\t@set -eu; command trap 'exit 0' EXIT; \\\n\tsha="

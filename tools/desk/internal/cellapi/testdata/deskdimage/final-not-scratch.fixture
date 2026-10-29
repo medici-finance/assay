@@ -1,0 +1,5 @@
+# A distro final stage brings a shell and a package manager.
+want: final-not-scratch
+file: Dockerfile
+replace: "\nFROM scratch\n"
+with: "\nFROM debian:bookworm-slim@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"

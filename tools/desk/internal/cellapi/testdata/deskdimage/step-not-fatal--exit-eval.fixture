@@ -1,0 +1,5 @@
+# An exit reached through eval before the build ends the line with status 0.
+want: step-not-fatal
+file: Makefile
+replace: "\t@set -eu; \\\n\tsha="
+with: "\t@set -eu; eval 'exit 0'; \\\n\tsha="

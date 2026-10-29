@@ -1,0 +1,5 @@
+# Checksum checking bypassed for module paths.
+want: gonosumcheck
+file: Dockerfile
+replace: "    GOFLAGS=-mod=readonly\n"
+with: "    GOFLAGS=-mod=readonly \\\n    GONOSUMCHECK=1\n"
