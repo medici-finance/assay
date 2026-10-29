@@ -229,6 +229,8 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
   bump. Records holding per-member `file:` keys for a directory stay valid and are read as
   before; new records write one `file:<dir>/` key per declared directory instead (see the
   [declaration contract](../../declared-input-scope.md#directory-content-keys)). A pending,
-  not-yet-landed record derived before the change is re-verified, not held.
+  not-yet-landed record derived before the change no longer matches the writer's
+  re-derivation, so its item is could-not-check and is not dispatched (neither held nor
+  re-verified) until the pending Evidence lands or its record is re-issued.
 - **Explicit recheck** is the operator's escape hatch: an `explicit-recheck-with-reason` receipt
   wakes the work regardless of the other predicates, with the reason recorded.

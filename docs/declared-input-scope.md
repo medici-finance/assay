@@ -121,7 +121,9 @@ that is refused and reads as could-not-check. A key with an empty declaration, a
 double slash, a non-canonical declaration or a slash after a glob (never emitted)
 is unreadable, so could-not-check. Every `scope:` value, in either form, must be
 exactly the producer's digest format (64 lowercase hex characters); any other value
-is refused and reads as could-not-check.
+is refused, so it never reads as unchanged: when the declaration still resolves, the
+recomputed digest differs from that value and the observed change outranks the
+refusal, so the held work wakes; otherwise the read is could-not-check.
 
 Measured residual of the slash form (the secret pattern sweep reads every landed
 record). At a slash-keyed position the sweep's generic pattern rule matches no
@@ -149,8 +151,10 @@ Coverage counts a file as covered by its own `file:<path>` key or by the
 `file:<dir>/` key of a declared directory that contains it. A key for one member
 never covers its directory, and a `file:<dir>/` key for an undeclared directory
 covers nothing. A `file:<dir>/` value must be exactly the producer's digest format
-(64 lowercase hex characters); any other value is refused and reads as
-could-not-check. The root reader recomputes the value from the directory's current
+(64 lowercase hex characters); any other value is refused, so it never reads as
+unchanged. When the directory still reads, its recomputed digest differs from such
+a value and the observed change outranks the refusal, so the held work wakes;
+otherwise the read is could-not-check. The root reader recomputes the value from the directory's current
 members; a path that is no longer a directory, or an unreadable member, is
 could-not-check.
 
@@ -174,9 +178,13 @@ Migration: the key is additive, so `wake_schema` stays `verify-wake-v1`. Records
 written before this form keep their per-member keys, are never rewritten, and are
 read exactly as before. A reader older than this form cannot resolve a
 `file:<dir>/` key and reports could-not-check, never unchanged. A pending
-(not yet landed) record whose inputs were derived before this form no longer equals
-the re-derived input set, so it is re-verified rather than held; landed records
-are unaffected.
+(not yet landed) record whose inputs were derived before this form, and which
+therefore carries per-member keys for a directory this form folds, no longer equals
+the writer's re-derivation. The verify loop refuses that pending Evidence with an
+error, so the item is could-not-check and is not dispatched: it is neither held as
+awaiting merge nor re-verified. It stays could-not-check until the pending Evidence
+lands (the landed record then reads through its per-member keys as before) or its
+record is re-issued with the current writer. Landed records are unaffected.
 
 Local enumeration never follows ancestor directory symlinks. A final symlink is a
 Git-style blob whose content hash is its link text. Read/enumeration errors are
