@@ -23,7 +23,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/32 | 2026-10-28 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 8/37 | 2026-10-28 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/58 | 2026-10-28 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-27 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-28 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/61 | 2026-10-29 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-28 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/43 | 2026-10-29 |  |
@@ -31,7 +31,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-23 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-26 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-28 |  |
-| [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-10-27 |  |
+| [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-10-28 |  |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | active | 0/9 | 2026-10-21 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-20 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/39 | 2026-10-28 |  |
@@ -141,7 +141,7 @@ _Held by per-stream caps: 14 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2d4530d92 2026-10-29T12:36:12Z_
+_last regen: fc0da35c5 2026-10-29T12:38:23Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -162,7 +162,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2d4530d92 2026-10-29T12:36:12Z_
+_last regen: fc0da35c5 2026-10-29T12:38:23Z_
 
 **Progress:** 35/94 brief items done.
 
@@ -383,7 +383,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 44 [exec:strong] | implemented | 1500 | 1 | — | verify runner | none | — | — |
 | statusgen | 17 | verified | 1500 | 1 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
 | statusgen | 24 [exec:strong] | implemented | 1500 | 1 | — | verify runner | none | — | — |
-| quality | 19 [exec:strong] | verified | 1080 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
+| quality | 19 [exec:strong] | verified | 1090 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | iso-9001 | 06 [exec:strong] | implemented | 1020 | 0 | — | verify runner | none | — | — |
 | desk-supervision | 18 [exec:strong] | verified | 1010 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-20 assay-verifier-app[bot] @ b73d90d774fc (claude-opus-5-5) | — |
 | desk-supervision | 27 [exec:strong] | verified | 1010 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
