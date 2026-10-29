@@ -237,6 +237,29 @@ func TestBootPassesCompleteSetup(t *testing.T) {
 	}
 }
 
+// The line `assay-install.sh pin --kind desk-tools` writes — the tarball's full asset name,
+// as paired-versions.yaml publishes it — is desk-tools provenance: the refusal's own remedy
+// produces it, so the step must accept it.
+// regression: #4842
+func TestBootPassesTarballPin(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	pins := statusgenOnlyPins + "desk-tools-" + runtime.GOOS + "-" + runtime.GOARCH +
+		".tar.gz v1.0.9 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	writePins(t, root, pins)
+	s.replies = consumerStub(t, writeToken(t, home), pins)
+
+	rc, stdout, stderr := bootOutput(t, root)
+	if rc != deskkit.ExitOK {
+		t.Fatalf("installer-spelled pin rc = %d, want 0:\n%s", rc, stderr)
+	}
+	for _, want := range []string{"first-sweep-prereqs OK", ".tar.gz v1.0.9", "BOOT COMPLETE"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("boot output does not carry %q:\n%s", want, stdout)
+		}
+	}
+}
+
 // The source tree (no pin file, origin/main carries tools/desk) is provenance on its own:
 // the board's in-tree fallback reads exactly that ref.
 func TestBootPassesInTreeSource(t *testing.T) {
