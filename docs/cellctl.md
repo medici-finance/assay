@@ -275,7 +275,8 @@ placeholder topology), and the model is whatever the CLI default is that week.
 cellctl new house --kind house \
   --repo /path/to/checkout \
   --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
-  [--roles "the-desk worker-desk"] [--port 8787]
+  [--roles "the-desk worker-desk"] [--port 8787] \
+  [--forge gitlab [--group example-group] [--gitlab-api-base URL]]
 cellctl check house
 cellctl desk house worker-desk          # one window
 cellctl up house                        # every role, in the resolved cockpit (see *Cockpits*)
@@ -290,11 +291,20 @@ files exactly as a hand boot would; **nothing is copied** — and links `.config
 `.gitconfig` as a github cell does. There are no custody hand steps: the custody is the
 operator's own. It refuses to overwrite an existing cell of the same name.
 
+`--forge` (default `github`) is honoured as on a k8s cell. `--forge gitlab` writes
+`CELL_FORGE=gitlab` with `FORGE_API_BASE`/`GITLAB_API_BASE` (`--gitlab-api-base`, default
+`https://gitlab.com/api/v4`), `GITLAB_GROUP` from `--group` (left as a commented line when absent:
+only a `DESKD=1` house cell needs it) and `GITLAB_TOKEN_STORE` when `--gitlab-token-store` is
+given; it links `.gitconfig` but **never** `.config/gh`, which is GitHub custody. Any other
+`--forge` value is refused before anything is created.
+
 `check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
 checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
 scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
 formed, exists and carries `docs/streams/`; the desk verbs a role needs are installed under the
 desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
+The gh config link is a row on a github house cell (a `MISS` when absent) and `n/a` on a gitlab
+one, worded as on a k8s gitlab cell.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
