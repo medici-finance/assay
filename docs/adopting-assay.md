@@ -764,6 +764,46 @@ present in `ASSAY_TRUSTED_LOGINS`, never a configured App slug; anything else in
 the key. An OS account name containing a list separator (space, comma, semicolon) cannot
 be expressed and always lands on the audit row's marked `os:<username>` fallback.
 
+**A human whose username ends in `-bot` or `-app`: `ASSAY_ASSERTED_HUMANS`.** The loader refuses
+any `ASSAY_TRUSTED_LOGINS` or `ASSAY_BLESS_LOGIN` entry whose login *looks* like a bot. Two of
+the four clauses are structural — the forge itself renders an App as `<slug>[bot]` or
+`app/<slug>` — and no configuration waives them. The other two (`-bot`, `-app` suffixes) are a
+naming convention a human's own username can also match, and such a human otherwise cannot be
+rostered at all. `ASSAY_ASSERTED_HUMANS` is the one statement that waives the name-shape check,
+and it is deliberately narrow:
+
+- **Pinned.** Comma-separated `login:id` entries; the id (the forge's numeric user id) is
+  mandatory. A bare login is refused. The waiver applies only to a `ASSAY_TRUSTED_LOGINS` /
+  `ASSAY_BLESS_LOGIN` entry carrying the **same login and the same id** — the same login with
+  another id, a bare `login` entry, or the id under another login is still refused, so a
+  re-registered username does not inherit the assertion.
+- **Name shape only.** An entry for a `[bot]` / `app/` rendering, for a login the name check
+  never refused, for a login the roster registers in `ASSAY_TRUSTED_BOT_SLUGS`, a repeated
+  login or one id under two logins are all refused, and so is an assertion no entry uses.
+  Every other key that refuses a bot-shaped login (`ASSAY_HUMAN_LOGIN_MAP`,
+  `ASSAY_STAMP_TRUSTED_LOGINS`, …) keeps refusing it.
+- **Echoed.** `assay-config: ASSAY_ASSERTED_HUMANS=<login>:<id> (name check waived for <keys>)`
+  names every waiver and the keys it applied to, so it is part of the config digest; the
+  one-line digest form adds `asserted=<n>`.
+- **The forge's own bot flag still wins where it is readable.** The roster loader is offline: it
+  reads the file or the CI variables and never calls a forge, so at load the pinned id is the
+  whole check. At run time an asserted login that the forge marks as a bot is refused wherever
+  the read carries the forge's actor kind: the desk tools' bless-then-edit trust read (GitHub
+  `__typename` `Bot`, GitLab's `bot` field), the `deskread trust` envelope's `authorBot` field,
+  and statusgen's issue-author and blessing checks that are handed the actor kind. Reads that
+  carry only a login (and at most an id) — the login-only trusted-author checks and the
+  escalation-clock readers — cannot see the flag, and there the pinned id is the control.
+  The desk tools' human-only checks (the trusted-human and accountable-human predicates)
+  still exclude every `-bot` / `-app` login, asserted or not.
+
+A malformed `ASSAY_ASSERTED_HUMANS` refuses the whole roster, like the trust surfaces above.
+
+**A refused roster loads nothing — and now says what it dropped.** Any `REFUSED` line still
+discards the whole configuration (never a partial load). After the `REFUSED` lines, the echo adds
+one `assay-config: DROPPED <KEY> — …` line per `ASSAY_` key that carried a value: `refused` when a
+`REFUSED` line names that key's own value, `not applied: discarded with the refused roster` when
+the key was well-formed and is empty only because of another key's refusal.
+
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 
 An absent roster fails loudly: a `REFUSED` line in the echo, and repo-scoped *acting* commands
