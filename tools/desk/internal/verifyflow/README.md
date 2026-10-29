@@ -1,8 +1,7 @@
 # Verification candidate planning
 
-`PlanCandidates` is the pure verification-role planning entrypoint for desk-tools/45.
-Both the skill adapter (desk-tools/51) and the discrete role binding
-(graph-execution/27) consume it; neither integration is activated by this package.
+`PlanCandidates` is the pure verification-role planning entrypoint.
+Both the skill adapter and the discrete role binding consume it; neither integration is activated by this package.
 
 Inputs are a versioned `Observation`, explicit policy owner/revision, a supplied
 clock and oldest acceptable observation time, and nonnegative capacity. The caller
@@ -16,8 +15,8 @@ base/overlay join also used by the existing verifyloop plan.
 the actual canonical rows, overlay outcomes, supplied exact subject revisions and
 all requested root coverage. An explicit single-root scan cannot establish whole-desk
 idle. Missing revision or source coverage holds the affected candidate. Evidence
-repair discovery is explicitly unknown until /51 supplies it; accepted-run continuation
-remains /47. Existing risk, attestation, admission and landing controls remain independent.
+repair discovery is explicitly unknown until its collector supplies it; accepted-run
+continuation remains with its existing owner. Existing risk, attestation, admission and landing controls remain independent.
 
 Selection unions identical source-lane/alias observations, rejects conflicting heads
 or dispositions, preserves all held/unknown/watch rows, ranks eligible proposals by

@@ -311,7 +311,7 @@ internal/verifyflow.PlanCandidates API. It binds the observed rows, overlays, ex
 subject revisions and root/source coverage. Policy owner/revision, time cutoff and capacity
 are explicit planner inputs, never read from ambient state. An explicit --root is a scoped
 observation, not proof that all roots are idle. Evidence-repair discovery remains unknown
-until desk-tools/51 supplies that lane; empty Awaiting alone never establishes desk idle.
+until the repair-discovery owner supplies that lane; empty Awaiting alone never establishes desk idle.
 
 'plan' FAILS SAFE on risk: any brief with gate:human OR any risk answer yes (irreversible
 first) is bucketed under awaiting-human / ROUTE-HUMAN, never DISPATCH. A model MAY gather

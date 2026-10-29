@@ -547,7 +547,7 @@ func observeCandidates(doc *planDoc, items []loopengine.Item, bases map[string]*
 			state = "unknown"
 		}
 		o.Coverage = append(o.Coverage, verifyflow.Coverage{Repository: id, Lane: verifyflow.Awaiting, State: state, Reason: r.Reason + r.QueueReason},
-			verifyflow.Coverage{Repository: id, Lane: verifyflow.Repair, State: "unknown", Reason: "Evidence repair discovery belongs to desk-tools/51"})
+			verifyflow.Coverage{Repository: id, Lane: verifyflow.Repair, State: "unknown", Reason: "Evidence repair discovery has not been collected"})
 	}
 	for i, it := range items {
 		path := firstNonEmpty(payloadValue(it, "root"), root)
