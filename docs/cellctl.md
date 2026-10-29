@@ -1374,14 +1374,14 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_FORGE` | the cell's forge, `github` or `gitlab` (default `github` — a cell scaffolded before forge support carries none and is a GitHub cell by construction) |
 | `CELL_REPO` | the checkout the role worktrees are created from |
 | `CELLS_CONFIG` | this cell's `cells.yaml` slice (default `<cell-dir>/cells-<cell>.yaml`) |
-| `FORGE_API_BASE` | the forge API endpoint, derived from the forge (github: `https://api.<GITHUB_HOST>`; gitlab: the GitLab API base) — the single home of the host, so no verb spells a literal. A value set non-empty in `cell.env` is exported into the claude and cursor role windows, over any the launching shell carried; the compiled derivation is not exported |
+| `FORGE_API_BASE` | the forge API endpoint, derived from the forge (github: `https://api.<GITHUB_HOST>`; gitlab: the GitLab API base) — the single home of the host, so no verb spells a literal |
 | `DESKD_ADDR` | the address `deskd` serves on (default `127.0.0.1:8787` — give a second cell its own port) |
 | `DESKD_INDEX` | the persistent `deskd` index path |
 | `DESKD_APP_PEM` | **github** — the `deskd` read App's private key, in the operator's config home |
 | `DESKD_APP_ID_VAR` | **github** — the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
 | `ORGS` | **github** — comma-separated orgs to mint one installation token each for |
 | `GITLAB_GROUP` | **gitlab** — the GitLab group this cell reads |
-| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`). A value set non-empty in `cell.env` is exported into the claude and cursor role windows, over any the launching shell carried; cellctl's compiled `gitlab.com` fallback is never exported, so `desktoken` still refuses an unconfigured base |
+| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`). On a GitLab cell, the base `cell.env` states (this key when set non-empty, else its `FORGE_API_BASE`) is exported as `GITLAB_API_BASE` into the claude and cursor role windows, over any the launching shell carried; cellctl's compiled `gitlab.com` fallback is never exported, so `desktoken` still refuses an unconfigured base. `FORGE_API_BASE` itself is not exported |
 | `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
 | `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |

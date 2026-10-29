@@ -89,28 +89,30 @@ func (c *Cell) cellDBEnv(env []string) []string {
 	return env
 }
 
-// cellForgeEnvKeys is the explicit allowlist of forge endpoint keys a host role window carries
-// from its own cell.env (#4841). desktoken reads GITLAB_API_BASE from its process environment
-// and deliberately has no default, so a cell that sets its base only in cell.env could not
-// cold-mint from inside its own role window. Nothing else in the cell map is copied.
-var cellForgeEnvKeys = []string{"FORGE_API_BASE", "GITLAB_API_BASE"}
-
-// forgeEndpointEnv sets each cellForgeEnvKeys key the cell's own cell.env holds non-empty, over
-// any value the launching shell carried: the cell file is the cell's own statement of which
-// forge it talks to, the same precedence loadCell gives it. A key cell.env does not set (or sets
-// empty) leaves the inherited environment exactly as it was. cellctl's compiled forge defaults
-// (the gitlab.com fallback, the api.<host> derivation) are never forwarded, so desktoken's
-// refusal on an unconfigured GitLab base still stands.
+// forgeEndpointEnv sets GITLAB_API_BASE in a host role window to the GitLab base this cell's own
+// cell.env states (#4841), over any value the launching shell carried. desktoken reads that key
+// from its process environment and deliberately has no default, so a cell that sets its base
+// only in cell.env could not cold-mint from inside its own role window.
+//
+// The base is cell.env's GITLAB_API_BASE when it is set non-empty, else cell.env's
+// FORGE_API_BASE (the key loadCell treats as primary for a GitLab cell) — what loadCell resolves
+// with no inherited environment. Only a GitLab cell has one. A cell.env that states neither
+// leaves the inherited environment exactly as it was: cellctl's compiled gitlab.com fallback is
+// never forwarded, so desktoken's refusal on an unconfigured GitLab base still stands.
+// FORGE_API_BASE itself is not exported: nothing in the window reads it, and a nested cellctl
+// would rank it over its own cell's cell.env.
 func (c *Cell) forgeEndpointEnv(env []string) []string {
-	for _, k := range cellForgeEnvKeys {
-		if c.Env.Source(k) != layerCellEnv {
-			continue
-		}
-		v := c.Env.Get(k)
-		if strings.TrimSpace(v) == "" {
-			continue
-		}
-		env = envSet(env, k, v)
+	if c.Forge != "gitlab" {
+		return env
+	}
+	base := ""
+	if v := c.Env.Get("GITLAB_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("GITLAB_API_BASE") == layerCellEnv {
+		base = v
+	} else if v := c.Env.Get("FORGE_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("FORGE_API_BASE") == layerCellEnv {
+		base = v
+	}
+	if base != "" {
+		env = envSet(env, "GITLAB_API_BASE", base)
 	}
 	return env
 }
