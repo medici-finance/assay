@@ -89,6 +89,34 @@ func (c *Cell) cellDBEnv(env []string) []string {
 	return env
 }
 
+// forgeEndpointEnv sets GITLAB_API_BASE in a host role window to the GitLab base this cell's own
+// cell.env states (#4841), over any value the launching shell carried. desktoken reads that key
+// from its process environment and deliberately has no default, so a cell that sets its base
+// only in cell.env could not cold-mint from inside its own role window.
+//
+// The base is cell.env's GITLAB_API_BASE when it is set non-empty, else cell.env's
+// FORGE_API_BASE (the key loadCell treats as primary for a GitLab cell) — what loadCell resolves
+// with no inherited environment. Only a GitLab cell has one. A cell.env that states neither
+// leaves the inherited environment exactly as it was: cellctl's compiled gitlab.com fallback is
+// never forwarded, so desktoken's refusal on an unconfigured GitLab base still stands.
+// FORGE_API_BASE itself is not exported: nothing in the window reads it, and a nested cellctl
+// would rank it over its own cell's cell.env.
+func (c *Cell) forgeEndpointEnv(env []string) []string {
+	if c.Forge != "gitlab" {
+		return env
+	}
+	base := ""
+	if v := c.Env.Get("GITLAB_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("GITLAB_API_BASE") == layerCellEnv {
+		base = v
+	} else if v := c.Env.Get("FORGE_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("FORGE_API_BASE") == layerCellEnv {
+		base = v
+	}
+	if base != "" {
+		env = envSet(env, "GITLAB_API_BASE", base)
+	}
+	return env
+}
+
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
 // plugin on the claude arm, fetch the shared checkout under a lock, bring the role worktree up
 // to main, generate the shims, and exec the harness.
@@ -225,6 +253,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	// ASSAY_COCKPIT the launching shell happened to carry never outlives the cell's own value.
 	if cockpit.Cockpit != "" {
 		env = envSet(env, envAssayCockpit, cockpit.Cockpit)
+	}
+	// The cell's forge endpoint (#4841), on the claude and cursor arms; the codex arm composes its
+	// command environment from its own named allowlist and is left as it was.
+	if harness != "codex" {
+		env = c.forgeEndpointEnv(env)
 	}
 	var argv []string
 	if harness == "codex" {

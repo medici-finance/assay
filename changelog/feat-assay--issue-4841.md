@@ -1,0 +1,2 @@
+### Fixed
+- `cellctl desk` now exports a GitLab cell's own API base into the claude and cursor role windows as `GITLAB_API_BASE`, so `desktoken` inside the window mints against the cell's configured base. The base is the cell's `cell.env` `GITLAB_API_BASE`, or its `FORGE_API_BASE` when only that is set, and it wins over a value the launching shell carried. A cell whose `cell.env` states neither leaves the inherited environment unchanged, and cellctl's compiled forge defaults are never forwarded.
