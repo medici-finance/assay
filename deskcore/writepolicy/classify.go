@@ -857,16 +857,6 @@ func maskLiterals(cmd string) string {
 // admitted. Keep wins globally, in either delimiter order: a byte any pass
 // reads as executed code is never blanked by another.
 func maskHeredocBodies(cmd string) string {
-	return maskHeredocBodiesFed(cmd, func(before, _ string) bool {
-		fields := strings.Fields(before)
-		return len(fields) > 0 && shellNameRe.MatchString(strings.Trim(fields[0], `"'`))
-	})
-}
-
-// maskHeredocBodiesFed is maskHeredocBodies with the shell-fed test supplied:
-// shellFed gets the introducing line's text before the `<<` operator and after
-// the heredoc word, and a true answer keeps that body visible as a script.
-func maskHeredocBodiesFed(cmd string, shellFed func(before, after string) bool) string {
 	b := []byte(cmd)
 	blank := make([]bool, len(cmd))
 	keep := make([]bool, len(cmd))
@@ -887,14 +877,11 @@ func maskHeredocBodiesFed(cmd string, shellFed func(before, after string) bool) 
 		quotedDelim := m[3] > m[2]
 		word := cmd[m[4]:m[5]]
 		lineStart := strings.LastIndexByte(cmd[:m[0]], '\n') + 1
-		nl := strings.IndexByte(cmd[m[1]:], '\n')
-		after := cmd[m[1]:]
-		if nl >= 0 {
-			after = cmd[m[1] : m[1]+nl]
-		}
-		if shellFed(cmd[lineStart:m[0]], after) {
+		if fields := strings.Fields(cmd[lineStart:m[0]]); len(fields) > 0 &&
+			shellNameRe.MatchString(strings.Trim(fields[0], `"'`)) {
 			continue
 		}
+		nl := strings.IndexByte(cmd[m[1]:], '\n')
 		if nl < 0 {
 			continue // no body on this command line
 		}

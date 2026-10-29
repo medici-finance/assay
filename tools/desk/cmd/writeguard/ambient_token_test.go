@@ -338,7 +338,7 @@ var ambientClasses = map[string][]string{
 	},
 	"show-token-bool": {
 		"gh auth status -h example.com --show-token=1",
-		"gh auth status -h example.com --show-token=1",
+		"gh auth status -h example.com --show-token=t",
 	},
 	"computed-word": {
 		`cli=gh; "$cli" auth token`,
@@ -413,5 +413,32 @@ func TestAmbientTokenFormsAllowed(t *testing.T) {
 		if v.Block {
 			t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
 		}
+	}
+}
+
+// regression: #4821
+func TestAmbientTokenScanDeadline(t *testing.T) {
+	// ANSI-C spans holding an escaped quote once made the scan re-mask the
+	// rest of the command per span, uncharged: the hook ran past its deadline
+	// with no decision. The read sits after the spans, so the scan must get
+	// through all of them to see it.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	cmd := strings.Repeat(`printf $'q\'z' `, 400) + "; gh auth token"
+	type res struct {
+		v   Verdict
+		err error
+	}
+	done := make(chan res, 1)
+	go func() {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		done <- res{v, err}
+	}()
+	select {
+	case r := <-done:
+		requireAmbientRefusal(t, r.v, r.err, cmd[:40])
+	case <-time.After(3 * time.Second):
+		t.Fatalf("%d-byte command: no decision within 3s (a hook timeout fails open)", len(cmd))
 	}
 }

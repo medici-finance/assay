@@ -97,7 +97,7 @@ These identify source contracts, not published versions or qualified deployments
   cwd, home and a defensive copy of the explicit environment. Its hash binds this
   snapshot; token and literal-mask accessors return values or defensive copies.
   `ReadsAmbientForgeToken()` reports, lexically, whether a classified Bash command
-  runs the gh CLI's token read; the hook adapter gates the refusal on its own
+  runs the gh CLI's token read (an undecided scan reports true); the hook adapter gates the refusal on its own
   environment ([write-policy.md](write-policy.md#ambient-forge-credential-refusal)).
 - `Evaluate(Evaluation) Outcome` accepts that classification and its matching ID,
   policy roots, path/claim/context/callout observations. It returns `allow`, `deny`

@@ -80,8 +80,9 @@ func deskSession() bool {
 
 // ambientTokenRefusal refuses a Bash command that runs the gh CLI's token read
 // while this is a desk session (#4821); outside one the hook stays silent. The
-// decision is writepolicy's lexical classification over the same masking every
-// other Bash check uses.
+// decision is writepolicy's lexical scan of the raw command, and a scan that
+// cannot finish (nesting past its depth limit, or past its work budget) is
+// refused the same.
 func ambientTokenRefusal(command string) (Verdict, bool) {
 	if command == "" || !deskSession() {
 		return Verdict{}, false
@@ -93,7 +94,7 @@ func ambientTokenRefusal(command string) (Verdict, bool) {
 	return Verdict{
 		Block: true,
 		Reason: fmt.Sprintf(`writeguard: BLOCKED — ambient forge credential read.
-This Bash call runs `+"`gh auth token`"+` (or asks gh to print its stored token):
+This Bash call runs `+"`gh auth token`"+` (or asks gh to print its stored token), or could not be judged in full (nested deeper than the scan's limit or past its work budget) and is refused the same:
   %s
 The gh CLI's stored login belongs to whichever account last authenticated on this machine, not to this session's role identity. A desk session (DESK_LOOP or DESK_SESSION is set) never reads or uses it, not even for a read-only call.
 The ONLY sanctioned credential path is your role's minted token: desktoken <role>. It prints the path of a token file; pass that file's contents as GH_TOKEN to the one command that needs it, and never print or export the token.

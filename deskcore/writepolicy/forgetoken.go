@@ -22,21 +22,25 @@ import (
 // What counts as executed:
 //
 //   - a command word, after leading NAME=value assignments, redirections and
-//     shell reserved words; after a command wrapper or runner (env, sudo,
-//     timeout, doas, flock, …) or a command word computed at run time, every
-//     later word is tried once as the wrapped command, so a wrapper's own
-//     option values cannot hide it, and the scan stays linear in the words;
+//     shell reserved words; after a command wrapper (the shared
+//     commandWrappers set) or runner (forgeRunners), or after a command word
+//     computed at run time, every later word is tried once as the wrapped
+//     command, so a wrapper's own option values cannot hide it, and the
+//     number of positions judged is linear in the words. Runners outside those
+//     two closed sets are not judged;
 //   - the script of a shell's -c (or --command), of `eval`, of `env -S`, of a
-//     runner that hands its argument to a shell (watch, su -c, …), a
-//     here-string fed to a shell, and the text a pipe feeds a shell from the
-//     command before it; each is lexed again as a script of its own;
+//     runner that hands its argument to a shell (forgeArgScripts), a
+//     here-string fed to a shell, and the text the IMMEDIATELY preceding pipe
+//     stage passes to a shell as its arguments; each is lexed again as a
+//     script of its own;
 //   - a `$( … )` or backtick substitution, quoted or not, lexed as a script;
-//   - the body of a heredoc whose introducing line names a shell anywhere
-//     (piped, wrapped or after an assignment), which stays visible as lines of
-//     commands.
+//   - the body of a heredoc whose introducing command line names a shell
+//     anywhere (piped, wrapped or after an assignment), lexed as a script; the
+//     substitutions in the body of a heredoc under an unquoted delimiter.
 //
-// A word is assembled from the RAW command at the masked offsets, so quoting
-// it (`gh "auth" 'token'`, ANSI-C `$'…'` with its escapes decoded, locale
+// The scan reads the RAW command and does its own quote, comment and heredoc
+// handling (it uses none of the shared maskers), so quoting a word
+// (`gh "auth" 'token'`, ANSI-C `$'…'` with its escapes decoded, locale
 // `$"…"`), escaping it (`\gh`) or splitting it with a line continuation does
 // not hide it: the shell removes all of those before gh sees its arguments.
 // A word with a part computed at run time (parameter expansion, a
@@ -44,16 +48,24 @@ import (
 // of the command word, `auth` or the subcommand, so one such component with
 // the rest literal is judged a read; two or more are not judged.
 //
-// Inert data follows the existing masking convention: a comment, a heredoc
-// body written to a non-shell under a quoted delimiter, and a quoted argument
-// to a non-shell command are prose.
+// Inert data: a comment, a heredoc body written to a non-shell under a quoted
+// delimiter, and a quoted argument to a non-shell command are prose.
+//
+// Cost: every pass over a script's bytes is charged to one work budget
+// (forgeBudgetPerByte per input byte plus forgeBudgetBase): a script is
+// charged its length before it is lexed, the lexer walks each of its bytes a
+// bounded number of times, and every per-word step (a judged position, an
+// examined argument, a re-read of an already-lexed script) is charged the
+// length of the word it reads. So the scan's own work is at most a constant
+// times the budget, which is linear in the command's length. This bounds the
+// forge scan only: the shared masking Classify runs before it is a separate
+// cost (#4854).
 //
 // It fails CLOSED where it cannot finish (a desk-decided departure from
-// allow-and-log, recorded on the PR that added this): an unterminated quote
-// is lexed as a command, and nesting deeper than maxForgeTokenDepth or a scan
-// that runs out of its work budget is judged by whether the text names gh,
-// auth and token at all. The budget is linear in the command's length, so the
-// hook always reaches a decision.
+// allow-and-log, recorded on the PR that added this): an unterminated quote,
+// or a heredoc whose delimiter line never comes, is lexed as commands; and
+// nesting deeper than maxForgeTokenDepth, or a scan that runs out of its work
+// budget, is judged a read outright, whatever the text says.
 func forgeTokenRead(raw string) bool {
 	hit, _ := forgeTokenReadStats(raw)
 	return hit
@@ -63,35 +75,27 @@ func forgeTokenRead(raw string) bool {
 type forgeStats struct {
 	judged    int  // command positions judged
 	spent     int  // work units charged
-	exhausted bool // the budget ran out and the fail-closed rule decided
+	exhausted bool // the budget ran out, so the command was refused undecided
 }
 
 func forgeTokenReadStats(raw string) (bool, forgeStats) {
 	budget := forgeBudgetPerByte*len(raw) + forgeBudgetBase
 	st := &forgeState{budget: budget}
-	hit := st.script(raw, 0)
-	if !hit && st.exhausted {
-		hit = forgeWordsPresent(raw)
-	}
+	// Exhaustion aborts the scan with a hit (every caller of spend returns
+	// true on failure), so an undecided scan is a refusal.
+	hit := st.script(raw, 0) || st.exhausted
 	return hit, forgeStats{judged: st.judged, spent: budget - st.budget, exhausted: st.exhausted}
 }
 
 const (
 	// maxForgeTokenDepth bounds script-in-script recursion.
 	maxForgeTokenDepth = 8
-	// The work budget: units per input byte, plus a floor. One unit is one
-	// byte lexed, one command position judged or one argument examined.
+	// The work budget: units per input byte, plus a floor. A script costs
+	// its length plus one; a judged position, an examined argument or a
+	// re-read script costs its word's length plus one.
 	forgeBudgetPerByte = 32
 	forgeBudgetBase    = 4096
 )
-
-// forgeWordsPresent is the fail-closed rule for text the lexer could not
-// finish: it names gh, auth and a token or credential at all.
-func forgeWordsPresent(s string) bool {
-	l := strings.ToLower(s)
-	return strings.Contains(l, "gh") && strings.Contains(l, "auth") &&
-		(strings.Contains(l, "token") || strings.Contains(l, "credential"))
-}
 
 type forgeState struct {
 	budget    int
@@ -99,7 +103,8 @@ type forgeState struct {
 	exhausted bool
 }
 
-// spend charges n work units; false once the budget is gone.
+// spend charges n work units; false once the budget is gone. Every caller
+// treats false as a hit and returns at once, so no work follows exhaustion.
 func (st *forgeState) spend(n int) bool {
 	if st.exhausted {
 		return false
@@ -113,33 +118,26 @@ func (st *forgeState) spend(n int) bool {
 }
 
 // script lexes cmd as a script of its own: a top-level command, or the text a
-// `sh -c`, `eval`, here-string, pipe or substitution executes, masked fresh.
+// `sh -c`, `eval`, here-string, pipe, heredoc or substitution executes.
 func (st *forgeState) script(cmd string, depth int) bool {
 	if depth > maxForgeTokenDepth {
-		// Nesting too deep to lex is not evidence of absence: fail closed.
-		return forgeWordsPresent(cmd)
+		// Nesting too deep to lex is not evidence of absence, and the text
+		// cannot be judged by its spelling either: refuse.
+		return true
 	}
 	if !st.spend(len(cmd) + 1) {
-		return false
+		return true
 	}
-	l := forgeLexer{st: st, m: forgeMask(cmd), raw: cmd, depth: depth}
+	l := forgeLexer{st: st, raw: cmd, depth: depth}
 	return l.scan()
 }
 
-// forgeMask is maskLiterals with the forge-local heredoc rule: a body stays
-// visible when ANY word of its introducing line names a shell (piped into
-// one, behind a wrapper, after an assignment), not only the first.
-func forgeMask(cmd string) string {
-	m := maskQuotedKeepShellArg(maskHeredocBodiesFed(cmd, forgeShellFed))
-	if len(m) != len(cmd) {
-		return cmd
-	}
-	return m
-}
-
-func forgeShellFed(before, after string) bool {
-	for _, f := range strings.FieldsFunc(before+" "+after, func(r rune) bool {
-		return strings.ContainsRune(" \t;&|()", r)
+// forgeLineFeedsShell reports whether a heredoc's introducing command line
+// names a shell in any word (piped into one, behind a wrapper, after an
+// assignment), not only the first.
+func forgeLineFeedsShell(line string) bool {
+	for _, f := range strings.FieldsFunc(line, func(r rune) bool {
+		return strings.ContainsRune(" \t\n;&|()", r)
 	}) {
 		if forgeShell(forgeCommandName(strings.Trim(f, `"'`))) {
 			return true
@@ -175,9 +173,15 @@ type forgeWord struct {
 	dyn bool // a part of the word is computed at run time
 }
 
+// forgeHeredoc is a heredoc whose body starts after the current line.
+type forgeHeredoc struct {
+	word   string
+	quoted bool // the delimiter was quoted: the body is not expanded
+}
+
 type forgeLexer struct {
 	st     *forgeState
-	m, raw string
+	raw    string
 	depth  int
 	words  []forgeWord
 	cur    strings.Builder
@@ -186,6 +190,10 @@ type forgeLexer struct {
 	brace  bool // the current word has an unquoted `{`
 	glob   bool // the current word has an unquoted `[`
 	stdin  []forgeWord
+	// Heredocs read on the current line, and where that line began.
+	pending   []forgeHeredoc
+	lineStart int
+	arith     int // open `((` arithmetic commands: `<<` there is a shift
 }
 
 func (l *forgeLexer) flush() {
@@ -223,90 +231,77 @@ func isParamStart(b byte) bool {
 }
 
 func (l *forgeLexer) scan() bool {
-	raw := l.raw
-	for i := 0; i < len(l.m); i++ {
-		m := l.m
-		c := m[i]
+	s := l.raw
+	for i := 0; i < len(s); i++ {
+		c := s[i]
 		switch {
 		case c == '\\':
-			if i+1 < len(m) {
+			if i+1 < len(s) {
 				i++
-				if m[i] != '\n' { // a line continuation joins the two words
-					l.word(raw[i : i+1])
+				if s[i] != '\n' { // a line continuation joins the two words
+					l.word(s[i : i+1])
 				}
 			}
-		case c == '$' && i+1 < len(m) && m[i+1] == '\'':
+		case c == '$' && i+1 < len(s) && s[i+1] == '\'':
 			// ANSI-C quoting: the shell decodes the escapes, and `\'` does
-			// not end the span (the shared masking, which ends it there, is
-			// redone from the real end).
-			j := ansiCEnd(raw, i+2)
-			body := raw[i+2 : j]
+			// not end the span.
+			j := ansiCEnd(s, i+2)
+			body := s[i+2 : j]
 			l.word(decodeANSIC(body))
-			if j >= len(raw) {
-				if l.st.script(body, l.depth+1) {
-					return true
-				}
-				i = len(m)
-				continue
-			}
-			if strings.Contains(body, `\'`) {
-				if rest := forgeMask(raw[j+1:]); len(rest) == len(raw)-j-1 {
-					l.m = m[:j+1] + rest
-				}
+			if j >= len(s) && l.st.script(body, l.depth+1) {
+				return true
 			}
 			i = j
-		case c == '$' && i+1 < len(m) && m[i+1] == '"':
+		case c == '$' && i+1 < len(s) && s[i+1] == '"':
 			// Locale quoting: the `$` is dropped and the span is double-quoted.
 		case c == '\'':
-			j := strings.IndexByte(m[i+1:], '\'')
+			j := strings.IndexByte(s[i+1:], '\'')
 			if j < 0 {
-				if l.st.script(raw[i+1:], l.depth+1) {
+				if l.st.script(s[i+1:], l.depth+1) {
 					return true
 				}
-				l.word(raw[i+1:])
-				i = len(m)
+				l.word(s[i+1:])
+				i = len(s)
 				continue
 			}
-			l.word(raw[i+1 : i+1+j])
+			l.word(s[i+1 : i+1+j])
 			i += 1 + j
 		case c == '"':
 			j, hit := l.double(i + 1)
 			if hit {
 				return true
 			}
-			if j >= len(m) {
-				if l.st.script(raw[i+1:], l.depth+1) {
-					return true
-				}
+			if j >= len(s) && l.st.script(s[i+1:], l.depth+1) {
+				return true
 			}
-			l.word(unescapeDouble(raw[i+1 : min(j, len(raw))]))
+			l.word(unescapeDouble(s[i+1 : min(j, len(s))]))
 			i = j
-		case c == '$' && i+1 < len(m) && m[i+1] == '(':
-			k := matchParen(m, i+2)
-			if l.st.script(raw[i+2:k], l.depth+1) {
+		case c == '$' && i+1 < len(s) && s[i+1] == '(':
+			k := matchParen(s, i+2)
+			if l.st.script(s[i+2:k], l.depth+1) {
 				return true
 			}
 			l.word("$()")
 			l.dyn = true
 			i = k
 		case c == '`':
-			k := nextBacktick(m, i+1)
-			if l.st.script(raw[i+1:k], l.depth+1) {
+			k := nextBacktick(s, i+1)
+			if l.st.script(s[i+1:k], l.depth+1) {
 				return true
 			}
 			l.word("``")
 			l.dyn = true
 			i = k
-		case c == '$' && i+1 < len(m) && isParamStart(m[i+1]):
+		case c == '$' && i+1 < len(s) && isParamStart(s[i+1]):
 			l.word("$")
 			l.dyn = true
 		case c == '#' && !l.inWord:
-			for i+1 < len(m) && m[i+1] != '\n' {
+			for i+1 < len(s) && s[i+1] != '\n' {
 				i++
 			}
 		case c == ' ' || c == '\t' || c == '\r':
 			l.flush()
-		case c == '<' || c == '>' || (c == '&' && i+1 < len(m) && m[i+1] == '>'):
+		case c == '<' || c == '>' || (c == '&' && i+1 < len(s) && s[i+1] == '>'):
 			// A redirection operator is a word of its own (`token>/dev/null`
 			// is the argument `token`), and its target is skipped later. A
 			// file-descriptor number written against it (`2>`) belongs to it.
@@ -318,27 +313,59 @@ func (l *forgeLexer) scan() bool {
 			}
 			l.flush()
 			j := i
-			for j < len(m) && (m[j] == '<' || m[j] == '>' || m[j] == '&') {
+			for j < len(s) && (s[j] == '<' || s[j] == '>' || s[j] == '&') {
 				j++
 			}
-			l.words = append(l.words, forgeWord{s: fd + m[i:j]})
+			op := s[i:j]
+			l.words = append(l.words, forgeWord{s: fd + op})
 			i = j - 1
+			if op == "<<" && l.arith == 0 {
+				// A heredoc: its delimiter is the operator's target word, and
+				// its body starts after this command line.
+				if j < len(s) && s[j] == '-' {
+					j++
+				}
+				if w, quoted, end := heredocWord(s, j); w != "" || quoted {
+					l.words = append(l.words, forgeWord{s: w})
+					l.pending = append(l.pending, forgeHeredoc{w, quoted})
+					i = end - 1
+				}
+			}
 		case c == '|':
 			pipe := true
-			if i+1 < len(m) && m[i+1] == '|' {
+			if i+1 < len(s) && s[i+1] == '|' {
 				pipe = false
 				i++
-			} else if i+1 < len(m) && m[i+1] == '&' {
+			} else if i+1 < len(s) && s[i+1] == '&' {
 				i++
 			}
 			if l.end(pipe) {
 				return true
 			}
-		case c == '\n' || c == ';' || c == '&' || c == '(' || c == ')':
+		case c == '\n':
 			if l.end(false) {
 				return true
 			}
-		case c == '{' && !l.inWord && (i+1 >= len(m) || strings.IndexByte(" \t\r\n", m[i+1]) >= 0),
+			if len(l.pending) > 0 {
+				next, hit := l.heredocs(s[l.lineStart:i], i+1)
+				if hit {
+					return true
+				}
+				i = next - 1
+			}
+			l.lineStart = i + 1
+		case c == ';' || c == '&' || c == '(' || c == ')':
+			if c == '(' && i+1 < len(s) && s[i+1] == '(' {
+				l.arith++
+				i++
+			} else if c == ')' && l.arith > 0 && i+1 < len(s) && s[i+1] == ')' {
+				l.arith--
+				i++
+			}
+			if l.end(false) {
+				return true
+			}
+		case c == '{' && !l.inWord && (i+1 >= len(s) || strings.IndexByte(" \t\r\n", s[i+1]) >= 0),
 			c == '}' && !l.inWord:
 			// A group brace; `{a,b}` and `x{a,b}` are brace expansion.
 			if l.end(false) {
@@ -357,13 +384,147 @@ func (l *forgeLexer) scan() bool {
 			l.word("]")
 			l.dyn = l.dyn || l.glob
 		case c == '*' || c == '?':
-			l.word(raw[i : i+1])
+			l.word(s[i : i+1])
 			l.dyn = true
 		default:
-			l.word(raw[i : i+1])
+			l.word(s[i : i+1])
 		}
 	}
 	return l.end(false)
+}
+
+// heredocs reads, in order, the bodies of the heredocs pending on the command
+// line that just ended, the first starting at start. A body fed to a shell is
+// lexed as a script; under an unquoted delimiter its substitutions are; under
+// a quoted one it is data. A body whose delimiter line never comes is lexed
+// as commands with all that follows it (fail closed: a delimiter read
+// differently from the shell cannot hide them). It returns the index after
+// the last body.
+func (l *forgeLexer) heredocs(line string, start int) (int, bool) {
+	s := l.raw
+	if !l.st.spend(len(line) + 1) {
+		return len(s), true
+	}
+	fed := forgeLineFeedsShell(line)
+	pend := l.pending
+	l.pending = nil
+	i := start
+	for _, h := range pend {
+		end, next := heredocEnd(s, i, h.word)
+		if end < 0 {
+			return len(s), l.st.script(s[i:], l.depth+1)
+		}
+		body := s[i:end]
+		if fed && l.st.script(body, l.depth+1) || !fed && !h.quoted && l.expansions(body) {
+			return len(s), true
+		}
+		i = next
+	}
+	return i, false
+}
+
+// heredocEnd finds the delimiter line for a body starting at from: it returns
+// the body's end and the index after that line, or -1 when no line matches.
+// Surrounding blanks are ignored, which can only end a body sooner than the
+// shell does.
+func heredocEnd(s string, from int, word string) (int, int) {
+	for i := from; i < len(s); {
+		line, next := s[i:], len(s)
+		if le := strings.IndexByte(s[i:], '\n'); le >= 0 {
+			line, next = s[i:i+le], i+le+1
+		}
+		if strings.TrimSpace(line) == word {
+			return i, next
+		}
+		i = next
+	}
+	return -1, len(s)
+}
+
+// heredocWord reads a heredoc delimiter from j (leading blanks skipped) with
+// the shell's quote removal (bash decodes `$'…'` there too), reporting
+// whether any part was quoted and the index after the word.
+func heredocWord(s string, j int) (string, bool, int) {
+	for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+		j++
+	}
+	var b strings.Builder
+	quoted := false
+	for j < len(s) && strings.IndexByte(" \t\n;&|()<>", s[j]) < 0 {
+		switch c := s[j]; {
+		case c == '\\':
+			quoted = true
+			if j+1 < len(s) && s[j+1] != '\n' {
+				b.WriteByte(s[j+1])
+			}
+			j += 2
+		case c == '$' && j+1 < len(s) && s[j+1] == '\'':
+			quoted = true
+			k := ansiCEnd(s, j+2)
+			b.WriteString(decodeANSIC(s[j+2 : k]))
+			j = k + 1
+		case c == '$' && j+1 < len(s) && s[j+1] == '"':
+			j++
+		case c == '\'':
+			quoted = true
+			k := strings.IndexByte(s[j+1:], '\'')
+			if k < 0 {
+				b.WriteString(s[j+1:])
+				j = len(s)
+				continue
+			}
+			b.WriteString(s[j+1 : j+1+k])
+			j += k + 2
+		case c == '"':
+			quoted = true
+			k := j + 1
+			for k < len(s) && s[k] != '"' {
+				if s[k] == '\\' {
+					k++
+				}
+				k++
+			}
+			b.WriteString(unescapeDouble(s[j+1 : min(k, len(s))]))
+			j = k + 1
+		case c == '$' && j+1 < len(s) && s[j+1] == '(':
+			k := matchParen(s, j+2)
+			b.WriteString(s[j:min(k+1, len(s))])
+			j = k + 1
+		case c == '`':
+			k := nextBacktick(s, j+1)
+			b.WriteString(s[j:min(k+1, len(s))])
+			j = k + 1
+		default:
+			b.WriteByte(c)
+			j++
+		}
+	}
+	return b.String(), quoted, min(j, len(s))
+}
+
+// expansions lexes, as scripts, the substitutions in the body of a heredoc
+// under an unquoted delimiter: the shell runs them before the command reads
+// the body.
+func (l *forgeLexer) expansions(s string) bool {
+	for j := 0; j < len(s); j++ {
+		switch {
+		case s[j] == '\\':
+			j++
+		case s[j] == '$' && j+1 < len(s) && s[j+1] == '(':
+			k := matchParen(s, j+2)
+			if l.st.script(s[j+2:k], l.depth+1) {
+				return true
+			}
+			j = k
+		case s[j] == '`':
+			k := nextBacktick(s, j+1)
+			if l.st.script(s[j+1:k], l.depth+1) {
+				return true
+			}
+			j = k
+		}
+	}
+	return false
 }
 
 // double scans a double-quoted span opening before `from`, lexing every
@@ -371,32 +532,32 @@ func (l *forgeLexer) scan() bool {
 // expansion. It returns the closing quote's index (len(m) when unterminated)
 // and whether a substitution ran the token read.
 func (l *forgeLexer) double(from int) (int, bool) {
-	m, raw := l.m, l.raw
-	for j := from; j < len(m); j++ {
+	s := l.raw
+	for j := from; j < len(s); j++ {
 		switch {
-		case m[j] == '\\':
+		case s[j] == '\\':
 			j++
-		case m[j] == '"':
+		case s[j] == '"':
 			return j, false
-		case m[j] == '$' && j+1 < len(m) && m[j+1] == '(':
+		case s[j] == '$' && j+1 < len(s) && s[j+1] == '(':
 			l.dyn = true
-			k := matchParen(m, j+2)
-			if l.st.script(raw[j+2:k], l.depth+1) {
+			k := matchParen(s, j+2)
+			if l.st.script(s[j+2:k], l.depth+1) {
 				return j, true
 			}
 			j = k
-		case m[j] == '`':
+		case s[j] == '`':
 			l.dyn = true
-			k := nextBacktick(m, j+1)
-			if l.st.script(raw[j+1:k], l.depth+1) {
+			k := nextBacktick(s, j+1)
+			if l.st.script(s[j+1:k], l.depth+1) {
 				return j, true
 			}
 			j = k
-		case raw[j] == '$' && j+1 < len(raw) && isParamStart(raw[j+1]) && !oddBackslashesBefore(raw, j):
-			l.dyn = true // the masking blanks a quoted `$name`; the raw text has it
+		case s[j] == '$' && j+1 < len(s) && isParamStart(s[j+1]):
+			l.dyn = true
 		}
 	}
-	return len(m), false
+	return len(s), false
 }
 
 // ansiCEnd returns the index of the quote closing a `$'…'` body that starts
@@ -490,7 +651,8 @@ func digitsAt(s string, i, max, base int) (int, int) {
 }
 
 // matchParen returns the index of the `)` closing a `$(` whose body starts at
-// from, depth-counted and quote-aware; len(s) when unterminated.
+// from, depth-counted, quote-aware and comment-aware (a quote or paren in a
+// comment is prose); len(s) when unterminated.
 func matchParen(s string, from int) int {
 	depth := 1
 	var quote byte
@@ -503,6 +665,10 @@ func matchParen(s string, from int) int {
 			}
 		case c == '\\':
 			j++
+		case c == '#' && (j == from || strings.IndexByte(" \t\n;&|(", s[j-1]) >= 0):
+			for j+1 < len(s) && s[j+1] != '\n' {
+				j++
+			}
 		case c == '\'' || c == '"':
 			quote = c
 		case c == '(':
@@ -588,7 +754,7 @@ func (c *forgeCommand) lex(st *forgeState, s string, depth int) bool {
 		c.seen = map[string]bool{}
 	}
 	if c.seen[s] {
-		return false
+		return !st.spend(len(s) + 1) // a re-read is charged; it is not lexed
 	}
 	c.seen[s] = true
 	return st.script(s, depth+1)
@@ -620,7 +786,7 @@ lead:
 		return true
 	}
 	if name := forgeCommandName(w[i].s); w[i].dyn || commandWrappers[name] || forgeRunners[name] {
-		for j := i + 1; j < len(w) && !st.exhausted; j++ {
+		for j := i + 1; j < len(w); j++ {
 			if st.judgeAt(c, j, depth) {
 				return true
 			}
@@ -631,8 +797,8 @@ lead:
 
 // judgeAt judges c's words from index i as one command.
 func (st *forgeState) judgeAt(c *forgeCommand, i, depth int) bool {
-	if !st.spend(1) {
-		return false
+	if !st.spend(1 + len(c.words[i].s)) {
+		return true // past the budget: undecided, refused
 	}
 	st.judged++
 	name, args := forgeCommandName(c.words[i].s), c.words[i+1:]
@@ -652,13 +818,17 @@ func (st *forgeState) judgeAt(c *forgeCommand, i, depth int) bool {
 		// here-string anywhere in the command, and piped-in text. All are
 		// lexed even when a -c script is present (fail closed: the piped text
 		// may be read by that script).
-		for _, s := range st.shellScripts(args) {
+		scripts, ok := st.shellScripts(args)
+		if !ok {
+			return true
+		}
+		for _, s := range scripts {
 			if c.lex(st, s, depth) {
 				return true
 			}
 		}
-		for k := 0; k+1 < len(c.words) && st.spend(1); k++ {
-			if strings.HasSuffix(c.words[k].s, "<<<") && c.lex(st, c.words[k+1].s, depth) {
+		for k := 0; k+1 < len(c.words); k++ {
+			if !st.spend(1) || strings.HasSuffix(c.words[k].s, "<<<") && c.lex(st, c.words[k+1].s, depth) {
 				return true
 			}
 		}
@@ -666,7 +836,10 @@ func (st *forgeState) judgeAt(c *forgeCommand, i, depth int) bool {
 	case name == "env":
 		// env's own options end at its first other word (the command, or a
 		// NAME=value); -S / --split-string hands a script to the command line.
-		for k := 0; k < len(args) && st.spend(1); k++ {
+		for k := 0; k < len(args); k++ {
+			if !st.spend(1) {
+				return true
+			}
 			a := args[k].s
 			var s string
 			switch {
@@ -694,7 +867,7 @@ func (st *forgeState) judgeAt(c *forgeCommand, i, depth int) bool {
 			end = c.argsFrom
 		}
 		for k := i + 1; k < end; k++ {
-			if c.lex(st, c.words[k].s, depth) {
+			if !st.spend(1) || c.lex(st, c.words[k].s, depth) {
 				return true
 			}
 		}
@@ -741,13 +914,17 @@ func joinForgeWords(w []forgeWord) string {
 // or in a short-flag cluster: -c, -lc, -ec; -Command), --command or
 // --command=…: for each such flag, the next word that is not an option. Every
 // candidate flag is tried, so an earlier option spelled with a `c` cannot hide
-// the real one. One backward pass keeps it linear.
-func (st *forgeState) shellScripts(args []forgeWord) []string {
+// the real one. One backward pass, each word charged to the budget; false
+// when the budget ran out (the caller refuses).
+func (st *forgeState) shellScripts(args []forgeWord) ([]string, bool) {
 	var out []string
 	next := "" // the nearest later word that is not an option
 	have := false
-	for k := len(args) - 1; k >= 0 && st.spend(1); k-- {
+	for k := len(args) - 1; k >= 0; k-- {
 		a := args[k].s
+		if !st.spend(1 + len(a)) {
+			return nil, false
+		}
 		la := strings.ToLower(a)
 		switch {
 		case strings.HasPrefix(la, "--command="):
@@ -761,7 +938,7 @@ func (st *forgeState) shellScripts(args []forgeWord) []string {
 			next, have = a, true
 		}
 	}
-	return out
+	return out, true
 }
 
 // isRedirection reports whether a lexed word is a redirection operator (the
@@ -797,10 +974,10 @@ func (st *forgeState) ghTokenRead(args []forgeWord, nameDyn bool) bool {
 	var pos []forgeWord
 	show := false
 	for k := 0; k < len(args); k++ {
-		if !st.spend(1) {
-			return false
-		}
 		a := args[k]
+		if !st.spend(1 + len(a.s)) {
+			return true // past the budget: undecided, refused
+		}
 		switch {
 		case isRedirection(a.s):
 			k++ // a redirection operator and its target are not arguments

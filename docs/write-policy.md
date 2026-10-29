@@ -100,10 +100,16 @@ sanctioned path and says a failed or empty mint is a stop to report.
   is allowed. The executed forms judged are:
   - a command word after assignments, redirections and reserved words;
   - every word after a command wrapper or runner, or after a command word computed
-    at run time, each tried once, so the scan stays linear;
+    at run time, each tried once. The wrappers and runners are a closed set, named
+    in code: the shared `commandWrappers` (`env`, `nohup`, `time`, `command`,
+    `exec`, `sudo`, `nice`, `stdbuf`, `timeout`, `xargs`, `caffeinate`, `arch`,
+    `setsid`, `ionice`) and the scan's own `forgeRunners` (`doas`, `run0`,
+    `busybox`, `unbuffer`, `script`, `flock`, `watch`, `su`, `runuser`,
+    `chronic`);
   - the scripts of a shell's `-c`, `eval`, `env -S`, and runners that hand their
     argument to a shell;
-  - here-strings fed to a shell, and text piped into a shell;
+  - here-strings fed to a shell, and the arguments of the pipe stage immediately
+    before a shell (`echo … | sh`);
   - substitutions, quoted or not;
   - heredoc bodies whose introducing line names a shell anywhere (piped, wrapped,
     or after an assignment).
@@ -118,18 +124,33 @@ sanctioned path and says a failed or empty mint is a stop to report.
   match. An unquoted argument such as `echo gh auth token` is not a gh invocation.
 - **Fails closed (desk-decided).** Where the lexer cannot finish, it refuses rather
   than allows. This is a departure from the policy's allow-and-log default, and it
-  is recorded on the PR that added it. The cases are an unterminated quote (lexed as
-  a command), nesting deeper than eight levels, and a scan that exhausts its work
-  budget. The budget is linear in the command's length, so the hook always decides.
-  For depth and budget, the text is judged by whether it names gh, auth and token
-  at all. Text piped or here-string-fed into a shell is lexed even when the
-  shell also has `-c`, so a shell that ignores its stdin can still be refused.
+  is recorded on the PR that added it. An unterminated quote, substitution or
+  heredoc is lexed as commands. Nesting deeper than eight levels, and a scan that
+  exhausts its work budget, are refused outright, whatever the text spells: an
+  undecided scan is never judged by its raw spelling, which a decoded or split
+  spelling defeats. That over-reaches only on pathological input.
+- **Work bound.** The scan reads the raw command, with no masking pass of its own,
+  and charges every step to a budget of 32 units per byte plus a fixed base: each
+  script lexed (its length), each candidate command position and gh argument
+  judged (its length), and each repeat of an already-lexed script. Every heredoc
+  operator, quote and substitution is read once. So the scan's own work is linear
+  in the command's length, and past the budget it stops and refuses. This bound
+  covers the forge scan only. `Classify`, which runs before it, still applies the
+  shared quoted-span masking, whose cost grows faster than linear on long runs of
+  quoted spans; that shared cost predates this check and is tracked in #4854.
+  Text piped or here-string-fed into a shell is lexed even when the shell also has
+  `-c`, so a shell that ignores its stdin can still be refused.
 - **Not covered.** The following are not judged and stay allowed:
   - process substitution feeding a shell, or a script sourced with `source` / `.`;
   - shell input read from a file or device whose text is not on the command line;
   - a read with more than one component computed at run time, and a show-token
     flag computed at run time;
   - arguments supplied at run time by another command (for example `xargs`);
+  - command runners outside the closed sets above (for example `find -exec`, or a
+    tracing, scheduling or namespace tool), whose later words are not judged as a
+    command;
+  - text that reaches a shell through a pass-through stage (`echo … | cat | sh`,
+    `tee`): only the stage immediately before the shell is read;
   - other paths that turn a string into a command: tool aliases (including git
     aliases), build-tool evaluation, interpreter one-liners, OS scripting bridges,
     and encoded shell commands;
@@ -148,8 +169,8 @@ sanctioned path and says a failed or empty mint is a stop to report.
 | 2 | Core classification, including the depth fail-closed and ANSI-C decoding | `cd deskcore && go test ./writepolicy/ -run 'TestAmbientForgeTokenClassify\|TestForgeANSICDecode' -count=1` | PASS |
 | 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/ambient-token-unmatched' -count=1` | PASS (mutant caught) |
 | 4 | Operator `!` input is untouched (paired control, manual; re-run after any harness change) | One session, hook armed, `DESK_LOOP` or `DESK_SESSION` set in the hook's environment. (a) The agent runs a control command through its Bash tool, e.g. `gh auth token >/dev/null`. (b) The operator types the identical command with the `!` prefix in the same session. | (a) refused with `ambient forge credential read`; (b) runs with no refusal. A refusal in (b) means the harness now routes operator input through PreToolUse: stop and re-decide the gate. |
-| 5 | Wrapper chains are judged in linear work, and the hook decides a long chain within its deadline | `cd deskcore && go test ./writepolicy/ -run TestForgeWrapperChainLinear -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run TestAmbientTokenWrapperChain -count=1` | PASS |
-| 6 | Budget exhaustion fails closed on a command naming the read, and allows one that does not | `cd deskcore && go test ./writepolicy/ -run TestForgeBudgetFailsClosed -count=1` | PASS |
+| 5 | The scan's own work is bounded: wrapper chains, repeated ANSI-C spans, many heredoc operators on one line and long runs of quoted spans each decide within a deadline and within the per-byte budget; the hook decides within its deadline | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWrapperChainLinear\|TestForgeScanWorkBounded' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenWrapperChain\|TestAmbientTokenScanDeadline' -count=1` | PASS |
+| 6 | Budget exhaustion and excess nesting are refused outright, whatever the text spells, including decoded and split spellings and a command naming no read | `cd deskcore && go test ./writepolicy/ -run 'TestForgeBudgetFailsClosed\|TestForgeUndecidedRefused' -count=1` | PASS |
 
 ## Consumers and migration
 
