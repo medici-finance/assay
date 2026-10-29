@@ -1,0 +1,5 @@
+# A baked CMD is runtime configuration the deployment profile owns.
+want: baked-cmd
+file: Dockerfile
+replace: "ENTRYPOINT [\"/deskd\"]"
+with: "ENTRYPOINT [\"/deskd\"]\nCMD [\"-once\"]"

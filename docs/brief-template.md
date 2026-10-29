@@ -95,6 +95,7 @@ sources: []                         # provenance: scoping doc / finding IDs / in
 
 ## Context
 files: <exact paths the implementer touches — no repo exploration should be needed>
+inputs: <OPTIONAL — literal repo-relative files/dirs (dir ends in /) the Verify Commands read; narrows a v2 witness's scope. Omit for whole-tree. No globs.>
 facts: <the 3-5 project facts required to execute — key: value, no narrative>
 design-fit:                         # REQUIRED on every NEW brief (spec/brief-v1.md §4.1); legacy briefs are not back-filled.
   owner: statusgen/evaluation/eligibility.go   # example — the ONE module that owns the meaning this brief touches, or n/a
