@@ -96,6 +96,8 @@ func cmdCheck(cell, cfgArg string) {
 		if _, err := c.cellRoleContext(); err != nil {
 			k.chk(false, "%s", err)
 		}
+		// The same for CELL_DB_DSN: a container cell cannot reach the cell database yet.
+		c.checkCellDB(k)
 		c.containerRun("check")
 		if !k.ok {
 			exitWith(1)
@@ -235,6 +237,9 @@ func cmdCheck(cell, cfgArg string) {
 	} else {
 		k.na("provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)")
 	}
+
+	// The cell database pointer (CELL_DB_DSN / CELL_DB_PASSFILE). No rows unless it is set.
+	c.checkCellDB(k)
 
 	harnessCheck := *c
 	if policy != nil {

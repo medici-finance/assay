@@ -127,6 +127,47 @@ A refactor weakens a guard while tests only check allow: deny/order mutations in
 
 No implementation or independent verification claimed. Record actual commands, named
 results, fixture/source/profile versions, environment and independent runner at delivery.
+### Independent merged-main verification — 2026-10-28
+
+Independent non-implementer, model gpt-6.1-sol, admitted tier strong. Observed source 30ca40aae3e9154c001af244fd7e73b4832eaff5. Actual extraction delivery #3772 and CI integration #3793 were read from the forge; later lifecycle reconciliation provides no code-delivery credit. The actual extraction first parent is 4395628b9ff5575e2c5d7d62f8ded2902d1c9ee7. All original Verify definitions are preserved and match the pre-delivery table.
+
+Two independent related-row clusters ran the exact original commands in the release v1.0.64 Go verify-runner, with network none. The runner image reference was read from the checksum-verified release asset verify-runner-image.txt; its checksum a1a8ba23ebb010ce40e796dba906f5050aea9d1f846a7e4b11899af6c39d170c matches that release's checksums.txt. Exact image digest is recorded below. Native admission preceded the rows and each close re-admitted unchanged source. A disposable full-history clone matched the admitted source bytes and the native tree digest; native fail-first created its own baseline worktree without editing the admitted home.
+
+Original rows 1, 2 and 5:
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd deskcore && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWritePolicyCases$' ./writepolicy > "$out" && grep -q '^--- PASS: TestWritePolicyCases ' "$out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ 30ca40aae3e9 (on-behalf-of human:ian) (forge-identity) | base=4395628b9ff5 red rc=1 · head=30ca40aae3e9 |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWriteHookParity$' ./cmd/writeguard > "$out" && grep -q '^--- PASS: TestWriteHookParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ 30ca40aae3e9 (on-behalf-of human:ian) (forge-identity) | base=4395628b9ff5 red rc=1 · head=30ca40aae3e9 |
+| 5 | `cd tools/desk && GOWORK=off go test -count=1 ./cmd/writeguard/...` | pass exit=0 sandbox=container-netns | sha256:9ea29137ee86 | 2026-10-28 | assay-verifier-app[bot] @ 30ca40aae3e9 (on-behalf-of human:ian) (forge-identity) | base=4395628b9ff5 green rc=0 · head=30ca40aae3e9 |
+Tree-Digest: sha256:d1168308234518ea9fc731fb1837b19cbf90779824125f916dc7b982bbbee28e
+Container-Image: sha256:a00e65af51fd8d6d7ddcfd71627486f08d70c7a9bd6bd136f944d1ff526957a0
+Verification-Attestation: medici-finance/assay#4787 run=e4318ab7926b69ae986b4b65e270df95aa4bf16ad7d6881af87ee8250a54315f source=30ca40aae3e9154c001af244fd7e73b4832eaff5 brief=docs/streams/desktools-v2/brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md model=gpt-6.1-sol tier=strong
+Admission-Bracket: run=e4318ab7926b69ae986b4b65e270df95aa4bf16ad7d6881af87ee8250a54315f source=30ca40aae3e9154c001af244fd7e73b4832eaff5 tree=sha256:d1168308234518ea9fc731fb1837b19cbf90779824125f916dc7b982bbbee28e witness=sha256:97fa997a529122aee585d7b5653d62d18291a0e14a0664eaeb37a8e39a1ad5e2 opened=2026-10-28T21:07:10Z closed=2026-10-28T21:14:03Z before=receipt after=check-verifier
+
+Original rows 3 and 4:
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 3 | `(cd deskcore && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWritePolicyBoundary$' ./archtest > "$out" && grep -q '^--- PASS: TestWritePolicyBoundary ' "$out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ 30ca40aae3e9 (on-behalf-of human:ian) (forge-identity) | base=4395628b9ff5 red rc=1 · head=30ca40aae3e9 |
+| 4 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWritePolicyConsumers$' ./cmd/writeguard > "$out" && grep -q '^--- PASS: TestWritePolicyConsumers ' "$out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-28 | assay-verifier-app[bot] @ 30ca40aae3e9 (on-behalf-of human:ian) (forge-identity) | base=4395628b9ff5 red rc=1 · head=30ca40aae3e9 |
+Tree-Digest: sha256:d1168308234518ea9fc731fb1837b19cbf90779824125f916dc7b982bbbee28e
+Container-Image: sha256:a00e65af51fd8d6d7ddcfd71627486f08d70c7a9bd6bd136f944d1ff526957a0
+Verification-Attestation: medici-finance/assay#4787 run=e4318ab7926b69ae986b4b65e270df95aa4bf16ad7d6881af87ee8250a54315f source=30ca40aae3e9154c001af244fd7e73b4832eaff5 brief=docs/streams/desktools-v2/brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md model=gpt-6.1-sol tier=strong
+Admission-Bracket: run=e4318ab7926b69ae986b4b65e270df95aa4bf16ad7d6881af87ee8250a54315f source=30ca40aae3e9154c001af244fd7e73b4832eaff5 tree=sha256:d1168308234518ea9fc731fb1837b19cbf90779824125f916dc7b982bbbee28e witness=sha256:5b36b8880cc3ddba994470b4f902b918eeeb87699b132aea0e8bddfc2bfc7270 opened=2026-10-28T20:57:46Z closed=2026-10-28T21:01:02Z before=receipt after=check-verifier
+
+Accounting: all five exact head commands passed. Original rows 1, 2, 3 and 4 were red at the actual pre-extraction base and passed at head. Row 5 was green at base and head; native verifyrun marked it non-discriminating and exited 1. Four acceptance obligations passed; one failed the risk-bearing fail-first requirement. This is an acceptance-definition failure, not an observed policy implementation failure.
+
+Tracked repair: medici-finance/assay#4794. Preserve the inherited regression floor and correct the discriminating obligation through the reviewed acceptance-definition path, then obtain fresh independent admission and verification. The verifier changed no Verify or Context definitions. Final gate:human acceptance remains separate.
+
+Uncredited preparation observations are retained: the generic desk-tools image lacked Go; the checksum-qualified Go runner corrected that image selection. A close call with a relative brief from the wrong working directory was refused, then the identical native close succeeded after correcting only invocation paths with the original receipt and witness. A child-added temporary filesystem mounted noexec prevented Go test binaries in an earlier attempt; the corrected run restored the documented default executable temporary directory without changing adopted controls. These setup attempts establish no code failure and no acceptance credit. The successful current closed witnesses above supersede their setup results.
+
+Literal census covered added lines across the actual delivery diff, including relocated legacy literals, fixtures, manifests and docs; source coordinates were retained against the immutable delivery. Highest authority bindings: Managed Profile = managed/v1 at deskcore/writepolicy/policy.go:20, LegacyHook Profile = legacy-hook/v1 at line 17, AgentClaim = agent at line 116, and the TTL nonpositive bound 0 at line 323. The approved bounded extraction requires distinct legacy/managed contracts, preserves the legacy fallback only in its named profile, and refuses agent-minted exemption authority; a nonpositive TTL cannot grant a positive-duration exemption. Classifier tokens and fixture/version numbers rank below these authority bindings and are reversible source/configuration values.
+
+RISK-VALUE: DERIVED — Managed Profile = managed/v1 at deskcore/writepolicy/policy.go:20 and LegacyHook Profile = legacy-hook/v1 at deskcore/writepolicy/policy.go:17 — the approved contract requires separate named profiles so managed admission cannot inherit legacy no-decision semantics; these identifiers bind that versioned separation and grant no activation authority.
+RISK-VALUE: DERIVED — AgentClaim = agent at deskcore/writepolicy/policy.go:116 and TTL bound = 0 at deskcore/writepolicy/policy.go:323 — the accepted original contract rejects agent-supplied exemption authority and requires a positive expiry; only the explicit trusted observation sources can satisfy the exemption predicate.
+
+**VERIFY: FAIL** — original row 5 is non-discriminating at the actual pre-extraction base. Status remains implemented.
 
 ## Review
 

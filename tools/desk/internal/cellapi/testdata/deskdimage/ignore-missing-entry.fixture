@@ -1,0 +1,5 @@
+# Local build output is no longer excluded from the context.
+want: ignore-missing-entry
+file: ignore
+replace: "dist\n*.db\n"
+with: "*.db\n"

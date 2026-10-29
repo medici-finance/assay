@@ -189,9 +189,25 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 // job and read-coverage parser rather than adding a second workflow checker.
 // regression: desktools-v2/64
 func TestPerfRunnerCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "loopadmin/runner/request_test.go")
+}
+
+// TestDeskdImageContractCI holds the same public-layout guarantee for the
+// deskd build contract: its registry row's workflow reaches the
+// tools/desk shard on pull_request and push, and no path filter hides the
+// Makefile or images/deskd/ edits it reads.
+func TestDeskdImageContractCI(t *testing.T) {
+	ciAssertPublicLayoutRow(t, "tools/desk/internal/cellapi/deskdimage_test.go")
+}
+
+// ciAssertPublicLayoutRow runs one registry row's event reachability and read
+// coverage against the workflow in the public source layout, without the
+// house-only tools.yml fixture the full sweep above skips on.
+func ciAssertPublicLayoutRow(t *testing.T, test string) {
+	t.Helper()
 	const root = "../../../.."
 	for _, e := range ciCrossModuleRegistry() {
-		if e.test != "loopadmin/runner/request_test.go" {
+		if e.test != test {
 			continue
 		}
 		raw, err := os.ReadFile(filepath.Join(root, e.workflow))
@@ -209,7 +225,7 @@ func TestPerfRunnerCI(t *testing.T) {
 			// The legacy path helper refuses that shape; recognize it explicitly
 			// without relaxing its fail-closed behavior for other registry rows.
 			if !regexp.MustCompile(`(?m)^  ` + event + `:[ \t]*$`).MatchString(content) {
-				t.Fatal("runner workflow event is absent or has an unqualified shape")
+				t.Fatal(test + ": workflow event " + event + " is absent or has an unqualified shape")
 			}
 			if _, filtered := ciOnEventKey(t, content, e.workflow, event, "paths"); filtered {
 				for _, fault := range ciReadCoverage(t, root, workflowEventPaths(t, content, e.workflow, event), e.reads) {
@@ -217,12 +233,12 @@ func TestPerfRunnerCI(t *testing.T) {
 				}
 			}
 			if _, ignored := ciOnEventKey(t, content, e.workflow, event, "paths-ignore"); ignored {
-				t.Fatal("runner dependency reads must not be hidden by an unqualified paths-ignore filter")
+				t.Fatal(test + ": dependency reads must not be hidden by an unqualified paths-ignore filter")
 			}
 		}
 		return
 	}
-	t.Fatal("runner dependency guard is absent from the cross-module registry")
+	t.Fatal(test + " is absent from the cross-module registry")
 }
 
 // TestGitcoreConsumerCI enforces /76 source rows when the legacy tools.yml fixture is absent.
@@ -341,6 +357,13 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "tools/desk/internal/deskkit/forge_surface_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: deskShardInvokes,
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
+		{
+			test: "statusgen/cellop_record_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"docs/streams"},
+			runInvokes: []string{"cd statusgen && go test ./... && go vet ./..."},
+			why:        "the completion regression reads the retained evidence record; unfiltered source CI runs statusgen tests on evidence-only edits",
+		},
 		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema coverage and actual Go/Python launch hash parity; workflow has no path filter"},
 
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
@@ -437,6 +460,13 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads:      []string{"Makefile", "scripts/build-windows.ps1", "tools/desk/hooks/pre-push"},
 			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor checks both hook installer entrypoints (the Makefile recipe under /bin/sh, as the runner has no make) and the published anchored hook",
+		},
+		{
+			test: "tools/desk/internal/cellapi/deskdimage_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"Makefile", "images/deskd/Dockerfile", "images/deskd/Dockerfile.dockerignore"},
+			runInvokes: deskShardInvokes,
+			why:        "the deskd build contract parses the root Makefile and the deskd Dockerfile and ignore file; the unconditional build-test floor runs it on any edit to them",
 		},
 		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",

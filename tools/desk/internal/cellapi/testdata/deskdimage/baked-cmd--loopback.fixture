@@ -1,0 +1,6 @@
+# A baked CMD stays a baked CMD when every flag it carries is individually
+# compliant: a loopback -addr must not excuse it.
+want: baked-cmd
+file: Dockerfile
+replace: "USER 65532:65532\n"
+with: "USER 65532:65532\nCMD [\"-addr\", \"127.0.0.1:8787\", \"-api\", \"https://example.invalid\"]\n"

@@ -311,3 +311,8 @@ ASSAY_TEST_DOCKER_HOST=unix:///var/run/docker.sock \
 This command uses synthetic agent/credential-free fixtures, not the real model or
 cluster. Missing local Docker/image capability is could-not-check. The fixture
 image identity is test-environment evidence and supplies no candidate provenance.
+
+## Local PostgreSQL for host cells
+
+A separate compose project, `containers/postgres/`, runs one loopback-only PostgreSQL server
+with one database and restricted role per cell — see [`docs/postgres.md`](postgres.md).
