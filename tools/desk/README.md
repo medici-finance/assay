@@ -6348,6 +6348,25 @@ empty commit, wakes this conservative manifest; tracking input changes also wake
 Missing, wrong or dirty roots are could-not-check. Older readers cannot establish
 unchangedness for the new key. Explicit-recheck receipts keep their existing predicate.
 
+A brief may declare paths in more than one sibling repository (`../one/a.go`,
+`../two/b.go`). Prepare binds each further declared sibling, beside the deliverable
+source, to its configured root's fetched `origin/main` in the attestation's
+`SiblingSources` field (`owner/repo@<40-hex>`, comma-joined, sorted), and the outcome
+record carries one `repo-source:<owner/name>` key per bound sibling. Each sibling's
+declared paths are covered only by that sibling's own key; delivery PRs in a bound sibling
+must be ancestors of that sibling's commit. A sibling without a single configured root at
+its fetched `origin/main`, or one a public tracking repository may not name, stays
+unbound, and its paths still refuse the record.
+
+Migration: `wake_schema` does not bump. The key vocabulary is unchanged; a record simply
+carries more than one `repo-source:` key, and every reader since the key was introduced
+evaluates each one independently. A reader older than the key reads every
+`repo-source:` key as could-not-check, never unchanged. The attestation body is
+strict-decoded, so a reader older than this change refuses a body carrying
+`SiblingSources` rather than ignoring it; upgrade readers (`deskevidence`, `verifyloop`,
+`statusgen`) before dispatchers. Single-repository and single-sibling bodies omit the
+field and render byte-for-byte as before.
+
 Recovery retains the original nonce, source home and isolated tracking home, including
 a lost issue-create response. A legacy failure with no record or missing association
 provenance is could-not-check: the tool cannot reconstruct the original run and never

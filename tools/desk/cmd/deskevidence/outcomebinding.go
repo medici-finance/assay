@@ -46,9 +46,13 @@ func admittedOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskki
 	if err != nil {
 		return nil, err
 	}
+	siblings, err := deskkit.VerifierSiblingSources(b)
+	if err != nil {
+		return nil, err
+	}
 	return deskkit.BuildOutcomeRecord(raw, deskkit.OutcomeReceiptInput{
 		BriefPath: b.Brief, LandedBrief: landed.Content, ToolVersion: deskkit.ReleaseTagOrDev(),
-		Repo: b.Repo, SourceRepo: b.SourceRepo, Source: b.Source,
+		Repo: b.Repo, SourceRepo: b.SourceRepo, Source: b.Source, SiblingSources: siblings,
 	}, tree)
 }
 
@@ -184,16 +188,29 @@ func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evi
 
 // Cross-repository delivery joins must also belong to the observed source,
 // rather than merely to a newer default branch at Evidence landing time.
+// Each bound sibling repository's delivery PRs answer to that sibling's own
+// admitted source (#4876), never to another repository's.
 func checkAdmittedDeliveryPRs(fg deskkit.Forge, receipt deskkit.VerifierReceipt, facts joinFacts) error {
 	if receipt.Binding.Version != 2 {
 		return nil
 	}
+	sources, err := deskkit.VerifierSiblingSources(receipt.Binding)
+	if err != nil {
+		return err
+	}
+	sources[receipt.Binding.SourceRepo] = receipt.Binding.Source
 	for _, entry := range facts.Entries {
-		if !strings.EqualFold(entry.Repo, receipt.Binding.SourceRepo) {
+		source := ""
+		for bound, commit := range sources {
+			if strings.EqualFold(entry.Repo, bound) {
+				source = commit
+			}
+		}
+		if source == "" {
 			continue
 		}
 		repo, _ := entryForgeRepo(entry.Repo)
-		compared, err := fg.CompareRefs(repo, entry.MergeSHA, receipt.Binding.Source)
+		compared, err := fg.CompareRefs(repo, entry.MergeSHA, source)
 		if err != nil {
 			return deskkit.Unverifiable("cannot compare delivery PR with admitted deliverable source", err)
 		}

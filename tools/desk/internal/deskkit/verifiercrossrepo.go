@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/deskcore/attestation"
 )
 
 // Cross-repository runs have two independent immutable trees. Repo names the
@@ -197,6 +199,7 @@ func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
 		TrackingSource: trackingHead, Brief: filepath.ToSlash(rel), BriefSHA256: verifierDigest(original), PlanSHA256: verifierDigest(withoutEvidence(original)),
 		HomeSHA256: verifierDigest([]byte(home)), TrackingHomeSHA256: verifierDigest([]byte(trackingHome)),
 		Model: stamp.Model, Tier: stamp.Tier, Checkout: checkout.String(), TrackingCheckout: tc.String(),
+		SiblingSources: verifierSiblingSources(trackingRepo, repo, original),
 	}}}
 	if err := verifierLocalCheck(home, r.Binding.Brief, r, verifierExecution); err != nil {
 		return err
@@ -206,6 +209,69 @@ func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
 	}
 	retained = true
 	return nil
+}
+
+// verifierSiblingSources binds, for each further ../<sibling>/ repository the
+// tracking brief declares, the one configured root of that name at its fetched
+// origin/main (#4876); the run's own SourceRepo already covers its name. A
+// sibling with no single clean, publishable, fetched root is left unbound, so
+// its non-pass outcome record is refused exactly as before, never guessed.
+func verifierSiblingSources(trackingRepo, sourceRepo string, brief []byte) string {
+	decl, err := BriefDeclaredFiles(string(brief))
+	if err != nil {
+		return ""
+	}
+	_, siblings := SplitSiblingDeclarations(decl)
+	roots, err := ConfiguredRoots()
+	if err != nil || len(siblings) == 0 {
+		return ""
+	}
+	bound := map[string]string{}
+	seen := map[string]bool{}
+	for _, d := range siblings {
+		name, _, _ := SiblingDeclaration(d)
+		if seen[strings.ToLower(name)] || declaresSibling([]string{d}, sourceRepo) || declaresSibling([]string{d}, trackingRepo) {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		var match []RootConfig
+		for _, root := range roots {
+			if declaresSibling([]string{d}, root.Repo) {
+				match = append(match, root)
+			}
+		}
+		if len(match) != 1 {
+			continue
+		}
+		if head, ok := verifierSiblingHead(trackingRepo, match[0]); ok {
+			bound[match[0].Repo] = head
+		}
+	}
+	return attestation.FormatSiblingSources(bound)
+}
+
+// verifierSiblingHead is a sibling root's HEAD when it is the fetched
+// origin/main, by the same checks the wake reader applies to a repo-source key.
+func verifierSiblingHead(trackingRepo string, r RootConfig) (string, bool) {
+	if verifierVisibility(trackingRepo, r.Repo) != nil {
+		return "", false
+	}
+	_, root, err := verifierHome(r.Path)
+	if err != nil || verifierRepoIdentity(root, r.Repo) != nil {
+		return "", false
+	}
+	head, err := verifierGit(root, "rev-parse", "HEAD")
+	if err != nil {
+		return "", false
+	}
+	if main, err := verifierGit(root, "rev-parse", "refs/remotes/origin/main"); err != nil || main != head {
+		return "", false
+	}
+	checkout, err := readVerifierCheckout(root)
+	if err != nil || verifierNoReplacements(root) != nil || verifierNoLocalAttributes(root) != nil || verifierOwnWorkTree(root) != nil || verifierSourceClosure(root, head, checkout, nil) != nil {
+		return "", false
+	}
+	return head, true
 }
 
 func verifierCrossRepoCheck(root, brief string, r verifierLocal, phase verifierPhase) error {
@@ -239,6 +305,15 @@ func verifierCrossRepoCheck(root, brief string, r verifierLocal, phase verifierP
 	if strings.EqualFold(b.Repo, b.SourceRepo) {
 		return Refused("cross-repository binding names only one repository")
 	}
+	siblings, err := VerifierSiblingSources(b)
+	if err != nil {
+		return err
+	}
+	for sibling := range siblings {
+		if err := verifierVisibility(b.Repo, sibling); err != nil {
+			return err
+		}
+	}
 	if err := verifierAssociation(tracking, b.TrackingSource, b.Brief, b.SourceRepo); err != nil {
 		return err
 	}
@@ -269,7 +344,7 @@ func verifierCrossRepoCheck(root, brief string, r verifierLocal, phase verifierP
 	// Reuse every original brief/index/digest check against the tracking tree.
 	tr := r
 	tr.Home, tr.TrackingHome = tracking, ""
-	tr.Binding.Version, tr.Binding.Source = 1, b.TrackingSource
+	tr.Binding.Version, tr.Binding.Source, tr.Binding.SiblingSources = 1, b.TrackingSource, ""
 	tr.Binding.HomeSHA256, tr.Binding.Checkout = b.TrackingHomeSHA256, b.TrackingCheckout
 	return verifierLocalCheck(tracking, brief, tr, phase)
 }

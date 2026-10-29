@@ -58,15 +58,39 @@ func TestCrossRepoSiblingOutcome(t *testing.T) { crossRepoOutcomeCase(t, "../sou
 // regression: #3483
 func TestCrossRepoSiblingEscape(t *testing.T) { crossRepoOutcomeCase(t, "../other/source.txt") }
 
-func crossRepoOutcomeCase(t *testing.T, decl string) {
-	escape := strings.HasPrefix(decl, "../other/")
+// A brief declaring two sibling repositories binds one source per sibling: the
+// run's own deliverable and the configured, fetched checkout of the other.
+// regression: #4876
+func TestCrossRepoTwoSiblings(t *testing.T) {
+	crossRepoOutcomeRun(t, []string{"../source/source.txt", "../other/other.txt"}, true)
+}
+
+// A second sibling with no bound source stays refused, whatever the first covers.
+// regression: #4876
+func TestCrossRepoSiblingUnbound(t *testing.T) {
+	crossRepoOutcomeRun(t, []string{"../source/source.txt", "../other/other.txt"}, false)
+}
+
+func crossRepoOutcomeCase(t *testing.T, decl string) { crossRepoOutcomeRun(t, []string{decl}, false) }
+
+// crossRepoOutcomeRun lands Evidence and then an outcome for a brief declaring
+// decls. withOther configures a fetched example-org/other checkout as a
+// sibling root; without it every ../other/ declaration is an unbound sibling.
+func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
+	decl := strings.Join(decls, "`\n- `")
+	escape := strings.Contains(decl, "../other/") && !withOther
 	for _, line := range strings.Split(fixtureRoster, "\n") {
 		if k, v, ok := strings.Cut(line, "="); ok && strings.HasPrefix(k, "ASSAY_") {
 			t.Setenv(k, v)
 		}
 	}
-	t.Setenv(deskkit.EnvAllowedRepos, "example-org/source:ci:public,example-org/tracker:ci:private")
-	t.Setenv(deskkit.EnvRepoForges, "example-org/source=github,example-org/tracker=github")
+	t.Setenv(deskkit.EnvAllowedRepos, "example-org/source:ci:public,example-org/tracker:ci:private,example-org/other:ci:public")
+	t.Setenv(deskkit.EnvRepoForges, "example-org/source=github,example-org/tracker=github,example-org/other=github")
+	other := ""
+	if withOther {
+		other = crossLandRepo(t, "example-org/other", map[string]string{"other.txt": "sibling\n"})
+		t.Setenv(deskkit.RootsEnv, "example-org/other="+other)
+	}
 	t.Setenv("DESK_LOOP", "verify-desk")
 	t.Setenv("DESK_HUMAN", "alex")
 	deskkit.SetToolClass(deskkit.ClassCI)
@@ -170,7 +194,7 @@ func crossRepoOutcomeCase(t *testing.T, decl string) {
 	record := filepath.Join(t.TempDir(), "record.json")
 	os.WriteFile(record, []byte(raw), 0600)
 	if escape {
-		if err := land("example-org/tracker", "--root", source, "--outcome-record", record); deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), decl) {
+		if err := land("example-org/tracker", "--root", source, "--outcome-record", record); deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "../other/") {
 			t.Fatalf("unbound sibling admitted: %v", err)
 		}
 		if len(api.puts) != 1 {
@@ -191,6 +215,9 @@ func crossRepoOutcomeCase(t *testing.T, decl string) {
 	if wr.Inputs[deskkit.InputKeyRepoSourcePrefix+"example-org/source"] != receipt.Binding.Source || wr.SHA != evidenceSHA {
 		t.Fatal("outcome lost observed source or Evidence commit")
 	}
+	if withOther && wr.Inputs[deskkit.InputKeyRepoSourcePrefix+"example-org/other"] != crossLandGit(t, other, "rev-parse", "HEAD") {
+		t.Fatalf("second sibling not pinned to its own source: %v", wr.Inputs)
+	}
 	if wr.Inputs["file:"+brief] != deskkit.Sha256Hex([]byte(api.files[brief])) {
 		t.Fatal("wrong tracking brief input")
 	}
@@ -199,7 +226,11 @@ func crossRepoOutcomeCase(t *testing.T, decl string) {
 			t.Fatalf("sibling path became a tracking input %q", k)
 		}
 	}
-	for _, mutate := range []string{"missing source", "wrong source", "wrong repo"} {
+	mutations := []string{"missing source", "wrong source", "wrong repo"}
+	if withOther {
+		mutations = append(mutations, "missing sibling", "wrong sibling")
+	}
+	for _, mutate := range mutations {
 		bad := wr
 		bad.Inputs = map[string]string{}
 		for k, v := range wr.Inputs {
@@ -213,6 +244,10 @@ func crossRepoOutcomeCase(t *testing.T, decl string) {
 		case "wrong repo":
 			delete(bad.Inputs, deskkit.InputKeyRepoSourcePrefix+"example-org/source")
 			bad.Inputs[deskkit.InputKeyRepoSourcePrefix+"example-org/tracker"] = receipt.Binding.Source
+		case "missing sibling":
+			delete(bad.Inputs, deskkit.InputKeyRepoSourcePrefix+"example-org/other")
+		case "wrong sibling":
+			bad.Inputs[deskkit.InputKeyRepoSourcePrefix+"example-org/other"] = strings.Repeat("f", 40)
 		}
 		fg, fr, err := forgeFor("example-org", "tracker")
 		if err != nil {
@@ -292,6 +327,34 @@ func TestCrossRepoDeliveryJoin(t *testing.T) {
 	f = &fakeForge{}
 	if err := checkAdmittedDeliveryPRs(f, receipt, facts); err != nil || len(f.joinReads) != 0 {
 		t.Fatal("same-repo join changed")
+	}
+}
+
+// A bound sibling's delivery PR answers to that sibling's own source, never
+// to the primary source commit.
+// regression: #4876
+func TestSiblingDeliveryJoin(t *testing.T) {
+	for _, line := range strings.Split(fixtureRoster, "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok && strings.HasPrefix(k, "ASSAY_") {
+			t.Setenv(k, v)
+		}
+	}
+	t.Setenv(deskkit.EnvAllowedRepos, "example-org/tracker:ci:private,"+jOtherRepo+":ci:public,example-org/third:ci:public")
+	deskkit.SetToolClass(deskkit.ClassCI)
+	t.Cleanup(func() { deskkit.SetToolClass(deskkit.ClassWrite) })
+	const third, thirdSHA = "example-org/third", "fedcba9876543210fedcba9876543210fedcba98"
+	receipt := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Version: 2, SourceRepo: jOtherRepo, Source: jSHA,
+		SiblingSources: third + "@" + thirdSHA}}
+	facts := joinFacts{Entries: []joinEntry{{Repo: third, MergeSHA: jMerge}}}
+	for _, status := range []string{"identical", "behind"} {
+		f := &fakeForge{compareStatus: map[string]string{third + ":" + jMerge + "..." + thirdSHA: status, third + ":" + jMerge + "..." + jSHA: "ahead"}}
+		err := checkAdmittedDeliveryPRs(f, receipt, facts)
+		if (err == nil) != (status == "identical") {
+			t.Fatalf("%s: %v", status, err)
+		}
+		if len(f.joinReads) != 1 || !strings.Contains(f.joinReads[0], "..."+thirdSHA) {
+			t.Fatalf("sibling delivery not compared with its own source: %v", f.joinReads)
+		}
 	}
 }
 

@@ -518,6 +518,17 @@ func SplitSiblingDeclarations(declarations []string) (local, siblings []string) 
 	return local, siblings
 }
 
+// declaresSibling reports whether a sibling declaration names repo's repository.
+func declaresSibling(siblings []string, repo string) bool {
+	_, name := splitRepo(repo)
+	for _, decl := range siblings {
+		if sibling, _, ok := SiblingDeclaration(decl); ok && name != "" && strings.EqualFold(sibling, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // CheckSiblingCoverage requires every sibling declaration to name exactly one
 // repo-source:<owner>/<sibling> input. That key pins the whole deliverable
 // commit, so any change to it wakes the receipt; a sibling the run did not bind

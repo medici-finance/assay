@@ -393,6 +393,10 @@ type OutcomeReceiptInput struct {
 	// when the record carries none, so a bare #N blocker_ref resolves against the repository the
 	// record lands in — the same repository the writer's own reference check resolved it in.
 	Repo string
+	// SiblingSources is the attested source commit of each further sibling
+	// repository the brief declares, by owner/repo (#4876): one repo-source key
+	// each. It only ever comes from the run's attestation binding.
+	SiblingSources map[string]string
 }
 
 // checkNonPassBlocker refuses a non-pass record whose caller-supplied blocker fields cannot
@@ -504,7 +508,7 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 		return nil, err
 	}
 	// A ../<sibling>/ declaration is never read from this tree; it is covered
-	// below by the cross-repository source commit, or refused.
+	// below by that sibling's own attested source commit, or refused.
 	local, siblings := SplitSiblingDeclarations(declarations)
 	scope, err := ResolveDeclaredScope(local, tree)
 	if err != nil {
@@ -526,6 +530,14 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 			return nil, Refused("incomplete cross-repository outcome source")
 		}
 		inputs[InputKeyRepoSourcePrefix+in.SourceRepo] = in.Source
+	}
+	for repo, commit := range in.SiblingSources {
+		_, commitErr := hex.DecodeString(commit)
+		if !IsAllowedRepo(repo) || len(commit) != 40 || commitErr != nil || in.SourceRepo == "" ||
+			strings.EqualFold(repo, in.Repo) || strings.EqualFold(repo, in.SourceRepo) || !declaresSibling(siblings, repo) {
+			return nil, Refused("incomplete cross-repository sibling source " + repo)
+		}
+		inputs[InputKeyRepoSourcePrefix+repo] = commit
 	}
 	if err := CheckSiblingCoverage(siblings, inputs); err != nil {
 		return nil, err
