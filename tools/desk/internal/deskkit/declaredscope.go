@@ -67,7 +67,8 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	endedByBlank := false
 	var out []string
 	seen := map[string]bool{}
-	for _, raw := range strings.Split(content, "\n") {
+	lines := strings.Split(content, "\n")
+	for i, raw := range lines {
 		line := strings.TrimSpace(raw)
 		columnZero := raw == strings.TrimLeftFunc(raw, unicode.IsSpace)
 		// Markdown fences allow at most three leading ASCII spaces. A tab,
@@ -80,7 +81,7 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 				fence = ""
 			} else if strings.HasPrefix(line, "## ") {
 				return nil, Refused("refused: section heading inside fenced region; block containment is ambiguous")
-			} else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line)) {
+			} else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line), scopeWrappedProse(lines, i)) {
 				return nil, Refused("refused: files marker inside fenced region; block containment is ambiguous")
 			}
 			continue
@@ -126,7 +127,7 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 		markerLine := scopeMarkerText(line)
 		fieldMarker := scopeFilesFieldPattern.MatchString(markerLine)
 		outsideFieldMarker := scopeOutsideFilesFieldPattern.MatchString(strings.TrimLeft(line, "*_"))
-		marker := outsideFieldMarker || (context && (fieldMarker || scopeBroadFilesMarker(markerLine)))
+		marker := outsideFieldMarker || (context && (fieldMarker || scopeBroadFilesMarker(markerLine, scopeWrappedProse(lines, i))))
 		if marker && (!context || !columnZero) {
 			return nil, Refused("refused: files: field must be at column zero in Context")
 		}
@@ -236,8 +237,10 @@ func scopeMarkerText(line string) string {
 // scopeBroadFilesMarker reports a line that looks like a files field without
 // being the accepted "files:" form, so the caller refuses it rather than letting
 // a malformed declaration read as an empty scope. Whitespace after "files" stays
-// a marker ("files tools/a.go") unless the line is wrapped prose (#4199).
-func scopeBroadFilesMarker(line string) bool {
+// a marker ("files tools/a.go") unless the caller has positive evidence that the
+// line is wrapped prose (wrapped, from scopeWrappedProse) and its tail reads as a
+// sentence (#4199). When in doubt it is a marker.
+func scopeBroadFilesMarker(line string, wrapped bool) bool {
 	if !strings.HasPrefix(line, "files") {
 		return false
 	}
@@ -245,18 +248,46 @@ func scopeBroadFilesMarker(line string) bool {
 	if tail == "" || strings.ContainsAny(tail[:1], ":*_`(") {
 		return true
 	}
-	return tail != strings.TrimLeftFunc(tail, unicode.IsSpace) && !scopeProseTail(tail)
+	return tail != strings.TrimLeftFunc(tail, unicode.IsSpace) && !(wrapped && scopeProseTail(tail))
 }
 
-// scopeProseTail reports a tail that continues a sentence: a plain word (letters,
-// with inner hyphens or apostrophes) followed by more text, as in a paragraph
-// hard-wrapped onto "files in the public tree. ...". A tail carrying a colon or a
-// backtick may be a labelled declaration, so it is never prose; nor is a quote,
-// list mark, parenthetical, lone word or a first token holding a path character.
-// A bare extensionless path ("files docs tools/a.go") is indistinguishable from
-// a word here and reads as prose.
+// scopeWrappedProse is the positive evidence that lines[i] continues a
+// hard-wrapped paragraph rather than starting a declaration. The line starts
+// with "files " at column zero with no formatting. The line before it is
+// unformatted column-zero prose that is not a field, not another files line and
+// does not end a sentence or clause. The line after it is blank or the same kind
+// of prose, never a list item or an indented block. Anything else is not prose.
+func scopeWrappedProse(lines []string, i int) bool {
+	if i == 0 || !strings.HasPrefix(strings.ToLower(lines[i]), "files ") {
+		return false
+	}
+	prev := strings.TrimRightFunc(lines[i-1], unicode.IsSpace)
+	if !scopeProseLine(prev) || strings.ContainsAny(prev[len(prev)-1:], ".:;!?") {
+		return false
+	}
+	if i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != "" && !scopeProseLine(lines[i+1]) {
+		return false
+	}
+	return true
+}
+
+// scopeProseLine reports a line that starts with a letter at column zero, so it
+// is no heading, list item, quote, fence, table, markup or indented block, and
+// that is neither a Context field nor a files line.
+func scopeProseLine(line string) bool {
+	r, _ := utf8.DecodeRuneInString(line)
+	return unicode.IsLetter(r) && !scopeContextFieldPattern.MatchString(line) &&
+		!strings.HasPrefix(strings.ToLower(line), "files")
+}
+
+// scopeProseTail reports a tail that continues a sentence: a single space, then
+// a plain word (letters, with inner hyphens or apostrophes) followed by more
+// text, as in a paragraph hard-wrapped onto "files in the public tree. ...". A
+// colon (ASCII or full-width), a backtick or a path-shaped word anywhere in the
+// tail may carry a declaration, so such a tail is never prose.
 func scopeProseTail(tail string) bool {
-	if strings.ContainsAny(tail, ":`") {
+	if !strings.HasPrefix(tail, " ") || strings.HasPrefix(tail, "  ") ||
+		strings.ContainsAny(tail, ":`\uff1a\ufe13\ufe55") {
 		return false
 	}
 	words := strings.Fields(tail)
@@ -268,7 +299,23 @@ func scopeProseTail(tail string) bool {
 			return false
 		}
 	}
+	for _, w := range words {
+		if scopePathWord(w) {
+			return false
+		}
+	}
 	return true
+}
+
+// scopePathWord reports a word shaped like a path: a slash or backslash, or a
+// dot between two characters ("main.go"), once outer punctuation is trimmed.
+func scopePathWord(w string) bool {
+	w = strings.Trim(w, ".,;!?()[]\"'")
+	if strings.ContainsAny(w, "/\\") {
+		return true
+	}
+	dot := strings.LastIndexByte(w, '.')
+	return dot > 0 && dot < len(w)-1
 }
 
 func scopeListPrefix(line string) int {

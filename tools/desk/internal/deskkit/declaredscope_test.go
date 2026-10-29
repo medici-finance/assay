@@ -428,11 +428,12 @@ func TestScopeLooseContinuation(t *testing.T) {
 func TestScopeWrappedFilesProse(t *testing.T) {
 	const decl = "files:\n- `tools/a.go`\n- `tools/pkg/`\n"
 	for name, prose := range map[string]string{
-		// The reported shape: a paragraph wrapping onto "files in ...".
-		"reported": "Scope is the generated\nfiles in the public tree. Three items were flagged on #631 as out-of-scope for hp/14 and ruled\nout here.\n\n",
-		"capital":  "Files under the tools tree are\nfiles that out-of-scope work never touches.\n\n",
+		// The reported shape: a paragraph wrapping onto "files in ...". The
+		// reported line also held path-shaped words, which now refuse.
+		"reported": "Scope is the generated\nfiles in the public tree. Three items were flagged as out of scope and ruled\nout here.\n\n",
+		"capital":  "Work under the tools tree touches\nFiles that out-of-scope work never touches.\n\n",
 		// Planted second site: the fenced-region marker check.
-		"fenced": "facts:\n```text\nexample wraps onto\nfiles in the example tree.\n```\n\n",
+		"fenced": "facts:\n```text\nexample wraps onto\nfiles in the example tree and\nends here.\n```\n\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			tree := wakeTestTree()
@@ -483,5 +484,51 @@ func TestScopeLabelledFilesRefuse(t *testing.T) {
 		if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
 			t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
 		}
+	}
+}
+
+// regression: sec-4809-1 — a "files" line is prose only on positive evidence
+// that it continues a hard-wrapped paragraph; otherwise it stays a marker.
+func TestScopeUnwrappedFilesRefuse(t *testing.T) {
+	shapes := []string{
+		"files to change\n- `tools/a.go`\n",
+		"files to change\n- tools/a.go\n",
+		"files to change\n\n- `tools/a.go`\n",
+		"files to change\n1. tools/a.go\n",
+		"files within tools/a.go and tools/b.go\n",
+		"Files for this - tools/a.go, tools/b.go\n",
+		"**files to change**\n- tools/a.go\n",
+		"- files to change\n  - tools/a.go\n",
+		"files changed — tools/a.go\n",
+		"files to change：\n- `tools/a.go`\n",
+		"files docs tools/a.go\n",
+		"files Makefile and tests\n",
+		// Each remaining case passes every check but the one it names.
+		"Prose that wraps onto the\nfiles under tools/a.go here\n",       // path token
+		"Prose that wraps onto the\nfiles in main.go and more\n",         // file token
+		"A sentence ends here.\nfiles to change and more\n",              // ended sentence
+		"Prose that wraps onto the\nfiles to change and more\n- x\n",     // list follows
+		"Prose that wraps onto the\nfiles to change and more\n  x\n",     // indent follows
+		"- a list item wraps onto the\nfiles to change and more\n",       // list before
+		"facts: a field that wraps onto the\nfiles to change and more\n", // field before
+		"Prose that wraps onto the\nfiles to change: and more\n",         // label colon
+		"Prose that wraps onto the\nfiles named `x` and more\n",          // backtick
+		"Prose that wraps onto the\nfiles  to change and more\n",         // double space
+		"Prose that wraps onto the\n> files to change and more\n",        // quoted
+		"Prose that wraps onto the\n  files to change and more\n",        // indented
+	}
+	for _, shape := range shapes {
+		for _, content := range []string{
+			"## Context\n" + shape,
+			"## Context\n```text\n" + shape + "```\n",
+		} {
+			if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+				t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
+			}
+		}
+	}
+	content := "## Context\nfiles:\n- `tools/x/one.go`\n\nfiles for review under tools/y\n"
+	if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+		t.Errorf("silent partial scope: %q: %v %v", content, paths, err)
 	}
 }
