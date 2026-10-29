@@ -50,8 +50,8 @@ consumers:
 ## Context
 files:
 - **add** `tools/desk/internal/deskkit/decisionrecord.go` (planned) + `tools/desk/internal/deskkit/decisionrecord_test.go` (planned) — `HumanDecisionRecord`, `ParseDecisionOptions`, `ParseRulingPick`, `ValidateDecisionRecord`, `AppendDecisionRecord`.
-- **edit** `tools/desk/internal/deskkit/forge.go` — `Issue` gains `CreatedAt string \`json:",omitempty"\`` (omitempty keeps the forge golden corpus byte-identical); populate it in `forge_github.go` (`GetIssue`, `return &Issue{` at :545) and `forge_gitlab.go` (:622, :632).
-- **edit** `tools/desk/cmd/deskclose/triage.go` (+ `triage_test.go`) and `tools/desk/cmd/deskclose/authority.go` (`ghComment` gains `CreatedAt`, filled at :195 from `deskkit.Comment.CreatedAt`).
+- **edit** `tools/desk/internal/deskkit/forge.go` — `Issue` gains `CreatedAt string` with the `json:",omitempty"` tag (omitempty keeps the forge golden corpus byte-identical); populate it in `forge_github.go` (`GetIssue`, `return &Issue{` at :545) and `forge_gitlab.go` (:622, :632).
+- **edit** `tools/desk/cmd/deskclose/triage.go`, `tools/desk/cmd/deskclose/triage_test.go` and `tools/desk/cmd/deskclose/authority.go` (`ghComment` gains `CreatedAt`, filled at :195 from `deskkit.Comment.CreatedAt`).
 - **edit** `tools/desk/cmd/deskinbox/format.go` — replace the inline Options parse (:277-345) with a call to `deskkit.ParseDecisionOptions`; rendered output unchanged.
 - **add** `docs/streams/desk-supervision/human-decision-v1.md` (planned) — the schema, field table, closed sets, never-recorded list.
 - **edit** `plugins/assay/skills/ask-decision/SKILL.md` — §Recording a ruling: one paragraph.

@@ -46,7 +46,7 @@ consumers:
 files:
 - `forgeclient/` (planned module: `go.mod`, client constructor, typed operations, tests)
 - `tools/desk/internal/credential/` (planned by desktools-v2/58; lifted here)
-- `tools/desk/internal/deskkit/{forge,forge_github,forge_gitlab,forgeresolve,roletoken,ambienttoken_guard_test}.go`
+- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/roletoken.go`, `tools/desk/internal/deskkit/ambienttoken_guard_test.go`
 - `tools/desk/cmd/deskread/` and `tools/desk/cmd/` — the forge write verbs under `tools/desk/cmd/`
 - `tools/desk/scripts/forge-ban.sh`, `tools/desk/internal/forgeban/allowlist.go`
 - `tools/desk/go.mod`, `forgeread/go.mod`

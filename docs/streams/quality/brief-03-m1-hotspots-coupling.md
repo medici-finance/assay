@@ -31,9 +31,9 @@ id: 2cd138e3-e94b-41aa-90df-c1feffbd0cc4
 ## Context
 
 files:
-- **add** `qualgen/hotspot.go` (planned) (+ `hotspot_test.go`) (planned) — per-file hotspot score: decayed change-frequency x an indentation-based complexity proxy.
-- **add** `qualgen/ownership.go` (planned) (+ `ownership_test.go`) (planned) — knowledge distribution: ownership concentration by author-identity class AND dispatching role, plus bus factor.
-- **add** `qualgen/coupling.go` (planned) (+ `coupling_test.go`) (planned) — change coupling (files that co-change above baseline) and the inverse missing-partner signal.
+- **add** `qualgen/hotspot.go` (planned), `qualgen/hotspot_test.go` (planned) — per-file hotspot score: decayed change-frequency x an indentation-based complexity proxy.
+- **add** `qualgen/ownership.go` (planned), `qualgen/ownership_test.go` (planned) — knowledge distribution: ownership concentration by author-identity class AND dispatching role, plus bus factor.
+- **add** `qualgen/coupling.go` (planned), `qualgen/coupling_test.go` (planned) — change coupling (files that co-change above baseline) and the inverse missing-partner signal.
 - **read only, from quality/01** `qualgen/measure.go` (planned) (`Measure[T]`), `qualgen/commit.go` (planned) (`Commit`), `qualgen/diff.go` (planned) (`FileDiff`), `qualgen/store.go` (planned) (`Store` reader + append-only writer) — this brief consumes that seam; it does not redefine it.
 
 facts:

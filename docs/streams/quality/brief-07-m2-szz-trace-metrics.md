@@ -40,9 +40,9 @@ id: c3153635-2b79-45c9-87e4-5810203e5650
 ## Context
 
 files:
-- **add** `qualgen/szz.go` (planned) (+ `qualgen/szz_test.go`, planned) — the B-SZZ trace engine: for each `DefectFix` from brief 06, blame the fix's deleted/modified lines at the fix's PARENT, apply the standard refinements, and emit a `DefectTrace` record.
-- **add** `qualgen/blame.go` (planned) (+ `qualgen/blame_test.go`, planned) — the blame helper the trace engine calls: resolve, for a set of (file, line-range) at a given commit, the commit that last touched each line. Uses `go-git` blame; MAY shell to the `git` binary for blame at scale where a benchmark (recorded in Evidence) shows go-git is materially slower (spec §3).
-- **add** `qualgen/refine.go` (planned) (+ `qualgen/refine_test.go`, planned) — the three refinement filters: cosmetic/format-only exclusion, postdating-the-report exclusion, and the confidence scorer.
+- **add** `qualgen/szz.go` (planned), `qualgen/szz_test.go` (planned) — the B-SZZ trace engine: for each `DefectFix` from brief 06, blame the fix's deleted/modified lines at the fix's PARENT, apply the standard refinements, and emit a `DefectTrace` record.
+- **add** `qualgen/blame.go` (planned), `qualgen/blame_test.go` (planned) — the blame helper the trace engine calls: resolve, for a set of (file, line-range) at a given commit, the commit that last touched each line. Uses `go-git` blame; MAY shell to the `git` binary for blame at scale where a benchmark (recorded in Evidence) shows go-git is materially slower (spec §3).
+- **add** `qualgen/refine.go` (planned), `qualgen/refine_test.go` (planned) — the three refinement filters: cosmetic/format-only exclusion, postdating-the-report exclusion, and the confidence scorer.
 - **consumes** `qualgen/defect.go` (planned) (brief 06) — the `DefectFix` record (fix PR/commit, closed issue, evidence tier, report date). This brief reads it; it does not modify it.
 - **writes** `docs/quality/defects.jsonl` (append-only, relative to the tracking root, spec §9.4) — one `DefectTrace` per fix, carrying tier (from 06) + confidence + trace state.
 - **rollups** `docs/quality/metrics.jsonl` (spec §9.4) — the derived-metric rollups land in the M1 aggregate artifact family (`docs/quality/metrics.jsonl`, spec §9.4) under a defect-metrics section keyed the same way M1 aggregates are (file, package, window).

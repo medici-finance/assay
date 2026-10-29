@@ -51,7 +51,7 @@ version: 1
 # Brief 15 — `deskinbox html` + `deskinbox flow` (split from windows-port/13)
 
 ## Context
-files: tools/desk/cmd/deskinbox/{html.go,flow.go,flow_parity_test.go,html_parity_test.go,testdata}, plugins/assay/commands/inbox.md, plugins/assay/skills/ask-decision/SKILL.md, changelog/windows-port-15-deskinbox-html-flow.md
+files: `tools/desk/cmd/deskinbox/html.go`, `tools/desk/cmd/deskinbox/flow.go`, `tools/desk/cmd/deskinbox/flow_parity_test.go`, `tools/desk/cmd/deskinbox/html_parity_test.go`, `tools/desk/cmd/deskinbox/testdata/`, `plugins/assay/commands/inbox.md`, `plugins/assay/skills/ask-decision/SKILL.md`, `changelog/windows-port-15-deskinbox-html-flow.md`
 facts:
 - `html` reuses windows-port/13's fetchQueue + buildRendered for the cards (the SAME format builder walk.go already renders — the oracle shares write_format_program between its own `--walk` and `--html` and this port must keep that property, per windows-port/13's testdata/spec.md), then adds the self-contained-page wrapper (inline CSS, no `<script>`, no `src=`, no `@import`, no `url()`) plus the Flow section
 - `flow` is a SEPARATE reader (assay-inbox.sh:857-1233): per-cell `statusgen --bottleneck/--intake-debt/--net-flow --json` (one invocation per root — statusgen refuses multi-root for these) plus ONE fleet-wide `deskboard throughput --json`; a reader that fails leaves its stage `could-not-check`, NEVER `0`

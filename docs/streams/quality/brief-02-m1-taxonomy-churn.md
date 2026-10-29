@@ -35,9 +35,9 @@ id: 87880ebd-a91c-42b6-9752-c4cbd3dc47ea
 ## Context
 
 files:
-- **add** `qualgen/taxonomy.go` (planned) (+ `taxonomy_test.go`) (planned) — the per-changed-line classifier: `added` / `deleted` / `updated` / `moved` / `copied` / `churned`, with block-level move-vs-copy detection.
-- **add** `qualgen/churn.go` (planned) (+ `churn_test.go`) (planned) — the churn / rework computation: a landed line revised or deleted within the churn window, as churned-lines / new-lines.
-- **add** `qualgen/m1agg.go` (planned) (+ `m1agg_test.go`) (planned) — the M1 aggregator: rolls the per-line classifications up to the spec §4 grains and emits `metrics.jsonl`, including the headline copy/paste ratio and duplicate-block rate.
+- **add** `qualgen/taxonomy.go` (planned), `qualgen/taxonomy_test.go` (planned) — the per-changed-line classifier: `added` / `deleted` / `updated` / `moved` / `copied` / `churned`, with block-level move-vs-copy detection.
+- **add** `qualgen/churn.go` (planned), `qualgen/churn_test.go` (planned) — the churn / rework computation: a landed line revised or deleted within the churn window, as churned-lines / new-lines.
+- **add** `qualgen/m1agg.go` (planned), `qualgen/m1agg_test.go` (planned) — the M1 aggregator: rolls the per-line classifications up to the spec §4 grains and emits `metrics.jsonl`, including the headline copy/paste ratio and duplicate-block rate.
 - **read only, from quality/01** `qualgen/measure.go` (planned) (`Measure[T]`), `qualgen/commit.go` (planned) (`Commit`), `qualgen/diff.go` (planned) (`FileDiff`/`Hunk`/`LineChange`), `qualgen/store.go` (planned) (`Store` reader + append-only writer) — this brief consumes that seam; it does not redefine it.
 
 facts:

@@ -73,7 +73,7 @@ consumers:
 files:
 - **add** `tools/desk/internal/deskkit/verifyoutcomes.go` (planned) + `tools/desk/internal/deskkit/verifyoutcomes_test.go` (planned) — the desk-side reader choke point and the record-name function.
 - **edit** `tools/desk/cmd/verifyloop/briefscan.go` — `readOutcomeSidecar` (line 240) and `readWakeReceipts` (line 384) read through the choke point.
-- **edit** `tools/desk/cmd/deskevidence/{deskevidence,main,outcome,verifiedgate}.go` and tests — the per-record writer, the class guard, the cap override retired.
+- **edit** `tools/desk/cmd/deskevidence/deskevidence.go`, `tools/desk/cmd/deskevidence/main.go`, `tools/desk/cmd/deskevidence/outcome.go`, `tools/desk/cmd/deskevidence/verifiedgate.go` and tests — the per-record writer, the class guard, the cap override retired.
 - **add** `tools/desk/cmd/deskevidence/concurrency_test.go` (planned) — the mergeability proxy test.
 - **edit** `statusgen/verifyoutcomes.go`, `statusgen/load.go` (line 64, `reservedRegisterNames`), `statusgen/main.go` (subcommand dispatch); **add** `statusgen/outcomessplit.go` (planned) + `statusgen/outcomessplit_test.go` (planned).
 - **add** `docs/streams/verify-outcomes/*/*.json` (the split records, one directory per `<stream>`) and `docs/streams/verify-outcomes/README.md` (planned) (declares "register, not a stream").

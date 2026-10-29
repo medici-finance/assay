@@ -55,7 +55,7 @@ change, not just for the staged files, and the reasoning a reviewer should check
 `single-point-of-failure` below.
 
 files:
-- `tools/ci-load/activation/{ci,plugin-drift,assay-statusgen,assay-qualgen,evidence-automerge}.yml` — the five post-change workflow files.
+- `tools/ci-load/activation/ci.yml`, `tools/ci-load/activation/plugin-drift.yml`, `tools/ci-load/activation/assay-statusgen.yml`, `tools/ci-load/activation/assay-qualgen.yml`, `tools/ci-load/activation/evidence-automerge.yml` — the five post-change workflow files.
 - `tools/ci-load/activation/ci-load.diff` — the unified diff of those five against the versions in `.github/workflows/`, as a reading aid.
 - `tools/ci-load/activation/README.md` — copy command, verification, rollback, and the rule the edits were held to.
 - `tools/ci-load/pathsemantics.py` — the offline negative control for Verify rows 3 / 3b: it reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on five diff shapes, three of which must NOT skip.

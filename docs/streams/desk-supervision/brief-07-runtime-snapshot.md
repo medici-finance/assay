@@ -43,7 +43,7 @@ files:
 - `tools/desk/cmd/desksupervise/status.go` (new) — the snapshot type, table renderer, JSON renderer.
 - `schemas/desksupervise-status-v1.json` (new) — JSON schema (the `schemas/` directory already holds published schemas).
 - `tools/desk/cmd/desksupervise/testdata/` — snapshot fixtures.
-- **Skill bodies** `plugins/assay/skills/{worker-desk,pr-review-desk,verify-desk}/SKILL.md` — the three cadence sections (one line each).
+- **Skill bodies** `plugins/assay/skills/worker-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`, `plugins/assay/skills/verify-desk/SKILL.md` — the three cadence sections (one line each).
 
 facts:
 - Per in-flight claim the snapshot carries: `key`, `repo`, `item`, `state`

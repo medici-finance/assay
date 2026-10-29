@@ -39,7 +39,7 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/internal/credential/ (from desktools-v2/58)`
+- `tools/desk/internal/credential/` (from desktools-v2/58)
 - `tools/desk/internal/deskkit/roletoken.go`
 - `tools/desk/internal/deskkit/roletoken_memo_test.go`
 - `tools/desk/cmd/deskboard/tokenforks_test.go`

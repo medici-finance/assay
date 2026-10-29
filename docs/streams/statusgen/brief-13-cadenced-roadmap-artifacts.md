@@ -41,7 +41,7 @@ table.
 
 ## Context
 
-files: `statusgen/main.go`, `statusgen/roadmap.go`, `statusgen/cadence.go` (planned), `statusgen/cadence_test.go` (planned) — and the stream-frontmatter reader in the roadmap renderer. Created/extended, per file:
+files: `statusgen/main.go`, `statusgen/roadmap.go`, `statusgen/cadence.go` (planned), `statusgen/cadence_test.go` (planned)
 - `statusgen/main.go` — register a `-cadence` string flag (`weekly` | `monthly`; empty = today's point-in-time `--roadmap`, unchanged). When set with `-roadmap`, it selects the window computation below and switches the output directory from `docs/reports/roadmap/` to `docs/reports/<cadence>/<window>/`.
 - `statusgen/cadence.go` (planned) — pure window computation: given `now` and a cadence, return the closed window `[start, end)`. `weekly` = the prior complete ISO week (Mon 00:00 UTC → next Mon 00:00 UTC), labelled `%G-W%V`. `monthly` = the prior complete calendar month, labelled `%Y-%m`. No I/O — a pure function so the boundary math is unit-testable.
 - `statusgen/roadmap.go` — thread the computed window into the existing renderer so transition/exception accounting is scoped to `[start, end)` instead of point-in-time. Exceptions that BOTH opened and closed inside the window count (a within-window churn signal), not only those still open at `end`. Renderer and health-rule table are otherwise unchanged.

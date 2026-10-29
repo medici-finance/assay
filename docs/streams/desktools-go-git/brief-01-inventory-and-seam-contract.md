@@ -29,7 +29,7 @@ id: 55dfa3fd-24e3-43d1-bc1b-e28553431d86
 ## Context
 
 files:
-- **add** `tools/desk/internal/gitexec/gitexec.go` (planned) (+ `gitexec_test.go`) — the single audited `git`-binary fallback seam: one exported runner plus a per-verb allowlist (initially the union of today's verbs; later briefs empty it toward one entry).
+- **add** `tools/desk/internal/gitexec/gitexec.go` (planned), `tools/desk/internal/gitexec/gitexec_test.go` (planned) — the single audited `git`-binary fallback seam: one exported runner plus a per-verb allowlist (initially the union of today's verbs; later briefs empty it toward one entry).
 - **add** `tools/desk/internal/gittest/golden.go` (planned) — a shared behaviour-golden harness (build a fixture repo, run an operation, snapshot the OUTCOME — refs/objects/tree state/returned values — not the argv).
 - **add** `docs/streams/desktools-go-git/inventory.md` (planned) — the frozen op-family table (op family -> tool -> seam site -> go-git mapping / gap), lifted from the spec and the feasibility study; the checklist every migration brief ticks against.
 - **add** `tools/desk/scripts/count-git-exec.sh` (planned) — the CI grep that counts `exec.Command("git"` (and `runGit` / `gitOut` seam) sites outside `internal/gitexec`.

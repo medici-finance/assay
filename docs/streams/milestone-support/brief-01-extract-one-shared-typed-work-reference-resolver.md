@@ -52,7 +52,18 @@ consumers:
 
 ## Context
 
-files: `statusgen/workref/` (planned), `statusgen/contexthandoff/ids.go`, `statusgen/contexthandoff/ids_test.go` (planned), `tools/desk/internal/deskkit/trailer.go`, `tools/desk/internal/deskkit/trailer_test.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-01.md` (planned), `statusgen/testdata/milestone-support/01-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
+files:
+- `statusgen/workref/` (planned)
+- `statusgen/contexthandoff/ids.go`
+- `statusgen/contexthandoff/ids_test.go` (planned)
+- `tools/desk/internal/deskkit/trailer.go`
+- `tools/desk/internal/deskkit/trailer_test.go`
+- `tools/desk/go.mod`
+- `tools/desk/go.sum`
+- `docs/contracts.md`
+- `docs/library-first.md`
+- `changelog/milestone-support-01.md` (planned)
+- `statusgen/testdata/milestone-support/01-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

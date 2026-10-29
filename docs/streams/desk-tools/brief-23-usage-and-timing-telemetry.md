@@ -120,7 +120,7 @@ files:
 - `tools/desk/internal/deskkit/audittoolkey.go` (existing) — one line: `"deskperf": {}` in `canonicalToolKeys`, without which `TestRegistryCoversCmdBinaries` goes red.
 - `tools/desk/cmd/deskperf/` (planned) (new) — `main.go`, `report.go`, `boot.go`, and their tests.
 - `tools/desk/cmd/deskboot/` (existing) — `boot.go` gains one `PerfStep` call per step.
-- `tools/desk/cmd/{deskpr,deskpost,deskboard,desktoken,deskwt,deskdispatch,deskboot}/` — first-wave `main()` wraps, one line each, under `tools/desk/cmd/`: `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`, `deskboot`.
+- `tools/desk/cmd/deskpr/`, `tools/desk/cmd/deskpost/`, `tools/desk/cmd/deskboard/`, `tools/desk/cmd/desktoken/`, `tools/desk/cmd/deskwt/`, `tools/desk/cmd/deskdispatch/`, `tools/desk/cmd/deskboot/` — first-wave `main()` wraps, one line each, under `tools/desk/cmd/`: `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`, `deskboot`.
 - `tools/desk/README.md` (existing) — a "Local performance history — `deskperf`" section.
 - `docs/telemetry.md` (existing) — one short subsection recording that desk-tools carries a LOCAL-only perf log under the same promise and the same environment switch, and that the two-switch rule binds any future remote send.
 - `changelog/desk-tools-23-usage-telemetry.md` (planned) (new).

@@ -25,7 +25,9 @@ id: acfe2b56-2973-4299-849c-e15fccebdadc
 # Brief 07 — New brief-flow metrics in statusgen
 
 ## Context
-files: `statusgen/` (new metric functions beside `bottleneck.go`, `trend.go`, `dora.go`, `awaitage.go`), `docs/streams/.history.jsonl` — brief frontmatter, `gh` PR reviews.
+files:
+- `statusgen/` — new metric functions beside bottleneck.go, trend.go, dora.go, awaitage.go
+- `docs/streams/.history.jsonl` — brief frontmatter, `gh` PR reviews
 
 Builds on prior statusgen instrument work — the existing DORA lead-time machinery, the trend
 series, and the bottleneck WIP model — which this extends rather than forks.

@@ -56,7 +56,7 @@ files:
 - `plugins/assay/skills/pr-review-desk/SKILL.md`: the fail-first paragraph, the report command and the rubric pointer (≤ 2 lines, offset).
 - `tools/desk/internal/testledger/ledger.go` (planned): NEW. Pure functions: `Tests(fsys) []TestFunc` (name, package, tag, body hash) via `go/parser`; `Diff(base, head) Report` (deleted, renamed, added); `ParseTrailers(msgs) []Retirement`; `RowsNaming(fsys, name) []Row` over `docs/streams/**/brief-*.md`.
 - `tools/desk/internal/testledger/ledger_test.go` (planned): NEW. `TestLedgerFixture` (planned), `TestTrailerGrammar` (planned), `TestReportTestLedger` (planned) (test-only flags `-base`, `-head`: a revision via `git archive`, or a directory), `TestUnresolvableBaseIsCouldNotCheck` (planned).
-- `tools/desk/internal/testledger/testdata/{base,head}/` (planned): NEW. Two fixture trees and a `log.txt` of commit messages.
+- `tools/desk/internal/testledger/testdata/base/`, `tools/desk/internal/testledger/testdata/head/` (planned): NEW. Two fixture trees and a `log.txt` of commit messages.
 - `docs/contracts.md`: the tag convention (2 lines under "How a brief cites this") and one register row.
 - **Seeded tags** — ≥ 5 existing tests whose comment already names the issue they pin.
 - `changelog/build-less-brittle-11.md` (planned)

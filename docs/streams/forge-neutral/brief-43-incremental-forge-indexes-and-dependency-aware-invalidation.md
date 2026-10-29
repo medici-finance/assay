@@ -48,7 +48,16 @@ consumers:
 
 ## Context
 
-files: `forgeread/mirror/derive/` (planned), `forgeread/testdata/derive/` (planned), `workflow/store/forgederived.go` (planned), `workflow/store/forgederived_test.go` (planned), `tools/desk/internal/forgeservice/query/` (planned), `docs/forge-service.md` (planned), `docs/contracts.md`, `changelog/forge-incremental-indexes.md` (planned), `forgeread/mirror/derive/reviewcontext_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files:
+- `forgeread/mirror/derive/` (planned)
+- `forgeread/testdata/derive/` (planned)
+- `workflow/store/forgederived.go` (planned)
+- `workflow/store/forgederived_test.go` (planned)
+- `tools/desk/internal/forgeservice/query/` (planned)
+- `docs/forge-service.md` (planned)
+- `docs/contracts.md`
+- `changelog/forge-incremental-indexes.md` (planned)
+- `forgeread/mirror/derive/reviewcontext_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - 37 owns base observations, admissions and refresh. This brief adds rebuildable derived indexes, not base forge records or a second mirror.

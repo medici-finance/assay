@@ -60,7 +60,7 @@ recorded in prose in the Context `facts:` below instead of as an edge.
 <!-- graph: not-a-gate -->
 
 ## Context
-files: `tools/desk/internal/deskkit/verdict.go`, `tools/desk/cmd/deskverdict/{main,sign,verify,keygen}.go`, `statusgen/{transcribeverdict,transcribescan,main}.go`, `statusgen/testdata/scan-delta-payload.json`
+files: `tools/desk/internal/deskkit/verdict.go`, `tools/desk/cmd/deskverdict/main.go`, `tools/desk/cmd/deskverdict/sign.go`, `tools/desk/cmd/deskverdict/verify.go`, `tools/desk/cmd/deskverdict/keygen.go`, `statusgen/transcribeverdict.go`, `statusgen/transcribescan.go`, `statusgen/main.go`, `statusgen/testdata/scan-delta-payload.json`
 
 single-point-of-failure: NOT a single control. The signature is the first layer; behind it sit
 three that fail on DIFFERENT signals in DIFFERENT components — (1) the R-7 clause-4 container-issue

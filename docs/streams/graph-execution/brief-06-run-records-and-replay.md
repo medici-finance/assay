@@ -49,7 +49,17 @@ consumers:
 # Brief 06 — Run records and the replay/learning loop
 
 ## Context
-files: `schemas/run-record-v1.json` (planned), `statusgen/runrecord.go` (planned) (writer + validator), `statusgen/runrecord_test.go` (planned), `statusgen/replay.go` (planned) (`statusgen replay` subcommand), `statusgen/replay_test.go` (planned), `statusgen/experiment.go` (planned) (emits a run record per case; from graph-execution/05), `statusgen/testdata/graph-execution/replay/` (planned) (the fixture derived from one failed run), `docs/streams/graph-execution/replay-01-report.md` (planned), `docs/lifecycle.md` (one paragraph: a pattern revision is a reviewed PR, never a promotion), `changelog/graph-execution-06-run-records-and-replay.md` (planned) — and `spec/workflow-patterns/<name>-v2.yaml` (planned) (the one revision)
+files:
+- `schemas/run-record-v1.json` (planned)
+- `statusgen/runrecord.go` (planned) (writer + validator)
+- `statusgen/runrecord_test.go` (planned)
+- `statusgen/replay.go` (planned) (`statusgen replay` subcommand)
+- `statusgen/replay_test.go` (planned)
+- `statusgen/experiment.go` (planned) (emits a run record per case; from graph-execution/05)
+- `statusgen/testdata/graph-execution/replay/` (planned) (the fixture derived from one failed run)
+- `docs/streams/graph-execution/replay-01-report.md` (planned)
+- `docs/lifecycle.md` (one paragraph: a pattern revision is a reviewed PR, never a promotion)
+- `changelog/graph-execution-06-run-records-and-replay.md` (planned) — and `spec/workflow-patterns/<name>-v2.yaml` (planned) (the one revision)
 facts:
   - `domain: complex` because which failure recurs, and therefore which revision is worth proposing, is not knowable before the 05 fixtures have run — the brief probes (run, record), senses (which case failed and why), responds (one revision). The record schema and the regression rule are ordered work; the choice of revision is not.
   - Run record fields (the contract, fixed here so 05's harness and any later trial emit the same shape): `schema` (const `run-record-v1`), `run_id`, `attempt_id`, `pattern` `{id, version}`, `selected_because` (an enumerated reason: `declared | default | only-candidate`), `nodes[]` each `{id, kind, eligibility: {verdict, reason}, blocked_edge, tool_outcome: {command, exit, key_output}, evidence_refs[]}`, `interventions[]` each `{kind: hold | override | retry | stop, by_role}` — role NAME only (`desk | reviewer | verifier | worker | human`), never a login or a person; `environment` `{model, statusgen_version, tool_versions{}}`. Every field is three-state: `n/a` or `could-not-check` where unreadable, never a default zero or empty string that reads as a fact. No free-text reasoning field exists in the schema, by design (spec §2.5).

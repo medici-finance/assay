@@ -65,7 +65,7 @@ files:
 - `tools/desk/internal/deskkit/repovis.go` (`PublicRepoGate` rewritten; `RepoInfoFetcher` narrowed; `Reaction` / `ReactionUser` and the reactions HTTP call removed)
 - tools/desk/internal/deskkit/publicbless.go (retired) and tests — deleted by this brief, with its test
 - `tools/desk/internal/deskkit/repovis_test.go` (or the package's gate tests)
-- `tools/desk/cmd/deskpost/{comment,review,ready}.go`, `tools/desk/cmd/deskpr/{deskpr,edit}.go`, `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskevidence/deskevidence.go`, `tools/desk/cmd/deskrelease/cut.go` — the call sites listed in `consumers:` (signature update only)
+- `tools/desk/cmd/deskpost/comment.go`, `tools/desk/cmd/deskpost/review.go`, `tools/desk/cmd/deskpost/ready.go`, `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskpr/edit.go`, `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskevidence/deskevidence.go`, `tools/desk/cmd/deskrelease/cut.go` — the call sites listed in `consumers:` (signature update only)
 - `tools/desk/README.md` (§ allowed repos, § standing per-repo authorization)
 
 facts (all read at `0af8093`, 2026-09-06):

@@ -34,9 +34,9 @@ id: fbaac7e4-e22d-48d8-bc73-01c5da3277e8
 ## Context
 
 files:
-- **add** `qualgen/riskscore/features.go` (planned) (+ `features_test.go`) — the Kamei-style JIT feature extractor over a change: diffusion (files/subsystems/entropy of the change), size (lines added/deleted), history (prior changes/defects to the touched files, recent churn), and author-class features (human/agent/automation identity, per §4.2/§4.4).
-- **add** `qualgen/riskscore/learned.go` (planned) (+ `learned_test.go`) — trains a JIT defect-prediction model on the repo's OWN traced defects (M2 corpus from quality/07) and scores a change; every learned score is emitted ALONGSIDE the §9.1 heuristic features it is built from, so the score is always explainable.
-- **add** `qualgen/riskscore/heuristic.go` (planned) (+ `heuristic_test.go`) — the existing hand-weighted §9.1 features as the FALLBACK + explanation layer: used verbatim when the corpus is too small to train, when the model cannot produce its features, or as the human-readable decomposition beside any learned score.
+- **add** `qualgen/riskscore/features.go` (planned), `qualgen/riskscore/features_test.go` (planned) — the Kamei-style JIT feature extractor over a change: diffusion (files/subsystems/entropy of the change), size (lines added/deleted), history (prior changes/defects to the touched files, recent churn), and author-class features (human/agent/automation identity, per §4.2/§4.4).
+- **add** `qualgen/riskscore/learned.go` (planned), `qualgen/riskscore/learned_test.go` (planned) — trains a JIT defect-prediction model on the repo's OWN traced defects (M2 corpus from quality/07) and scores a change; every learned score is emitted ALONGSIDE the §9.1 heuristic features it is built from, so the score is always explainable.
+- **add** `qualgen/riskscore/heuristic.go` (planned), `qualgen/riskscore/heuristic_test.go` (planned) — the existing hand-weighted §9.1 features as the FALLBACK + explanation layer: used verbatim when the corpus is too small to train, when the model cannot produce its features, or as the human-readable decomposition beside any learned score.
 - **consumes** — M2 traces (defect lineage + per-file defect density) from quality/07 — the labeled corpus the model trains and is evaluated on.
 
 facts:

@@ -30,11 +30,11 @@ id: 64eacba0-4543-46b1-94af-d6860e3bfe8e
 ## Context
 
 files:
-- **add** `qualgen/consumers/autofile.go` (planned) (+ `autofile_test.go`) — turns duplicate-block clusters (quality/03) and decaying hotspots above threshold (quality/03) into refactor issues/briefs, through a pluggable issue-filer; advisory and budgeted; NEVER self-dispatching.
+- **add** `qualgen/consumers/autofile.go` (planned), `qualgen/consumers/autofile_test.go` (planned) — turns duplicate-block clusters (quality/03) and decaying hotspots above threshold (quality/03) into refactor issues/briefs, through a pluggable issue-filer; advisory and budgeted; NEVER self-dispatching.
 - **add** `qualgen/filer/filer.go` (planned) — the pluggable `IssueFiler` interface: file a refactor item (title, body, labels) OR dry-run (return what WOULD be filed without filing). Supports a budget cap the caller enforces.
-- **add** `qualgen/filer/githubadapter.go` (planned) (+ `githubadapter_test.go`) — the GitHub Issues REFERENCE adapter shipped in-tree; other filers are configuration, not a fork.
-- **add** `qualgen/consumers/budgets.go` (planned) (+ `budgets_test.go`) — per-stream churn and defect-inducing error-budgets in an ALARM posture (a breach is an alarm, not a dashboard line); budgets are config, armable only after ≥2 windows of measurement.
-- **add** `qualgen/consumers/retro.go` (planned) (+ `retro_test.go`) — emits the retrospective input set (churn trend, gate yield, per-stage ledger, budget status) as generated/logged output a cadence retrospective consumes; this tool produces the inputs, it does not run the retro.
+- **add** `qualgen/filer/githubadapter.go` (planned), `qualgen/filer/githubadapter_test.go` (planned) — the GitHub Issues REFERENCE adapter shipped in-tree; other filers are configuration, not a fork.
+- **add** `qualgen/consumers/budgets.go` (planned), `qualgen/consumers/budgets_test.go` (planned) — per-stream churn and defect-inducing error-budgets in an ALARM posture (a breach is an alarm, not a dashboard line); budgets are config, armable only after ≥2 windows of measurement.
+- **add** `qualgen/consumers/retro.go` (planned), `qualgen/consumers/retro_test.go` (planned) — emits the retrospective input set (churn trend, gate yield, per-stage ledger, budget status) as generated/logged output a cadence retrospective consumes; this tool produces the inputs, it does not run the retro.
 - **consumes** — hotspots + duplicate-block clusters (quality/03), instruction-layer brittleness (quality/04), M2 defect metrics (quality/07), and gate-yield (quality/12) for the retro feed.
 
 facts:
