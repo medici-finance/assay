@@ -145,8 +145,10 @@ database cell's) is removed rather than passed through; with `CELL_DB_DSN` set a
 `CELL_DB_PASSFILE`, the cell gets no `PGPASSFILE` at all. A DSN that carries a password is never
 composed: `cellctl desk` refuses the launch without printing it. `cellctl check` adds rows for a cell
 with a database: the DSN carries no password, the passfile is absolute, readable and 0600/0400,
-and a `container` kind cell fails (container cells cannot reach this database yet). See
-[`docs/cellctl.md`](cellctl.md).
+and a `container` kind cell fails (container cells cannot reach this database yet). A Kubernetes
+compatibility cell is refused too: `cellctl desk`, `up` and `check` name `CELL_DB_DSN` (or
+`CELL_DB_PASSFILE`) and refuse rather than drop it, because that path composes no database
+environment. See [`docs/cellctl.md`](cellctl.md).
 
 `check-isolation.sh` checks the server for drift in the database-layer controls (PUBLIC grants on
 `cell_%`, `aside_%`, `postgres` and `template1`; cell database ownership; forbidden role

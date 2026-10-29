@@ -521,7 +521,9 @@ userinfo, including a URI given as the `dbname` value — the value is withheld 
 `desk` refuses the launch rather than compose it), and
 `CELL_DB_PASSFILE` is set, absolute, readable and mode `0600` or `0400` (the same mode helper as the
 PEM rows). On a `container` cell the key is a `MISS` naming the gap: a container cell's plan
-carries no such environment or mount yet. The mode keeps out other OS users only; these rows never
+carries no such environment or mount yet. A Kubernetes compatibility cell (`CELL_KIND=k8s` with
+`CELL_KUBERNETES_CONFIG`) that sets `CELL_DB_DSN` or `CELL_DB_PASSFILE` is refused by `desk`, `up`
+and `check`, naming the key and never its value: that profile composes no database environment. The mode keeps out other OS users only; these rows never
 claim that cells are separated from each other (see [`docs/postgres.md`](postgres.md) §Isolation
 boundary).
 
