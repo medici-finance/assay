@@ -49,15 +49,31 @@ type forgeEnvCase struct {
 }
 
 var forgeEnvCases = []forgeEnvCase{
-	// regression: #4841 — a non-default base the cell holds reaches the role window.
+	// regression: #4841 — a non-default base the cell holds reaches the role window as
+	// GITLAB_API_BASE, the key desktoken reads. FORGE_API_BASE is not forwarded: nothing in the
+	// window reads it, and a nested cellctl would rank it over its own cell's cell.env.
 	{name: "cell base reaches child",
 		cellEnv: "CELL_FORGE=gitlab\nGITLAB_API_BASE=" + forgeFixtureBase + "\nFORGE_API_BASE=" + forgeFixtureBase + "\n",
-		gitlab:  forgeFixtureBase, gitlabSet: true, forge: forgeFixtureBase, forgeSet: true},
-	// regression: #4841 — precedence: the cell's own value wins over one the launching shell carries.
+		gitlab:  forgeFixtureBase, gitlabSet: true},
+	// regression: #4841 — precedence: the cell's own value wins over one the launching shell
+	// carries. An inherited FORGE_API_BASE passes through untouched.
 	{name: "cell base wins over inherited",
 		cellEnv: "CELL_FORGE=gitlab\nGITLAB_API_BASE=" + forgeFixtureBase + "\nFORGE_API_BASE=" + forgeFixtureBase + "\n",
 		shell:   []string{"GITLAB_API_BASE=" + forgeFixtureInherited, "FORGE_API_BASE=" + forgeFixtureInherited},
-		gitlab:  forgeFixtureBase, gitlabSet: true, forge: forgeFixtureBase, forgeSet: true},
+		gitlab:  forgeFixtureBase, gitlabSet: true, forge: forgeFixtureInherited, forgeSet: true},
+	// regression: #4841 — a GitLab cell that states its base only as FORGE_API_BASE (the key
+	// loadCell treats as primary) still reaches the window as GITLAB_API_BASE.
+	{name: "forge-only cell base reaches child",
+		cellEnv: "CELL_FORGE=gitlab\nFORGE_API_BASE=" + forgeFixtureBase + "\n",
+		gitlab:  forgeFixtureBase, gitlabSet: true},
+	// regression: #4841 — and it wins over a sibling cell's inherited GITLAB_API_BASE.
+	{name: "forge-only cell base wins over inherited",
+		cellEnv: "CELL_FORGE=gitlab\nFORGE_API_BASE=" + forgeFixtureBase + "\n",
+		shell:   []string{"GITLAB_API_BASE=" + forgeFixtureInherited, "FORGE_API_BASE=" + forgeFixtureInherited},
+		gitlab:  forgeFixtureBase, gitlabSet: true, forge: forgeFixtureInherited, forgeSet: true},
+	// A GitHub cell's FORGE_API_BASE is not a GitLab base and is never exported as one.
+	{name: "github cell base not exported",
+		cellEnv: "FORGE_API_BASE=https://api.github.example\n"},
 	// A cell without the keys leaves the child exactly as inherited: the shell's value passes
 	// through untouched and the compiled FORGE_API_BASE derivation is never added.
 	{name: "cell without keys leaves child unchanged",
@@ -69,7 +85,7 @@ var forgeEnvCases = []forgeEnvCase{
 		cellEnv: "CELL_FORGE=gitlab\n"},
 	// An empty cell value is unset to desktoken; it must not clobber an inherited value.
 	{name: "empty cell value does not clobber inherited",
-		cellEnv: "GITLAB_API_BASE=\n",
+		cellEnv: "CELL_FORGE=gitlab\nGITLAB_API_BASE=\n",
 		shell:   []string{"GITLAB_API_BASE=" + forgeFixtureInherited},
 		gitlab:  forgeFixtureInherited, gitlabSet: true},
 }
