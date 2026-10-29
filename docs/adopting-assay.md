@@ -444,7 +444,8 @@ works but loses the guards. The mechanism is **channel-E, identical to `install-
 **Optional for the repo, required for a desk.** A statusgen-only `.assay-versions` stays a complete
 setup for an adopter that runs no desk. A desk role cannot boot on one: `deskboot`'s
 `first-sweep-prereqs` step refuses (exit 6) unless the nearest `.assay-versions` carries a
-`desk-tools` or `desk-tools-<os>-<arch>` line, or a `desk-tools-source` line with a full commit —
+`desk-tools`, `desk-tools-<os>-<arch>` or `desk-tools-<os>-<arch>.tar.gz` line (the last is the
+spelling `assay-install.sh pin --kind desk-tools` writes), or a `desk-tools-source` line with a full commit —
 the lines `deskboard`'s drift check reads. Matching statusgen lines on your branch and on main do
 not count. The one exemption is the source tree itself, where `refs/remotes/origin/main:tools/desk`
 resolves. So if you run desks, land this pin on main before the first boot:
