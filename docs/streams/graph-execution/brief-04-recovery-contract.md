@@ -54,8 +54,7 @@ exec-tier-why: "(c) concurrency and safety plumbing — a subtle ordering error 
 domain: complicated
 consumers:
 - 'drainloop/README.md §Optional layers (the Journal row''s ''best-effort'' wording is now conditional on whether
-  the adapter registers effects): follow-up graph-execution/04 (this brief; flips to fixed-here when the implementation
-  edits the path)'
+  the adapter registers effects): fixed-here (engine-owned declared-effect protocol and conditional journal documentation)'
 - 'docs/streams/graph-execution/spec.md §3 seam table row ''Drain engine'' (state text): out-of-scope (the spec
   describes the starting state; the stream README''s end-state paragraph is the forward statement)'
 - 'graph-execution/05''s experiment harness (the recovery case consumes the Effect/Receipt/Reconcile seam by name):
@@ -63,7 +62,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'workflow/publication: follow-up graph-execution/25'
 - 'workflow/store PostgreSQL outbox (implements the handoff seam): follow-up graph-execution/19'
-version: 4
+version: 5
 id: 961a1aa6-80a6-4712-b8ca-5a71cbdf6ece
 ---
 
@@ -72,7 +71,7 @@ id: 961a1aa6-80a6-4712-b8ca-5a71cbdf6ece
 ## Context
 files: `drainloop/effect.go` (planned) (Effect, Receipt, Reconcile), `drainloop/effect_test.go` (planned), `drainloop/item.go` (RunID/AttemptID on Item), `drainloop/engine.go` (Config.record becomes two-tier; Reconcile before an effect retry), `drainloop/journal.go` (the new Event kinds and the conditional contract), `drainloop/README.md` (§The contract, §Optional layers), `docs/enforcement-model.md` (one row: what the recovery contract enforces vs attributes), `changelog/graph-execution-04-recovery-contract.md` (planned). Added by the R2 amendment (2026-10-13): `drainloop/handoff.go` (planned), `drainloop/handoff_test.go` (planned).
 facts:
-  - Module: `github.com/medici-finance/assay/drainloop`, standalone (`drainloop/go.mod`, `go 1.25.0`); CI runs it with `GOWORK=off`. `TestNoDeskkitImports` (`drainloop/nodeskkit_test.go`) asserts the package imports no house package — the new file must keep that green.
+  - Module: `github.com/medici-finance/assay/drainloop`, standalone (`drainloop/go.mod`, `go 1.27.0`); CI runs it with `GOWORK=off`. `TestNoDeskkitImports` (`drainloop/nodeskkit_test.go`) asserts the package imports no house package — the new file must keep that green.
   - Journal today (2026-09-16 @ d96fd3ba): `Config.record` in `drainloop/engine.go` logs a sink error as `JOURNAL ... (non-fatal)` and continues. `journal.go` documents the kinds the engine emits: CLAIM, DISPATCH, LAND, RELEASE (via LAND), SKIP, HOLD, GUARD, EVIDENCE, IDLE. Nothing in the engine distinguishes an event that precedes an external effect from one that does not.
   - `Item` (`drainloop/item.go`) carries `ID`, `Implementer`, `Payload`, `Retry`. There is no run identity and no attempt identity; `Retry` is a count a queue bumps on re-selection.
   - Retry (`drainloop/retry.go`) is a facility `Land`/re-selection consults, deliberately off the six-method `Loop` contract. A `DecisionRetry` re-selects and re-dispatches the item — today with no step between the decision and the re-dispatch.
@@ -125,6 +124,34 @@ intent is committed.
 Package R4 later amends this brief for role-bound effect identity and lost acknowledgment at
 the publisher. Nothing here pre-empts it.
 
+## Architecture pickup — implementation
+
+Continue at source `30ca40aae3e9154c001af244fd7e73b4832eaff5`: brief v4 plus
+its R2 amendment, admission-assurance-spec, non-CI architecture 13/14/16/20,
+`docs/go-engineering.md`, `docs/library-first.md`, `docs/contracts.md` and the
+standalone drainloop implementation were inspected together. Prerequisites /02,
+/28 and /29 are independently recorded verified in the current board. The current
+module uses Go 1.27.0; the earlier Context baseline was Go 1.25.0.
+
+This is a bounded manual pickup, not a claim that a future context resolver ran.
+The approved R2 scope is compatible with engine-owned Apply and an opt-in
+TransactionalJournal. Standard-library contracts, hashing and testing fit the
+standalone boundary; pgx/Goose belong to /19, and a managed workflow library would
+replace rather than implement this small public seam. No dependency is added.
+The six-method Loop stays unchanged. No existing effect owner is duplicated or
+retired: none existed in drainloop at pickup. Every declaration follows one path,
+regardless of node kind. The semantic owner row in `docs/contracts.md` and the
+runtime mutation harness in `drainloop/testdata/effect_mutations.py` are included.
+
+Consumers /05, /21, /25, /19 and the fencing extension /16 remain future work;
+no database, provider, publisher, live controller or credential profile is activated.
+The in-memory transactional fake proves the seam and ordering, not PostgreSQL
+atomicity or provider containment. Native dispatch retained the existing ownership
+checks; its recent-window phantom ceiling remains a disclosed coverage limit.
+The implementation replaces row 3's compile-only rename with a runtime mutation
+that records two physical external writes. Independent verification still owns
+Evidence and lifecycle changes.
+
 ## Task
 1. **Identity.** Add `RunID` and `AttemptID` to `Item` (`drainloop/item.go`): `RunID` is stable across attempts of one unit of work; `AttemptID` is minted per dispatch. Document that a queue re-selecting a failed item keeps `RunID` and mints a new `AttemptID`. Both are strings; empty means "the adapter did not assign one", legal only for items with no declared external effects (step 3).
 2. **Effect adapter** (`drainloop/effect.go` (planned)):
@@ -155,13 +182,13 @@ the publisher. Nothing here pre-empts it.
 |---|-------|---------|--------|
 | 1 | check:ci | `cd drainloop && GOWORK=off go test ./...` | exit 0 |
 | 2 | check:ci | `cd drainloop && GOWORK=off go test -run 'TestLostAckIsReconciledNotRepeated' -v ./...` | exit 0; output contains `RECONCILE` and the store assertion line `records=1` |
-| 3 | check:ci +mutation | `cd drainloop && cp engine.go /tmp/ge04-engine.bak && sed -i '' 's/reconcileBeforeApply(/reconcileBeforeApplyDISABLED(/' engine.go && (GOWORK=off go test -run 'TestLostAckIsReconciledNotRepeated' ./... ; echo rc=$?) ; cp /tmp/ge04-engine.bak engine.go` | `rc=1` — with the reconcile step bypassed the store ends with two records and the test reddens; restored after |
+| 3 | check:ci +mutation | `cd drainloop && python3 testdata/effect_mutations.py receipt-bypassed` | exit 0; `KILLED receipt-bypassed (runtime assertion)` with `records=2`; the mutated test exits nonzero and source is restored (compile-only failure is rejected) |
 | 4 | check:ci +mutation | `cd drainloop && GOWORK=off go test -run 'TestIntentRecordFailureAbortsEffect' ./... && GOWORK=off go test -run 'TestJournalRequiredForEffects' ./...` | exit 0 — both negative-path tests pass: a failed intent record yields zero effects, a missing journal refuses to run |
 | 5 | check:ci +neighbour | `cd drainloop && GOWORK=off go test -run 'TestNoDeskkitImports' ./... && GOWORK=off go test -run 'TestJournalRecordsScheduling' ./...` | exit 0 — the public core stays deskkit-free and the non-effect journal semantics are unchanged |
-| 6 | check +dereference | `grep -c 'EFFECT-INTENT' drainloop/journal.go drainloop/engine.go drainloop/README.md` | each file count ≥ 1 — the documented kind is the emitted kind; a README that names a kind the engine never emits fails this row |
+| 6 | check +dereference | `grep -c 'event.Kind = "EFFECT-INTENT"' drainloop/effect.go; grep -c 'EFFECT-INTENT' drainloop/journal.go drainloop/README.md` | each count ≥ 1 — the documented kind is the emitted kind: the first grep reads the assignment in `effect.go` that emits it, so deleting the emission fails this row, and a README that names a kind never emitted fails it too |
 | 7 | check +dereference | `grep -n 'reconcile' docs/enforcement-model.md` | ≥ 1 line, and that line states the adapter-specific idempotency/fencing guarantee, holds unknown outcomes where deduplication cannot be enforced, and says bypasses are only attributed (the bypass boundary named in Task 6) — a row that only claims exactly-once fails the reviewer's reading |
 | 8 | check +flow | `cd drainloop && GOWORK=off go run ./cmd/demo > /tmp/ge04-demo.txt 2>&1; grep -c LAND /tmp/ge04-demo.txt` | 5 — the demo's five non-effect items still drain unchanged with the layer off |
-| 9 | check | `statusgen --consumers --root . --brief graph-execution/04 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | pre-merge only; exit 0; branch routing dispositions are checked against the pinned fork. Inherited and out-of-scope routes remain unchecked obligations. At implementation replace this provisional command with the actual full delivery and first-parent pins, plus exact summary counts, before post-merge verification (see [delivery contract](../../consumer-delivery-checks.md)). |
+| 9 | check | `(consumer_out=$(mktemp) && trap 'rm -f "$consumer_out"' 0 && statusgen --consumers --root . --brief graph-execution/04 --delivery 1746936e41cccd237d9bd9021cff1a128d3c1dfb --base 30ca40aae3e9154c001af244fd7e73b4832eaff5 > "$consumer_out" && grep -Fx 'summary: 5 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$consumer_out")` | exit 0; exact summary shown. The four follow-up routes are corroborated declarations, not consumer implementation or behavioral acceptance; the out-of-scope historical spec remains unchecked and requires review. Actual immutable delivery and its first parent are pinned. |
 | 10 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run TestDeclaredEffectCannotBypassJournal ./...` | exit 0; named test PASS; an artifact node with a declared effect cannot bypass mandatory intent recording |
 | 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectUnsupportedIdempotencyHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectUnsupportedIdempotencyHolds " "$routing_out")` | exit 0; named PASS; unreadable receipt and unsupported dedupe never permit a duplicate Apply; mutation: treat an unreadable receipt as not-applied and re-run Apply — the named test must fail |
 | 12 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectIntentOutboxHandoff$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectIntentOutboxHandoff " "$routing_out")` | exit 0; named PASS; the intent and claim generation commit together before Apply, a crash after that commit resumes through Reconcile with at most one Apply, and a pending entry from a superseded generation reconciles or holds; mutation: replay pending outbox entries on resume without the generation and reconcile checks — the named test must fail |

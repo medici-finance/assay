@@ -202,3 +202,9 @@ the publication review bridge (/25) and control exports (/15) are planned consum
 Whether they must require corroborated provenance, or keep it report-only, is a pending
 human decision (#4800). Until then the existing identity checks and human gates are the
 whole of what is enforced.
+
+## Effect recovery boundary
+
+| Contract | Enforced boundary and attribution limit |
+|---|---|
+| drainloop declared-effect recovery | Before every Apply, reconcile the authoritative receipt; require durable EFFECT-INTENT (or an atomic intent/claim-generation handoff), then record completion. The adapter-specific idempotency/fencing guarantee depends on the provider's actual dedupe and ownership enforcement. Unknown outcomes hold wherever deduplication or authoritative absence cannot be enforced; stale pending generations reconcile or hold. Bypasses are only attributed, never an unconditional exactly-once guarantee. |
