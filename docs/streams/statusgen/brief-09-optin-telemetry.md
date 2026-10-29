@@ -31,8 +31,7 @@ id: ff2ec63d-f6f6-4cfa-a37e-c5f7aaba1caa
 # Brief 09 — Opt-in statusgen telemetry — anonymized fleet-drift corpus
 
 ## Context
-files: `statusgen/` (telemetry package + flag wiring + tests), `docs/telemetry.md` (new — collected
-  fields, opt-in mechanics, retention, the promise), README.md (index row)
+files: `statusgen/` (telemetry package + flag wiring + tests), `docs/telemetry.md` (new: collected fields, opt-in mechanics, retention, the promise), README.md (index row)
 facts:
   - OFF by default, single explicit opt-in (`--telemetry` flag AND `ASSAY_TELEMETRY=1` env — both required, so no CI vendor default can flip it silently); every run with telemetry on prints what was sent
   - payload: category counts ONLY (lint-failure categories, lifecycle-transition tallies, stream/brief COUNTS, statusgen version) — never repo names, brief titles, file paths, register text, identities; payload schema versioned in docs/telemetry.md

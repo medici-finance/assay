@@ -39,9 +39,7 @@ FROZEN for this brief: any needed engine change is a STOP + design finding, neve
 here.
 
 ## Context
-files: `tools/desk/cmd/fanoutloop/` (new adapter), `tools/desk/internal/loopengine/` (consume
-only — contract changes are out of scope), plus the batch-fanout skill (staged repoint, cutover
-human).
+files: `tools/desk/cmd/fanoutloop/` (new adapter), `tools/desk/internal/loopengine/` — (consume only — contract changes are out of scope), plus the batch-fanout skill (staged repoint, cutover human).
 
 facts:
 - SelectQueue = the Next-up board regenerated in the loop's own worktree (fresh `origin/main`
