@@ -1,1 +1,0 @@
-- Reuse the live repository visibility carried by deskboard actions queue snapshots, avoiding a duplicate metadata request per supported repository while retaining explicit live fallback and policy-drift checks.

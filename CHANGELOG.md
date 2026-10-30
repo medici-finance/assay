@@ -23,6 +23,27 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.67 — 2026-10-30
+
+### Added
+- Decision and verification cards expose canonical brief identity, distinct purpose, source and recorded verification revision links, and links to their related records. The existing human-only acceptance path remains separate; combined cards are unsupported.
+- Expose a pure verification candidate planner with explicit policy, freshness, capacity and per-root source coverage, retaining canonical queue and overlay ownership.
+- Multi-root candidate observations carry each root's merged-main revision, so judgment work in every root can be selected; each decision names its authority ceiling, and the observation revision excludes the collection time and is re-checked by the planner.
+- Publish the shared queue wire contract and reject unsupported class vocabulary as a coverage gap. Missing Evidence-repair discovery cannot establish whole-desk idle.
+
+### Fixed
+- Forward a GitLab cell's declared API endpoint to Codex command subprocesses and scrubbed role windows, using the existing cell-only resolution and preserving environment isolation.
+- Inside an admitted `statusgen verifyrun`, and in any process started from one of its Verify rows, statusgen no longer falls back to a stored forge login when no forge token variable is set. The ruling read behind `--acceptance-forge`, `--corroborate`, `--corroborate-record` and `--decision-gate`, the dead-claim decay's GitHub credential, and every `gh` launch now report could-not-check there instead of reading `gh auth token` or the cell's ambient copy of the login. A run whose admission is not yet established is refused the same way. The same refusal also applies wherever verifier admission would be required, even with no verifyrun running: when `DESK_LOOP` names a verify loop, or when the working directory's repository holds the verifier attestation file. So a verify-loop session that runs `--corroborate`, `--decision-gate`, `--corroborate-record` or a regen on a forge CLI login, with no token variable set, now gets a could-not-check where it used to get a read; set `GH_TOKEN` or `GITHUB_TOKEN` there. Where none of these signals holds nothing changes, and the admission step's removal of the forge token variables from a row's environment is unchanged (#4274).
+- Refuse credential-bearing URL components before adding a cell endpoint to Codex arguments or scrubbed launch plans.
+- `deskevidence --outcome-record` now writes a record for a brief whose declared files span
+- `deskevidence --outcome-record` writes one `file:<dir>/` content digest for a declared directory instead of a `file:` key per member, so a record for a directory holding files such as `secret-mount.fixture` no longer trips the secret pattern sweep; the scanner configuration is unchanged, and any member edit, addition, removal or rename still wakes the held work (#4865).
+
+### Changed
+- Model implementation merge as an effect-free human decision, derive the risk gates from the recorded ruling, and reject agent actors or effects at declared human boundaries.
+- Pin the opt-in Kubernetes compatibility component and example to the published v1.0.65 AMD64 role images, retaining the historical v1.0.52 base and explicit operator preparation and qualification holds.
+- Propose a versioned write-policy acceptance correction that retains the full inherited regression suite and checks that its existing file and shell cases execute the extracted shared evaluator. Exact human approval and independent verification remain required after landing.
+- Reuse the live repository visibility carried by deskboard actions queue snapshots, avoiding a duplicate metadata request per supported repository while retaining explicit live fallback and policy-drift checks.
+
 ## v1.0.66 — 2026-10-29
 
 ### Added
