@@ -85,7 +85,8 @@ name: release
 #     No job registers emulation or changes the runner's protected mounts. The runner's
 #     reference pins the image index digest. The other eight images stay
 #     linux/amd64.
-#     One release Environment approval covers this entire publication sequence.
+#     The release Environment approval covers this publication sequence. The
+#     protected object producer has its own environment approval requirements.
 
 on:
   push:
@@ -97,7 +98,7 @@ on:
         required: true
         type: string
       dry_run:
-        description: "Validate, test and build binaries/images. Cuts no tag and publishes no release or images; temporary CI artifacts pass build inputs between jobs."
+        description: "Validate, test and build binaries/images. Cuts no tag and publishes no release or images; GitHub artifacts and checked object handoffs pass inputs between jobs. Protected producer credentials are still required."
         required: false
         default: false
         type: boolean
@@ -1685,6 +1686,7 @@ jobs:
         run: bash tools/release/install-object-client.sh "$RUNNER_TEMP/release-aws"
 
       - name: Fetch checked release inputs from the object store
+        timeout-minutes: 15
         env:
           RELEASE_OBJECT_ENDPOINT: ${{ secrets.RELEASE_OBJECT_ENDPOINT }}
           RELEASE_OBJECT_BUCKET: ${{ secrets.RELEASE_OBJECT_BUCKET }}

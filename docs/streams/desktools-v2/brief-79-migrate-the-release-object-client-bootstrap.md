@@ -51,10 +51,13 @@ consumers:
 ## Architecture pickup
 
 This authoring routes an existing executable; it does not implement a parser port or claim
-that the port is complete. The delivering source is `caf3ef11d9a387218d0128ba90210ea55b30f9b3`.
-The stream directory was checked at main `5fdae0d07b58aba9042b112258727ac33862bd93` on
-2026-10-30; its last allocated brief was /77. The CLI contract, library-first component
-contract and selected transition were read from the delivering checkout. At implementation
+that the port is complete. The initial reviewed source checkpoint was
+`caf3ef11d9a387218d0128ba90210ea55b30f9b3`; it is historical, not the final delivery identity.
+The delivering revision is the merged PR #4939 revision, to be recorded by independent
+Evidence after merge. At this repair pickup, main
+`0006683ef1c8dc7341d0c2e67a4cb6b566e7814e` still allocated through /77; /78 and /79 remain
+this PR's new pending owners. The CLI contract, library-first component contract and
+selected transition were read from the reviewed checkout. At implementation
 pickup, refresh the approved target, interfaces and consumers and record continue/adapt/hold;
 a source snapshot is not permission to change custody or publication authority.
 

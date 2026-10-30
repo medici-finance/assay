@@ -40,6 +40,11 @@ CASES = (
  ('ci-workflow-suite', '.github/workflows/ci.yml', 'tools.release.transport_workflow_test', 'tools.release.images_test'),
  ('ci-transport-mutations', '.github/workflows/ci.yml', 'python3 -B -m tools.release.transport_mutation --out', 'python3 -B -m tools.release.go_cache_mutation --out'),
  ('upload-length-confirmation', RUNTIME, "not isinstance(got, dict) or type(got.get('ContentLength')) is not int or got['ContentLength'] != Path(bundle).stat().st_size", 'False'),
+ ('trailing-check-position', RUNTIME, 'plain.seek(payload_end)', 'plain.seek(0, 2)'),
+ ('trailing-padding-bound', RUNTIME, 'len(padding) > 512 + 10240', 'False'),
+ ('trailing-nonzero-data', RUNTIME, 'or any(padding)', 'or False'),
+ ('fetch-step-deadline', WORKFLOW, '      - name: Fetch checked release inputs from the object store\n        timeout-minutes: 15\n', '      - name: Fetch checked release inputs from the object store\n'),
+ ('ci-release-test-deadline', '.github/workflows/ci.yml', "      - name: Test release image contract\n        if: matrix.shard == 'rest'\n        timeout-minutes: 15\n", "      - name: Test release image contract\n        if: matrix.shard == 'rest'\n"),
 )
 CONTROL = ('refuse-healthy-input', RUNTIME, 'def _regular(path):', "def _regular(path):\n    raise ValueError('distinct broken-reader control')")
 

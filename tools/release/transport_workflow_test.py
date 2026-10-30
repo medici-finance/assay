@@ -9,6 +9,11 @@ from tools.release.images_test import workflow_jobs, workflow_steps, publication
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def deadline_problems(step):
+    match = re.search(r'^        timeout-minutes: ([0-9]+)$', step, re.M)
+    return [] if match and 0 < int(match.group(1)) <= 15 else ['checked handoff needs a fixed bounded deadline']
+
+
 def hybrid_problems(text):
     jobs = workflow_jobs(text)
     producer, publisher, native = (jobs.get(k, '') for k in ('artifacts', 'release', 'runner-arm64'))
@@ -22,6 +27,7 @@ def hybrid_problems(text):
     steps = workflow_steps(producer)
     store = steps.get('Store checked release inputs for the in-cluster publisher', '')
     fetch = workflow_steps(publisher).get('Fetch checked release inputs from the object store', '')
+    problems.extend(deadline_problems(fetch))
     for verb, step in [('upload', store), ('download', fetch)]:
         if 'python3 -B -m tools.release.transport ' + verb not in step:
             problems.append('missing explicit checked object operation: ' + verb)
@@ -69,12 +75,24 @@ def ci_transport_problems(text):
     required = ('tools.release.images_test', 'tools.release.transport_test',
                 'tools.release.transport_workflow_test',
                 'python3 -B -m tools.release.transport_mutation --out')
-    return [item for item in required if item not in step] + (
+    return deadline_problems(step) + [item for item in required if item not in step] + (
         ['release tests must fail the rest shard'] if 'continue-on-error:' in step or
         "if: matrix.shard == 'rest'" not in step else [])
 
 
 class HybridWorkflowTest(unittest.TestCase):
+    # regression: #4939 C5
+    def test_fetch_and_ci_contract_checks_have_fixed_deadlines(self):
+        for rel in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (ROOT / rel).read_text()
+            fetch = workflow_steps(workflow_jobs(text)['release'])['Fetch checked release inputs from the object store']
+            self.assertEqual(deadline_problems(fetch), [])
+            for value in ('0', '16', '${{ inputs.unbounded }}'):
+                self.assertTrue(deadline_problems(fetch.replace('timeout-minutes: 15', 'timeout-minutes: ' + value)))
+            self.assertTrue(deadline_problems(fetch.replace('        timeout-minutes: 15\n', '')))
+        ci = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertEqual(ci_transport_problems(ci), [])
+
     # regression: #4887
     def test_privileged_runner_binding_is_fixed_in_reviewed_source(self):
         for rel in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):

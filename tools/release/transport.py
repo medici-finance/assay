@@ -125,7 +125,9 @@ def restore(bundle, destination, meta, expected_digest, expected_manifest, expec
         raise ValueError('refusing to replace existing release inputs')
     with tempfile.TemporaryDirectory(prefix='.release-handoff-', dir=destination) as scratch:
         scratch = Path(scratch)
-        with tarfile.open(bundle, 'r|gz') as archive:
+        # Own the documented gzip reader instead of reading tarfile's private
+        # streaming adapter past EOF (which can spin on Python 3.15).
+        with gzip.open(bundle, 'rb') as plain, tarfile.open(fileobj=plain, mode='r|') as archive:
             first = archive.next()
             if first is None or first.name != MANIFEST or first.type not in (tarfile.REGTYPE, tarfile.AREGTYPE) or first.pax_headers or first.size > MAX_MANIFEST:
                 raise ValueError('release bundle must start with its bounded manifest')
@@ -139,12 +141,14 @@ def restore(bundle, destination, meta, expected_digest, expected_manifest, expec
             if not isinstance(records, list) or len(records) != len(names) or not all(isinstance(r, dict) for r in records) or [r.get('name') for r in records] != names:
                 raise ValueError('release manifest has incomplete or repeated membership')
             total = 0
+            payload_end = 512 + ((len(manifest) + 511) // 512) * 512
             for record in records:
                 if set(record) != {'name', 'size', 'sha256'} or type(record['size']) is not int or record['size'] < 0 or not isinstance(record['sha256'], str) or not re.fullmatch(r'[0-9a-f]{64}', record['sha256']):
                     raise ValueError('malformed release member record')
                 total += record['size']
                 if total > MAX_CONTENT:
                     raise ValueError('release content exceeds its bound')
+                payload_end += 512 + ((record['size'] + 511) // 512) * 512
                 entry = archive.next()
                 if entry is None or entry.name != record['name'] or entry.type not in (tarfile.REGTYPE, tarfile.AREGTYPE) or entry.pax_headers or entry.size != record['size']:
                     raise ValueError('release archive membership or file type changed')
@@ -157,8 +161,13 @@ def restore(bundle, destination, meta, expected_digest, expected_manifest, expec
                     raise ValueError('release member checksum mismatch')
             if archive.next() is not None:
                 raise ValueError('release archive contains extra members')
-            padding = archive.fileobj.read(10241)
-            if len(padding) > 10240 or any(padding):
+            # Rewind the public gzip reader to the end derived from the verified
+            # USTAR member sizes. Include the zero header already consumed by
+            # archive.next(), preserving its previous 512 + 10240 byte bound.
+            # The tar adapter's read-ahead buffer is intentionally not inspected.
+            plain.seek(payload_end)
+            padding = plain.read(512 + 10241)
+            if len(padding) > 512 + 10240 or any(padding):
                 raise ValueError('release archive has unexpected trailing data')
         # link is atomic and refuses an existing target; all payload checks finish
         # before any prepared file can enter the publisher workspace.

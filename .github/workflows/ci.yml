@@ -201,6 +201,7 @@ jobs:
 
       - name: Test release image contract
         if: matrix.shard == 'rest'
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           python3 -B -m unittest tools.release.images_test tools.release.transport_test tools.release.transport_workflow_test -v

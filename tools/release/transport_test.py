@@ -64,6 +64,38 @@ class TransportTest(unittest.TestCase):
         self.assertEqual(t.prepare(self.inputs, other, self.meta), self.proof)
         self.assertEqual(other.read_bytes(), self.bundle.read_bytes())
 
+    # regression: #4939 C5
+    def test_restore_roundtrip_has_a_bounded_subprocess(self):
+        result = subprocess.run(
+            [sys.executable, '-B', '-m', 'unittest',
+             'tools.release.transport_test.TransportTest.test_roundtrip_is_exact_and_bound_to_job_outputs'],
+            cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    # regression: #4939 C5
+    def test_trailing_bytes_keep_the_original_bound_and_fail_before_publication(self):
+        raw = gzip.decompress(self.bundle.read_bytes())
+        with tarfile.open(fileobj=io.BytesIO(raw), mode='r:') as archive:
+            manifest = archive.extractfile(archive.next()).read()
+        records = json.loads(manifest)['members']
+        end = 512 + ((len(manifest) + 511) // 512) * 512
+        end += sum(512 + ((record['size'] + 511) // 512) * 512 for record in records)
+        for name, tail, accepted in (
+                ('maximum', bytes(512 + 10240), True),
+                ('over-bound', bytes(512 + 10241), False),
+                ('nonzero', bytes(512) + b'extra', False)):
+            with self.subTest(name=name):
+                bundle = self.root / (name + '.gz')
+                bundle.write_bytes(gzip.compress(raw[:end] + tail, mtime=0))
+                args = dict(bundle=bundle, destination=self.root / name,
+                            expected_digest=t.sha256_file(bundle), expected_size=bundle.stat().st_size)
+                if accepted:
+                    self.restore(**args)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'trailing data'):
+                        self.restore(**args)
+                    self.assertFalse((self.root / name / 'checksums.txt').exists())
+
     # regression: #4887
     def test_publisher_only_rerun_retains_the_original_attempt(self):
         self.assertEqual(self.proof['handoff_attempt'], '2')
