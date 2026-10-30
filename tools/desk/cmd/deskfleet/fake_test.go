@@ -48,6 +48,9 @@ type fakeRule struct {
 	// extraPush are push_access_levels entries answered AFTER the first one (the entry built
 	// from push/pushUser), as a forge holding more than one push entry answers them.
 	extraPush []map[string]any
+	// entries, when non-nil, IS the push_access_levels answer, verbatim — deploy-key, group and
+	// unrecognised entries included; push, pushUser and extraPush are then not answered.
+	entries []map[string]any
 }
 
 // fakePushToken is the obviously-fake value of the project access token the fake mints for
@@ -100,6 +103,16 @@ type fakeForge struct {
 	accessTokenMints   int
 	variables          map[string]map[string]any
 	variablePostStatus int
+	// addPushOnWrite are push entries the forge holds beyond what a protected-branch POST
+	// carried, so the read-back can disagree with the write.
+	addPushOnWrite []map[string]any
+	// variableReadback, when set, overrides the stored fields on every variable read, so the
+	// flag read-back can disagree with what the write sent.
+	variableReadback map[string]any
+	// accessTokenHangup drops the mint's connection with no reply; accessTokenBody, when set,
+	// is the mint's raw 201 body.
+	accessTokenHangup bool
+	accessTokenBody   string
 
 	reqs []fakeReq
 	// unprotectedObserved counts GET protected_branches/main reads that found no rule.
@@ -238,6 +251,12 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		for _, e := range f.rule.extraPush {
 			pushes = append(pushes, e)
 		}
+		if f.rule.entries != nil {
+			pushes = nil
+			for _, e := range f.rule.entries {
+				pushes = append(pushes, e)
+			}
+		}
 		merge := []any{map[string]any{"access_level": f.rule.merge}}
 		if f.omitMergeLevels {
 			merge = []any{}
@@ -273,10 +292,23 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		if f.dropPushUser && (nr.pushUser != 0 || len(nr.extraPush) > 0) {
 			nr.pushUser, nr.push, nr.extraPush = 0, mergeAccessLevel, nil
 		}
+		nr.extraPush = append(nr.extraPush, f.addPushOnWrite...)
 		f.rule = &nr
 		writeJSON(w, 201, map[string]any{"name": "main"})
 	case r.Method == "POST" && api == pid+"/access_tokens":
 		f.accessTokenMints++
+		if f.accessTokenHangup {
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		if f.accessTokenBody != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(f.accessTokenBody))
+			return
+		}
 		st := f.accessTokenStatus
 		if st == 0 {
 			st = 201
@@ -293,6 +325,16 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			writeJSON(w, 404, map[string]any{"message": "404 Variable Not Found"})
 			return
+		}
+		if f.variableReadback != nil {
+			out := map[string]any{}
+			for k, x := range v {
+				out[k] = x
+			}
+			for k, x := range f.variableReadback {
+				out[k] = x
+			}
+			v = out
 		}
 		writeJSON(w, 200, v)
 	case r.Method == "POST" && api == pid+"/variables":

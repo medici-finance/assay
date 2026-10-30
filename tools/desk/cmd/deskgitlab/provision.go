@@ -15,6 +15,7 @@ package main
 // the run at once with exit 1, as the script's `exit 1` did.
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -477,43 +478,104 @@ func (p *provisioner) projectBlock() error {
 // trimBody is a response body as the script's $(cat file) read it: trailing newlines removed.
 func trimBody(b []byte) string { return strings.TrimRight(string(b), "\n") }
 
-// protectedRule is protected `main` as read. push is the FIRST entry's level (the scalar a
-// restore re-sends); users, roles and groups are EVERY push entry, so no decision rests on
-// the first entry alone.
+// protectedRule is protected `main` as read. push is EVERY push_access_levels entry, each
+// classified on its own (pushEntry), so no decision rests on the first entry alone.
 type protectedRule struct {
-	exists             bool
-	push, merge, force string
-	users, roles       []string // user ids of user entries; levels of role entries
-	groups             int      // count of group entries
+	exists       bool
+	merge, force string
+	push         []pushEntry
+}
+
+// The kinds of push entry, as deskfleet's twin. A deploy-key, group or user entry carries an
+// access_level too, so an entry is a ROLE entry only when it names no principal; an entry
+// this run cannot classify is pushUnknown, and no decision may drop, widen or restore it.
+const (
+	pushRole      = "role"
+	pushUser      = "user"
+	pushGroup     = "group"
+	pushDeployKey = "deploy_key"
+	pushUnknown   = "unknown"
+)
+
+// pushEntry is one push entry: a principal's id, or a role entry's level, as written.
+type pushEntry struct{ kind, id, level string }
+
+func (e pushEntry) String() string {
+	switch e.kind {
+	case pushRole:
+		return pushRole + ":" + e.level
+	case pushUnknown:
+		return pushUnknown
+	}
+	return e.kind + ":" + e.id
+}
+
+var principalKinds = map[string]string{"user_id": pushUser, "group_id": pushGroup, "deploy_key_id": pushDeployKey}
+
+// wholeNumber is n's text when n is a JSON whole number, else "".
+func wholeNumber(v any) string {
+	n, ok := v.(json.Number)
+	if !ok {
+		return ""
+	}
+	if _, err := strconv.ParseInt(n.String(), 10, 64); err != nil {
+		return ""
+	}
+	return n.String()
+}
+
+// classifyPushEntry classifies one entry: exactly one non-null principal id makes it that
+// principal's entry; none, with a whole-number access_level, a role entry; anything else (two
+// principals, an unknown `*_id` principal, a non-numeric value, no field, not an object) is
+// pushUnknown.
+func classifyPushEntry(e any) pushEntry {
+	m, ok := e.(map[string]any)
+	if !ok {
+		return pushEntry{kind: pushUnknown}
+	}
+	var found []pushEntry
+	for k, v := range m {
+		if k == "id" || !strings.HasSuffix(k, "_id") || v == nil {
+			continue
+		}
+		n := wholeNumber(v)
+		if n == "0" {
+			continue // GitLab answers an absent principal as null; 0 names no one either
+		}
+		kind, known := principalKinds[k]
+		if !known || n == "" {
+			return pushEntry{kind: pushUnknown}
+		}
+		found = append(found, pushEntry{kind: kind, id: n})
+	}
+	switch len(found) {
+	case 1:
+		return found[0]
+	case 0:
+		if l := wholeNumber(m["access_level"]); l != "" {
+			return pushEntry{kind: pushRole, level: l}
+		}
+	}
+	return pushEntry{kind: pushUnknown}
 }
 
 // pushEntries reads every push_access_levels entry of v into r.
 func (r *protectedRule) pushEntries(v any) {
 	list, _ := path(v, "push_access_levels").([]any)
 	for _, e := range list {
-		switch {
-		case alt(path(e, "user_id"), "") != "":
-			r.users = append(r.users, render(path(e, "user_id")))
-		case alt(path(e, "group_id"), "") != "":
-			r.groups++
-		case path(e, "access_level") != nil:
-			r.roles = append(r.roles, render(path(e, "access_level")))
-		}
+		r.push = append(r.push, classifyPushEntry(e))
 	}
 }
 
-// pushIsOnlyUser: the push side is exactly one entry, naming id.
+// pushIsOnlyUser: the push side is exactly one entry, a user entry naming id.
 func (r protectedRule) pushIsOnlyUser(id string) bool {
-	return len(r.users) == 1 && r.users[0] == id && len(r.roles) == 0 && r.groups == 0
+	return len(r.push) == 1 && r.push[0].kind == pushUser && r.push[0].id == id
 }
 
-// pushIsNoOne: no user or group entry, and every role entry is 0 ("No one").
+// pushIsNoOne: every push entry is a role entry at 0 ("No one"); no entries reads as No one.
 func (r protectedRule) pushIsNoOne() bool {
-	if len(r.users) > 0 || r.groups > 0 {
-		return false
-	}
-	for _, l := range r.roles {
-		if l != "0" {
+	for _, e := range r.push {
+		if e.kind != pushRole || e.level != "0" {
 			return false
 		}
 	}
@@ -522,34 +584,108 @@ func (r protectedRule) pushIsNoOne() bool {
 
 // hasPushUser: a user entry names id.
 func (r protectedRule) hasPushUser(id string) bool {
-	for _, u := range r.users {
-		if u == id {
+	for _, e := range r.push {
+		if e.kind == pushUser && e.id == id {
 			return true
 		}
 	}
 	return false
 }
 
-// admitsRole: a role entry lets a member at level push (0 admits no one).
+// admitsRole: a ROLE entry lets a member at level push (0 admits no one). A user, group or
+// deploy-key entry admits that principal only, never a role.
 func (r protectedRule) admitsRole(level string) bool {
 	want, _ := strconv.Atoi(level)
-	for _, l := range r.roles {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= want {
+	for _, e := range r.push {
+		if n, err := strconv.Atoi(e.level); e.kind == pushRole && err == nil && n > 0 && n <= want {
 			return true
 		}
 	}
 	return false
+}
+
+// pushOutside lists every push entry outside the intended set: wantUser's user entry (when
+// wantUser is not "") and role entries at 0.
+func (r protectedRule) pushOutside(wantUser string) []string {
+	var out []string
+	for _, e := range r.push {
+		switch {
+		case e.kind == pushRole && e.level == "0":
+		case wantUser != "" && e.kind == pushUser && e.id == wantUser:
+		default:
+			out = append(out, e.String())
+		}
+	}
+	return out
+}
+
+// unrestorable names the entries a restore could not re-apply exactly, or "" when it can: a
+// group, a deploy key or an unrecognised entry is never re-sent (as a role grant it would
+// WIDEN push), and with no user entry the scalar form carries one role entry only — more needs
+// the allowed_to_push array, which only the Premium form is known to accept.
+func (r protectedRule) unrestorable(premium bool) string {
+	var bad []string
+	users, roles := 0, 0
+	for _, e := range r.push {
+		switch e.kind {
+		case pushUser:
+			users++
+		case pushRole:
+			roles++
+		default:
+			bad = append(bad, e.String())
+		}
+	}
+	if len(bad) > 0 {
+		return strings.Join(bad, ",")
+	}
+	if users == 0 && roles > 1 && !premium {
+		return r.pushList() + " (several role entries; the scalar form re-applies one)"
+	}
+	return ""
+}
+
+// roleLevels is every role entry's level, or "none"; userIDs every user entry's id.
+func (r protectedRule) roleLevels() string { return r.join(pushRole) }
+func (r protectedRule) userIDs() string    { return r.join(pushUser) }
+
+func (r protectedRule) join(kind string) string {
+	var s []string
+	for _, e := range r.push {
+		if e.kind == kind {
+			if kind == pushRole {
+				s = append(s, e.level)
+			} else {
+				s = append(s, e.id)
+			}
+		}
+	}
+	if len(s) == 0 {
+		return "none"
+	}
+	return strings.Join(s, ",")
+}
+
+// pushList is every push entry, in reply order, or "none".
+func (r protectedRule) pushList() string {
+	if len(r.push) == 0 {
+		return "none"
+	}
+	s := make([]string, len(r.push))
+	for i, e := range r.push {
+		s[i] = e.String()
+	}
+	return strings.Join(s, ",")
 }
 
 func (p *provisioner) readProtectedMain() protectedRule {
-	prev := protectedRule{push: "0", merge: mergeAccessLevel, force: "false"}
+	prev := protectedRule{merge: mergeAccessLevel, force: "false"}
 	st, body := p.api.call(http.MethodGet, "/projects/"+p.projectID+"/protected_branches/main", nil)
 	if st != "200" {
 		return prev
 	}
 	v, _ := decodeJSON(body)
 	prev.exists = true
-	prev.push = alt(path(v, "push_access_levels", 0, "access_level"), "0")
 	prev.merge = alt(path(v, "merge_access_levels", 0, "access_level"), "40")
 	prev.force = hasString(v, "allow_force_push", "false")
 	prev.pushEntries(v)
@@ -571,24 +707,33 @@ func (p *provisioner) protectBody(form string) []byte {
 }
 
 // restoreProtectedMain re-applies exactly what was read, so a refused POST cannot leave
-// `main` open: every user and role push entry, not the first alone. Scalar form unless the
-// previous rule named a user.
+// `main` open: every user and role push entry, not the first alone. It refuses (false,
+// nothing sent) a rule holding any other entry, so a group, a deploy key or an unrecognised
+// entry is never re-sent as a role grant; configureProtectedMain checks unrestorable before
+// it deletes anything, so this is the second line, not the first. Scalar form unless the
+// previous rule named a user or held several role entries.
 func (p *provisioner) restoreProtectedMain(prev protectedRule) bool {
+	var users, roles [][]byte
+	scalar := "0"
+	for _, e := range prev.push {
+		switch e.kind {
+		case pushUser:
+			users = append(users, object("user_id", raw(e.id)))
+		case pushRole:
+			roles = append(roles, object("access_level", raw(e.level)))
+			scalar = e.level
+		default:
+			return false
+		}
+	}
 	var body []byte
-	if len(prev.users) > 0 {
-		var push [][]byte
-		for _, u := range prev.users {
-			push = append(push, object("user_id", raw(u)))
-		}
-		for _, l := range prev.roles {
-			push = append(push, object("access_level", raw(l)))
-		}
+	if len(users) > 0 || len(roles) > 1 {
 		body = object("name", "main",
-			"allowed_to_push", array(push...),
+			"allowed_to_push", array(append(users, roles...)...),
 			"allowed_to_merge", array(object("access_level", raw(prev.merge))),
 			"allow_force_push", raw(prev.force))
 	} else {
-		body = object("name", "main", "push_access_level", raw(prev.push), "merge_access_level", raw(prev.merge),
+		body = object("name", "main", "push_access_level", raw(scalar), "merge_access_level", raw(prev.merge),
 			"allow_force_push", raw(prev.force))
 	}
 	st, _ := p.api.call(http.MethodPost, "/projects/"+p.projectID+"/protected_branches", body)
@@ -599,8 +744,11 @@ func (p *provisioner) restoreProtectedMain(prev protectedRule) bool {
 // wrong rule is visible at provisioning time, and returns the rule read and whether the read
 // succeeded. wantUser is the user a per-user push entry was written for ("" when none was): a
 // forge can answer that write 2xx and then not hold the entry (seen on GitLab 19.5.3), so its
-// absence from the read-back is a recorded failure, never a pass.
-func (p *provisioner) readbackProtectedMain(wantUser string) (protectedRule, bool) {
+// absence from the read-back is a recorded failure, never a pass. With check, EVERY push entry
+// is held to the intended set — wantUser's user entry and role entries at 0 — and any other
+// is a recorded failure; without check (the intended rule was never written, and that is
+// already recorded) it prints the rule that remains and records nothing more for its push.
+func (p *provisioner) readbackProtectedMain(wantUser string, check bool) (protectedRule, bool) {
 	st, body := p.api.call(http.MethodGet, "/projects/"+p.projectID+"/protected_branches/main", nil)
 	if st != "200" {
 		p.say("NOTICE: could not read protected 'main' back (HTTP %s) — the three decided fields are could-not-check, not a pass", st)
@@ -608,18 +756,27 @@ func (p *provisioner) readbackProtectedMain(wantUser string) (protectedRule, boo
 		return protectedRule{}, false
 	}
 	v, _ := decodeJSON(body)
-	push := alt(path(v, "push_access_levels", 0, "access_level"), "none")
 	merge := alt(path(v, "merge_access_levels", 0, "access_level"), "none")
 	// A boolean read-back tests for the KEY: `false` is a value, not an absence.
 	force := hasString(v, "allow_force_push", "unknown")
-	r := protectedRule{exists: true, push: push, merge: merge, force: force}
+	r := protectedRule{exists: true, merge: merge, force: force}
 	r.pushEntries(v)
 	userNote := ""
-	if len(r.users) > 0 {
-		userNote = " (user_id=" + strings.Join(r.users, ",") + ")"
+	if u := r.userIDs(); u != "none" {
+		userNote = " (user_id=" + u + ")"
 	}
-	p.say("read-back: main push_access_level=%s%s merge_access_level=%s allow_force_push=%s", push, userNote, merge, force)
-	if wantUser != "" && !r.hasPushUser(wantUser) {
+	p.say("read-back: main push_access_level=%s%s merge_access_level=%s allow_force_push=%s push_entries=%s",
+		r.roleLevels(), userNote, merge, force, r.pushList())
+	if check && len(r.push) == 0 {
+		p.say("NOTICE: protected 'main' read back with no push entries — who may push is could-not-check")
+		p.record("protected 'main' read back with no push entries — could-not-check who may push, verify by hand")
+	}
+	if extra := r.pushOutside(wantUser); check && len(extra) > 0 {
+		p.say("NOTICE: protected 'main' push side holds entries outside the intended set: %s", strings.Join(extra, ","))
+		p.record("protected 'main' push side holds entries outside the intended set (%s; intended: %s) — remove them by hand (Settings > Repository > Protected branches) and re-run to confirm",
+			strings.Join(extra, ","), intendedPush(wantUser))
+	}
+	if check && wantUser != "" && !r.hasPushUser(wantUser) {
 		p.say("NOTICE: no per-user push entry for the board-writer (user_id=%s) in the read-back", wantUser)
 		p.record("protected 'main' has no per-user push entry for the board-writer (user_id=%s): the forge accepted the write, but the entry is absent from the read-back — add it by hand (Settings > Repository > Protected branches) and re-run to confirm", wantUser)
 	}
@@ -632,6 +789,14 @@ func (p *provisioner) readbackProtectedMain(wantUser string) (protectedRule, boo
 		p.record("protected 'main' allow_force_push is %s, intended false", force)
 	}
 	return r, true
+}
+
+// intendedPush names the intended push side for a failure message.
+func intendedPush(wantUser string) string {
+	if wantUser != "" {
+		return "user:" + wantUser + " only"
+	}
+	return "role:0 (No one) only"
 }
 
 // configureProtectedMain protects `main`, never leaving it unprotected across a failure.
@@ -650,16 +815,27 @@ func (p *provisioner) configureProtectedMain() (protectedRule, bool) {
 
 	if prev.exists && prev.merge == mergeAccessLevel && prev.force == "false" && pushAsIntended {
 		p.say("no-op: main is already protected as intended — nothing deleted, nothing re-created")
-		return p.readbackProtectedMain(wantUser)
+		return p.readbackProtectedMain(wantUser, true)
 	}
 	if prev.exists && prev.force != "false" && prev.merge == mergeAccessLevel && pushAsIntended {
 		st, _ := p.api.call(http.MethodPatch, "/projects/"+p.projectID+"/protected_branches/main",
 			[]byte(`{"allow_force_push": false}`))
 		if st == "200" {
 			p.say("patched: main allow_force_push=false (PATCH — the rule was never removed)")
-			return p.readbackProtectedMain(wantUser)
+			return p.readbackProtectedMain(wantUser, true)
 		}
 		p.say("NOTICE: PATCH of allow_force_push returned HTTP %s — falling back to a guarded re-create", st)
+	}
+
+	// Refuse before any DELETE: a rule whose push side this run cannot re-apply exactly is left
+	// untouched, as deskfleet does — deleting it would leave no faithful way back.
+	if prev.exists {
+		if bad := prev.unrestorable(p.groupTier == "premium"); bad != "" {
+			p.warn("error: protected 'main' holds push entries this run cannot restore faithfully (%s) — nothing deleted", bad)
+			p.record("protected-branch step refused to replace the existing rule on 'main': its push side holds entries this run cannot restore faithfully (%s; all entries: %s) — nothing was deleted, the PREVIOUS rule is still in place and the intended rule is NOT. Set it by hand (Settings > Repository > Protected branches) and re-run to confirm",
+				bad, prev.pushList())
+			return p.readbackProtectedMain("", false)
+		}
 	}
 
 	var forms []string
@@ -697,12 +873,8 @@ func (p *provisioner) configureProtectedMain() (protectedRule, bool) {
 			"/protected_branches with push_access_level=0&merge_access_level=" + mergeAccessLevel + "&allow_force_push=false"
 		switch {
 		case prev.exists && p.restoreProtectedMain(prev):
-			userNote := ""
-			if len(prev.users) > 0 {
-				userNote = " user_id=" + strings.Join(prev.users, ",")
-			}
-			p.warn("error: protecting main failed — protection re-applied to its previous state (push_access_level=%s%s merge_access_level=%s allow_force_push=%s)",
-				prev.push, userNote, prev.merge, prev.force)
+			p.warn("error: protecting main failed — protection re-applied to its previous state (push_entries=%s merge_access_level=%s allow_force_push=%s)",
+				prev.pushList(), prev.merge, prev.force)
 			p.record("protected-branch step failed; 'main' was restored to its PREVIOUS rule (merge_access_level=%s) — the intended rule is NOT in place", prev.merge)
 		case prev.exists:
 			p.warn("error: protecting main failed AND the previous rule could not be re-applied — 'main' is UNPROTECTED, fix it by hand now")
@@ -723,7 +895,7 @@ func (p *provisioner) configureProtectedMain() (protectedRule, bool) {
 	if applied == "premium" {
 		wantUser = p.boardWriterID
 	}
-	return p.readbackProtectedMain(wantUser)
+	return p.readbackProtectedMain(wantUser, true)
 }
 
 // configureApprovals writes the two approval settings, then reads them back: on Free the

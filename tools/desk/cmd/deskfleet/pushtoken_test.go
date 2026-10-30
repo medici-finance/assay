@@ -149,19 +149,27 @@ func TestPushEntryReadback(t *testing.T) {
 	}
 }
 
-// regression: #5004
 // The planted second instance of the defect class: the DECIDING read also looked at the
 // first push entry only, so a rule whose second entry admits Maintainers read as intended.
+// It is not intended, and on the free tier it cannot be re-created and then restored
+// faithfully either (two role entries need the allowed_to_push array the scalar form cannot
+// carry), so the run records a failure that names the extra entry and deletes nothing.
+//
+// regression: #5004
 func TestPushEntriesAllRead(t *testing.T) {
 	f := newFakeForge(t)
 	f.plan = "free"
 	f.rule = &fakeRule{push: 0, merge: mergeAccessLevel, extraPush: []map[string]any{{"access_level": 40}}}
 	h := newHarness(t, f)
-	run(h.provisionArgs("--project", fakeProject), h.e)
+	code := run(h.provisionArgs("--project", fakeProject), h.e)
 	if strings.Contains(h.out.String(), "already protected as intended") {
 		t.Fatalf("a rule with a second push entry was read as intended:\n%s", h.out.String())
 	}
-	if f.rule == nil || len(f.rule.extraPush) != 0 {
-		t.Fatalf("the second push entry survived: %+v", f.rule)
+	if code != exitFailed || !strings.Contains(h.out.String(), "role:0,role:40") ||
+		!strings.Contains(h.out.String(), "nothing was deleted") {
+		t.Fatalf("exit %d, want %d with the extra entry named and nothing deleted:\n%s", code, exitFailed, h.out.String())
+	}
+	if deletes, bodies := protectRequests(f); deletes != 0 || len(bodies) != 0 {
+		t.Fatalf("the run wrote the rule (%d DELETE, %d POST) — it must refuse first", deletes, len(bodies))
 	}
 }

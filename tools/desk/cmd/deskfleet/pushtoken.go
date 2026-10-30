@@ -7,10 +7,15 @@ package main
 //   - a DEDICATED project access token, scope write_repository only, role Maintainer. Never
 //     a role-fleet PAT: the board-writer's carries `api`, and the board-writer stays Developer.
 //   - stored as a project CI/CD variable flagged masked AND protected, and read back by those
-//     flags. The value is never read back, printed, or written to disk.
+//     flags. The read-back GET returns the value too; this run never prints, logs or writes it
+//     to disk, and checks only the two flags.
 //   - where the forge will not mint a project access token (gitlab.com Free answers 403/404),
-//     the step is a recorded failure naming the manual step. It NEVER falls back to the
-//     board-writer PAT or any other credential this run holds.
+//     the step is a recorded failure naming the manual step, and every other refusal names its
+//     own cause. It NEVER falls back to the board-writer PAT or any other credential this run
+//     holds.
+//   - the token expires after --pat-expiry-days (default 7, at most 365) like the role PATs,
+//     and nothing here rotates it: an existing variable is a no-op, so rotation is the manual
+//     step in docs/adopting-assay-gitlab.md §2c.
 //
 // An existing variable is a named no-op: a fresh token for it is a rotation, not a
 // re-provision. A minted token whose variable write fails is REPORTED by name and id and left
@@ -74,9 +79,8 @@ func (p *provisioner) configurePushToken(pp string, mainRule protectedRule, main
 		return
 	}
 	if resp.Status != 201 {
-		p.fail("%s not provisioned: this forge refused to mint a project access token (%s) — access tokens cannot "+
-			"be minted here (gitlab.com Free has none). The board-writer PAT is never used in its place. %s",
-			pushTokenVariable, statusOnly(resp, err), pushTokenManualStep)
+		p.fail("%s not provisioned: %s. The board-writer PAT is never used in its place. %s",
+			pushTokenVariable, mintRefusalCause(resp.Status), pushTokenManualStep)
 		return
 	}
 	var tok struct {
@@ -117,6 +121,24 @@ func (p *provisioner) configurePushToken(pp string, mainRule protectedRule, main
 	p.noticePushAdmission(mainRule, mainRead)
 }
 
+// mintRefusalCause names why the forge refused the mint, by its 4xx status: only 403/404 is
+// the tier gap (gitlab.com Free has no project access tokens); the others are a request, a
+// credential or a validation problem, and naming them as the tier would send the reader to
+// the wrong fix.
+func mintRefusalCause(status int) string {
+	switch status {
+	case 403, 404:
+		return fmt.Sprintf("project access tokens are not available on this forge or tier (HTTP %d) — gitlab.com "+
+			"Free has none", status)
+	case 400:
+		return "the forge rejected the request as invalid (HTTP 400) — for example an expiry past the instance's " +
+			"maximum token lifetime; check --pat-expiry-days"
+	case 401:
+		return "the run's credential was not accepted for the mint (HTTP 401)"
+	}
+	return fmt.Sprintf("the forge refused the mint (HTTP %d)", status)
+}
+
 // noticePushAdmission says whether protected main's read-back push rule lets a Maintainer
 // token push. It never changes the rule.
 func (p *provisioner) noticePushAdmission(rule protectedRule, read bool) {
@@ -125,9 +147,12 @@ func (p *provisioner) noticePushAdmission(rule protectedRule, read bool) {
 		p.outf("NOTICE: protected 'main' was not read back, so whether its push rule admits the Maintainer push " +
 			"token is could-not-check, not a pass")
 	case !rule.admitsRole(pushTokenAccessLevel):
-		p.outf("NOTICE: protected 'main' push rule (push_access_level=%s, user entries=%s) does not admit a Maintainer — "+
+		// The rule this verb writes admits no role, so on a provisioned project this NOTICE is
+		// the expected state on every run, not a new fault.
+		p.outf("NOTICE: protected 'main' push rule (role levels=%s, entries=%s) does not admit a Maintainer — "+
 			"the regen job's push is refused (class `scope`) and the board regenerates through a human-merged MR "+
-			"(docs/adopting-assay-gitlab.md §2c). This run does not widen the push rule; that is a human decision",
-			levelString(rule.push), rule.pushUserList())
+			"(docs/adopting-assay-gitlab.md §2c). This is the expected state under the rule this verb writes; "+
+			"this run does not widen the push rule — that is a human decision",
+			rule.roleLevels(), rule.pushList())
 	}
 }

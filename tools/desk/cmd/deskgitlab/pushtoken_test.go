@@ -145,9 +145,13 @@ func TestPushEntryReadback(t *testing.T) {
 	}
 }
 
-// regression: #5004
 // The planted second instance of the defect class: the DECIDING read also looked at the
 // first push entry only, so a rule whose second entry admits Maintainers read as intended.
+// It is not intended, and on the free tier it cannot be re-created and then restored
+// faithfully either (two role entries need the allowed_to_push array the scalar form cannot
+// carry), so the run records a failure that names the extra entry and deletes nothing.
+//
+// regression: #5004
 func TestPushEntriesAllRead(t *testing.T) {
 	f := newFakeGitLab(t)
 	f.respond = chain(func(f *fakeGitLab, m, p, _ string) (int, string, bool) {
@@ -167,7 +171,10 @@ func TestPushEntriesAllRead(t *testing.T) {
 	if r.has("already protected as intended") {
 		t.Fatalf("a rule with a second push entry was read as intended:\n%s", r.out)
 	}
-	if n := len(f.bodies("POST", "/projects/7/protected_branches")); n != 1 {
-		t.Fatalf("%d protect POST(s), want 1 replacing the rule", n)
+	if r.code == 0 || !r.has("role:0,role:40") || !r.has("nothing was deleted") {
+		t.Fatalf("exit %d, want a recorded failure naming the extra entry with nothing deleted:\n%s", r.code, r.out)
+	}
+	if d, posts := f.count("DELETE "+protectedMainPath), f.bodies("POST", protectPath); d != 0 || len(posts) != 0 {
+		t.Fatalf("the run wrote the rule (%d DELETE, %d POST) — it must refuse first", d, len(posts))
 	}
 }
