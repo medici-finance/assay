@@ -5,7 +5,7 @@ serves: assay
 status: parked
 priority: P2
 track: platform
-issues: []
+issues: [4976]
 board: generated
 spec: docs/streams/delivery-profiles/spec.md
 ---
