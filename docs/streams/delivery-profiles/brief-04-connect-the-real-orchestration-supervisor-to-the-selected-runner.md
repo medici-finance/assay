@@ -20,6 +20,8 @@ exec-tier-why: Cross-module runtime identity, isolation, lifecycle and qualifica
 domain: complicated
 outcome: none
 sources:
+  - docs/streams/delivery-profiles/brief-03-build-the-isolated-local-profile-lifecycle-in-the-existing-service-host.md
+  - docs/streams/delivery-profiles/brief-01-define-the-shared-delivery-profile-contract-and-pure-reader.md
   - docs/streams/delivery-profiles/spec.md
   - spec/milestone-v1.md
   - spec/loop-admin-runner-v1.md
@@ -28,8 +30,8 @@ sources:
   - "freshness-checked 2026-10-30 at public main 15ab949bd6158c2a9ef469adf362f3fb5d2fca5a"
 consumers:
   - "public cell-api service handlers: fixed-here after implementation"
-  - "loopadmin/supervisor/: out-of-scope producer graph-execution/26; consume public supported API"
-  - "loopadmin/runner.Client: existing owner, reuse unchanged semantics"
+  - "loopadmin/supervisor/: out-of-scope (graph-execution/26 owns real supervision; this bridge consumes its supported public API without rewriting it)"
+  - "loopadmin/runner.Client: fixed-here (bridge calls existing public semantics; no runner state machine duplicated)"
   - "public thin cockpit: follow-up delivery-profiles/05"
 ---
 
@@ -60,6 +62,8 @@ single-point-of-failure: profile or runner subject misinterpreted by a shared ad
 - [Controlling draft spec and criterion coverage](spec.md), [plan and real blocking heads](README.md).
 - `spec/loop-admin-runner-v1.md`, `spec/milestone-v1.md`, `docs/library-first.md`, `docs/go-engineering.md`.
 - `docs/streams/cell-api/README.md`, `docs/streams/graph-execution/README.md`; read the named producer's actual implementation/qualified API before reuse.
+
+Routed consumer obligations: `delivery-profiles/01`, `delivery-profiles/03`. Consume their declared interfaces; these references do not invent additional start dependencies.
 
 ## Ground rules
 
@@ -104,6 +108,8 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileBridge$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileBridge ' "$out")` | exit 0 and named PASS. Real service adapter invokes delivered supervisor and runner.Client with fake adapter; launch/observe/cancel/reconcile share exact subject. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileBridgeFence$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileBridgeFence ' "$out")` | exit 0 and named PASS. Wrong session/generation/profile blocked independently below outer check, no launch; unqualified supervisor or database cannot silently skip. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileUnknown$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileUnknown ' "$out")` | exit 0 and named PASS. Lost acknowledgement reconciles one launch; deliberate replay-on-unknown and wrong-subject mutations turn test red. |
+
+| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/04` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem
 

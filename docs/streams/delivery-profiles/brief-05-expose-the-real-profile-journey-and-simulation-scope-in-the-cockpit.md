@@ -20,6 +20,7 @@ exec-tier-why: Cross-module runtime identity, isolation, lifecycle and qualifica
 domain: complicated
 outcome: none
 sources:
+  - docs/streams/delivery-profiles/brief-01-define-the-shared-delivery-profile-contract-and-pure-reader.md
   - docs/streams/delivery-profiles/spec.md
   - spec/milestone-v1.md
   - spec/loop-admin-runner-v1.md
@@ -30,7 +31,7 @@ consumers:
   - "public thin cockpit from cell-api/04: fixed-here after implementation"
   - "public typed service client: fixed-here after implementation"
   - "evidence export: follow-up delivery-profiles/06"
-  - "desktop Electron migration: out-of-scope existing owner; no legacy private shell copied"
+  - "desktop Electron migration: out-of-scope (first profile uses cell-api/04 public thin cockpit; desktop packaging is a separate product migration)"
 ---
 
 # Brief 05 — Expose the real profile journey and simulation scope in the cockpit
@@ -60,6 +61,8 @@ single-point-of-failure: profile or runner subject misinterpreted by a shared ad
 - [Controlling draft spec and criterion coverage](spec.md), [plan and real blocking heads](README.md).
 - `spec/loop-admin-runner-v1.md`, `spec/milestone-v1.md`, `docs/library-first.md`, `docs/go-engineering.md`.
 - `docs/streams/cell-api/README.md`, `docs/streams/graph-execution/README.md`; read the named producer's actual implementation/qualified API before reuse.
+
+Routed consumer obligations: `delivery-profiles/01`. Consume their declared interfaces; these references do not invent additional start dependencies.
 
 ## Ground rules
 
@@ -104,6 +107,8 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileClient$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileClient ' "$out")` | exit 0 and named PASS. Actual public thin client -> mounted service -> real supervisor -> fake runner; counters and trace identify each hop, no synthetic front-end shortcut. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileDisplay$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileDisplay ' "$out")` | exit 0 and named PASS. Rendered scope and actions reflect backend profile; missing metadata, swapped fake-as-real and stale reset each fail independent controls. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileClientAuth$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileClientAuth ' "$out")` | exit 0 and named PASS. Unauthorized/wrong-cell request never reaches runner, even with UI gating bypassed. Supported UI interaction test and captured render accompany the Go flow. |
+
+| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/05` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem
 

@@ -20,6 +20,7 @@ exec-tier-why: Cross-module runtime identity, isolation, lifecycle and qualifica
 domain: complicated
 outcome: none
 sources:
+  - docs/streams/delivery-profiles/brief-03-build-the-isolated-local-profile-lifecycle-in-the-existing-service-host.md
   - docs/streams/delivery-profiles/spec.md
   - spec/milestone-v1.md
   - spec/loop-admin-runner-v1.md
@@ -28,8 +29,8 @@ sources:
   - "freshness-checked 2026-10-30 at public main 15ab949bd6158c2a9ef469adf362f3fb5d2fca5a"
 consumers:
   - "public thin cockpit and host: fixed-here after implementation (qualification)"
-  - "delivery-profile evidence decoder: reuse /01 owner; update there if needed"
-  - "milestone-support acceptance/report adapters: follow-up existing milestone-support/06 and /13; no second store"
+  - "delivery-profile evidence decoder: fixed-here (export invokes the shared delivery-profiles/01 decoder; no copied parser)"
+  - "milestone-support acceptance/report adapters: out-of-scope (their existing briefs own reading scoped evidence and acceptance; this delivery exports evidence only)"
 ---
 
 # Brief 06 — Qualify the complete fake-runner journey and export scoped evidence
@@ -59,6 +60,8 @@ single-point-of-failure: profile or runner subject misinterpreted by a shared ad
 - [Controlling draft spec and criterion coverage](spec.md), [plan and real blocking heads](README.md).
 - `spec/loop-admin-runner-v1.md`, `spec/milestone-v1.md`, `docs/library-first.md`, `docs/go-engineering.md`.
 - `docs/streams/cell-api/README.md`, `docs/streams/graph-execution/README.md`; read the named producer's actual implementation/qualified API before reuse.
+
+Routed consumer obligations: `delivery-profiles/03`. Consume their declared interfaces; these references do not invent additional start dependencies.
 
 ## Ground rules
 
@@ -103,6 +106,8 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileJourney$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileJourney ' "$out")` | exit 0 and named PASS. Actual complete operator journey and fault matrix at exact profile subject; each hop observed; planted UI-only success and fake-labelled-real fail. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileEvidence$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileEvidence ' "$out")` | exit 0 and named PASS. Production export decoded through /01 preserves mode/scope/unknowns, rejects stale/wrong subject and redacts synthetic secret sentinel. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileJourneyCleanup$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileJourneyCleanup ' "$out")` | exit 0 and named PASS. Partial startup, interrupt, repeat reset/teardown leave no owned resource; unrelated files/processes survive; failed cleanup stays visible. |
+
+| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/06` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem
 

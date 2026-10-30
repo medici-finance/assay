@@ -31,7 +31,7 @@ consumers:
   - "deskd/internal/deliveryprofile/: fixed-here after implementation"
   - "service bridge: follow-up delivery-profiles/04"
   - "qualification runner: follow-up delivery-profiles/06"
-  - "cell-api/02 service placement: owner checkpoint before adapting moved paths"
+  - "cell-api/02 service placement: out-of-scope (producer retains migration ownership; checkpoint actual host paths before adding lifecycle glue)"
 ---
 
 # Brief 03 — Build the isolated local profile lifecycle in the existing service host
@@ -105,6 +105,8 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd deskd && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileLifecycle$' ./internal/deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileLifecycle ' "$out")` | exit 0 and named PASS. Real host lifecycle starts/resets/stops disposable fixtures; partial-start and interrupt cases leave no owned running resource. |
 | 2 | check:ci +flow +mutation | `(cd deskd && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileContain$' ./internal/deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileContain ' "$out")` | exit 0 and named PASS. With outer validator bypassed, remote dial/ambient credential attempt is refused at actual I/O boundary; sentinel files survive. |
 | 3 | check:ci +flow +mutation | `(cd deskd && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileHost$' ./cmd/deskd/... > "$out" && grep -F -- '--- PASS: TestProfileHost ' "$out")` | exit 0 and named PASS. Actual host entrypoint requires opt-in; ordinary startup contract unchanged; repeated teardown and unowned-process negative controls pass. |
+
+| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/03` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem
 

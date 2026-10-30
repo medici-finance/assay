@@ -20,6 +20,7 @@ exec-tier-why: Cross-module runtime identity, isolation, lifecycle and qualifica
 domain: complicated
 outcome: none
 sources:
+  - docs/streams/delivery-profiles/brief-02-qualify-deterministic-runner-scenarios-against-the-shared-contract.md
   - docs/streams/delivery-profiles/spec.md
   - spec/milestone-v1.md
   - spec/loop-admin-runner-v1.md
@@ -27,10 +28,10 @@ sources:
   - docs/go-engineering.md
   - "freshness-checked 2026-10-30 at public main 15ab949bd6158c2a9ef469adf362f3fb5d2fca5a"
 consumers:
-  - "selected real adapter from graph-execution/22: existing owner, consume qualified API"
-  - "loopadmin/runner/conformance/: existing /02 shared cases; owner-acknowledged amendment only if insufficient"
-  - "public client/service: reuse /05\u201306"
-  - "milestone-support acceptance: existing owner; fresh exact-subject evidence only"
+  - "selected real adapter from graph-execution/22: out-of-scope (producer owns harness integration; profile qualification consumes its existing public factory/API)"
+  - "loopadmin/runner/conformance/: fixed-here (qualification invokes existing shared cases; any semantic change requires owner-acknowledged amendment)"
+  - "public client/service: fixed-here (real-runner qualification traverses the same public clients and handlers from delivery-profiles/05 and /06)"
+  - "milestone-support acceptance: out-of-scope (existing acceptance adapter and driver own acceptance; a real-runner test exports evidence without advancing it)"
 ---
 
 # Brief 07 — Qualify a real-runner replacement without inheriting simulated acceptance
@@ -60,6 +61,8 @@ single-point-of-failure: profile or runner subject misinterpreted by a shared ad
 - [Controlling draft spec and criterion coverage](spec.md), [plan and real blocking heads](README.md).
 - `spec/loop-admin-runner-v1.md`, `spec/milestone-v1.md`, `docs/library-first.md`, `docs/go-engineering.md`.
 - `docs/streams/cell-api/README.md`, `docs/streams/graph-execution/README.md`; read the named producer's actual implementation/qualified API before reuse.
+
+Routed consumer obligations: `delivery-profiles/02`. Consume their declared interfaces; these references do not invent additional start dependencies.
 
 ## Ground rules
 
@@ -104,6 +107,8 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileReplacement$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileReplacement ' "$out")` | exit 0 and named PASS. Actual selected real adapter and fake run shared cases; deliberate contract mismatch fails, unavailable real runtime is not skipped. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileRealJourney$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileRealJourney ' "$out")` | exit 0 and named PASS. Real client/host/supervisor/adapter execute the separately authorized local workload and cleanup; exact actual subject is recorded. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileNoInheritance$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileNoInheritance ' "$out")` | exit 0 and named PASS. Fake, stale or wrong-environment evidence cannot satisfy real-required qualification; historical fake result remains readable. |
+
+| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/07` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem
 
