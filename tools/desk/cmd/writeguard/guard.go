@@ -82,8 +82,9 @@ func deskSession() bool {
 // (#4821); run calls it only in a desk session, so outside one the hook stays
 // silent. call is the call's one classification (classifyCall), shared with
 // the path policy. The decision is writepolicy's lexical scan of the raw
-// command, and a scan that cannot finish (nesting past its depth limit, or
-// past its work budget) is refused the same.
+// command: a scan that cannot finish (nesting past its depth limit, past its
+// work budget) is refused the same, and so is the read's trigger after a
+// construct the scan does not model.
 func ambientTokenRefusal(call *classifiedCall) (Verdict, bool) {
 	if !call.cl.ReadsAmbientForgeToken() {
 		return Verdict{}, false
@@ -91,7 +92,7 @@ func ambientTokenRefusal(call *classifiedCall) (Verdict, bool) {
 	return Verdict{
 		Block: true,
 		Reason: fmt.Sprintf(`writeguard: BLOCKED — ambient forge credential read.
-This Bash call runs `+"`gh auth token`"+` (or asks gh to print its stored token), or could not be judged in full (nested deeper than the scan's limit or past its work budget) and is refused the same:
+This Bash call runs `+"`gh auth token`"+` (or asks gh to print its stored token), or could not be judged in full and is refused the same: nested past the scan's limit, past its work budget, or a construct the scan does not model (a non-plain or nested $(…), backquotes, arithmetic, process substitution, an unclosed quote) with one of the read's words (auth, token, oauth_token, git-credential, or gh with status) from that command on. If those words are prose (a commit message or PR body built in a heredoc), write it to a file and pass -F <file> / --body-file <file>:
   %s
 The gh CLI's stored login belongs to whichever account last authenticated on this machine, not to this session's role identity. A desk session (DESK_LOOP or DESK_SESSION is set) never reads or uses it, not even for a read-only call.
 The ONLY sanctioned credential path is your role's minted token: desktoken <role>. It prints the path of a token file; pass that file's contents as GH_TOKEN to the one command that needs it, and never print or export the token.

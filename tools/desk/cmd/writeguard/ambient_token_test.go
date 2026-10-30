@@ -448,9 +448,8 @@ func TestAmbientTokenScanDeadline(t *testing.T) {
 
 // regression: #4821
 func TestAmbientTokenArithHeredoc(t *testing.T) {
-	// A `((` that bash reads as nested subshells must not make the hook read
-	// the heredoc after it as commands: an apostrophe in the body would then
-	// quote away the read on the lines after the delimiter.
+	// A `((` is not modeled: the hook refuses when the read's trigger follows
+	// it, even as heredoc data (accepted false refuses), and allows it without.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "")
@@ -458,13 +457,15 @@ func TestAmbientTokenArithHeredoc(t *testing.T) {
 		"((true); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'",
 		"((x<<E))\ngh auth token\nE",
 		"x=$(cat <<'E'\n) it's\nE\n); gh auth token; echo 'ok'",
+		"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'",
+		"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
 		requireAmbientRefusal(t, v, err, cmd)
 	}
 	for _, cmd := range []string{
-		"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'",
-		"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE",
+		"((true); true)\ncat > notes.md <<'E'\nit's here\nE\necho 'done'",
+		"((n = 1<<2)) && cat > notes.md <<'E'\nit's here\nE",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
 		if err != nil {
@@ -490,6 +491,8 @@ func TestAmbientTokenSubstHeredoc(t *testing.T) {
 		"n=$(wc -l <<'TXT'\n)\ngh auth token\nTXT\n)",
 		"cat > notes.md <<'DONE'\nDONE \nit's\nDONE\ngh auth token\necho 'x'",
 		"printf %s ${p%\\}<<T}\ngh auth token\nT}",
+		"x=$(cat <<'T'\nnote a) here\nT\n)\ncat > notes.md <<'N'\nsee gh auth token\nN",
+		"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's gh auth token\nE",
 	} {
 		t.Run(fmt.Sprintf("refused-%d", i), func(t *testing.T) {
 			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
@@ -498,8 +501,8 @@ func TestAmbientTokenSubstHeredoc(t *testing.T) {
 	}
 	for i, cmd := range []string{
 		"git commit -m \"$(cat <<'MSG'\nwriteguard: tidy\n\nSteps: 1) lex 2) judge\nMSG\n)\"",
-		"x=$(cat <<'T'\nnote a) here\nT\n)\ncat > notes.md <<'N'\nsee gh auth token\nN",
-		"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's gh auth token\nE",
+		"x=$(cat <<'T'\nnote a) here\nT\n)\ncat > notes.md <<'N'\nsee the docs\nN",
+		"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's here\nE",
 	} {
 		t.Run(fmt.Sprintf("allowed-%d", i), func(t *testing.T) {
 			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
@@ -510,5 +513,128 @@ func TestAmbientTokenSubstHeredoc(t *testing.T) {
 				t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
 			}
 		})
+	}
+}
+
+// ambientAllowed asserts the hook lets cmd through.
+func ambientAllowed(t *testing.T, wt, cmd string) {
+	t.Helper()
+	v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+	if err != nil {
+		t.Fatalf("%q: run: %v", cmd, err)
+	}
+	if v.Block {
+		t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
+	}
+}
+
+// ambientUnmodeled drives each row through the hook with each trigger at
+// "@" (refused), and with `echo ok` there (allowed: the construct alone is
+// not refused).
+func ambientUnmodeled(t *testing.T, rows []string) {
+	t.Helper()
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for _, row := range rows {
+		for _, trig := range []string{"gh auth token", `gh a'u'th $'\x74oken'`, `gh "$s" status -t`} {
+			cmd := strings.ReplaceAll(row, "@", trig)
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			requireAmbientRefusal(t, v, err, cmd)
+		}
+		ambientAllowed(t, wt, strings.ReplaceAll(row, "@", "echo ok"))
+	}
+}
+
+// regression: #4821
+func TestHookUnmodeledCmdSubst(t *testing.T) {
+	ambientUnmodeled(t, []string{
+		"echo \"$(case a in a) @ ;; esac)\"", "v=$(echo $(@))", "echo $(# c\n@\n)",
+		"echo \"$(cat <<'M'\nm\nM\n)\"; @",
+	})
+}
+
+// regression: #4821
+func TestHookUnmodeledBacktick(t *testing.T) {
+	ambientUnmodeled(t, []string{"echo `@`", "x=\"`date`\"; @"})
+}
+
+// regression: #4821
+func TestHookUnmodeledHeredoc(t *testing.T) {
+	ambientUnmodeled(t, []string{
+		"cat <<E\n`date`\nE\n@", "cat <<E\nnote \\\nE\nit's\nE\n@\necho '", "cat <<E\n@",
+	})
+}
+
+// regression: #4821
+func TestHookUnmodeledArith(t *testing.T) {
+	ambientUnmodeled(t, []string{"x=$((1<<2)); @", "echo $[1<<E]\n@\nE]"})
+}
+
+// regression: #4821
+func TestHookUnmodeledDoubleParen(t *testing.T) {
+	ambientUnmodeled(t, []string{"((x<<E))\n@\nE", "for ((i=0; i<2; i++)); do @; done"})
+}
+
+// regression: #4821
+func TestHookUnmodeledProcSubst(t *testing.T) {
+	ambientUnmodeled(t, []string{"diff <(sort <<'L'\nb) x\nL\n) /dev/null; @", "cat <(@)"})
+}
+
+// regression: #4821
+func TestHookUnmodeledUnclosed(t *testing.T) {
+	ambientUnmodeled(t, []string{"echo 'open; @", "echo $(open; @", "cat <<'E\n@"})
+}
+
+// regression: #4821
+func TestHookUnmodeledQuoteForms(t *testing.T) {
+	ambientUnmodeled(t, []string{
+		"echo $'it\\'s'; @", "printf %s \"${v:+\"'\"}\"; @; printf \"'\"", "f() { :; }; @",
+	})
+}
+
+// regression: #4821
+func TestHookReviewShapes(t *testing.T) {
+	// Neutral shapes of the classes earlier reviews found; each runs the read
+	// in at least one of bash 5, bash 3.2 and zsh.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for _, cmd := range []string{
+		"out=\"$(printf '%s\\n' $'k\\')' ; gh auth token ; printf )\"",
+		"/bin/bash -c \"wc -l <(tac <<Q\nx)\ngh auth token\nQ\n)\"",
+		"/bin/bash -c \"tee >(cat <<Q\nx)\ngh auth token\nQ\n) </dev/null\"",
+		"n=$( cat <<< \"$(printf '%s' \")\" ; gh auth token)\" )",
+		"printf '%s\\n' \"$( case q in q) printf \"b\" ; gh auth token ;; esac )\"",
+		"printf '%s' \"${u-\"'\"}\" ; gh auth token ; printf \"'\"",
+		"v=$( printf %s $'\\'' ; printf ')' ) ; gh auth token ; printf 'v'",
+		"=gh auth token",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
+	}
+}
+
+// regression: #4821
+func TestHookIdiomOutcomes(t *testing.T) {
+	// A heredoc-built message or body: allowed without the trigger, refused
+	// with it; -F / --body-file is the way through.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for _, cmd := range []string{
+		"git commit -m \"$(cat <<'MSG'\nfix: rotate the token cache\nMSG\n)\"",
+		"gh pr create --title t --body \"$(cat <<'EOF'\nthe auth flow\nEOF\n)\"",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
+	}
+	for _, cmd := range []string{
+		"git commit -m \"$(cat <<'MSG'\nfix: tidy the lexer\nMSG\n)\"",
+		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"",
+		"git commit -F msg.txt", "gh pr create --title t --body-file body.md",
+		"gh pr comment 1 --body \"$(printf 'see token docs')\"",
+	} {
+		ambientAllowed(t, wt, cmd)
 	}
 }

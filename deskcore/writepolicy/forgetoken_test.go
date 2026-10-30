@@ -11,9 +11,7 @@ func TestAmbientForgeTokenClassify(t *testing.T) {
 	read := func(cmd string) bool {
 		return Classify(Request{Tool: "Bash", Target: cmd}, LexicalContext{}).ReadsAmbientForgeToken()
 	}
-	deep := func(inner string) string {
-		return strings.Repeat("echo $(", maxForgeTokenDepth+2) + inner + strings.Repeat(")", maxForgeTokenDepth+2)
-	}
+	deep := func(inner string) string { return strings.Repeat("eval ", maxForgeTokenDepth+2) + inner }
 	for _, tc := range []struct {
 		cmd  string
 		want bool
@@ -33,6 +31,7 @@ func TestAmbientForgeTokenClassify(t *testing.T) {
 		{"", false},
 		{"echo \"it's gh auth token\"", false},
 		{"echo 'unterminated; gh auth token", true},
+		{"echo 'unterminated; ls", false},
 		// Too deep to lex is undecided, and an undecided scan is refused.
 		{deep("gh auth token"), true},
 		{deep("ls"), true},
@@ -111,14 +110,17 @@ func TestForgeANSICDecode(t *testing.T) {
 			t.Errorf("decodeANSIC(%q) = %q, want %q", in, got, want)
 		}
 	}
-	// An escaped quote inside the span does not end it, and the words after
-	// it are still lexed as commands.
+	// A span holding `\'` ends elsewhere in a POSIX sh: unmodeled, so it is
+	// refused when the trigger follows it (an accepted false refuse).
 	for _, tc := range []struct {
 		cmd  string
 		want bool
 	}{
 		{`echo $'it\'s'; gh auth token`, true},
-		{`echo $'it\'s gh auth token'`, false},
+		{`echo $'it\'s gh auth token'`, true},
+		{`echo $'it\'s'; ls`, false},
+		{`echo $'tab\there'; gh auth token`, true},
+		{`echo $'tab\there gh auth token'`, false},
 	} {
 		if got := forgeTokenRead(tc.cmd); got != tc.want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
@@ -192,9 +194,7 @@ func TestForgeUndecidedRefused(t *testing.T) {
 	// test there would let through any spelling the lexer decodes: ANSI-C
 	// escapes, or a word split by quotes.
 	prefix := "sudo " + strings.Repeat("gh auth x ", 2500)
-	nest := func(inner string) string {
-		return strings.Repeat(": $(", maxForgeTokenDepth+2) + inner + strings.Repeat(")", maxForgeTokenDepth+2)
-	}
+	nest := func(inner string) string { return strings.Repeat("eval ", maxForgeTokenDepth+2) + inner }
 	for _, tc := range []struct {
 		cmd      string
 		exhausts bool
@@ -227,28 +227,23 @@ func TestForgeUndecidedRefused(t *testing.T) {
 
 // regression: #4821
 func TestForgeArithHeredoc(t *testing.T) {
-	// A `((` is arithmetic only when its text closes with `))` the way bash
-	// decides it; otherwise it opens nested subshells, and a `<<` after it is
-	// a heredoc. Reading it as arithmetic anyway lexes the heredoc's body as
-	// commands, and an apostrophe there opens a quote that runs past the
-	// delimiter line and hides the read after it.
+	// A `((` is arithmetic or nested subshells as bash decides by where the
+	// parens close, so the scan does not model it: the rest of the script is
+	// refused iff it holds the trigger, even as data (accepted false refuses).
 	for _, tc := range []struct {
 		cmd  string
 		want bool
 	}{
 		// Nested subshells, then a data heredoc: the read after it is judged.
 		{"((true); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
-		{"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'", false},
-		// Text the scan cannot read as a parenthesis count: undecided.
+		{"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'", true},
+		{"((true); true)\ncat > notes.md <<'E'\nit's here\nE\necho 'done'", false},
 		{"(('n'); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
 		{"(('x'<<E))\ngh auth token\nE", true},
-		// Confirmed arithmetic: its `<<` is a shift, so the next line runs.
 		{"((x<<E))\ngh auth token\nE", true},
 		{"((\"x\"<<E))\ngh auth token\nE", true},
-		{"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE", false},
-		{"for ((i=0; i<2; i++)); do echo $i; done\ncat > n.md <<'E'\ngh auth token\nE", false},
-		// `$#`, a plain `${…}` and a plain quoted word keep the count, so a
-		// data heredoc after them is placed, and a read after its body judged.
+		{"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE", true},
+		{"for ((i=0; i<2; i++)); do echo $i; done\ncat > n.md <<'E'\ngh auth token\nE", true},
 		{"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's\nE", false},
 		{"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's\nE\ngh auth token\necho 'x'", true},
 		{"if (( $# > 0 )); then :; fi\ncat > n.md <<'E'\nit's\nE", false},
@@ -270,7 +265,8 @@ func TestForgeShiftSiblings(t *testing.T) {
 		want bool
 	}{
 		{"x=$(( \"$y\" <<'E'\n$(gh auth token)\nE\n))", true},
-		{"x=$((1<<2)); cat > n.md <<'E'\nit's gh auth token\nE", false},
+		{"x=$((1<<2)); cat > n.md <<'E'\nit's gh auth token\nE", true},
+		{"x=$((1<<2)); cat > n.md <<'E'\nit's here\nE", false},
 		{"echo $[1<<E]\ngh auth token\nE]", true},
 		{"echo ${x:-<<E}\ngh auth token\nE}", true},
 		{"echo ${x:-y}; cat > n.md <<'E'\ngh auth token\nE", false},
@@ -302,11 +298,138 @@ func TestForgeShiftSiblings(t *testing.T) {
 		{"m[\"k]\"<<T]=v\ngh auth token\nT]=v", true},
 		{"echo ${v:-\"}\"}; cat > n.md <<'E'\nit's\nE", false},
 		{"echo ${D:-$(pwd)}; cat > n.md <<'E'\nit's\nE", false},
-		// A substitution in a delimiter word: the body's end is undecided.
-		{"cat <<$(echo E)\nbody\n$(echo E)\necho ok", true},
+		// A substitution in a delimiter word: unmodeled, decided by the trigger.
+		{"cat <<$(echo E)\nbody\n$(echo E)\necho ok", false},
+		{"cat <<$(echo E)\nbody\n$(echo E)\ngh auth token", true},
 	} {
 		if got := forgeTokenRead(tc.cmd); got != tc.want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
+		}
+	}
+}
+
+// forgeTriggers spell the read in the ways the trigger must see through:
+// plain, quoted, escaped, ANSI-C decoded, behind a computed command word,
+// and the other token prints. "@" in a construct row stands for each.
+var forgeTriggers = []string{
+	"gh auth token", `gh a'u'th to\ken`, `gh $'\x61uth' token`, `$c auth "token"`,
+	`gh "$s" status -t`, "gh config get oauth_token", "gh auth git-credential",
+}
+
+// forgeUnmodeled asserts each row is refused with every trigger in it, and
+// allowed with `echo ok` there: the construct itself is not refused.
+func forgeUnmodeled(t *testing.T, rows []string) {
+	t.Helper()
+	for _, row := range rows {
+		for _, trig := range forgeTriggers {
+			if cmd := strings.ReplaceAll(row, "@", trig); !forgeTokenRead(cmd) {
+				t.Errorf("%q: the trigger in an unmodeled construct must refuse", cmd)
+			}
+		}
+		if cmd := strings.ReplaceAll(row, "@", "echo ok"); forgeTokenRead(cmd) {
+			t.Errorf("%q: no trigger, so the construct must stay allowed", cmd)
+		}
+	}
+}
+
+// regression: #4821
+func TestUnmodeledCmdSubst(t *testing.T) {
+	forgeUnmodeled(t, []string{
+		"x=$(printf '%s' \"(\"; @)", "echo \"$(case a in a) @ ;; esac)\"",
+		"v=$(echo $(@))", "echo \"$(printf \")\"; @)\"", "y=$(echo $'\\''; @)",
+		"echo $(# c\n@\n)", "echo $(printf %s \\); @)", "echo \"$(cat <<'M'\nm\nM\n)\"; @",
+	})
+}
+
+// regression: #4821
+func TestUnmodeledBacktick(t *testing.T) {
+	forgeUnmodeled(t, []string{"echo `@`", "x=\"`date`\"; @", "echo `echo \\`@\\``"})
+}
+
+// regression: #4821
+func TestUnmodeledHeredocBody(t *testing.T) {
+	forgeUnmodeled(t, []string{
+		"cat <<E\n`date`\nE\n@", "cat <<E\n$(cat <<'F'\nF\n)\nE\n@",
+		"cat <<E\nnote \\\nE\nit's\nE\n@\necho '", "cat <<E\n@", "cat <<$(echo E)\nx\n$(echo E)\n@",
+		"cat <<E\n${v:-\"q\"}\nE\n@", "cat <<E\n$a[1]\nE\n@",
+	})
+}
+
+// regression: #4821
+func TestUnmodeledArith(t *testing.T) {
+	forgeUnmodeled(t, []string{"x=$((1<<2)); @", "echo $(( (1) ))\n@", "echo $[1<<E]\n@\nE]"})
+}
+
+// regression: #4821
+func TestUnmodeledDoubleParen(t *testing.T) {
+	forgeUnmodeled(t, []string{
+		"((x<<E))\n@\nE", "((true); true)\ncat > n.md <<'E'\nit's\nE\n@",
+		"for ((i=0; i<2; i++)); do @; done",
+	})
+}
+
+// regression: #4821
+func TestUnmodeledProcSubst(t *testing.T) {
+	forgeUnmodeled(t, []string{
+		"diff <(sort <<'L'\nb) x\nL\n) /dev/null; @", "tee >(cat) </dev/null; @", "cat <(@)",
+	})
+}
+
+// regression: #4821
+func TestUnmodeledUnclosed(t *testing.T) {
+	forgeUnmodeled(t, []string{
+		"echo 'open; @", "echo \"open; @", "echo $'open; @", "echo ${open; @",
+		"echo $(open; @", "echo `open; @", "cat <<'E\n@",
+	})
+}
+
+// regression: #4821
+func TestUnmodeledQuoteForms(t *testing.T) {
+	forgeUnmodeled(t, []string{
+		"echo $'it\\'s'; @", "printf %s \"${v:+\"'\"}\"; @; printf \"'\"", "echo \"$a[1 2]\"; @",
+		"echo ${D:-$(pwd)}; @", "arr=(a b); @", "f() { :; }; @", "a[x y]=1; @",
+	})
+}
+
+// regression: #4821
+func TestForgeReviewShapes(t *testing.T) {
+	// Neutral shapes of the classes earlier reviews found (each one runs the
+	// read in bash 5, bash 3.2 or zsh): a span end the scan once placed where
+	// the shell does not. Each is an unmodeled construct now, so it is refused.
+	for name, cmd := range map[string]string{
+		"ansi-c-in-dq-subst": "out=\"$(printf '%s\\n' $'k\\')' ; gh auth token ; printf )\"",
+		"procsubst-heredoc":  "/bin/bash -c \"wc -l <(tac <<Q\nx)\ngh auth token\nQ\n)\"",
+		"procsubst-out-twin": "/bin/bash -c \"tee >(cat <<Q\nx)\ngh auth token\nQ\n) </dev/null\"",
+		"nested-dq-paren":    "n=$( cat <<< \"$(printf '%s' \")\" ; gh auth token)\" )",
+		"case-in-dq-subst":   "printf '%s\\n' \"$( case q in q) printf \"b\" ; gh auth token ;; esac )\"",
+		"quote-in-brace":     "printf '%s' \"${u-\"'\"}\" ; gh auth token ; printf \"'\"",
+		"ansi-c-in-subst":    "v=$( printf %s $'\\'' ; printf ')' ) ; gh auth token ; printf 'v'",
+		"heredoc-line-join":  "cat <<E\nnote \\\nE\nit's\nE\ngh auth token\necho '",
+		"zsh-equals-path":    "=gh auth token",
+	} {
+		if !forgeTokenRead(cmd) {
+			t.Errorf("%s: %q must be refused", name, cmd)
+		}
+	}
+}
+
+// regression: #4821
+func TestForgeIdiomOutcomes(t *testing.T) {
+	// A message or body in a heredoc substitution is unmodeled: allowed
+	// without the trigger, refused with it (use -F / --body-file). A plain
+	// substitution is lexed, so its text is judged, not matched.
+	for cmd, want := range map[string]bool{
+		"git commit -m \"$(cat <<'MSG'\nfix: tidy the lexer\nMSG\n)\"":         false,
+		"git commit -m \"$(cat <<'MSG'\nfix: rotate the token cache\nMSG\n)\"": true,
+		"git commit -F msg.txt": false,
+		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"":       false,
+		"gh pr create --title t --body \"$(cat <<'EOF'\nthe auth flow\nEOF\n)\"": true,
+		"gh pr create --title t --body-file body.md":                             false,
+		"gh pr edit 1 --body \"$(cat body.md)\"":                                 false,
+		"gh pr comment 1 --body \"$(printf 'see token docs')\"":                  false,
+	} {
+		if got := forgeTokenRead(cmd); got != want {
+			t.Errorf("forgeTokenRead(%q) = %v, want %v", cmd, got, want)
 		}
 	}
 }

@@ -110,7 +110,7 @@ sanctioned path and says a failed or empty mint is a stop to report.
     argument to a shell;
   - here-strings fed to a shell, and the arguments of the pipe stage immediately
     before a shell (`echo … | sh`);
-  - substitutions, quoted or not;
+  - plain substitutions (below), quoted or not;
   - heredoc bodies whose introducing line names a shell anywhere (piped, wrapped,
     or after an assignment).
 
@@ -122,40 +122,43 @@ sanctioned path and says a failed or empty mint is a stop to report.
 - **Inert data.** Masking conventions hold: comments, heredoc bodies written to a
   non-shell under a quoted delimiter, and quoted prose (`git commit -m "…"`) do not
   match. An unquoted argument such as `echo gh auth token` is not a gh invocation.
-- **Fails closed (desk-decided).** Where the lexer cannot finish, it refuses rather
-  than allows. This is a departure from the policy's allow-and-log default, and it
-  is recorded on the PR that added it. An unterminated quote, substitution or
-  heredoc is lexed as commands. Nesting deeper than eight levels, and a scan that
-  exhausts its work budget, are refused outright, whatever the text spells: an
-  undecided scan is never judged by its raw spelling, which a decoded or split
-  spelling defeats. That over-reaches only on pathological input.
-- **Heredoc placement (desk-decided).** Every `<<` is read as a heredoc, except
-  inside a `((…))` or `$((…))` the scan confirms as arithmetic: the first `)`
-  closing its parentheses is immediately followed by a second `)`, as the shell
-  decides it. A `((` that closes any other way opens nested subshells, and its
-  `<<` stays a heredoc. A heredoc body ends only at a line that is exactly its
-  delimiter (leading tabs stripped for `<<-`). A line that differs only by
-  surrounding blanks stays body, as it does in the shell. A `${…}` or `name[…]`
-  span ends at a `}` or `]` outside quotes and escapes. When the scan cannot
-  place a `<<`, it refuses the call if that heredoc's delimiter line exists,
-  rather than guess which way the shell reads it. That covers a `<<` after a
-  `((` or `$((` it cannot confirm (one holding a quote other than around a
-  plain word, a backquote, a `#` or a nested expansion), after `$[`, and inside
-  a `${…}` or a `name[…]` subscript. A heredoc delimiter spelled with a
-  substitution is refused outright.
-- **Substitution end (desk-decided).** A `$(…)` holding a heredoc ends where
-  bash 4 and later and zsh end it: after the heredoc bodies, at the first `)`
-  outside them. That holds at every place a substitution is read: unquoted, in
-  a double-quoted string, and in an unquoted-delimiter heredoc body. bash 3.2,
-  the macOS `/bin/sh`, ends it at the first `)` even inside a body. Where the two
-  ends differ, the rest of the command is judged under both readings, and a read
-  under either one is refused. Where the scan cannot be sure of the later end
-  (a heredoc read after `((`, `$[`, `${` or `name[` inside the substitution),
-  it refuses the call. This over-reaches for bash 4 and zsh on text they treat
-  as heredoc data but bash 3.2 runs. For example, an unquoted `x=$(cat <<'E'`
-  whose body has an unbalanced `)` and a later line that is a read is refused.
-  A double-quoted commit message (`git commit -m "$(cat <<'E' …)"`) stays
-  allowed, because bash 3.2 reads the rest of it as quoted text.
+- **Modeled constructs.** The scan models these exactly and judges the commands
+  they spell: words, blanks, escapes and line continuations; `'…'`; `$'…'` when
+  closed and holding no `\'`; `$"…"`; `"…"` holding only text, escapes, `$name`
+  and plain expansions; `$name`; a plain `${…}` (no quote, backslash, backquote,
+  `$`, brace, paren or newline inside); a plain `$(…)` (no paren, backslash,
+  backquote, `#`, `<<`, `case`, bracket or brace other than a plain `${…}`, `$`
+  before a quote, paren or bracket, and only simple quotes inside), which every
+  shell ends at its first `)` and whose text is lexed as a script; comments;
+  operators, subshell parentheses and group braces; redirections and
+  here-strings; and a heredoc whose delimiter holds no substitution and whose
+  delimiter line exists (exactly the word; leading tabs stripped for `<<-`),
+  with, under an unquoted delimiter, a body holding no line continuation and
+  only plain expansions.
+- **Unmodeled constructs fail closed (desk-decided).** Everything else is
+  decided at one point, without placing the construct's end: a non-plain or
+  nested `$(…)`, backquotes, `$((…))`, `((…))`, `$[…]`, a non-plain `${…}`, a
+  `$name[` inside double quotes, a `name[…]` subscript holding blanks or shell
+  syntax, `<(…)` and `>(…)`, a `(` written against a word (functions, arrays,
+  glob qualifiers), any unclosed quote or span, a `$'…'` holding `\'` (a POSIX sh
+  ends it elsewhere), a heredoc delimiter holding a substitution, a heredoc with
+  no delimiter line, and an unquoted heredoc body holding a line continuation
+  (the shells join the lines before comparing the delimiter) or a non-plain
+  expansion. From the start of the pipeline holding the construct to the end of
+  the script, the call is refused if the read's trigger appears, and the scan
+  stops otherwise. The trigger is a whole word `auth`, `token`, `oauth_token` or
+  `git-credential`, or the words `status` and `gh` together, seen through quotes,
+  backslashes, line continuations and decoded escapes. Every read the judge
+  refuses holds one of them. False refuses are accepted; false allows are not.
+  This departs from the policy's allow-and-log default and is recorded on the
+  PR that added it. Nesting deeper than eight levels, and a scan that exhausts
+  its work budget, are refused outright whatever the text spells.
+- **Idiom outcomes.** `git commit -m "$(cat <<'MSG' … MSG)"` and
+  `gh … --body "$(cat <<'EOF' … EOF)"` are unmodeled (a heredoc in a
+  substitution). Both are allowed when the trigger is absent and refused when
+  the message or body says, for example, "token" or "auth". The way through is
+  `git commit -F <file>` or `--body-file <file>`. A plain substitution
+  (`--body "$(cat body.md)"`) is lexed and judged, so its text is not matched.
 - **Work bound.** The scan reads the raw command, with no masking pass of its own,
   and charges every step to a budget of 32 units per byte plus a fixed base: each
   script lexed (its length), each candidate command position and gh argument
@@ -168,7 +171,7 @@ sanctioned path and says a failed or empty mint is a stop to report.
   Text piped or here-string-fed into a shell is lexed even when the shell also has
   `-c`, so a shell that ignores its stdin can still be refused.
 - **Not covered.** The following are not judged and stay allowed:
-  - process substitution feeding a shell, or a script sourced with `source` / `.`;
+  - a script sourced with `source` / `.`;
   - shell input read from a file or device whose text is not on the command line;
   - a read with more than one component computed at run time, and a show-token
     flag computed at run time;
@@ -193,12 +196,13 @@ sanctioned path and says a failed or empty mint is a stop to report.
 | # | Verify | Method | Expected |
 |---|---|---|---|
 | 1 | Hook-level refusal, variants, one test per judged class, allowed look-alikes, silence and fail-open | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientToken' -count=1` | PASS |
-| 2 | Core classification, including the depth fail-closed and ANSI-C decoding | `cd deskcore && go test ./writepolicy/ -run 'TestAmbientForgeTokenClassify\|TestForgeANSICDecode' -count=1` | PASS |
+| 2 | Core classification, including the depth fail-closed and ANSI-C decoding (a `$'…'` holding `\'` is unmodeled) | `cd deskcore && go test ./writepolicy/ -run 'TestAmbientForgeTokenClassify\|TestForgeANSICDecode' -count=1` | PASS |
 | 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/ambient-token-unmatched' -count=1` | PASS (mutant caught) |
 | 4 | Operator `!` input is untouched (paired control, manual; re-run after any harness change) | One session, hook armed, `DESK_LOOP` or `DESK_SESSION` set in the hook's environment. (a) The agent runs a control command through its Bash tool, e.g. `gh auth token >/dev/null`. (b) The operator types the identical command with the `!` prefix in the same session. | (a) refused with `ambient forge credential read`; (b) runs with no refusal. A refusal in (b) means the harness now routes operator input through PreToolUse: stop and re-decide the gate. |
 | 5 | The scan's own work is bounded for the shapes tested: wrapper chains, repeated ANSI-C spans, many heredoc operators on one line, long runs of quoted spans and many substitutions whose two ends differ each decide within the per-byte budget and within a deadline, and the hook decides those shapes within its deadline. The deadline is shown for these shapes only: the shared masking that runs first is not bounded while #4854 is open | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWrapperChainLinear\|TestForgeScanWorkBounded' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenWrapperChain\|TestAmbientTokenScanDeadline' -count=1` | PASS |
 | 6 | Budget exhaustion and excess nesting are refused outright, whatever the text spells, including decoded and split spellings and a command naming no read | `cd deskcore && go test ./writepolicy/ -run 'TestForgeBudgetFailsClosed\|TestForgeUndecidedRefused' -count=1` | PASS |
-| 7 | Heredoc placement and substitution end: a `((` not confirmed as arithmetic keeps its `<<` a heredoc, an unplaced `<<` with a delimiter line is refused, a delimiter line matches only exactly, a quoted or escaped `}` does not end a `${…}` span, a `$(…)` holding a heredoc ends after its bodies at all three places a substitution is read and under the bash 3.2 reading too, and confirmed arithmetic, plain data heredocs and commit messages with an unbalanced `)` stay allowed, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc' -count=1` | PASS |
+| 7 | Heredoc placement: a delimiter line matches only exactly, data heredocs stay allowed, and `((`, `$((`, `$[`, `${…}` and `name[…]` shapes around a `<<` are refused with the trigger and allowed without, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc' -count=1` | PASS |
+| 8 | Unmodeled constructs: one table per construct (command substitution, backquote, heredoc body, arithmetic, `((`, process substitution, unclosed span, quote forms) refused with each trigger spelling and allowed with none; the earlier reviews' span-end classes refused; the two idioms pinned both ways, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestUnmodeled\|TestForgeReviewShapes\|TestForgeIdiomOutcomes' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookUnmodeled\|TestHookReviewShapes\|TestHookIdiomOutcomes' -count=1` | PASS |
 
 ## Consumers and migration
 
