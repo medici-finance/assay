@@ -40,15 +40,10 @@ id: d7105cce-5ba1-40bf-bc43-2b66665654a5
 ## Context
 
 files:
-- `tools/desk/internal/loopengine/reconcile.go` (new) — `Eligibility(claim) (Verdict,
-  error)` joining three reads; pure over injected readers so it tests offline.
+- `tools/desk/internal/loopengine/reconcile.go` (new) — `Eligibility(claim) (Verdict, error)` joining three reads; pure over injected readers so it tests offline.
 - `tools/desk/internal/loopengine/reconcile_test.go` (new).
-- `tools/desk/cmd/desksupervise/main.go` (planned) — `tick` runs reconciliation for every
-  `state=dispatched` claim before the liveness evaluation; new output class
-  `INELIGIBLE(<reason>)` with `action=STOP+RELEASE`.
-- `tools/desk/cmd/desksupervise/testdata/` — fixtures: merged PR, closed PR, brief row
-  no longer `in-progress`/`todo` on origin/main, claim released underneath, forge
-  unreachable.
+- `tools/desk/cmd/desksupervise/main.go` (planned) — `tick` runs reconciliation for every `state=dispatched` claim before the liveness evaluation; new output class `INELIGIBLE(<reason>)` with `action=STOP+RELEASE`.
+- `tools/desk/cmd/desksupervise/testdata/` — fixtures: merged PR, closed PR, brief row no longer `in-progress`/`todo` on origin/main, claim released underneath, forge unreachable.
 
 single-point-of-failure: the forge PR-state read — behind it, the board row read from
 `origin/main` (a brief that flipped to `implemented`/`verified`/`done` is ineligible even

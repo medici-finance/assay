@@ -2366,6 +2366,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitUsageError
 	}
 
+	// The stored-login decision (forgecredential.go) refuses from here until
+	// admission is established, and for the rest of an admitted run.
+	prevAdmission := verifyrunAdmission.Swap(verifyrunPending)
+	defer verifyrunAdmission.Store(prevAdmission)
 	attestation, admittedHome, containerTree := "", "", ""
 	var container containerAdmit
 	if *sandbox == sandboxContainerNetns && !*checkMode {
@@ -2392,6 +2396,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		attestation, containerTree = container.attestation, container.tree
+		verifyrunAdmission.Store(admissionState(attestation))
 	} else if !*checkMode {
 		admissionRoot := *rootDir
 		if admissionRoot == "" {
@@ -2412,6 +2417,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				return verifyrunExitCouldNot
 			}
 		}
+		verifyrunAdmission.Store(admissionState(attestation))
 	}
 	// rowRoot is where the Verify rows run: the admitted deliverable home for a
 	// cross-repository run, else --root, else the brief's repository toplevel.

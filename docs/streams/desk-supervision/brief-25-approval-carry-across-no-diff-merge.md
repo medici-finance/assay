@@ -83,22 +83,18 @@ consumers:
 ## Context
 
 files:
-- **add** `statusgen/evaluation/reviewcurrency.go` (planned) + `reviewcurrency_test.go` (planned) — the review-currency rule: two pure methods, `CarryByPatch` and `CarryByBlobs`, over immutable caller-supplied observations, and the verdict body grammar.
-- **add** `tools/desk/internal/deskkit/approvalcarry.go` (planned) + `approvalcarry_test.go` (planned) — thin adapters that gather the git and forge facts and call the evaluator; no carry logic.
+- **add** `statusgen/evaluation/reviewcurrency.go` (planned) + `statusgen/evaluation/reviewcurrency_test.go` (planned) — the review-currency rule: two pure methods, `CarryByPatch` and `CarryByBlobs`, over immutable caller-supplied observations, and the verdict body grammar.
+- **add** `tools/desk/internal/deskkit/approvalcarry.go` (planned) + `tools/desk/internal/deskkit/approvalcarry_test.go` (planned) — thin adapters that gather the git and forge facts and call the evaluator; no carry logic.
 - **edit** `tools/desk/go.mod` — a relative require of the statusgen module, linking only the offline `statusgen/evaluation` package.
 - **edit** `tools/desk/cmd/deskpost/` — a `carry` verb + tests, and gate (b) of `ready.go`.
-- **edit** `tools/desk/cmd/deskflip/flip.go` + tests — `checkReviewerApproved`.
-- **edit** `tools/desk/cmd/deskboard/board.go` + tests — the MERGE-CURR branch of `classify`, and the carry-on-ready anomaly.
+- **edit** `tools/desk/cmd/deskflip/flip.go` and tests — `checkReviewerApproved`.
+- **edit** `tools/desk/cmd/deskboard/board.go` and tests — the MERGE-CURR branch of `classify`, and the carry-on-ready anomaly.
 - **add** `tools/desk/cmd/carrycheck/` (planned) — the read-only `CarryByBlobs` command the guard runs.
-- **add** `tools/evidence-automerge/carry-guard.sh` (planned) +
-  `tools/evidence-automerge/carry-guard_test.sh` (planned) — the auto-merge carry guard's decision.
-- **human-landed:** a change to `.github/workflows/evidence-automerge.yml` calling that guard, delivered
-  through the repository's workflow landing path (no implementer App can write a workflow file).
+- **add** `tools/evidence-automerge/carry-guard.sh` (planned) + `tools/evidence-automerge/carry-guard_test.sh` (planned) — the auto-merge carry guard's decision.
+- **human-landed:** `.github/workflows/evidence-automerge.yml` — a change to it calling that guard, delivered through the repository's workflow landing path (no implementer App can write a workflow file).
 - **edit** `docs/streams/desk-supervision/review-finding-v1.md` (line 85).
-- **edit** `plugins/assay/skills/pr-review-desk/SKILL.md`,
-  `plugins/assay/skills/pr-review-desk/references/merge-time-recheck.md`,
-  `plugins/assay/skills/verify-desk/SKILL.md`, `tools/desk/README.md`.
-- **add** `changelog/<branch>.md` — the fragment this repo enforces.
+- **edit** `plugins/assay/skills/pr-review-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/references/merge-time-recheck.md`, `plugins/assay/skills/verify-desk/SKILL.md`, `tools/desk/README.md`.
+- **add** — `changelog/<branch>.md` — the fragment this repo enforces.
 
 single-point-of-failure: the carry predicate is the ONE control between "the head moved" and "the old correctness approval counts". Layers, counted per path to a merge. (A) A carried draft flipped by `deskflip` or `deskpost ready`: (1) the carry verb derives the predicate from local git objects and posts only on a draft with no auto-merge request (C8); (2) the flip verb re-derives it from forge data by a different method and never trusts the verdict; (3) the forge dismisses a correctness APPROVED on any later push; (4) the review board flags a carry whose ready-mark is not by the flip identity or predates the carry, or whose re-derivation at head fails. Four layers. (B) A carried draft on the Evidence auto-merge lane made ready by any other route, including a ready-mark that races C8 and a raw ready-mark under the flip identity outside the verbs: layer 2 does not run, but (5) the auto-merge carry guard arms only when a reviewer-identity correctness APPROVED exists at head at trigger time, re-derives a carry approval from forge data before arming (with the same `CarryByBlobs` code as layer 2: independent of who marked the PR ready, not of a bug in that code), requires a security pass at head where one applies, and cancels any armed request on every head change. Until the guard is on the default branch, C9 keeps the verb off the lane. Layers 1, 5, 3 and 4. (C) The same ready-mark off the auto-merge lane: a person merges and is the gate; layer 4 flags it. (D) A carry placed without the verb: on the lane, layer 5 evaluates it before arming. The one named residual: from a push until a guard run at the new head succeeds in cancelling a request armed at an earlier head (the guard is not a required check, so a queued run or a failed disable extends the window), the forge merges on any approval its ruleset counts (one approval from a write-access identity that is not the last pusher) once every required check passes; nothing in this design stands before that merge beyond the ruleset's approver set, and layer 4 flags a carry afterwards. Off the lane, a person merges. The security lane is never carried, so layer 3's limit to APPROVED reviews (a security pass is a COMMENT review the forge never dismisses) does not apply.
 

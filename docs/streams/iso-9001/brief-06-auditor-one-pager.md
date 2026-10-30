@@ -136,6 +136,26 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/what-assay-is-and-is-not.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `git grep -nF 'not an audit opinion' -- docs/evidence-bundle.md` | pass exit=0 | sha256:ae9d996ea068 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `git grep -cE -e 'certif' -e 'audit opinion' -- docs/what-assay-is-and-is-not.md` | pass exit=0 | sha256:f3fefcd6e9a7 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `git grep -cE -e 'attestation' -e 'sha256' -- docs/what-assay-is-and-is-not.md` | pass exit=0 | sha256:4549819f5a07 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `git grep -nF 'not measured from ground truth' -- docs/what-assay-is-and-is-not.md` | pass exit=0 | sha256:632a40d9f231 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `git grep -n 'what-assay-is-and-is-not' -- README.md docs/evidence-bundle.md docs/iso9001-mapping.md` | pass exit=0 | sha256:726a5c66e08a | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `test -f docs/records-and-retention.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `git grep -n 'tool-validation' -- .github/workflows/release.yml` | pass exit=0 | sha256:da50aaea04ca | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `git grep -n 'authorized-by' -- .github/workflows/release.yml` | pass exit=0 | sha256:2689115220cb | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd statusgen && go run . --root .. --lint` | fail exit=1 | sha256:1ac92fcb19cc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4835 run=dc28a8b38555417758895542dae5207990225598c44b3a70c9e91d71f778a5e0 source=9e61aee3f8e946198214101938c0420ca37d7f6a brief=docs/streams/iso-9001/brief-06-auditor-one-pager.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — 9/10 rows pass at source 9e61aee3f8e9; row 10 is could-not-check, not an observed failure of this brief's obligation.
+
+Row 10 disposition: the admitted command exited 1 with `LINT: FAIL 1 problem(s)`, and that one problem is the lint's own could-not-check on an unrelated brief, quoted from the row's output: `PROBLEM: desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`. The row's command carries no forge-read flag, so on any host it cannot reach exit 0 at this source while that protected-table transition stands; the repository's own CI lint step passes that flag. No link-check or other problem names this brief, its page, or any path the page cites. Needed: a reviewed definition repair of row 10 (or a lint change that reports a forge-only could-not-check without failing an offline run), then a fresh dispatch and admission.
+
+RISK-VALUE: N/A — enumeration over the delivering change (README contents row, changelog fragment, two cross-link lines, and the new handover page; prose only) found no literal constant, bound, threshold, timeout, limit or authority binding; frontmatter risk is present and all-no, irreversible: no, and the irreversible act here is none (a documentation page, reversible by an edit).
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). **The whole deliverable is
 judgement and this table cannot reach it** (`docs/brief-rules.md` rule 8): rows 3–5 prove

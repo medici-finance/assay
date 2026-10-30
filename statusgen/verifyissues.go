@@ -34,6 +34,7 @@ const verifyReviewer = "human:reviewer"
 // sign-off (verified → done gate). The workflow feeds title/labels/body
 // straight to `gh issue create`; marker is the idempotency key.
 type verifyIssue struct {
+	Card   gateCard `json:"card"`
 	Brief  string   `json:"brief"`
 	Title  string   `json:"title"`
 	Labels []string `json:"labels"`
@@ -1184,10 +1185,18 @@ func prLinks(body string) []string {
 // awaiting human sign-off. Fully offline: everything is lifted from the brief
 // file plus the static repo slug.
 func renderVerifyBody(root string, bf *BriefFile) string {
+	return renderVerifyWith(root, bf, makeGateCard(root, bf, cardAcceptance))
+}
+
+// renderVerifyWith renders the body around a card the caller built once.
+func renderVerifyWith(root string, bf *BriefFile, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
+	b.WriteString(renderCardLinks(card))
 	fmt.Fprintf(&b, "## Human sign-off required — %s\n\n", bf.Brief)
 	fmt.Fprintf(&b, "**%s**\n\n", bf.Title)
+	head := b.String()
+	b.Reset() // authored rationale is cuttable; card identity and close prompts are not
 
 	// gate-why (gate-why-rationale): the authored reason THIS brief is gated,
 	// surfaced above the mechanical yes-key list so the human reads a real
@@ -1221,7 +1230,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	// The lifted sections are unbounded; capIssueBody holds the whole body
 	// under the forge limit without touching the header above or the
 	// checklist below (#4091).
-	sections := verifySections(body, bf.Evidence)
+	sections := append([]string{b.String()}, verifySections(body, bf.Evidence)...)
 
 	var tail strings.Builder
 	tail.WriteString("### Before you close\n\n")
@@ -1230,7 +1239,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	tail.WriteString("- [ ] I accept this brief as done\n\n")
 	tail.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
 		"`). Only a human closer is honored.\n")
-	return capIssueBody(b.String(), sections, tail.String(), briefLinkAtCommit(root, rel))
+	return capIssueBody(head, sections, tail.String(), briefLinkAtCommit(root, rel))
 }
 
 // verifySections renders the Verify and Evidence sections a verify-gate card
@@ -1271,9 +1280,10 @@ func briefLinkAtCommit(root, rel string) func() string {
 // card by the same route (implemented + recorded **VERIFY: PASS**) and close the
 // same way — the Verified cell is stamped from the recorded model run, the Reviewed
 // cell from the human closer — so the body is otherwise identical.
-func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) string {
+func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
+	b.WriteString(renderCardLinks(card))
 	if irreversible {
 		fmt.Fprintf(&b, "## Human sign-off required (irreversible) — %s\n\n", bf.Brief)
 	} else {
@@ -1289,6 +1299,12 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	} else {
 		fmt.Fprintf(&b, "The recorded model verify pass becomes the Verified stamp; the human closer becomes the Reviewed stamp.\n\n")
 	}
+
+	// Preserve the generated identity/transition header. Authored rationale
+	// can be as large as the brief itself and must share the section budget,
+	// otherwise adding card links can evict the mandatory close prompts.
+	head := b.String()
+	b.Reset()
 
 	// gate-why
 	if gw := strings.TrimSpace(bf.GateWhy); gw != "" {
@@ -1314,12 +1330,12 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	}
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
-	head := b.String()
+	intro := b.String()
 
 	// Every section below is lifted from the brief and unbounded; each is a
 	// cuttable unit for capIssueBody, which keeps the header above and the
 	// generated prompts and checklist below whole (#4091).
-	sections := verifySections(body, bf.Evidence)
+	sections := append([]string{intro}, verifySections(body, bf.Evidence)...)
 
 	// UNRUN/deferred rows — surfaced prominently.
 	if ur := unrunRowsText(bf.Evidence); ur != "" {
@@ -1414,12 +1430,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				if existing[marker] {
 					continue
 				}
+				card := makeGateCard(root, bf, cardAcceptance)
 				out = append(out, verifyIssue{
+					Card:   card,
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderVerifyBody(root, bf),
+					Body:   renderVerifyWith(root, bf, card),
 				})
 				continue
 			}
@@ -1441,12 +1459,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				if existing[marker] {
 					continue
 				}
+				card := makeGateCard(root, bf, cardAcceptance)
 				out = append(out, verifyIssue{
+					Card:   card,
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes"),
+					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes", card),
 				})
 			}
 		}

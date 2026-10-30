@@ -49,7 +49,7 @@ files:
 - `spec/lifecycle-v1.md` — one new subsection, `### 9.4 Operate is human`, after 9.3; no existing section is renumbered
 - `docs/gate-ladder.md` (planned) — NEW
 - `plugins/assay/skills/pr-review-desk/SKILL.md` — one finding-class register row plus its definition
-- `changelog/<branch-slug>.md` — one fragment
+- **add** — `changelog/<branch-slug>.md` — one fragment
 
 facts:
 - Section 9 of `spec/lifecycle-v1.md` already requires a named human deploy authority per

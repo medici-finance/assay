@@ -48,7 +48,7 @@ id: 183da2db-7fc2-4834-ac56-11d3c576a431
 ## Context
 files:
 - `docs/streams/forge-neutral/reviewer-write-boundary.md` — §11 gains the dated proof table.
-- `changelog/<branch-slug>.md` (planned)
+- **planned** — `changelog/<branch-slug>.md`
 
 This brief changes documents only, and changes no grant. It was authored as a two-release
 brief landing in two slices; by ruling (2026-09-17; spec §10, the row on this brief's shape) it is **split**: this brief is

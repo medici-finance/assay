@@ -47,7 +47,7 @@ files:
 - `tools/desk/internal/deskkit/forge_gitlab.go`
 - `tools/desk/internal/deskkit/perf.go`
 - `tools/desk/internal/deskkit/perfcoverage_test.go`
-- `tools/desk/internal/deskkit/forgeobserve.go`, `forgepoints.go`, and `forgeobserve_test.go`
+- `tools/desk/internal/deskkit/forgeobserve.go`, `tools/desk/internal/deskkit/forgepoints.go` and `tools/desk/internal/deskkit/forgeobserve_test.go`
 - `tools/desk/cmd/deskboard/readcost.go`
 - `tools/desk/cmd/desktoken/` (existing direct authentication HTTP; future credential provider integration belongs to /62)
 - `docs/telemetry.md`

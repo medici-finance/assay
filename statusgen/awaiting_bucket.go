@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"regexp"
 	"strconv"
@@ -796,15 +797,15 @@ func loadAwaitOutcomeIndex(root string) awaitOutcomeIndex {
 // queueVersion at all (an older statusgen), must treat the row as unclassified —
 // a coverage gap — never as a zero or as work.
 const (
-	queueContractVersion = 1
+	queueContractVersion = verifyqueue.Version
 
-	queueClassJudgment   = "judgment-dispatch"
-	queueClassRunner     = "runnable-offline"
-	queueClassContinue   = "continuation"
-	queueClassHuman      = "human-action"
-	queueClassUnreadable = "unreadable"
-	queueClassPaused     = "paused"
-	queueClassParked     = "parked"
+	queueClassJudgment   = verifyqueue.Judgment
+	queueClassRunner     = verifyqueue.Runner
+	queueClassContinue   = verifyqueue.Continuation
+	queueClassHuman      = verifyqueue.Human
+	queueClassUnreadable = verifyqueue.Unreadable
+	queueClassPaused     = verifyqueue.Paused
+	queueClassParked     = verifyqueue.Parked
 )
 
 // queueFacts is the queue classification one awaiting brief carries on its

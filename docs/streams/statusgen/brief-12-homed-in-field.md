@@ -56,20 +56,10 @@ Three required properties (all three, or the field is not doing its job):
 ## Context
 
 files:
-- `statusgen/brieffile.go` — parse `homed-in` as an OPTIONAL KNOWN string key (exactly the
-  exec-tier / blocked-by / measures pattern): absent → `""` (normal in-repo brief, the default);
-  a wrong TYPE → parse error; wire it into the `BriefFile` struct. In `checkBriefFiles`, validate a
-  PRESENT value's shape and worm it into the `Brief` row.
-- `statusgen/model.go` — add `HomedIn string` to `Brief` (documented as: `homed-in: <owner/repo>`;
-  `""` = local, the default; an eligibility exclusion + display marker, NEVER a Next-up score input,
-  F-09 scope note — same wording as ExecTier / Measures).
-- `statusgen/nextup.go` — `eligibleBase`: a brief with `HomedIn != ""` is not eligible on this
-  board (return false, all statuses). Attribute the exclusion on the `NextUp` view so the held-back
-  brief and its target repo are NAMED (mirror `MeasuresGated`/`SerializedUnknown`), not silently
-  dropped.
-- render site(s) (`emit.go` / the Next-up + stream-table render) — render a `[homed→<owner/repo>]`
-  marker on the brief's tracking row wherever the exec-tier `[exec:strong]` marker already renders,
-  and a short "N brief(s) homed in another repo" line naming each id + target under the board.
+- `statusgen/brieffile.go` — parse `homed-in` as an OPTIONAL KNOWN string key (exactly the exec-tier / blocked-by / measures pattern): absent → `""` (normal in-repo brief, the default); a wrong TYPE → parse error; wire it into the `BriefFile` struct. In `checkBriefFiles`, validate a PRESENT value's shape and worm it into the `Brief` row.
+- `statusgen/model.go` — add `HomedIn string` to `Brief` (documented as: `homed-in: <owner/repo>`; `""` = local, the default; an eligibility exclusion + display marker, NEVER a Next-up score input, F-09 scope note — same wording as ExecTier / Measures).
+- `statusgen/nextup.go` — `eligibleBase`: a brief with `HomedIn != ""` is not eligible on this board (return false, all statuses). Attribute the exclusion on the `NextUp` view so the held-back brief and its target repo are NAMED (mirror `MeasuresGated`/`SerializedUnknown`), not silently dropped.
+- **render site(s)** `statusgen/emit.go` (`emit.go` / the Next-up + stream-table render) — render a `[homed→<owner/repo>]` marker on the brief's tracking row wherever the exec-tier `[exec:strong]` marker already renders, and a short "N brief(s) homed in another repo" line naming each id + target under the board.
 - `statusgen/brieffile_test.go`, `statusgen/nextup_test.go` — tests below.
 
 single-point-of-failure: the eligibility exclusion is the ONE control that keeps a homed-in brief

@@ -55,8 +55,7 @@ of work with its own design decisions, and folding it into a three-file text cor
 make both un-reviewable.
 
 files:
-- `docs/evidence-bundle.md` — the Testing row and the Segregation-of-duties row of the SOC2
-  table, plus the matching bullets in the "What the bundle does not claim" list.
+- `docs/evidence-bundle.md` — the Testing row and the Segregation-of-duties row of the SOC2 table, plus the matching bullets in the "What the bundle does not claim" list.
 - `README.md` — the Registers bullet's contiguous-numbering claim.
 - `docs/streams/FINDINGS.md` — the header sentence making the same claim.
 
