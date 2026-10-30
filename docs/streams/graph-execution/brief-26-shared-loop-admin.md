@@ -15,6 +15,7 @@ unblocks:
 - graph-execution/21
 - performance-collection/09
 - agent-execution/03
+- "delivery-profiles/04"
 effort: L
 gate: human
 risk:
