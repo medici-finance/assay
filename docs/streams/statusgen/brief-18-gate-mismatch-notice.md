@@ -51,7 +51,7 @@ files:
 - `plugins/assay/skills/intake-desk/SKILL.md` — two sentences appended to one bullet in the scored-triage section.
 - `.cursor/skills/intake-desk/SKILL.md` and `.cursor/assay-managed.json` — canonical generated Cursor delivery of the changed skill (Task 8).
 - `docs/streams/statusgen/brief-18-gate-mismatch-notice.md` — this brief's consumer routings (Task 6).
-- `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
+- `changelog/feat-assay--statusgen--18.md` — the per-PR fragment this repo enforces.
 
 single-point-of-failure: a person reading the notice and editing the placeholder. The notice
 changes no gate, by the answer on #2405. One layer sits behind it and does not depend on the
