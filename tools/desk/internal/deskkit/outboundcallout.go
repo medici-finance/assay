@@ -227,6 +227,24 @@ type outboundCalloutField struct {
 	Text string `json:"text"`
 }
 
+// calloutVisibility is the request's `visibility`: one of the three values the version-1
+// contract documents — `public`, `private`, `unknown` — and never anything else, whatever
+// Visibility.String() learns later. It is the exposure class, not the roster token: an
+// `:internal` target (visible instance-wide, public-form at every compiled consumer) is sent
+// as `public`, so a callout that keys on the documented values never takes a non-public
+// branch for it. Sending a new value is a meaning change and bumps
+// outboundCalloutRequestVersion.
+func calloutVisibility(v Visibility) string {
+	switch v {
+	case VisibilityPublic, VisibilityInternal:
+		return "public"
+	case VisibilityPrivate:
+		return "private"
+	default:
+		return "unknown"
+	}
+}
+
 func buildOutboundCalloutRequest(w OutboundWrite) ([]byte, error) {
 	verb := strings.TrimSpace(w.Tool + " " + w.Verb)
 	req := outboundCalloutRequest{
@@ -234,7 +252,7 @@ func buildOutboundCalloutRequest(w OutboundWrite) ([]byte, error) {
 		Verb:       verb,
 		Role:       w.Role,
 		Repo:       w.Repo,
-		Visibility: w.Visibility.String(),
+		Visibility: calloutVisibility(w.Visibility),
 		Kind:       w.Kind,
 		Fields:     []outboundCalloutField{},
 	}

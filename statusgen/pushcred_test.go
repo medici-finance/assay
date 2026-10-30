@@ -1,12 +1,17 @@
 package main
 
 import (
+	"encoding/base64"
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -906,5 +911,394 @@ func TestPushRetryCallsPushcred(t *testing.T) {
 	}
 	if !ran {
 		t.Errorf("no lint job step of the staged board workflow runs go test %s", sel)
+	}
+}
+
+// The http extraheader class (#5004). A runner's checkout can leave the CI job
+// token in git config as an Authorization extraheader. git sends a configured
+// header instead of asking any credential helper, so a board push that only
+// ADDS a helper still authenticates as the job token, and the forge answers
+// 403. These tests serve a real smart-HTTP remote (git http-backend behind
+// net/http/cgi, loopback only) that records which credential each request
+// carried and answers the way a forge does.
+
+const (
+	// jobHeaderSentinel is the job token inside the planted extraheader. Its
+	// raw form and its base64 form must never reach output.
+	jobHeaderSentinel = "JOB-HEADER-SENTINEL-5004"
+	// boardTokenSentinel is the board push token, held in boardTokenVar.
+	boardTokenSentinel = "BOARD-TOKEN-SENTINEL-5004"
+	boardTokenVar      = "BOARD_PUSH_TOKEN"
+)
+
+func basicAuth(user, pass string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))
+}
+
+var (
+	jobAuth   = basicAuth("gitlab-ci-token", jobHeaderSentinel)
+	boardAuth = basicAuth("oauth2", boardTokenSentinel)
+	// jobHeader is the extraheader value a runner's checkout would leave.
+	jobHeader = "Authorization: " + jobAuth
+)
+
+// hdrRig is one workspace with a commit to push, and the forge it pushes to.
+type hdrRig struct {
+	t                  *testing.T
+	dir, ws, url, gcfg string
+	srvRepo            string
+	env                []string
+	mu                 sync.Mutex
+	seen               []string // per request: none | job | board | other
+}
+
+// newHdrRig starts the forge: no credential gets a Basic challenge, the board
+// credential is served by git http-backend, anything else is refused 403 with
+// GitLab's wording for a job token that may not push.
+func newHdrRig(t *testing.T) *hdrRig {
+	t.Helper()
+	requirePushTools(t)
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &hdrRig{t: t, dir: t.TempDir()}
+	srvRoot := filepath.Join(r.dir, "srv")
+	r.srvRepo = filepath.Join(srvRoot, "board.git")
+	r.ws = filepath.Join(r.dir, "ws")
+	// One quiet global config for the server and, by default, the client
+	// (no auto maintenance: #3390). The global-scope case adds to it.
+	r.gcfg = filepath.Join(r.dir, "gitconfig")
+	if err := os.WriteFile(r.gcfg, []byte("[maintenance]\n\tauto = false\n\tautoDetach = false\n[gc]\n\tauto = 0\n\tautoDetach = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srvCfg := filepath.Join(r.dir, "srv-gitconfig")
+	if err := os.WriteFile(srvCfg, []byte("[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var base []string
+	for _, kv := range scrubbedEnv() {
+		k, _, _ := strings.Cut(kv, "=")
+		switch k {
+		case "GIT_ASKPASS", "SSH_ASKPASS", "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY":
+			continue
+		}
+		base = append(base, kv)
+	}
+	r.env = append(base,
+		"GIT_CONFIG_GLOBAL="+r.gcfg, "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=job", "GIT_AUTHOR_EMAIL=job@example.invalid",
+		"GIT_COMMITTER_NAME=job", "GIT_COMMITTER_EMAIL=job@example.invalid",
+		"HOME="+r.dir, "TMPDIR="+r.dir, "no_proxy=*", "NO_PROXY=*",
+	)
+	backend := &cgi.Handler{
+		Path: realGit, Args: []string{"http-backend"}, Root: "/git", Dir: srvRoot,
+		Env: []string{"GIT_PROJECT_ROOT=" + srvRoot, "GIT_HTTP_EXPORT_ALL=1", "REMOTE_USER=board",
+			"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + srvCfg, "HOME=" + r.dir},
+		InheritEnv: []string{"PATH"},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		who := "other"
+		switch req.Header.Get("Authorization") {
+		case "":
+			who = "none"
+		case jobAuth:
+			who = "job"
+		case boardAuth:
+			who = "board"
+		}
+		r.mu.Lock()
+		r.seen = append(r.seen, who)
+		r.mu.Unlock()
+		switch who {
+		case "none":
+			w.Header().Set("WWW-Authenticate", `Basic realm="forge"`)
+			http.Error(w, "HTTP Basic: Access denied", http.StatusUnauthorized)
+		case "board":
+			backend.ServeHTTP(w, req)
+		default:
+			http.Error(w, "You are not allowed to push code to this project.", http.StatusForbidden)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	r.url = srv.URL + "/git/board.git"
+	r.git("", "init", "-q", "--bare", "-b", "main", r.srvRepo)
+	r.git("", "clone", "-q", r.srvRepo, r.ws)
+	if err := os.WriteFile(filepath.Join(r.ws, "STATUS.md"), []byte("board 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.git(r.ws, "add", "STATUS.md")
+	r.git(r.ws, "commit", "-q", "-m", "board")
+	r.git(r.ws, "remote", "set-url", "origin", r.url)
+	return r
+}
+
+func (r *hdrRig) git(dir string, args ...string) string {
+	r.t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = r.env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		r.t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// plant puts the job-token header where a runner could leave it. scope is
+// local (url-scoped key in the checkout), plain (unscoped key in the
+// checkout, the actions/checkout shape), global, env (GIT_CONFIG_COUNT) or
+// both (scoped and unscoped in the checkout). It returns extra env for the
+// push.
+func (r *hdrRig) plant(scope string) []string {
+	r.t.Helper()
+	scoped := "http." + strings.TrimSuffix(r.url, "board.git") + ".extraheader"
+	switch scope {
+	case "local":
+		r.git(r.ws, "config", scoped, jobHeader)
+	case "plain":
+		r.git(r.ws, "config", "http.extraheader", jobHeader)
+	case "both":
+		r.git(r.ws, "config", "http.extraheader", jobHeader)
+		r.git(r.ws, "config", scoped, jobHeader)
+	case "global":
+		r.git("", "config", "--file", r.gcfg, scoped, jobHeader)
+	case "env":
+		return []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraheader", "GIT_CONFIG_VALUE_0=" + jobHeader}
+	default:
+		r.t.Fatalf("unknown scope %q", scope)
+	}
+	return nil
+}
+
+// push runs pushcred_push from the sourced script under sh, with extra env.
+func (r *hdrRig) push(sh, pre string, env ...string) (int, string) {
+	r.t.Helper()
+	src, err := filepath.Abs("pushcred.sh")
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	cmd := exec.Command(sh, "-c", pre+`. "$1"; pushcred_push "$2" HEAD:main; echo "rc=$?"`, sh, src, r.url)
+	cmd.Dir = r.ws
+	cmd.Env = append(append([]string{}, r.env...), env...)
+	out, _ := cmd.CombinedOutput()
+	m := regexp.MustCompile(`(?m)^rc=(\d+)$`).FindStringSubmatch(string(out))
+	if m == nil {
+		r.t.Fatalf("%s: pushcred_push printed no rc:\n%s", sh, out)
+	}
+	rc, _ := strconv.Atoi(m[1])
+	return rc, string(out)
+}
+
+func (r *hdrRig) seenSet() map[string]bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := map[string]bool{}
+	for _, w := range r.seen {
+		s[w] = true
+	}
+	return s
+}
+
+// remoteMain is the forge's main, or "" when nothing reached it.
+func (r *hdrRig) remoteMain() string {
+	cmd := exec.Command("git", "--git-dir", r.srvRepo, "rev-parse", "-q", "--verify", "refs/heads/main")
+	cmd.Env = r.env
+	out, _ := cmd.Output()
+	return strings.TrimSpace(string(out))
+}
+
+func readOr(t *testing.T, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// assertNoHeaderValue: no form of either credential reaches the output.
+func assertNoHeaderValue(t *testing.T, where, out string) {
+	t.Helper()
+	for _, s := range []string{jobHeaderSentinel, jobAuth, strings.TrimPrefix(jobAuth, "Basic "),
+		boardTokenSentinel, strings.TrimPrefix(boardAuth, "Basic ")} {
+		if strings.Contains(out, s) {
+			t.Errorf("%s: a credential value reached the output:\n%s", where, out)
+			return
+		}
+	}
+}
+
+// TestPushcredHeaderInstrument: the rig reproduces the defect. A credential
+// helper added on top of the planted header (the shape pushcred_push used
+// before #5004) authenticates as the header, the forge refuses it 403, and
+// nothing reaches the remote. This is the instrument control for the tests
+// below: if git ever stopped preferring the header, it would go red here.
+//
+// regression: #5004
+func TestPushcredHeaderInstrument(t *testing.T) {
+	for _, scope := range []string{"local", "plain", "global", "env"} {
+		t.Run(scope, func(t *testing.T) {
+			r := newHdrRig(t)
+			env := r.plant(scope)
+			cmd := exec.Command("git", "-c", "credential.helper=",
+				"-c", `credential.helper=!f() { test "$1" = get || return 0; echo username=oauth2; printf 'password=%s\n' "$`+boardTokenVar+`"; }; f`,
+				"push", r.url, "HEAD:main")
+			cmd.Dir = r.ws
+			cmd.Env = append(append(append([]string{}, r.env...), "GIT_TERMINAL_PROMPT=0", boardTokenVar+"="+boardTokenSentinel), env...)
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("helper over a planted header pushed; the rig no longer reproduces #5004:\n%s", out)
+			}
+			seen := r.seenSet()
+			if !seen["job"] || seen["board"] {
+				t.Errorf("forge saw %v, want the job header and never the board credential", r.seen)
+			}
+			if r.remoteMain() != "" {
+				t.Error("the refused push reached the remote")
+			}
+		})
+	}
+}
+
+// TestPushcredHeaderCleared: with the job-token header planted in any scope,
+// pushcred_push sends the board credential, never the header, and the push
+// lands. No config file is changed: the header is reset for the one push only.
+//
+// regression: #5004
+func TestPushcredHeaderCleared(t *testing.T) {
+	for _, sh := range []string{"bash", "sh"} {
+		for _, scope := range []string{"local", "plain", "both", "global", "env"} {
+			t.Run(sh+"/"+scope, func(t *testing.T) {
+				r := newHdrRig(t)
+				env := r.plant(scope)
+				local := filepath.Join(r.ws, ".git", "config")
+				beforeL, beforeG := readOr(t, local), readOr(t, r.gcfg)
+				rc, out := r.push(sh, "PUSHCRED_TOKEN_VAR="+boardTokenVar+"; ",
+					append(env, boardTokenVar+"="+boardTokenSentinel)...)
+				if rc != 0 {
+					t.Fatalf("pushcred_push rc=%d with a %s extraheader, want 0:\n%s", rc, scope, out)
+				}
+				if seen := r.seenSet(); seen["job"] || !seen["board"] {
+					t.Errorf("forge saw %v, want the board credential and never the job header", r.seen)
+				}
+				if got, want := r.remoteMain(), r.git(r.ws, "rev-parse", "HEAD"); got != want {
+					t.Errorf("remote main = %q, want the pushed %q", got, want)
+				}
+				if readOr(t, local) != beforeL || readOr(t, r.gcfg) != beforeG {
+					t.Error("pushcred_push edited a git config file; the reset must be for the one push only")
+				}
+				if scope != "env" && r.git(r.ws, "config", "--name-only", "--get-regexp", `^http\..*extraheader$`) == "" {
+					t.Error("the planted header is gone from config; later git in the job loses its credential")
+				}
+			})
+		}
+	}
+}
+
+// TestPushcredHeaderNoLeak: a sentinel planted in the header never reaches
+// stdout or stderr, xtrace on or off, and neither does the board token.
+//
+// regression: #5004
+func TestPushcredHeaderNoLeak(t *testing.T) {
+	for _, sh := range []string{"bash", "sh"} {
+		for _, pre := range []string{"", "set -x; "} {
+			mode := "quiet"
+			if pre != "" {
+				mode = "xtrace"
+			}
+			t.Run(sh+"/"+mode, func(t *testing.T) {
+				r := newHdrRig(t)
+				env := r.plant("both")
+				rc, out := r.push(sh, pre+"PUSHCRED_TOKEN_VAR="+boardTokenVar+"; ",
+					append(env, boardTokenVar+"="+boardTokenSentinel)...)
+				if rc != 0 {
+					t.Fatalf("pushcred_push rc=%d, want 0:\n%s", rc, out)
+				}
+				if !strings.Contains(out, "http.extraheader") && pre != "" {
+					t.Errorf("xtrace shows no reset by name; the test is not exercising the reset:\n%s", out)
+				}
+				assertNoHeaderValue(t, sh+" "+pre, out)
+			})
+		}
+	}
+}
+
+// TestPushcredNoHeaderControl: positive control. With no extraheader the
+// push is unchanged: the forge challenges, the helper answers with the board
+// credential, the push lands, and no reset is announced.
+func TestPushcredNoHeaderControl(t *testing.T) {
+	for _, sh := range []string{"bash", "sh"} {
+		t.Run(sh, func(t *testing.T) {
+			r := newHdrRig(t)
+			rc, out := r.push(sh, "PUSHCRED_TOKEN_VAR="+boardTokenVar+"; ", boardTokenVar+"="+boardTokenSentinel)
+			if rc != 0 {
+				t.Fatalf("pushcred_push rc=%d, want 0:\n%s", rc, out)
+			}
+			if seen := r.seenSet(); !seen["none"] || !seen["board"] || seen["job"] || seen["other"] {
+				t.Errorf("forge saw %v, want a challenge then the board credential", r.seen)
+			}
+			if strings.Contains(out, "extraheader") {
+				t.Errorf("no header was planted, yet the output names a reset:\n%s", out)
+			}
+			assertNoHeaderValue(t, sh, out)
+		})
+	}
+}
+
+// TestPushcredHeaderKeptNoVar: without PUSHCRED_TOKEN_VAR the header IS the
+// credential (a GitHub checkout persists it), so it is left alone.
+func TestPushcredHeaderKeptNoVar(t *testing.T) {
+	r := newHdrRig(t)
+	r.git(r.ws, "config", "http.extraheader", "Authorization: "+boardAuth)
+	rc, out := r.push("sh", "")
+	if rc != 0 {
+		t.Fatalf("pushcred_push rc=%d without a token variable, want 0 through the header:\n%s", rc, out)
+	}
+	if seen := r.seenSet(); !seen["board"] || seen["none"] {
+		t.Errorf("forge saw %v, want the header's credential on every request", r.seen)
+	}
+}
+
+// listFailShim is `git` when `git config` cannot list names: it exits 129
+// (an unknown option), and records each push argv.
+const listFailShim = `#!/bin/sh
+for a in "$@"; do
+  case $a in
+    config) exit 129 ;;
+    push) printf '%s\n' "$*" >>"$STUB_LOG/push-argv"; exit 0 ;;
+  esac
+done
+exit 0
+`
+
+// TestPushcredHeaderListFails: when git cannot list the header names, the
+// push still runs and says so as a could-not-check, never as a silent pass.
+//
+// regression: #5004
+func TestPushcredHeaderListFails(t *testing.T) {
+	requirePushTools(t)
+	src, err := filepath.Abs("pushcred.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sh := range []string{"bash", "sh"} {
+		bin, logs := t.TempDir(), t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "git"), []byte(listFailShim), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(sh, "-c", `. "$1"; PUSHCRED_TOKEN_VAR=`+boardTokenVar+`; pushcred_push origin HEAD:main; echo "rc=$?"`, sh, src)
+		cmd.Env = append(scrubbedEnv(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"TMPDIR="+logs, "STUB_LOG="+logs)
+		out, _ := cmd.CombinedOutput()
+		if !strings.Contains(string(out), "rc=0") {
+			t.Errorf("%s: push did not run to rc=0 after a failed listing:\n%s", sh, out)
+		}
+		if !strings.Contains(string(out), "could-not-check http extraheaders") {
+			t.Errorf("%s: a failed listing was silent, want a could-not-check notice:\n%s", sh, out)
+		}
+		if b, _ := os.ReadFile(filepath.Join(logs, "push-argv")); !strings.Contains(string(b), "push origin HEAD:main") {
+			t.Errorf("%s: push argv = %q", sh, b)
+		}
 	}
 }
