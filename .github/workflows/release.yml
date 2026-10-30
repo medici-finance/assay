@@ -877,7 +877,7 @@ jobs:
     # nothing would validate nothing. So the checkout / Go install / build /
     # checksum steps run unconditionally. This job has no publishing step or
     # repository write permission; release publication follows the image gate.
-    runs-on: medici-builder-release-objects
+    runs-on: ${{ vars.RELEASE_OBJECT_PRODUCER_RUNNER }}
     environment: release-object-store-producer
     permissions:
       contents: read
@@ -1659,7 +1659,7 @@ jobs:
 
   release:
     needs: [resolve, guard, test, artifacts, runner-arm64]
-    runs-on: medici-builder-public-release-objects
+    runs-on: ${{ vars.RELEASE_OBJECT_PUBLISHER_RUNNER }}
     # One approval covers every publication write: images first, then tag/assets.
     environment: release
     concurrency:

@@ -12,7 +12,7 @@ A missing configuration, failed operation or proof mismatch stops the workflow. 
 
 ## Operator prerequisites
 
-The two object-enabled release pool labels are additive. Existing pools and network fences are unchanged. Operator-controlled TLS routing, narrow bucket/prefix policies and protected environment credentials must be provisioned and qualified before activating the new pools. No deployment, credential provisioning, storage probe or release is performed by this source change.
+The operator supplies repository variables `RELEASE_OBJECT_PRODUCER_RUNNER` and `RELEASE_OBJECT_PUBLISHER_RUNNER` naming the dedicated, additive object-enabled release pools. Neither assignment has a default or a fallback; unset variables cannot route a job to an existing pool. Existing pools and network fences are unchanged. Operator-controlled TLS routing, narrow bucket/prefix policies and protected environment credentials must be provisioned and qualified before activating the new pools. No deployment, credential provisioning, storage probe or release is performed by this source change.
 
 The producer uses environment `release-object-store-producer`; the publisher retains environment `release`. Both entry paths, tag push and workflow dispatch, must be covered by the operator's protected-ref policy. This source does not claim an exclusive selected-workflow runner-group boundary.
 

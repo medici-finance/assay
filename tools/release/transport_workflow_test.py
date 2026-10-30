@@ -13,8 +13,8 @@ def hybrid_problems(text):
     jobs = workflow_jobs(text)
     producer, publisher, native = (jobs.get(k, '') for k in ('artifacts', 'release', 'runner-arm64'))
     problems = []
-    for block, pool in [(producer, 'medici-builder-release-objects'),
-                        (publisher, 'medici-builder-public-release-objects')]:
+    for block, pool in [(producer, '${{ vars.RELEASE_OBJECT_PRODUCER_RUNNER }}'),
+                        (publisher, '${{ vars.RELEASE_OBJECT_PUBLISHER_RUNNER }}')]:
         if '    runs-on: ' + pool + '\n' not in block:
             problems.append('object handoff must use its explicitly configured release pool')
     if '    environment: release-object-store-producer\n' not in producer:
@@ -93,7 +93,9 @@ class HybridWorkflowTest(unittest.TestCase):
     def test_expected_proof_credential_and_route_controls_cannot_disappear(self):
         text=(ROOT/'.github/workflows/release.yml').read_text()
         self.assertEqual(hybrid_problems(text), [])
-        changes=[('--expected-sha256 "$BUNDLE_SHA256"',''),
+        changes=[('${{ vars.RELEASE_OBJECT_PRODUCER_RUNNER }}',''),
+                 ('${{ vars.RELEASE_OBJECT_PUBLISHER_RUNNER }}',''),
+                 ('--expected-sha256 "$BUNDLE_SHA256"',''),
                  ('--expected-manifest-sha256 "$MANIFEST_SHA256"',''),
                  ('--expected-bytes "$BUNDLE_BYTES"',''),
                  ('needs.artifacts.outputs.bundle_sha256','steps.untrusted.outputs.bundle_sha256'),
