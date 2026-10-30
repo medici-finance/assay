@@ -62,8 +62,16 @@ func ReadHistoryPack(dest, source string, in io.Reader) error {
 	if _, err := r.CommitObject(hash); err != nil {
 		return fmt.Errorf("gitcore: history pack does not contain the admitted source: %w", err)
 	}
-	if _, err := revlist.Objects(r.Storer, []plumbing.Hash{hash}, nil); err != nil {
+	objects, err := revlist.Objects(r.Storer, []plumbing.Hash{hash}, nil)
+	if err != nil {
 		return fmt.Errorf("gitcore: incomplete source history pack: %w", err)
+	}
+	// revlist reads commits and trees, but only enumerates blob hashes. Require
+	// every enumerated object, including blobs, before installing any source ref.
+	for _, object := range objects {
+		if err := r.Storer.HasEncodedObject(object); err != nil {
+			return fmt.Errorf("gitcore: incomplete source history pack: missing reachable object %s: %w", object, err)
+		}
 	}
 	for _, ref := range []*plumbing.Reference{
 		plumbing.NewHashReference("refs/heads/verification-source", hash),

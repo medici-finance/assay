@@ -164,19 +164,53 @@ func TestHistoryNoHostConfig(t *testing.T) {
 
 func TestHistoryIncompleteBundle(t *testing.T) {
 	fx := newContainerFixture(t)
-	base := gitOutT(t, fx.home, "rev-parse", "HEAD")
 	putFile(t, filepath.Join(fx.home, "later.txt"), "later\n")
 	runGit(t, fx.home, "add", "later.txt")
 	runGit(t, fx.home, "commit", "-m", "later")
 	head := gitOutT(t, fx.home, "rev-parse", "HEAD")
-	partial := filepath.Join(t.TempDir(), "partial.bundle")
-	runGit(t, fx.home, "bundle", "create", partial, "HEAD", "^"+base)
+	partial := filepath.Join(t.TempDir(), "partial.pack")
+	if err := exportContainerHistory(fx.home, partial, head); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(partial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putFile(t, partial, string(raw[:len(raw)/2]))
 	if _, _, cleanup, err := importContainerHistory(fx.home, fx.brief, partial, head); err == nil {
 		cleanup()
-		t.Fatal("accepted a bundle needing untransported prerequisites")
+		t.Fatal("accepted a truncated history pack")
 	}
 	putFile(t, filepath.Join(fx.home, ".git", "shallow"), head+"\n")
 	if err := exportContainerHistory(fx.home, filepath.Join(t.TempDir(), "shallow.bundle"), head); err == nil {
 		t.Fatal("exported incomplete shallow history")
+	}
+}
+
+func TestHistoryImportStopsRows(t *testing.T) {
+	for _, kind := range []string{"corrupt", "missing", "inside-home"} {
+		t.Run(kind, func(t *testing.T) {
+			fx := newContainerFixture(t)
+			pack := filepath.Join(t.TempDir(), "input.pack")
+			want := "invalid history pack"
+			switch kind {
+			case "corrupt":
+				putFile(t, pack, "corrupt pack")
+			case "missing":
+				want = "readable regular file"
+			case "inside-home":
+				pack = filepath.Join(fx.home, "input.pack")
+				putFile(t, pack, "corrupt pack")
+				want = "outside the admitted home"
+			}
+			fx.writeBracketReceipt(t, validCheck)
+			before := getFile(t, fx.brief)
+			args := append(fx.runArgs(), "--fail-first", "--base", fixtureSource, "--history-pack", pack)
+			res, stderr := captureVerifyrun(t, args)
+			if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "--history-pack:") || !strings.Contains(stderr, want) {
+				t.Fatalf("import refusal not preserved: exit=%d stderr=%s", res.code, stderr)
+			}
+			fx.assertNothingRan(t, before)
+		})
 	}
 }

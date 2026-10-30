@@ -40,9 +40,14 @@ still apply. A newer host binary alone is insufficient: the pinned container
 runner must also support `--history-pack`.
 
 The container imports objects into a new private repository outside the home,
-validates their connectivity and requires the receipt's full source commit and all its reachable objects to be present. Its baseline ancestry anchor is that source, never a
-caller-supplied branch ref. The ordinary ancestry and brief-at-base checks still
-run. Baseline worktrees use only this private metadata and are removed after
+validates their connectivity and requires the receipt's full source commit and
+all reachable objects, including blobs, to be present. Its baseline ancestry
+anchor is that source, never a caller-supplied branch ref. For post-merge
+verification this matches the host's merge-base anchor. For a branch-head home,
+the container's early check accepts ancestors of the source, including commits
+after the branch diverged; the closure/landing gate still checks the witness
+against the real default-branch merge-base. The brief-at-base check still runs.
+Baseline worktrees use only this private metadata and are removed after
 the run; head commands still execute on the original admitted mount. No writable
 host Git directory or forge access is required in the container.
 
@@ -52,3 +57,12 @@ container-netns fail-first execution. Missing, incomplete, corrupt or
 wrong-source history refuses before any Verify row runs; it never produces a
 synthetic baseline failure or verification credit. `--in-container` and the
 acceptance-transition approval rules are unchanged.
+
+This exports complete history, not a bounded delivery diff. Resource use and
+pack size are not capped: a review benchmark on a loaded machine for a roughly
+7,000-commit repository took about 13 minutes wall time, 1 GB peak RSS and a
+160 MB pack; import took about 40 seconds. Export time counts against the
+bracket window. Provision scratch space and memory accordingly; a narrower or
+faster transport is future work, not a relaxed integrity check. If receipt
+writing fails after export, the completed pack remains outside the home. Keep
+it as diagnostic output and use a new output path for the next open attempt.

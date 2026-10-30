@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/packfile"
+	"github.com/go-git/go-git/v5/plumbing/revlist"
 	"github.com/medici-finance/assay/gitcore/gittest"
 )
 
@@ -81,5 +82,81 @@ func TestHistoryPackRejects(t *testing.T) {
 	}
 	if err := WriteHistoryPack(f.Dir, head, &bytes.Buffer{}); err == nil {
 		t.Fatal("exported shallow history")
+	}
+}
+
+func TestHistoryMissingBlob(t *testing.T) {
+	f := gittest.NewFixture(t)
+	head := f.CommitFile(t, "delivered.txt", "delivery\n", "delivery")
+	r, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := r.repo.CommitObject(plumbing.NewHash(head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := tree.File("seed.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects, err := revlist.Objects(r.repo.Storer, []plumbing.Hash{commit.Hash}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []plumbing.Hash
+	for _, hash := range objects {
+		if hash != file.Hash {
+			kept = append(kept, hash)
+		}
+	}
+	if len(kept) != len(objects)-1 {
+		t.Fatal("fixture did not omit exactly one reachable blob")
+	}
+	var pack bytes.Buffer
+	if _, err := packfile.NewEncoder(&pack, r.repo.Storer, false).Encode(kept, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReadHistoryPack(filepath.Join(t.TempDir(), "missing-blob"), head, bytes.NewReader(pack.Bytes())); err == nil {
+		t.Fatal("accepted a pack missing only a reachable blob, with all commits and trees present")
+	}
+}
+
+func TestHistorySourceGuards(t *testing.T) {
+	f := gittest.NewFixture(t)
+	base, err := f.Git("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := f.CommitFile(t, "new.txt", "new\n", "head")
+	if err := WriteHistoryPack(f.Dir, base, &bytes.Buffer{}); err == nil {
+		t.Fatal("export accepted a source different from HEAD")
+	}
+	r, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := r.repo.CommitObject(plumbing.NewHash(head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := tree.File("new.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pack bytes.Buffer
+	if _, err := packfile.NewEncoder(&pack, r.repo.Storer, false).Encode([]plumbing.Hash{file.Hash}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReadHistoryPack(filepath.Join(t.TempDir(), "blob-source"), file.Hash.String(), bytes.NewReader(pack.Bytes())); err == nil {
+		t.Fatal("import accepted a blob as its source commit")
 	}
 }
