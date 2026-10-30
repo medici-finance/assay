@@ -69,6 +69,12 @@ from prerequisites for final outcome acceptance. If the source lacks a consequen
 outcome/scope decision, reconcile it with `author-spec` before committing affected work;
 continue independent authoring. Unsupported declarations remain proposals, not live YAML.
 
+For a source using simulated dependencies, apply the shared procedure's **Outcomes
+delivered with simulated dependencies** section. Preserve its real/substitute matrix
+and evidence limits in the affected briefs. Separate profile setup, contract/fake work
+and the joined real-consumer qualification where they have different owners; record
+actual producer prerequisites rather than adding another controller to hide a gap.
+
 ## The most important judgment call: find the REAL head of the critical path
 
 The critical path is the chain that, if it slips, slips everything. The recurring failure is putting
