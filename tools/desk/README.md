@@ -126,12 +126,18 @@ their help with Cobra (desktools-v2/46). `--help`, `-h`, `help` and `--version` 
 and exit 0 before any roster, configuration, credential, network or child-process read. A bare
 invocation still prints help to stderr and exits with the tool's old usage code: 5 for
 `deskpins` and `deskrebaseline`, 2 for the other three. A command line the tree cannot parse
-exits with that same code. The four flag tools keep their single-dash spellings (`-check`,
-`-root`, `-dry-run`, `-row`). None of them declares an environment variable or
-configuration key. `deskrelease cut` is the exception to Cobra parsing: it takes its argv raw,
-so the cut parser is still the only parser, and any word it does not recognise is refused
-(exit 5) and audited. That includes a flag written before `cut`. `cut -h` or `cut --help` on
-its own prints the verb's help. After a tag, the same word is an operand and is refused.
+exits with that same code; for `deskrelease` it does so only after the startup and the
+kill-switch check, so a disabled suite still refuses (3) and audits it. `deskmanifest` and
+`deskprovenance` keep their Go-flag single-dash spellings (`-root`, `-dry-run`). Two tools
+gain spellings they did not accept before: `deskrebaseline` now takes `-row K`, and `deskpins`
+now takes `-check`, `-root D`, `--check=V` and `--root=D` (its old argument loop refused them
+with 5). Every root also carries the shared optional `--perf-*` attribution flags; these five
+tools do not record them yet, so they are accepted and ignored. None of the five declares an
+environment variable or configuration key. `deskrelease cut` is the exception to Cobra
+parsing: it takes its argv raw, so the cut parser is still the only parser, and any word it
+does not recognise is refused (exit 5) and audited. That includes a flag written before
+`cut` and a help word: `cut -h` and `cut --help` are refused like any other flag. The verb's
+help is `deskrelease help cut`.
 
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
@@ -5993,7 +5999,7 @@ absolute-sounding claims about matchers are what produced #1538:
 |---|---|
 | verbs | `cut <tag>` only. No delete, force, move, override, or waiver verb exists. |
 | tag validation | two independent layers: a refspec-metacharacter screen (`:` `+` `^` `~` `@` `*` `?` `[` `\`, whitespace, control chars) and the anchored pattern `^(desk-tools\|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`. Each refuses with its own reason. |
-| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag and a flag written before `cut`. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. Only `cut -h` or `cut --help` on its own is a help request, and it is answered before anything is read. |
+| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag and a flag written before `cut`. That includes `cut -h` and `cut --help`; the verb's help is `deskrelease help cut`. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
 | input | argv only — never stdin, never an environment variable. |
 | `--dry-run` | validates, reads the remote, and stops **before** `POST /git/refs`. **When the tag is still free** — the case the flag is for — exit 0, audited `result=dryrun` — a class **neither rate-limit meter counts** (#214). It used to audit `noop`, which the non-progress breaker counts, so five rehearsals opened a 15-minute breaker against the real cut: checking whether a release was safe could lock the release out. A dry run is still *subject* to both meters; it just does not feed them, and it is IGNORED rather than treated as progress, so it cannot reset a breaker a real refusal loop opened either. Against a tag that already **exists**, the stop is never reached: the row below settles the invocation first, and the rehearsal audits `noop`/`refused`/`unverifiable` like the real thing. |
 | transport | `POST /repos/{owner}/{repo}/git/refs`. `git push` is never executed; no local checkout is touched, so a `git -C` variance and a stale sibling clone are both impossible. |

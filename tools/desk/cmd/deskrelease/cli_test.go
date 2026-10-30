@@ -116,11 +116,18 @@ func execIn(t *testing.T, bin, dir string, env []string, args ...string) binRun 
 	return binRun{code, out.String(), errb.String()}
 }
 
-// helpForms are every help and version spelling deskrelease answers, root and nested. The
-// tool never had Go flag-package spellings, so the single-dash long forms do not apply.
+// helpForms are every help and version spelling deskrelease answers. The tool never had Go
+// flag-package spellings, so the single-dash long forms do not apply. `cut -h` and `cut --help`
+// are NOT among them: cut's argv belongs to the cut parser, which refuses a help word with 5
+// and audits it, as it did before the migration (see TestCLILegacyForms).
 func helpForms() [][]string {
-	forms := clicontract.HelpForms("cut")
-	forms = append(forms, []string{"cut", "-h"}, []string{"cut", "--help"}, []string{"-v"}, []string{"version"})
+	var forms [][]string
+	for _, f := range clicontract.HelpForms("cut") {
+		if f[0] != "cut" {
+			forms = append(forms, f)
+		}
+	}
+	forms = append(forms, []string{"-v"}, []string{"version"})
 	return append(forms, clicontract.VersionForms...)
 }
 
@@ -152,9 +159,9 @@ func (r *recorder) exec(args ...string) (int, string, string) {
 	return code, out.String(), errb.String()
 }
 
-// regression: help went to stderr, `deskrelease cut --help` was an audited refusal and the
-// roster startup (class, config echo, activation check) ran before even `version` — so help
-// was not a clean, offline, stdout answer.
+// regression: help went to stderr and the roster startup (class, config echo, activation check)
+// ran before even `version` — so help was not a clean, offline, stdout answer. (`cut --help`
+// stays an audited cut refusal; the verb's help is `deskrelease help cut`.)
 func TestCLIHelpOffline(t *testing.T) {
 	bin := toolBinary(t)
 	forms := helpForms()
@@ -282,7 +289,7 @@ func TestCLIConfigFlow(t *testing.T) {
 				walk(s)
 			}
 		}
-		walk(newTree(io.Discard, io.Discard, nil))
+		walk(newTree(io.Discard, io.Discard, nil, nil))
 		if len(names) != 0 {
 			t.Errorf("deskrelease declares settings %v; it has none (no --repo, no --sha, no environment)", names)
 		}
@@ -324,6 +331,9 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"cut", goodTag, "--repo", "attacker/elsewhere"}, `unrecognised flag "--repo"`},
 			{[]string{"cut", goodTag, "--dry-run", "--dry-run"}, "--dry-run given twice"},
 			{[]string{"cut", "-dry-run", goodTag}, `unrecognised flag "-dry-run"`},
+			// A help word alone after cut is a cut word too: refused and audited, never help.
+			{[]string{"cut", "-h"}, `unrecognised flag "-h"`},
+			{[]string{"cut", "--help"}, `unrecognised flag "--help"`},
 			// A word before the verb is carried into cut's argv, where the cut parser refuses it.
 			{[]string{"--repo", "attacker/elsewhere", "cut", goodTag}, `unrecognised flag "--repo"`},
 		}
@@ -357,12 +367,42 @@ func TestCLILegacyForms(t *testing.T) {
 		for _, c := range cases {
 			r := record(t)
 			code, out, stderr := r.exec(c.args...)
-			if code != 2 || out != "" || r.calls != 0 || r.pres != 0 || len(r.h.gh.calls()) != 0 {
-				t.Errorf("%v: exit %d stdout %q cut %d startup %d; want 2, nothing printed, nothing run", c.args, code, out, r.calls, r.pres)
+			// A command line the tree cannot parse runs the startup and the kill switch first,
+			// as the hand-rolled dispatcher did; a bare invocation is a usage request and runs
+			// neither.
+			wantPres := 1
+			if len(c.args) == 0 {
+				wantPres = 0
+			}
+			if code != 2 || out != "" || r.calls != 0 || r.pres != wantPres || len(r.h.gh.calls()) != 0 {
+				t.Errorf("%v: exit %d stdout %q cut %d startup %d; want 2, nothing printed, no cut, startup %d", c.args, code, out, r.calls, r.pres, wantPres)
 			}
 			if !strings.Contains(stderr, c.msg) {
 				t.Errorf("%v: stderr %q, want it to contain %q", c.args, stderr, c.msg)
 			}
+		}
+	})
+	// regression: an unknown verb or root flag exited 2 before Guard ran, so a disabled suite
+	// no longer refused (3) or audited it. The hand-rolled dispatcher ran Guard first.
+	t.Run("usage-errors-under-kill-switch", func(t *testing.T) {
+		for _, args := range [][]string{{"delete", goodTag}, {"--bogus"}, {"version", "extra"}, {"__complete", "cut", ""}} {
+			r := record(t)
+			t.Setenv("DESK_TOOLS_DISABLED", "1")
+			code, out, stderr := r.exec(args...)
+			if code != 3 || out != "" || r.calls != 0 || r.pres != 1 || len(r.h.gh.calls()) != 0 || len(r.h.tok.all()) != 0 {
+				t.Errorf("%v disabled: exit %d stdout %q cut %d startup %d; want 3, nothing printed, startup 1, nothing called\n%s", args, code, out, r.calls, r.pres, stderr)
+			}
+			if strings.Contains(stderr, "unknown") {
+				t.Errorf("%v disabled: stderr %q; the kill-switch refusal replaces the usage error", args, stderr)
+			}
+			if n := len(r.h.auditLines(t)); n != 1 {
+				t.Errorf("%v disabled: %d audit lines, want exactly 1 (result=disabled)", args, n)
+			}
+		}
+		r := record(t)
+		t.Setenv("DESK_TOOLS_DISABLED", "1")
+		if code, _, _ := r.exec(); code != 2 || r.pres != 0 || len(r.h.auditLines(t)) != 0 {
+			t.Errorf("bare, disabled: exit %d startup %d; want 2 with no startup and no audit (a usage request)", code, r.pres)
 		}
 	})
 	t.Run("version", func(t *testing.T) {

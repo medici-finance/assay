@@ -20,7 +20,7 @@
       "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKPINS_ROOT\"},"
     },
     {
-      "name": "deskpins: the legacy single-dash spellings dropped (-check -root stop parsing)",
+      "name": "deskpins: the single-dash forms dropped (the declared -check -root and the legacy -version stop parsing)",
       "file": "cmd/deskpins/main.go",
       "old": "GoFlagCompat: true,",
       "new": "GoFlagCompat: false,"
@@ -82,8 +82,8 @@
     {
       "name": "deskrelease: help runs the roster startup (activation check before the command line is parsed)",
       "file": "cmd/deskrelease/main.go",
-      "old": "return cli.Run(build, argv, cli.Options{",
-      "new": "if pre != nil {\n\t\tpre(errw)\n\t}\n\treturn cli.Run(build, argv, cli.Options{"
+      "old": "code := cli.Run(build, argv, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(errw)\n\t}\n\tcode := cli.Run(build, argv, cli.Options{"
     },
     {
       "name": "deskrelease: an undeclared flag source (cut gains a --repo flag the cut parser never sees)",
@@ -96,6 +96,18 @@
       "file": "cmd/deskrelease/main.go",
       "old": "\t\tDisableFlagParsing: true,\n",
       "new": "\t\tDisableFlagParsing: false,\n"
+    },
+    {
+      "name": "deskrelease: an unparseable command line skips the kill switch (unknown verb exits 2 before Guard, unaudited)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "if !handled && code == cli.ExitUsage {",
+      "new": "if !handled && code == -1 {"
+    },
+    {
+      "name": "deskrelease: cut -h alone answered as help (the audited cut refusal is skipped)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "\t\t\tmark()\n\t\t\t// Kill switch FIRST among the acts",
+      "new": "\t\t\tmark()\n\t\t\tif len(rest) == 1 && (rest[0] == \"-h\" || rest[0] == \"--help\") {\n\t\t\t\treturn cmd.Help()\n\t\t\t}\n\t\t\t// Kill switch FIRST among the acts"
     }
   ]
 }

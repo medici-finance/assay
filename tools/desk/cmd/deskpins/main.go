@@ -127,7 +127,9 @@ func execute(args []string, stdout, stderr io.Writer) int {
 		VersionTemplate: "{{.Version}}\n",
 		// A parse error keeps the legacy refusal code (5), outside the verdict codes.
 		UsageExit: deskkit.ExitRefused,
-		// -version was a legacy spelling; the single-dash long forms stay accepted.
+		// -version was a legacy spelling and stays accepted. The same rewrite newly accepts
+		// -check and -root (and pflag accepts --check=V and --root=D), which the hand-rolled
+		// loop refused with 5: a declared widening, not a preserved spelling.
 		GoFlagCompat: true,
 	})
 }

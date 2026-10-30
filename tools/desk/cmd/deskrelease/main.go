@@ -66,9 +66,10 @@
 //
 //   - the kill switch runs before anything that ACTS — before the cut argv parse, the
 //     identity mint, and any network call. Precisely: the non-acting requests (`version`,
-//     `--version`, `-v`, `help`, `-h`, `--help`, and `cut -h` / `cut --help` with no other
-//     word) are answered by the command tree ahead of Guard() and print without consulting
-//     it; every path that could touch the remote runs after it;
+//     `--version`, `-v`, `help`, `-h`, `--help`, `help cut`, and a bare invocation) are answered by the command tree ahead of Guard() and print without
+//     consulting it. Every other path runs Guard() first: every path that could touch the
+//     remote, every cut refusal (`cut -h` included), and every command line the tree cannot
+//     parse (an unknown verb or flag), so a disabled suite audits each of them as it did;
 //   - the tag is validated against ^(desk-tools|statusgen)/v\d+\.\d+\.\d+$ AND
 //     screened for refspec metacharacters, each with its own refusal reason;
 //   - ANY unrecognised flag or extra operand is REFUSED, never ignored — a silently
@@ -102,6 +103,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -132,7 +134,7 @@ There is no delete, force, move, or override verb, and no git push is ever execu
 
 exit codes: 0 ok/noop · 2 usage · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable`
 
-// cutHelp is `deskrelease cut --help`.
+// cutHelp is `deskrelease help cut`.
 const cutHelp = `deskrelease cut — create refs/tags/<tag> at the current remote origin/main HEAD, as the desk App.
 
 usage:
@@ -140,8 +142,8 @@ usage:
 
 <tag> is (desk-tools|statusgen|assay)/vMAJOR.MINOR.PATCH — argv only, never stdin or the
 environment. --dry-run validates and resolves everything but writes nothing. Any other word
-— an extra operand, an unknown flag, a help word after the tag — is REFUSED (exit 5) and
-audited, never ignored.
+— an extra operand, an unknown flag, a help word (cut -h included) — is REFUSED (exit 5)
+and audited, never ignored. This help is: deskrelease help cut.
 
 exit codes: 0 ok/noop · 2 usage · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable`
 
@@ -151,8 +153,9 @@ func main() {
 	}))
 }
 
-// startup is the process startup a cut runs before anything else; help and version never
-// reach it. false means the verb is not activated (exit 6).
+// startup is the process startup a cut — and a command line the tree cannot parse — runs
+// before anything else; help and version never reach it. false means the verb is not
+// activated (exit 6).
 func startup(errw io.Writer) bool {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (a correctness review found: SetToolClass had no caller anywhere,
@@ -196,40 +199,82 @@ func versionLine() string {
 	return fmt.Sprintf("deskrelease sourceSHA=%s builtAt=%s releaseTag=%s", s, b, deskkit.ReleaseTagOrDev())
 }
 
-// isHelpWord reports whether a is a help request.
-func isHelpWord(a string) bool { return a == "-h" || a == "--help" }
+// gate is what every path except help and version runs first, in the hand-rolled
+// dispatcher's order: the process startup (roster class, config echo, activation check: 6),
+// the release home, the unpinned warning, then the kill switch (a disabled suite exits 3
+// after Guard audits result=disabled). 0 means go on.
+func gate(errw io.Writer, pre func(io.Writer) bool) int {
+	if pre != nil && !pre(errw) {
+		return deskkit.ExitUnverifiable
+	}
+	// Resolve the release home before anything reads it. Unset leaves the shipped default in
+	// place, so this is a no-op for an adopter who configures nothing.
+	applyConfiguredReleaseRepo()
+	deskkit.WarnIfUnpinned(errw)
+	if err := deskkit.Guard(); err != nil {
+		fmt.Fprintln(errw, "deskrelease: "+err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+	return 0
+}
 
 // execute runs one invocation against a fresh command tree. pre is the process startup; it
-// runs only on a cut, after the command line parses, and never for help or version.
+// runs (through gate) on a cut and on a command line the tree cannot parse, and never for
+// help, version or a bare invocation.
 //
-// The tree declares NO setting: no flag beyond help and version, no environment variable, no
-// configuration key. `cut` takes its argv raw (DisableFlagParsing) so that parseCutArgs stays
-// its ONE parser — the argv strictness this tool exists for (an unknown flag or extra operand
-// is refused with 5 and audited, never ignored) is not handed to a general-purpose parser.
+// The tree declares NO setting of its own: no flag beyond help and version (the shared
+// adapter's optional --perf-* attribution flags are on every root; this tool does not record
+// them, and one written before `cut` reaches cut's argv and is refused there), no environment
+// variable, no configuration key. `cut` takes its argv raw (DisableFlagParsing) so that
+// parseCutArgs stays its ONE parser — the argv strictness this tool exists for (an unknown flag
+// or extra operand is refused with 5 and audited, never ignored) is not handed to a
+// general-purpose parser.
+//
+// A command line the tree cannot parse (an unknown verb or root flag, a stray word) is still a
+// usage error (2), but only after gate has run, as the hand-rolled dispatcher ran Guard before
+// its unknown-subcommand error: the parse error's message is held until gate passes, and a
+// gate refusal replaces it, so a disabled suite exits 3 and audits the attempt.
 func execute(argv []string, out, errw io.Writer, pre func(io.Writer) bool) int {
 	prevOut, prevErr := stdout, stderr
 	stdout, stderr = out, errw
 	defer func() { stdout, stderr = prevOut, prevErr }()
 
-	build := func() *cobra.Command { return newTree(out, errw, pre) }
-	return cli.Run(build, argv, cli.Options{
-		IO:              cli.IO{Out: out, Err: errw},
+	var held bytes.Buffer
+	handled := false
+	build := func() *cobra.Command { return newTree(out, errw, pre, &handled) }
+	code := cli.Run(build, argv, cli.Options{
+		IO:              cli.IO{Out: out, Err: &held},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
-		// A word the tree does not know (an unknown verb or root flag) is a usage error (2),
-		// as before; cut's own refusals stay 5 through parseCutArgs.
-		UsageExit: 2,
+		// cut's own refusals stay 5 through parseCutArgs.
+		UsageExit: cli.ExitUsage,
 	})
+	// No handler ran and the adapter answered with its usage code: the tree could not parse
+	// the command line. (Help and version exit 0; a bare invocation is a handler.)
+	if !handled && code == cli.ExitUsage {
+		if g := gate(errw, pre); g != 0 {
+			return g
+		}
+	}
+	_, _ = io.Copy(errw, &held)
+	return code
 }
 
 // newTree builds deskrelease's command tree on the given streams; pre is as for execute.
-func newTree(out, errw io.Writer, pre func(io.Writer) bool) *cobra.Command {
+// handled, when not nil, is set once any handler runs.
+func newTree(out, errw io.Writer, pre func(io.Writer) bool, handled *bool) *cobra.Command {
+	mark := func() {
+		if handled != nil {
+			*handled = true
+		}
+	}
 	root := cli.NewRoot("deskrelease", "cut a release tag as the desk App, via the GitHub git-data API")
 	root.Long = helpLong
 	// -v printed the version before the migration; it still does.
 	root.Flags().BoolP("version", "v", false, "print the version and exit")
 	// A bare deskrelease prints its usage to stderr and exits 2, as before.
 	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		mark()
 		cmd.SetOut(errw)
 		_ = cmd.Help()
 		return exitErr(2)
@@ -238,26 +283,16 @@ func newTree(out, errw io.Writer, pre func(io.Writer) bool) *cobra.Command {
 		Use:   "cut <tag> [--dry-run]",
 		Short: "create refs/tags/<tag> at the current remote origin/main HEAD",
 		Long:  cutHelp,
-		// parseCutArgs is cut's one parser; see execute's doc comment.
+		// parseCutArgs is cut's one parser; see execute's doc comment. A help word here
+		// (`cut -h`, `cut <tag> --help`) is a word like any other: refused with 5 and audited.
+		// `deskrelease help cut` prints the verb's help.
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, rest []string) error {
-			// A help word ALONE is a request for help: nothing is named, so nothing can
-			// act. After a tag it is an operand like any other and parseCutArgs refuses it.
-			if len(rest) == 1 && isHelpWord(rest[0]) {
-				return cmd.Help()
-			}
-			if pre != nil && !pre(errw) {
-				return exitErr(deskkit.ExitUnverifiable)
-			}
-			// Resolve the release home before anything reads it. Unset leaves the shipped
-			// default in place, so this is a no-op for an adopter who configures nothing.
-			applyConfiguredReleaseRepo()
-			deskkit.WarnIfUnpinned(errw)
+			mark()
 			// Kill switch FIRST among the acts — before parsing the cut argv or touching
-			// the network. A disabled suite exits 3 after Guard audits result=disabled.
-			if err := deskkit.Guard(); err != nil {
-				fmt.Fprintln(errw, "deskrelease: "+err.Error())
-				return exitErr(deskkit.ExitCodeOf(err))
+			// the network.
+			if g := gate(errw, pre); g != 0 {
+				return exitErr(g)
 			}
 			return codeErr(cutFn(append([]string{"cut"}, rest...)))
 		},
@@ -266,6 +301,7 @@ func newTree(out, errw io.Writer, pre func(io.Writer) bool) *cobra.Command {
 	// `deskrelease version` printed the build stamp before the migration; it still does.
 	root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
+			mark()
 			fmt.Fprintln(out, versionLine())
 			return nil
 		}})

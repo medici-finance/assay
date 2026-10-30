@@ -301,6 +301,23 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"--check", "--root", "/tmp/av"}, "/tmp/av"},
 			{[]string{"--root", "/tmp/av", "--check"}, "/tmp/av"},
 			{[]string{"--check", "--root", "-dash-dir"}, "-dash-dir"},
+		}
+		for _, c := range cases {
+			r := record(t)
+			code, out, stderr := r.exec(c.args...)
+			if code != 0 || r.calls != 1 || r.root != c.root || !strings.Contains(out, "checked-clean") {
+				t.Errorf("%v: exit %d calls %d root %q stdout %q; want 0, 1, %q\n%s", c.args, code, r.calls, r.root, out, c.root, stderr)
+			}
+		}
+	})
+	// NOT legacy: the hand-rolled loop refused every one of these with 5 ("unknown argument").
+	// The shared adapter's parsing accepts them, and the widening is declared on the PR
+	// (Desk-decided) rather than passed off as a preserved spelling.
+	t.Run("declared-new-forms", func(t *testing.T) {
+		cases := []struct {
+			args []string
+			root string
+		}{
 			{[]string{"-check", "-root", "/tmp/av"}, "/tmp/av"},
 			{[]string{"--check=true", "--root=../.."}, "../.."},
 		}
