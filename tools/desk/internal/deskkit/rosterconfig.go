@@ -377,6 +377,26 @@ const (
 	//	               email cannot enter it.
 	EnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 
+	// EnvGitLabRoleEmails (ASSAY_GITLAB_ROLE_EMAILS) binds each GitLab desk role to its OWN
+	// commit address — `role=email`, comma-separated (#4978). It exists because a GitLab
+	// service-account noreply address embeds a group id and a per-account suffix the roster
+	// does not carry, so the address cannot be constructed from the role's
+	// ASSAY_TRUSTED_BOT_SLUGS entry, and ASSAY_GITLAB_SESSION_EMAILS is a flat allowlist that
+	// says nothing about which address belongs to which role. Before this key the worktree
+	// stamper took the allowlist's FIRST address for every role, so a cell that binds one
+	// service account per role committed every role's work under one account.
+	//
+	// It is consumed ONLY by the worktree commit-identity stamper
+	// (RoleGitLabCommitIdentity). It widens nothing: every bound address must already be one
+	// the commit-identity preflight accepts (the service-account noreply shape, or an entry
+	// of ASSAY_GITLAB_SESSION_EMAILS), each role must be bound to a GitLab identity, and no
+	// address may be bound to two roles that are different accounts. A value that breaks any of those rules does not
+	// refuse the whole roster: it disables this binding, and every GitLab role then REFUSES
+	// to stamp (naming the reason) rather than falling back to a shared address. Unset is a
+	// complete configuration — the session allowlist is then used only where it names an
+	// address unambiguously.
+	EnvGitLabRoleEmails = "ASSAY_GITLAB_ROLE_EMAILS"
+
 	// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is a STATUSGEN-only roster value:
 	// the map from a GitLab account USERNAME to its DISPLAY name, consumed by statusgen's
 	// Evidence-actor gate as the OFFLINE fallback for a GitLab verifier (#1477). A GitLab
@@ -773,6 +793,14 @@ type Config struct {
 	// behaviour), not a degraded one. Read through GitLabSessionEmailAllowed(); it is
 	// consulted ONLY on the GitLab commit-identity path, never on GitHub.
 	GitLabSessionEmails []string
+
+	// GitLabRoleEmails is the parsed ASSAY_GITLAB_ROLE_EMAILS binding (#4978): lowercased
+	// role → lowercased commit address. Nil when unset or when the value is invalid; in the
+	// invalid case GitLabRoleEmailsProblem names why, and every GitLab role refuses to
+	// stamp rather than falling back to a shared address. Read through
+	// RoleGitLabCommitIdentity only.
+	GitLabRoleEmails        map[string]string
+	GitLabRoleEmailsProblem string
 
 	// RepoPatterns is the sorted, de-duplicated set of owner/* PATTERN entries parsed
 	// out of ASSAY_ALLOWED_REPOS (extended to configuration: an entry
@@ -1834,6 +1862,14 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// service-account noreply shape is then the only accepted GitLab commit email).
 	cfg.GitLabSessionEmails = splitGitLabSessionEmails(vals[EnvGitLabSessionEmails])
 
+	// --- GitLab per-role commit address (#4978) ---
+	//
+	// Parsed after the bot slugs (role bindings) and the session allowlist, because every
+	// entry is validated against both. A bad value disables only this binding (see
+	// EnvGitLabRoleEmails): the stamper then refuses every GitLab role, so nothing is
+	// stamped from a half-applied map and nothing else in the roster is dropped.
+	cfg.GitLabRoleEmails, cfg.GitLabRoleEmailsProblem = parseGitLabRoleEmails(vals[EnvGitLabRoleEmails], cfg)
+
 	// --- statusgen-only extension keys deskkit recognises but does not parse ---
 	// ASSAY_CHANNEL_DRIFT_TARGET and ASSAY_HOME_REPO have no shape this reader
 	// validates (see their const comments) — presence is all cfg.Ext can report
@@ -2126,6 +2162,9 @@ func (c Config) EffectiveConfigLines() []string {
 		// count) — a widening on an identity gate must be as visible in the run as
 		// the role bindings above (#643).
 		fmt.Sprintf("assay-config: %s=%s", EnvGitLabSessionEmails, strings.Join(c.GitLabSessionEmails, ",")),
+		// The per-role commit address chooses which identity a worktree is stamped with,
+		// so it renders in full, and an invalid value says why (#4978).
+		fmt.Sprintf("assay-config: %s=%s", EnvGitLabRoleEmails, c.gitLabRoleEmailsEcho()),
 	}
 	if len(c.AssertedHumans) > 0 {
 		// Every human-name assertion and the keys it waived the name check for. A waiver is
