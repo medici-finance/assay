@@ -118,7 +118,7 @@ ingress checks bypassed. No production no-auth mode or authorization bypass is a
 ## Lifecycle, isolation and observation
 
 The R7-selected existing service binary gains an explicit opt-in disposable profile mode
-after cell-api/02 and graph-execution/26; ordinary
+after cell-api/02, cell-api/03 and graph-execution/26; ordinary
 startup is unchanged. It validates the complete profile before creating resources or
 starting children, then prints the selected profile, component modes and loopback targets.
 Host adapters allocate an owned temporary root, scoped synthetic session, ephemeral

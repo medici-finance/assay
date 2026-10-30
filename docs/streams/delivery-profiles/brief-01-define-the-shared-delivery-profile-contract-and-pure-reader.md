@@ -106,7 +106,7 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileDecode$' ./deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileDecode ' "$out")` | exit 0 and named PASS. Strict production decoding rejects an unknown mode and missing component; planted ignore-mode mutation fails. |
 | 2 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileContract$' ./deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileContract ' "$out")` | exit 0 and named PASS. Connections and evidence bind one profile/scenario subject; changed digest or execution-profile confusion fails. |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileImport$' ./deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileImport ' "$out")` | exit 0 and named PASS. Temporary external consumer plus actual delivered service import use the public package, with dependency closure and no private/internal import. |
-| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/01` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
+| 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/01` | pre-merge only; exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem
 
