@@ -90,14 +90,20 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   discovery: it guards a credential, not a path, so a session outside any checkout
   is refused too. Malformed hook input or tool input stays a no-decision (fail open).
 - **What refuses.** A trigger word anywhere in the command text refuses
-  (`deskcore/writepolicy/forgetoken.go`). The guard does not parse the shell: it has
-  no lexer, no command positions and no quoting or heredoc model. Its one piece of
-  shell modelling is the normalization below, and that keeps every reading it
-  models instead of choosing one, so any reading that completes a trigger word
-  refuses. The trigger words are a whole word `auth`,
+  (`deskcore/writepolicy/forgetoken.go`). Apart from the one clearing described
+  below, the guard does not parse the shell: it has no lexer, no command positions
+  and no quoting or heredoc model. Apart from that clearing, its one piece of shell
+  modelling is the normalization below, and that keeps every reading it models
+  instead of choosing one, so any reading that completes a trigger word refuses,
+  unless the only trigger is the `gh` and `status` pair and the clearing applies.
+  The trigger words are a whole word `auth`,
   `token`, `oauth_token` or `git-credential`, or the words `gh` and `status`
   together, matched case-insensitively. The `gh` and `status` pair is cleared
-  only when every command in the text is a listed read spelled literally:
+  only when every command in the text is a listed read spelled literally. That
+  clearing is the one place the guard reads command positions: it takes the raw
+  text, not the normalized reading, splits it at `;`, `&`, `|` and newlines, and
+  reads the first words of each piece as the command, a word starting `-` as a
+  flag and the other words as operands. The listed reads are
   `git status`; `gh pr view`, `list` or `checks`; `gh run view` or `list`;
   `gh issue view` or `list`, with flags from a closed list, so no `--web` or
   `--template`; `--jq` and `-q` take only a literal field path such as `.status` or
@@ -127,10 +133,17 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `rg -n token src/`, a comment, a heredoc written to a file that says "token",
   `mkdir -p auth`, `gh auth status`, `gh auth login`, `gh pr view token`,
   `git status && gh pr create -t title` (`pr create` is not a listed read),
-  `gh run view "$id" --json status` (a computed argument),
-  `gh pr list --json status | head -5c` (a count flag read two ways by different tools),
+  `gh status` and `gh api repos/x/y/pulls | grep status` (a gh alias could sit
+  under either), `cd x && gh pr view 1 --json status` and
+  `[ "$n" -lt 5 ] && gh run view 1 --json status` (any other command beside a
+  listed read), `gh run view "$id" --json status` (a computed argument),
+  `gh pr list --json status | head -5c` and `gh pr checks 1 | grep -3A 2 status`
+  (a count flag read two ways by different tools),
   `gh run view 1 --json status --jq '.status | ascii_upcase'` (a quoted `|` splits
-  the text), `gh issue list --search "a b" --json status` (a quoted blank),
+  the text), `gh run view 1 --json status --jq length` (only literal field paths
+  clear), `gh pr view 1 --json status --template x` (off the closed flag list),
+  `gh issue list --search "a b" --json status` and
+  `gh pr checks 1 | grep 'a b status'` (a quoted blank),
   `gh pr list --search is:open --json status`, `gh pr list -L5 --json status` (a
   short flag with an attached value), and a commit
   message, PR body or comment passed inline (`-m "…"`, `--body "…"`) that says

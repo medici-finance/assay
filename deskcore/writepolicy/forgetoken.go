@@ -8,12 +8,15 @@ import (
 // --- ambient forge-credential read (#4821) ---
 //
 // forgeTokenRead reports whether a Bash command's text holds one of the gh
-// CLI's token-read trigger words ANYWHERE. It does not parse the shell: no
-// lexer, no command positions, no quoting or heredoc model. Its only shell
-// knowledge is the normalization below, and that keeps every reading it
-// models rather than choosing one: a backslash sequence is read both as part
-// of a word and as a word boundary (forgeBreaks), and any reading that
-// completes a trigger word refuses. Prose that names a trigger word is
+// CLI's token-read trigger words ANYWHERE. forgeListedReads is the one exception
+// to the rest of this paragraph: it reads the raw text, splits it into commands
+// and reads their first words, flags and operands, and it can clear the `status`
+// and `gh` pair. Otherwise this does not parse the shell: no lexer, no command
+// positions, no quoting or heredoc model. Its only other shell knowledge is the
+// normalization below, and that keeps every reading it models rather than
+// choosing one: a backslash sequence is read both as part of a word and as a
+// word boundary (forgeBreaks), and any reading that completes a trigger word
+// refuses unless forgeListedReads clears the pair. Prose that names a trigger word is
 // refused too (an accepted false refusal: put that text in a file and pass
 // -F <file> / --body-file <file> / a pattern file).
 //

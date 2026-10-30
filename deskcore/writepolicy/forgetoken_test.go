@@ -855,14 +855,23 @@ func TestForgeStatusKeepsAuthForms(t *testing.T) {
 
 // regression: #5046
 func TestForgeStatusRetainedRefusals(t *testing.T) {
-	// False refusals this design keeps, named in docs/write-policy.md. Each one
-	// can run as a listed read, as a file-backed body, or in two calls.
+	// False refusals this design keeps, each named in docs/write-policy.md. Each
+	// one can run as a listed read, as a file-backed body, or in two calls.
 	forgeRefuseAll(t, []string{
 		"git status && gh pr create -t title",
-		`gh run view "$id" --json status`,
-		"gh run view 1 --json status --jq '.status | ascii_upcase'",
-		`[ "$n" -lt 5 ] && gh run view 1 --json status`,
+		"gh status",
+		"gh api repos/x/y/pulls | grep status",
 		"cd x && gh pr view 1 --json status",
+		`[ "$n" -lt 5 ] && gh run view 1 --json status`,
+		`gh run view "$id" --json status`,
+		"gh pr list --json status | head -5c",
+		"gh pr checks 1 | grep -3A 2 status",
+		"gh run view 1 --json status --jq '.status | ascii_upcase'",
+		"gh run view 1 --json status --jq length",
+		"gh pr view 1 --json status --template x",
+		`gh issue list --search "a b" --json status`,
 		"gh pr checks 1 | grep 'a b status'",
+		"gh pr list --search is:open --json status",
+		"gh pr list -L5 --json status",
 	})
 }
