@@ -3,7 +3,11 @@
 `rows` is the exact held set for a wake receipt. `row_results` is the full covered
 inventory, with `rows_total` and `rows_passed` derived from observed results.
 Positive integer IDs retain JSON number form; suffix IDs use exact strings such
-as `"6a"`. The identities `6`, `6a` and `6A` remain distinct. This is scheduling
+as `"6a"`, and letter-led labels (a letter, then letters or digits) use exact
+strings such as `"R"` or `"S1"`. The identities `6`, `6a` and `6A` remain
+distinct, as do `R` and `r`. A label can only be a JSON string, and it needs
+exact `row_results`: the count-only form covers numeric rows alone. Cells that
+match none of these shapes (`0`, `06`, prose-annotated cells) are refused. This is scheduling
 metadata; it does not change the integer-only signed verdict-v1 execution schema
 or grant Evidence, attestation or lifecycle authority.
 
@@ -57,5 +61,5 @@ For an existing unlanded payload that used `rows` as covered rows:
 
 The verifier skill and assembled native dispatch prompt carry this producer rule.
 The prompt's metadata example is shape-tested against the writer and preserves
-numeric/suffixed IDs. It is explicitly illustrative and cannot supply run Evidence.
+numeric, suffixed and label IDs. It is explicitly illustrative and cannot supply run Evidence.
 
