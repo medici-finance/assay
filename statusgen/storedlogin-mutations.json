@@ -1,0 +1,65 @@
+{
+  "test": "go test . -run '^TestStoredLogin' -count=1 -timeout 300s",
+  "control": {
+    "name": "stored-login fallback re-added to the ruling read",
+    "file": "decisionruling.go",
+    "old": "\t\tif why := storedLoginRefusal(); why != \"\" {\n\t\t\treturn &ghClient{doer: refusedDoer{why}, base: githubAPIBase}\n\t\t}\n\t\tif b, err := ghGuard(exec.Command(\"gh\", \"auth\", \"token\")).Output(); err == nil {",
+    "new": "\t\tif b, err := exec.Command(\"gh\", \"auth\", \"token\").Output(); err == nil {"
+  },
+  "mutations": [
+    {
+      "name": "refused ruling read falls through to an anonymous read",
+      "file": "decisionruling.go",
+      "old": "\t\t\treturn &ghClient{doer: refusedDoer{why}, base: githubAPIBase}\n",
+      "new": "\t\t\t_ = why\n"
+    },
+    {
+      "name": "forge CLI guard never refuses",
+      "file": "forgecredential.go",
+      "old": "\twhy := storedLoginRefusal()\n\tif why == \"\" {\n\t\treturn cmd\n\t}",
+      "new": "\twhy := storedLoginRefusal()\n\tif true {\n\t\treturn cmd\n\t}"
+    },
+    {
+      "name": "forge CLI guard keeps the cell's ambient login",
+      "file": "forgecredential.go",
+      "old": "strings.EqualFold(key, \"CELLCTL_GH_AMBIENT\")",
+      "new": "strings.EqualFold(key, \"CELLCTL_GH_AMBIENT_UNUSED\")"
+    },
+    {
+      "name": "forge CLI guard leaves the enterprise family open",
+      "file": "forgecredential.go",
+      "old": "\t\tadd = append(add, \"GH_ENTERPRISE_TOKEN=\"+storedLoginPlaceholder)\n",
+      "new": ""
+    },
+    {
+      "name": "admitted row environment not detected",
+      "file": "forgecredential.go",
+      "old": "\tif admittedRowEnvMarked() {",
+      "new": "\tif false && admittedRowEnvMarked() {"
+    },
+    {
+      "name": "verify loop not detected",
+      "file": "forgecredential.go",
+      "old": "\tif strings.Contains(strings.ToLower(os.Getenv(\"DESK_LOOP\")), \"verify\") {\n\t\treturn true\n",
+      "new": "\tif false {\n\t\treturn true\n"
+    },
+    {
+      "name": "attestation file not detected",
+      "file": "forgecredential.go",
+      "old": "\treturn err == nil\n}",
+      "new": "\treturn false\n}"
+    },
+    {
+      "name": "verifyrun records admission as admitted always",
+      "file": "forgecredential.go",
+      "old": "\tif attestation != \"\" {\n\t\treturn verifyrunAdmitted\n\t}\n\treturn verifyrunUnadmitted",
+      "new": "\treturn verifyrunAdmitted"
+    },
+    {
+      "name": "host admission never recorded",
+      "file": "verifyrun.go",
+      "old": "\t\t}\n\t\tverifyrunAdmission.Store(admissionState(attestation))\n\t}\n",
+      "new": "\t\t}\n\t}\n"
+    }
+  ]
+}
