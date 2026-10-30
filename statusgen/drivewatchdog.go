@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -68,8 +67,7 @@ func boardFreezeMarker() string { return "<!-- board-freeze -->" }
 // root is not a git repo or the blob has no committed history (a brand-new
 // STATUS.md awaiting its first commit).
 func gitBlobCommitTime(root, rel string) (time.Time, error) {
-	cmd := exec.Command("git", "-C", root, "log", "-1", "--format=%ct", "--", rel)
-	out, err := cmd.Output()
+	out, err := gitLastPathTimeOutput(root, rel)
 	if err != nil {
 		return time.Time{}, err
 	}

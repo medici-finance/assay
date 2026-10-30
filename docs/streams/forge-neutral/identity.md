@@ -91,6 +91,16 @@ still fails). It is **additive and fail-closed** — **unset** means the service
 shape is the only accepted GitLab commit email, byte-for-byte the pre-`#643` behaviour — and it is
 **never consulted on a GitHub identity**, so the `#638` bot-USER-id guarantee is untouched.
 
+The allowlist says which addresses may author commits, not which address is which role's. The
+worktree stamper (`deskkit.RoleGitLabCommitIdentity`, behind `deskwt role-init`, `deskwt add
+--role` and `deskdispatch`) therefore reads a role's own address from
+`ASSAY_GITLAB_ROLE_EMAILS` (`role=email`, #4978) first. It falls back to the allowlist only when
+the allowlist is unambiguous: one session-user address, or one service-account address with only
+one GitLab account bound. Otherwise it refuses rather than stamping the first entry on every
+role. The binding widens nothing: each address must already pass the preflight above, and an
+invalid value disables the binding (every GitLab role refuses to stamp) without refusing the
+rest of the roster.
+
 ### The GitLab display-name gap, and how a verifier's Evidence commit is accepted (#1477)
 
 A GitLab account has a **username** AND a separate **display name**, and every commit GitLab

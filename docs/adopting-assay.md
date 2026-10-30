@@ -598,9 +598,10 @@ identity* — plan for it before you turn protection on, not after the board sil
 > Variables) with the values from `configure-roster`; `ASSAY_TRUSTED_BOT_SLUGS` must bind
 > `verifier=<slug>:<bot-user-id>` or the Evidence-actor check has nothing to compare against.
 > They carry logins, numeric ids and role bindings **only** — a token or key never belongs in
-> them. A GitLab adopter has the same gap and a different transport: one CI/CD variable,
-> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — see
-> [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster for CI".
+> them. A GitLab adopter has a different transport — one CI/CD variable,
+> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — and a different outcome when
+> it is unset: see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster
+> for CI", for what each GitLab job does without it.
 
 > **DECISION-GATE HOLD — the PR check, and the admin act that makes it bind
 > ([`lifecycle-v1.md`](../spec/lifecycle-v1.md) §4.5).** A `gate: human` brief may move to
