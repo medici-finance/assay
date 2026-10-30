@@ -44,20 +44,78 @@ func (p *provisioner) configureProject() {
 			"protecting main with the free-tier form instead")
 		p.tier = "free"
 	}
-	p.configureProtectedMain(pp)
+	mainRule, mainRead := p.configureProtectedMain(pp)
 	p.configureApprovals(pp)
 	p.configureProtectedTags(pp)
 	p.configureMergeChecks(pp)
 	ensureLabels(&gitlabLabels{c: p.gl, projectPath: pp}, p.e.stdout, p.fail)
+	p.configurePushToken(pp, mainRule, mainRead)
 }
 
-// protectedRule is the part of a protected-branch rule this step decides.
+// protectedRule is the part of a protected-branch rule this step decides. Its push side is
+// read from EVERY push_access_levels entry, never the first one alone: a forge may hold
+// several, and a check of entry [0] misses both a dropped per-user entry and an extra one.
 type protectedRule struct {
-	exists   bool
-	push     int    // levelNone when the read-back carried no push level
-	merge    int    // levelNone when the read-back carried no merge level
-	force    string // "true" | "false" | "unknown" — `false` is a value, never "absent"
-	pushUser int64  // 0 = no user-scoped push entry
+	exists bool
+	push   int    // the first entry's level; levelNone when the read-back carried none
+	merge  int    // levelNone when the read-back carried no merge level
+	force  string // "true" | "false" | "unknown" — `false` is a value, never "absent"
+	// pushUsers is every user-scoped push entry, in reply order; pushRoles is the level of
+	// every role entry (one naming no user and no group); pushGroups counts group entries.
+	pushUsers  []int64
+	pushRoles  []int
+	pushGroups int
+}
+
+// hasPushUser reports whether a user-scoped push entry names id.
+func (r protectedRule) hasPushUser(id int64) bool {
+	for _, u := range r.pushUsers {
+		if u == id {
+			return true
+		}
+	}
+	return false
+}
+
+// pushIsOnlyUser reports whether the push side is exactly one entry, naming id.
+func (r protectedRule) pushIsOnlyUser(id int64) bool {
+	return len(r.pushUsers) == 1 && r.pushUsers[0] == id && len(r.pushRoles) == 0 && r.pushGroups == 0
+}
+
+// pushIsNoOne reports whether the push side names no user or group and every role entry is
+// 0 ("No one"). An empty push side reads as No one, the deciding read's default.
+func (r protectedRule) pushIsNoOne() bool {
+	if len(r.pushUsers) > 0 || r.pushGroups > 0 {
+		return false
+	}
+	for _, l := range r.pushRoles {
+		if l != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// admitsRole reports whether a role entry lets a member at level push (30 admits Developers
+// and Maintainers, 40 Maintainers; 0 admits no one).
+func (r protectedRule) admitsRole(level int) bool {
+	for _, l := range r.pushRoles {
+		if l > 0 && l <= level {
+			return true
+		}
+	}
+	return false
+}
+
+func (r protectedRule) pushUserList() string {
+	if len(r.pushUsers) == 0 {
+		return "none"
+	}
+	s := make([]string, len(r.pushUsers))
+	for i, u := range r.pushUsers {
+		s[i] = strconv.FormatInt(u, 10)
+	}
+	return strings.Join(s, ",")
 }
 
 // levelNone is an access level the forge's reply did not carry. It is a sentinel, never an
@@ -91,6 +149,7 @@ func parseProtectedRule(body []byte, readback bool) protectedRule {
 		Push []struct {
 			AccessLevel *int   `json:"access_level"`
 			UserID      *int64 `json:"user_id"`
+			GroupID     *int64 `json:"group_id"`
 		} `json:"push_access_levels"`
 		Merge []struct {
 			AccessLevel *int `json:"access_level"`
@@ -101,12 +160,17 @@ func parseProtectedRule(body []byte, readback bool) protectedRule {
 	if json.Unmarshal(body, &raw) != nil {
 		return r
 	}
-	if len(raw.Push) > 0 {
-		if raw.Push[0].AccessLevel != nil {
-			r.push = *raw.Push[0].AccessLevel
-		}
-		if raw.Push[0].UserID != nil {
-			r.pushUser = *raw.Push[0].UserID
+	if len(raw.Push) > 0 && raw.Push[0].AccessLevel != nil {
+		r.push = *raw.Push[0].AccessLevel
+	}
+	for _, e := range raw.Push {
+		switch {
+		case e.UserID != nil && *e.UserID != 0:
+			r.pushUsers = append(r.pushUsers, *e.UserID)
+		case e.GroupID != nil && *e.GroupID != 0:
+			r.pushGroups++
+		case e.AccessLevel != nil:
+			r.pushRoles = append(r.pushRoles, *e.AccessLevel)
 		}
 	}
 	if len(raw.Merge) > 0 && raw.Merge[0].AccessLevel != nil {
@@ -140,39 +204,47 @@ func (p *provisioner) protectBody(form string) map[string]any {
 		"allow_force_push": false}
 }
 
-// restoreBody re-applies exactly the rule that was read.
+// restoreBody re-applies exactly the rule that was read: every user and role push entry,
+// not the first one alone.
 func restoreBody(prev protectedRule) map[string]any {
 	force := prev.force == "true"
-	if prev.pushUser != 0 {
-		return map[string]any{"name": "main", "allowed_to_push": []map[string]any{{"user_id": prev.pushUser}},
+	if len(prev.pushUsers) > 0 {
+		var push []map[string]any
+		for _, u := range prev.pushUsers {
+			push = append(push, map[string]any{"user_id": u})
+		}
+		for _, l := range prev.pushRoles {
+			push = append(push, map[string]any{"access_level": l})
+		}
+		return map[string]any{"name": "main", "allowed_to_push": push,
 			"allowed_to_merge": []map[string]any{{"access_level": prev.merge}}, "allow_force_push": force}
 	}
 	return map[string]any{"name": "main", "push_access_level": prev.push, "merge_access_level": prev.merge,
 		"allow_force_push": force}
 }
 
-func (p *provisioner) configureProtectedMain(pp string) {
+// configureProtectedMain returns the rule as read BACK after the step, and whether that
+// read-back succeeded.
+func (p *provisioner) configureProtectedMain(pp string) (protectedRule, bool) {
 	prev := p.readProtectedMain(pp)
 	var wantUser int64
 	if p.tier == "premium" {
 		wantUser = p.boardWriterID
 	}
-	pushAsIntended := (wantUser != 0 && prev.pushUser == wantUser) ||
-		(wantUser == 0 && prev.pushUser == 0 && prev.push == 0)
+	pushAsIntended := (wantUser != 0 && prev.pushIsOnlyUser(wantUser)) ||
+		(wantUser == 0 && prev.pushIsNoOne())
 
 	// Preference 1 — already as intended: touch nothing.
 	if prev.exists && prev.merge == mergeAccessLevel && prev.force == "false" && pushAsIntended {
 		p.outf("no-op: main is already protected as intended — nothing deleted, nothing re-created")
-		p.readbackProtectedMain(pp)
-		return
+		return p.readbackProtectedMain(pp, wantUser)
 	}
 	// Preference 2 — only allow_force_push is wrong: PATCH it; the rule is never removed.
 	if prev.exists && prev.force != "false" && prev.merge == mergeAccessLevel && pushAsIntended {
 		resp, err := p.gl.do("PATCH", pp+"/protected_branches/main", map[string]any{"allow_force_push": false})
 		if err == nil && resp.Status == 200 {
 			p.outf("patched: main allow_force_push=false (PATCH — the rule was never removed)")
-			p.readbackProtectedMain(pp)
-			return
+			return p.readbackProtectedMain(pp, wantUser)
 		}
 		p.outf("NOTICE: PATCH of allow_force_push did not succeed (%s) — falling back to a guarded re-create",
 			respOrErr(resp, err))
@@ -196,8 +268,9 @@ func (p *provisioner) configureProtectedMain(pp string) {
 				p.fail("protected-branch step could not replace the existing rule on 'main' (DELETE: %s) — the "+
 					"PREVIOUS rule is still in place (merge_access_level=%d); the intended rule is NOT",
 					respOrErr(resp, err), prev.merge)
-				p.readbackProtectedMain(pp)
-				return
+				// The intended rule is not in place and that is already recorded: the read-back
+				// prints the rule that remains, without a second failure for its push entry.
+				return p.readbackProtectedMain(pp, 0)
 			}
 			deleted = true
 			p.outf("unprotected: main (re-applying now; the previous rule goes back immediately if that fails)")
@@ -220,7 +293,7 @@ func (p *provisioner) configureProtectedMain(pp string) {
 			"push_access_level=0 merge_access_level=%d allow_force_push=false", pp, mergeAccessLevel)
 		if !prev.exists {
 			p.fail("%s", urgent)
-			return
+			return protectedRule{}, false
 		}
 		resp, err := p.gl.do("POST", pp+"/protected_branches", restoreBody(prev))
 		if err == nil && resp.Status == 201 {
@@ -229,7 +302,7 @@ func (p *provisioner) configureProtectedMain(pp string) {
 		} else {
 			p.fail("%s (the previous rule could not be re-applied: %s)", urgent, respOrErr(resp, err))
 		}
-		return
+		return protectedRule{}, false
 	}
 	if applied == "premium" {
 		p.outf("protected: main (allowed_to_push=board-writer only, allowed_to_merge=Maintainer role (%d), allow_force_push=false)",
@@ -239,20 +312,32 @@ func (p *provisioner) configureProtectedMain(pp string) {
 		p.outf("protected: main (push_access_level=0 'No one', merge_access_level=%d Maintainers, allow_force_push=false)",
 			mergeAccessLevel)
 	}
-	p.readbackProtectedMain(pp)
+	wantUser = 0
+	if applied == "premium" {
+		wantUser = p.boardWriterID
+	}
+	return p.readbackProtectedMain(pp, wantUser)
 }
 
 // readbackProtectedMain reads the decided fields BACK, so a wrong rule is visible now.
-func (p *provisioner) readbackProtectedMain(pp string) {
+// wantUser is the user a per-user push entry was written for (0: none was): a forge can answer
+// that write 2xx and then not hold the entry (seen on GitLab 19.5.3), so its absence from the
+// read-back is a recorded failure, never a pass.
+func (p *provisioner) readbackProtectedMain(pp string, wantUser int64) (protectedRule, bool) {
 	resp, err := p.gl.do("GET", pp+"/protected_branches/main", nil)
 	if err != nil || resp.Status != 200 {
 		p.fail("protected-branch read-back on 'main' failed (%s) — could-not-check, verify push/merge/force-push by hand",
 			respOrErr(resp, err))
-		return
+		return protectedRule{}, false
 	}
 	r := parseProtectedRule(resp.Body, true)
-	p.outf("read-back: main push_access_level=%s push_user_id=%d merge_access_level=%s allow_force_push=%s",
-		levelString(r.push), r.pushUser, levelString(r.merge), r.force)
+	p.outf("read-back: main push_access_level=%s push_user_ids=%s merge_access_level=%s allow_force_push=%s",
+		levelString(r.push), r.pushUserList(), levelString(r.merge), r.force)
+	if wantUser != 0 && !r.hasPushUser(wantUser) {
+		p.fail("protected 'main' has no per-user push entry for the board-writer (user id %d): the forge accepted "+
+			"the write, but the entry is absent from the read-back — add it by hand (Settings > Repository > "+
+			"Protected branches) and re-run to confirm", wantUser)
+	}
 	if r.merge != mergeAccessLevel {
 		p.fail("protected 'main' merge_access_level is %s, intended %d (Maintainers) — at 30 every Developer "+
 			"service account can merge its own MR; 'none' means the forge's reply carried no merge level "+
@@ -261,6 +346,7 @@ func (p *provisioner) readbackProtectedMain(pp string) {
 	if r.force != "false" {
 		p.fail("protected 'main' allow_force_push is %s, intended false", r.force)
 	}
+	return r, true
 }
 
 func (p *provisioner) configureApprovals(pp string) {

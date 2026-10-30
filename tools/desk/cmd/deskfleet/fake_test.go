@@ -45,7 +45,18 @@ type fakeRule struct {
 	push, merge int
 	pushUser    int64
 	force       bool
+	// extraPush are push_access_levels entries answered AFTER the first one (the entry built
+	// from push/pushUser), as a forge holding more than one push entry answers them.
+	extraPush []map[string]any
 }
+
+// fakePushToken is the obviously-fake value of the project access token the fake mints for
+// STATUSGEN_PUSH_TOKEN; fakePushBotID is that token's bot user.
+const (
+	fakePushToken = "example-push-token"
+	fakePushBotID = 3001
+	fakePushTokID = 6001
+)
 
 type fakeForge struct {
 	t   *testing.T
@@ -79,6 +90,16 @@ type fakeForge struct {
 	labels       map[string]bool // gitlab labels present
 	ghLabels     map[string]bool // github labels present
 	gitlab400Dup bool            // answer a gitlab duplicate with 400 instead of 409
+	// dropPushUser keeps a protected-branch POST but drops its per-user push entries, as a
+	// GitLab 19.5.3 instance was seen to do (answered 2xx, entry absent from the read-back).
+	dropPushUser bool
+	// accessTokenStatus is the reply to a project access-token mint (0 = 201); variables are
+	// the project's CI/CD variables by key; variablePostStatus is a variable write's reply
+	// (0 = 201).
+	accessTokenStatus  int
+	accessTokenMints   int
+	variables          map[string]map[string]any
+	variablePostStatus int
 
 	reqs []fakeReq
 	// unprotectedObserved counts GET protected_branches/main reads that found no rule.
@@ -87,7 +108,8 @@ type fakeForge struct {
 
 func newFakeForge(t *testing.T) *fakeForge {
 	f := &fakeForge{t: t, plan: "premium", accounts: map[string]int64{}, nextUserID: 1000,
-		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, avatars: map[string]string{}}
+		members: map[int64]int{}, labels: map[string]bool{}, ghLabels: map[string]bool{}, avatars: map[string]string{},
+		variables: map[string]map[string]any{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -212,11 +234,15 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 		if f.rule.pushUser != 0 {
 			push["user_id"] = f.rule.pushUser
 		}
+		pushes := []any{push}
+		for _, e := range f.rule.extraPush {
+			pushes = append(pushes, e)
+		}
 		merge := []any{map[string]any{"access_level": f.rule.merge}}
 		if f.omitMergeLevels {
 			merge = []any{}
 		}
-		writeJSON(w, 200, map[string]any{"name": "main", "push_access_levels": []any{push},
+		writeJSON(w, 200, map[string]any{"name": "main", "push_access_levels": pushes,
 			"merge_access_levels": merge, "allow_force_push": f.rule.force})
 	case r.Method == "PATCH" && api == pid+"/protected_branches/main":
 		if f.rule == nil {
@@ -244,8 +270,43 @@ func (f *fakeForge) handle(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 403, map[string]any{"message": "403 Forbidden"})
 			return
 		}
+		if f.dropPushUser && (nr.pushUser != 0 || len(nr.extraPush) > 0) {
+			nr.pushUser, nr.push, nr.extraPush = 0, mergeAccessLevel, nil
+		}
 		f.rule = &nr
 		writeJSON(w, 201, map[string]any{"name": "main"})
+	case r.Method == "POST" && api == pid+"/access_tokens":
+		f.accessTokenMints++
+		st := f.accessTokenStatus
+		if st == 0 {
+			st = 201
+		}
+		if st != 201 {
+			writeJSON(w, st, map[string]any{"message": http.StatusText(st)})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"id": fakePushTokID, "user_id": fakePushBotID, "name": body["name"],
+			"scopes": body["scopes"], "access_level": body["access_level"], "expires_at": body["expires_at"],
+			"token": fakePushToken})
+	case r.Method == "GET" && strings.HasPrefix(api, pid+"/variables/"):
+		v, ok := f.variables[strings.TrimPrefix(api, pid+"/variables/")]
+		if !ok {
+			writeJSON(w, 404, map[string]any{"message": "404 Variable Not Found"})
+			return
+		}
+		writeJSON(w, 200, v)
+	case r.Method == "POST" && api == pid+"/variables":
+		st := f.variablePostStatus
+		if st == 0 {
+			st = 201
+		}
+		if st != 201 {
+			writeJSON(w, st, map[string]any{"message": map[string]any{"value": []string{"is invalid"}}})
+			return
+		}
+		key, _ := body["key"].(string)
+		f.variables[key] = body
+		writeJSON(w, 201, body)
 	case r.Method == "POST" && api == pid+"/approvals":
 		if f.approvalsErr {
 			writeJSON(w, 403, map[string]any{"message": "403 Forbidden"})
@@ -302,11 +363,21 @@ func ruleFromBody(b map[string]any) fakeRule {
 	if v, ok := b["allow_force_push"].(bool); ok {
 		r.force = v
 	}
-	if arr, ok := b["allowed_to_push"].([]any); ok && len(arr) > 0 {
-		if m, ok := arr[0].(map[string]any); ok {
-			if v, ok := m["user_id"].(float64); ok {
-				r.pushUser = int64(v)
+	if arr, ok := b["allowed_to_push"].([]any); ok {
+		for i, e := range arr {
+			m, ok := e.(map[string]any)
+			if !ok {
+				continue
 			}
+			if i == 0 {
+				if v, ok := m["user_id"].(float64); ok {
+					r.pushUser = int64(v)
+				} else if v, ok := m["access_level"].(float64); ok {
+					r.push = int(v)
+				}
+				continue
+			}
+			r.extraPush = append(r.extraPush, m)
 		}
 	}
 	if arr, ok := b["allowed_to_merge"].([]any); ok && len(arr) > 0 {
