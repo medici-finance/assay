@@ -74,6 +74,8 @@ const (
 // rows cite. Kept as consts, like the verifyrows.go / consumers.go rule tags,
 // so a message and its registry entry cannot drift from each other by typo.
 const (
+	rulePatternHumanFloor          = "pattern-human-floor-output"
+	rulePatternHumanRole           = "pattern-human-role-not-decision"
 	rulePatternSchemaViolation     = "pattern-schema-violation"
 	rulePatternEffectExceedsRole   = "pattern-effect-exceeds-role"
 	rulePatternEffectTargetUnowned = "pattern-effect-target-not-owned"
@@ -81,6 +83,23 @@ const (
 	rulePatternJoinNotCheck        = "pattern-join-not-check"
 	rulePatternRiskInputMissing    = "pattern-risk-input-missing-verdict"
 )
+
+// Human-floor artifacts correspond one-to-one to admission's humanFloorOperations:
+// merge-commit ↔ merge, release ↔ release, deployment ↔ deploy. Add both sides
+// in the same change when adding a floor operation; effect labels grant no exception.
+const (
+	patternFloorMerge   = "merge-commit"
+	patternFloorRelease = "release"
+	patternFloorDeploy  = "deployment"
+)
+
+func isHumanFloorArtifact(artifact string) bool {
+	switch artifact {
+	case patternFloorMerge, patternFloorRelease, patternFloorDeploy:
+		return true
+	}
+	return false
+}
 
 // patternRoleEffectPermissions is `role → permitted effect kinds`
 // (spec/workflow-pattern-v1.md §7), derived from what each `topology.yaml`
@@ -422,6 +441,21 @@ func checkPatternMustRules(path string, pat patternDoc) []string {
 		nodeLabel := n.ID
 		if nodeLabel == "" {
 			nodeLabel = "(unnamed node)"
+		}
+
+		// Human ownership is a decision boundary, never an effect permission.
+		if n.Role == "human" && (n.Kind != "decision" || len(n.Effects) != 0) {
+			out = append(out, fmt.Sprintf("%s [%s]: node %q with role human MUST be an effect-free decision", path, rulePatternHumanRole, nodeLabel))
+		}
+		for _, artifact := range n.Outputs {
+			if isHumanFloorArtifact(artifact) && (n.Kind != "decision" || n.Role != "human") {
+				out = append(out, fmt.Sprintf("%s [%s]: node %q outputs %q and MUST be a human decision", path, rulePatternHumanFloor, nodeLabel, artifact))
+			}
+		}
+		for _, eff := range n.Effects {
+			if isHumanFloorArtifact(eff.Target) {
+				out = append(out, fmt.Sprintf("%s [%s]: node %q declares effect %q targeting human-floor artifact %q", path, rulePatternHumanFloor, nodeLabel, eff.Kind, eff.Target))
+			}
 		}
 
 		// Rule: a node with effects is kind: effect, or every effect's target is

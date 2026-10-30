@@ -193,3 +193,79 @@ func mustParseEmbeddedPatternSchema(t *testing.T) *schemaNode {
 	}
 	return schema
 }
+
+// regression: #1933
+func TestPatternsHumanFloorOutput(t *testing.T) {
+	for _, name := range []string{"bad-merge-behind-dispatch.yaml", "bad-floor-effect-target.yaml"} {
+		t.Run(name, func(t *testing.T) {
+			state, fs := lintPatternFile(filepath.Join("testdata", "patterns", name), mustParseEmbeddedPatternSchema(t))
+			if state != patternStateFailed || !anyContains(fs, "pattern-human-floor-output") {
+				t.Fatalf("want human-floor refusal, got state=%d findings=%v", state, fs)
+			}
+			if anyContains(fs, rulePatternEffectExceedsRole) {
+				t.Fatalf("wrong permission-table refusal: %v", fs)
+			}
+		})
+	}
+	// A second site: all three floor artifacts, on an unrelated node, with
+	// output-only and effect-target-only faults. The latter owns no floor output.
+	for _, artifact := range []string{"merge-commit", "release", "deployment"} {
+		for _, targetOnly := range []bool{false, true} {
+			n := patternNode{ID: "second-site", Kind: "effect", Role: "worker"}
+			if targetOnly {
+				n.Outputs = []string{"request"}
+				n.Effects = []patternEffect{{Kind: "comment", Target: artifact}}
+			} else {
+				n.Outputs = []string{artifact}
+			}
+			p := patternDoc{Nodes: []patternNode{n}}
+			if !anyContains(checkPatternMustRules("second-site.yaml", p), "pattern-human-floor-output") {
+				t.Errorf("accepted second site %s targetOnly=%v", artifact, targetOnly)
+			}
+		}
+	}
+}
+
+// regression: #1933
+func TestPatternsHumanRoleDecision(t *testing.T) {
+	state, fs := lintPatternFile(filepath.Join("testdata", "patterns", "bad-human-role-not-decision.yaml"), mustParseEmbeddedPatternSchema(t))
+	if state != patternStateFailed || !anyContains(fs, "pattern-human-role-not-decision") {
+		t.Errorf("missing human role refusal: %v", fs)
+	}
+	// Call the lint directly: its refusal must survive a loosened schema.
+	for _, n := range []patternNode{
+		{ID: "human-effect", Role: "human", Kind: "effect"},
+		{ID: "human-decision", Role: "human", Kind: "decision", Effects: []patternEffect{{Kind: "comment", Target: "note"}}},
+	} {
+		if !anyContains(checkPatternMustRules("shape.yaml", patternDoc{Nodes: []patternNode{n}}), "pattern-human-role-not-decision") {
+			t.Errorf("accepted illegal human node: %+v", n)
+		}
+	}
+}
+
+// regression: #1933
+func TestHumanSchemaConditions(t *testing.T) {
+	schema, err := parseSchema([]byte(`{"if":{"properties":{"role":{"const":"human"}},"required":["role"]},"then":{"properties":{"kind":{"const":"decision"},"effects":{"maxItems":0}},"not":{"required":["actor"]}},"else":{"required":["actor"]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		node map[string]any
+		fail bool
+	}{
+		{"human", map[string]any{"role": "human", "kind": "decision", "effects": []any{}}, false},
+		{"worker", map[string]any{"role": "worker", "actor": map[string]any{}}, false},
+		{"kind", map[string]any{"role": "human", "kind": "effect"}, true},
+		{"effects", map[string]any{"role": "human", "kind": "decision", "effects": []any{"dispatch"}}, true},
+		{"actor", map[string]any{"role": "human", "kind": "decision", "actor": map[string]any{}}, true},
+		{"missing", map[string]any{"role": "worker"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := validateValue(schema, tc.node, "")
+			if (len(fs) > 0) != tc.fail {
+				t.Fatalf("findings=%v want fail=%v", fs, tc.fail)
+			}
+		})
+	}
+}
