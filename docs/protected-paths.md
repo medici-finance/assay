@@ -286,7 +286,12 @@ CI invocation** that will read that record: lint, coverage/status regeneration,
 model auto-flip, reconciliation and their retry commands. Supply the existing
 `GH_TOKEN`/`GITHUB_TOKEN` read credential and external mapped-human configuration
 through that workflow's established credential boundary; do not expose privileged
-credentials to untrusted branch code. The repository's workflow approval is the
+credentials to untrusted branch code. Those two variables are the ruling read's
+only credential inside an admitted `statusgen verifyrun` and in any process its
+Verify rows start: there it never falls back to a stored forge login (`gh auth
+token` or the cell's ambient copy of it), and with neither variable set the read
+is a could-not-check. Outside an admitted run the stored-login fallback is
+unchanged. The repository's workflow approval is the
 opt-in. A desk command's flag does not change later CI jobs. An old pinned binary
 cannot receive this flag, and a default offline CI invocation will hold the record
 or fail lint. Verify the upgraded workflow can corroborate the exact ruling before
