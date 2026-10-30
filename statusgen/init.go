@@ -705,7 +705,12 @@ const initWorkflowTail = `          git config user.name  'statusgen'
 //     half of the roster from the CI/CD variable STATUSGEN_ROSTER_ENV into that
 //     path (owner-only permissions, the mode the loader enforces) before statusgen
 //     runs, and print a NOTICE naming the variable when it is unset. A token never
-//     belongs in it; a secret-shaped key refuses.
+//     belongs in it; a secret-shaped key refuses. The NOTICE states each job's real
+//     outcome (#4978): the file-class loader REFUSES a missing roster file, so
+//     `statusgen --lint` exits 5 and the merge-request job fails, while the
+//     default-branch regen still writes the board with every roster-backed check
+//     could-not-check. TestGitLabRosterUnsetClaim runs the anchor and the binary
+//     and holds the NOTICE, and docs/adopting-assay-gitlab.md section 2e, to both.
 //   - The dead-claim decay reads merge-request state over REST v4 (#1111). Every
 //     GitLab job already carries CI_API_V4_URL, CI_PROJECT_ID and CI_JOB_TOKEN, so
 //     the read needs no wiring in the common case; where an instance does not let
@@ -748,13 +753,16 @@ const initGitlabCIHead = `# statusgen CI — the two-half single-writer shape on
 # TRUST ROSTER — the NON-secret half, as the CI/CD variable STATUSGEN_ROSTER_ENV.
 # On a GitLab runner statusgen reads its roster from ${HOME}/.config/assay/roster.env
 # (there is no GITHUB_ACTIONS environment transport here), and nothing writes that
-# file on a fresh runner — so without this variable every roster-backed check (the
-# Evidence-actor check on verified/done rows: which identity committed each brief's
-# Evidence lines; the trust gates) reports could-not-check on every run while the
-# job stays green: a silent gap, not a pass. Set STATUSGEN_ROSTER_ENV to the
-# roster.env CONTENTS (Variable type, multi-line) or as a File-type variable; both
-# jobs materialise it into that path with owner-only permissions before statusgen
-# runs, and print a NOTICE naming the variable when it is unset. It holds logins,
+# file on a fresh runner. A missing roster file is a REFUSED configuration, not a
+# partial one, so without this variable the merge-request job's statusgen --lint
+# refuses (LINT: REFUSED configuration, exit 5) and that job FAILS; the regen job
+# still writes the board, but every roster-backed check on it (the Evidence-actor
+# check on verified/done rows: which identity committed each brief's Evidence
+# lines; the trust gates) reports could-not-check, which is not a pass. Set
+# STATUSGEN_ROSTER_ENV to the roster.env CONTENTS (Variable type, multi-line) or
+# as a File-type variable; both jobs materialise it into that path with
+# owner-only permissions before statusgen runs, and print a NOTICE naming the
+# variable and each job's outcome when it is unset. It holds logins,
 # numeric ids, and role bindings ONLY (ASSAY_TRUSTED_BOT_SLUGS must bind
 # verifier=<forge>:<slug>[:<id>] for the Evidence-actor check to run) — never a
 # token, key, or password: it is NOT masked and NOT protected, so the merge-request
@@ -825,7 +833,9 @@ stages: [statusgen]
     set -euo pipefail
     if [ -z "${STATUSGEN_ROSTER_ENV:-}" ]; then
       echo "NOTICE: STATUSGEN_ROSTER_ENV is not set — no trust roster for this job."
-      echo "statusgen reads the roster from ${HOME}/.config/assay/roster.env, which nothing has written, so every roster-backed check (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass; the board below is generated without it."
+      echo "statusgen reads the roster from ${HOME}/.config/assay/roster.env, which nothing has written. A missing roster file is a REFUSED configuration, not a partial one."
+      echo "Merge-request job: statusgen --lint refuses it — it prints 'LINT: REFUSED configuration; trust-dependent checks could-not-check' and exits 5, so this job FAILS until the variable is set."
+      echo "Default-branch regen job: the board is still generated, but every roster-backed check on it (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass."
       echo "Set a CI/CD variable named STATUSGEN_ROSTER_ENV holding the NON-secret roster lines (ASSAY_TRUSTED_BOT_SLUGS with its verifier= binding, ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP) — never a token, key, or password. See docs/adopting-assay-gitlab.md, section Trust roster for CI."
     else
       install -d -m 700 "${HOME}/.config/assay"

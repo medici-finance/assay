@@ -748,17 +748,27 @@ A roster-known **human** verifier on GitLab is accepted by the Evidence-actor ch
 private commit noreply address `<user-id>-<username>@users.noreply.<host>` the way a GitHub human
 is via the GitHub form — no extra configuration beyond the human's `ASSAY_TRUSTED_LOGINS` entry.
 
-**Loud when absent.** With the variable unset the step prints, verbatim from the generated
-file's own source (`statusgen/init.go`, `initGitlabCI`):
+**Loud when absent — and the lint job fails.** A missing roster file is a *refused*
+configuration, not a partial one (see [statusgen-lint-refusal.md](statusgen-lint-refusal.md)),
+so the two jobs end differently without the variable:
+
+- **`statusgen-lint` (merge requests) fails.** `statusgen --lint` refuses before it judges the
+  tree: it prints `LINT: REFUSED configuration; trust-dependent checks could-not-check` and
+  exits **5**, and the job is red until `STATUSGEN_ROSTER_ENV` is set.
+- **`statusgen-regen` (default branch) still writes the board**, but every roster-backed check
+  on it reports could-not-check, which is not a pass.
+
+With the variable unset the step prints, verbatim from the generated file's own source
+(`statusgen/init.go`, `initGitlabCI`; a test runs the step and `statusgen` and holds these lines
+to what the binary does, with the runner's `HOME` shown as `/root`):
 
 ```
 NOTICE: STATUSGEN_ROSTER_ENV is not set — no trust roster for this job.
+statusgen reads the roster from /root/.config/assay/roster.env, which nothing has written. A missing roster file is a REFUSED configuration, not a partial one.
+Merge-request job: statusgen --lint refuses it — it prints 'LINT: REFUSED configuration; trust-dependent checks could-not-check' and exits 5, so this job FAILS until the variable is set.
+Default-branch regen job: the board is still generated, but every roster-backed check on it (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass.
+Set a CI/CD variable named STATUSGEN_ROSTER_ENV holding the NON-secret roster lines (ASSAY_TRUSTED_BOT_SLUGS with its verifier= binding, ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP) — never a token, key, or password. See docs/adopting-assay-gitlab.md, section Trust roster for CI.
 ```
-
-followed by what `statusgen` will report without it (could-not-check on every roster-backed
-check) and the variable to set. The job **continues** — the board still regenerates, exactly as
-before — but the gap is now named in the log rather than inferable only from
-`role-bindings=(none bound)`.
 
 **Verify.** In the regen job's log, `assay-config: … configured=true` and a `role-bindings=`
 line naming your `verifier=` binding — not `(none bound)`, and no `NOTICE: STATUSGEN_ROSTER_ENV
