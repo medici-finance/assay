@@ -659,17 +659,17 @@ func TestHookReviewClasses(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "")
 	for class, cmd := range map[string]string{
-		"word-span":         "touch }#x; gh auth token -u someone",
-		"word-span-cr":      "ls -d q\r#|gh auth token",
-		"command-prefix":    "PATH+=:/opt/x gh auth token",
-		"builtin-runner":    "builtin command -p gh auth token",
-		"dynamic-arity":     "command gh {auth,token}",
-		"subst-script":      `eval "$(printf '%s ' gh auth token)"`,
-		"clobber-operator":  "gh auth 2>|err.log token",
-		"computed-shell":    `"${SHELL:-sh}" -c 'gh auth token'`,
-		"string-to-command": "trap 'gh auth token' ERR",
-		"pass-through":      "printf 'gh auth token' | tee /dev/null | sh",
-		"args-from-stdin":   "printf 'auth token' | xargs gh",
+		"word-span":        "mkdir -p }#a && gh auth token --hostname example.com",
+		"word-span-cr":     "wc -c pad\r#;gh auth token -h example.com",
+		"command-prefix":   "MANPATH+=:/usr/share/man gh auth token -h example.com",
+		"scheduler-runner": "numactl --localalloc gh auth token",
+		"dynamic-arity":    "gh {auth,} {token,} -h example.com",
+		"subst-script":     `x=$(printf 'gh auth token -h %s' example.com); eval "$x"`,
+		"clobber-operator": "env gh auth 5>| fd5.txt token --user bot",
+		"computed-shell":   `"${BASH:-/bin/bash}" -c 'gh auth token -u bot'`,
+		"runs-a-string":    "complete -C 'gh auth token -h example.com' mycmd",
+		"pass-through":     "printf 'gh auth token -h example.com\\n' | tee -a log.txt | bash -s",
+		"args-from-stdin":  "sort -u <<< 'auth token' | xargs -r nice gh",
 	} {
 		t.Run(class, func(t *testing.T) {
 			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))

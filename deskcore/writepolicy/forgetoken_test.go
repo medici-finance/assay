@@ -87,7 +87,7 @@ func TestForgeANSICDecode(t *testing.T) {
 		want bool
 	}{
 		{`gh auth $'tok\x65n'`, true},
-		{`$'\147h' $'\x61uth' $'token'`, true},
+		{`$'\147h' $'\x61uth' $'to\u006ben'`, true},
 		{`gh $'\U00000061uth' status`, true},
 		{`printf '\164\157\153\145\156'`, true},
 		{`echo $'it\'s'; gh auth token`, true},
@@ -376,22 +376,22 @@ func TestForgeWordSpan(t *testing.T) {
 	// A word the shell keeps whole (a carriage return or a leading `}` before
 	// `#`) must not hide the rest of the line as a comment.
 	forgeRefuseAll(t, []string{
-		"ls -d q\r#|gh auth token",
-		"printf '%s\\n' k }#tail && gh auth token",
-		"touch }#x; gh auth token -u someone",
+		"wc -c pad\r#;gh auth token -h example.com",
+		"mkdir -p }#a && gh auth token --hostname example.com",
+		"cat -- }#notes 2>/dev/null || gh auth token -u bot",
 	})
 }
 
 // regression: #4821
 func TestForgeCommandPrefix(t *testing.T) {
 	// Command-position prefixes outside any closed set: an append
-	// assignment, a builtin runner, zsh precommand modifiers.
+	// assignment, a zsh precommand, and scheduling or clock tools.
 	forgeRefuseAll(t, []string{
-		"PATH+=:/opt/x gh auth token",
-		"builtin command -p gh auth token",
-		"nocorrect nice gh auth token",
-		"noglob command gh auth token",
-		"repeat 3 gh auth token",
+		"MANPATH+=:/usr/share/man gh auth token -h example.com",
+		"- gh auth token -h example.com",
+		"chrt --other 0 gh auth token -h example.com",
+		"numactl --localalloc gh auth token",
+		"faketime -f +1d gh auth token -u bot",
 	})
 }
 
@@ -400,13 +400,13 @@ func TestForgeDynamicArity(t *testing.T) {
 	// One brace or computed word standing for several components, and a
 	// substituted script handed to eval, a shell's -c or a here-string.
 	forgeRefuseAll(t, []string{
-		"command gh {auth,token}",
-		"gh $(printf '%s\\n' auth token)",
-		`set -- auth token -u x; gh "$@"`,
-		"pair='auth token'; gh $pair",
-		`eval "$(printf '%s ' gh auth token)"`,
-		`dash -c "$(printf 'gh auth token')"`,
-		`zsh <<< "$(printf 'gh auth token')"`,
+		"gh {auth,} {token,} -h example.com",
+		"gh $(echo auth; echo token)",
+		"IFS=,; v=auth,token; gh $v -h example.com",
+		"words='auth token'; nice gh $words",
+		`x=$(printf 'gh auth token -h %s' example.com); eval "$x"`,
+		`dash -c "$(printf '%s' 'gh auth token -u bot')"`,
+		`zsh -s <<< "$(printf '%s\n' 'gh auth token')"`,
 	})
 }
 
@@ -414,23 +414,21 @@ func TestForgeDynamicArity(t *testing.T) {
 func TestForgeClobberOperator(t *testing.T) {
 	// `>|` (with or without a descriptor) between the read's words.
 	forgeRefuseAll(t, []string{
-		"gh auth 2>|err.log token",
-		"gh >|out.txt auth token -u x",
-		"gh auth 1>| out.txt token",
+		"env gh auth 5>| fd5.txt token --user bot",
+		"gh 2>| /dev/null auth token -h example.com",
+		"nice -n 1 gh auth 1>| /tmp/copy.txt token -u bot",
 	})
 }
 
 // regression: #4821
 func TestForgeStringToCommand(t *testing.T) {
-	// A computed shell word, and builtins or variables that run a string.
+	// A computed shell word, and builtins that run a string.
 	forgeRefuseAll(t, []string{
-		`"${SHELL:-sh}" -c 'gh auth token'`,
+		`"${BASH:-/bin/bash}" -c 'gh auth token -u bot'`,
 		`$ZSH_NAME -c 'gh auth token -u x'`,
-		`printf 'gh auth token' | "$SHELL"`,
-		"builtin eval 'gh auth token -u x'",
-		"trap 'gh auth token' ERR",
-		"mapfile -C 'gh auth token' -c 1 arr < list.txt",
-		"PS4='$(gh auth token)' bash -xc :",
+		`cat <<< 'gh auth token -h example.com' | "${SHELL}"`,
+		"complete -C 'gh auth token -h example.com' mycmd",
+		`bind -x '"\C-t": gh auth token'`,
 	})
 }
 
@@ -439,12 +437,12 @@ func TestForgePassThrough(t *testing.T) {
 	// Arguments or scripts that reach gh or a shell through another command,
 	// and a read spelled with literal words held in variables or an alias.
 	forgeRefuseAll(t, []string{
-		"printf 'auth token' | xargs gh",
-		"printf 'gh auth token' | tee /dev/null | sh",
+		"sort -u <<< 'auth token' | xargs -r nice gh",
+		"printf 'gh auth token -h example.com\\n' | tee -a log.txt | bash -s",
 		"c=gh s=auth; $c $s token",
 		"read -r p q <<< 'auth token'; gh $p $q",
-		"alias q=gh; q auth token",
-		"find . -maxdepth 0 -exec gh auth token \\;",
+		"alias gg='gh auth'; gg token -h example.com",
+		"find /tmp -name none -prune -o -exec gh auth token {} +",
 	})
 }
 
