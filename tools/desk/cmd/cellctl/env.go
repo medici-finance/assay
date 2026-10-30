@@ -20,7 +20,7 @@ var scrubbedEnvKeys = []string{
 	"HOME", "ZDOTDIR", "SHELL", "PATH", "TMPDIR", "KUBECONFIG", "ASSAY_CONFIG_HOME", envAssayTelemetry,
 	"GH_CONFIG_DIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_TERMINAL_PROMPT",
 	"CODEX_HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "TERM", "LANG",
-	envCellDBDSN, envCellDBPassfile,
+	envCellDBDSN, envCellDBPassfile, "GITLAB_API_BASE",
 }
 
 // scrubbedHarnessPath resolves the harness binary ONCE, on the PARENT shell's PATH — the one
@@ -107,6 +107,8 @@ func (c *Cell) scrubbedEnvValue(key, role, harness, session, composedPath string
 		return c.Env.Get("TERM")
 	case "LANG":
 		return c.Env.Get("LANG")
+	case "GITLAB_API_BASE":
+		return c.forgeEndpointBase()
 	case envCellDBDSN:
 		// "" when CELL_DB_DSN is unset: a cell with no database composes neither variable.
 		dsn, _ := c.cellDBComposed()
