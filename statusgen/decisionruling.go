@@ -730,8 +730,10 @@ func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecor
 // repository; a private one then 404s, which fails closed (deleted-comment).
 //
 // The `gh auth token` step is a stored login, so it is taken only where
-// storedLoginRefusal allows it. Inside an admitted verifyrun (and in any
-// process descended from one of its rows) a client with no token variable
+// storedLoginRefusal allows it. Inside an admitted verifyrun, in any process
+// descended from one of its rows, and wherever verifier admission would be
+// required (a verify DESK_LOOP, or an attested working repository, verifyrun
+// or not), a client with no token variable
 // makes no request at all: every read is answered with the refusal, which the
 // resolver reports as unresolvable, a could-not-check.
 func rulingForgeClient() *ghClient {

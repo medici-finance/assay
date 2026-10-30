@@ -290,8 +290,10 @@ credentials to untrusted branch code. Those two variables are the ruling read's
 only credential inside an admitted `statusgen verifyrun` and in any process its
 Verify rows start: there it never falls back to a stored forge login (`gh auth
 token` or the cell's ambient copy of it), and with neither variable set the read
-is a could-not-check. Outside an admitted run the stored-login fallback is
-unchanged. The repository's workflow approval is the
+is a could-not-check. The same holds wherever verifier admission would be
+required, even with no verifyrun running: a `DESK_LOOP` naming a verify loop, or
+a working repository holding the verifier attestation file. Where none of those
+signals holds, the stored-login fallback is unchanged. The repository's workflow approval is the
 opt-in. A desk command's flag does not change later CI jobs. An old pinned binary
 cannot receive this flag, and a default offline CI invocation will hold the record
 or fail lint. Verify the upgraded workflow can corroborate the exact ruling before

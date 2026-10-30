@@ -24,7 +24,9 @@ package main
 // only when neither is set and `gh` happens to be on PATH — `gh auth token
 // --hostname github.com`, so a desk machine that relied on gh's own login keeps
 // decaying, unless storedLoginRefusal closes that fallback (inside an admitted
-// verifyrun or one of its rows; forgecredential.go). `gh` is never REQUIRED.
+// verifyrun or one of its rows, and wherever verifier admission would be
+// required: a verify DESK_LOOP or an attested working repository;
+// forgecredential.go). `gh` is never REQUIRED.
 // An endpoint guessed from the origin host (a GitHub Enterprise Server) gets
 // only an enterprise credential, never the github.com one (githubDecayToken). GitHub's GraphQL API refuses unauthenticated
 // calls, so no credential at all is a named could-not-check before any request,

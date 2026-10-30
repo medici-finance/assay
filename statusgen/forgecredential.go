@@ -5,7 +5,9 @@ package main
 // it keeps in its config directory (hosts.yml) or the system keyring, and a
 // cell's CELLCTL_GH_AMBIENT copy of that login.
 //
-// Inside an admitted verifyrun that fallback is closed. A Verify row runs with
+// Inside an admitted verifyrun that fallback is closed, and so is it wherever
+// verifier admission would be required (a verify DESK_LOOP, or the verifier
+// attestation file in the working repository), verifyrun or not. A Verify row runs with
 // the forge token variables removed (admittedRowEnv), so a row that reached a
 // forge read would otherwise authenticate as whoever is logged in on the
 // runner. One function decides (storedLoginRefusal); every credential site
@@ -13,7 +15,8 @@ package main
 // dead-claim decay's token (githubDecayToken) and every forge CLI launch, each
 // of which is wrapped in ghGuard. A refused read with no token variable set is
 // a could-not-check on the site's existing error path, never an anonymous or
-// ambient-authenticated read. Outside an admitted run nothing changes.
+// ambient-authenticated read. Where none of storedLoginRefusal's signals holds,
+// nothing changes.
 
 import (
 	"fmt"
