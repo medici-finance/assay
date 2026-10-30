@@ -1,0 +1,2 @@
+- Read two canonical decision-gate HEAD lookups through the existing gitcore library, preserving native capability profiles and the full shared audit write window.
+- Isolate explicit acceptance-read permission per invocation so concurrent callers cannot grant it to an offline caller or lose their own opt-in.

@@ -161,7 +161,7 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 		out, cerr := cmd.Output()
 		return strings.TrimSpace(string(out)), cerr
 	}
-	head, err := git(nil, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	head, err := landingHead(root)
 	if err != nil || head == "" {
 		return fail("HEAD does not resolve", err)
 	}
@@ -263,10 +263,7 @@ var (
 // shown complete (or a forge that serves no compare), or a changed board file that
 // cannot be read at the branch tip is could-not-check, never a pass.
 func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) ([]boardEdit, error) {
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-	cmd.Dir = os.TempDir()
-	out, err := cmd.Output()
-	head := strings.TrimSpace(string(out))
+	head, err := landingHead(root)
 	if err != nil || head == "" {
 		return nil, deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
 	}

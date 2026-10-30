@@ -73,7 +73,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 
 	t.Run("a verified record whose closure is not landed exits 5, exactly as a log line did", func(t *testing.T) {
 		f, errBuf := setupFake(t)
-		verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
+		verifiedClosureCheckFn = func(root, brief string, options childOptions) (closureVerdict, string, error) {
 			return closureNotAccepted, brief + ": NOT accepted", nil
 		}
 		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","sha":"0000002"}`
@@ -90,7 +90,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 
 	t.Run("a verify-fail record is not gated", func(t *testing.T) {
 		f, errBuf := setupFake(t)
-		verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
+		verifiedClosureCheckFn = func(root, brief string, options childOptions) (closureVerdict, string, error) {
 			t.Fatalf("closure check must NOT run for a verify-fail record (brief %q)", brief)
 			return closureCouldNotErr, "", nil
 		}

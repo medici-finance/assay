@@ -162,7 +162,7 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLint := lintDiffFn
-	lintDiffFn = func(root, path string, content []byte) ([]string, error) {
+	lintDiffFn = func(root, path string, content []byte, options childOptions) ([]string, error) {
 		if root != br {
 			t.Fatalf("lint read source instead of tracking: %s", root)
 		}

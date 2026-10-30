@@ -126,23 +126,24 @@ func main() {
 	}))
 }
 
-var acceptanceForge bool
+// childOptions carries only this invocation's explicit read-only permission.
+// It is a value, never package state shared by concurrent calls.
+type childOptions struct{ acceptanceForge bool }
 
-func acceptanceArgs(args ...string) []string {
-	if acceptanceForge {
-		return append(args, "--acceptance-forge")
+func (o childOptions) args(args ...string) []string {
+	result := append([]string(nil), args...)
+	if o.acceptanceForge {
+		result = append(result, "--acceptance-forge")
 	}
-	return args
+	return result
 }
 
 func run(args []string) int {
-	old := acceptanceForge
-	defer func() { acceptanceForge = old }()
-	acceptanceForge = false
+	options := childOptions{}
 	filtered := make([]string, 0, len(args))
 	for _, a := range args {
 		if a == "--acceptance-forge" {
-			acceptanceForge = true
+			options.acceptanceForge = true
 		} else {
 			filtered = append(filtered, a)
 		}
@@ -196,7 +197,7 @@ func run(args []string) int {
 	// `flip` (#2074) is a LOCAL commit on a branch — no forge write, so it takes
 	// no audit lock and no write budget; the PR that carries it does.
 	if args[0] == "flip" {
-		err := runFlip(args[1:])
+		err := runFlip(args[1:], options)
 		if err != nil && !deskkit.IsHelpRequest(err) {
 			fmt.Fprintln(stderr, "deskevidence: "+err.Error())
 		}
@@ -209,7 +210,7 @@ func run(args []string) int {
 	// production and the captured buffer under test — so a test can assert on the
 	// refusal's wording (the origin a scan refusal names, #1161) the same way it asserts
 	// on the notices the flow prints to the same writer.
-	err := runOutward(args)
+	err := runOutward(args, options)
 	if err != nil {
 		fmt.Fprintln(stderr, "deskevidence: "+err.Error())
 	}

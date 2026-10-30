@@ -73,7 +73,7 @@ func flSetup(t *testing.T) {
 	useRealPublishIdentityGate(t)
 	oldFlip, oldClose, oldLint := verifyFlipFn, checkVerifiedFn, statusgenLintFn
 	t.Cleanup(func() { verifyFlipFn, checkVerifiedFn, statusgenLintFn = oldFlip, oldClose, oldLint })
-	verifyFlipFn = func(root, brief, sha, runner string, dry bool) (string, string, error) {
+	verifyFlipFn = func(root, brief, sha, runner string, dry bool, options childOptions) (string, string, error) {
 		if runner != "assay-verifier-app[bot]" {
 			t.Errorf("verifyflip --runner = %q, want the verifier bot login", runner)
 		}
@@ -84,8 +84,8 @@ func flSetup(t *testing.T) {
 		}
 		return flReadme, flStamp, nil
 	}
-	checkVerifiedFn = func(string, string) (string, error) { return flReadme, nil }
-	statusgenLintFn = func(string) ([]string, error) { return []string{"PROBLEM: pre-existing"}, nil }
+	checkVerifiedFn = func(string, string, childOptions) (string, error) { return flReadme, nil }
+	statusgenLintFn = func(string, childOptions) ([]string, error) { return []string{"PROBLEM: pre-existing"}, nil }
 }
 
 func flRun(root string, extra ...string) int {
@@ -195,9 +195,9 @@ func TestFlipRefusesForeignBranch(t *testing.T) {
 	flGit(t, root, "add", "x.txt")
 	flGit(t, root, "commit", "-q", "-m", "foreign") // the worktree's issue-loop user.*
 	inner, calls := verifyFlipFn, 0
-	verifyFlipFn = func(r, b, s, u string, d bool) (string, string, error) {
+	verifyFlipFn = func(r, b, s, u string, d bool, options childOptions) (string, string, error) {
 		calls++
-		return inner(r, b, s, u, d)
+		return inner(r, b, s, u, d, options)
 	}
 	if code := flRun(root); code != deskkit.ExitRefused {
 		t.Fatalf("flip on a branch carrying a foreign commit rc = %d, want 5", code)
@@ -213,7 +213,7 @@ func TestFlipRefusesForeignBranch(t *testing.T) {
 func TestFlipStatusgenRefusal(t *testing.T) {
 	flSetup(t)
 	root := flRoot(t)
-	verifyFlipFn = func(string, string, string, string, bool) (string, string, error) {
+	verifyFlipFn = func(string, string, string, string, bool, childOptions) (string, string, error) {
 		return "", "", deskkit.Refused("flip: refusing: sha mismatch")
 	}
 	if code := flRun(root); code != deskkit.ExitRefused {
@@ -226,7 +226,7 @@ func TestFlipRefusesLintProblem(t *testing.T) {
 	flSetup(t)
 	root := flRoot(t)
 	// The after-lint sees the COMMITTED flip: a gain there takes the commit back.
-	statusgenLintFn = func(r string) ([]string, error) {
+	statusgenLintFn = func(r string, options childOptions) ([]string, error) {
 		if flGit(t, r, "rev-list", "--count", "refs/remotes/origin/main..HEAD") == "0" {
 			return []string{"PROBLEM: pre-existing"}, nil
 		}
@@ -241,7 +241,7 @@ func TestFlipRefusesLintProblem(t *testing.T) {
 func TestFlipRefusesClosure(t *testing.T) {
 	flSetup(t)
 	root := flRoot(t)
-	checkVerifiedFn = func(string, string) (string, error) {
+	checkVerifiedFn = func(string, string, childOptions) (string, error) {
 		return "", deskkit.Refused("verified outcome refused: no witness")
 	}
 	if code := flRun(root); code != deskkit.ExitRefused {
@@ -253,7 +253,7 @@ func TestFlipRefusesClosure(t *testing.T) {
 func TestFlipRefusesExtraDiff(t *testing.T) {
 	flSetup(t)
 	root := flRoot(t)
-	verifyFlipFn = func(r, _, _, _ string, dry bool) (string, string, error) {
+	verifyFlipFn = func(r, _, _, _ string, dry bool, options childOptions) (string, string, error) {
 		if !dry {
 			body := strings.Replace(flReadmeBody(flRowVer), "# vf", "# vf edited", 1)
 			if err := os.WriteFile(filepath.Join(r, flReadme), []byte(body), 0o644); err != nil {
