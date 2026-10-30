@@ -90,7 +90,15 @@ func flowReport(t *testing.T, tolerant bool) (*nextupReport, error) {
 	return awaitingQueue(Header{}, "awaiting", rs, tolerant)
 }
 
+// regression: F-queue-contract
 func TestFlowQueue(t *testing.T) {
+	t.Run("unsupported vocabulary is coverage gap", func(t *testing.T) {
+		row := gateScoreRow{Brief: "second/01", Status: "implemented", QueueVersion: queueContractVersion, QueueClass: "future-class", QueueValid: true}
+		coverage := coverageOf(deskkit.RootConfig{Repo: "example-org/second"}, []gateScoreRow{row}, nil)
+		if rowSupported(row) || coverage.State != rootUnsupported || coverage.Unknown != 1 {
+			t.Fatal("future class counted as healthy", coverage)
+		}
+	})
 	installFlowShim(t)
 	golden := flowRows(t)
 	wantClass := map[string]string{}

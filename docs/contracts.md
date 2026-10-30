@@ -519,3 +519,16 @@ planned delivery; this paragraph does not change today's published schemas or va
 Keep the three-part source/consumer conformance pattern above for each migrated version
 and retain the existing semantic owners. Optional diagnostics must never override a
 required policy, acceptance, signature or effect contract.
+
+## Verification queue planning extension — desk-tools/45
+
+The existing statusgen `placeAwaiting`/`queueFor` classifier remains the queue owner.
+`statusgen/verifyqueue` publishes its additive wire vocabulary; deskboard and verifyloop
+consume its supported-contract check instead of accepting arbitrary future class strings.
+`tools/desk/internal/verifyflow` composes observed overlays through the same demote-only
+join used by verifyloop and exposes pure candidate/priority/time/capacity selection.
+The plan preserves per-root Awaiting and Evidence-repair coverage; missing repair discovery
+cannot establish idle. This extends the existing verification owners, not acceptance,
+claim or credential authority. /51 and graph-execution/27 retain caller adoption.
+`TestVerifyPlanParity` and the three existing `TestFlowQueue` surfaces qualify the seam;
+`cmd/verifyloop/candidate-mutations.json` pins second-root coverage and independent holds.
