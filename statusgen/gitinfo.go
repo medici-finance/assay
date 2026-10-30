@@ -15,7 +15,7 @@ import (
 // gitLastTouch returns the commit time of the last commit touching relDir,
 // falling back to the directory's mtime when untracked or git is unavailable.
 func gitLastTouch(root, relDir string) time.Time {
-	out, err := exec.Command("git", "-C", root, "log", "-1", "--format=%ct", "--", relDir).Output()
+	out, err := gitLastPathTimeOutput(root, relDir)
 	s := strings.TrimSpace(string(out))
 	if err == nil && s != "" {
 		if sec, perr := strconv.ParseInt(s, 10, 64); perr == nil {
