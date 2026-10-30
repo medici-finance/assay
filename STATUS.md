@@ -147,7 +147,7 @@ _Held by per-stream caps: 12 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b07eb176b 2026-10-30T14:34:53Z_
+_last regen: ea2867aa8 2026-10-30T15:37:15Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -168,7 +168,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b07eb176b 2026-10-30T14:34:53Z_
+_last regen: ea2867aa8 2026-10-30T15:37:15Z_
 
 **Progress:** 36/94 brief items done.
 
