@@ -38,15 +38,9 @@ id: 80ee2e96-602b-4831-a70e-c188b85f3944
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/width.go`, `widthstore.go` — `WidthEntry` gains
-  `Reserve map[string]int` (`resume`, `rework`); the bound admits a reservation only when
-  `sum(reserve) < width`.
+- `tools/desk/internal/deskkit/width.go`, `tools/desk/internal/deskkit/widthstore.go` — `WidthEntry` gains `Reserve map[string]int` (`resume`, `rework`); the bound admits a reservation only when `sum(reserve) < width`.
 - `tools/desk/cmd/deskroster/main.go` — `width --role L --reserve resume=N,rework=M`.
-- `tools/desk/cmd/fanoutloop/main.go` and its `SelectQueue` — classify each item
-  (`resume` = orphan/CONFLICTING/red-check PR resume; `rework` = awaiting-implementer-rework
-  row; `fresh` = everything else) and cap `fresh` at `width − sum(reserve)` when any
-  reserved-class item is waiting; when none is waiting, the reservation does not idle a
-  slot.
+- `tools/desk/cmd/fanoutloop/main.go` — and its `SelectQueue` — classify each item (`resume` = orphan/CONFLICTING/red-check PR resume; `rework` = awaiting-implementer-rework row; `fresh` = everything else) and cap `fresh` at `width − sum(reserve)` when any reserved-class item is waiting; when none is waiting, the reservation does not idle a slot.
 - `tools/desk/README.md` — width row note.
 
 facts:

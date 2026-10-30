@@ -32,11 +32,15 @@ exec-tier-why: >-
 # Brief 17 — Skill frontmatter conformance lint
 
 ## Context
-files: `tools/skillslint/conformance.go` (planned), `tools/skillslint/conformance_test.go` (planned),
-`tools/skillslint/testdata/conformance/**` (planned), `tools/skillslint/main.go`,
-`tools/skillslint/README.md`, `plugins/assay/skills/install/SKILL.md`,
-`plugins/assay/skills/pr-review-desk/SKILL.md`,
-`changelog/harness-portability-17-skill-frontmatter-conformance-lint.md` (planned)
+files:
+- `tools/skillslint/conformance.go` (planned)
+- `tools/skillslint/conformance_test.go` (planned)
+- `tools/skillslint/testdata/conformance/` (planned)
+- `tools/skillslint/main.go`
+- `tools/skillslint/README.md`
+- `plugins/assay/skills/install/SKILL.md`
+- `plugins/assay/skills/pr-review-desk/SKILL.md`
+- `changelog/harness-portability-17-skill-frontmatter-conformance-lint.md` (planned)
 facts:
 - limits (dated 2026-09-23, see `sources:`): description <= 1024 Unicode chars (agentskills + Codex
   `MAX_CATALOG_SKILL_DESCRIPTION_CHARS`); name 1-64 chars, `^[a-z0-9]+(-[a-z0-9]+)*$`, equals

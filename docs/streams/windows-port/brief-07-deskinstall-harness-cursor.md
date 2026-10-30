@@ -57,13 +57,9 @@ id: 43f518d4-b344-4a88-b8b6-9aca53b99988
 ## Context
 
 files:
-- **create/edit** under `tools/desk/cmd/deskinstall/` — a harness mode (`--harness cursor`) and its
-  tests. It is a SECOND mode of the same command, not a second command: the existing
-  acquire→verify→place flow (`--manifest`/`--dest`) is untouched and keeps its exit contract.
-- **create** `changelog/<branch-slug>.md` — this repo enforces a per-PR fragment.
-- **do NOT** edit `plugins/assay/cursor/packaging.md`, `plugins/assay/references/cursor.md`,
-  `docs/adopting-assay.md`, or `plugins/assay/skills/install/SKILL.md` — the first is the roster
-  this mode reads; the rest are `windows-port/09`'s doc collapse.
+- **create/edit under** `tools/desk/cmd/deskinstall/` — a harness mode (`--harness cursor`) and its tests. It is a SECOND mode of the same command, not a second command: the existing acquire→verify→place flow (`--manifest`/`--dest`) is untouched and keeps its exit contract.
+- **create** — `changelog/<branch-slug>.md` — this repo enforces a per-PR fragment.
+- **do NOT edit** `plugins/assay/cursor/packaging.md`, `plugins/assay/references/cursor.md`, `docs/adopting-assay.md` and `plugins/assay/skills/install/SKILL.md` (none of them) — the first is the roster this mode reads; the rest are `windows-port/09`'s doc collapse.
 
 facts:
 - **Cursor's install mechanism IS file placement.** `plugins/assay/cursor/packaging.md:12-15`:

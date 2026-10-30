@@ -97,6 +97,12 @@ the reviewer must never write `n/a` for a class that was examined — examined-a
    prompt (neutral body). A house may append classes for its stack; it may never strike a
    base class. This is the same layer-2 boundary the desk-shell reference uses.
 
+files:
+- `tools/desk/cmd/deskdispatch/references/review-prompt.md` — Task 1
+- `plugins/assay/skills/pr-review-desk/references/verdict-format.md` — Task 2
+- `plugins/assay/skills/pr-review-desk/SKILL.md` — Task 3
+- `changelog/desk-tools-31.md` (planned) — Task 4
+
 ## Task
 
 **Task 1 — the register in the reviewer prompt (correctness cut).**
@@ -150,12 +156,6 @@ names, no house identifiers.
 Out of scope: deskpost enforcement (follow-up, ruled separately), the security lane's register
 (follow-up), any change to deskdispatch Go code (the register is prompt doctrine; the
 dispatcher already hands the prompt through unchanged).
-
-files:
-- `tools/desk/cmd/deskdispatch/references/review-prompt.md` — Task 1
-- `plugins/assay/skills/pr-review-desk/references/verdict-format.md` — Task 2
-- `plugins/assay/skills/pr-review-desk/SKILL.md` — Task 3
-- changelog/desk-tools-31.md (planned) — Task 4
 
 ## Verify (executable — no prose-only DoD items)
 

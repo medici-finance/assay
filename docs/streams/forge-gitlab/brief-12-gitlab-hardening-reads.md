@@ -67,20 +67,12 @@ checklist row names a kind its forge serves or gets could-not-check, never the o
 document.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` — extend `HardeningReadKind` with the five GitLab
-  kinds (the validator's closed set grows; still no path argument).
-- `tools/desk/internal/deskkit/forge_gitlab.go`, `forge_gitlab_test.go` — implement the five
-  kinds; goldens per kind; a `push_rules_premium_gated` golden pinning 403/404 → could-not-check
-  carrying a `ForgeAPIError`, never an empty document.
+- `tools/desk/internal/deskkit/forge.go` — extend `HardeningReadKind` with the five GitLab kinds (the validator's closed set grows; still no path argument).
+- `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/forge_gitlab_test.go` — implement the five kinds; goldens per kind; a `push_rules_premium_gated` golden pinning 403/404 → could-not-check carrying a `ForgeAPIError`, never an empty document.
 - `tools/desk/internal/deskkit/forge_github.go` — the symmetric named refusal for GitLab kinds.
-- `tools/desk/cmd/repohardenguard/repohardenguard_test.go` — a GitLab fixture checklist block
-  (`gl/p` project): a Free row, a `not available — Premium` row, a tier-403 row.
-- `docs/streams/forge-gitlab/inventory.md`, `edition-matrix.md` — op 38's GitLab column →
-  implemented; one matrix row per kind with its docs citation.
-- `docs/adopting-assay-gitlab.md` — the GitLab checklist template (rows above, Required cells
-  per the profile) and the auditor service account's minimum project role per kind (Reporter
-  for `project`/`file`; the protected-branches/tags and approvals reads need at least
-  Maintainer on GitLab — dereferenced in Verify row 4, never asserted from memory).
+- `tools/desk/cmd/repohardenguard/repohardenguard_test.go` — a GitLab fixture checklist block (`gl/p` project): a Free row, a `not available — Premium` row, a tier-403 row.
+- `docs/streams/forge-gitlab/inventory.md`, `docs/streams/forge-gitlab/edition-matrix.md` — op 38's GitLab column → implemented; one matrix row per kind with its docs citation.
+- `docs/adopting-assay-gitlab.md` — the GitLab checklist template (rows above, Required cells per the profile) and the auditor service account's minimum project role per kind (Reporter for `project`/`file`; the protected-branches/tags and approvals reads need at least Maintainer on GitLab — dereferenced in Verify row 4, never asserted from memory).
 - `changelog/forge-gitlab-12-gitlab-hardening-reads.md` (planned).
 
 single-point-of-failure: the tier-gate mapping — a Premium endpoint on CE must read as

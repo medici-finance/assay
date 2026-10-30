@@ -52,8 +52,8 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 single-point-of-failure: this responder's routing message is the one artifact a human acts
 on for a judgement/opaque red — but it takes no fixing action, so its worst failure is a
 misleading recommendation (a closed/re-labelled issue), not a bad change to `main`. Three
-layers stand behind the single control: the responder NEVER drafts a fix or merges (it only
-files + routes), the opaque-red path is content-blind by construction (it routes leak-sweep
+layers stand behind the single control: the responder NEVER drafts a fix or merges (it
+only files + routes), the opaque-red path is content-blind by construction (it routes leak-sweep
 by CHECK identity and never reads or echoes the withheld detail), and the forge-write
 identity itself holds no merge/review/bypass/workflow authority (credential-layer control,
 independent of both).
