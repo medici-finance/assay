@@ -31,7 +31,18 @@ import (
 //     (heldColumn) — each data row of that table is read in its result
 //     cells only. A row whose cell count differs from its header's (an
 //     unescaped "|" in a command) cannot be aligned and is read whole. A
-//     table of any other shape is read whole.
+//     table of any other shape is read whole, with one exception (#4993):
+//     in a table with a separator row that is not such a results table, a
+//     lower-case held or could-not-check in a cell of a subject column — a
+//     header named exactly Obligation or Requirement (heldSubjectColumns),
+//     plural allowed — of a row aligned with the header, in a cell that
+//     names no row (heldNamesRowRe), on a line with no struck span, is not
+//     a disposition (heldInSubject). Such a cell names what a row must
+//     establish ("Addressed and held exclude ordinary work"), never how it
+//     came out. An upper- or mixed-case HELD or could-not-check there, and
+//     every other cell, header and line of the table, is read; so is a
+//     subject cell of a results table, which stays an unrecognised result
+//     column.
 //
 //  2. Exit-code prose. In an entry that holds such a results table, a line
 //     outside every table is still read, with one exception: an occurrence
@@ -187,6 +198,9 @@ type heldLineRead struct {
 	// observe are the byte ranges of the Result-type cells of an aligned
 	// results row whose Exit cells all read clean (rule 4); nil otherwise.
 	observe [][2]int
+	// subject are the byte ranges of the subject cells of a row of a table
+	// that is not a results table (rule 1, #4993); nil otherwise.
+	subject [][2]int
 }
 
 // heldScope is heldScanScope's decision: what to read of each line, and
@@ -1096,7 +1110,50 @@ var (
 	heldKeyColumns   = map[string]bool{"#": true, "row": true, "no.": true, "no": true, "verify row": true, "command": true, "cmd": true}
 	heldOtherColumns = map[string]bool{"expect": true, "expected": true, "date": true, "runner": true,
 		"date / runner": true, "date/runner": true, "date · runner": true, "date runner": true}
+	// heldSubjectColumns are the exact header names (heldNorm) of a subject
+	// column (rule 1, #4993): its cells name the obligation a row must
+	// establish, not the row's outcome.
+	heldSubjectColumns = map[string]bool{"obligation": true, "obligations": true,
+		"requirement": true, "requirements": true}
 )
+
+// heldSubjectCells returns the subject cells (heldSubjectColumns) of line, a
+// data row of a table with a separator row that is not a results table and
+// whose header line is hline with cells header (rule 1, #4993). A row whose
+// cell count differs from its header's is read whole (nil), and so is a cell
+// that names a row (heldNamesRowRe).
+func heldSubjectCells(hline string, header [][2]int, line string) [][2]int {
+	cells := heldCellRanges(line)
+	if len(cells) != len(header) {
+		return nil
+	}
+	var out [][2]int
+	for c, rg := range cells {
+		if !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {
+			continue
+		}
+		if heldNamesRowRe.MatchString(line[rg[0]:rg[1]]) {
+			continue
+		}
+		out = append(out, rg)
+	}
+	return out
+}
+
+// heldInSubject reports whether the occurrence at clean[h[0]:h[1]] lies in a
+// subject cell of read (rule 1, #4993) and is written in lower case. An
+// upper- or mixed-case HELD or could-not-check is the marker form of a
+// disposition and is read wherever it sits. clean must carry no struck cut,
+// so its offsets agree with the line's.
+func heldInSubject(clean string, read heldLineRead, h []int) bool {
+	for _, rg := range read.subject {
+		if h[0] >= rg[0] && h[1] <= rg[1] {
+			w := clean[h[0]:h[1]]
+			return w == strings.ToLower(w)
+		}
+	}
+	return false
+}
 
 // heldColumn classifies an Evidence table header cell. key is a row-key
 // column; notResult is any column that is not a row's result (the key
@@ -1523,6 +1580,10 @@ func heldScanScope(evidence string) heldScope {
 						}
 						keys[e] = append(keys[e], out[r].key)
 						out[r].observe = heldObserveCells(lines[i], header, lines[r], cells, tb.notResult)
+					}
+				} else {
+					for r := i + 2; r < j; r++ {
+						out[r].subject = heldSubjectCells(lines[i], header, lines[r])
 					}
 				}
 			}

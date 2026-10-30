@@ -1,0 +1,2 @@
+### Fixed
+- The verify hold scan (`statusgen verifyflip`, the verify-gate card and close-verify) no longer reads a lower-case "held" or "could-not-check" in an Obligation or Requirement cell of a table that is not a results table as a row disposition. Such a cell names what a row must establish ("Addressed and held exclude ordinary work"). An upper- or mixed-case marker, a cell that names a row, a misaligned row, a line with a struck span, and every other cell of the table are still read.

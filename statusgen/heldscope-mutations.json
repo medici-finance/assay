@@ -1434,6 +1434,42 @@
       "file": "heldscope.go",
       "old": "\"once\": true, \"twice\": true,\n",
       "new": "\"once\": true, \"twice\": true, \"both\": true,\n"
+    },
+    {
+      "name": "#4993: a subject cell that names a row is not read",
+      "file": "heldscope.go",
+      "old": "\t\tif heldNamesRowRe.MatchString(line[rg[0]:rg[1]]) {",
+      "new": "\t\tif false && heldNamesRowRe.MatchString(line[rg[0]:rg[1]]) {"
+    },
+    {
+      "name": "#4993: an upper- or mixed-case marker in a subject cell is not read",
+      "file": "heldscope.go",
+      "old": "\t\t\treturn w == strings.ToLower(w)",
+      "new": "\t\t\treturn w != \"\""
+    },
+    {
+      "name": "#4993: every column of a non-results table is a subject column",
+      "file": "heldscope.go",
+      "old": "\t\tif !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {",
+      "new": "\t\tif false && !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {"
+    },
+    {
+      "name": "#4993: a subject column matches by prefix, not exactly",
+      "file": "heldscope.go",
+      "old": "\t\tif !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {",
+      "new": "\t\tif n := heldNorm(hline[header[c][0]:header[c][1]]); !heldSubjectColumns[n] && !strings.HasPrefix(n, \"obligation\") {"
+    },
+    {
+      "name": "#4993: a misaligned row's subject cells are excused",
+      "file": "heldscope.go",
+      "old": "\tcells := heldCellRanges(line)\n\tif len(cells) != len(header) {\n\t\treturn nil\n\t}\n\tvar out [][2]int",
+      "new": "\tcells := heldCellRanges(line)\n\tif len(cells) < len(header) {\n\t\treturn nil\n\t}\n\tcells = cells[:len(header)]\n\tvar out [][2]int"
+    },
+    {
+      "name": "#4993: a subject cell on a line with a struck span is excused",
+      "file": "verifyissues.go",
+      "old": "if cuts == nil && heldInSubject(clean, read, h) {",
+      "new": "if heldInSubject(clean, read, h) {"
     }
   ]
 }

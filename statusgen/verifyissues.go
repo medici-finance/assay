@@ -1041,6 +1041,13 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			if read.prose && heldExitMapping(clean, h) {
 				continue
 			}
+			// A lower-case occurrence in a subject cell of a table that is not
+			// a results table ("Addressed and held exclude ordinary work")
+			// names what a row must establish, not how it came out
+			// (heldScanScope rule 1, #4993).
+			if cuts == nil && heldInSubject(clean, read, h) {
+				continue
+			}
 			// A passing row's Result cell that records the product's own
 			// could-not-check output ("a could-not-check mission section")
 			// is not the row's disposition (heldScanScope rule 4, #4294).
