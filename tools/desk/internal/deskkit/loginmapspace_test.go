@@ -91,6 +91,10 @@ func TestLoginMapSpacedBotRefuses(t *testing.T) {
 	for _, raw := range []string{
 		"grace:grace, Ada Lovelace:ops-bot",
 		"grace:grace, lovelace",
+		"grace:grace, ada :ada-l",
+		"grace:grace ada :ada-l",
+		"grace:grace, ada\t:ada-l",
+		"grace:grace, Ada Lovelace :ada-l",
 	} {
 		c := parseConfig(ClassWrite, "test", spacedMapBase(raw))
 		if c.Configured() {
@@ -152,6 +156,35 @@ func TestLoginMapNoticeEchoFull(t *testing.T) {
 		out := echoOnce(t)
 		if !isFullEcho(out) || !strings.Contains(out, "assay-config: NOTICE") {
 			t.Fatalf("run %d: want the full block carrying the NOTICE line, got:\n%s", run, out)
+		}
+	}
+}
+
+// No shape that SplitList's split left inert may become a live mapping. A non-ASCII space
+// (no-break space, line separator, vertical tab) is not a separator, exactly as in SplitList,
+// so "grace:grace<NBSP>bob:bob" stays ONE entry and bob is never mapped; a non-ASCII space
+// INSIDE a name is refused with a NOTICE like an ASCII one, never mapped.
+//
+// regression: #4978
+func TestLoginMapNoSilentMapping(t *testing.T) {
+	for _, raw := range []string{
+		"grace:grace bob:bob", "grace:grace bob:bob", "grace:grace\vbob:bob",
+		"grace:grace, ada :ada-l", "grace:grace, ada\t:ada-l", "grace:grace ada :ada-l",
+	} {
+		c := parseConfig(ClassWrite, "test", spacedMapBase(raw))
+		for n, l := range c.HumanLogins {
+			if n == "bob" || n == "ada" || l == "bob" || l == "ada-l" {
+				t.Errorf("%q: mapped %q -> %q; that shape must not map", raw, n, l)
+			}
+		}
+	}
+	for _, raw := range []string{"grace:grace, Ada Lovelace:ada-l", "grace:grace, ada :ada-l"} {
+		c := parseConfig(ClassWrite, "test", spacedMapBase(raw))
+		if !c.Configured() || len(c.HumanLogins) != 1 || c.HumanLogins["grace"] != "grace" {
+			t.Errorf("%q: want only grace mapped, configured; got %v %q", raw, c.HumanLogins, c.Problems)
+		}
+		if echo := strings.Join(c.EffectiveConfigLines(), "\n"); !strings.Contains(echo, "NOTICE") {
+			t.Errorf("%q: the refused entry is not named in a NOTICE line:\n%s", raw, echo)
 		}
 	}
 }

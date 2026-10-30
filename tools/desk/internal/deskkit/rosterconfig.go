@@ -1517,15 +1517,17 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	recordExt(&cfg, EnvScanRepos, vals[EnvScanRepos], scanReposIssue)
 
 	// --- human-name → login map ---
-	// Split by trustcore.SplitNameLoginList, not splitList: a name with a space in it stays ONE
-	// entry, refused on its own with a NOTICE (it yields no mapping) instead of shredding into a
-	// colon-less word that refused the whole roster plus a fragment mapping nobody wrote. A
-	// malformed or bot-shaped entry still refuses the whole roster. KEEP IN SYNC with
-	// statusgen's scanParseConfig.
+	// Split by trustcore.SplitNameLoginList, not splitList: a name with a space BETWEEN its words
+	// (`Ada Lovelace:ada`) stays ONE entry, refused on its own with a NOTICE (it yields no mapping)
+	// instead of shredding into a colon-less word that refused the whole roster plus a fragment
+	// mapping nobody wrote. A malformed or bot-shaped entry still refuses the whole roster, and so
+	// does a space before the colon (`ada :ada`), which the splitter leaves as two malformed
+	// entries. The whitespace check reads the UNTRIMMED name half, so a space the trim would drop
+	// can never turn a refused entry into a mapping. KEEP IN SYNC with statusgen's scanParseConfig.
 	var notices []string
 	for _, entry := range trustcore.SplitNameLoginList(vals[EnvHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", EnvHumanLoginMap, entry)
@@ -1539,7 +1541,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 				"exclude. Refusing", EnvHumanLoginMap, entry, login)
 			continue
 		}
-		if trustcore.NameHasWhitespace(name) {
+		if trustcore.NameHasWhitespace(rawName) {
 			notices = append(notices, trustcore.SpacedNameNotice(EnvHumanLoginMap, entry))
 			continue
 		}

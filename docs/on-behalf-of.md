@@ -27,9 +27,13 @@ On-behalf-of: human:<who> mode:unattended
   `ASSAY_HUMAN_LOGIN_MAP` key, i.e. the given name the map already carries as that
   human's public form — on every other target. See "Which form" below.
   The name carries no whitespace (the trailer is space-delimited): a map entry whose name
-  half has a space (`Ada Lovelace:<login>`) is not applied — the config echo prints a
-  `NOTICE` naming it, that human has no neutral name, so a write that needs one refuses —
-  while every other entry and key of the roster still loads. Write it as `ada-lovelace:<login>`.
+  has a space between its words (`Ada Lovelace:<login>`), or any other whitespace character
+  in it such as a no-break space, is not applied — the config echo prints a `NOTICE` naming
+  it, that human has no neutral name, so a write that needs one refuses, and the
+  ruling-impersonation guard does not recognise that name — while every other entry and key
+  of the roster still loads. A space directly before the colon (`ada :<login>`) is still
+  malformed and refuses the whole roster, as it always has. Only a comma, semicolon, line
+  break, space or tab separates entries. Write the name as `ada-lovelace:<login>`.
 - ` mode:unattended` — appended only when the resolving session carried no live
   interactive roster beacon (a cron loop: `scanloop`, `verifyloop`, …, as opposed to a
   desk/worker session with a registered role). Its absence means the session was
