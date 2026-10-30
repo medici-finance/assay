@@ -1121,7 +1121,7 @@
       "complexity": "simple",
       "basis": "861 LOC, ~1 verbs, ~2 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskmerge",
@@ -1231,7 +1231,7 @@
       "complexity": "simple",
       "basis": "115 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskpost",
@@ -1305,7 +1305,7 @@
       "complexity": "simple",
       "basis": "268 LOC, ~0 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskpushguard",
@@ -1360,7 +1360,7 @@
       "complexity": "simple",
       "basis": "1283 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskreconcile",
@@ -1396,7 +1396,7 @@
       "complexity": "simple",
       "basis": "1154 LOC, ~3 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskreply",

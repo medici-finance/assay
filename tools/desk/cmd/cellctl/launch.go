@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,19 +103,43 @@ func (c *Cell) cellDBEnv(env []string) []string {
 // FORGE_API_BASE itself is not exported: nothing in the window reads it, and a nested cellctl
 // would rank it over its own cell's cell.env.
 func (c *Cell) forgeEndpointEnv(env []string) []string {
-	if c.Forge != "gitlab" {
-		return env
-	}
-	base := ""
-	if v := c.Env.Get("GITLAB_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("GITLAB_API_BASE") == layerCellEnv {
-		base = v
-	} else if v := c.Env.Get("FORGE_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("FORGE_API_BASE") == layerCellEnv {
-		base = v
-	}
-	if base != "" {
+	if base := c.forgeEndpointBase(); base != "" {
 		env = envSet(env, "GITLAB_API_BASE", base)
 	}
 	return env
+}
+
+// forgeEndpointBase is shared by host, Codex command and scrubbed environments.
+// Only the cell.env layer can declare a destination; never forward defaults or
+// arbitrary inherited values onto Codex argv or across the scrubbed boundary.
+// Changes to this credential destination require security review (#4845).
+func (c *Cell) forgeEndpointBase() string {
+	if c.Forge != "gitlab" {
+		return ""
+	}
+	if v := c.Env.Get("GITLAB_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("GITLAB_API_BASE") == layerCellEnv {
+		return v
+	}
+	if v := c.Env.Get("FORGE_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("FORGE_API_BASE") == layerCellEnv {
+		return v
+	}
+	return ""
+}
+
+// forgeEndpointExportBase guards the new argv/plan surfaces. URL userinfo,
+// queries and fragments can hold credentials, so refuse them before output.
+// Keep the host-window resolver unchanged; HTTPS, inheritance and conflicting
+// keys remain separate policy work. Never echo the URL or a parser error.
+func (c *Cell) forgeEndpointExportBase() (string, error) {
+	base := c.forgeEndpointBase()
+	if base == "" {
+		return "", nil
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("cell forge endpoint must be parseable and contain no URL userinfo, query or fragment before export to Codex commands or scrubbed plans")
+	}
+	return base, nil
 }
 
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
@@ -254,8 +279,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if cockpit.Cockpit != "" {
 		env = envSet(env, envAssayCockpit, cockpit.Cockpit)
 	}
-	// The cell's forge endpoint (#4841), on the claude and cursor arms; the codex arm composes its
-	// command environment from its own named allowlist and is left as it was.
+	// The host harnesses receive the endpoint here. Codex resolves the same
+	// cell-declared base in codexCommandEnvironment, keeping its operator process
+	// environment intact and exposing only the endpoint to command subprocesses.
 	if harness != "codex" {
 		env = c.forgeEndpointEnv(env)
 	}
