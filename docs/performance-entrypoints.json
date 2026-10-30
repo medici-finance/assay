@@ -1175,10 +1175,10 @@
       "executable": "stamp-spec-header-version.sh",
       "path": "tools/release/stamp-spec-header-version.sh",
       "module": "bash",
-      "parser_owner": "desktools-v2/47",
+      "parser_owner": "desktools-v2/80",
       "parser_state": "pending",
       "context": "standalone-gap",
-      "owner": "desktools-v2/47",
+      "owner": "desktools-v2/80",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
     },
     {

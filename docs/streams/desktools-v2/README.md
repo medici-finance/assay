@@ -137,6 +137,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
 | 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
 | 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
+| 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -246,8 +247,10 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
   admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter, deskperf, intake-eval). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
-- **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
-  it; /54 adds token renewal to the GitLab command /30 creates.
+- **Wave 4 — /29, /54, /80:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
+  it; /54 adds token renewal to the GitLab command /30 creates; /80 ports the release
+  spec-header stamp script into the command /52 creates, beside the check it reads back through
+  (its registry row was routed to /47, which never covered it; #5009).
 - **Routing:** [cli-migration.json](cli-migration.json) maps every discovered entrypoint to its
   owning brief or to a classified exclusion; [cli-contract.md](cli-contract.md) is the shared
   command and configuration contract. TestCLIInventory fails on any unrouted, orphaned or
