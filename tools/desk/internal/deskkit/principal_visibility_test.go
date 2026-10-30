@@ -246,3 +246,37 @@ func TestEveryWriteVerbNamesItsTarget(t *testing.T) {
 		t.Fatalf("found no on-behalf-of call sites under %s — this guard is looking in the wrong place", root)
 	}
 }
+
+// TestPrincipalInternalIsPublicForm — an `:internal` target is instance-visible, so the
+// on-behalf-of trailer takes the neutral form and, with no neutral name in
+// ASSAY_HUMAN_LOGIN_MAP, the write refuses exactly as it does on a public target.
+//
+// regression: #4978
+func TestPrincipalInternalIsPublicForm(t *testing.T) {
+	const innerRepo = "example-org/inner"
+	plantRoster(t, `ASSAY_BLESS_LOGIN=a-private-handle:2001
+ASSAY_TRUSTED_LOGINS=a-private-handle:2001
+ASSAY_HUMAN_LOGIN_MAP=ada:a-private-handle
+ASSAY_TRUSTED_BOT_SLUGS=worker=example-worker-app:300000006
+ASSAY_ALLOWED_REPOS=example-org/inner:ci:internal,example-org/one:ci:private
+`)
+	t.Setenv("DESK_SESSION", "no-such-session-"+t.Name())
+	p, err := ResolvePrincipal("", innerRepo)
+	if err != nil {
+		t.Fatalf("ResolvePrincipal(%q) = %v", innerRepo, err)
+	}
+	if !p.Public || p.Subject() != fixtureName || strings.Contains(p.Line(), fixtureLogin) {
+		t.Fatalf("internal target: Public=%v Subject=%q Line=%q, want the neutral form", p.Public, p.Subject(), p.Line())
+	}
+
+	plantRoster(t, `ASSAY_BLESS_LOGIN=a-private-handle:2001
+ASSAY_TRUSTED_LOGINS=a-private-handle:2001
+ASSAY_TRUSTED_BOT_SLUGS=worker=example-worker-app:300000006
+ASSAY_ALLOWED_REPOS=example-org/inner:ci:internal,example-org/one:ci:private
+`)
+	_, err = AppendOnBehalfOf([]byte("The comment body."), "", innerRepo)
+	var derr *DeskError
+	if !errors.As(err, &derr) || derr.Code != ExitRefused {
+		t.Fatalf("AppendOnBehalfOf(%q) with no neutral name = %v, want ExitRefused", innerRepo, err)
+	}
+}

@@ -11,8 +11,9 @@ package deskkit
 // So the DEFAULT is one line carrying a digest of the full block, and the full block prints
 // whenever any of these holds:
 //
-//   - the configuration carries a problem or an unrecognised key — those lines are never quieter
-//     than they were (the REFUSED and unrecognised-keys lines are part of the full block);
+//   - the configuration carries a problem, an unrecognised key or a NOTICE (an entry not applied)
+//     — those lines are never quieter than they were (the REFUSED, unrecognised-keys and NOTICE
+//     lines are part of the full block);
 //   - the run is in CI (CI=true, or GITHUB_ACTIONS=true), so CI history keeps the whole block;
 //   - ASSAY_CONFIG_ECHO=full is set — or ASSAY_CONFIG_ECHO holds any value other than
 //     "compact": an unrecognised value never makes the echo quieter. This forced form is
@@ -132,6 +133,10 @@ func writeConfigHelpNotice(w io.Writer, c Config) {
 	if len(c.UnknownKeys) > 0 {
 		_, _ = fmt.Fprintf(w, "assay-config: unrecognised-keys=%s (IGNORED)\n", strings.Join(c.UnknownKeys, ","))
 	}
+	if len(c.Notices) > 0 {
+		_, _ = fmt.Fprintf(w, "assay-config: NOTICE — %d roster entr(ies) not applied; run the verb to see them\n",
+			len(c.Notices))
+	}
 }
 
 // UnsurfacedEchoEnv returns env with ASSAY_CONFIG_ECHO=full in place of any existing setting. A
@@ -245,7 +250,7 @@ func echoInCI() bool {
 // digest differs from the last recorded one (or the record is unreadable). It reads the state file
 // but never writes it; writeConfigEcho records once the block is out.
 func configEchoForm(c Config, sum, statePath string) (full, record bool) {
-	if len(c.Problems) > 0 || len(c.UnknownKeys) > 0 {
+	if len(c.Problems) > 0 || len(c.UnknownKeys) > 0 || len(c.Notices) > 0 {
 		return true, false
 	}
 	if echoInCI() {
