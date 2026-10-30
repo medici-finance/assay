@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,7 +42,7 @@ func TestDeclaredReceiptForms(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, p := range []string{"tools/a.go", "tools/pkg/one.go", "tools/pkg/sub/two.go"} {
-				if _, ok := r.Inputs["file:"+p]; !ok {
+				if !coveredByDigest(r.Inputs, p) {
 					t.Errorf("omitted declared deliverable %s", p)
 				}
 			}
@@ -50,6 +51,19 @@ func TestDeclaredReceiptForms(t *testing.T) {
 			}
 		})
 	}
+}
+
+// coveredByDigest: p has its own file: key, or a directory holding it has a file:<dir>/ key.
+func coveredByDigest(inputs map[string]string, p string) bool {
+	if inputs["file:"+p] != "" {
+		return true
+	}
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		if inputs[DirInputKey(d)] != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // regression: #2798

@@ -454,9 +454,10 @@ func CheckSuppliedReceipt(r WakeReceipt) error {
 // A pass record is returned unchanged. A verify-fail or blocked record gets a complete
 // verify-wake-v1 receipt:
 //
-//   - inputs: one file:<path> key per declared path that exists at the record's sha (every
-//     file under a declared directory), read from the brief AT that sha; plus
-//     file:<brief-path> hashed as the brief lands; plus tool = in.ToolVersion;
+//   - inputs: one scope: membership key per declaration and one file:<path> key per declared
+//     file that exists at the record's sha, read from the brief AT that sha; a declared
+//     directory is one file:<dir>/ key over every member (DirInputDigest) unless it holds the
+//     brief; plus file:<brief-path> hashed as the brief lands; plus tool = in.ToolVersion;
 //   - wake_predicate relevant-input-changed, wake_schema, a stable receipt_id, tool_version;
 //   - repo = in.Repo (the landing repository) when the record names none, so the planner reads
 //     a bare #N blocker_ref in the repository the record lands in.
@@ -511,12 +512,50 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 		return nil, err
 	}
 	inputs := scope.Shapes
-	for _, f := range scope.Files {
+	digests := map[string]string{}
+	digestOf := func(f string) (string, error) {
+		if d, ok := digests[f]; ok {
+			return d, nil
+		}
 		b, rerr := tree.ReadFile(f)
 		if rerr != nil {
-			return nil, Unverifiable("could-not-check: inputs — cannot read "+f+" at "+sha, rerr)
+			return "", Unverifiable("could-not-check: inputs — cannot read "+f+" at "+sha, rerr)
 		}
-		inputs[inputKeyFilePrefix+f] = Sha256Hex(b)
+		digests[f] = Sha256Hex(b)
+		return digests[f], nil
+	}
+	// #4865: a declared directory's members are covered by ONE file:<dir>/ digest over
+	// their paths and content, never by one file:<member> key each, so no member name can
+	// put a 64-hex digest after a credential-shaped identifier. A directory holding the
+	// brief keeps one key per member: the brief's own file: key is the one input a pending
+	// landing substitutes, and the brief's bytes must not hide inside a directory digest.
+	folded := map[string]bool{}
+	for dir, members := range scope.Dirs {
+		holdsBrief := false
+		for _, f := range members {
+			holdsBrief = holdsBrief || f == in.BriefPath
+		}
+		if holdsBrief {
+			continue
+		}
+		d, derr := DirInputDigest(members, digestOf)
+		if derr != nil {
+			return nil, derr
+		}
+		inputs[DirInputKey(dir)] = d
+		for _, f := range members {
+			folded[f] = true
+		}
+	}
+	for _, f := range scope.Files {
+		if folded[f] {
+			continue
+		}
+		d, derr := digestOf(f)
+		if derr != nil {
+			return nil, derr
+		}
+		inputs[inputKeyFilePrefix+f] = d
 	}
 	inputs[inputKeyFilePrefix+in.BriefPath] = Sha256Hex(in.LandedBrief)
 	inputs[inputKeyTool] = in.ToolVersion
