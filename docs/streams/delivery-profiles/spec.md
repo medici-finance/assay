@@ -259,3 +259,9 @@ installed pin, ready flip, merge or actual milestone acceptance is authorized by
 A material source change requires architecture pickup with source/consumer revisions,
 coverage and continue/adapt/hold. Existing in-flight work and completed Evidence survive;
 this draft is not a veto over approved work. All implementation tests are future work.
+
+## Authoring validation record
+
+See [the source-bound authoring validation](authoring-validation.md) for observed
+checks and the publication-runner investigation. It supplies no implementation,
+independent verification or milestone acceptance evidence.
