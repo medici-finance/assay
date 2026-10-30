@@ -419,7 +419,8 @@ func TestVerbClassification(t *testing.T) {
 				t.Errorf("isReadOnly(%q, [%s]) = false, want true — the bare form is read-only", cli, v)
 			}
 			for f := range listed {
-				if !isReadOnly(cli, []string{v, f, "x"}) || !isReadOnly(cli, []string{v, f + "=x"}) {
+				if !isReadOnly(cli, []string{v, f, "x"}) || !isReadOnly(cli, []string{v, f + "=x"}) ||
+					!isReadOnly(cli, []string{f + "=x", v}) {
 					t.Errorf("isReadOnly(%q, [%s %s x]) = false, want true — a listed flag is classified", cli, v, f)
 				}
 			}
@@ -429,10 +430,20 @@ func TestVerbClassification(t *testing.T) {
 				{"-n", "node1", "--added-upstream"},
 				{"x"},
 				{"--", "x"},
+				{"", "--added-upstream"},
 			} {
 				args := append([]string{v}, extra...)
 				if isReadOnly(cli, args) {
 					t.Errorf("isReadOnly(%q, %v) = true, want false — an unlisted argument after a flag-restricted verb", cli, args)
+				}
+			}
+			for _, pre := range [][]string{
+				{"--added-upstream=true"},
+				{"-n", "node1", "--added-upstream=true"},
+			} {
+				args := append(append([]string{}, pre...), v)
+				if isReadOnly(cli, args) {
+					t.Errorf("isReadOnly(%q, %v) = true, want false — an unlisted flag before a flag-restricted verb", cli, args)
 				}
 			}
 		}
@@ -485,6 +496,15 @@ func TestFlagRestrictedVerb(t *testing.T) {
 		{[]string{"probe", "-n", "a"}, true, "an empty list still classifies the CLI's value flags"},
 		{[]string{"probe", "--window", "5m"}, false, "another verb's listed flag is not listed here"},
 		{[]string{"plain", "--extra", "x"}, true, "an unrestricted verb is unaffected"},
+		{[]string{"--extra=1", "plain"}, true, "an unrestricted verb is unaffected by a pre-verb = flag"},
+		{[]string{"--extra=1", "peek"}, false, "an unlisted flag in = form before the verb"},
+		{[]string{"-n", "a", "--extra=1", "peek"}, false, "an unlisted = flag after a listed pre-verb flag"},
+		{[]string{"--window=5m", "peek"}, true, "a listed flag in = form before the verb"},
+		{[]string{"--nodes=a", "peek"}, true, "a CLI value flag in = form before the verb"},
+		{[]string{"--window=5m", "probe"}, false, "another verb's listed flag before the verb is not listed here"},
+		{[]string{"peek", "", "--extra"}, false, "an empty argument does not hide the arguments after it"},
+		{[]string{"peek", ""}, false, "an empty argument is unclassified"},
+		{[]string{"peek", "--window=5m", "x"}, false, "a listed = flag consumes nothing, so the token after it is positional"},
 	}
 	for _, c := range cases {
 		if got := isReadOnly(cli, c.args); got != c.readOnly {
@@ -492,13 +512,22 @@ func TestFlagRestrictedVerb(t *testing.T) {
 		}
 	}
 
-	v := decide(cli, []string{"peek", "--window", "5m", "--extra"}, tierReadOnly)
-	if v.allow || v.code != 5 {
-		t.Errorf("decide: allow=%v code=%d, want a refusal with exit 5", v.allow, v.code)
-	}
-	for _, want := range []string{`"peek"`, `"--extra"`, "only with", "mutate"} {
-		if !strings.Contains(v.reason, want) {
-			t.Errorf("the refusal does not name %s; reason %q", want, v.reason)
+	for _, d := range []struct {
+		args []string
+		name string
+	}{
+		{[]string{"peek", "--window", "5m", "--extra"}, `"--extra"`},
+		{[]string{"--extra=1", "peek"}, `"--extra=1"`},
+		{[]string{"peek", "", "--extra"}, `""`},
+	} {
+		v := decide(cli, d.args, tierReadOnly)
+		if v.allow || v.code != 5 {
+			t.Errorf("decide(%v): allow=%v code=%d, want a refusal with exit 5", d.args, v.allow, v.code)
+		}
+		for _, want := range []string{`"peek"`, d.name, "only with", "mutate"} {
+			if !strings.Contains(v.reason, want) {
+				t.Errorf("decide(%v): the refusal does not name %s; reason %q", d.args, want, v.reason)
+			}
 		}
 	}
 }
@@ -530,6 +559,18 @@ func TestROTierFlagRestricted(t *testing.T) {
 			}
 			if !strings.Contains(got.stderr, `"--added-upstream"`) {
 				t.Errorf("%s with an unlisted flag: the refusal does not name the flag; stderr %q", cli, got.stderr)
+			}
+			for _, args := range [][]string{
+				{"--added-upstream=true", v},
+				{v, "", "--added-upstream"},
+			} {
+				got = h.invoke(t, cli, "1", nil, args...)
+				if got.code != 5 {
+					t.Errorf("%s %q: exit = %d, want 5; stderr %q", cli, args, got.code, got.stderr)
+				}
+				if strings.Contains(got.stdout, marker) {
+					t.Errorf("%s %q: the fixture ran under the read-only opt-in; stdout %q", cli, args, got.stdout)
+				}
 			}
 		}
 	}
