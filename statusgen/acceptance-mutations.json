@@ -132,6 +132,18 @@
       "file": "acceptancetransition.go",
       "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {",
       "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {"
+    },
+    {
+      "name": "placeholder quotation requirement omitted",
+      "file": "acceptancetransition.go",
+      "old": "if !strings.HasPrefix(line, \">\") {",
+      "new": "if false && !strings.HasPrefix(line, \">\") {"
+    },
+    {
+      "name": "placeholder exact quotation widened to containment",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if strings.Contains(line, placeholder) {"
     }
   ]
 }
