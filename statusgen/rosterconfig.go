@@ -330,6 +330,15 @@ const (
 	// EnvGitLabSessionEmails.
 	scanEnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 
+	// scanEnvGitLabRoleEmails (ASSAY_GITLAB_ROLE_EMAILS) binds each GitLab desk role to its
+	// own commit address (`role=email`, #4978), CONSUMED only by the desk's worktree
+	// commit-identity stamper (deskkit's RoleGitLabCommitIdentity). statusgen stamps no
+	// worktree and consumes it in no form — but it lives in the SAME shared roster.env, so
+	// it is recognised here or binding per-role addresses would collapse statusgen's whole
+	// configuration. Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvGitLabRoleEmails.
+	scanEnvGitLabRoleEmails = "ASSAY_GITLAB_ROLE_EMAILS"
+
 	// scanEnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is the OFFLINE fallback that
 	// lets the Evidence-actor gate accept a GitLab service-account Evidence commit on the
 	// `--lint` (offline, network-free) path (#1477). A GitLab account has a username AND a

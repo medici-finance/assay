@@ -190,6 +190,29 @@ forge-aware (#655): on a GitLab adopter `token-mint-cold` verifies the
 not GitHub App PEMs. Any older PEM-oriented remediation you still see is GitHub-path leftover —
 a GitLab deployment has no PEMs to install.
 
+**Each role's own commit address — `ASSAY_GITLAB_ROLE_EMAILS` (#4978).** `deskwt role-init`,
+`deskwt add --role` and `deskdispatch` stamp a GitLab role's worktree `user.email`. A
+service-account noreply address carries a group id and a per-account suffix the roster entry
+does not, so the tools cannot build it from `ASSAY_TRUSTED_BOT_SLUGS`, and
+`ASSAY_GITLAB_SESSION_EMAILS` is a flat list that does not say which address is whose. When more
+than one role commits as its own service account, bind each role to its address:
+
+```
+ASSAY_GITLAB_ROLE_EMAILS=verifier=service_account_group_1234_ab12cd@noreply.gitlab.example.com,worker=service_account_group_1234_ef34gh@noreply.gitlab.example.com
+```
+
+Read each account's address from `GET /api/v4/user` authenticated as that role (its
+`commit_email`). Every bound address must already be one the commit-identity preflight accepts
+(the service-account noreply shape, or an `ASSAY_GITLAB_SESSION_EMAILS` entry), each role must be
+bound to a `gitlab:` identity, and one address may not be bound to two accounts. A value that
+breaks any rule shows as `INVALID` in the effective-config block the desk tools print, and every GitLab role then refuses to
+stamp (exit 5) until it is fixed; the rest of the roster keeps working. Without a binding, a
+role takes the session list only when that list names one address unambiguously: a single
+session-user address (every role commits as that user — the two-identity model), or a single
+service-account address when only one GitLab account is bound. A list of several addresses, or
+one service-account address shared by several bound accounts, refuses and names this key —
+before #4978 the tools took the first entry for every role.
+
 ## 2. Provisioning script — `tools/create-fleet-gitlab.sh`
 
 **On Windows, prefer `deskfleet provision` instead — this section is the fallback.**
