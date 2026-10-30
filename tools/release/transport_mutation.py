@@ -13,7 +13,7 @@ FILES = ('tools/release/transport.py', 'tools/release/transport_test.py',
          'tools/release/transport_workflow_test.py', 'tools/release/images_test.py',
          'tools/release/images_contract.py', 'tools/release/bundles.py',
          'tools/release/install-object-client.sh', '.github/workflows/release.yml',
-         'ci/staged-workflows/release.yml')
+         'ci/staged-workflows/release.yml', '.github/workflows/ci.yml')
 RUNTIME = 'tools/release/transport.py'
 WORKFLOW = '.github/workflows/release.yml'
 CASES = (
@@ -32,6 +32,14 @@ CASES = (
  ('workflow-expected-digest', WORKFLOW, '--expected-sha256 "$BUNDLE_SHA256"', '--unused-expected-digest "$BUNDLE_SHA256"'),
  ('workflow-trusted-output', WORKFLOW, 'BUNDLE_SHA256: ${{ needs.artifacts.outputs.bundle_sha256 }}', 'BUNDLE_SHA256: ${{ secrets.UNTRUSTED_DIGEST }}'),
  ('installer-checksum', 'tools/release/install-object-client.sh', ' | sha256sum -c -', ' | cat'),
+ ('producer-attempt-output', RUNTIME, "handoff_attempt=meta['attempt']", "handoff_attempt='wrong-attempt'"),
+ ('publisher-rerun-attempt', WORKFLOW, 'RELEASE_ATTEMPT: ${{ needs.artifacts.outputs.handoff_attempt }}', 'RELEASE_ATTEMPT: ${{ github.run_attempt }}'),
+ ('producer-fixed-runner', WORKFLOW, 'runs-on: assay-release-object-builder', 'runs-on: general-ci'),
+ ('publisher-fixed-runner', WORKFLOW, 'runs-on: assay-release-object-publisher', 'runs-on: general-ci'),
+ ('ci-transport-suite', '.github/workflows/ci.yml', 'tools.release.transport_test', 'tools.release.images_test'),
+ ('ci-workflow-suite', '.github/workflows/ci.yml', 'tools.release.transport_workflow_test', 'tools.release.images_test'),
+ ('ci-transport-mutations', '.github/workflows/ci.yml', 'python3 -B -m tools.release.transport_mutation --out', 'python3 -B -m tools.release.go_cache_mutation --out'),
+ ('upload-length-confirmation', RUNTIME, "not isinstance(got, dict) or type(got.get('ContentLength')) is not int or got['ContentLength'] != Path(bundle).stat().st_size", 'False'),
 )
 CONTROL = ('refuse-healthy-input', RUNTIME, 'def _regular(path):', "def _regular(path):\n    raise ValueError('distinct broken-reader control')")
 

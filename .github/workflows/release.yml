@@ -29,11 +29,12 @@ name: release
 # recursion guard never applies. (It still suppresses a second, duplicate run of
 # this workflow when the tag lands — which is exactly what we want.)
 #
-# WHERE THIS RUNS — a self-hosted runner labelled `medici-builder-release`, a
-# DEDICATED release-only label, separate from the label the general CI pipeline
-# uses. Binary/test jobs use that label; the single approved publisher uses
-# the dedicated daemonful `medici-builder-public-release` label. The release
-# pipeline never shares runners with general CI. (PREREQUISITE — a repo-admin act:
+# WHERE THIS RUNS — binary/test jobs keep their dedicated release-only pool.
+# The object producer and approved publisher use fixed, reviewed labels
+# `assay-release-object-builder` and `assay-release-object-publisher`; repository
+# variables cannot redirect either privileged job. Both pools must be dedicated,
+# ephemeral and separate from general CI. Provision and qualify them BEFORE
+# merging: merge activates this routing. (PREREQUISITE — a repo-admin act:
 # a runner registered with the `medici-builder-release` label must exist before
 # a release can run.) Go is installed BY HAND from go.dev/dl (NOT
 # actions/setup-go): that runner does not reach GitHub's release-asset CDN
@@ -877,7 +878,7 @@ jobs:
     # nothing would validate nothing. So the checkout / Go install / build /
     # checksum steps run unconditionally. This job has no publishing step or
     # repository write permission; release publication follows the image gate.
-    runs-on: ${{ vars.RELEASE_OBJECT_PRODUCER_RUNNER }}
+    runs-on: assay-release-object-builder
     environment: release-object-store-producer
     permissions:
       contents: read
@@ -895,6 +896,7 @@ jobs:
       bundle_sha256: ${{ steps.object-store.outputs.bundle_sha256 }}
       manifest_sha256: ${{ steps.object-store.outputs.manifest_sha256 }}
       bundle_bytes: ${{ steps.object-store.outputs.bundle_bytes }}
+      handoff_attempt: ${{ steps.object-store.outputs.handoff_attempt }}
     steps:
       # persist-credentials:false (H2) — do NOT leave the contents:write token in
       # .git/config while `go build` compiles arbitrary repo code below. The tag
@@ -1659,7 +1661,7 @@ jobs:
 
   release:
     needs: [resolve, guard, test, artifacts, runner-arm64]
-    runs-on: ${{ vars.RELEASE_OBJECT_PUBLISHER_RUNNER }}
+    runs-on: assay-release-object-publisher
     # One approval covers every publication write: images first, then tag/assets.
     environment: release
     concurrency:
@@ -1693,7 +1695,7 @@ jobs:
           RELEASE_OBJECT_CA_BUNDLE: ${{ secrets.RELEASE_OBJECT_CA_BUNDLE }}
           REPOSITORY: ${{ github.repository }}
           RELEASE_RUN: ${{ github.run_id }}
-          RELEASE_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_ATTEMPT: ${{ needs.artifacts.outputs.handoff_attempt }}
           BASE_SHA: ${{ github.sha }}
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}

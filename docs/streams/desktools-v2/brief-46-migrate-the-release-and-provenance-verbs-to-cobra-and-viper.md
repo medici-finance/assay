@@ -7,7 +7,7 @@ why: >-
   option forms arrive without changing manifests, pins or provenance output.
 wave: 3
 depends: ["desktools-v2/16"]
-unblocks: ["desktools-v2/17"]
+unblocks: ["desktools-v2/17", "desktools-v2/78", "desktools-v2/79"]
 effort: "L"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}

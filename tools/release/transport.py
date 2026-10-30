@@ -106,7 +106,7 @@ def prepare(root, bundle, meta):
     if bundle.stat().st_size > MAX_BUNDLE:
         raise ValueError('release bundle exceeds the transfer bound')
     return dict(bundle_sha256=sha256_file(bundle), manifest_sha256=hashlib.sha256(manifest).hexdigest(),
-                bundle_bytes=bundle.stat().st_size)
+                bundle_bytes=bundle.stat().st_size, handoff_attempt=meta['attempt'])
 
 
 def restore(bundle, destination, meta, expected_digest, expected_manifest, expected_size):
@@ -215,13 +215,13 @@ class Store:
         self.call('s3', 'cp', str(bundle), 's3://' + self.bucket + '/' + key,
                   '--only-show-errors', '--no-progress')
         got = _json(self.call('s3api', 'head-object', '--bucket', self.bucket, '--key', key, '--output', 'json'))
-        if got.get('ContentLength') != Path(bundle).stat().st_size:
+        if not isinstance(got, dict) or type(got.get('ContentLength')) is not int or got['ContentLength'] != Path(bundle).stat().st_size:
             raise ValueError('stored release object length was not confirmed')
 
     def download(self, key, bundle, expected_size):
         print('target: release object ' + key, flush=True)
         got = _json(self.call('s3api', 'head-object', '--bucket', self.bucket, '--key', key, '--output', 'json'))
-        if type(got.get('ContentLength')) is not int or got['ContentLength'] != expected_size:
+        if not isinstance(got, dict) or type(got.get('ContentLength')) is not int or got['ContentLength'] != expected_size:
             raise ValueError('stored release object differs from the trusted length')
         self.call('s3api', 'get-object', '--bucket', self.bucket, '--key', key,
                   '--range', 'bytes=0-' + str(expected_size - 1), str(bundle))

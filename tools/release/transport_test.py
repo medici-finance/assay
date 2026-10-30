@@ -65,6 +65,34 @@ class TransportTest(unittest.TestCase):
         self.assertEqual(other.read_bytes(), self.bundle.read_bytes())
 
     # regression: #4887
+    def test_publisher_only_rerun_retains_the_original_attempt(self):
+        self.assertEqual(self.proof['handoff_attempt'], '2')
+        rerun = dict(self.meta, attempt='3')
+        self.assertNotEqual(t.object_key(rerun, self.proof['bundle_sha256']),
+                            t.object_key(self.meta, self.proof['bundle_sha256']))
+        with self.assertRaisesRegex(ValueError, 'different run/source/version'):
+            self.restore(meta=rerun)
+        self.restore(meta=dict(rerun, attempt=self.proof['handoff_attempt']))
+        self.assertEqual((self.root/'out'/'checksums.txt').read_bytes(),
+                         (self.inputs/'checksums.txt').read_bytes())
+
+    # regression: #4887
+    def test_upload_confirms_length_and_rejects_nonobject_head_reply(self):
+        env = dict(RELEASE_OBJECT_ENDPOINT='https://store.example',
+                   RELEASE_OBJECT_BUCKET='release-fixture', RELEASE_OBJECT_REGION='us-east-1',
+                   RELEASE_OBJECT_ACCESS_KEY_ID='fixture-access',
+                   RELEASE_OBJECT_SECRET_ACCESS_KEY='fixture-secret')
+        aws = self.root/'aws'; aws.write_bytes(b'fixture')
+        store = t.Store(str(aws), env)
+        for reply in ('[]', 'null', '42', '{"ContentLength":1}'):
+            with self.subTest(reply=reply), mock.patch.object(store, 'call', side_effect=['', reply]):
+                with self.assertRaises(ValueError):
+                    store.upload(self.bundle, 'key')
+        with mock.patch.object(store, 'call', side_effect=['', json.dumps({'ContentLength':self.bundle.stat().st_size})]) as call:
+            store.upload(self.bundle, 'key')
+            self.assertEqual(call.call_count, 2)
+
+    # regression: #4887
     def test_expected_hashes_size_and_metadata_are_required(self):
         cases = [dict(expected_digest='c'*64), dict(expected_manifest='d'*64),
                  dict(expected_size=self.proof['bundle_bytes']+1), dict(expected_size=t.MAX_BUNDLE+1),

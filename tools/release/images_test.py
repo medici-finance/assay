@@ -65,7 +65,7 @@ def publication_problems(text):
     needs = {item.strip() for item in match.group(1).split(',')} if match else set()
     if not {'resolve', 'guard', 'test', 'artifacts', 'runner-arm64'} <= needs:
         problems.append('publication must wait for all preparation gates')
-    if 'runs-on: ${{ vars.RELEASE_OBJECT_PUBLISHER_RUNNER }}' not in publisher:
+    if '    runs-on: assay-release-object-publisher\n' not in publisher:
         problems.append('publisher needs the dedicated Docker-capable release runner')
     for permission in ('contents', 'packages'):
         if not re.search(r'^      ' + permission + r': write$', publisher, re.M):
