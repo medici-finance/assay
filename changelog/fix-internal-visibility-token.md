@@ -3,3 +3,4 @@
 
 ### Changed
 - A live-`internal` repo tagged `:public` is now refused. Retag it `:internal`.
+- The outbound house callout's `visibility` field keeps its documented three values: an `:internal` target is sent as `public`, the exposure class it is gated under.

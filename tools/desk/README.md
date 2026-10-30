@@ -1005,6 +1005,7 @@ contract, and the fail-closed guarantees) is documented in
 |---|---|
 | repo outside the fixed allowed set | risk-classed (no policy is never a waiver) |
 | repo compiled in as PUBLIC | risk-classed |
+| repo compiled in as INTERNAL (visible instance-wide) | risk-classed, exactly like PUBLIC |
 | repo in the set with no stated visibility (zero value) | risk-classed |
 | changed-file list empty | risk-classed (a PR always changes ≥1 file) |
 | changed-file list short of GitHub's `changed_files` | **unverifiable** (exit 6) |
@@ -1363,7 +1364,8 @@ It receives ONE JSON object on stdin:
 ```
 
 `visibility` is `public`, `private` or `unknown` (a target the roster does not list is
-`unknown`, never `private`). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
+`unknown`, never `private`; a target listed `:internal` is sent as `public`, the exposure
+class it is gated under, so no other value ever arrives). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
 `commit` or `ref`. A field with no text is not sent. The object is one line.
 
 Each `text` is a JSON string, and the callout must **decode** it before matching anything
@@ -6342,8 +6344,10 @@ The dispatcher creates an isolated tracking checkout outside both source roots a
 retains its exact location in local run metadata. The tracking repository owns the
 attestation issue, Evidence and outcome records; no tracking file is copied into the
 deliverable tree. Private tracking with a public deliverable, and two separate private
-repositories, are supported. Unknown visibility or a public tracking destination for a
-restricted deliverable refuses. Prompts and packets are local, owner-only files outside
+repositories, are supported. Exposure ranks private < internal < public, and the tracking
+repository may never be more exposed than the deliverable: an internal tracker refuses a
+private deliverable, and a public tracker refuses a private or internal one. Unknown
+visibility on either side refuses. Prompts and packets are local, owner-only files outside
 Git trees; they must not be published. The packet names both immutable revisions, reads
 its brief/history from tracking, and checks both heads before returning.
 
