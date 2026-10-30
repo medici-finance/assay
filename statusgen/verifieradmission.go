@@ -16,14 +16,7 @@ import (
 // (cross-repository) receipt, the admitted deliverable home the rows must run
 // in; a version-1 or unadmitted run returns no home.
 func verifierAdmission(root, brief string) (string, string, string, error) {
-	required := strings.Contains(strings.ToLower(os.Getenv("DESK_LOOP")), "verify")
-	meta, e := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "assay-verifier-attestation.json").Output()
-	if e == nil {
-		if _, err := os.Stat(strings.TrimSpace(string(meta))); err == nil {
-			required = true
-		}
-	}
-	if !required {
+	if !verifierAdmissionMarked(root) {
 		return "", brief, "", nil
 	}
 	out, err := exec.Command("deskdispatch", "--check-verifier", "--root", root, "--brief", brief).Output()
@@ -127,7 +120,10 @@ func sameDirectory(a, b string) bool {
 // longer inherits one from the invoking environment. That is hygiene against
 // ambient inheritance, not containment. The invoking process keeps them: its
 // own forge reads (the acceptance-approval read) happen there, from
-// os.Getenv, and this function only builds the rows' copy.
+// os.Getenv, and this function only builds the rows' copy. With none of them
+// set, neither the invoking process nor a statusgen started inside a row
+// falls back to a stored forge login (storedLoginRefusal, forgecredential.go):
+// such a read is a could-not-check.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
@@ -142,7 +138,11 @@ func sameDirectory(a, b string) bool {
 // another's startup environment (ps -E on macOS, /proc/<pid>/environ on
 // Linux), which keeps the forge credential variables. A row that looks for a
 // credential can therefore still find one; this removal does not stop it.
-// An unadmitted run keeps the caller's environment.
+// Nor does the stored-login refusal above: it governs statusgen's own reads,
+// its markers live in a row's environment and working tree, where the row
+// can remove them, and a row that runs the forge CLI itself still finds the
+// stored login. Containment is a runner that holds no credential but the
+// verifier's own. An unadmitted run keeps the caller's environment.
 func admittedRowEnv(environ []string) []string {
 	home := ""
 	for _, kv := range environ {

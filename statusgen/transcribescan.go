@@ -71,9 +71,9 @@ type authorResolver func(repo string, issue int) (authorIdentity, error)
 
 // ghAuthorResolver is the default authorResolver: `gh api` for one issue's user.
 func ghAuthorResolver(repo string, issue int) (authorIdentity, error) {
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/issues/%d", repo, issue),
-		"--jq", "{login: .user.login, id: .user.id, type: .user.type}").Output()
+		"--jq", "{login: .user.login, id: .user.id, type: .user.type}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -103,9 +103,9 @@ func ghCommentResolver(url string) (authorIdentity, string, error) {
 	if !ok {
 		return authorIdentity{}, "", fmt.Errorf("cannot parse comment URL %q", url)
 	}
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/issues/comments/%s", repo, id),
-		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body}").Output()
+		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {

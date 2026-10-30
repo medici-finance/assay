@@ -129,8 +129,11 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // the row's own, inherited), the container hand-off (which runs no row on
 // the host) and the provenance git reads' environment (historyGitEnv: it only
 // wraps historyGit's literal `git` reads, which start no Verify row, and adds
-// GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway).
-var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv"}
+// GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway) and the
+// forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
+// which start no Verify row, and only ever removes CELLCTL_GH_AMBIENT and adds
+// a placeholder for an unset token family).
+var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
 var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
