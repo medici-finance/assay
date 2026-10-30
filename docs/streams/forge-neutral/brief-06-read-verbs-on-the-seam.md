@@ -44,13 +44,12 @@ id: 1fd2a256-e5e2-4434-8002-95e702c65ec4
 files:
 - `tools/desk/cmd/deskboard/board.go` — the board's whole read surface.
 - `tools/desk/cmd/issueboard/board.go` — the issue board's read.
-- `tools/desk/cmd/scanloop/trust.go`, `tools/desk/cmd/scanloop/lane.go` — the trust probe and
-  the lane's one write, plus its unresolved-argv launch site.
+- `tools/desk/cmd/scanloop/trust.go`, `tools/desk/cmd/scanloop/lane.go` — the trust probe and the lane's one write, plus its unresolved-argv launch site.
 - `tools/desk/internal/forgeban/allowlist.go` — four permit rows removed, ceiling lowered.
 - `docs/streams/forge-gitlab/inventory.md` — any newly enumerated read op and its consumers.
 
-**Why the risk answers are all `no`.** These are reads. The one write in scope is
-`scanloop`'s `gh pr edit` label call, which rides the label operation `forge-neutral/03`
+**Why the risk answers are all `no`.** These are reads. The one write in scope is `scanloop`'s `gh
+pr edit` label call, which rides the label operation `forge-neutral/03`
 already added under its own gate. No credential, permission or trust decision changes here;
 the custody binding was settled under the human gate in `forge-neutral/01`.
 

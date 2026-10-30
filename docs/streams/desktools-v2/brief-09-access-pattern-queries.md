@@ -45,11 +45,9 @@ id: 264e1b84-3155-4369-8c68-059a35e70645
 
 files:
 - `tools/desk/internal/deskkit/forge.go` — the new typed access-pattern operations (e.g. `ReviewQueueSnapshot`, `HeadSHAsForChanges`, `BoardSweepRead`) and their typed result structs.
-- `forge_github.go`, `forge_gitlab.go` — each backend implements each op as ONE tuned query (GitHub GraphQL document / GitLab equivalent), the document PRIVATE to the backend.
-- The one consumer migrated as proof (the freeze-rule call site) — e.g. `deskboard`'s board
-  sweep or the head-sha review monitor — switched from its N per-item calls to the new op.
-- NEW `docs/streams/desktools-v2/query-cost.md` (planned) — the measured before/after call and
-  GraphQL-point costs for the migrated consumer (one variable per row).
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — each backend implements each op as ONE tuned query (GitHub GraphQL document / GitLab equivalent), the document PRIVATE to the backend.
+- **The one consumer migrated as proof (the freeze-rule call site)** — e.g. `deskboard`'s board sweep or the head-sha review monitor — switched from its N per-item calls to the new op.
+- **NEW** `docs/streams/desktools-v2/query-cost.md` (planned) — the measured before/after call and GraphQL-point costs for the migrated consumer (one variable per row).
 
 single-point-of-failure: none of the credential kind — read-only, no identity change. The
 design control that matters is that a raw query never crosses the interface; the independent

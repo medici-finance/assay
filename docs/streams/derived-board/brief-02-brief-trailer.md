@@ -31,15 +31,9 @@ id: 2cac023b-d17a-4f97-a440-546d95a5f5de
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/trailer.go` (new) — parse/validate `Brief:` and `Issue:`
-  trailers from a PR body: grammar, multiplicity rules, a single `ParseTrailers(body)`.
-- `tools/desk/cmd/deskpr/main.go` — `create` and `update` refuse (exit 5, message names
-  the missing line) unless the body carries exactly one `Brief: <stream>/<NN>` that
-  resolves to a brief file under `--root`, OR `Issue: #<N>` for issue-only work.
-  `--no-brief` is NOT an escape hatch; there is none.
-- `statusgen/prlink.go` (new) — the tree-side half: given a list of (PR number, body,
-  merged-sha) records (the fetch belongs to brief 03), classify each as linked /
-  unlinked / multi-linked. Pure function, unit-tested with fixtures.
+- `tools/desk/internal/deskkit/trailer.go` (new) — parse/validate `Brief:` and `Issue:` trailers from a PR body: grammar, multiplicity rules, a single `ParseTrailers(body)`.
+- `tools/desk/cmd/deskpr/main.go` — `create` and `update` refuse (exit 5, message names the missing line) unless the body carries exactly one `Brief: <stream>/<NN>` that resolves to a brief file under `--root`, OR `Issue: #<N>` for issue-only work. `--no-brief` is NOT an escape hatch; there is none.
+- `statusgen/prlink.go` (new) — the tree-side half: given a list of (PR number, body, merged-sha) records (the fetch belongs to brief 03), classify each as linked / unlinked / multi-linked. Pure function, unit-tested with fixtures.
 - `docs/desk-tools/deskpr.md` (planned) — document the trailer and the refusal.
 
 facts:

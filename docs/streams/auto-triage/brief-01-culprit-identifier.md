@@ -66,8 +66,8 @@ facts:
   (#612), a duplicated abstraction (#536), or any red whose remedy needs a human/design
   call.
 - **leak-sweep is NEVER mechanical.** Its status carries only "withheld content detected";
-  the token and file:line are withheld by design. The classifier emits `check: leak-sweep,
-  file: null, class: judgement` and NEVER attempts to reconstruct the culprit from a diff.
+  the token and file:line are withheld by design. The classifier emits
+  `check: leak-sweep, file: null, class: judgement` and NEVER attempts to reconstruct the culprit from a diff.
 - **Eligibility bound (input provenance).** The identifier accepts CI output ONLY from a
   `push`-**to-`main`** or `schedule`-triggered run — never from a `pull_request`-triggered
   run, and never from a `push` run against any ref other than `main`. A `pull_request` run's
