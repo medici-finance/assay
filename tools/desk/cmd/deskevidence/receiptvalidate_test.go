@@ -112,6 +112,18 @@ func TestReceiptInputsCoverDeliverables(t *testing.T) {
 		}
 	})
 
+	// regression: #4865
+	t.Run("a file:<dir>/ digest covers the directory", func(t *testing.T) {
+		dirKey := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1", "file:foo/": "h"}}
+		if err := validateReceiptInputsCoverDeliverables(dir, dirKey); err != nil {
+			t.Fatalf("file:foo/ must cover every member of foo/: %v", err)
+		}
+		other := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1", "file:fo/": "h", "file:foo/bar.go": "h1"}}
+		if err := validateReceiptInputsCoverDeliverables(dir, other); deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "foo/baz.go") {
+			t.Fatalf("an unrelated directory key covered foo/: %v", err)
+		}
+	})
+
 	t.Run("the brief is read at the record's sha, not the working tree", func(t *testing.T) {
 		wtDir := t.TempDir()
 		rvGitIn(t, wtDir, "init", "-q", "-b", "main")

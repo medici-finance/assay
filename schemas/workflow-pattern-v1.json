@@ -39,6 +39,8 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "kind", "role"],
+        "if": {"properties": {"role": {"const": "human"}}, "required": ["role"]},
+        "then": {"properties": {"kind": {"const": "decision"}, "effects": {"maxItems": 0}}},
         "properties": {
           "id": {
             "description": "The node's identity within this pattern. Referenced by edges, `join`, `risk-input` gate lists and other nodes' `effects[].target`.",
@@ -50,9 +52,9 @@
             "enum": ["artifact", "check", "decision", "effect"]
           },
           "role": {
-            "description": "Exactly one `topology.yaml` `apps:` role this node binds. A pattern names a role, never a login or id — binding is the roster's job.",
+            "description": "A topology role, or human for an effect-free decision only. Human binds no actor or capability; its decision is an external authenticated act.",
             "type": "string",
-            "enum": ["desk", "reviewer", "verifier", "worker"]
+            "enum": ["desk", "reviewer", "verifier", "worker", "human"]
           },
           "inputs": {
             "description": "What this node needs before it can run. `artifact` names the artifact kind it consumes; `revision` optionally pins which revision (e.g. `brief.version`).",
