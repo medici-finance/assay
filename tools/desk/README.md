@@ -3331,6 +3331,18 @@ exit `5`. Any other flag after the verb is taken to consume nothing, so the toke
 as positional — the fail-closed guess on this side of the verb. A lone `-` is positional, as the
 flag parser reads it, and so is anything after a bare `--`.
 
+An allowlist entry can also be **flag-restricted**: read-only only with the flags the guard lists
+for it (`flagRestrictedVerbs` in `cmd/clusterguard/shim.go`). Such a subcommand also accepts flags
+that make it do more than read, and the entry vouches for the reading form, not for every flag the
+CLI may add to it. Every argument of such a call, BEFORE the verb as well as after it, must be a
+flag listed for it or in the CLI's value-flag table (bare or `--flag=value`), or the value such a
+flag consumes; anything else — an unlisted flag, a positional argument, an empty argument, a lone
+`-`, a bare `--` — takes the call off the read-only tier, exit `5`, and the refusal names the
+argument. The pre-verb side matters because the verb scan skips a pre-verb `--flag=value` as
+self-contained, while the CLI's flag parser may still hand that flag to the subcommand. A token
+starting with `-` is never taken as a listed flag's value, so a listed flag cannot hide the flag
+after it, and a `--flag=value` consumes nothing.
+
 Exit `5` is a **refusal, not a fallback trigger**. The message says so explicitly: reaching the
 same CLI by absolute path, by a rebuilt `PATH`, or through another tool is not the sanctioned
 response to it.
