@@ -37,17 +37,17 @@ import (
 //     columns (heldSubjectTable: a blank line or heading above it, every
 //     line at column 0 and live, a GFM delimiter row with the header's cell
 //     count, no backslash in the header, the delimiter or the row, and no
-//     second separator row under it), a
-//     lower-case held or could-not-check in a cell of a subject column — a
-//     header named exactly Obligation or Requirement (heldSubjectColumns),
-//     plural allowed — of a row aligned with the header, in a cell that
-//     names no row (heldNamesRowRe), on a line with no struck span, is not
-//     a disposition (heldInSubject). Such a cell names what a row must
+//     second separator row under it), in a text that also holds a
+//     results table, the lower-case word held in a cell of a subject
+//     column — a header written exactly Obligation or Requirement
+//     (heldSubjectColumns), plural allowed, no emphasis — of a row aligned
+//     with the header, in a cell that names no row (heldNamesRowRe) and
+//     holds no digit, on a line with no struck span and no "<", is not a
+//     disposition (heldInSubject). Such a cell names what a row must
 //     establish ("Addressed and held exclude ordinary work"), never how it
-//     came out. An upper- or mixed-case HELD or could-not-check there, and
-//     every other cell, header and line of the table, is read; so is a
-//     subject cell of a results table, which stays an unrecognised result
-//     column.
+//     came out. could-not-check in any case, HELD or Held there, and every
+//     other cell, header and line of the table, is read; so is a subject
+//     cell of a results table, which stays an unrecognised result column.
 //
 //  2. Exit-code prose. In an entry that holds such a results table, a line
 //     outside every table is still read, with one exception: an occurrence
@@ -1115,9 +1115,9 @@ var (
 	heldKeyColumns   = map[string]bool{"#": true, "row": true, "no.": true, "no": true, "verify row": true, "command": true, "cmd": true}
 	heldOtherColumns = map[string]bool{"expect": true, "expected": true, "date": true, "runner": true,
 		"date / runner": true, "date/runner": true, "date · runner": true, "date runner": true}
-	// heldSubjectColumns are the exact header names (heldNorm) of a subject
-	// column (rule 1, #4993): its cells name the obligation a row must
-	// establish, not the row's outcome.
+	// heldSubjectColumns are the exact header texts, trimmed and lower-cased
+	// but with no emphasis, of a subject column (rule 1, #4993): its cells
+	// name the obligation a row must establish, not the row's outcome.
 	heldSubjectColumns = map[string]bool{"obligation": true, "obligations": true,
 		"requirement": true, "requirements": true}
 )
@@ -1187,10 +1187,12 @@ func heldATXHeading(line string) bool {
 // data row of a table that heldSubjectTable accepts, whose header line is
 // hline with cells header (rule 1, #4993). A row holding a backslash is read
 // whole (nil): the scan's split of an escaped "|" may differ from the page's,
-// which may set the text under another column. So is a row whose cell count
-// differs from its header's, and a cell that names a row (heldNamesRowRe).
+// which may set the text under another column. So is a row holding "<" (inline
+// HTML the scan does not render), and a row whose cell count differs from its
+// header's. A cell that names a row (heldNamesRowRe) or holds a digit ("R2",
+// a count) is not a subject cell.
 func heldSubjectCells(hline string, header [][2]int, line string) [][2]int {
-	if strings.ContainsRune(line, '\\') {
+	if strings.ContainsAny(line, "\\<") {
 		return nil
 	}
 	cells := heldCellRanges(line)
@@ -1199,10 +1201,10 @@ func heldSubjectCells(hline string, header [][2]int, line string) [][2]int {
 	}
 	var out [][2]int
 	for c, rg := range cells {
-		if !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {
+		if !heldSubjectColumns[strings.ToLower(strings.TrimSpace(hline[header[c][0]:header[c][1]]))] {
 			continue
 		}
-		if heldNamesRowRe.MatchString(line[rg[0]:rg[1]]) {
+		if cell := line[rg[0]:rg[1]]; heldNamesRowRe.MatchString(cell) || strings.ContainsAny(cell, "0123456789") {
 			continue
 		}
 		out = append(out, rg)
@@ -1211,15 +1213,14 @@ func heldSubjectCells(hline string, header [][2]int, line string) [][2]int {
 }
 
 // heldInSubject reports whether the occurrence at clean[h[0]:h[1]] lies in a
-// subject cell of read (rule 1, #4993) and is written in lower case. An
-// upper- or mixed-case HELD or could-not-check is the marker form of a
-// disposition and is read wherever it sits. clean must carry no struck cut,
-// so its offsets agree with the line's.
+// subject cell of read (rule 1, #4993) and is the lower-case word held. An
+// upper- or mixed-case HELD is the marker form of a disposition, and
+// could-not-check has no other form, so both are read wherever they sit.
+// clean must carry no struck cut, so its offsets agree with the line's.
 func heldInSubject(clean string, read heldLineRead, h []int) bool {
 	for _, rg := range read.subject {
 		if h[0] >= rg[0] && h[1] <= rg[1] {
-			w := clean[h[0]:h[1]]
-			return w == strings.ToLower(w)
+			return clean[h[0]:h[1]] == "held"
 		}
 	}
 	return false
@@ -1678,6 +1679,16 @@ func heldScanScope(evidence string) heldScope {
 			if !inFence[i] && !heldTableLine(lines[i]) {
 				out[i].prose = true
 			}
+		}
+	}
+
+	// With no results table anywhere in the text there is no row outcome
+	// for a subject cell to stand beside: none is excused (rule 1, #4993).
+	// The check is not per entry: a trace table may sit under its own
+	// level-3 heading, apart from the run it traces.
+	if len(tables) == 0 {
+		for i := range out {
+			out[i].subject = nil
 		}
 	}
 

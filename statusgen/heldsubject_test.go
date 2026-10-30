@@ -34,23 +34,24 @@ func pass(title, note string) string {
 }
 
 // TestHeldScopeSubjectCell: a lower-case held in a subject cell of a table
-// that is not a results table is not a disposition, in an earlier entry and in
-// the last one. A second, planted instance (a Requirement column naming
-// could-not-check) is admitted the same way (defect class).
+// that is not a results table is not a disposition, in an earlier entry, in
+// the last one, and under its own level-3 heading apart from the run (as in
+// verification-handoff/03). A second, planted instance (a Requirement
+// column) is admitted the same way (defect class).
 // regression: #4993
 func TestHeldScopeSubjectCell(t *testing.T) {
 	trace := subjectTable(b03Header, b03Row)
 	req := subjectTable("| Requirement | Owner | Trace |",
-		"| retried could-not-check reads stay owed | scanloop | 1; transient-not-gone |")
+		"| retried reads stay held until a clean pass | scanloop | 1; transient-not-gone |")
 	runHeldLayerCases(t, []heldScanCase{
 		{"b03 row, earlier entry", pass("Run 1", trace) + pass("Run 2", ""), false},
 		{"b03 row, last entry", pass("Run 1", "") + pass("Run 2", trace), false},
 		{"b03 row, one entry", pass("Run 1", trace), false},
 		{"planted requirement row", pass("Run 1", req) + pass("Run 2", ""), false},
-		{"plural, emphasised header", pass("Run 1", subjectTable(
-			"| **Obligations** | Production owner and trace | Original row / control |", b03Row)), false},
-		{"table with no results table", "### Trace\n\n" + trace + "\n**VERIFY: PASS**\n", false},
-		{"heading right above it", "### Trace\n" + trace + "\n**VERIFY: PASS**\n", false},
+		{"plural header", pass("Run 1", subjectTable(
+			"| Obligations | Production owner and trace | Original row / control |", b03Row)), false},
+		{"own section after the run", pass("Run 1", "") + "### Trace\n\n" + trace + "\n**VERIFY: PASS**\n", false},
+		{"heading right above it", pass("Run 1", "#### Trace\n"+trace), false},
 		{"aligned delimiter", pass("Run 1", b03Header+"\n|:---|---:|:-:|\n"+b03Row+"\n"), false},
 	})
 }
@@ -95,9 +96,18 @@ func TestHeldScopeSubjectKeeps(t *testing.T) {
 			"| Addressed work is excluded | held for a runner | 2; control |")), true},
 		{"subject names a row", row("Row 2 held for a runner"), true},
 		{"subject names a key", row("#2 held for a runner"), true},
+		{"subject names rows", row("all rows held for a runner"), true},
 		{"upper-case HELD", row("Addressed and HELD exclude ordinary work"), true},
 		{"mixed-case Held", row("Held and addressed exclude ordinary work"), true},
 		{"upper could-not-check", row("COULD-NOT-CHECK reads stay owed"), true},
+		{"lower could-not-check", row("tamper rejection: could-not-check, no runner online"), true},
+		{"subject holds a digit", row("R2 held for a runner"), true},
+		{"subject holds inline HTML", row("signature check <!-- x --> held"), true},
+		{"emphasised header", pass("Run 1", subjectTable(
+			"| **Obligations** | Production owner and trace | Original row / control |", b03Row)), true},
+		{"underscored header", pass("Run 1", subjectTable(
+			"| _Requirements_ | Production owner and trace | Original row / control |", b03Row)), true},
+		{"no results table anywhere", "### Trace\n\n" + subjectTable(b03Header, b03Row) + "\n**VERIFY: PASS**\n", true},
 		{"struck span on the line", row("~~old~~ addressed and held exclude ordinary work"), true},
 		{"misaligned row", pass("Run 1", subjectTable(b03Header,
 			"| Addressed and held exclude ordinary work | a|b | 2 |")), true},

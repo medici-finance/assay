@@ -1438,26 +1438,26 @@
     {
       "name": "#4993: a subject cell that names a row is not read",
       "file": "heldscope.go",
-      "old": "\t\tif heldNamesRowRe.MatchString(line[rg[0]:rg[1]]) {",
-      "new": "\t\tif false && heldNamesRowRe.MatchString(line[rg[0]:rg[1]]) {"
+      "old": "heldNamesRowRe.MatchString(cell) || strings.ContainsAny(cell, \"0123456789\")",
+      "new": "false || strings.ContainsAny(cell, \"0123456789\")"
     },
     {
       "name": "#4993: an upper- or mixed-case marker in a subject cell is not read",
       "file": "heldscope.go",
-      "old": "\t\t\treturn w == strings.ToLower(w)",
-      "new": "\t\t\treturn w != \"\""
+      "old": "\t\t\treturn clean[h[0]:h[1]] == \"held\"",
+      "new": "\t\t\treturn clean[h[0]:h[1]] != \"\""
     },
     {
       "name": "#4993: every column of a non-results table is a subject column",
       "file": "heldscope.go",
-      "old": "\t\tif !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {",
-      "new": "\t\tif false && !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {"
+      "old": "\t\tif !heldSubjectColumns[strings.ToLower(strings.TrimSpace(hline[header[c][0]:header[c][1]]))] {",
+      "new": "\t\tif false && !heldSubjectColumns[strings.ToLower(strings.TrimSpace(hline[header[c][0]:header[c][1]]))] {"
     },
     {
       "name": "#4993: a subject column matches by prefix, not exactly",
       "file": "heldscope.go",
-      "old": "\t\tif !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {",
-      "new": "\t\tif n := heldNorm(hline[header[c][0]:header[c][1]]); !heldSubjectColumns[n] && !strings.HasPrefix(n, \"obligation\") {"
+      "old": "\t\tif !heldSubjectColumns[strings.ToLower(strings.TrimSpace(hline[header[c][0]:header[c][1]]))] {",
+      "new": "\t\tif n := strings.ToLower(strings.TrimSpace(hline[header[c][0]:header[c][1]])); !heldSubjectColumns[n] && !strings.HasPrefix(n, \"obligation\") {"
     },
     {
       "name": "#4993: a misaligned row's subject cells are excused",
@@ -1522,14 +1522,44 @@
     {
       "name": "#4993: a backslash in a subject row is not checked",
       "file": "heldscope.go",
-      "old": "\tif strings.ContainsRune(line, '\\\\') {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)",
-      "new": "\tif false && strings.ContainsRune(line, '\\\\') {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)"
+      "old": "\tif strings.ContainsAny(line, \"\\\\<\") {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)",
+      "new": "\tif strings.ContainsAny(line, \"<\") {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)"
     },
     {
       "name": "#4993: the subject loop reads one line past the table block",
       "file": "heldscope.go",
       "old": "for r := i + 2; r < j; r++ {\n\t\t\t\t\t\tout[r].subject",
       "new": "for r := i + 2; r <= j && r < len(lines); r++ {\n\t\t\t\t\t\tout[r].subject"
+    },
+    {
+      "name": "#4993: a lower-case could-not-check in a subject cell is excused",
+      "file": "heldscope.go",
+      "old": "\t\t\treturn clean[h[0]:h[1]] == \"held\"",
+      "new": "\t\t\treturn clean[h[0]:h[1]] == strings.ToLower(clean[h[0]:h[1]])"
+    },
+    {
+      "name": "#4993: inline HTML in a subject row is not checked",
+      "file": "heldscope.go",
+      "old": "\tif strings.ContainsAny(line, \"\\\\<\") {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)",
+      "new": "\tif strings.ContainsAny(line, \"\\\\\") {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)"
+    },
+    {
+      "name": "#4993: a digit in a subject cell is not checked",
+      "file": "heldscope.go",
+      "old": "heldNamesRowRe.MatchString(cell) || strings.ContainsAny(cell, \"0123456789\")",
+      "new": "heldNamesRowRe.MatchString(cell) || false && strings.ContainsAny(cell, \"0123456789\")"
+    },
+    {
+      "name": "#4993: an emphasised subject header is matched",
+      "file": "heldscope.go",
+      "old": "\t\tif !heldSubjectColumns[strings.ToLower(strings.TrimSpace(hline[header[c][0]:header[c][1]]))] {",
+      "new": "\t\tif !heldSubjectColumns[heldNorm(hline[header[c][0]:header[c][1]])] {"
+    },
+    {
+      "name": "#4993: a subject cell is excused with no results table",
+      "file": "heldscope.go",
+      "old": "\tif len(tables) == 0 {\n\t\tfor i := range out {",
+      "new": "\tif false && len(tables) == 0 {\n\t\tfor i := range out {"
     }
   ]
 }
