@@ -81,6 +81,11 @@ ruling governs the class from this brief's landing forward.
 4. **#2651 itself is out of scope** — it merges under standing rules; the first
    post-landing reconcile tick is the ruling's caught-by.
 
+files:
+- **edit** — the lane config + rulings.md (Task 2A; exact paths cited at implementation)
+- docs/runsheets/reconcile-lane-hunk.md (planned) — Task 2B only
+- changelog/desk-tools-36.md (planned) — Task 3
+
 ## Task
 
 **Task 1 — locate and read the lane machinery.** Find where deskautolane reads its
@@ -96,11 +101,6 @@ docs/runsheets/reconcile-lane-hunk.md (planned) with the exact workflow/ruleset 
 one-line apply command; the worker touches zero workflow files.
 
 **Task 3 — changelog fragment.** changelog/desk-tools-36.md (planned), one bullet.
-
-files:
-- the lane config + rulings.md (Task 2A; exact paths cited at implementation)
-- docs/runsheets/reconcile-lane-hunk.md (planned) — Task 2B only
-- changelog/desk-tools-36.md (planned) — Task 3
 
 ## Verify (executable — no prose-only DoD items)
 

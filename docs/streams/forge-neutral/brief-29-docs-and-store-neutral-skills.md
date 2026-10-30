@@ -47,10 +47,9 @@ id: ea8fee48-5128-402c-bedc-7add5748d825
 files:
 - `docs/adopting-assay.md`, `docs/adopting-assay-gitlab.md`, `docs/enforcement-model.md`
 - `docs/cellctl.md`, `docs/docker.md`, `containers/README.md`
-- `docs/UPGRADING.txt`, `docs/release-notes/<release N>.md` (planned)
-- `plugins/assay/skills/pr-review-desk/SKILL.md`, `plugins/assay/skills/worker-desk/SKILL.md`,
-  `plugins/assay/skills/pr-shepherd/SKILL.md`, `plugins/assay/skills/the-desk/SKILL.md`
-- `changelog/<branch-slug>.md` (planned)
+- `docs/UPGRADING.txt` — and `docs/release-notes/<release N>.md` (planned)
+- `plugins/assay/skills/pr-review-desk/SKILL.md`, `plugins/assay/skills/worker-desk/SKILL.md`, `plugins/assay/skills/pr-shepherd/SKILL.md`, `plugins/assay/skills/the-desk/SKILL.md`
+- **planned** — `changelog/<branch-slug>.md`
 
 facts:
 - Source of truth: the spec's §4 (stores, what each does not give), §5–§7 (resolution, guards,

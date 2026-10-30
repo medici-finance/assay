@@ -31,29 +31,12 @@ id: 080eab91-2a49-444b-8200-dca9e0f61bd9
 
 ## Context
 files:
-- NEW `qualgen/attribution/provenance.go` (planned) — the `ProvenanceLinkage` adapter
-  interface: given an inducing PR/commit, resolve its chain links (PR -> task/brief ->
-  stream -> spec/ruling) as far as the target's provenance permits. A **generic
-  commit->issue reference adapter** ships as the reference implementation (parses
-  `Fixes/Closes/Refs #N`-style references and the PR's linked issue); richer chains are
-  supplied as configuration, not new mining code.
-- NEW `qualgen/attribution/dossier.go` (planned) — DETERMINISTIC dossier assembly: given a
-  trace from brief-07, gather brief text as it stood at inducing-merge time, the inducing
-  diff, the at-head review verdicts, and any postdating rulings, into a stable, ordered,
-  content-addressed dossier. Same inputs -> byte-identical dossier.
-- NEW `qualgen/attribution/stage.go` (planned) — the stage classifier producing one of
-  `spec` / `brief` / `implementation` / `untraceable`, plus the `review-escape` overlay
-  recorded for every defect (which lanes approved the inducing PR at head). The call MAY
-  be model-assisted, but every call records the exact dossier it decided from and is
-  spot-auditable; a deterministic rule-based classifier is the default and the fallback.
-- NEW `qualgen/attribution/ledger.go` (planned) — the per-stage defect ledger writer:
-  defects/window by stage, per stream, as an APPEND-ONLY artifact under the tracking root
-  (`docs/quality/attribution/`, one file per defect), correctable only by TOMBSTONE
-  amendment, never silent edit.
-- NEW `qualgen/attribution/commitissue_adapter.go` (planned) — the reference
-  commit->issue linkage adapter registered by default.
-- CONSUMES `qualgen/szz/` (planned) trace output from brief-07 (`defects.jsonl`: fix_pr,
-  inducing_commit(s), inducing_pr(s), confidence, evidence tier).
+- **add** `qualgen/attribution/provenance.go` (planned) — the `ProvenanceLinkage` adapter interface: given an inducing PR/commit, resolve its chain links (PR -> task/brief -> stream -> spec/ruling) as far as the target's provenance permits. A **generic commit->issue reference adapter** ships as the reference implementation (parses `Fixes/Closes/Refs #N`-style references and the PR's linked issue); richer chains are supplied as configuration, not new mining code.
+- **add** `qualgen/attribution/dossier.go` (planned) — DETERMINISTIC dossier assembly: given a trace from brief-07, gather brief text as it stood at inducing-merge time, the inducing diff, the at-head review verdicts, and any postdating rulings, into a stable, ordered, content-addressed dossier. Same inputs -> byte-identical dossier.
+- **add** `qualgen/attribution/stage.go` (planned) — the stage classifier producing one of `spec` / `brief` / `implementation` / `untraceable`, plus the `review-escape` overlay recorded for every defect (which lanes approved the inducing PR at head). The call MAY be model-assisted, but every call records the exact dossier it decided from and is spot-auditable; a deterministic rule-based classifier is the default and the fallback.
+- **add** `qualgen/attribution/ledger.go` (planned) — the per-stage defect ledger writer: defects/window by stage, per stream, as an APPEND-ONLY artifact under the tracking root (`docs/quality/attribution/`, one file per defect), correctable only by TOMBSTONE amendment, never silent edit.
+- **add** `qualgen/attribution/commitissue_adapter.go` (planned) — the reference commit->issue linkage adapter registered by default.
+- **consumes** `qualgen/szz/` (planned) — trace output from brief-07 (`defects.jsonl`: fix_pr, inducing_commit(s), inducing_pr(s), confidence, evidence tier).
 
 single-point-of-failure: the stage CALL is a recorded judgment, not a measurement — the
 control that keeps it honest is that the deterministic DOSSIER (the defensible layer) is

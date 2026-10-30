@@ -282,6 +282,59 @@ Pre-mortem — "this shipped and was wrong; what went wrong?":
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — 2026-10-29 — claude-opus-5-5 (strong), source 9e61aee3f8e9
+
+Verified on merged main at source 9e61aee3f8e946198214101938c0420ca37d7f6a (delivered by PR #4539, merge commit c49e6877db03). Brief frontmatter: gate model, every risk answer no, not irreversible.
+
+The check:ci rows 1-6, 8 and 9 ran inside the closed admission bracket: host open-bracket, then the verify-runner v1.0.65 image (linux/amd64) under docker run with network none, read-only root, all capabilities dropped and the receipt mounted read-only, then host close-bracket; the bracket digest reports verdict=match. Row 7 is classed check (it needs git history and the forge-free consumers instrument), so it ran on the host through verifyrun with only that row selected. Both witness blocks below are the tool's own bytes.
+
+#### Container-lane witness (rows 1-6, 8, 9)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateMismatchNotice$' -v . > "${TMPDIR:-/tmp}/sg18-r2.out" 2>&1 && grep -F -e '--- PASS: TestScanGateMismatchNotice' "${TMPDIR:-/tmp}/sg18-r2.out"` | pass exit=0 sandbox=container-netns | sha256:2b7f5c595340 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanGateNoticeWritesNothing$' -v . > "${TMPDIR:-/tmp}/sg18-r3.out" 2>&1 && grep -F -e '--- PASS: TestScanGateNoticeWritesNothing' "${TMPDIR:-/tmp}/sg18-r3.out"` | pass exit=0 sandbox=container-netns | sha256:93fd5e2962cc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | fail exit=1 sandbox=container-netns | sha256:0e25d1bbcf30 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'in it by hand\. .statusgen --scan-issues. prints one .NOTICE. for each such item on every pass' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'naming the issue and the placeholder file, until the file reads .gate: human.' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'mechanical signal that this edit is still owed' "${TMPDIR:-/tmp}/sg18-r5.txt" && grep -q -e 'scan drain does not show it; read it by running .statusgen --root \. --scan-issues --dry-run., which writes nothing\.' "${TMPDIR:-/tmp}/sg18-r5.txt"` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg18-skl" . && "${TMPDIR:-/tmp}/sg18-skl" --root ../..` | pass exit=0 sandbox=container-netns | sha256:aa57cc340c0a | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg18-r8.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg18-r8.out"` | pass exit=0 sandbox=container-netns | sha256:d972e8243ca7 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | pass exit=0 sandbox=container-netns | sha256:54208d57d196 | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:45a7cf09742c66449d44c13be973ed4b287736e750b4de6f320474fc5a2c821b
+Container-Image: sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f
+Verification-Attestation: medici-finance/assay#4836 run=15fd02d3a7a5083f2c4828d21ffa67644535b5d76c5d0b9a53922e19b3487728 source=9e61aee3f8e946198214101938c0420ca37d7f6a brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=15fd02d3a7a5083f2c4828d21ffa67644535b5d76c5d0b9a53922e19b3487728 source=9e61aee3f8e946198214101938c0420ca37d7f6a tree=sha256:45a7cf09742c66449d44c13be973ed4b287736e750b4de6f320474fc5a2c821b witness=sha256:8a67081672870e0cc86f11a13dd48fb798e2c8ad54dc1f3168f3c4c4eb14fb51 opened=2026-10-29T17:51:18Z closed=2026-10-29T18:07:27Z before=receipt after=check-verifier
+
+#### Host witness (row 7)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `! grep -q -e '[:] follow-up statusgen/18' docs/streams/statusgen/brief-18-gate-mismatch-notice.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg18c" . && cd .. && "${TMPDIR:-/tmp}/sg18c" --root . --consumers --brief statusgen/18 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg18-r7.out" 2>&1 && grep -q -F -e 'summary: 4 corroborated, 0 disproved' "${TMPDIR:-/tmp}/sg18-r7.out"` | fail exit=2 | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 9e61aee3f8e9 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4836 run=15fd02d3a7a5083f2c4828d21ffa67644535b5d76c5d0b9a53922e19b3487728 source=9e61aee3f8e946198214101938c0420ca37d7f6a brief=docs/streams/statusgen/brief-18-gate-mismatch-notice.md model=claude-opus-5-5 tier=strong
+
+#### Row accounting
+
+- Rows 1, 2, 3, 5, 6, 8 and 9 pass inside the container lane (7 of 9).
+- Row 4 is could-not-run in this environment: no test failed. The container run of the package suite stopped at the row's own 600s budget (`panic: test timed out after 10m0s`, no failing test reported; the tests still running at the deadline were unrelated to this brief). Two separate causes stand in the way, neither in this brief's delivery: (a) the host was under heavy load from other verifier containers (load average 37-58 on 16 cores), and the emulated linux/amd64 package suite needs well over 600s like that; (b) since this brief merged, the package also contains the witness skew tests TestWitnessSkewOldReader and TestWitnessV1Unchanged (statusgen/36). They fail by design when SG_OLD_BIN is unset, and CI sets it through statusgen/fetch-baseline.sh before go test. Row 4's literal command does not provide it. So at the current source, row 4 as written cannot exit 0 outside CI on any host.
+- Row 7 exits 2 on merged main. That is the consumers instrument's COULD-NOT-CHECK: once merged, the merge-base of main and HEAD is HEAD itself, so the diff is empty and the brief is "not in the diff". Nothing was disproved. The row is pinned to the pre-merge form and cannot pass on merged main.
+
+#### Supplemental host observations — no acceptance credit
+
+All of these were recorded on 2026-10-29 by the same verifier session that produced the witnesses above, at the same source unless a different commit is named.
+
+- Row 4 diagnosis: the full package suite on the darwin-arm64 host, with the budget raised to 40m, finished in 845.8s. 2959 top-level tests passed and exactly two failed: TestWitnessSkewOldReader and TestWitnessV1Unchanged, both reporting "SG_OLD_BIN is unset". Then statusgen/fetch-baseline.sh fetched the v1.0.52 baseline and checked it against that release's checksums.txt (sha256 01aed27b2b90…). With SG_OLD_BIN pointing at it, both tests pass (`--- PASS: TestWitnessSkewOldReader`, `--- PASS: TestWitnessV1Unchanged`, ok 5.254s). Every test in the package therefore passes once CI's precondition is supplied. The only remaining gap is the 600s budget under this host's load.
+- Row 7 post-merge replay, following the instrument's own recipe for a merge commit (check out M^2 and use its own merge-base). It used a scratch clone at PR head b7668886e24f, with refs/remotes/origin/main set to f2e232039c99 (the merge's first parent), so the merge-base resolves to the PR base 8663d6ae0579. Row 7's exact command was run there and exited 0: 4 corroborated, 0 disproved, 2 unchecked as out of scope (two files outside this brief's claims), 0 briefs claiming nothing.
+- Row 2 discrimination (mutations in a scratch clone at the source, reverted afterwards): removing the appended notice gives exit 1, "got 0 mismatch notices, want 3". Dropping the placeholder-gate condition gives exit 1, "got 6 … want 3". Dropping the done-status condition gives exit 1, "got 4 … want 3". The test pins each of the three conditions independently.
+
+#### Risk-bearing values
+
+Enumerated over the delivery diff 8663d6ae0579..b7668886e24f (7 paths). The literals that decide behaviour: the derived-gate comparison == "human" (statusgen/scanissues.go:499), the skip conditions ph.Status == "done" and ph.Gate != "model" (statusgen/scanissues.go:501), the notice text (statusgen/scanissues.go:508), the placeholder key repo + "#" + issue number (statusgen/scanissues.go:439 and :497), the scored-triage sentences (plugins/assay/skills/intake-desk/SKILL.md:207-211), the regenerated cursor manifest digest for intake-desk (.cursor/assay-managed.json:24), and the test's want-count 3 (statusgen/scanissues_test.go:2069). No value is irreversible: the change only detects and writes nothing, which row 3 pins. The top-ranked values are the three gate and status conditions.
+
+RISK-VALUE: "human" / "model" (statusgen/scanissues.go:499, :501) — derived: derivePlaceholderGate returns only these two values (statusgen/placeholder.go:169-176), and Task 2 names the mismatch as derived human against a file reading model. Row 2's mutations show the test fails when the gate condition is dropped.
+RISK-VALUE: "done" (statusgen/scanissues.go:501) — derived: done is the retired-placeholder status the brief excludes from the notice. Row 2's mutation shows the test fails (4 notices, not 3) when the condition is dropped.
+RISK-VALUE: placeholder key repo + "#" + number (statusgen/scanissues.go:439, :497) — derived: the key includes the repository, so the same issue number on a second repository is a different placeholder. Row 2's fixture covers the second-repository case.
+
+**VERIFY: BLOCKED** — 7 of 9 rows pass at source 9e61aee3f8e9. Row 4 is could-not-run here (600s budget exceeded under host load, plus the SG_OLD_BIN precondition added after delivery that only CI supplies; with it supplied, every package test passes). Row 7 is COULD-NOT-CHECK on merged main (pre-merge-pinned row, exit 2; the post-merge replay corroborates 4 of 4 with 0 disproved). No obligation was observed to fail.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

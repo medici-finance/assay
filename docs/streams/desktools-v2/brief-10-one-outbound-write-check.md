@@ -64,16 +64,15 @@ id: 72fc4a5f-6e8f-4c4e-807d-608df5501950
 ## Context
 
 files:
-- NEW `tools/desk/internal/deskkit/outbound.go` (planned) — `OutboundWrite`, `OutboundCheck`,
-  the rule ids.
-- NEW `tools/desk/internal/deskkit/outboundforge.go` (planned) — the checking `Forge` decorator.
-- NEW `tools/desk/internal/deskkit/personaldata.go` (planned) — the generic personal-data pass.
+- **NEW** `tools/desk/internal/deskkit/outbound.go` (planned) — `OutboundWrite`, `OutboundCheck`, the rule ids.
+- **NEW** `tools/desk/internal/deskkit/outboundforge.go` (planned) — the checking `Forge` decorator.
+- **NEW** `tools/desk/internal/deskkit/personaldata.go` (planned) — the generic personal-data pass.
 - `tools/desk/internal/deskkit/forgeresolve.go` — `ResolveForge` returns the decorator.
 - `tools/desk/cmd/deskpr/deskpr.go` (`scanWrite`), `tools/desk/cmd/deskpushguard/` — the push path.
-- every `tools/desk/cmd/*` verb in spec §8.2 — its own scan calls removed, the override flag added.
+- **every** `tools/desk/cmd/*` (verb in spec §8.2) — its own scan calls removed, the override flag added.
 - `tools/desk/internal/forgeban/` and `tools/desk/internal/deskkit/forgeresolve_test.go` — the proof.
-- NEW `tools/desk/internal/deskkit/outbound-mutations.json` (planned) — the fail-first entries, run by `muhar`.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
+- **NEW** `tools/desk/internal/deskkit/outbound-mutations.json` (planned) — the fail-first entries, run by `muhar`.
+- **`changelog/<branch>.md`** — the per-PR fragment this repository requires.
 
 single-point-of-failure: the ONE control is `OutboundCheck` running before a write leaves. Three
 independent layers stand around it, each failing for a different reason in a different place.

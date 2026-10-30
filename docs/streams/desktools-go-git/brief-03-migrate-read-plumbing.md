@@ -31,20 +31,12 @@ id: eb4e2008-8df1-42eb-bc90-ed3a3dec4523
 files:
 - `tools/desk/cmd/writeguard/guard.go`, `tools/desk/cmd/writeguard/main.go` — `rev-parse` reads.
 - `tools/desk/cmd/desksourceguard/verify.go` — `rev-parse` reads.
-- `tools/desk/cmd/deskboard/board.go`, `tools/desk/cmd/deskboard/main.go` — `rev-parse` reads (dozens of tiny
-  reads per run — likely faster in-process).
+- `tools/desk/cmd/deskboard/board.go`, `tools/desk/cmd/deskboard/main.go` — `rev-parse` reads (dozens of tiny reads per run — likely faster in-process).
 - `tools/desk/cmd/deskscanbody/main.go` — `merge-base`, `diff` reads.
-- `tools/desk/internal/deskkit/preflight.go` — read paths only: `remote get-url`, `symbolic-ref`,
-  `config --get`, `rev-parse` (the transport dry-run PROBE is brief 06, not here).
-- `tools/desk/cmd/deskwt/deskwt.go`, `tools/desk/cmd/deskwt/prune.go`, `tools/desk/cmd/deskwt/ambiguousbase.go`,
-  `tools/desk/cmd/deskwt/roleinit.go` — read paths: `status`, `rev-parse`, `rev-list`,
-  `for-each-ref`, repo/global `config --get` reads. (Linked-worktree add/remove/lock/
-  prune and per-worktree `config --worktree` STAY on the binary — out of scope, see spec.)
-- `tools/desk/cmd/deskgit/deskgit.go` — read paths: `for-each-ref`, `rev-parse`
-  (`ls-remote --get-url` collapses to reading `remote.origin.url` — no insteadOf layer).
-  (deskgit's `fetch` is brief 05.)
-- `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskreply/deskreply.go` — `rev-parse`, `rev-list`,
-  `symbolic-ref`, `diff`, repo `config --get` reads. (Their `push` is brief 06.)
+- `tools/desk/internal/deskkit/preflight.go` — read paths only: `remote get-url`, `symbolic-ref`, `config --get`, `rev-parse` (the transport dry-run PROBE is brief 06, not here).
+- `tools/desk/cmd/deskwt/deskwt.go`, `tools/desk/cmd/deskwt/prune.go`, `tools/desk/cmd/deskwt/ambiguousbase.go`, `tools/desk/cmd/deskwt/roleinit.go` — read paths: `status`, `rev-parse`, `rev-list`, `for-each-ref`, repo/global `config --get` reads. (Linked-worktree add/remove/lock/ prune and per-worktree `config --worktree` STAY on the binary — out of scope, see spec.)
+- `tools/desk/cmd/deskgit/deskgit.go` — read paths: `for-each-ref`, `rev-parse` (`ls-remote --get-url` collapses to reading `remote.origin.url` — no insteadOf layer). (deskgit's `fetch` is brief 05.)
+- `tools/desk/cmd/deskpr/deskpr.go`, `tools/desk/cmd/deskreply/deskreply.go` — `rev-parse`, `rev-list`, `symbolic-ref`, `diff`, repo `config --get` reads. (Their `push` is brief 06.)
 - `docs/streams/desktools-go-git/inventory.md` (planned) — tick migrated op families.
 
 facts:
