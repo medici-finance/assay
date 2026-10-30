@@ -10,11 +10,13 @@ depends:
 - graph-execution/29
 - graph-execution/16
 unblocks:
+- delivery-profiles/03
 - graph-execution/22
 - graph-execution/27
 - graph-execution/21
 - performance-collection/09
 - agent-execution/03
+- "delivery-profiles/04"
 effort: L
 gate: human
 risk:

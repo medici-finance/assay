@@ -11,6 +11,7 @@ depends:
 unblocks:
 - graph-execution/27
 - agent-execution/03
+- "delivery-profiles/07"
 effort: L
 gate: human
 risk:
