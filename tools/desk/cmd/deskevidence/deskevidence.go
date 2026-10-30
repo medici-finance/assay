@@ -633,7 +633,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// A verified outcome certifies already committed Evidence. Its attribution and
 	// closure checks must read that exact landed history, never the admitted home's
 	// intentionally older HEAD. Admission above remains against the original home.
-	landedRoot, landedHead, cleanup, err := landedClosureFn(lintRoot, targetRepoPath, remoteContent, commitContent, remoteExists, fg, fr, branch)
+	landedRoot, landedHead, cleanup, err := landedClosureFn(lintRoot, targetRepoPath, remoteContent, commitContent, remoteExists, fg, fr, branch, receipt)
 	if err != nil {
 		return err
 	}

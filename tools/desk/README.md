@@ -6352,6 +6352,12 @@ before a row runs.
 For `deskevidence`, keep `--root <deliverable-home>` and select the **tracking** repository
 and branch; only the isolated tracking brief's Evidence and permitted index row may
 change. Refresh landed Evidence bytes in `BriefRoot` without moving either admitted HEAD.
+A verified outcome then checks its closure at the exact landed tracking commit. The
+`BriefRoot` clone's own `origin/main` is not the tracking repository's fetched main, so
+`deskevidence` fetches that repository's `main` (and a non-`main` landing branch) through
+the clone's HTTPS origin into private `refs/deskevidence-fetch/*` refs under the session's
+token role, and uses that `main` as the landed baseline. No other ref moves. An origin
+that is not plain HTTPS, or a failed fetch, refuses the verified landing.
 The native/interim adapters carry the same two-repository binding through queue, launch
 and landing; native ACP's filesystem fence remains the deliverable home. Container
 execution retains its existing single-root mount boundary, so `--in-container` refuses
