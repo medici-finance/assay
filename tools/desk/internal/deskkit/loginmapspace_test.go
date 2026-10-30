@@ -168,7 +168,7 @@ func TestLoginMapNoticeEchoFull(t *testing.T) {
 // regression: #4978
 func TestLoginMapNoSilentMapping(t *testing.T) {
 	for _, raw := range []string{
-		"grace:grace bob:bob", "grace:grace bob:bob", "grace:grace\vbob:bob",
+		"grace:grace\u00a0bob:bob", "grace:grace\u2028bob:bob", "grace:grace\vbob:bob",
 		"grace:grace, ada :ada-l", "grace:grace, ada\t:ada-l", "grace:grace ada :ada-l",
 	} {
 		c := parseConfig(ClassWrite, "test", spacedMapBase(raw))
@@ -178,7 +178,7 @@ func TestLoginMapNoSilentMapping(t *testing.T) {
 			}
 		}
 	}
-	for _, raw := range []string{"grace:grace, Ada Lovelace:ada-l", "grace:grace, ada :ada-l"} {
+	for _, raw := range []string{"grace:grace, Ada\u00a0Lovelace:ada-l", "grace:grace, ada\u00a0:ada-l"} {
 		c := parseConfig(ClassWrite, "test", spacedMapBase(raw))
 		if !c.Configured() || len(c.HumanLogins) != 1 || c.HumanLogins["grace"] != "grace" {
 			t.Errorf("%q: want only grace mapped, configured; got %v %q", raw, c.HumanLogins, c.Problems)

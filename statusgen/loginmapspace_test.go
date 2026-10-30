@@ -92,7 +92,7 @@ func TestScanLoginMapNoSilentMap(t *testing.T) {
 			return c.HumanLogins
 		}
 		for _, raw := range []string{
-			"grace:grace bob:bob", "grace:grace bob:bob", "grace:grace\vbob:bob",
+			"grace:grace\u00a0bob:bob", "grace:grace\u2028bob:bob", "grace:grace\vbob:bob",
 			"grace:grace, ada :ada-l", "grace:grace, ada\t:ada-l", "grace:grace ada :ada-l",
 		} {
 			for n, l := range pick(scanParseConfig(scanClassReadOnly, "test", scanSpacedBase(key, raw))) {
@@ -101,7 +101,7 @@ func TestScanLoginMapNoSilentMap(t *testing.T) {
 				}
 			}
 		}
-		for _, raw := range []string{"grace:grace, Ada Lovelace:ada-l", "grace:grace, ada :ada-l"} {
+		for _, raw := range []string{"grace:grace, Ada\u00a0Lovelace:ada-l", "grace:grace, ada\u00a0:ada-l"} {
 			c := scanParseConfig(scanClassReadOnly, "test", scanSpacedBase(key, raw))
 			if m := pick(c); !c.Configured() || len(m) != 1 || m["grace"] != "grace" {
 				t.Errorf("%s=%q: want only grace mapped, configured; got %v %q", key, raw, m, c.Problems)
