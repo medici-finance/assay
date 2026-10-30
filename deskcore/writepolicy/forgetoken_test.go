@@ -465,7 +465,7 @@ func TestForgeWordBreak(t *testing.T) {
 		`zsh -c $'gh\` + `u0020auth\` + `u0020token -h example.com'`,
 		`echo -e 'gh config get oauth_token\r' | bash`,
 		`printf 'gh config get oauth_token\x0a' | sh`,
-		`bash -c $'gh\cJstatus'`,
+		`bash -c $'gh\cJ$s\cJstatus\cJ-t'`,
 	})
 }
 
@@ -482,8 +482,6 @@ func TestForgeMentionsRefused(t *testing.T) {
 		"mkdir -p auth",
 		"gh auth status",
 		"gh pr view token",
-		"gh run list --json status,name",
-		"git status && gh pr view 1",
 	})
 }
 
@@ -509,4 +507,75 @@ func TestForgeNoTriggerAllowed(t *testing.T) {
 			t.Errorf("%q: no trigger word, so it must stay allowed", cmd)
 		}
 	}
+}
+
+// regression: #5046
+func TestForgeStatusPrintFlag(t *testing.T) {
+	// `gh` and `status` together refuse only with a token-print flag in the
+	// text. The subcommand is computed here on purpose: a literal `auth`
+	// refuses on its own.
+	forgeRefuseAll(t, []string{
+		`gh "$s" status -t`,
+		`gh "$s" status -at`,
+		`gh "$s" status -ta`,
+		`gh "$s" status -t=1`,
+		`gh "$s" status --show-token`,
+		`gh "$s" status --show-token=true`,
+		`gh "$s" status --hostname example.com -t`,
+		`gh "$s" status "-t"`,
+		`gh "$s" status -"t"`,
+		`gh "$s" status $'-\x74'`,
+		`gh "$s" status --show-tok\en`,
+		"gh \"$s\" status \\" + "\n  -t",
+		`f=-t; gh "$s" status $f`,
+		`f=--show-token; gh "$s" status "$f"`,
+		`/usr/local/bin/gh "$s" status -t`,
+		`T=$(gh "$s" status -t)`,
+		`GH_TOKEN=$(cat "$T") gh "$s" status -t`,
+		"bash <<'E'\ngh \"$s\" status -t\nE",
+		`printf 'gh "$s" status -t' | sh`,
+	})
+}
+
+// regression: #5046
+func TestForgeStatusReadsAllowed(t *testing.T) {
+	// `status` as gh output or another command's word is not the credential
+	// read, with or without a command-scoped GH_TOKEN.
+	for _, cmd := range []string{
+		"git status --short && gh pr view 1 --json state",
+		"gh run view 1 --json status,conclusion",
+		"gh pr checks 1 | grep status",
+		`gh issue list -R x/y --search "status"`,
+		"gh pr view 1 --json statusCheckRollup",
+		"gh api repos/x/y/commits/abc/status",
+		"git status -sb",
+		`GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		"git status && gh pr view 1",
+		"gh run list --json status,name",
+		"gh status",
+		`gh "$s" status`,
+		"gh pr checks 1 | grep -A3 status",
+		`[ "$n" -lt 5 ] && gh run view 1 --json status --jq .status`,
+		"gh pr list -s open; git status --porcelain",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: no token-print flag, so it must stay allowed", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusKeepsAuthForms(t *testing.T) {
+	// The narrowing leaves the literal words alone: every gh auth form still
+	// refuses, whichever way status appears beside it.
+	forgeRefuseAll(t, []string{
+		"gh auth status",
+		"gh auth status -a",
+		"gh auth status --hostname example.com",
+		"gh auth status -t",
+		"git status && gh auth token",
+		"gh run view 1 --json status; gh auth status --show-token",
+		"gh pr checks 1 | grep status; gh config get oauth_token",
+	})
 }

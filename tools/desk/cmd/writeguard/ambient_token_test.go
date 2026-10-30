@@ -215,7 +215,6 @@ func TestHookMentionsRefused(t *testing.T) {
 		`gh auth status --hostname "$H"`,
 		"echo 'gh auth token' | cat",
 		"cat <<'X' | grep auth\ngh auth token\nX",
-		"git status && gh pr view 1",
 		"mkdir -p auth",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
@@ -697,5 +696,42 @@ func TestHookWordBreak(t *testing.T) {
 			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
 			requireAmbientRefusal(t, v, err, cmd)
 		})
+	}
+}
+
+// regression: #5046
+func TestHookStatusReads(t *testing.T) {
+	// Through run(): a read naming status is allowed, the computed subcommand
+	// with a token-print flag and every literal gh auth form are refused.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "fixture-session")
+	for _, cmd := range []string{
+		"git status --short && gh pr view 1 --json state",
+		"gh run view 1 --json status,conclusion",
+		"gh pr checks 1 | grep status",
+		`gh issue list -R x/y --search "status"`,
+		"gh pr view 1 --json statusCheckRollup",
+		"gh api repos/x/y/commits/abc/status",
+		"git status -sb",
+		`GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
+		`GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		`GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
+	} {
+		ambientAllowed(t, wt, cmd)
+	}
+	for _, cmd := range []string{
+		`gh "$s" status -t`,
+		`gh "$s" status --show-token`,
+		`gh "$s" status -at`,
+		`f=--show-token; gh "$s" status "$f"`,
+		`GH_TOKEN=$(cat "$T") gh "$s" status -t`,
+		"gh auth status",
+		"gh auth status -t",
+		"git status && gh auth token",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
 	}
 }

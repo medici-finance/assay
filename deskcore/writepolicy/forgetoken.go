@@ -15,7 +15,8 @@ import "strings"
 // -F <file> / --body-file <file> / a pattern file).
 //
 // The trigger (forgeTrigger) is a whole word `auth`, `token`, `oauth_token` or
-// `git-credential`, or the words `status` and `gh` both, matched without case.
+// `git-credential`, or the words `status` and `gh` together with a token-print
+// flag (forgePrintFlags), matched without case.
 // Before matching, the text is normalized the cheap way, in the same single
 // pass: quotes, a `$` before a quote, backslashes and line continuations are
 // dropped, and the escapes `$'…'`, `echo -e` and printf decode (`\xHH`,
@@ -25,24 +26,41 @@ import "strings"
 // shell, echo -e or printf may read as a boundary (forgeBreaks), so
 // `GH_TOKEN`, `desktoken` and `--token-file` hold no trigger word.
 //
-// Cost: one pass over the text per trigger word, linear in its length.
+// Cost: one pass over the text per word and flag, linear in its length.
 func forgeTokenRead(raw string) bool { return forgeTrigger(raw) }
 
 // forgeTriggerWords: the words of every gh token read the guard refuses
-// (`gh auth token`, `gh auth status` printing the token, `gh auth
-// git-credential`, `gh config get oauth_token`), plus `status` and `gh`, which
-// trigger only together.
-var forgeTriggerWords = []string{"auth", "token", "oauth_token", "git-credential", "status", "gh"}
+// (`gh auth token`, `gh auth status`, `gh auth git-credential`, `gh config get
+// oauth_token`).
+var forgeTriggerWords = []string{"auth", "token", "oauth_token", "git-credential"}
+
+// forgePrintFlags: the flag that makes `gh auth status` print the token, alone
+// (`-t`, also matching `-ta` and `-t=1`), after the only boolean short that can
+// lead a cluster (`-at`), and in long form (`--show-token`, also with `=value`).
+// A status check prints no token without one of them. `auth` missing from the
+// text means the subcommand is computed, so a form the flag does not spell out
+// as well is deliberate evasion, which this guard leaves to other layers.
+var forgePrintFlags = []string{"-t", "-at", "--show-token"}
 
 // forgeTrigger reports whether s holds one of the trigger words as a whole
-// word after normalization (forgeHasWord). It over-approximates on purpose.
+// word after normalization (forgeHasWord), or `gh`, `status` and a token-print
+// flag together. It over-approximates on purpose: `status` may be anyone's
+// word and the flag anyone's flag.
 func forgeTrigger(s string) bool {
-	for _, w := range forgeTriggerWords[:4] {
-		if forgeHasWord(s, w, false) {
+	for _, w := range forgeTriggerWords {
+		if forgeHasWord(s, w, false, false) {
 			return true
 		}
 	}
-	return forgeHasWord(s, "status", false) && forgeHasWord(s, "gh", true)
+	if !forgeHasWord(s, "status", false, false) || !forgeHasWord(s, "gh", true, false) {
+		return false
+	}
+	for _, f := range forgePrintFlags {
+		if forgeHasWord(s, f, true, true) {
+			return true
+		}
+	}
+	return false
 }
 
 // forgeDelim reports whether b may end a shell word (blanks and operators),
@@ -131,9 +149,10 @@ func forgeEscapes(s string, p int, f func(n int, v int)) {
 // backslashes and line continuations are dropped and escapes decoded
 // (case-insensitively). A word starts at the start of s, after a forgeDelim
 // byte or after a forgeBreaks sequence, and ends at either; cmd also allows
-// a command path (`/x/gh`, zsh `=gh`) and a `.exe` suffix. One pass over s: the set of prefixes of w matched so
-// far is kept per position.
-func forgeHasWord(s, w string, cmd bool) bool {
+// a start after `/` or `=` (`/x/gh`, zsh `=gh`, `f=-t`) and a `.exe` suffix;
+// prefix lets w end anywhere, so w only has to start the word. One pass over s:
+// the set of prefixes of w matched so far is kept per position.
+func forgeHasWord(s, w string, cmd, prefix bool) bool {
 	n, full := len(s), uint32(1)<<len(w)
 	act := make([]uint32, n+1)
 	for p := 0; p <= n; p++ {
@@ -148,7 +167,7 @@ func forgeHasWord(s, w string, cmd bool) bool {
 		if a == 0 {
 			continue
 		}
-		if a&full != 0 && (p == n || brk || forgeDelim(s[p]) || cmd && strings.HasPrefix(strings.ToLower(s[p:min(p+4, n)]), ".exe")) {
+		if a&full != 0 && (prefix || p == n || brk || forgeDelim(s[p]) || cmd && strings.HasPrefix(strings.ToLower(s[p:min(p+4, n)]), ".exe")) {
 			return true
 		}
 		if p == n {
