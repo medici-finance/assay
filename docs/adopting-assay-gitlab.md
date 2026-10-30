@@ -659,6 +659,18 @@ alike, so a refused push is classified by asking about the token again. A token 
 only `write_repository` may be refused the self-introspection read itself; the job then
 prints a could-not-check NOTICE and the dry-run push is the check.
 
+**The runner's job-token header.** A runner's checkout can store the CI job token in git
+config as an `http.<url>.extraheader` Authorization header. git sends a configured header
+instead of asking any credential helper, so without a reset the board push would
+authenticate as the job token and GitLab would refuse it with a 403. For each board push
+(the dry run included) the job lists every `http.extraheader` and `http.<url>.extraheader`
+key by NAME and passes `-c <name>=` for each. An empty value empties git's header list for
+that one push, and command-line config is read after every config file, so the reset
+covers local, global, system and environment config alike. No config file is edited, so
+the job's other git calls still use the runner's credential, and no header value is ever
+printed. If git cannot list the keys, the job prints a could-not-check NOTICE and pushes
+anyway; a refused push is then classified as above.
+
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
 its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this
