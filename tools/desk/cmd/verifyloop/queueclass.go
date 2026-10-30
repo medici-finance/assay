@@ -296,3 +296,14 @@ func payloadValue(it loopengine.Item, key string) string {
 	}
 	return strings.TrimSpace(it.Payload[key])
 }
+
+// dispositionOf adapts the pure canonical join back into the existing overlay
+// vocabulary. Unknown values stay could-not-check, never dispatch.
+func dispositionOf(value string) disposition {
+	for _, d := range []disposition{dispDispatch, dispDispatchForEvidence, dispCouldNotCheck, dispBaseHeld} {
+		if d.String() == value {
+			return d
+		}
+	}
+	return dispCouldNotCheck
+}

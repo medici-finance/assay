@@ -4,14 +4,12 @@
 docs/streams/agent-execution/brief-04-recovery-effect-qualification.md
 docs/streams/composability/brief-02-ledger-and-inverses.md
 docs/streams/desk-supervision/brief-33-intake-exit-record.md
-docs/streams/desk-supervision/brief-34-worker-usage-counts.md
 docs/streams/desktools-v2/brief-12-platform-compatibility-suite.md
 docs/streams/desktools-v2/brief-13-platform-gates-and-reconciliation.md
 docs/streams/desktools-v2/brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md
 docs/streams/graph-execution/brief-19-durable-instance-store.md
 docs/streams/harness-portability/brief-15-ci-wiring-harnesslint.md
 docs/streams/statusgen/brief-02-issue-metrics.md
-docs/streams/statusgen/brief-18-gate-mismatch-notice.md
 docs/streams/windows-port/brief-03-install-path.md
 docs/streams/windows-port/brief-04-windows-ci-leg.md
 docs/streams/windows-port/brief-06-manifest-driven-bootstrap.md

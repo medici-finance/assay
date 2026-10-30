@@ -468,3 +468,34 @@ func validateReservedEdge(add func(string, ...any), path, field string, e GraphE
 		add("%s: %s edge ref %s", path, field, reason)
 	}
 }
+
+// cardBriefIdentity resolves a card's subject without discarding a foreign alias.
+// A legacy tree without a registry keeps its local identity; a registered tree
+// emits the same canonical ID for legacy and v2 spellings. This is a link, not
+// evidence that the named brief or revision has been accepted.
+func cardBriefIdentity(root string, bf *BriefFile) (string, string, error) {
+	local, err := resolveLocalBriefRef(root, bf.Brief) // briefid:raw resolve the declared alias before deriving a local card key
+	if err != nil {
+		return "", "", err
+	}
+	if !refInRepoBriefRe.MatchString(local) {
+		return "", "", fmt.Errorf("invalid card brief identity %q", bf.Brief)
+	}
+	id, num, ok := expectedBriefID(bf.Path)
+	stream, _, _ := strings.Cut(id, "/")
+	if !ok || local != id {
+		return "", "", fmt.Errorf("card identity does not match brief path")
+	}
+	reg, present, err := loadGraphRepos(root)
+	if err != nil {
+		return "", "", err
+	}
+	if !present {
+		return local, local, nil
+	}
+	self, err := loadMigrateRegistry(root)
+	if err != nil {
+		return "", "", err
+	}
+	return reg.Cell + ":" + self.self + ":" + stream + ":" + num, local, nil
+}

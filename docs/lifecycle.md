@@ -48,7 +48,9 @@ distinct, owned step, not a side effect of merge.
   `spec/workflow-pattern-v1.md`), the working-diff/PR review above is the pattern's `review`
   node (role `reviewer`, `evidence: review`); post-merge verification is the pattern's `verify`
   node (role `verifier`, `evidence: witness`), which is also the pattern's `join` — its
-  integration check.
+  integration check. Between review and verify, `merge` is a human decision node
+  (`role: human`, no actor or effects), closed by the person's authenticated merge of the
+  approved head. Its decision record declares that act; it does not authenticate its author.
 - A **workflow instance** (`spec/workflow-instance-v1.md`) binds that pattern to one work
   item in one Cell and pins the acceptance version the gates review against. A brief's
   `version:` bump makes an instance bound to the earlier version stale; it is superseded by a
