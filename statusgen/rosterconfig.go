@@ -1065,9 +1065,13 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 				vis = "public"
 			case "private":
 				vis = "private"
+			case "internal":
+				// Instance-visible, NOT private (principal.go reads only ":private" as
+				// private), matching deskkit's VisibilityInternal token for token.
+				vis = "internal"
 			case "":
 			default:
-				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private",
+				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private|internal",
 					scanEnvAllowedRepos, slug, tok)
 				malformed = true
 			}

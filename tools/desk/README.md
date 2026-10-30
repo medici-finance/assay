@@ -3857,7 +3857,7 @@ them all. The effective set is echoed on every run, so a widening appears in run
 history. There is no narrower write scope: the outward-writing tools gate on the same
 `IsAllowedRepo` as the read-only boards.
 
-An `ASSAY_ALLOWED_REPOS` entry is either explicit (`owner/name[:ci|:no-ci][:public|:private]`)
+An `ASSAY_ALLOWED_REPOS` entry is either explicit (`owner/name[:ci|:no-ci][:public|:private|:internal]`)
 or a bare **PATTERN** `owner/*` (generalised to configuration): a pattern admits
 every current *and future* repo under that owner to `IsAllowedRepo` with no further entry
 required — this is how an operator reproduces the org-default write scope this brief
@@ -3872,20 +3872,25 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
 - `AllowedRepos()` never returns a pattern element — every caller passes each element to
   `gh api repos/<repo>`, so an `owner/*` slug there is a live break (C-10 fails the whole
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
-- **Writes to a public (or `internal`) repo require an explicit `:public` allowed-repos
-  entry** — the public-repo write gate (`PublicRepoGate`). The authorization is
-  REPOSITORY-scoped, decided once by a human out-of-band: a public/internal repo listed as
-  `owner/name:public` is a place the desk may write, and every write verb passes on it
+- **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
+  an `internal` repo an explicit `:internal` one** — the public-repo write gate
+  (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
+  out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
+  `owner/name:internal`) is a place the desk may write, and every write verb passes on it
   (create / review / ready / reply / evidence / release — `PublicRepoGate` is the single
   choke point). A repo that is absent, matched only by an `owner/*` pattern (patterns carry
-  no visibility policy), tagged `:private`, or carrying no visibility token **refuses**
-  (exit 5) with the remedy in the message. This replaces the former per-item `+1` reaction
+  no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
+  other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
+  one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
+  account on the forge instance, so it is never treated as private: an `:internal` repo is
+  risk-classed, self-containment scanned and stamped with the neutral on-behalf-of form
+  exactly like a `:public` one. This replaces the former per-item `+1` reaction
   check, which was unsatisfiable for the write that matters most — opening the FIRST pull
   request, which has no issue/PR number yet — and expressed the human decision in the wrong
   unit. A draft PR is inert until a human merges it, so the repository-level decision plus
   the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
   - Both reads are load-bearing at once. The gate reads the **live** visibility from the
-    forge AND the **configured** `:public` claim, and they must AGREE: a repo flipped to
+    forge AND the **configured** `:public` / `:internal` claim, and they must AGREE: a repo flipped to
     public after the set was written still refuses (the configured claim disagrees), and a
     stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
     on the stale claim (the live read disagrees). A live read that fails or returns an

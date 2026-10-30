@@ -93,7 +93,7 @@ const (
 	// replaces the compiled-in `<slug>[bot]` literals in the tools.
 	EnvTrustedBotSlugs = "ASSAY_TRUSTED_BOT_SLUGS"
 	// EnvAllowedRepos carries the write-authorisation repo set,
-	// comma-separated `owner/name[:ci|:no-ci][:public|:private]`. An entry may
+	// comma-separated `owner/name[:ci|:no-ci][:public|:private|:internal]`. An entry may
 	// instead be a bare PATTERN `owner/*`, which admits every
 	// current and future repo under that owner to IsAllowedRepo with no further
 	// entry required; it carries no ci/visibility tokens. See parseConfig's
@@ -1424,7 +1424,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 
 	// --- allowed repos, the WRITE boundary ---
 	//
-	// Two shapes share this list: an EXPLICIT "owner/name[:ci|:no-ci][:public|:private]"
+	// Two shapes share this list: an EXPLICIT "owner/name[:ci|:no-ci][:public|:private|:internal]"
 	// entry, and a PATTERN "owner/*" entry. Both pass the identical
 	// slash-shape check below (exactly one "/", no leading/trailing slash) — a pattern
 	// is distinguished by its name half being the literal "*", checked AFTER that shape
@@ -1476,9 +1476,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 				pol.Visibility = VisibilityPublic
 			case "private":
 				pol.Visibility = VisibilityPrivate
+			case "internal":
+				// Instance-visible, NOT private: every "is it private?" consumer answers
+				// no, so this names the forge's value without relaxing any control.
+				pol.Visibility = VisibilityInternal
 			case "":
 			default:
-				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private",
+				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private|internal",
 					EnvAllowedRepos, slug, tok)
 				malformed = true
 			}

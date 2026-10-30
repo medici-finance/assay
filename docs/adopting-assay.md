@@ -261,7 +261,9 @@ finished `assay:install` run hands you a checklist rather than the impression th
 6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
    **push to `main`**, the **release tag** and any **history rewrite** are yours *every time*, not
    just at install. So is the decision to add a public repository to the allowed-repos set with
-   the `:public` token: it is a one-time, repository-scoped authorization that only you make,
+   the `:public` token (an instance-visible `internal` repository takes the `:internal` token
+   instead, and is gated exactly like a public one): it is a one-time, repository-scoped
+   authorization that only you make,
    and a repository you have not listed stays refused. The quick-reference table above is the
    standing list.
 7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
