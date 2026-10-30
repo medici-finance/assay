@@ -52,8 +52,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - ForgeFor resolves provider from operator repository configuration and hands its backend an already-admitted role credential. It refuses ambient fallback.

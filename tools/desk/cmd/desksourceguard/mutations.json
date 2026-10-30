@@ -54,6 +54,36 @@
       "file": "cmd/desksourceguard/verify.go",
       "old": "if !strings.HasPrefix(line, artifact+\" \") {",
       "new": "if !strings.HasPrefix(line, artifact) {"
+    },
+    {
+      "name": "revert to the suffixless-only binary pin lookup (the #4862 defect: the installer's .tar.gz line reads as no pin)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "binaryPin, err := readBinaryPin(pinFile, opts.platform)",
+      "new": "binaryPin, err := readPin(pinFile, \"desk-tools-\"+opts.platform)"
+    },
+    {
+      "name": "spell the binary pin name by hand instead of through the shared grammar (a non-platform token reads another component's line)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "names := deskkit.DeskToolsPlatformArtifacts(platform)",
+      "new": "names := []string{\"desk-tools-\" + platform}"
+    },
+    {
+      "name": "skip a malformed binary pin line in search of another spelling",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "\t\tp, found, err := findPin(pinFile, name)\n\t\tif err != nil {\n\t\t\treturn pin{}, err\n\t\t}",
+      "new": "\t\tp, found, err := findPin(pinFile, name)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "a missing binary pin becomes a silent empty pin",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "return pin{}, deskkit.Unverifiable(fmt.Sprintf(\"no %s pin in %s (looked for the lines %s)\",\n\t\tnames[0], pinFile, strings.Join(names, \", \")), nil)",
+      "new": "return pin{}, nil"
+    },
+    {
+      "name": "let the .tar.gz line win over a suffixless line that is present (shared lookup order)",
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "[]string{base, base + deskToolsTarballSuffix}",
+      "new": "[]string{base + deskToolsTarballSuffix, base}"
     }
   ]
 }

@@ -60,13 +60,13 @@ consumers:
 ## Context
 files:
 - **edit** `tools/desk/internal/deskkit/dispatchrecord.go` — own latest dispatch lookup alongside the existing append-only store reader.
-- **regenerate** `.cursor/skills/worker-desk/SKILL.md` and `.cursor/assay-managed.json` with `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay`; never hand-edit the generated copy or its digest.
+- **regenerate** `.cursor/skills/worker-desk/SKILL.md` and `.cursor/assay-managed.json` — with `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay`; never hand-edit the generated copy or its digest.
 - **add** `tools/desk/cmd/deskusage/testdata/mutations.py` — production-overlay mutation replay, run with `python3 tools/desk/cmd/deskusage/testdata/mutations.py`.
 - **add** `tools/desk/internal/deskkit/usage.go` — `UsageRecord` type (schema `usage-v1`), store-directory resolution, append writer, strict reader.
 - **add** `tools/desk/internal/deskkit/usage_test.go`.
 - **edit** `tools/desk/internal/deskkit/audittoolkey.go` — register the local command with the existing audit owner.
 - **add** `tools/desk/cmd/deskusage/main.go`, `tools/desk/cmd/deskusage/record.go`,
-  `tools/desk/cmd/deskusage/summary.go` and their tests — the verb.
+  `tools/desk/cmd/deskusage/summary.go` — the verb, and their tests.
 - **edit** `tools/desk/internal/deskkit/rosterconfig.go` — `EnvUsageDir = "ASSAY_USAGE_DIR"` and its entry in `knownRosterKeys()` (line 536).
 - **edit** `statusgen/rosterconfig.go` (`scanKnownRosterKeys`, line 457) and `statusgen/testdata/roster_coupling.json` — the twin of the new key (the file's own KEEP-IN-SYNC rule).
 - **edit** `plugins/assay/skills/worker-desk/SKILL.md` — the "Fill to N, refill on completion" bullet (line 127) gains the record step.

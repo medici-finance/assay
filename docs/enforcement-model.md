@@ -199,9 +199,12 @@ differs and holds as could-not-check without a selector. The selector itself mus
 from trusted composition, never from model text. No production selector is installed,
 and a selector that echoes its input protects nothing. Admission (graph-execution/14),
 the publication review bridge (/25) and control exports (/15) are planned consumers.
-Whether they must require corroborated provenance, or keep it report-only, is a pending
-human decision (#4800). Until then the existing identity checks and human gates are the
-whole of what is enforced.
+Decision [#4800](https://github.com/medici-finance/assay/issues/4800#issuecomment-6481737472)
+selected required corroboration for admission/publication, ratified in
+[DR-evidence-provenance](streams/decisions/DR-evidence-provenance.md). Consumer wiring
+and activation remain separately scoped. Until those consumers are implemented and
+activated, the existing identity checks and human gates remain the whole of what is
+enforced.
 
 ## Effect recovery boundary
 

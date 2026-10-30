@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
 )
 
 // GraphQL trust-payload plumbing for the gate. The surfaces (issueboard/deskboard via
@@ -219,11 +221,13 @@ func collectEvents(item *gqlItem, pr bool) (bodyEdited time.Time, events []Conte
 				return fmt.Errorf("bad event lastEditedAt: %w", eerr)
 			}
 			var id int64
+			forgeBot := false
 			if n.Author != nil {
 				id = n.Author.DatabaseID
+				forgeBot = trustcore.ForgeMarkedBot(n.Author.Typename)
 			}
 			events = append(events, ContentEvent{
-				Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct, EditedAt: et,
+				Author: n.Author.renderedLogin(), AuthorID: id, CreatedAt: ct, EditedAt: et, ForgeBot: forgeBot,
 			})
 		}
 		return nil

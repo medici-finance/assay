@@ -5,8 +5,8 @@ package main
 // explicitly selected perf profile writes one perf-v3 summary instead (statusgen/26, see the
 // section at the end of this file).
 //
-// With ASSAY_TELEMETRY exactly "1", every statusgen process that exits through exitProcess
-// appends one perf-v2 line to the same <state dir>/perf/ day files the desk tools write, so
+// With ASSAY_TELEMETRY exactly "1" and no selected profile, each process exiting through
+// exitProcess appends one perf-v2 line to the same <state dir>/perf/ day files the desk tools write, so
 // `deskperf report --tool statusgen` reads them:
 //
 //   - wall and CPU from perfrec's process-init mark to the exit, one boundary;

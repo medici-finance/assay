@@ -64,15 +64,7 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/cmd/cellctl/` (planned) — `main.go` (verb dispatch, `--version` via `-ldflags
-  -X`), `cell.go` (cell.env load + kind/harness/forge validation), `env.go` (the scrubbed
-  allowlist from desk-containers/09, stated once), `plan.go` (the `[dry-run]`/`[plan]`
-  grammar), `check.go`, `desk.go`, `up.go`, `down.go`, `new.go`, `set.go`, `smoke.go`,
-  `status.go`, `cockpit.go`, `lock.go` (mkdir lock; a build-tagged `flock` is NOT introduced),
-  `deskd.go` (the App-JWT mint, ported ONTO `deskkit.RoleTokenForRepo` — never a re-derivation
-  of the bash's hand-built RS256 flow; see the deskd-exclusion fact and row 15), any
-  `CELLCTL_PARITY_MUTATE` code carrying `//go:build parity` so a release build omits it,
-  `*_test.go` beside each.
+- `tools/desk/cmd/cellctl/` (planned) — `main.go` (verb dispatch, `--version` via `-ldflags -X`), `cell.go` (cell.env load + kind/harness/forge validation), `env.go` (the scrubbed allowlist from desk-containers/09, stated once), `plan.go` (the `[dry-run]`/`[plan]` grammar), `check.go`, `desk.go`, `up.go`, `down.go`, `new.go`, `set.go`, `smoke.go`, `status.go`, `cockpit.go`, `lock.go` (mkdir lock; a build-tagged `flock` is NOT introduced), `deskd.go` (the App-JWT mint, ported ONTO `deskkit.RoleTokenForRepo` — never a re-derivation of the bash's hand-built RS256 flow; see the deskd-exclusion fact and row 15), any `CELLCTL_PARITY_MUTATE` code carrying `//go:build parity` so a release build omits it, `*_test.go` beside each.
 - `tools/cellctl/tests/parity.test.sh` (planned) — the parity harness; §Parity below.
 - `tools/cellctl/tests/*.test.sh` — each gains `CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"` so the suite runs against either implementation.
 - `.github/workflows/release.yml` — remove the packaging exception (:1133-1152): cellctl is now one of the `cmd/*/` builds. **This file needs the `workflows` scope the worker App lacks** — stage the hunk as its own commit, name it in the PR body as `BLOCKED-ON-HUMAN: push release.yml hunk`, and leave the rest of the PR reviewable without it.

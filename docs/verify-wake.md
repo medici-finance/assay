@@ -5,8 +5,9 @@ carries a wake receipt (`wake_schema: verify-wake-v1`). `deskevidence --outcome-
 derives the receipt when it lands the record:
 
 - `inputs` holds one `file:<path>` key per path in the brief's `## Context` `files:` list that
-  exists at the admitted observation's Source commit. A listed directory contributes every
-  file under it. The keys also include the brief itself, hashed as its Evidence lands, and
+  exists at the admitted observation's Source commit. A listed directory contributes one
+  `file:<dir>/` key whose digest covers every file under it, so a change to any member wakes
+  the held work. The keys also include the brief itself, hashed as its Evidence lands, and
   the tool version. The record's `sha` names that Evidence commit, which may follow a repair;
   hashes of observed content ensure an existing-file content repair wakes the failed work.
   A change to declared paths, path kinds or a declared directory's file membership between
