@@ -134,7 +134,7 @@ func removeHusk(guard *pathGuard, dir, rt string) (handled bool, detail string, 
 	lockReason, isLocked := locked[rt]
 	ownerNote := ""
 	if isLocked {
-		ok, why := huskLockOwner(guard, rt, lockReason)
+		ok, why := huskLockOwner(guard, rt, lockReason, false)
 		if !ok {
 			return true, "", deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
 		}
@@ -205,7 +205,13 @@ func huskDetachedProof(dir string) func(head string) string {
 // (the evidence line for the audit row and the refusal alike). It never retires git's
 // in-flight "initializing" lock, nor a lock naming no session — nobody is identifiable as
 // its owner.
-func huskLockOwner(guard *pathGuard, rt, reason string) (bool, string) {
+//
+// positiveProof is set by the caller whose tree still holds content: for a lock that is not the
+// caller's own, only a STALE roster beacon counts as proof the owner is gone. A session with no
+// beacon at all is not dead — it may simply never have written one (a Codex session following
+// the end-of-PR recipe writes none) — so judgeLock's "no beacon = gone" reading, safe where
+// the husk arm's empty-directory and open-handle gates stand behind it, is refused here.
+func huskLockOwner(guard *pathGuard, rt, reason string, positiveProof bool) (bool, string) {
 	if strings.TrimSpace(reason) == gitInitLockReason {
 		return false, `it is git's in-flight "initializing" add lock — never retired`
 	}
@@ -215,6 +221,11 @@ func huskLockOwner(guard *pathGuard, rt, reason string) (bool, string) {
 	}
 	if caller := resolveSession(""); caller == sess {
 		return true, "the caller is the locking session " + sess
+	}
+	if positiveProof {
+		if ev, _ := readSessionBeacon(rosterBeaconDir(), sess, time.Now()); ev == beaconAbsent {
+			return false, "the owner is not the caller and has no roster beacon — a missing beacon is not proof session " + sess + " is gone"
+		}
 	}
 	mt, haveMtime := guard.lockFileMtimes()[rt]
 	v := judgeLock(reason, mt, haveMtime, 0, rosterBeaconDir(), time.Now())

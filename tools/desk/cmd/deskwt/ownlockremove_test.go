@@ -10,11 +10,14 @@ package main
 // held and the session could not release its own work.
 //
 // The fix: before anything is deleted, remove judges the lock. The caller's own session's lock
-// (or one whose session the roster proves gone) is retired as the last step before the delete
-// and restored if the delete fails; any other lock is REFUSED with the tree untouched.
+// (or one whose session a STALE roster beacon proves gone; no beacon proves nothing) is retired
+// as the last step before the delete and restored if the delete fails; any other lock is
+// REFUSED with the tree untouched.
 
 import (
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,4 +103,90 @@ func TestRemoveUnownedLockRefused(t *testing.T) {
 	}
 	assertExists(t, filepath.Join(home, "README.md"))
 	assertLocked(t, work, home, true)
+}
+
+// The reviewed case: a lock held for a DIFFERENT session that has written no roster beacon,
+// while the roster directory exists (another session's beacon is there, as on any desk machine)
+// and the tree holds an untracked file. A missing beacon is not proof the session is gone — a
+// Codex session following the end-of-PR recipe writes none — so this is refused with exit 5 and
+// the file, the lock and the registration are all intact. Before the fix: rc=0, the file deleted.
+// regression: F-locked-remove
+func TestRemoveForeignNoBeaconRefused(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	t.Setenv("DESK_SESSION", "")
+	home := lockedHome(t, "zznobeacon", "codex-live-1")
+	plantBeacon(t, "some-other-desk", time.Now()) // the roster dir exists; none for codex-live-1
+	untracked := filepath.Join(home, "wip-untracked.txt")
+	writeFile(t, untracked, "work in progress\n")
+
+	rc, stderr := runCapErr(t, []string{"remove", home})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("remove of a home locked by a session with no beacon rc=%d, want %d:\n%s", rc, deskkit.ExitRefused, stderr)
+	}
+	assertExists(t, untracked)
+	assertExists(t, filepath.Join(home, "README.md"))
+	assertLocked(t, work, home, true)
+	if !registered(t, work, home) {
+		t.Fatalf("the registration of a refused home was dropped")
+	}
+}
+
+// The positive control for the refusal above: the same foreign lock whose session HAS a beacon
+// that went stale is positive proof of death, and is retired.
+// regression: F-locked-remove
+func TestRemoveForeignStaleBeaconRetired(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	t.Setenv("DESK_SESSION", "")
+	home := lockedHome(t, "zzstalebeacon", "codex-gone-1")
+	plantBeacon(t, "codex-gone-1", time.Now().Add(-48*time.Hour))
+
+	rc, stderr := runCapErr(t, []string{"remove", home})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("remove of a home whose owner's beacon is stale rc=%d, want 0:\n%s", rc, stderr)
+	}
+	assertDeregistered(t, work, home)
+}
+
+// A delete that fails after the unlock restores the original lock and its reason: the tree is
+// not left unlocked for the next sweep. The failure is injected at the deregistration (git's
+// `worktree prune`), the step that follows the directory delete.
+// regression: F-locked-remove
+func TestRemoveOwnLockedRestoredOnFailure(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	t.Setenv("DESK_SESSION", "")
+	home := lockedHome(t, "ownrestore", "test")
+
+	inner := execCommand
+	unlocked, injected := false, false
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) >= 2 && args[0] == "worktree" {
+			if args[1] == "unlock" {
+				unlocked = true
+			}
+			if unlocked && !injected && args[1] == "prune" {
+				injected = true
+				return inner("git", "fixture-injected-failure")
+			}
+		}
+		return inner(name, args...)
+	}
+	t.Cleanup(func() { execCommand = inner })
+
+	rc, stderr := runCapErr(t, []string{"remove", home})
+	if !injected || !unlocked {
+		t.Fatal("positive control: the injected failure never fired after the unlock")
+	}
+	if rc == deskkit.ExitOK {
+		t.Fatalf("remove reported success although its delete failed:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "was restored") {
+		t.Fatalf("no restoration reported; stderr:\n%s", stderr)
+	}
+	assertLocked(t, work, home, true)
+	if got := mustGit(t, work, "worktree", "list", "--porcelain"); !strings.Contains(got, "locked ") || !strings.Contains(got, "session=test") {
+		t.Fatalf("the original lock reason was not restored:\n%s", got)
+	}
 }

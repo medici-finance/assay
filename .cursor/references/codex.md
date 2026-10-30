@@ -116,8 +116,7 @@ exposed by this session; these are usage instructions, not a new capability qual
 A Codex session that cut its own worktree for a PR releases it as its **last step**, once
 the PR's branch is pushed and the tree is clean. Otherwise the branch stays checked out in a
 worktree locked for a session that has gone, and every later session that needs that branch
-(a shepherd adopting the PR to fix review findings) is refused until a human releases it by
-hand.
+(a shepherd adopting the PR to fix review findings) is refused until that worktree is released.
 
 - **Create it with `deskwt`, locked for this session:**
   `deskwt add <name> --lock-session "$DESK_SESSION"`. `deskwt remove` acts only inside its
@@ -127,8 +126,9 @@ hand.
   from inside the worktree, `deskwt remove "$(git rev-parse --show-toplevel)"`, under the
   same `$DESK_SESSION`. `remove` refuses an uncommitted tracked change or an unpushed commit,
   so a refusal means work would be lost: fix it, then re-run. It retires the lock only
-  when it is this session's own (or the roster proves its session gone); a lock held by
-  any other live session is refused, and the tree is left as it was.
+  when it is this session's own (or a roster beacon for its session has gone stale); a lock
+  held by any other session, including one with no roster beacon at all, is refused with
+  exit 5, and the tree is left as it was.
 - **Not for dispatched workers.** An agent dispatched into a home the dispatcher made
   leaves that home to its dispatcher and to `deskwt prune`.
 
