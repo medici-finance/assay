@@ -101,7 +101,7 @@ func TestRepresentedBatchAncestryFallback(t *testing.T) {
 				compact[1].PreviousFilename = ""
 				return map[int]deskkit.PendingChangeObservation{11: {PR: pr, Files: compact}}
 			}
-			ob := representedFilesBatch(f, deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}, []int{11}, batch)[11]
+			ob := representedFilesBatch(f, deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}, []int{11, 12}, batch)[11]
 			if ob.Err != nil || deskkit.BriefAuthoringOnly("example-port/11", ob.Files) || f.metadataCalls != 1 || f.fileCalls != 1 {
 				t.Fatalf("ancestry lost or wrong native scope: %+v calls=%d/%d", ob, f.metadataCalls, f.fileCalls)
 			}
@@ -138,7 +138,7 @@ func TestRepresentedBatchBinding(t *testing.T) {
 				}
 				return map[int]deskkit.PendingChangeObservation{11: ob}
 			}
-			got := representedFilesBatch(f, deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}, []int{11}, batch)[11]
+			got := representedFilesBatch(f, deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}, []int{11, 12}, batch)[11]
 			if got.Err == nil {
 				t.Fatalf("%s became complete: %+v", kind, got)
 			}

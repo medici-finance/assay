@@ -16,7 +16,7 @@
     {
       "name": "skip rename ancestry",
       "file": "cmd/fanoutloop/represented_live.go",
-      "old": "if f.Status != \"renamed\" && f.Status != \"copied\" {",
+      "old": "if (f.Status != \"renamed\" && f.Status != \"copied\") || f.PreviousFilename != \"\" {",
       "new": "if f.Status != \"never-a-change-status\" {"
     },
     {
@@ -42,6 +42,12 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "if err != nil {\n\t\tfmt.Fprintf(os.Stderr, \"fanoutloop: NOTICE",
       "new": "if err != nil {\n        return true\n\t\tfmt.Fprintf(os.Stderr, \"fanoutloop: NOTICE"
+    },
+    {
+      "name": "repeat already-complete ancestry reads",
+      "file": "cmd/fanoutloop/represented_live.go",
+      "old": "if (f.Status != \"renamed\" && f.Status != \"copied\") || f.PreviousFilename != \"\" {",
+      "new": "if f.Status != \"renamed\" && f.Status != \"copied\" {"
     }
   ]
 }

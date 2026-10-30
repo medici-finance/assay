@@ -109,9 +109,11 @@ func representedFilesBatch(fg deskkit.Forge, fr deskkit.ForgeRepo, numbers []int
 		if ob.Err == nil && (ob.PR == nil || ob.PR.Number != n || len(ob.Files) != ob.PR.ChangedFiles) {
 			ob.Err = fmt.Errorf("incomplete changed-file observation")
 		}
+		// Native singleton and overflow reads already preserve previous paths.
+		// Only a compact rename/copy with absent ancestry needs supplementation.
 		if ob.Err == nil {
 			for _, f := range ob.Files {
-				if f.Status != "renamed" && f.Status != "copied" {
+				if (f.Status != "renamed" && f.Status != "copied") || f.PreviousFilename != "" {
 					continue
 				}
 				pr, files, err := deskkit.CompleteChangedFilesOf(fg, fr, n)
