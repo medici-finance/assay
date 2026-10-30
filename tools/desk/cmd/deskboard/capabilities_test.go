@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/statusgen/readercaps"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // regression: #4531
@@ -59,5 +61,15 @@ func TestDeskCapsPreflight(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "effect.json")); !os.IsNotExist(err) {
 		t.Fatalf("refusal wrote output: %v", err)
+	}
+	// A clean CWD cannot clear incompatible configured roots. Bypass startup
+	// entirely and enter the actual root consumer before reader resolution.
+	plantFixtureRoster(t, os.Getenv("HOME"))
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(deskkit.RootsEnv, "example-org/tracker="+root)
+	if _, err := resolveRootsOnce(); err == nil || !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "unsupported required") {
+		t.Fatalf("configured root bypassed negotiation: %v", err)
 	}
 }

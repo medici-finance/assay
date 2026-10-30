@@ -81,6 +81,15 @@
       "module": "statusgen",
       "package": "./readercaps",
       "test": "TestReaderCapsBoundary"
+    },
+    {
+      "name": "configured-root-boundary",
+      "target": "tools/desk/cmd/deskboard/roots.go",
+      "old": "result.State != readercaps.Supported {",
+      "new": "false && result.State != readercaps.Supported {",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskCapsPreflight"
     }
   ]
 }

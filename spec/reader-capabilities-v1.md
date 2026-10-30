@@ -85,6 +85,8 @@ semantics map to refusal (5); unreadable/malformed requirements map to could-not
 The existing deskboard, deskpr, deskclaim and deskevidence calls retain their own
 execution/identity/subject checks. The deskboard consuming-boundary test bypasses the
 outer startup/guard and still observes zero dispatch/output effects on incompatibility.
+The actual configured-root consumer also checks every resolved root before reader
+process/pin resolution, so a clean working directory cannot clear an incompatible sibling.
 
 This delivery does not retrofit older binaries. A genuinely old binary may ignore an
 unknown YAML key. Negotiation-aware consumers assess that peer's explicit supported set,
