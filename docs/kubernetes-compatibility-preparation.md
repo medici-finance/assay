@@ -62,10 +62,10 @@ import re
 work = Path('/work')
 if os.path.lexists(work / '.assay-compat'):
     raise SystemExit('held: history exists; do not reset or reinitialize it')
-with open('/dev/tty', 'r+') as terminal:
+with open('/dev/tty', 'r') as terminal_in, open('/dev/tty', 'w') as terminal_out:
     def approved(prompt):
-        print(prompt, end='', file=terminal, flush=True)
-        return terminal.readline().strip()
+        print(prompt, end='', file=terminal_out, flush=True)
+        return terminal_in.readline().strip()
     cell = approved('Approved cell name: ')
     role = approved('Approved role: ')
     version = approved('Approved exact Claude package version: ')
