@@ -866,7 +866,7 @@
     "s174": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--path-format=absolute\", \"--git-path\", \"assay-verifier-attestation.json\")",
       "why": "Native administrative-path lookup preserves worktree/common-dir selection and requested relative/absolute spelling. The canonical repository handle is not an equivalent general rev-parse --git-path/--git-dir formatter.",
-      "owner": "statusgen/verifieradmission.go — verifierAdmission caller maintainer"
+      "owner": "statusgen/forgecredential.go — verifierAdmissionMarked maintainer (shared by verifierAdmission and storedLoginRefusal)"
     },
     "s175": {
       "operation": "historyGit(dir, \"cat-file\", \"-e\", rev+\":./\"+base)",
@@ -1560,6 +1560,12 @@
       "reason": "s083"
     },
     {
+      "key": "forgecredential.go::verifierAdmissionMarked::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--path-format=absolute\", \"--git-path\", \"assay-verifier-attestation.json\")",
+      "disposition": "retained",
+      "reason": "s174"
+    },
+    {
       "key": "forgeread.go::method.IssueList::dynamic#1",
       "expression": "exec.Command(d.bin, argv...)",
       "disposition": "retained",
@@ -2092,12 +2098,6 @@
       "expression": "gitShowObject(root, base, filepath.ToSlash(filepath.Join(rel, \"README.md\")))",
       "disposition": "retained",
       "reason": "s173"
-    },
-    {
-      "key": "verifieradmission.go::verifierAdmission::direct#1",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--path-format=absolute\", \"--git-path\", \"assay-verifier-attestation.json\")",
-      "disposition": "retained",
-      "reason": "s174"
     },
     {
       "key": "verifyflip.go::flipEvidenceAt::seam#1",
