@@ -134,7 +134,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 		config, configErr := native("config", "--null", "--list", "--show-origin", "--show-scope")
 		refs, refsErr := staleFailReferenceOutput(root, native)
 		if configErr == nil {
-			formattingNative = strings.Contains(strings.ToLower(string(config)), "i18n.logoutputencoding") || strings.Contains(strings.ToLower(string(config)), "i18n.commitencoding")
+			formattingNative = logOutputConfigured(config)
 		}
 		if pathErr == nil && physicalErr == nil && cwdErr == nil && configErr == nil && refsErr == nil {
 			bound, err := json.Marshal([]any{physical, cwd, ref, mainID, config, refs})

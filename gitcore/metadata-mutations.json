@@ -61,6 +61,12 @@
       "file": "metadatarefs.go",
       "old": "r.metadataTrees[c.TreeHash] = tree",
       "new": "_ = tree"
+    },
+    {
+      "name": "decoded tree retention unbounded",
+      "file": "metadatarefs.go",
+      "old": "if len(r.metadataTrees) >= limit {",
+      "new": "if len(r.metadataTrees) >= limit && false {"
     }
   ]
 }

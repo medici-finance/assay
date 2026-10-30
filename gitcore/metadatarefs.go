@@ -13,6 +13,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+// metadataTreeCap bounds decoded trees retained by one Repo across queries.
+// Commit facts stay unbounded: they are small, like the range graph.
+const metadataTreeCap = 1024
+
 // ReferenceState is one current refs/ name. ObjectID is resolved without peeling
 // tags. SymbolicTarget is the final symbolic target, as in for-each-ref's symref.
 type ReferenceState struct{ Name, ObjectID, SymbolicTarget string }
@@ -182,6 +186,15 @@ func (r *Repo) LastPathCommit(rev, literalPath string) (*PathMetadata, error) {
 			tree, e = r.repo.TreeObject(c.TreeHash)
 			if e != nil {
 				return "", e
+			}
+			limit := r.treeLimit
+			if limit <= 0 {
+				limit = metadataTreeCap
+			}
+			if len(r.metadataTrees) >= limit {
+				// Trees (and go-git's subtree memo inside them) are the large
+				// facts; restart the set rather than grow with history depth.
+				r.metadataTrees = map[plumbing.Hash]*object.Tree{}
 			}
 			r.metadataTrees[c.TreeHash] = tree
 		}

@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
-  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestGoGitReadParity/(last-path-time-and-reference-snapshot|reference-snapshot-history-independent)$' .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestGoGitReadParity/(last-path-time-and-reference-snapshot|reference-snapshot-history-independent|last-path-log-follow)$|^TestLastPathNativeProfiles$|^TestLastPathConfigObservedOnce$' .",
   "control": {
     "name": "CONTROL metadata abandons canonical history",
     "file": "library_metadata.go",
@@ -29,8 +29,32 @@
     {
       "name": "heartbeat date uses a Go layout instead of native %cI",
       "file": "library_metadata.go",
-      "old": "return exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%h %cI\", row.ID, \"--\").Output()",
-      "new": "short, _ := exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", row.ID).Output(); return []byte(strings.TrimSpace(string(short)) + \" \" + row.CommitterTime.Format(\"2006-01-02T15:04:05-07:00\") + \"\\n\"), nil"
+      "old": "return exec.Command(\"git\", append([]string{\"-C\", root, \"log\", \"-1\", \"--format=%h %cI\"}, selector...)...).Output()",
+      "new": "if !native { short, _ := exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", row.ID).Output(); return []byte(strings.TrimSpace(string(short)) + \" \" + row.CommitterTime.Format(\"2006-01-02T15:04:05-07:00\") + \"\\n\"), nil }; return exec.Command(\"git\", append([]string{\"-C\", root, \"log\", \"-1\", \"--format=%h %cI\"}, selector...)...).Output()"
+    },
+    {
+      "name": "effective log configuration ignored",
+      "file": "library_metadata.go",
+      "old": "if lastPathConfigNative(root) {",
+      "new": "if lastPathConfigNative(root) && false {"
+    },
+    {
+      "name": "log.follow omitted from path keys",
+      "file": "library_metadata.go",
+      "old": "append([]string{\"log.follow\"}, nativeLogOutputKeys...)",
+      "new": "append([]string{}, nativeLogOutputKeys...)"
+    },
+    {
+      "name": "config observation repeated per call",
+      "file": "library_metadata.go",
+      "old": "\t\tif ok {\n\t\t\treturn native\n\t\t}",
+      "new": "\t\tif ok && false {\n\t\t\treturn native\n\t\t}"
+    },
+    {
+      "name": "pathspec environment ignored",
+      "file": "library_metadata.go",
+      "old": "if read.native != \"\" || !literal {\n\t\treturn nil, true, nil",
+      "new": "if read.native != \"\" || (!literal && false) {\n\t\treturn nil, true, nil"
     }
   ]
 }

@@ -6,3 +6,5 @@
 - Reuse immutable commit and tree facts across metadata queries while re-reading HEAD and reference snapshots; retain failures as uncertainty.
 
 - Qualify reference-only snapshots without an extra history-policy namespace scan; retain repository-selection checks and all history-specific replacement/graft checks.
+
+- Keep last-touch and heartbeat logs native when effective configuration sets log.follow, log.showSignature or an i18n log encoding (one config read per root per run), or when a pathspec environment is set; cap decoded trees retained by metadata queries.

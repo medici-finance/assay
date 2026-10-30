@@ -40,15 +40,21 @@
     },
     {
       "name": "effective output encoding observation omitted",
-      "file": "stalefail.go",
-      "old": "strings.Contains(strings.ToLower(string(config)), \"i18n.logoutputencoding\") || strings.Contains(strings.ToLower(string(config)), \"i18n.commitencoding\")",
-      "new": "strings.Contains(strings.ToLower(string(config)), \"i18n.commitencoding\")"
+      "file": "library_metadata.go",
+      "old": "[]string{\"log.showsignature\", \"i18n.logoutputencoding\", \"i18n.commitencoding\"}",
+      "new": "[]string{\"log.showsignature\", \"i18n.commitencoding\"}"
     },
     {
       "name": "effective commit encoding observation omitted",
-      "file": "stalefail.go",
-      "old": "strings.Contains(strings.ToLower(string(config)), \"i18n.logoutputencoding\") || strings.Contains(strings.ToLower(string(config)), \"i18n.commitencoding\")",
-      "new": "strings.Contains(strings.ToLower(string(config)), \"i18n.logoutputencoding\")"
+      "file": "library_metadata.go",
+      "old": "[]string{\"log.showsignature\", \"i18n.logoutputencoding\", \"i18n.commitencoding\"}",
+      "new": "[]string{\"log.showsignature\", \"i18n.logoutputencoding\"}"
+    },
+    {
+      "name": "signature output observation omitted",
+      "file": "library_metadata.go",
+      "old": "[]string{\"log.showsignature\", \"i18n.logoutputencoding\", \"i18n.commitencoding\"}",
+      "new": "[]string{\"i18n.logoutputencoding\", \"i18n.commitencoding\"}"
     }
   ]
 }

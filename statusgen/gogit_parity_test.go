@@ -40,6 +40,7 @@ func TestGoGitReadParity(t *testing.T) {
 	t.Run("stale-fail-message-multiset", coreStaleFailMessageParity)
 	t.Run("last-path-time-and-reference-snapshot", coreMetadataReferenceParity)
 	t.Run("reference-snapshot-history-independent", TestReferenceSnapshotHistoryIndependent)
+	t.Run("last-path-log-follow", coreLastPathFollowParity)
 }
 
 func parityGitBytes(t *testing.T, root string, args ...string) []byte {

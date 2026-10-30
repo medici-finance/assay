@@ -94,3 +94,32 @@ func TestMetadataFailureIsNotCached(t *testing.T) {
 		t.Fatalf("failed read poisoned later query: %+v %v", row, err)
 	}
 }
+
+// regression: #4846 A1, decoded tree retention unbounded
+func TestMetadataTreeCacheBounded(t *testing.T) {
+	f := gittest.NewFixture(t)
+	for i := 0; i < 10; i++ {
+		f.CommitFile(t, "other", fmt.Sprint(i), "unrelated change")
+	}
+	r, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.treeLimit = 3
+	want := mustGitOutput(t, f, "log", "-1", "--format=%H", "--", "seed.txt")
+	for n := 0; n < 2; n++ {
+		if row, err := r.LastPathCommit("HEAD", "absent"); err != nil || row != nil {
+			t.Fatalf("absent: %+v %v", row, err)
+		}
+		row, err := r.LastPathCommit("HEAD", "seed.txt")
+		if err != nil || row == nil || row.ID != want {
+			t.Fatalf("seed.txt: %+v %v want %s", row, err, want)
+		}
+	}
+	r.metadataMu.Lock()
+	held := len(r.metadataTrees)
+	r.metadataMu.Unlock()
+	if held > 3 {
+		t.Fatalf("retained %d decoded trees, limit 3", held)
+	}
+}

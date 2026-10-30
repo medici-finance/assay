@@ -81,6 +81,7 @@ type Repo struct {
 	metadataMu      sync.Mutex
 	metadataCommits map[plumbing.Hash]*metadataCommit
 	metadataTrees   map[plumbing.Hash]*object.Tree
+	treeLimit       int // retained decoded trees; 0 means metadataTreeCap
 }
 
 // Open opens the repository rooted at dir (an exact repo/worktree root — like
