@@ -215,3 +215,8 @@ experiments and R7 mounted-route tests remain separately required. Source fixtur
 are implementation deliverables; this authoring amendment claims no new runtime test passed.
 
 Harness² protocol qualification adds independent held-out outcomes, a harmful composition, protected-control edits, grading-data isolation and complete experiment cost. Deterministic fixture success proves neither model-backed gains nor live optimizer safety; independent review and a separately authorized trial remain necessary.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Extend the disposable production-path floor to two heterogeneous worker instances and three reviewers across two repositories; concurrent refill overshoot and subsequent convergence, paused-peer preservation, divide-not-duplicate claims, overlapping replacement, successor failure/drain timeout, dictionary collision/exhaustion, UID/generation mismatch, old-reader refusal and legacy-writer exclusion. Keep provider/cell isolation, mutation controls and independently witnessed Kubernetes qualification. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.
