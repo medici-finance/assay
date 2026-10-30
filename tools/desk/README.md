@@ -1005,6 +1005,7 @@ contract, and the fail-closed guarantees) is documented in
 |---|---|
 | repo outside the fixed allowed set | risk-classed (no policy is never a waiver) |
 | repo compiled in as PUBLIC | risk-classed |
+| repo compiled in as INTERNAL (visible instance-wide) | risk-classed, exactly like PUBLIC |
 | repo in the set with no stated visibility (zero value) | risk-classed |
 | changed-file list empty | risk-classed (a PR always changes ≥1 file) |
 | changed-file list short of GitHub's `changed_files` | **unverifiable** (exit 6) |
@@ -1363,7 +1364,8 @@ It receives ONE JSON object on stdin:
 ```
 
 `visibility` is `public`, `private` or `unknown` (a target the roster does not list is
-`unknown`, never `private`). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
+`unknown`, never `private`; a target listed `:internal` is sent as `public`, the exposure
+class it is gated under, so no other value ever arrives). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
 `commit` or `ref`. A field with no text is not sent. The object is one line.
 
 Each `text` is a JSON string, and the callout must **decode** it before matching anything
@@ -3331,6 +3333,18 @@ exit `5`. Any other flag after the verb is taken to consume nothing, so the toke
 as positional — the fail-closed guess on this side of the verb. A lone `-` is positional, as the
 flag parser reads it, and so is anything after a bare `--`.
 
+An allowlist entry can also be **flag-restricted**: read-only only with the flags the guard lists
+for it (`flagRestrictedVerbs` in `cmd/clusterguard/shim.go`). Such a subcommand also accepts flags
+that make it do more than read, and the entry vouches for the reading form, not for every flag the
+CLI may add to it. Every argument of such a call, BEFORE the verb as well as after it, must be a
+flag listed for it or in the CLI's value-flag table (bare or `--flag=value`), or the value such a
+flag consumes; anything else — an unlisted flag, a positional argument, an empty argument, a lone
+`-`, a bare `--` — takes the call off the read-only tier, exit `5`, and the refusal names the
+argument. The pre-verb side matters because the verb scan skips a pre-verb `--flag=value` as
+self-contained, while the CLI's flag parser may still hand that flag to the subcommand. A token
+starting with `-` is never taken as a listed flag's value, so a listed flag cannot hide the flag
+after it, and a `--flag=value` consumes nothing.
+
 Exit `5` is a **refusal, not a fallback trigger**. The message says so explicitly: reaching the
 same CLI by absolute path, by a rebuilt `PATH`, or through another tool is not the sanctioned
 response to it.
@@ -3875,7 +3889,7 @@ them all. The effective set is echoed on every run, so a widening appears in run
 history. There is no narrower write scope: the outward-writing tools gate on the same
 `IsAllowedRepo` as the read-only boards.
 
-An `ASSAY_ALLOWED_REPOS` entry is either explicit (`owner/name[:ci|:no-ci][:public|:private]`)
+An `ASSAY_ALLOWED_REPOS` entry is either explicit (`owner/name[:ci|:no-ci][:public|:private|:internal]`)
 or a bare **PATTERN** `owner/*` (generalised to configuration): a pattern admits
 every current *and future* repo under that owner to `IsAllowedRepo` with no further entry
 required — this is how an operator reproduces the org-default write scope this brief
@@ -3890,20 +3904,25 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
 - `AllowedRepos()` never returns a pattern element — every caller passes each element to
   `gh api repos/<repo>`, so an `owner/*` slug there is a live break (C-10 fails the whole
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
-- **Writes to a public (or `internal`) repo require an explicit `:public` allowed-repos
-  entry** — the public-repo write gate (`PublicRepoGate`). The authorization is
-  REPOSITORY-scoped, decided once by a human out-of-band: a public/internal repo listed as
-  `owner/name:public` is a place the desk may write, and every write verb passes on it
+- **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
+  an `internal` repo an explicit `:internal` one** — the public-repo write gate
+  (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
+  out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
+  `owner/name:internal`) is a place the desk may write, and every write verb passes on it
   (create / review / ready / reply / evidence / release — `PublicRepoGate` is the single
   choke point). A repo that is absent, matched only by an `owner/*` pattern (patterns carry
-  no visibility policy), tagged `:private`, or carrying no visibility token **refuses**
-  (exit 5) with the remedy in the message. This replaces the former per-item `+1` reaction
+  no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
+  other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
+  one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
+  account on the forge instance, so it is never treated as private: an `:internal` repo is
+  risk-classed, self-containment scanned and stamped with the neutral on-behalf-of form
+  exactly like a `:public` one. This replaces the former per-item `+1` reaction
   check, which was unsatisfiable for the write that matters most — opening the FIRST pull
   request, which has no issue/PR number yet — and expressed the human decision in the wrong
   unit. A draft PR is inert until a human merges it, so the repository-level decision plus
   the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
   - Both reads are load-bearing at once. The gate reads the **live** visibility from the
-    forge AND the **configured** `:public` claim, and they must AGREE: a repo flipped to
+    forge AND the **configured** `:public` / `:internal` claim, and they must AGREE: a repo flipped to
     public after the set was written still refuses (the configured claim disagrees), and a
     stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
     on the stale claim (the live read disagrees). A live read that fails or returns an
@@ -6337,8 +6356,10 @@ The dispatcher creates an isolated tracking checkout outside both source roots a
 retains its exact location in local run metadata. The tracking repository owns the
 attestation issue, Evidence and outcome records; no tracking file is copied into the
 deliverable tree. Private tracking with a public deliverable, and two separate private
-repositories, are supported. Unknown visibility or a public tracking destination for a
-restricted deliverable refuses. Prompts and packets are local, owner-only files outside
+repositories, are supported. Exposure ranks private < internal < public, and the tracking
+repository may never be more exposed than the deliverable: an internal tracker refuses a
+private deliverable, and a public tracker refuses a private or internal one. Unknown
+visibility on either side refuses. Prompts and packets are local, owner-only files outside
 Git trees; they must not be published. The packet names both immutable revisions, reads
 its brief/history from tracking, and checks both heads before returning.
 

@@ -371,6 +371,10 @@ empty sweep is never reported as a clean, empty board, so intake-desk and worker
 the GitLab issue/orphan lane as could-not-check rather than empty. **It is a DISTINCT key from
 the write boundary `ASSAY_ALLOWED_REPOS`** — a green write-lane preflight says nothing about
 it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set it.
+(A project whose GitLab visibility is `internal` is tagged `:internal` in
+`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:public` and not `:private`: the
+public-repo write gate requires the tag to name the visibility the forge reports, and an
+`internal` project keeps every public-repo requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
 
 - **Required value shape.** A comma-separated list of `<group>/<project>` slugs — the scan
   scope. It must contain **at least the adopter project itself** (the same slug that appears
@@ -679,6 +683,18 @@ answers a refused push with one message for invalid, expired and under-scoped to
 alike, so a refused push is classified by asking about the token again. A token holding
 only `write_repository` may be refused the self-introspection read itself; the job then
 prints a could-not-check NOTICE and the dry-run push is the check.
+
+**The runner's job-token header.** A runner's checkout can store the CI job token in git
+config as an `http.<url>.extraheader` Authorization header. git sends a configured header
+instead of asking any credential helper, so without a reset the board push would
+authenticate as the job token and GitLab would refuse it with a 403. For each board push
+(the dry run included) the job lists every `http.extraheader` and `http.<url>.extraheader`
+key by NAME and passes `-c <name>=` for each. An empty value empties git's header list for
+that one push, and command-line config is read after every config file, so the reset
+covers local, global, system and environment config alike. No config file is edited, so
+the job's other git calls still use the runner's credential, and no header value is ever
+printed. If git cannot list the keys, the job prints a could-not-check NOTICE and pushes
+anyway; a refused push is then classified as above.
 
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
