@@ -38,7 +38,7 @@ id: 3134b1cd-e373-43bd-a44e-dc48da4cb05b
 files:
 - `tools/desk/cmd/commsloop/loop.go` — the `const risk = false` call site feeding `Assign`.
 - `tools/desk/cmd/commsloop/assign.yaml` — the risk-axis dispatch rows (read to confirm the contract).
-- `tools/desk/cmd/commsloop` tests — add coverage for a risk-shaped message routing to `TierHuman`.
+- `tools/desk/cmd/commsloop` — tests — add coverage for a risk-shaped message routing to `TierHuman`.
 facts:
 - `assign.yaml`'s risk axis only ever NARROWS (a `risk:yes` row forces `tier:human`); it never
   grants more autonomy, so deriving a real risk signal can only make routing safer, never looser.

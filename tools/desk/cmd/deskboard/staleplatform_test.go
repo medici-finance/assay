@@ -74,6 +74,21 @@ func TestStalePinResolvesPerPlatformArtifact(t *testing.T) {
 		}
 	})
 
+	// regression: #4842 — the installer and the manifest spell the line under the tarball's
+	// full asset name; the drift banner must read that line, not report could-not-check.
+	t.Run("the installer's .tar.gz line ONLY", func(t *testing.T) {
+		writePinFile(t, "desk-tools-darwin-arm64.tar.gz "+tag+" "+sha)
+		state, stale, detail := staleState()
+		if state != staleStateInSync || stale {
+			t.Fatalf("a pin file carrying only the installer's .tar.gz line reports %q (stale=%v): %s\n"+
+				"want in-sync — the pin IS present and the running tag matches it",
+				state, stale, detail)
+		}
+		if !strings.Contains(detail, "desk-tools-darwin-arm64.tar.gz") {
+			t.Errorf("the detail does not name the artifact the verdict came from: %q", detail)
+		}
+	})
+
 	t.Run("per-platform line at a DIFFERENT tag still reports drift, not could-not-check", func(t *testing.T) {
 		writePinFile(t, "desk-tools-darwin-arm64 v0.27.0 "+sha)
 		state, stale, detail := staleState()

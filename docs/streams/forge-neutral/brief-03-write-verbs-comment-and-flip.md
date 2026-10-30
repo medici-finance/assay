@@ -52,10 +52,8 @@ id: 416b7ef5-5d82-417f-b831-dd2928c60d6c
 
 ## Context
 files:
-- `tools/desk/cmd/deskpost/github.go`, `tools/desk/cmd/deskpost/ready.go` — the `net/http`
-  paths move onto the resolver.
-- `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskreply/deskreply.go` — the shelled
-  `gh` comment path.
+- `tools/desk/cmd/deskpost/github.go`, `tools/desk/cmd/deskpost/ready.go` — the `net/http` paths move onto the resolver.
+- `tools/desk/cmd/deskreply/exec.go`, `tools/desk/cmd/deskreply/deskreply.go` — the shelled `gh` comment path.
 - `tools/desk/cmd/deskflip/flip.go`, `tools/desk/cmd/deskflip/exec.go` — six shelled paths.
 - `tools/desk/internal/forgeban/allowlist.go` — seven permit rows removed, ceiling lowered.
 
@@ -64,8 +62,8 @@ This brief changes TRANSPORT, not custody: the acting identity for all three ver
 unchanged, because `deskpost` and `deskflip` already mint their reviewer App installation
 token and refuse an ambient fallback, and `deskreply` already mints a worker token. The
 custody question those mints answer was settled under the human gate in `forge-neutral/01`;
-nothing here re-opens it. The verbs whose acting identity DOES change are in
-`forge-neutral/04`, which is human-gated for exactly that reason. Verify row 10's zero-write
+nothing here re-opens it. The verbs whose acting identity DOES change are in `forge-neutral/04`,
+which is human-gated for exactly that reason. Verify row 10's zero-write
 assertion is what holds this claim honest.
 
 single-point-of-failure: the resolver is the one control deciding which forge and which

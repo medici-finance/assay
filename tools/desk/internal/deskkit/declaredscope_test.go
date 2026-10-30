@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,7 +42,7 @@ func TestDeclaredReceiptForms(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, p := range []string{"tools/a.go", "tools/pkg/one.go", "tools/pkg/sub/two.go"} {
-				if _, ok := r.Inputs["file:"+p]; !ok {
+				if !coveredByDigest(r.Inputs, p) {
 					t.Errorf("omitted declared deliverable %s", p)
 				}
 			}
@@ -50,6 +51,19 @@ func TestDeclaredReceiptForms(t *testing.T) {
 			}
 		})
 	}
+}
+
+// coveredByDigest: p has its own file: key, or a directory holding it has a file:<dir>/ key.
+func coveredByDigest(inputs map[string]string, p string) bool {
+	if inputs["file:"+p] != "" {
+		return true
+	}
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		if inputs[DirInputKey(d)] != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // regression: #2798
@@ -420,5 +434,120 @@ func TestScopeLooseContinuation(t *testing.T) {
 	paths, err := BriefDeclaredFiles("## Context\nfiles: tools/a.go\n\nfacts:\n- `tools/not-declared.go` is commentary\n")
 	if err != nil || strings.Join(paths, ",") != "tools/a.go" {
 		t.Fatalf("next field confused with loose list: %v %v", paths, err)
+	}
+}
+
+// regression: sec-4809-1 — a "files" line whose tail carries a colon or a
+// backtick may be a declaration, so it is refused rather than read as prose.
+func TestScopeLabelledFilesRefuse(t *testing.T) {
+	for _, content := range []string{
+		"## Context\nfiles to update:\n- `tools/a.go`\n",
+		"## Context\nFiles in this change: `tools/a.go`, `tools/b.go`\n",
+		"## Context\nfiles named `tools/a.go` and `tools/b.go`\n",
+		"## Context\n- files to touch: `tools/a.go`\n",
+		"## Context\nfiles we add: tools/b.go\n",
+		"## Context\nfiles:\n- `tools/a.go`\n\nfiles to create: `tools/b.go`\n",
+		"## Context\n```text\nfiles to update: tools/a.go\n```\n",
+		"## Context\n```text\nfiles named `tools/a.go` here\n```\n",
+	} {
+		if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
+		}
+	}
+}
+
+// regression: sec-4809-1 — a "files" line that is not the accepted "files:"
+// form stays a marker, whatever text or lines surround it.
+func TestScopeUnwrappedFilesRefuse(t *testing.T) {
+	shapes := []string{
+		"files to change\n- `tools/a.go`\n",
+		"files to change\n- tools/a.go\n",
+		"files to change\n\n- `tools/a.go`\n",
+		"files to change\n1. tools/a.go\n",
+		"files within tools/a.go and tools/b.go\n",
+		"Files for this - tools/a.go, tools/b.go\n",
+		"**files to change**\n- tools/a.go\n",
+		"- files to change\n  - tools/a.go\n",
+		"files changed — tools/a.go\n",
+		"files to change：\n- `tools/a.go`\n",
+		"files docs tools/a.go\n",
+		"files Makefile and tests\n",
+		// Shapes next to wrapped prose, each varying the feature it names.
+		"Prose that wraps onto the\nfiles under tools/a.go here\n",       // path token
+		"Prose that wraps onto the\nfiles in main.go and more\n",         // file token
+		"A sentence ends here.\nfiles to change and more\n",              // ended sentence
+		"Prose that wraps onto the\nfiles to change and more\n- x\n",     // list follows
+		"Prose that wraps onto the\nfiles to change and more\n  x\n",     // indent follows
+		"- a list item wraps onto the\nfiles to change and more\n",       // list before
+		"facts: a field that wraps onto the\nfiles to change and more\n", // field before
+		"Prose that wraps onto the\nfiles to change: and more\n",         // label colon
+		"Prose that wraps onto the\nfiles named `x` and more\n",          // backtick
+		"Prose that wraps onto the\nfiles  to change and more\n",         // double space
+		"Prose that wraps onto the\n> files to change and more\n",        // quoted
+		"Prose that wraps onto the\n  files to change and more\n",        // indented
+	}
+	for _, shape := range shapes {
+		for _, content := range []string{
+			"## Context\n" + shape,
+			"## Context\n```text\n" + shape + "```\n",
+		} {
+			if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+				t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
+			}
+		}
+	}
+	content := "## Context\nfiles:\n- `tools/x/one.go`\n\nfiles for review under tools/y\n"
+	if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+		t.Errorf("silent partial scope: %q: %v %v", content, paths, err)
+	}
+}
+
+// regression: sec-4809-1 — no neighbouring line makes a "files " line prose:
+// hard-wrapped prose is refused like a label whose paths follow it, at both
+// marker sites and after a valid files: block. Reflowing is the remedy (#4199).
+func TestScopeWrappedFilesRefuse(t *testing.T) {
+	shapes := []string{
+		// Real hard-wrapped prose, the shape the issue reported.
+		"Scope is the generated\nfiles in the public tree. Three items were flagged\nout here.\n",
+		"Work under the tools tree touches\nFiles that other work never touches.\n",
+		// A label sentence whose paths follow on the next lines.
+		"Work in this item covers the\nfiles we edit\npkg/one.go\npkg/two.go\n",
+		"Our deliverable set is the\nfiles named here\n\n- `pkg/one.go`\n- `pkg/two.go`\n",
+		"This item edits these\nfiles in the tree\n\n- `pkg/one.go`\n",
+		"Work in this item covers the\nfiles we edit\n\npkg/one.go\n",
+		"Work in this item covers the\nfiles we edit and\npkg/one.go with pkg/two.go\n",
+		"Work in this item covers the deliverables,\nfiles we edit\npkg/one.go\n",
+		"This item also touches these\nfiles README and LICENSE\n",
+		"This item changes the\nfiles in pkg and cmd\n",
+		"This item touches the following\nfiles in the desk tree\n\n- pkg/one.go\n",
+		"Prose that wraps onto the\nfiles we edit\n\n1. pkg/one.go\n",
+		"Prose that wraps onto the\nfiles we edit\n`pkg/one.go`\n",
+	}
+	for _, shape := range shapes {
+		for _, content := range []string{
+			"## Context\n" + shape,
+			"## Context\n```text\n" + shape + "```\n",
+			"## Context\nfiles:\n- `pkg/kept.go`\n\n" + shape,
+			"## Context\n```text\n" + shape + "```\n\nfiles:\n- `pkg/kept.go`\n",
+		} {
+			if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+				t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
+			}
+		}
+	}
+	// A declaration missing its colon is still refused, never read as prose.
+	for _, line := range []string{
+		"files tools/a.go", "Files tools/a.go and tests", "files `tools/a.go`",
+		"files - tools/a.go", "files\ttools/a.go", "files (new) tools/a.go",
+		"files docs", "files 1. tools/a.go",
+	} {
+		if paths, err := BriefDeclaredFiles("## Context\n" + line + "\n"); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("%q: got %v %v; want refusal", line, paths, err)
+		}
+	}
+	// The remedy: the same prose reflowed so no line starts with "files".
+	paths, err := BriefDeclaredFiles("## Context\nScope is the generated files\nin the public tree.\n\nfiles:\n- `pkg/kept.go`\n")
+	if err != nil || len(paths) != 1 || paths[0] != "pkg/kept.go" {
+		t.Fatalf("reflowed prose: got %v %v; want [pkg/kept.go]", paths, err)
 	}
 }

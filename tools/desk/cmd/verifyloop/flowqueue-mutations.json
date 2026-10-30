@@ -1,10 +1,10 @@
 {
-  "test": "go test ./cmd/verifyloop -run '^TestFlowQueue$' -count=1 -timeout 300s",
+  "test": "go test ./cmd/verifyloop -run '^(TestFlowQueue|TestVerifyPlanParity)$' -count=1 -timeout 90s",
   "control": {
-    "name": "CONTROL — an unreadable canonical row keeps its dispatch (the could-not-check collapse)",
-    "file": "cmd/verifyloop/plan.go",
-    "old": "\tif !row.QueueValid {\n\t\treturn dispCouldNotCheck,",
-    "new": "\tif false && !row.QueueValid {\n\t\treturn dispCouldNotCheck,"
+    "name": "CONTROL \u2014 an unreadable canonical row keeps its dispatch (the could-not-check collapse)",
+    "file": "internal/verifyflow/plan.go",
+    "old": "if !row.QueueValid || row.QueueClass == verifyqueue.Unreadable {",
+    "new": "if false {"
   },
   "mutations": [
     {
@@ -15,21 +15,21 @@
     },
     {
       "name": "a human-action row keeps a plain dispatch",
-      "file": "cmd/verifyloop/plan.go",
-      "old": "\tcase \"human-action\":\n\t\tif disp == dispDispatchForEvidence {",
-      "new": "\tcase \"human-action\":\n\t\tif true {"
+      "file": "internal/verifyflow/plan.go",
+      "old": "if overlay == Evidence {",
+      "new": "if true {"
     },
     {
       "name": "any non-judgment class keeps the dispatch (the base no longer demotes)",
-      "file": "cmd/verifyloop/plan.go",
-      "old": "\treturn dispBaseHeld, fmt.Sprintf(",
-      "new": "\treturn disp, fmt.Sprintf("
+      "file": "internal/verifyflow/plan.go",
+      "old": "return Held, fmt.Sprintf(",
+      "new": "return overlay, fmt.Sprintf("
     },
     {
       "name": "the base overrides an overlay hold",
-      "file": "cmd/verifyloop/plan.go",
-      "old": "\tif disp != dispDispatch && disp != dispDispatchForEvidence {",
-      "new": "\tif false {"
+      "file": "internal/verifyflow/plan.go",
+      "old": "if overlay != Dispatch && overlay != Evidence {",
+      "new": "overlay = Dispatch\n if overlay != Dispatch && overlay != Evidence {"
     },
     {
       "name": "an incomplete plan (complete=false) exits 0",

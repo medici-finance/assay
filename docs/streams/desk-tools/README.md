@@ -223,7 +223,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | in-progress | — | — |
 | 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
 | 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
-| 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | todo | — | — |
+| 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | implemented | — | — |
 | 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 2 | M | todo | — | — |
 | 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 3 | M | todo | — | — |
 | 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |

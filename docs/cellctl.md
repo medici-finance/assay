@@ -275,7 +275,8 @@ placeholder topology), and the model is whatever the CLI default is that week.
 cellctl new house --kind house \
   --repo /path/to/checkout \
   --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
-  [--roles "the-desk worker-desk"] [--port 8787]
+  [--roles "the-desk worker-desk"] [--port 8787] \
+  [--forge gitlab [--group example-group] [--gitlab-api-base URL]]
 cellctl check house
 cellctl desk house worker-desk          # one window
 cellctl up house                        # every role, in the resolved cockpit (see *Cockpits*)
@@ -290,11 +291,20 @@ files exactly as a hand boot would; **nothing is copied** — and links `.config
 `.gitconfig` as a github cell does. There are no custody hand steps: the custody is the
 operator's own. It refuses to overwrite an existing cell of the same name.
 
+`--forge` (default `github`) is honoured as on a k8s cell. `--forge gitlab` writes
+`CELL_FORGE=gitlab` with `FORGE_API_BASE`/`GITLAB_API_BASE` (`--gitlab-api-base`, default
+`https://gitlab.com/api/v4`), `GITLAB_GROUP` from `--group` (left as a commented line when absent:
+only a `DESKD=1` house cell needs it) and `GITLAB_TOKEN_STORE` when `--gitlab-token-store` is
+given; it links `.gitconfig` but **never** `.config/gh`, which is GitHub custody. Any other
+`--forge` value is refused before anything is created.
+
 `check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
 checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
 scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
 formed, exists and carries `docs/streams/`; the desk verbs a role needs are installed under the
 desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
+The gh config link is a row on a github house cell (a `MISS` when absent) and `n/a` on a gitlab
+one, worded as on a k8s gitlab cell.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
@@ -1381,7 +1391,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `DESKD_APP_ID_VAR` | **github** — the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
 | `ORGS` | **github** — comma-separated orgs to mint one installation token each for |
 | `GITLAB_GROUP` | **gitlab** — the GitLab group this cell reads |
-| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`) |
+| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`). On a GitLab cell, the base `cell.env` states (this key when set non-empty, else its `FORGE_API_BASE`) is exported as `GITLAB_API_BASE` into the claude and cursor role windows, over any the launching shell carried; cellctl's compiled `gitlab.com` fallback is never exported, so `desktoken` still refuses an unconfigured base. `FORGE_API_BASE` itself is not exported |
 | `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
 | `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
@@ -2004,14 +2014,14 @@ samples are unknown, never zero. No tool installation or live role restart occur
 `CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
 sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in
-`containers/k8s/compatibility/`. The example is not deployable: image, agent,
-initialization and actual operator values need qualification. A missing or invalid
-explicit profile makes no API operation. There is no ambient context discovery,
+`containers/k8s/compatibility/`. The example pins the published v1.0.65 role images
+for `linux/amd64`, but is not deployable: agent, initialization and actual operator
+values need qualification. A missing or invalid explicit profile makes no API operation. There is no ambient context discovery,
 credential-plugin execution, proxy, insecure TLS or redirect fallback.
 
 Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
-an approved new image release and custodian-owned preparation. It inherits the
-historical five-role package and retains its Secrets, PVCs and network floor;
+custodian-owned preparation and qualification of its published image pins. It
+inherits the historical five-role package and retains its Secrets, PVCs and network floor;
 all five workloads install at zero replicas. Only exact-name StatefulSet/scale
 reads and updates, Pod reads and named-container attach are in the operator
 Role. This does not authorize Secret access, arbitrary Pod creation, exec,
@@ -2087,9 +2097,15 @@ continuation and conversation continuation are separate: a PVC only proves the
 filesystem part. A new clean Pod starts a new agent execution; this profile makes
 no conversation-resume or unattended crash/partition recovery promise.
 
-The source checkpoint deliberately carries an unbuilt candidate record.
-`sh containers/k8s/check.sh --compatibility-cellctl --self-test` can pass hostile
-synthetic fixtures while still returning `could-not-check` for the actual
-candidate. Only a genuine protected-release manifest digest and its release
-record can remove that image hold. Runtime/model usefulness and effective
-custody remain the separate qualification step.
+The opt-in component and example bind the published v1.0.65 role manifest digests;
+its [candidate record and preparation handoff](../containers/k8s/components/compatibility-cellctl/README.md)
+identify the exact release source, artifact checksum and remaining operator acts.
+The historical base still uses v1.0.52. Both select Linux AMD64 nodes; a multi-platform
+verify-runner release does not supply ARM64 desk images.
+`sh containers/k8s/check.sh --compatibility-cellctl --self-test` passes the hostile
+synthetic fixtures but still reports `checked-failed` on the actual component's
+unprepared launch identities. Real per-role initialization/launch values and
+existing custodian groups remain required; never replace them with fixture values.
+Brief 31 remains blocked, and this pin checkpoint is not its final immutable
+delivery for independent qualification. Runtime/model usefulness, effective
+custody and activation retain their separate human qualification gates.

@@ -79,10 +79,9 @@ files:
 - `statusgen/forgeread.go` — the reader for the new kind.
 - `statusgen/labelremovalhold.go` (planned) — the pure decision and the default checker.
 - `statusgen/scanissues.go`, `statusgen/transcribescan.go`, `statusgen/main.go` — the hold and its wiring.
-- the test files named in Task; `plugins/assay/skills/intake-desk/SKILL.md` and
-  `plugins/assay/skills/worker-desk/SKILL.md` (one sentence each).
-- this brief's own `consumers:` block (Task 14).
-- `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
+- **the test files named in Task;** `plugins/assay/skills/intake-desk/SKILL.md` and `plugins/assay/skills/worker-desk/SKILL.md` (one sentence each).
+- `docs/streams/statusgen/brief-16-label-removal-hold.md` — this brief's own `consumers:` block (Task 14).
+- **changelog** — `changelog/<branch-slug>.md`: the per-PR fragment this repo enforces.
 
 single-point-of-failure: custody of the label. Today the only thing between an undecided issue
 and dispatchable work is that nobody removes the excluded label early, and every identity with

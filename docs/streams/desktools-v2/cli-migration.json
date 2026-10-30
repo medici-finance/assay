@@ -58,6 +58,11 @@
     },
     {
       "class": "test",
+      "pattern": "statusgen/bench/perfworkload.sh",
+      "reason": "statusgen/26 source-only launcher for the opt-in TestPerfWorkloadSamples synthetic offline acceptance and measurement test; never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "statusgen/test-role-claims.sh",
       "reason": "offline fixed-selector transport regression suite shared by PR CI and mutation qualification; never installed or released as an operator entrypoint (#3327)"
     },

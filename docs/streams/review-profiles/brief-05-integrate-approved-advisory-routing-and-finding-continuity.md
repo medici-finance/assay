@@ -27,7 +27,7 @@ decision-trigger: "spec"
 
 ## Context
 
-files: `tools/desk/internal/deskkit/reviewlanes.go`, `tools/desk/internal/deskkit/reviewlanes_test.go`, `tools/desk/internal/deskkit/reviewfinding.go`, `tools/desk/internal/deskkit/reviewfinding_lane_test.go`, `tools/desk/internal/deskkit/reviewscope.go`, `tools/desk/cmd/deskdispatch/references/review-prompt.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`. New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
+files: `tools/desk/internal/deskkit/reviewlanes.go`, `tools/desk/internal/deskkit/reviewlanes_test.go`, `tools/desk/internal/deskkit/reviewfinding.go`, `tools/desk/internal/deskkit/reviewfinding_lane_test.go`, `tools/desk/internal/deskkit/reviewscope.go`, `tools/desk/cmd/deskdispatch/references/review-prompt.md`, `plugins/assay/skills/pr-review-desk/SKILL.md` — New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
 
 facts:
 - At the pinned main there are four review lanes, existing advisory design-fit and architectural fitness tests; no calibrated performance/architecture routing policy exists.

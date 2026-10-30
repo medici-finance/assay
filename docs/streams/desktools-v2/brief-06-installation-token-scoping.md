@@ -51,7 +51,7 @@ files:
 - `tools/desk/internal/deskkit/` — repo-derived native token scoping and fail-closed resolution.
 - `tools/desk/cmd/cellctl/shims.go` — the current Go wrapper generator, not the retired shell oracle.
 - `tools/desk/cmd/deskdispatch/` — explicit custody delivered to script children.
-- New/extended Go tests listed below (planned until this human-gated brief is accepted).
+- **New/extended Go tests listed below (planned until this human-gated brief is accepted).**
 
 Re-derived by desktools-v2/13 against the current tree. This diff authors the contract;
 it changes no runtime credential selection and is not the human's acceptance of brief 06.
