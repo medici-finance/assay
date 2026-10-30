@@ -65,3 +65,64 @@ func liveRepresentedPRFiles(repo string, number int) ([]deskkit.ChangedFile, err
 	}
 	return deskkit.CompleteChangedFiles(fg, fr, number)
 }
+
+// liveRepresentedPRBatchFiles reuses the admitted shared planning reader. Unsupported
+// backends retain native complete reads; no new credential or query owner is introduced.
+func liveRepresentedPRBatchFiles(repo string, numbers []int) map[int]deskkit.PendingChangeObservation {
+	owner, name, ok := strings.Cut(strings.TrimSpace(repo), "/")
+	var fg deskkit.Forge
+	var err error
+	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	if !ok || owner == "" || name == "" {
+		err = fmt.Errorf("changed-file read: target repo %q is not owner/name", repo)
+	} else {
+		fg, err = productionForgeResolver(fr)
+	}
+	if err != nil {
+		out := map[int]deskkit.PendingChangeObservation{}
+		for _, n := range numbers {
+			out[n] = deskkit.PendingChangeObservation{Err: err}
+		}
+		return out
+	}
+	return representedFilesBatch(fg, fr, numbers, deskkit.PendingChangeBatchReader(fg))
+}
+
+// The compact projection intentionally omits previous paths. A rename/copy cannot
+// reach BriefAuthoringOnly until the complete native reader supplies its ancestry,
+// bound to the same metadata observation. Errors remain errors, never a second vote.
+func representedFilesBatch(fg deskkit.Forge, fr deskkit.ForgeRepo, numbers []int, batch func(deskkit.ForgeRepo, []int) map[int]deskkit.PendingChangeObservation) map[int]deskkit.PendingChangeObservation {
+	out := map[int]deskkit.PendingChangeObservation{}
+	if batch == nil {
+		for _, n := range numbers {
+			pr, files, err := deskkit.CompleteChangedFilesOf(fg, fr, n)
+			out[n] = deskkit.PendingChangeObservation{PR: pr, Files: files, Err: err}
+		}
+		return out
+	}
+	observed := batch(fr, numbers)
+	for _, n := range numbers {
+		ob, ok := observed[n]
+		if !ok {
+			ob.Err = fmt.Errorf("complete changed-file observation absent")
+		}
+		if ob.Err == nil && (ob.PR == nil || ob.PR.Number != n || len(ob.Files) != ob.PR.ChangedFiles) {
+			ob.Err = fmt.Errorf("incomplete changed-file observation")
+		}
+		if ob.Err == nil {
+			for _, f := range ob.Files {
+				if f.Status != "renamed" && f.Status != "copied" {
+					continue
+				}
+				pr, files, err := deskkit.CompleteChangedFilesOf(fg, fr, n)
+				if err == nil && (pr.HeadSHA != ob.PR.HeadSHA || pr.ChangedFiles != ob.PR.ChangedFiles) {
+					err = fmt.Errorf("pending change moved during ancestry fallback")
+				}
+				ob = deskkit.PendingChangeObservation{PR: pr, Files: files, Err: err}
+				break
+			}
+		}
+		out[n] = ob
+	}
+	return out
+}

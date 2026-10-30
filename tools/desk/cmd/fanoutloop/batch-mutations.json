@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/fanoutloop -run \"TestRepresentedBatch\" -count=1",
+  "control": {
+    "name": "CONTROL authoring is never exempted",
+    "file": "cmd/fanoutloop/represented.go",
+    "old": "if deskkit.BriefAuthoringOnly(briefID, files) {",
+    "new": "if false && deskkit.BriefAuthoringOnly(briefID, files) {"
+  },
+  "mutations": [
+    {
+      "name": "ignore batched frontier",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "if representedPRBatchFiles == nil {",
+      "new": "if true {"
+    },
+    {
+      "name": "skip rename ancestry",
+      "file": "cmd/fanoutloop/represented_live.go",
+      "old": "if f.Status != \"renamed\" && f.Status != \"copied\" {",
+      "new": "if f.Status != \"never-a-change-status\" {"
+    },
+    {
+      "name": "discard fallback head binding",
+      "file": "cmd/fanoutloop/represented_live.go",
+      "old": "pr.HeadSHA != ob.PR.HeadSHA || pr.ChangedFiles != ob.PR.ChangedFiles",
+      "new": "pr.ChangedFiles != ob.PR.ChangedFiles"
+    },
+    {
+      "name": "discard fallback count binding",
+      "file": "cmd/fanoutloop/represented_live.go",
+      "old": "pr.HeadSHA != ob.PR.HeadSHA || pr.ChangedFiles != ob.PR.ChangedFiles",
+      "new": "pr.HeadSHA != ob.PR.HeadSHA"
+    },
+    {
+      "name": "accept missing frontier observation",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "observation.Err = fmt.Errorf(\"complete changed-file observation absent\")",
+      "new": "observation.Files = []deskkit.ChangedFile{{Filename:\"docs/streams/example-port/brief-12-test.md\", Status:\"added\"}}"
+    },
+    {
+      "name": "uncertainty becomes authoring",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "if err != nil {\n\t\tfmt.Fprintf(os.Stderr, \"fanoutloop: NOTICE",
+      "new": "if err != nil {\n        return true\n\t\tfmt.Fprintf(os.Stderr, \"fanoutloop: NOTICE"
+    }
+  ]
+}
