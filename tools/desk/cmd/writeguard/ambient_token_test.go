@@ -65,8 +65,8 @@ var ambientRefused = []string{
 	"\\gh auth token",
 	`"gh" auth token`,
 	`gh "auth" 'token'`,
-	"gh au\\\nth token",
-	"gh auth \\\n  token",
+	"gh au\\" + "\nth token",
+	"gh auth \\" + "\n  token",
 	"gh auth token | pbcopy",
 	"echo start; gh auth token",
 	"true && gh auth token",
@@ -571,7 +571,7 @@ func TestHookUnmodeledBacktick(t *testing.T) {
 // regression: #4821
 func TestHookUnmodeledHeredoc(t *testing.T) {
 	ambientUnmodeled(t, []string{
-		"cat <<E\n`date`\nE\n@", "cat <<E\nnote \\\nE\nit's\nE\n@\necho '", "cat <<E\n@",
+		"cat <<E\n`date`\nE\n@", "cat <<E\nnote \\" + "\nE\nit's\nE\n@\necho '", "cat <<E\n@",
 	})
 }
 

@@ -274,7 +274,7 @@ func TestUnmodeledBacktick(t *testing.T) {
 func TestUnmodeledHeredocBody(t *testing.T) {
 	forgeUnmodeled(t, []string{
 		"cat <<E\n`date`\nE\n@", "cat <<E\n$(cat <<'F'\nF\n)\nE\n@",
-		"cat <<E\nnote \\\nE\nit's\nE\n@\necho '", "cat <<E\n@", "cat <<$(echo E)\nx\n$(echo E)\n@",
+		"cat <<E\nnote \\" + "\nE\nit's\nE\n@\necho '", "cat <<E\n@", "cat <<$(echo E)\nx\n$(echo E)\n@",
 		"cat <<E\n${v:-\"q\"}\nE\n@", "cat <<E\n$a[1]\nE\n@",
 	})
 }
@@ -328,7 +328,7 @@ func TestForgeReviewShapes(t *testing.T) {
 		"case-in-dq-subst":   "printf '%s\\n' \"$( case q in q) printf \"b\" ; gh auth token ;; esac )\"",
 		"quote-in-brace":     "printf '%s' \"${u-\"'\"}\" ; gh auth token ; printf \"'\"",
 		"ansi-c-in-subst":    "v=$( printf %s $'\\'' ; printf ')' ) ; gh auth token ; printf 'v'",
-		"heredoc-line-join":  "cat <<E\nnote \\\nE\nit's\nE\ngh auth token\necho '",
+		"heredoc-line-join":  "cat <<E\nnote \\" + "\nE\nit's\nE\ngh auth token\necho '",
 		"zsh-equals-path":    "=gh auth token",
 	} {
 		if !forgeTokenRead(cmd) {
