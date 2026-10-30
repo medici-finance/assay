@@ -69,6 +69,19 @@ type Repo struct {
 	// RefsContaining (see contains.go); reachMu guards its construction.
 	reachMu  sync.Mutex
 	reachIdx *reachIndex
+
+	// Immutable commit facts shared by range queries within this Repo lifetime.
+	graphMu    sync.Mutex
+	graphIDs   map[string]int
+	graphNodes []rangeNode
+
+	// Metadata shares only immutable full-ID facts and trees internal to this reader.
+	// Ref names/HEAD and capability profiles are observed afresh by each call.
+	// metadataMu also protects go-git's private lazy subtree memo in these trees.
+	metadataMu      sync.Mutex
+	metadataCommits map[plumbing.Hash]*metadataCommit
+	metadataTrees   map[plumbing.Hash]*object.Tree
+	treeLimit       int // retained decoded trees; 0 means metadataTreeCap
 }
 
 // Open opens the repository rooted at dir (an exact repo/worktree root — like
