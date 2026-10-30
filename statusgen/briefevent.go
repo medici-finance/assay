@@ -642,22 +642,12 @@ func briefEventFromMap(m map[string]any) (*BriefEvent, error) {
 		return nil, fmt.Errorf("%s: a retraction cannot name itself", ev.FactID)
 	}
 
-	canon, err := canonicalJSON(m)
-	if err != nil {
-		return nil, err
-	}
-	fact := make(map[string]any, len(m))
-	for k, v := range m {
-		if !observationMembers[k] {
-			fact[k] = v
-		}
-	}
-	fcanon, err := canonicalJSON(fact)
+	canon, digest, err := recordDigest(m)
 	if err != nil {
 		return nil, err
 	}
 	ev.Canonical = canon
-	ev.Digest = sha256Tag(fcanon)
+	ev.Digest = digest
 	return ev, nil
 }
 

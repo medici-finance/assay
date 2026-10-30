@@ -213,6 +213,7 @@ func actMutLine(t *testing.T, line []byte, f func(map[string]any)) []byte {
 	return b
 }
 
+// regression: record absent and record fact share one digest (mutation record-fact-digest).
 // TestFlowCompat — Verify row 1: every /07 golden fixture reads unchanged
 // through the extended reader, the /07 fact reader refuses the new kinds,
 // optional members round-trip and an unknown mandatory member refuses.
@@ -238,6 +239,24 @@ func TestFlowCompat(t *testing.T) {
 			}
 			if rec.Kind != "fact" || rec.Fact == nil || rec.Fact.Digest != old.Digest || !bytes.Equal(rec.Fact.Canonical, old.Canonical) {
 				bfeFail(t, "flowcompat-golden", "%s line %d: a /07 fact did not read unchanged", f, i+1)
+				continue
+			}
+			// §14.1: `record` absent and `record: fact` are one spelling of a
+			// milestone fact, so they share a digest and corroborate.
+			spelled, err := ParseFlowRecord(actMutLine(t, l, func(m map[string]any) { m["record"] = "fact" }))
+			if err != nil || spelled.Fact == nil {
+				bfeFail(t, "flowcompat-record-fact", "%s line %d: an explicit record fact was refused", f, i+1)
+				continue
+			}
+			if spelled.Fact.Digest != old.Digest {
+				bfeFail(t, "flowcompat-record-fact", "%s line %d: an explicit record fact changed the digest", f, i+1)
+			}
+			store := NewEventStore()
+			if _, err := store.Add(rec.Fact); err != nil {
+				t.Fatalf("ASSERT-FAIL[fixture] %v", err)
+			}
+			if got, err := store.Add(spelled.Fact); err != nil || got != "corroborated" {
+				bfeFail(t, "flowcompat-record-fact", "%s line %d: the two spellings gave %q (err %v), want corroborated", f, i+1, got, err)
 			}
 		}
 	}
@@ -746,11 +765,8 @@ func actFlowProfiles(t *testing.T) (map[string]any, map[string]any, map[string]a
 		}
 	}
 	pol := &PublicationPolicy{Audience: publicationAudience, Revision: "publication-policy-1", AuthorizedSources: []string{"example-console"}}
-	in.Policy = pol
 	restricted := BuildRestrictedProfile(in)
-	in.Policy = nil
-	unpolicied := BuildRestrictedProfile(in)
-	return restricted, BuildCommittedProfile(restricted, pol), BuildCommittedProfile(unpolicied, nil), pol
+	return restricted, BuildCommittedProfile(restricted, pol), BuildCommittedProfile(restricted, nil), pol
 }
 
 // actWalk collects every member name and every scalar string value.
@@ -770,7 +786,8 @@ func actWalk(v any, keys, vals map[string]bool) {
 	}
 }
 
-// regression: nothing outside the allowlist reaches committed bytes (mutation committed-allowlist).
+// regression: nothing outside the allowlist reaches committed bytes (mutation committed-allowlist);
+// policy_revision names the gating policy only (mutation policy-revision-carry).
 // TestActPublication — Verify row 6: both profiles carry the same numbers,
 // nothing outside the allowlist reaches committed bytes, and without a
 // recorded publication policy interventions are held while waits render.
@@ -838,6 +855,30 @@ func TestActPublication(t *testing.T) {
 	}
 	if _, ok := actNorm(t, held).(map[string]any)["policy_revision"]; ok {
 		bfeFail(t, "pub-held", "a profile with no policy claims a policy revision")
+	}
+
+	// §18.3: the committed `policy_revision` names the policy that decided
+	// publication, never a revision carried in on the restricted side.
+	planted := map[string]any{}
+	for k, v := range restricted {
+		planted[k] = v
+	}
+	planted["policy_revision"] = "rev-planted"
+	other2 := *pol
+	other2.Revision = "rev-B"
+	for i, c := range []struct {
+		policy *PublicationPolicy
+		want   any // nil: absent
+	}{
+		{nil, nil}, {&other, nil}, {&unnamed, nil}, {pol, pol.Revision}, {&other2, "rev-B"},
+	} {
+		got := actNorm(t, BuildCommittedProfile(planted, c.policy)).(map[string]any)["policy_revision"]
+		if got != c.want {
+			bfeFail(t, "pub-policy-revision", "case %d: policy_revision %v, want %v", i+1, got, c.want)
+		}
+	}
+	if _, ok := restricted["policy_revision"]; ok {
+		bfeFail(t, "pub-policy-revision", "the restricted profile carries a policy revision; it gates nothing")
 	}
 
 	// The independent checker refuses a planted member at any depth, and its

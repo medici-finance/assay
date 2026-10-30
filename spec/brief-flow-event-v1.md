@@ -397,8 +397,10 @@ prerequisite never passes. Fixture success is not deployment evidence.
 ### 14.1 Record kinds
 
 The optional member `record` names the record kind. Absent, or `fact`, the line is a milestone
-fact exactly as §3 specifies; every earlier fact is unchanged and keeps its digest. Two further
-kinds share the envelope:
+fact exactly as §3 specifies; every earlier fact is unchanged and keeps its digest. The two
+spellings are one fact: `record: fact` is left out of the §5.2 digest input, so a fact written
+either way has the same digest and two such observations corroborate. Two further kinds share
+the envelope:
 
 | `record` | Meaning | Also REQUIRED |
 |---|---|---|
@@ -470,7 +472,8 @@ Projection rules (§10 binds them; restated here for the edges):
   statistic**: it is never rendered as zero.
 - An edge's coverage is the weakest coverage among its waits (`observed` < `partial` <
   `unknown`), and `unknown` when it has none. A held wait conflict (§5.3) is counted per edge in
-  `held` and lowers `observed` to `partial`.
+  `held` and lowers `observed` to `partial`; like a held act (§17.2), it is counted over the
+  whole source read, not windowed.
 
 ## 16. Human-intervention record
 
@@ -510,8 +513,8 @@ authenticated the act) and `category` is not `unclassified`. Every other act is 
 ### 16.3 No person principal
 
 The record adds no person-principal member. The §3.4 scan applies to every record kind and,
-for these records, also refuses a member named `approver`, `submitter`, `requester` or
-`decider`, or ending in `_approver` or `_submitter`. Verifying that a human acted stays with the
+for every record kind (milestone facts included), also refuses a member named `approver`,
+`submitter`, `requester` or `decider`, or ending in `_approver` or `_submitter`. Verifying that a human acted stays with the
 source that authenticated the act; the record carries only the role classification and the
 basis. The original authentication evidence stays with that source's owner and is referenced,
 never copied.
@@ -542,7 +545,10 @@ in no brief's count.
 Intervention coverage is a property of the source read over the window: `observed`, `partial`
 or `unknown` (absent is `unknown`). With `unknown` coverage every intervention count — per
 brief and fleet — has state `unknown` and **no number**: missing input is never zero. A held
-conflict lowers `observed` to `partial`. Every brief the report covers gets a block, so a brief
+conflict lowers `observed` to `partial`. `held` counts every held conflict in the source read,
+whatever its `occurred_at`, and is not windowed: `occurred_at` is an observation member, so the
+conflicting observations of a held act need not agree on it, and no window can be chosen for
+the act. A held conflict outside the window therefore still lowers the window's coverage. Every brief the report covers gets a block, so a brief
 with no acts (zero, observed) is distinguishable from one that was never read (unknown).
 
 ### 17.3 Sinks a human-act record never reaches
@@ -567,8 +573,9 @@ The restricted profile (`brief-flow-restricted/v1`) is operator-only. It carries
 (act id, brief, category, outcome, taxonomy, both roles, attribution basis, qualification,
 occurrence time, source pointer, effect count) and every wait row (fact id, brief, edge, times,
 start and end fact pointers, coverage), the intervention source's name, and the counts and
-statistics of §15 and §17 derived from them. A writer MUST refuse a destination inside a git
-work tree, on the same terms as the export (§9), and writes it owner-only.
+statistics of §15 and §17 derived from them. It carries no `policy_revision`: it is not
+published, so no publication policy applies to it. A writer MUST refuse a destination inside a
+git work tree, on the same terms as the export (§9), and writes it owner-only.
 
 ### 18.2 Committed profile
 
@@ -595,8 +602,11 @@ the same numbers.
 Intervention counts are published in the committed profile only when a **recorded publication
 policy** authorizes the intervention source for the audience `repository-reader` — everyone who
 can read the repository the profile is committed to. A policy names the audience, its revision
-and the authorized sources; its revision is carried as `policy_revision`. A reader's or an
-operator's permission to read a source is not a publication policy.
+and the authorized sources; its revision is carried as `policy_revision`. The committed
+profile's `policy_revision` is the revision of the policy that authorized publishing it, set when
+the committed profile is built and present only when that policy authorizes the source; it is
+never copied from the restricted input. A reader's or an operator's permission to read a source
+is not a publication policy.
 
 Without an applicable policy the `interventions` block is **held**: state `held` and a reason,
 no counts. Wait statistics still render, since they carry no act. This contract records no

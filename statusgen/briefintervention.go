@@ -229,7 +229,10 @@ func ParseFlowRecord(line []byte) (*FlowRecord, error) {
 }
 
 // recordDigest is the §5.2 digest rule applied to any record kind: canonical
-// JSON of every member except the observation members.
+// JSON of every member except the observation members. It is the ONE digest
+// computation; the fact reader uses it too. `record: fact` is the explicit
+// spelling of an absent `record` (§14.1), so it never enters the digest: the
+// two spellings of one fact corroborate instead of conflicting.
 func recordDigest(m map[string]any) ([]byte, string, error) {
 	canon, err := canonicalJSON(m)
 	if err != nil {
@@ -237,9 +240,13 @@ func recordDigest(m map[string]any) ([]byte, string, error) {
 	}
 	fact := make(map[string]any, len(m))
 	for k, v := range m {
-		if !observationMembers[k] {
-			fact[k] = v
+		if observationMembers[k] {
+			continue
 		}
+		if k == "record" && v == "fact" { // record-fact-digest
+			continue
+		}
+		fact[k] = v
 	}
 	fcanon, err := canonicalJSON(fact)
 	if err != nil {
@@ -506,7 +513,6 @@ type ProjectionInput struct {
 	ActSource   string
 	ActCoverage string
 	Waits       []*WaitRecord
-	Policy      *PublicationPolicy
 }
 
 // leaf marks an allowlisted scalar; a map[string]any nests; a []any holds
@@ -836,9 +842,8 @@ func BuildRestrictedProfile(in ProjectionInput) map[string]any {
 		"interventions": interventionBlock(in, rows, heldActs),
 		"waits":         stats,
 	}
-	if in.Policy != nil {
-		prof["policy_revision"] = in.Policy.Revision
-	}
+	// No policy revision: the restricted profile gates nothing. The committed
+	// profile cites the policy that decided its own publication (§18.3).
 	return prof
 }
 
@@ -865,10 +870,14 @@ func heldWaitsByEdge(ws []*WaitRecord) map[string]int {
 // profile by allowlist copy. Without a recorded publication policy that
 // authorizes the intervention source for repository readers, the
 // intervention block is HELD — no counts — while wait statistics render.
+// `policy_revision` is set here, from that same policy, and only when it
+// authorizes publication: no revision is ever carried over from the input.
 func BuildCommittedProfile(restricted map[string]any, policy *PublicationPolicy) map[string]any {
 	src := map[string]any{}
 	for k, v := range restricted {
-		src[k] = v
+		if k != "policy_revision" { // policy-revision-own
+			src[k] = v
+		}
 	}
 	src["schema"] = committedProfileSchema
 	source, _ := restricted["act_source"].(string)
@@ -877,6 +886,9 @@ func BuildCommittedProfile(restricted map[string]any, policy *PublicationPolicy)
 			"state":  "held",
 			"reason": "no recorded publication policy authorizes this intervention source for repository readers",
 		}
+	}
+	if policy.permits(source) {
+		src["policy_revision"] = policy.Revision
 	}
 	out, _ := allowCopy(src, committedShape)
 	return out.(map[string]any)

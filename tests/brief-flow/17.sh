@@ -47,6 +47,8 @@ mutations17=(
 	'policy-off^TestActPublication^pub-held^briefintervention.go^if !policy.permits(source) {^if false && !policy.permits(source) {^interventions published with no recorded publication policy'
 	'historian-read^TestActSinks^sinks-historian-read^history.go^if err := refuseHumanActLine([]byte(line)); err != nil { // historian-sink-read^if err := refuseHumanActLine(nil); err != nil { // historian-sink-read^the historian reads a human-act line'
 	'record-scan-off^TestActSinks^sinks-login^briefevent.go^if err := scanPerson(m, ""); err != nil {^if err := scanPerson(nil, ""); err != nil {^person-identifier scan disabled for every record kind'
+	'policy-revision-carry^TestActPublication^pub-policy-revision^briefintervention.go^if k != "policy_revision" { // policy-revision-own^if true { // policy-revision-own^a policy revision carried in from the restricted side reaches committed bytes'
+	'record-fact-digest^TestFlowCompat^flowcompat-record-fact^briefintervention.go^if k == "record" && v == "fact" { // record-fact-digest^if false { // record-fact-digest^an explicit record fact hashes differently from an absent record'
 )
 
 mode_mutation17() {
@@ -82,7 +84,7 @@ mode_mutation17() {
 		rm -rf "$copy" "$mbin"
 	done
 	[ "$observed" -eq "${#mutations17[@]}" ] || fail "observed $observed of ${#mutations17[@]} mutations"
-	mode_tests genuine TestActDedup TestActContract TestFlowWaits TestActPublication TestActSinks
+	mode_tests genuine TestActDedup TestActContract TestFlowWaits TestActPublication TestActSinks TestFlowCompat
 	echo "PASS  mutation: $observed of ${#mutations17[@]} mutations detected; genuine code passes"
 }
 
