@@ -148,6 +148,7 @@ No parallel drain engine, model timer or telemetry store is commissioned.
                              ├──► 04 recovery contract ┼──► 05 offline experiment ──► 06 run records + replay
                              └──► 08 signal-triggered  │
                                    (01 also feeds 05) ─┘
+  33 human decision owner ──► 34 signal schema + lint ──► 08 signal-triggered
 ```
 
 **In-stream head: 02**, with 01 alongside it. Longest chain is `02 → 03 → 05 → 06` (equal

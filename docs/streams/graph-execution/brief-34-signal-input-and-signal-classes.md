@@ -63,6 +63,10 @@ files: `schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v
 `statusgen/testdata/patterns/bad-options-on-effect.yaml` (planned),
 `statusgen/testdata/patterns/bad-exit-effect-no-admission.yaml` (planned),
 `statusgen/testdata/patterns/bad-mechanical-no-culprit.yaml` (planned),
+`statusgen/testdata/patterns/bad-unadmitted-class-reaches-effect.yaml` (planned),
+`statusgen/testdata/patterns/bad-effect-route-no-floor.yaml` (planned),
+`statusgen/testdata/patterns/bad-exit-unreachable.yaml` (planned),
+`statusgen/testdata/patterns/bad-containment-default.yaml` (planned),
 `plugins/assay/skills/author-brief/SKILL.md` and `.cursor/skills/author-brief/SKILL.md`
 (generated enforcement table only), `changelog/graph-execution-34-signal-classes.md` (planned).
 
@@ -75,6 +79,13 @@ or sits on a node that is not an effect-free `human` decision (`pattern-containm
 33's `pattern-human-role-not-decision`), and it reports even when the schema also refuses. The
 out-of-band layer is unchanged from brief 02: the roster's role binding, not the pattern,
 authorises a forge write, and `human` binds no identity at all.
+For provenance (which runs may start an instance that reaches an automated effect), the ONE
+control is `pattern-signal-admission-open`: once any `effect` node is reachable from the signal
+input, every class declares `admission`, with no exemption by exit and no reliance on a runtime
+honouring class routes. Behind it, the schema's `triggers` enum refuses an unknown trigger value
+without the lint, and at run time the eligibility evaluator (graph-execution/01) and the
+auto-triage responders refuse a run that fails admission, in a different component on a
+different signal.
 
 facts (7fcd9d284, 2026-10-27):
 - **Ruling.** The maintainer chose option A on medici-finance/assay#4506 (a schema and lint
@@ -144,8 +155,11 @@ design-fit:
    detected. `classes` names the signal classes (step 3) this input admits.
 2. **Decision options.** Add three optional node properties:
    - `options`: array of strings, `minItems: 2`. The outcomes a decision node may close with.
-   - `default`: string. The recommended next step; it MUST be one of the node's `options` or
-     `containment` entries.
+   - `default`: string. The recommended next step; it MUST be one of the node's `options`
+     entries. It is a recommendation shown to the person who closes the decision and nothing
+     more: it never closes a decision on a timeout, when no one answers, or by any act other
+     than the person's own (33's authenticated-act rule stays the control). The containment
+     node carries no `default` (step 6, `pattern-containment-set`).
    - `containment`: array whose `items` are `enum: [quarantine, rollback, secondary-auth, stop, none-needed]`,
      `minItems: 5`. The closed containment taxonomy, written as a block list.
    `none-needed` is recorded only with the signal reading that justifies it; say so in the spec
@@ -155,10 +169,11 @@ design-fit:
    - `id` (string); `exit` (string, a node id: the class's single exit, for a class with no culprit record);
    - `admission`: `{triggers: array of enum [schedule, push], push-refs: array of string}`,
      `required: [triggers]`. Keep the enum: an unknown trigger is a shape violation as well as
-     a lint finding;
-   - `culprit-record`: `{fields: array of string, default-class: enum [mechanical, judgement], withheld: {class: enum [mechanical, judgement], file: any}}`,
-     `required: [fields, default-class, withheld]` (leave `file` untyped if the validator has no
-     `null` type; the lint checks it);
+     a lint finding. A `push-refs` entry is a fully qualified ref (`refs/heads/main`), never a
+     bare branch name, so a tag named `main` can never satisfy it;
+   - `culprit-record`: `{fields: array of string, default-class: enum [mechanical, judgement], withheld: {class: enum [mechanical, judgement], file: {type: null}}}`,
+     `required: [fields, default-class, withheld]` (`statusgen/conform.go` implements the `null`
+     type, so the schema refuses a non-null `file` without the lint; the lint checks it too);
    - `mechanical-exit`, `judgement-exit` (strings, node ids); `remedies`, `refused-paths` (arrays of string);
    - `limits`: `{dedupe: const per-culprit, open-ceiling: integer minimum 1, rate: {count: integer minimum 1, window: string}, on-exceed: const escalate}`,
      all four required.
@@ -170,13 +185,25 @@ design-fit:
    see today.
 6. **Lint: eight MUST rules** in `statusgen/patterns.go`, each a `rulePattern…` constant, each
    reported as `checked-failed: <path> [<rule>]: …` (exit 1), and each reported even when the
-   schema also refuses the same node:
+   schema also refuses the same node.
+
+   **A class's route** (used by the rules below and stated in the spec, step 7): the route of
+   class C is every node that lies on a directed path along `edges` from the signal-input node to
+   one of C's exit nodes (`exit`, `mechanical-exit`, `judgement-exit`), plus every node reachable
+   along `edges` from one of those exits. An instance of class C runs only the nodes on C's
+   route; a node off the route is never run for that instance. Enforcing that at run time belongs
+   to the eligibility evaluator (graph-execution/01), which reads the route this brief defines;
+   this brief defines it and lints it. No provenance rule below relies on that enforcement:
+   admission is checked over the whole graph (`pattern-signal-admission-open`), so it holds even
+   if a runtime ran an off-route node.
+
    - `pattern-signal-input`: an input item names exactly one of `artifact` or `signal`; a
      `signal` input sits only on an entry node (no edge points at it); its `source` and
      `liveness-check` are non-empty; every name in `classes` is a declared `signal-classes` id;
      a pattern with a signal input declares at least one class and a pattern declaring classes
      has exactly one signal input; every node id a class names (`exit`, `mechanical-exit`,
-     `judgement-exit`) is a node; a class names `exit`, or both `mechanical-exit` and
+     `judgement-exit`) is a node and is reachable along `edges` from the signal-input node (so
+     no class has an empty route); a class names `exit`, or both `mechanical-exit` and
      `judgement-exit`; and `mechanical-exit` and `culprit-record` imply each other and both imply
      `judgement-exit`, `admission`, `remedies` and `refused-paths` (a class that names a
      `mechanical-exit` carries the whole gate-red record, and a class that carries the culprit
@@ -185,38 +212,55 @@ design-fit:
      the reserved artifact `replay-fixture`, and every such node carries a `kind: command` evidence
      entry with `mandatory: true`. `replay-fixture` is a named constant beside the rules.
    - `pattern-signal-admission-open`: `admission.triggers` is a subset of `schedule`, `push`;
-     when `push` is present, `push-refs` is exactly `[main]`; `push` with no `push-refs` is a
-     finding. Every class declares `admission` unless its `exit` is a `kind: decision`,
-     `role: human` node with no `effects`: a class whose exit (or `mechanical-exit`) is an
-     `effect` node and that declares no `admission` is a finding, so an automated effect is never
-     reachable from an unscreened run. A run that fails admission is refused wholesale, so the
-     class has no lower-confidence path for it; state that in the spec.
+     when `push` is present, `push-refs` is exactly `[refs/heads/main]`; `push` with no
+     `push-refs` is a finding. **Fail closed on reachability:** if any `kind: effect` node is
+     reachable along `edges` from the signal-input node, every class the signal input lists
+     declares `admission`, whatever its exit is and whatever its route is. There is no
+     exemption for a class whose exit is a human decision: edges carry no condition, and a person
+     closing a containment or judgement decision is not a screen on where the signal came from.
+     A class may omit `admission` only in a signal pattern from which no `effect` node is
+     reachable at all. A run that fails admission is refused wholesale, so the class has no
+     lower-confidence path for it; state that in the spec.
    - `pattern-remedy-set-open`: `remedies` is a non-empty subset of the closed constant
-     `gofmt`, `stray-file-deletion`, `exact-stale-string-replace`; `refused-paths` contains every
-     entry of the gate-configuration floor constant `.github/workflows/`; and the `mechanical-exit`
-     node is `kind: effect`. Both constants are named beside the rules, and the spec text names
-     them.
+     `gofmt`, `stray-file-deletion`, `exact-stale-string-replace`; the `mechanical-exit` node is
+     `kind: effect`; and every class whose route contains a `kind: effect` node declares
+     `refused-paths` containing every entry of the gate-configuration floor constant `.github/`
+     (workflows, composite actions and CODEOWNERS alike). The floor binds by route, not by
+     `mechanical-exit`, so a class that reaches the same effect node by its plain `exit` carries
+     it too. Both constants are named beside the rules, and the spec text names them and states
+     that the floor is a subset of "gate configuration": a runtime allow-list (auto-triage/02)
+     may refuse more, never less.
    - `pattern-judgement-no-default`: the `judgement-exit` node is `kind: decision`, `role: human`,
      declares `options`, and declares a `default` that is one of them.
    - `pattern-culprit-record`: `fields` is exactly the set `check`, `file`, `line`, `problem`,
      `class`, `origin`; `default-class` is `judgement`; `withheld.class` is `judgement` and
      `withheld.file` is YAML null.
    - `pattern-decision-options`: `options`, `default` and `containment` appear only on
-     `kind: decision` nodes; `default` is one of the node's `options` or `containment` entries;
-     `options` has no duplicate.
+     `kind: decision` nodes; `default` is one of the node's `options` entries; `options` has no
+     duplicate.
    - `pattern-containment-set`: a node's `containment` is exactly the five values, each once; the
-     node is `kind: decision`, `role: human`, with no `effects`; and a pattern with a signal input
-     has exactly one such node.
+     node is `kind: decision`, `role: human`, with no `effects` and no `default` (no outcome of
+     the containment step is pre-selected, `none-needed` included); and a pattern with a signal
+     input has exactly one such node.
    Register all eight in `statusgen/enforcementstatus.go` as `StatusFatal`, then regenerate the
    enforcement tables with `statusgen enforcement-status` and `make skillslint` (never by hand).
 7. **Spec text** in `spec/workflow-pattern-v1.md`: add `signal-classes` to the §3 table
    (OPTIONAL); extend the §4.1 `inputs` row with the `signal` shape and add rows for `options`,
-   `default` and `containment`; add a §4.3 "Signal-instantiated patterns" stating each of the
-   eight rules in MUST language, the two closed constants and the reserved `replay-fixture`
-   artifact, and that a signal pattern's liveness check is a precondition the eligibility
-   evaluator holds on (`could-not-check` holds the instance; delivering the checks is out of
-   scope); state in §7 that the table is unchanged and that containment is a `human` decision,
-   so no role gains an effect kind.
+   `default` and `containment`. The `options` row says how it differs from the existing
+   `outcomes` key: `outcomes` names a node's non-success dispositions (`wait`, `fail`), while
+   `options` lists the choices a person closes a decision with; they are not synonyms. The
+   `default` row says `default` is a recommendation only and never closes a decision on a
+   timeout, when no one answers, or by any act but the person's own. Add a §4.3
+   "Signal-instantiated patterns" stating: the meaning of `exit`, `mechanical-exit` and
+   `judgement-exit`, and a class's route as step 6 defines it (an instance of a class runs only
+   the nodes on its route); each of the eight rules in MUST language; that admission is checked
+   fail-closed over the whole graph, not over the route, so it does not depend on route
+   enforcement; the two closed constants (the remedy set, and the gate-configuration floor
+   `.github/`, stated as a floor that is a subset of gate configuration); `push-refs` as fully
+   qualified refs; the reserved `replay-fixture` artifact; and that a signal pattern's liveness
+   check is a precondition the eligibility evaluator holds on (`could-not-check` holds the
+   instance; delivering the checks is out of scope). State in §7 that the table is unchanged and
+   that containment is a `human` decision, so no role gains an effect kind.
 8. **Fixtures and tests.** Add `good-signal-example.yaml`, a neutral minimal signal pattern that
    is NOT graph-execution/08's pattern, shaped like this (claims may be reworded):
 
@@ -228,16 +272,17 @@ design-fit:
    signal-classes:
      - id: example-alert
        exit: judge
+       admission: {triggers: [schedule]}
        limits: {dedupe: per-culprit, open-ceiling: 3, rate: {count: 2, window: PT1H}, on-exceed: escalate}
      - id: example-gate-red
-       admission: {triggers: [schedule, push], push-refs: [main]}
+       admission: {triggers: [schedule, push], push-refs: [refs/heads/main]}
        culprit-record:
          fields: [check, file, line, problem, class, origin]
          default-class: judgement
          withheld: {class: judgement, file: null}
        mechanical-exit: propose
        remedies: [gofmt, stray-file-deletion, exact-stale-string-replace]
-       refused-paths: [.github/workflows/]
+       refused-paths: [.github/]
        judgement-exit: judge
        limits: {dedupe: per-culprit, open-ceiling: 3, rate: {count: 2, window: PT1H}, on-exceed: escalate}
    nodes:
@@ -303,15 +348,25 @@ design-fit:
    `bad-judgement-no-default` (`default` removed from `judge`); `bad-withheld-mechanical`
    (`withheld: {class: mechanical, file: null}`); `bad-containment-open` (`guard-config-edit`
    added to `containment`); `bad-options-on-effect` (`options: [a, b]` added to `propose`);
-   `bad-exit-effect-no-admission` (`example-alert`'s `exit` changed from `judge` to `propose`,
-   leaving the class with no `admission`); `bad-mechanical-no-culprit` (`culprit-record` removed
-   from `example-gate-red`, which still names `mechanical-exit`).
+   `bad-exit-effect-no-admission` (`example-alert`'s `exit` changed from `judge` to `propose`
+   and its `admission` removed); `bad-mechanical-no-culprit` (`culprit-record` removed
+   from `example-gate-red`, which still names `mechanical-exit`);
+   `bad-unadmitted-class-reaches-effect` (`admission` removed from `example-alert`, whose exit
+   stays the human decision `judge`; `root-cause`'s input changed to `{artifact: signal-record}`
+   and the edge `contain → root-cause` replaced by `intake → root-cause`, so `propose` is
+   reachable with no human node on the path); `bad-effect-route-no-floor` (`example-alert`'s
+   `exit` changed to `propose`, keeping its `admission` and declaring no `refused-paths`);
+   `bad-exit-unreachable` (the edge `contain → judge` removed, so `judge` is not reachable from
+   the signal input); `bad-containment-default` (`default: none-needed` added to `contain`).
    Tests, each asserting its fixture reports the named rule tag and that the good fixture does not:
-   `TestPatternsSignalInput` (planned) (including `bad-mechanical-no-culprit`),
-   `TestPatternsReplayMandatory` (planned), `TestPatternsSignalAdmission` (planned) (including
-   `bad-exit-effect-no-admission`),
-   `TestPatternsRemedySetClosed` (planned) (both remedy fixtures), `TestPatternsJudgementDefault` (planned),
-   `TestPatternsCulpritRecord` (planned), `TestPatternsDecisionOptions` (planned), `TestPatternsContainmentSet` (planned); add
+   `TestPatternsSignalInput` (planned) (including `bad-mechanical-no-culprit` and
+   `bad-exit-unreachable`), `TestPatternsReplayMandatory` (planned),
+   `TestPatternsSignalAdmission` (planned) (including `bad-exit-effect-no-admission` and
+   `bad-unadmitted-class-reaches-effect`),
+   `TestPatternsRemedySetClosed` (planned) (`bad-remedy-open`, `bad-refused-paths-dropped` and
+   `bad-effect-route-no-floor`), `TestPatternsJudgementDefault` (planned),
+   `TestPatternsCulpritRecord` (planned), `TestPatternsDecisionOptions` (planned),
+   `TestPatternsContainmentSet` (planned) (including `bad-containment-default`); add
    `good-signal-example.yaml` to `TestPatternsGoodFixturesLintClean`.
 9. **Changelog.** Add `changelog/graph-execution-34-signal-classes.md` (planned) with `### Added` and one `- ` bullet.
 
@@ -320,7 +375,7 @@ design-fit:
 Rows run from the repository root on the implementation head, in a POSIX shell. Exit 3 means
 could-not-check (setup failed); exit 4 means the expected finding was missing. Neither is a pass.
 Fail-first: on the base each bad fixture reports only `[pattern-schema-violation]` (or nothing),
-so rows 3-11 exit 4 there.
+so rows 3-11 and 17-20 exit 4 there.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
@@ -340,8 +395,10 @@ so rows 3-11 exit 4 there.
 | 14 | check:ci +flow | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; "$T/sg" enforcement-status > "$T/out" \|\| exit 3; for r in pattern-signal-input pattern-replay-not-mandatory pattern-signal-admission-open pattern-remedy-set-open pattern-judgement-no-default pattern-culprit-record pattern-decision-options pattern-containment-set; do grep -Fq -- "$r" "$T/out" \|\| exit 4; grep -Fq -- "$r" plugins/assay/skills/author-brief/SKILL.md \|\| exit 5; done; make skillslint)` | exit 0 (every rule is registered, present in the generated table, and the table is in sync) |
 | 15 | check | `statusgen --root . --consumers --brief assay:assay:graph-execution:34 --base "$(git merge-base HEAD refs/remotes/origin/main)"` | pre-merge only, on the implementing branch with its merge-base pinned: exit 0, and every `follow-up graph-execution/34` entry the implementation fixes has flipped to `fixed-here` and is corroborated by the diff |
 | 16 | check | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS" |
-| 17 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-exit-effect-no-admission.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-signal-admission-open]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class whose exit is an effect node with no admission is refused: the lower layer, not the happy path) |
+| 17 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-exit-effect-no-admission.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-signal-admission-open]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class whose exit is an effect node with no admission is refused) |
 | 18 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-mechanical-no-culprit.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-signal-input]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class naming a mechanical exit without the culprit record is refused) |
+| 19 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-unadmitted-class-reaches-effect.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-signal-admission-open]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class with no admission whose declared exit is an effect-free human decision is still refused once an effect node is reachable from the signal input: the rule keys on reachability, not on the exit) |
+| 20 | check:ci +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-effect-route-no-floor.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-remedy-set-open]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (a class that reaches an effect node by its plain `exit` still carries the gate-configuration floor) |
 
 ## Pre-mortem
 
@@ -350,11 +407,14 @@ so rows 3-11 exit 4 there.
 | A new rule is registered but its check never fires | rows 3-11, each feeding one fixture and asserting the tag |
 | A rule fires on the good fixture too, so every signal pattern is refused | row 1 and `TestPatternsGoodFixturesLintClean` (row 13) |
 | The containment set is only a lint rule, so a loosened lint lets `guard-config-edit` through | row 12 (schema alone refuses it) |
-| The schema is loosened (dropping `required: [artifact]`) and an input with neither key slips by | row 3's rule covers "exactly one of"; `TestPatternsSignalInput` should include that case |
+| The schema is loosened (dropping `required: [artifact]`) and an input with neither key slips by | row 3's rule covers "exactly one of"; `TestPatternsSignalInput` (planned) should include that case |
 | The amendment widens §7 or the role enum to make a fixture pass | row 13 (`TestPatternsRoleEffectPermissionsCoversTopologyRoles`), and review of the diff to `patternRoleEffectPermissions` |
 | The shipped patterns or 33's re-pinned instance fixtures break | row 2; instance fixtures are untouched by this brief (review-only: the diff must not touch `statusgen/testdata/instances/`) |
 | The schema twin drifts | row 13 (`TestPatternsEmbeddedSchemaMatchesCommitted`) |
-| An effect-exit class ships with no admission, or a mechanical exit with no culprit record | rows 17 and 18 |
+| A class with no admission reaches an effect node, whether its exit is that node (row 17) or a human decision with the effect still reachable along the edges (row 19) | rows 17 and 19 |
+| A mechanical exit ships with no culprit record | row 18 |
+| A class reaches an effect node by its plain `exit` and so escapes the gate-configuration floor | row 20 |
+| A runtime runs a node off a class's route | not caught here: route enforcement belongs to graph-execution/01. Admission does not depend on it (rows 17 and 19 check reachability over the whole graph) |
 | The generated enforcement table is hand-edited or left stale | row 14 (`make skillslint`) |
 
 ## Evidence
@@ -370,4 +430,6 @@ containment list is closed in the schema and checked again by the lint. Is that 
 no runtime yet reads these keys?
 (2) Does a row prove a lower layer catches the fault with the upper one bypassed? Row 12 feeds
 the out-of-set containment value to the schema alone; row 10 shows the lint reports it whatever
-the schema says.
+the schema says. For provenance, row 19 shows the admission rule refuses an un-admitted class
+even when its declared exit is an effect-free human decision, so the rule does not lean on the
+exit or on route enforcement.
