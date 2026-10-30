@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Tests for the subject-column exception of rule 1 (#4993). The Evidence of
 // verification-handoff/03 carries an obligation-trace table with no row-key
@@ -47,6 +50,36 @@ func TestHeldScopeSubjectCell(t *testing.T) {
 		{"plural, emphasised header", pass("Run 1", subjectTable(
 			"| **Obligations** | Production owner and trace | Original row / control |", b03Row)), false},
 		{"table with no results table", "### Trace\n\n" + trace + "\n**VERIFY: PASS**\n", false},
+		{"heading right above it", "### Trace\n" + trace + "\n**VERIFY: PASS**\n", false},
+		{"aligned delimiter", pass("Run 1", b03Header+"\n|:---|---:|:-:|\n"+b03Row+"\n"), false},
+	})
+}
+
+// TestHeldScopeSubjectRender: the exception applies only where the page is
+// sure to render one table with the header's own columns. Each case is a
+// block the scan splits into header, separator and aligned rows, but that the
+// page renders as prose, as code, or as a second table whose rows sit under
+// another header; the hold word there must stay read.
+// regression: #4993
+func TestHeldScopeSubjectRender(t *testing.T) {
+	indent := func(s string) string {
+		return "    " + strings.ReplaceAll(strings.TrimSuffix(s, "\n"), "\n", "\n    ") + "\n"
+	}
+	runHeldLayerCases(t, []heldScanCase{
+		{"delimiter count differs", pass("Run 1", b03Header+"\n|---|---|\n"+b03Row+"\n"), true},
+		{"delimiter cell not dashes", pass("Run 1", b03Header+"\n|---|- -|---|\n"+b03Row+"\n"), true},
+		{"delimiter cell colon only", pass("Run 1", b03Header+"\n|:|---|---|\n"+b03Row+"\n"), true},
+		{"indented code block", pass("Run 1", indent(subjectTable(b03Header, b03Row))), true},
+		{"paragraph right above it", pass("Run 1", "Trace:\n"+subjectTable(b03Header, b03Row)), true},
+		{"hash line above it", pass("Run 1", "#trace\n"+subjectTable(b03Header, b03Row)), true},
+		{"second table run on", pass("Run 1", subjectTable(b03Header,
+			"| Quiet work survives | trace | 1 |")+
+			"| Step | Result | Runner |\n|---|---|---|\n| smoke run held, no runner | none | v |\n"), true},
+		{"escaped pipe in header", pass("Run 1",
+			"| Obligation | a \\\\| b |\n|---|---|\n| held for a runner | x |\n"), true},
+		{"escaped pipe in row", pass("Run 1", subjectTable(b03Header,
+			"| foo \\\\| held for a runner | trace | 2 |")), true},
+		{"inside an HTML block", pass("Run 1", "<pre>\n\n"+subjectTable(b03Header, b03Row)+"</pre>"), true},
 	})
 }
 
@@ -75,6 +108,10 @@ func TestHeldScopeSubjectKeeps(t *testing.T) {
 			"| Obligation | held | Original row / control |", "| a | b | c |")), true},
 		{"line after the table", pass("Run 1", subjectTable(b03Header, b03Row)+
 			"Addressed and held exclude ordinary work\n"), true},
+		// A piped line with no leading "|" right after the table is outside
+		// the scan's table block: it is read whole, never as a subject row.
+		{"piped line after the table", pass("Run 1", subjectTable(b03Header, b03Row)+
+			"Addressed and held exclude | trace | 2 |\n"), true},
 		// A subject column of a results table stays an unrecognised result
 		// column and is read.
 		{"results-table subject", pass("Run 1", "| # | Obligation | Result |\n|---|---|---|\n"+

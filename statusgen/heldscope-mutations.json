@@ -1470,6 +1470,66 @@
       "file": "verifyissues.go",
       "old": "if cuts == nil && heldInSubject(clean, read, h) {",
       "new": "if heldInSubject(clean, read, h) {"
+    },
+    {
+      "name": "#4993: the line above the header is not checked",
+      "file": "heldscope.go",
+      "old": "if prev := lines[i-1]; !isBlankLine(prev) && !(live[i-1] && heldATXHeading(prev)) {",
+      "new": "if prev := lines[i-1]; false && !isBlankLine(prev) && !(live[i-1] && heldATXHeading(prev)) {"
+    },
+    {
+      "name": "#4993: any line opened by a hash is a heading",
+      "file": "heldscope.go",
+      "old": "return n >= 1 && n <= 6 && (n == len(line) || line[n] == ' ' || line[n] == '\\t')",
+      "new": "return n >= 1"
+    },
+    {
+      "name": "#4993: a table block line need not be live",
+      "file": "heldscope.go",
+      "old": "if !live[r] || !strings.HasPrefix(lines[r], \"|\") {",
+      "new": "if !strings.HasPrefix(lines[r], \"|\") {"
+    },
+    {
+      "name": "#4993: a table block line need not sit at column 0",
+      "file": "heldscope.go",
+      "old": "if !live[r] || !strings.HasPrefix(lines[r], \"|\") {",
+      "new": "if !live[r] || !strings.HasPrefix(strings.TrimSpace(lines[r]), \"|\") {"
+    },
+    {
+      "name": "#4993: a second separator row under the header is not checked",
+      "file": "heldscope.go",
+      "old": "if r > i+1 && heldSeparatorRow(lines[r]) {",
+      "new": "if false && r > i+1 && heldSeparatorRow(lines[r]) {"
+    },
+    {
+      "name": "#4993: a backslash in the header or the separator is not checked",
+      "file": "heldscope.go",
+      "old": "if strings.ContainsRune(lines[i], '\\\\') || strings.ContainsRune(lines[i+1], '\\\\') {",
+      "new": "if false {"
+    },
+    {
+      "name": "#4993: the delimiter row's cell count is not checked",
+      "file": "heldscope.go",
+      "old": "if len(cells) != n {\n\t\treturn false\n\t}",
+      "new": "if false && len(cells) != n {\n\t\treturn false\n\t}"
+    },
+    {
+      "name": "#4993: a delimiter cell need not be hyphens",
+      "file": "heldscope.go",
+      "old": "if !heldDelimiterCellRe.MatchString(lines[i+1][c[0]:c[1]]) {",
+      "new": "if false && !heldDelimiterCellRe.MatchString(lines[i+1][c[0]:c[1]]) {"
+    },
+    {
+      "name": "#4993: a backslash in a subject row is not checked",
+      "file": "heldscope.go",
+      "old": "\tif strings.ContainsRune(line, '\\\\') {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)",
+      "new": "\tif false && strings.ContainsRune(line, '\\\\') {\n\t\treturn nil\n\t}\n\tcells := heldCellRanges(line)"
+    },
+    {
+      "name": "#4993: the subject loop reads one line past the table block",
+      "file": "heldscope.go",
+      "old": "for r := i + 2; r < j; r++ {\n\t\t\t\t\t\tout[r].subject",
+      "new": "for r := i + 2; r <= j && r < len(lines); r++ {\n\t\t\t\t\t\tout[r].subject"
     }
   ]
 }

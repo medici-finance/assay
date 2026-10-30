@@ -32,7 +32,12 @@ import (
 //     cells only. A row whose cell count differs from its header's (an
 //     unescaped "|" in a command) cannot be aligned and is read whole. A
 //     table of any other shape is read whole, with one exception (#4993):
-//     in a table with a separator row that is not such a results table, a
+//     in a table with a separator row that is not such a results table and
+//     that the page is sure to render as one table with the header's own
+//     columns (heldSubjectTable: a blank line or heading above it, every
+//     line at column 0 and live, a GFM delimiter row with the header's cell
+//     count, no backslash in the header, the delimiter or the row, and no
+//     second separator row under it), a
 //     lower-case held or could-not-check in a cell of a subject column — a
 //     header named exactly Obligation or Requirement (heldSubjectColumns),
 //     plural allowed — of a row aligned with the header, in a cell that
@@ -1117,12 +1122,77 @@ var (
 		"requirement": true, "requirements": true}
 )
 
+// heldDelimiterCellRe is one cell of a GFM delimiter row: a run of hyphens
+// with an optional colon at either end, spaces or tabs around it.
+var heldDelimiterCellRe = regexp.MustCompile(`^[ \t]*:?-+:?[ \t]*$`)
+
+// heldSubjectTable reports whether the scan's table block lines[i:j] (header
+// at i, separator at i+1, n header cells), which is not a results table, is
+// one the page is sure to render as ONE table with the header's own columns,
+// so that its subject cells may be excused (rule 1, #4993). Every condition
+// must hold, and any doubt keeps the block read whole:
+//   - the line before the header is blank, or a live ATX heading at column 0,
+//     so the header cannot continue a paragraph, a list item or a blockquote;
+//   - every line of the block starts with "|" at column 0 and is live
+//     (heldRender), so none is indented code, a container's line, fenced code
+//     or HTML-block text;
+//   - the separator is a GFM delimiter row with exactly n cells, each hyphens
+//     with optional colons (heldDelimiterCellRe); otherwise GFM renders no
+//     table and the block is prose;
+//   - neither the header nor the separator holds a backslash, where the
+//     scan's split of an escaped "|" may differ from the page's;
+//   - no body row is itself a separator row: that is a second table written
+//     straight under the first, whose rows the page sets under this header.
+func heldSubjectTable(lines []string, live []bool, i, j, n int) bool {
+	if i == 0 {
+		return false
+	}
+	if prev := lines[i-1]; !isBlankLine(prev) && !(live[i-1] && heldATXHeading(prev)) {
+		return false
+	}
+	for r := i; r < j; r++ {
+		if !live[r] || !strings.HasPrefix(lines[r], "|") {
+			return false
+		}
+		if r > i+1 && heldSeparatorRow(lines[r]) {
+			return false
+		}
+	}
+	if strings.ContainsRune(lines[i], '\\') || strings.ContainsRune(lines[i+1], '\\') {
+		return false
+	}
+	cells := heldCellRanges(lines[i+1])
+	if len(cells) != n {
+		return false
+	}
+	for _, c := range cells {
+		if !heldDelimiterCellRe.MatchString(lines[i+1][c[0]:c[1]]) {
+			return false
+		}
+	}
+	return true
+}
+
+// heldATXHeading reports whether line is an ATX heading at column 0: one to
+// six "#" followed by a space, a tab or the line's end.
+func heldATXHeading(line string) bool {
+	n := 0
+	for n < len(line) && line[n] == '#' {
+		n++
+	}
+	return n >= 1 && n <= 6 && (n == len(line) || line[n] == ' ' || line[n] == '\t')
+}
+
 // heldSubjectCells returns the subject cells (heldSubjectColumns) of line, a
-// data row of a table with a separator row that is not a results table and
-// whose header line is hline with cells header (rule 1, #4993). A row whose
-// cell count differs from its header's is read whole (nil), and so is a cell
-// that names a row (heldNamesRowRe).
+// data row of a table that heldSubjectTable accepts, whose header line is
+// hline with cells header (rule 1, #4993). A row holding a backslash is read
+// whole (nil): the scan's split of an escaped "|" may differ from the page's,
+// which may set the text under another column. So is a row whose cell count
+// differs from its header's, and a cell that names a row (heldNamesRowRe).
 func heldSubjectCells(hline string, header [][2]int, line string) [][2]int {
+	if strings.ContainsRune(line, '\\') {
+		return nil
+	}
 	cells := heldCellRanges(line)
 	if len(cells) != len(header) {
 		return nil
@@ -1581,7 +1651,7 @@ func heldScanScope(evidence string) heldScope {
 						keys[e] = append(keys[e], out[r].key)
 						out[r].observe = heldObserveCells(lines[i], header, lines[r], cells, tb.notResult)
 					}
-				} else {
+				} else if heldSubjectTable(lines, live, i, j, len(header)) {
 					for r := i + 2; r < j; r++ {
 						out[r].subject = heldSubjectCells(lines[i], header, lines[r])
 					}
