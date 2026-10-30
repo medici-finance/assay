@@ -59,7 +59,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | implemented | — | — |
 | 25 | [Read-only portfolio and drift projections](brief-25-read-only-portfolio-and-drift-projections.md) | 4 | M | todo | — | — |
-| 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 4 | M | in-progress | — | — |
+| 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 4 | M | implemented | — | — |
 | 27 | [Reject newly introduced actionable lint notices on changed briefs](brief-27-reject-newly-introduced-actionable-lint-notices-on-changed-briefs.md) | 1 | M | todo | — | — |
 | 28 | [Separate frozen historical notices from actionable lint findings](brief-28-separate-frozen-historical-notices-from-actionable-lint-findings.md) | 1 | M | todo | — | — |
 | 29 | [Run the existing structural row checks before writing a new brief](brief-29-run-the-existing-structural-row-checks-before-writing-a-new-brief.md) | 2 | M | todo | — | — |

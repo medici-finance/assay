@@ -30,6 +30,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -130,7 +131,7 @@ func runPerRoot[T any](rs rootSet, work func(deskkit.RootConfig) (T, error)) ([]
 
 const (
 	// queueContractVersion is the statusgen queue contract this binary reads.
-	queueContractVersion = 1
+	queueContractVersion = verifyqueue.Version
 
 	rootHealthy     = "healthy"
 	rootDegraded    = "degraded"
@@ -168,7 +169,7 @@ func (c rootCoverage) gap() bool { return c.State != rootHealthy }
 // rowSupported reports whether a gate-scores row carries a queue classification
 // this binary understands.
 func rowSupported(r gateScoreRow) bool {
-	return r.QueueVersion == queueContractVersion && r.QueueClass != ""
+	return verifyqueue.Supported(r.QueueVersion, r.QueueClass)
 }
 
 // classOf is the row's class as a consumer must read it: the statusgen class

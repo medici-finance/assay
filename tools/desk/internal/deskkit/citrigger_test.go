@@ -418,7 +418,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{
 			test: "tools/desk/cmd/deskboard/flow_45_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
-			reads:      []string{"statusgen/testdata/flowqueue/gate-scores.golden.json"},
+			reads:      []string{"statusgen/testdata/flowqueue/gate-scores.golden.json", "statusgen/verifyqueue/"},
 			runInvokes: deskShardInvokes,
 			why:        "deskboard reads the verification-queue rows statusgen printed for the shared fixture, so a statusgen-only change to the queue classification is checked against its consumer on every PR",
 		},
@@ -428,6 +428,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads: []string{
 				"statusgen/testdata/flowqueue/gate-scores.golden.json",
 				"statusgen/testdata/flowqueue/docs/streams",
+				"statusgen/verifyqueue/",
 			},
 			runInvokes: deskShardInvokes,
 			why:        "verifyloop plans the shared fixture tree under the canonical queue rows statusgen printed for it, so a statusgen-only change to the classification or the fixture is checked against its consumer on every PR",

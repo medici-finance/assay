@@ -65,7 +65,9 @@ retired — see desk-supervision/24's Task step 8). Either shape's content is ex
 Input revisions cover the **Verify definition**, the **relevant deliverable/dependency
 revisions**, and the **applicable tool version**. Keys are opaque to the evaluator; the
 already-authorized reader interprets them. The offline reader understands `tool`,
-`file:<repo-relative-path>`, and `scope:<canonical-declaration>[/]`; the trailing `/`
+`file:<repo-relative-path>`, `file:<directory>/` (one content digest over every file a
+declared directory holds, written in place of per-member `file:` keys), and
+`scope:<canonical-declaration>[/]`; the trailing `/`
 is written exactly when the declaration is a literal observed as a directory, and
 readers accept a directory key in either form (see the
 [declaration contract](../../declared-input-scope.md)). Each scope digest
@@ -220,7 +222,15 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
 - **Rollback** is the previous released binary/skill pin. Older readers ignore unknown
   additive JSON fields, but receipts containing `scope:` input keys report could-not-check
   because the older reader cannot resolve those keys; the same holds for a directory key
-  in the `scope:<decl>/` form read by a reader older than that form. Receipts are never erased or
+  in the `scope:<decl>/` form read by a reader older than that form, and for a `file:<dir>/`
+  directory content key read by a reader older than that key. Receipts are never erased or
   relabelled to make a rollback look clean.
+- **Directory content keys** (`file:<dir>/`) are additive within `verify-wake-v1`: no schema
+  bump. Records holding per-member `file:` keys for a directory stay valid and are read as
+  before; new records write one `file:<dir>/` key per declared directory instead (see the
+  [declaration contract](../../declared-input-scope.md#directory-content-keys)). A pending,
+  not-yet-landed record derived before the change no longer matches the writer's
+  re-derivation, so its item is could-not-check and is not dispatched (neither held nor
+  re-verified) until the pending Evidence lands or its record is re-issued.
 - **Explicit recheck** is the operator's escape hatch: an `explicit-recheck-with-reason` receipt
   wakes the work regardless of the other predicates, with the reason recorded.

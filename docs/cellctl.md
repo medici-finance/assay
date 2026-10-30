@@ -2014,14 +2014,14 @@ samples are unknown, never zero. No tool installation or live role restart occur
 `CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
 sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in
-`containers/k8s/compatibility/`. The example is not deployable: image, agent,
-initialization and actual operator values need qualification. A missing or invalid
-explicit profile makes no API operation. There is no ambient context discovery,
+`containers/k8s/compatibility/`. The example pins the published v1.0.65 role images
+for `linux/amd64`, but is not deployable: agent, initialization and actual operator
+values need qualification. A missing or invalid explicit profile makes no API operation. There is no ambient context discovery,
 credential-plugin execution, proxy, insecure TLS or redirect fallback.
 
 Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
-an approved new image release and custodian-owned preparation. It inherits the
-historical five-role package and retains its Secrets, PVCs and network floor;
+custodian-owned preparation and qualification of its published image pins. It
+inherits the historical five-role package and retains its Secrets, PVCs and network floor;
 all five workloads install at zero replicas. Only exact-name StatefulSet/scale
 reads and updates, Pod reads and named-container attach are in the operator
 Role. This does not authorize Secret access, arbitrary Pod creation, exec,
@@ -2097,9 +2097,15 @@ continuation and conversation continuation are separate: a PVC only proves the
 filesystem part. A new clean Pod starts a new agent execution; this profile makes
 no conversation-resume or unattended crash/partition recovery promise.
 
-The source checkpoint deliberately carries an unbuilt candidate record.
-`sh containers/k8s/check.sh --compatibility-cellctl --self-test` can pass hostile
-synthetic fixtures while still returning `could-not-check` for the actual
-candidate. Only a genuine protected-release manifest digest and its release
-record can remove that image hold. Runtime/model usefulness and effective
-custody remain the separate qualification step.
+The opt-in component and example bind the published v1.0.65 role manifest digests;
+its [candidate record and preparation handoff](../containers/k8s/components/compatibility-cellctl/README.md)
+identify the exact release source, artifact checksum and remaining operator acts.
+The historical base still uses v1.0.52. Both select Linux AMD64 nodes; a multi-platform
+verify-runner release does not supply ARM64 desk images.
+`sh containers/k8s/check.sh --compatibility-cellctl --self-test` passes the hostile
+synthetic fixtures but still reports `checked-failed` on the actual component's
+unprepared launch identities. Real per-role initialization/launch values and
+existing custodian groups remain required; never replace them with fixture values.
+Brief 31 remains blocked, and this pin checkpoint is not its final immutable
+delivery for independent qualification. Runtime/model usefulness, effective
+custody and activation retain their separate human qualification gates.

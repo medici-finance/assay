@@ -84,7 +84,8 @@ forms need an explicit declaration repair and fresh observation.
 `BriefDeclaredFiles` returns declarations or an error. `ResolveDeclaredScope`
 returns the exact existing files and one `scope:` digest per canonical declaration.
 Membership digests hash sorted, NUL-separated kind/path terms. Globs include
-matched directory membership; content hashes are separate `file:` keys. Successful
+matched directory membership; content hashes are separate `file:` keys (one per file,
+or one `file:<dir>/` key per observed directory; see below). Successful
 absence, empty membership, unsupported syntax and unreadable state remain distinct.
 
 `BuildOutcomeRecord` reads declarations and deliverable bytes from the admitted
@@ -120,7 +121,9 @@ that is refused and reads as could-not-check. A key with an empty declaration, a
 double slash, a non-canonical declaration or a slash after a glob (never emitted)
 is unreadable, so could-not-check. Every `scope:` value, in either form, must be
 exactly the producer's digest format (64 lowercase hex characters); any other value
-is refused and reads as could-not-check.
+is refused, so it never reads as unchanged: when the declaration still resolves, the
+recomputed digest differs from that value and the observed change outranks the
+refusal, so the held work wakes; otherwise the read is could-not-check.
 
 Measured residual of the slash form (the secret pattern sweep reads every landed
 record). At a slash-keyed position the sweep's generic pattern rule matches no
@@ -132,6 +135,57 @@ keyword: an extensionless file literal, an absent literal, and a glob whose last
 segment ends in such a keyword. The landed corpus held none of these when the slash
 form was introduced; they are recorded here, not fixed.
 
+### Directory content keys
+
+A directory observed as a tree (a literal directory declaration, or a directory a
+glob matches) contributes ONE content key, `file:<dir>/`, instead of one
+`file:<member>` key per file under it. Its value is the sha256 of the sorted,
+NUL-joined `<member-path>\0<member-sha256>` terms over every file the directory
+holds at the observed source, each member hashed exactly as a `file:` key would
+hash it (a final symlink hashes its link text). An edit, addition, removal or rename
+of any member therefore changes the value and wakes the held work. The `scope:`
+key for the same declaration is unchanged: it still records path kinds and
+membership only, and the Source-to-Evidence shape check still compares it.
+
+Coverage counts a file as covered by its own `file:<path>` key or by the
+`file:<dir>/` key of a declared directory that contains it. A key for one member
+never covers its directory, and a `file:<dir>/` key for an undeclared directory
+covers nothing. A `file:<dir>/` value must be exactly the producer's digest format
+(64 lowercase hex characters); any other value is refused, so it never reads as
+unchanged. When the directory still reads, its recomputed digest differs from such
+a value and the observed change outranks the refusal, so the held work wakes;
+otherwise the read is could-not-check. The root reader recomputes the value from the directory's current
+members; a path that is no longer a directory, or an unreadable member, is
+could-not-check.
+
+One exception keeps per-member keys: a directory that holds the brief itself. The
+brief's own `file:` key is hashed as its Evidence lands, which a directory digest
+could not express, so that directory's files stay individually keyed.
+
+This form exists because the secret pattern sweep reads every landed record. A
+per-member key such as `file:<dir>/secret-mount.fixture` puts a credential keyword
+immediately before a 64-hex value, which the generic pattern rule matches when the
+file extension is longer than its allowlist's extension bound. At a slash-terminated
+key the generic rule matches no value, so it no longer inspects that value; dedicated
+provider rules still match there, and the writer computes the value itself. As for
+the slash scope form, the reader's digest-format refusal happens after publication,
+not before. The scanner configuration and its allowlists are unchanged. Residual: a literal file declaration, or a file a glob matches
+directly, keeps its own `file:<path>` key, so a file whose name ends in a
+credential keyword with a long extension can still trip the generic rule there, as
+can a member of a directory that holds the brief.
+
+Migration: the key is additive, so `wake_schema` stays `verify-wake-v1`. Records
+written before this form keep their per-member keys, are never rewritten, and are
+read exactly as before. A reader older than this form cannot resolve a
+`file:<dir>/` key and reports could-not-check, never unchanged. A pending
+(not yet landed) record whose inputs were derived before this form, and which
+therefore carries per-member keys for a directory this form folds, no longer equals
+the writer's re-derivation. The verify loop refuses that pending Evidence with an
+error, so the item is could-not-check and is not dispatched: it is neither held as
+awaiting merge nor re-verified. It stays could-not-check until the pending Evidence
+lands (the landed record then reads through its per-member keys as before) or its
+record is re-issued with the current writer. Landed records are unaffected.
+
 Local enumeration never follows ancestor directory symlinks. A final symlink is a
 Git-style blob whose content hash is its link text. Read/enumeration errors are
 could-not-check. Local extra files can conservatively wake a directory/glob scope;
@@ -141,10 +195,10 @@ the reader does not infer that untracked files were in the admitted Git snapshot
 
 | Consumer | Disposition |
 |---|---|
-| deskkit receipt derivation | Shared parser, expansion, file hashes and membership digests |
-| deskevidence coverage | Same expansion, every selected file required |
+| deskkit receipt derivation | Shared parser, expansion, file hashes, `file:<dir>/` directory digests and membership digests |
+| deskevidence coverage | Same expansion, every selected file required (its own key or its declared directory's `file:<dir>/` key) |
 | deskevidence observation/shape binding | Exact original Source inputs; fresh admission on shape changes |
-| verifyloop failed/blocked scheduling | Shared `Unchanged` and `EvaluateWake`; root completeness plus scope revisions |
+| verifyloop failed/blocked scheduling | Shared `Unchanged` and `EvaluateWake`; root completeness plus scope and `file:<dir>/` revisions; pending records re-derive with the same writer |
 | statusgen outcome-register reader | Reads scheduling history; does not evaluate wake input revisions |
 
 The Go engineering catalogue selects no generic Markdown parser for this semantic
