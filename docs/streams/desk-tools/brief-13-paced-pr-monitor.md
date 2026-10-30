@@ -40,7 +40,7 @@ None.
 files:
 - `plugins/assay/scripts/pr-monitor.sh` (planned)
 - `plugins/assay/scripts/pr-monitor.test.sh` (planned) — fake `gh`, same harness shape as the inbound test
-- `plugins/assay/scripts/inbound-monitor.sh` (adopt the same pacing knob — one `sleep` site and the contract comment; no other change)
+- `plugins/assay/scripts/inbound-monitor.sh` — adopt the same pacing knob — one `sleep` site and the contract comment; no other change
 - `plugins/assay/skills/pr-review-desk/SKILL.md` (boot step 3 names the script instead of describing a poll to write)
 - `tools/desk/README.md` (the pacing contract, in the monitors section)
 

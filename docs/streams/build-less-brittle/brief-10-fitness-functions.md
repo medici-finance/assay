@@ -46,7 +46,7 @@ files:
 - `tools/desk/internal/arch/arch_test.go` (planned): NEW. `TestDependencyDirection` (planned), `TestHubAllowList` (planned), `TestOneImplementationPerMeaning` (planned), `TestRulesFixture` (planned), `TestMissingIndexIsCouldNotCheck` (planned).
 - `tools/desk/internal/arch/hub-allow.txt` (planned): NEW. The internal packages `internal/deskkit` may import, one per line, with `# grow` lines as in 03.
 - `tools/desk/internal/arch/markers.txt` (planned): NEW. `<S-id> <ceiling>`: the ceiling on declared implementations per meaning.
-- `tools/desk/internal/arch/testdata/tree/**` (planned): NEW. A fixture module with one violation of each rule.
+- `tools/desk/internal/arch/testdata/tree/` (planned): NEW. A fixture module with one violation of each rule.
 - `docs/contracts.md`: the marker convention (3 lines under "How a brief cites this") and three register rows.
 - `changelog/build-less-brittle-10.md` (planned)
 

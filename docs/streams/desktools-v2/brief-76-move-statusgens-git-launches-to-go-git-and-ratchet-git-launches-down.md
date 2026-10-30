@@ -61,35 +61,17 @@ consumers:
 ## Context
 
 files:
-- `gitcore/`, including the canonical `gitcore/gittest/` fixture owner, lifted from
-  `tools/desk/internal/gitcore/` and `tools/desk/internal/gittest/`
-- `tools/desk/go.mod`, `tools/desk/go.sum` and the desk Git/fixture import consumers;
-  `tools/desk/internal/gitquiet/` continues to use the existing public `gitquiet/` owner
-- `gitcore/ackguard_test.go`, `gitcore/claimref_guard_test.go`,
-  `gitcore/fetchtags_guard_test.go`, `tools/desk/internal/gitquiet/`,
-  `tools/desk/internal/deskkit/ambienttoken_guard_test.go`,
-  `tools/desk/internal/deskkit/forge_surface_test.go` and
-  `tools/desk/internal/deskkit/citrigger_test.go` (preserve retained and lifted scopes)
-- `statusgen/go.mod`, `statusgen/go.sum`, `statusgen/gitcore_read.go`,
-  `statusgen/gitbatch.go`, `statusgen/gitinfo.go`, `statusgen/verifyflip.go`,
-  `statusgen/registercorroborate.go` and the other Git read call sites
-- `statusgen/scripts/count-git-launch.sh`, `statusgen/internal/gitlaunch/`,
-  `statusgen/git-launches.json`, `statusgen/gogit-mutations.json`,
-  `statusgen/history-mutations.json`, `statusgen/stalefail_history_test.go`,
-  `statusgen/gogit_discovery_parity_test.go` and their named parity/counter controls
-- `docs/streams/desktools-v2/cli-migration.json` (the two exact /76 test routes only),
-  `tools/desk/internal/clicontract/gitlaunch_test.go`
+- `gitcore/` — including the canonical `gitcore/gittest/` fixture owner, lifted from `tools/desk/internal/gitcore/` and `tools/desk/internal/gittest/`
+- `tools/desk/go.mod`, `tools/desk/go.sum` — and the desk Git/fixture import consumers; `tools/desk/internal/gitquiet/` continues to use the existing public `gitquiet/` owner
+- `gitcore/ackguard_test.go`, `gitcore/claimref_guard_test.go`, `gitcore/fetchtags_guard_test.go`, `tools/desk/internal/gitquiet/`, `tools/desk/internal/deskkit/ambienttoken_guard_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go` and `tools/desk/internal/deskkit/citrigger_test.go` (preserve retained and lifted scopes)
+- `statusgen/go.mod`, `statusgen/go.sum`, `statusgen/gitcore_read.go`, `statusgen/gitbatch.go`, `statusgen/gitinfo.go`, `statusgen/verifyflip.go`, `statusgen/registercorroborate.go` — and the other Git read call sites
+- `statusgen/scripts/count-git-launch.sh`, `statusgen/internal/gitlaunch/`, `statusgen/git-launches.json`, `statusgen/gogit-mutations.json`, `statusgen/history-mutations.json`, `statusgen/stalefail_history_test.go`, `statusgen/gogit_discovery_parity_test.go` — and their named parity/counter controls
+- `docs/streams/desktools-v2/cli-migration.json` (the two exact /76 test routes only), `tools/desk/internal/clicontract/gitlaunch_test.go`
 - `tools/go-analysis/pins.env` (explicitly authorized Go-loader repair using existing Go 1.27.1 archive pins)
-- `tools/go-analysis/runner.py`, `scripts/tests/go-analysis.py`,
-  `scripts/tests/go-analysis-mutations.py` (retain prior platform/tag coverage for both owners)
-- `Dockerfile`, `images/assay-harness/Dockerfile`, `images/verify-runner/Dockerfile`,
-  `statusgen/testdata/verification-handoff/mutate.py`
-- CI consumer targets: `.github/workflows/ci.yml`,
-  `.github/workflows/assay-statusgen.yml`, `.github/workflows/git-maintenance-windows.yml`
-  and the existing `ci/staged-workflows/assay-statusgen.yml` twin; live activation
-  remains the existing maintainer-owned act, not an implicit permission of this brief
-- Source-bound mutation maps and acceptance callers whose old `internal/gitcore`
-  paths or test-module working directories change with the lift
+- `tools/go-analysis/runner.py`, `scripts/tests/go-analysis.py`, `scripts/tests/go-analysis-mutations.py` (retain prior platform/tag coverage for both owners)
+- `Dockerfile`, `images/assay-harness/Dockerfile`, `images/verify-runner/Dockerfile`, `statusgen/testdata/verification-handoff/mutate.py`
+- **CI consumer targets:** `.github/workflows/ci.yml`, `.github/workflows/assay-statusgen.yml`, `.github/workflows/git-maintenance-windows.yml` and `ci/staged-workflows/assay-statusgen.yml` (the existing twin) — live activation remains the existing maintainer-owned act, not an implicit permission of this brief
+- **Source-bound mutation maps and acceptance callers whose old `internal/gitcore` paths or test-module working directories change with the lift**
 - `changelog/statusgen-go-git.md` (planned)
 
 The library owns object/revision interpretation. Statusgen's adapters preserve the

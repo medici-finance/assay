@@ -124,27 +124,15 @@ down which is which is most of this brief's content.
 ## Context
 
 files:
-- `tools/desk/cmd/deskclose/verbs.go` — the closed mode set (`modes()`, `rowModes()`), the
-  `splitPositionals`/`common`/`closeReq` shapes, `applyClose`.
-- `tools/desk/cmd/deskclose/authority.go` — `gateFor`/`authorize` (the R-1 ruling gate),
-  `IsBlessAuthorityIDStrict`'s login+id pin pattern this brief mirrors for App identity.
-- `tools/desk/cmd/deskclose/superseded.go` — `resolveCaller`'s three-answer shape
-  (could-not-check / refused / a role), which lane (a) and (b) each reuse in their own narrower
-  form; `roleWorker`/`roleReviewer` constants sit beside the new `roleVerifier` this brief adds.
-- `tools/desk/cmd/deskclose/forge.go` — `mintedRole`, `forgeForFn`, `githubCustodyMint`: the
-  already-minted session-role App token both new lanes act under. Neither lane changes custody.
-- `tools/desk/cmd/deskclose/github.go` — `fetchItem`/`postComment`/`closeItem`, and the package
-  doc's *"no merge verb, no reopen verb and no edit verb"* line this brief is the first to revise
-  (a `reopenItem` helper is added beside `closeItem`, never a general one — it has exactly one
-  caller, the verify-gate-refire mode).
-- `tools/desk/cmd/deskclose/disposition.go` — `requireTerminalDisposition`, which lane (a)
-  deliberately does NOT call (see facts below).
-- `tools/desk/cmd/deskclose/manifest.go` — `authorizeManifest`, `manifestApprovalPhrase`,
-  `Digest()`: unchanged code, the subject of lane (c)'s documentation.
-- `tools/desk/cmd/deskclose/main.go` — the `usage` const; each new mode is added to it, and the
-  manifest line gains the "documented human-ruled BATCH lane" phrasing lane (c) asks for.
-- `tools/desk/internal/deskkit/forge.go`, `forge_github.go`, `forge_gitlab.go` — `ReopenIssue`
-  added to the frozen seam (both backends).
+- `tools/desk/cmd/deskclose/verbs.go` — the closed mode set (`modes()`, `rowModes()`), the `splitPositionals`/`common`/`closeReq` shapes, `applyClose`.
+- `tools/desk/cmd/deskclose/authority.go` — `gateFor`/`authorize` (the R-1 ruling gate), `IsBlessAuthorityIDStrict`'s login+id pin pattern this brief mirrors for App identity.
+- `tools/desk/cmd/deskclose/superseded.go` — `resolveCaller`'s three-answer shape (could-not-check / refused / a role), which lane (a) and (b) each reuse in their own narrower form; `roleWorker`/`roleReviewer` constants sit beside the new `roleVerifier` this brief adds.
+- `tools/desk/cmd/deskclose/forge.go` — `mintedRole`, `forgeForFn`, `githubCustodyMint`: the already-minted session-role App token both new lanes act under. Neither lane changes custody.
+- `tools/desk/cmd/deskclose/github.go` — `fetchItem`/`postComment`/`closeItem`, and the package doc's *"no merge verb, no reopen verb and no edit verb"* line this brief is the first to revise (a `reopenItem` helper is added beside `closeItem`, never a general one — it has exactly one caller, the verify-gate-refire mode).
+- `tools/desk/cmd/deskclose/disposition.go` — `requireTerminalDisposition`, which lane (a) deliberately does NOT call (see facts below).
+- `tools/desk/cmd/deskclose/manifest.go` — `authorizeManifest`, `manifestApprovalPhrase`, `Digest()`: unchanged code, the subject of lane (c)'s documentation.
+- `tools/desk/cmd/deskclose/main.go` — the `usage` const; each new mode is added to it, and the manifest line gains the "documented human-ruled BATCH lane" phrasing lane (c) asks for.
+- `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — `ReopenIssue` added to the frozen seam (both backends).
 - `docs/streams/forge-gitlab/inventory.md` — row 38 appended.
 
 single-point-of-failure: for lane (a) the single control is the AUTHORSHIP PIN — get it wrong

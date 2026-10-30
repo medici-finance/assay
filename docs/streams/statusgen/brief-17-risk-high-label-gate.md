@@ -45,7 +45,7 @@ files:
 - `statusgen/scanissues_test.go` — the new scan-level test named in Verify.
 - `plugins/assay/skills/intake-desk/SKILL.md` — one bullet in the scored-triage section.
 - `docs/streams/statusgen/brief-17-risk-high-label-gate.md` — this brief's two `consumers:` routings (Task 7).
-- `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
+- **changelog** — `changelog/<branch-slug>.md`: the per-PR fragment this repo enforces.
 
 single-point-of-failure: the `risk:high` label being on the issue at the moment the scanner
 first writes its placeholder. Nothing orders that. Triage sets the label at its exit and the

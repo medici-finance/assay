@@ -36,8 +36,7 @@ id: 0c9a65ac-9746-43f5-b181-e201e2069476
 ## Context
 
 files:
-- **create** `docs/streams/windows-port/portability-audit.md` (planned) — a triage table plus a
-  short recommendation per class. This is a documentary deliverable; it changes no code.
+- **create** `docs/streams/windows-port/portability-audit.md` (planned) — a triage table plus a short recommendation per class. This is a documentary deliverable; it changes no code.
 
 facts:
 - **The binaries are out of scope — do not re-audit them.** `statusgen` and everything under

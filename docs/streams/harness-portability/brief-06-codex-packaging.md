@@ -36,7 +36,7 @@ files:
 - **create** `plugins/assay/.codex-plugin/plugin.json` — GENERATED (path contingent on 01's measured schema + 03's ruling; superpowers' shape is the working hypothesis)
 - **amend** `tools/harnessgen` — new verb `codex` (+ `--check`), coverage rule
 - **amend** `plugins/assay/skills/adopt/SKILL.md` — Codex install scenario
-- **amend** the tools CI workflow — extend the regenerate-and-diff check to the new verb
+- **amend** `.github/workflows/` — the tools CI workflow: extend the regenerate-and-diff check to the new verb
 
 facts:
 - **Everything derivable is generated**: name, version, description, author, homepage

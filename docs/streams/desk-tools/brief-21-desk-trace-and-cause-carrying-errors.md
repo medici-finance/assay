@@ -69,20 +69,19 @@ reviewer who finds a diagnostic surface that bypasses `Scrub`, or a default-outp
 the `— <tool> said: …` suffix, flips `sensitive-data` to yes and takes the human gate.
 
 files:
-- `tools/desk/internal/deskkit/runtool.go` (NEW — the one subprocess runner)
-- `tools/desk/internal/deskkit/trace.go` (NEW — the switch, the ledger, the shared exit path)
-- `tools/desk/internal/deskkit/scrub.go` (NEW — the redactor)
-- `tools/desk/internal/deskkit/exitcodes.go` (`DeskError` gains the subprocess detail;
-  `Cause()`; `RefusedWithCause`)
+- `tools/desk/internal/deskkit/runtool.go` (NEW) — the one subprocess runner
+- `tools/desk/internal/deskkit/trace.go` (NEW) — the switch, the ledger, the shared exit path
+- `tools/desk/internal/deskkit/scrub.go` (NEW) — the redactor
+- `tools/desk/internal/deskkit/exitcodes.go` — `DeskError` gains the subprocess detail; `Cause()`; `RefusedWithCause`
 - `tools/desk/internal/deskkit/trace_test.go` (NEW)
 - `tools/desk/internal/deskkit/trace-mutations.json` (NEW - the `muhar` spec for row 16)
 - `tools/desk/cmd/deskdispatch/` (`exec.go`, `dispatch.go`, `worktree.go`, `main.go`, and a new `trace_test.go`)
 - `tools/desk/cmd/deskwt/` (`exec.go`, `main.go`, `trace_test.go`)
 - `tools/desk/cmd/desktoken/` (`desktoken.go`, `main.go`, `trace_test.go`)
 - `tools/desk/cmd/deskfile/` (`exec.go`, `main.go`, `trace_test.go`)
-- `tools/desk/README.md` (the `Diagnostics — DESK_TRACE` section) and the four verbs' `--help`
+- `tools/desk/README.md` — the `Diagnostics — DESK_TRACE` section, and the four verbs' `--help`
 
-facts — the symptoms, each re-read at `e82c565e` (observed 2026-09-09 in an operating desk
+facts: the symptoms, each re-read at `e82c565e` (observed 2026-09-09 in an operating desk
 session, then verified against the source rather than taken from the report):
 
 1. **`deskdispatch` reports the config echo, not the tool's message.** Nine diagnostic sites are
