@@ -1,0 +1,5 @@
+# make accepts an unambiguous abbreviation of a long option: --ignore is --ignore-errors.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\nMAKEFLAGS += --ignore\n"

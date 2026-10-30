@@ -70,8 +70,8 @@ Measure object decoding/index work independently from Git transport fetches. Bat
 not equivalent to coalescing pack negotiation or coordinating local-store maintenance. Our existing
 `gitcore.OpenWith` already shares a decoded-object cache across sequential worktree reads, and our
 alternate reader retains pack indexes for an Open lifetime. Those are baseline features, not benefits
-to attribute to a new cache. See [gitcore](../../tools/desk/internal/gitcore/gitcore.go) and
-[alternate reader](../../tools/desk/internal/gitcore/alternate_reader.go).
+to attribute to a new cache. See [pre-lift Git owner](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore.go) and
+[pre-lift alternate reader](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/alternate_reader.go).
 
 **Bound the whole request path.** Upstream bounds LRU storage and per-request buffered misses,
 including disk hits and data received from other fills. Oversize requests fall back to upstream

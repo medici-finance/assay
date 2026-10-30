@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"path/filepath"
 	"sort"
@@ -232,6 +233,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// `inputs:` Context field (statusgen/36): the declaration reads, and the
+	// literal-path lower bound over each Verify row's Command.
+	problems = append(problems, witnessInputsProblems(root, checkStreams)...)
 	ph.enter("lint")
 	// Split-flag conservation: a child brief may not carry a weaker gate/risk flag
 	// than the brief it was split from (splitflags.go). checkStreams is the scoped
@@ -1200,29 +1204,7 @@ func runGateScores(root string) int {
 	// yields "" and the field is omitted.
 	repo, _ := rootRepo(streams)
 	// JSON rows for deskboard consumption.
-	type row struct {
-		Brief        string `json:"brief"`
-		Score        int    `json:"score"`
-		BlockedCount int    `json:"blockedCount"`
-		Stream       string `json:"stream"`
-		Status       string `json:"status"`
-		Repo         string `json:"repo,omitempty"`
-		// Queue contract (desk-tools/45, awaiting_bucket.go queueFor): the
-		// CURRENT owned-bucket classification, additive after the legacy
-		// fields. queueVersion lets a consumer refuse a shape it does not
-		// know; queueValid=false with queueWhy marks a could-not-check row
-		// (unknown, never zero).
-		QueueVersion      int    `json:"queueVersion"`
-		QueueClass        string `json:"queueClass"`
-		QueueBucket       string `json:"queueBucket,omitempty"`
-		QueueOwner        string `json:"queueOwner,omitempty"`
-		QueueNextAct      string `json:"queueNextAct,omitempty"`
-		QueueGate         string `json:"queueGate,omitempty"`
-		QueueRisk         bool   `json:"queueRisk"`
-		QueueIrreversible bool   `json:"queueIrreversible"`
-		QueueValid        bool   `json:"queueValid"`
-		QueueWhy          string `json:"queueWhy,omitempty"`
-	}
+	type row = verifyqueue.Row
 	rows := make([]row, 0, len(gates))
 	for _, g := range gates {
 		br := g.Brief
@@ -1360,6 +1342,11 @@ func main() {
 	// witnessNotices); producing one is always an explicit invocation.
 	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
 		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	// `statusgen witnessdigest` — the canonical v2 content digests of a brief at
+	// a revision (witnessdigest.go, statusgen/36); read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "witnessdigest" {
+		exitProcess(runWitnessDigest(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))

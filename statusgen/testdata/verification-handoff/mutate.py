@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = None
-SNAPSHOT = ["deskcore", "statusgen", "tools/desk", "comms", "forgeread", "gitquiet", "perfrec", "topology.yaml", ".assay-surfaces", "spec/intake-exit-v1.md"]
+SNAPSHOT = ["deskcore", "statusgen", "tools/desk", "comms", "forgeread", "gitquiet", "gitcore", "perfrec", "topology.yaml", ".assay-surfaces", "spec/intake-exit-v1.md"]
 
 
 def run(case=None, baseline=None, module="deskcore", package="./issueflow"):

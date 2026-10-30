@@ -1,0 +1,1 @@
+- Propose a versioned write-policy acceptance correction that retains the full inherited regression suite and checks that its existing file and shell cases execute the extracted shared evaluator. Exact human approval and independent verification remain required after landing.

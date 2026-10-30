@@ -41,11 +41,7 @@ consumers:
 
 ## Context
 
-files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned),
-`scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned),
-`docs/runsheets/go-analysis-ci-hunk.md` (planned), `changelog/go-analysis-lint.md` (planned); Go source files only
-where the measured lint finding requires a small mechanical fix. The human also edits
-`.github/workflows/ci.yml` on the implementation branch after the worker's final commit.
+files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned), `scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned), `docs/runsheets/go-analysis-ci-hunk.md` (planned), `changelog/go-analysis-lint.md` (planned), `.github/workflows/ci.yml` — Go source files only where the measured lint finding requires a small mechanical fix. The human also edits `.github/workflows/ci.yml` on the implementation branch after the worker's final commit.
 
 facts:
 - Main's module discovery is `git ls-files '*go.mod'`; it currently finds 21, not the 20 in

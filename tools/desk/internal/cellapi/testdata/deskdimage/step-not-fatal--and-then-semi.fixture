@@ -1,0 +1,6 @@
+# Under set -e a command on the left of && does not stop the shell, so a
+# build &&-chained into a list that a later ; ends is masked.
+want: step-not-fatal
+file: Makefile
+replace: "deskd; \\\n\techo \"deskd-image: layer-secret scan"
+with: "deskd && echo \"deskd-image: built\"; \\\n\techo \"deskd-image: layer-secret scan"

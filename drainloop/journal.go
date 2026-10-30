@@ -5,10 +5,17 @@ import "time"
 // Event is one scheduling event, for journalling and replay. It is deskkit-free: the public
 // core emits Events; a house sink maps them onto its audit schema, and a replay reads them
 // back to reconstruct which items were in flight after a crash. The Kind values the engine
-// emits are CLAIM, DISPATCH, LAND, RELEASE (via LAND), SKIP, HOLD, GUARD, EVIDENCE and IDLE.
+// emits are CLAIM, DISPATCH, LAND, RELEASE (via LAND), SKIP, HOLD, GUARD, EVIDENCE, IDLE, EFFECT-INTENT, EFFECT-DONE and RECONCILE.
 type Event struct {
 	// Kind is the scheduling decision this event records.
 	Kind string
+	// Effect identity is structured, never reconstructed from Detail. Generation is
+	// the coordination store's claim generation for transactional handoff events.
+	RunID      string
+	AttemptID  string
+	Key        string
+	Ref        string
+	Generation string
 	// ItemID is the item the event is about, empty for loop-level events (IDLE).
 	ItemID string
 	// Detail is a short free-form note (a verdict, a skip reason).
@@ -20,8 +27,10 @@ type Event struct {
 // Journal is the deskkit-free sink the engine writes scheduling Events to, when one is
 // configured (Config.Journal). The default is nil (no journalling). A house implementation
 // writes through its audit schema; a test implementation appends to a slice. Record should be
-// cheap and must be safe to call from the drain loop; a returned error is logged but does not
-// abort the drain (attribution is best-effort, a lost entry is not a scheduling failure).
+// durable before returning success for EFFECT-INTENT: failure aborts that effect.
+// All other kinds remain best-effort; a lost EFFECT-DONE is repaired by authoritative
+// reconciliation, never blind replay. TransactionalJournal replaces the intent write
+// with an atomic intent/claim-generation commit. Ordinary scheduling stays best-effort.
 type Journal interface {
 	Record(Event) error
 }

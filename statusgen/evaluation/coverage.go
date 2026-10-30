@@ -345,6 +345,16 @@ func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses [
 	// header): the witness must still describe the CURRENT Command text, or it
 	// is not evidence for this claim any more.
 	latest := witnesses[len(witnesses)-1] // last witness for the row wins, same as checkWitnesses
+
+	// Witness schema dispatch (statusgen/36): a v2 cell is judged by content
+	// digests and an unknown schema is a named gap; neither reaches any v1
+	// check below. A v1 cell continues exactly as before.
+	switch cell := witnessSchemaOf(latest); cell.Schema {
+	case WitnessSchemaV2:
+		return x.judgeWitnessV2(scope, r, latest, cell, targetRevision, acceptanceRevision)
+	case WitnessSchemaUnknown:
+		return ResultCouldNotCheck, gapf(GapSchemaUnknown, "the Runner cell's marker %s names no witness schema this reader knows", cell.Marker), ""
+	}
 	if NormalizeCommandText(latest.Command) != NormalizeCommandText(r.Command) {
 		return ResultError, "the witness records a different command than the Verify row now carries — its acceptance definition changed after it was run, so the recorded result proves nothing about the row as it stands today", ""
 	}
@@ -613,6 +623,11 @@ type witnessScope struct {
 	// coverage_inputs.go; #2026 cause 2): the witness speaks for exactly
 	// these. Only set when no dependency manifest is supplied.
 	inputs []string
+	// briefID is the brief's "<stream>/<NN>" id; v2inputs and v2inputsFound
+	// are its `inputs:` declaration (witness.go). Only a v2 claim reads them.
+	briefID       string
+	v2inputs      []string
+	v2inputsFound bool
 }
 
 // derived reports whether the scope is a row's derived read set.

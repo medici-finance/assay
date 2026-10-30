@@ -38,11 +38,11 @@ sources:
   - "freshness-checked 2026-09-14 @ e428134c (origin/main) — every line reference and every claim below re-read against the source at that commit."
   - "`tools/desk/cmd/deskwt/prune.go` § `pruneSweep` (L292) — the sweep body and the exact gate ORDER this brief reorders: lock (L344) → shared-checkout/cwd/prefix (L349–359) → `dirtyTracked` (L362) → `headAtOriginMainTip` (L381) → `mergedToOriginMain` (L392) → `unmergedReason` (L398) → dry-run check (L404) → `removeWorktreeDir` (L419)."
   - "`tools/desk/cmd/deskwt/prune.go` § `unmergedReason` (L441) — the ~36 % block: `repo.UpstreamRef()` then `repo.AheadCount(upstream, \"HEAD\")` (L451) whose only use is the `%d` in a skip string. No gate reads the number."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `AheadCount` (L717) — walks `Log(base)` into `baseAncestors` to exhaustion, then walks head. Two full history walks per call."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `IsAncestor` (L401) — resolves both ends, decodes both commits, and delegates to go-git's `object.Commit.IsAncestor`, which is unmemoized: a fresh preorder walk per call, nothing shared across calls."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `Open` (L87) — builds `cache.NewObjectLRUDefault()` fresh on every call, so nothing decoded by one Open is visible to the next."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `Log` (L348) — already returns the reachable hashes of a rev, newest first; the ancestor SET this brief needs is `Log` plus three lines, not a new primitive."
-  - "`tools/desk/internal/gitcore/contains.go` § package header — the in-repo precedent for exactly this defect class, written up at length: `RefsContaining` once called go-git's unmemoized `IsAncestor` once per ref (~10 million commit visits, ~108 s where the git binary answered in ~15 ms) and was fixed by ONE shared walk plus a commit-graph generation-number cut-off. Same package, same cause, opposite direction of the question."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `AheadCount` (L717) — walks `Log(base)` into `baseAncestors` to exhaustion, then walks head. Two full history walks per call."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `IsAncestor` (L401) — resolves both ends, decodes both commits, and delegates to go-git's `object.Commit.IsAncestor`, which is unmemoized: a fresh preorder walk per call, nothing shared across calls."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `Open` (L87) — builds `cache.NewObjectLRUDefault()` fresh on every call, so nothing decoded by one Open is visible to the next."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `Log` (L348) — already returns the reachable hashes of a rev, newest first; the ancestor SET this brief needs is `Log` plus three lines, not a new primitive."
+  - "[pre-lift containment reader](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/contains.go) § package header — the in-repo precedent for exactly this defect class, written up at length: `RefsContaining` once called go-git's unmemoized `IsAncestor` once per ref (~10 million commit visits, ~108 s where the git binary answered in ~15 ms) and was fixed by ONE shared walk plus a commit-graph generation-number cut-off. Same package, same cause, opposite direction of the question."
   - "`tools/desk/cmd/deskwt/deskwt.go` § `dirtyTracked` (L236) → `gitcore.DirtyTrackedPorcelain` (gitcore.go L815) → go-git `wt.Status()` — the ~25 % block, and the SINGLE implementation shared by `remove` and `prune`."
   - "`tools/desk/cmd/deskwt/deskwt.go` § `removeWorktreeDir` (L256) — `os.RemoveAll`, then `git worktree prune`, then a full `guard.worktreePaths(dir)` (a `git worktree list --porcelain` parse) to positively verify deregistration — all three PER removal. Shared with `remove`."
   - "`tools/desk/cmd/deskwt/deskwt.go` § `lockedWorktrees` (doc comment L204, signature L215) — the porcelain lock read, already done ONCE per sweep; the shape every other per-sweep read in this brief follows."
@@ -145,11 +145,11 @@ files:
 - `tools/desk/cmd/deskwt/prune.go` (existing) — `pruneSweep` restructured around a per-sweep `sweepCtx` (the ancestor set, the shared object cache, the per-worktree `*gitcore.Repo` cache); the gate reorder; `unmergedReason`'s count removed; the batched removal tail; the read-only `--dry-run` arm; the singleton acquisition; two new flags.
 - `tools/desk/cmd/deskwt/prunesingleton.go` (planned) (new) — the stamp file, its flock, the TTL debounce, the held/recent report strings, and the stamp's read/write/parse.
 - `tools/desk/cmd/deskwt/deskwt.go` (existing) — `removeWorktreeDir` split into `removeWorktreeTree` (the `os.RemoveAll` alone) and the existing prune-and-verify tail; `remove`'s call site keeps both halves in the order it has today.
-- `tools/desk/internal/gitcore/gitcore.go` (existing) — `OpenWith(dir string, objects cache.Object) (*Repo, error)`; `Open` becomes `OpenWith(dir, cache.NewObjectLRUDefault())`.
+- **edit** — [pre-lift Git implementation](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore.go) (existing) — `OpenWith(dir string, objects cache.Object) (*Repo, error)`; `Open` becomes `OpenWith(dir, cache.NewObjectLRUDefault())`.
 - `tools/desk/cmd/deskwt/prunesingleton_test.go` (planned) (new).
 - `tools/desk/cmd/deskwt/pruneperf_test.go` (planned) (new) — the synthetic-repo fixture builder, the N-scaling test, the concurrency test and the per-candidate benchmark.
 - `tools/desk/cmd/deskwt/prune_test.go` (existing) — new rows for the gate order, the read-only dry run and the fail-closed ancestor set; `TestPruneSkipsDirtyTracked`'s fixture made unambiguous (see the facts).
-- `tools/desk/internal/gitcore/gitcore_test.go` (existing) — the shared-cache row.
+- **edit** — [pre-lift Git tests](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore_test.go) (existing) — the shared-cache row.
 - `tools/desk/cmd/deskwt/prune-mutations.json` (planned) (new) — the `muhar` spec for row 11.
 - `tools/desk/README.md` (existing) — the prune singleton, its two flags, and the statement that `--dry-run` is read-only.
 - `changelog/desk-tools-26-prune-perf.md` (planned) (new).
@@ -190,7 +190,7 @@ facts (read at `e428134c`, 2026-09-14):
   candidates unmerged, so the common case is the exhaustive one, repeated per candidate,
   inflating the same 5,779 commits out of a ~920 MB pack every time.
 - **This exact defect has been diagnosed and fixed once already in this package.**
-  `tools/desk/internal/gitcore/contains.go`'s header records `RefsContaining` calling the same unmemoized
+  [pre-lift containment reader](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/contains.go)'s header records `RefsContaining` calling the same unmemoized
   `IsAncestor` once per ref — ~10 million commit visits, ~108 s where the git binary answered
   in ~15 ms — and its fix is the same shape this brief takes: one shared walk instead of N.
   The direction of the question differs (which tips contain one commit, versus is this one

@@ -1,0 +1,6 @@
+# Without pipefail a pipeline reports its last command's status, so piping the
+# scan into cat hides a finding even under set -e.
+want: step-not-fatal
+file: Makefile
+replace: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; \\\n"
+with: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\" | cat; \\\n"

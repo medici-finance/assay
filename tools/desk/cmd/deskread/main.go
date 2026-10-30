@@ -895,9 +895,14 @@ type TrustJSON struct {
 
 // EventJSON is one deskkit.ContentEvent. AuthorLogin is the rendered form the trust set expects
 // (an App re-suffixed "<slug>[bot]"); an empty login is a deleted account and stays empty.
+// AuthorBot is ContentEvent.ForgeBot — the forge's own bot flag, rendered only when true, so
+// an envelope for an author the forge does not mark is byte-identical to its earlier shape.
+// A reader uses it only to REFUSE a human-name assertion (ASSAY_ASSERTED_HUMANS); an older
+// envelope without it carries no flag, and the pinned id is then the control.
 type EventJSON struct {
 	AuthorLogin string `json:"authorLogin,omitempty"`
 	AuthorID    int64  `json:"authorId,omitempty"`
+	AuthorBot   bool   `json:"authorBot,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 	EditedAt    string `json:"editedAt,omitempty"`
 }
@@ -1093,7 +1098,7 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 		tj := &TrustJSON{BodyEditedAt: wireTime(tp.BodyEdited), Complete: tp.Complete, BodyHistoryKnown: tp.BodyHistoryKnown, Events: []EventJSON{}}
 		for _, e := range tp.Events {
 			tj.Events = append(tj.Events, EventJSON{
-				AuthorLogin: e.Author, AuthorID: e.AuthorID,
+				AuthorLogin: e.Author, AuthorID: e.AuthorID, AuthorBot: e.ForgeBot,
 				CreatedAt: wireTime(e.CreatedAt), EditedAt: wireTime(e.EditedAt),
 			})
 		}

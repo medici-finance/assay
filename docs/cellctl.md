@@ -275,7 +275,8 @@ placeholder topology), and the model is whatever the CLI default is that week.
 cellctl new house --kind house \
   --repo /path/to/checkout \
   --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
-  [--roles "the-desk worker-desk"] [--port 8787]
+  [--roles "the-desk worker-desk"] [--port 8787] \
+  [--forge gitlab [--group example-group] [--gitlab-api-base URL]]
 cellctl check house
 cellctl desk house worker-desk          # one window
 cellctl up house                        # every role, in the resolved cockpit (see *Cockpits*)
@@ -290,11 +291,20 @@ files exactly as a hand boot would; **nothing is copied** — and links `.config
 `.gitconfig` as a github cell does. There are no custody hand steps: the custody is the
 operator's own. It refuses to overwrite an existing cell of the same name.
 
+`--forge` (default `github`) is honoured as on a k8s cell. `--forge gitlab` writes
+`CELL_FORGE=gitlab` with `FORGE_API_BASE`/`GITLAB_API_BASE` (`--gitlab-api-base`, default
+`https://gitlab.com/api/v4`), `GITLAB_GROUP` from `--group` (left as a commented line when absent:
+only a `DESKD=1` house cell needs it) and `GITLAB_TOKEN_STORE` when `--gitlab-token-store` is
+given; it links `.gitconfig` but **never** `.config/gh`, which is GitHub custody. Any other
+`--forge` value is refused before anything is created.
+
 `check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
 checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
 scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
 formed, exists and carries `docs/streams/`; the desk verbs a role needs are installed under the
 desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
+The gh config link is a row on a github house cell (a `MISS` when absent) and `n/a` on a gitlab
+one, worded as on a k8s gitlab cell.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
@@ -349,7 +359,9 @@ The launch is `env -i` plus an explicit allowlist — the parent shell contribut
 default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
 `tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
 live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it):
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The cell database pointer and GitLab endpoint rows are
+Go-only additions,
+present only when the cell declares them; parity fixtures do not configure them.
 
 | Variable | Value |
 |---|---|
@@ -373,6 +385,9 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
+| ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
+| PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
+| GITLAB_API_BASE | GitLab cells only: nonempty `cell.env` `GITLAB_API_BASE`, else its nonempty `FORGE_API_BASE`; inherited values and compiled defaults are excluded |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final
 harness environment only, after the secret-free launch plan. Herdr/provider launches
@@ -508,6 +523,19 @@ On a machine with a `$CELLS_ROOT/defaults.env`, two rows say that the file was r
 managed Go cache's setting came from (see *Machine-wide defaults*). They print directly under the
 `[check]` header — for a container cell, which prints no such header, after its `[model]` lines
 and before the container's own check. They are never a `MISS`.
+
+**Cell database rows** — only when `cell.env` sets `CELL_DB_DSN` (with it unset, no row is
+printed, so the transcript of a cell with no database is unchanged): the DSN carries no password
+(no `password=` keyword, including one inside a quoted `dbname` value, and no password in URI
+userinfo, including a URI given as the `dbname` value — the value is withheld when it does, and
+`desk` refuses the launch rather than compose it), and
+`CELL_DB_PASSFILE` is set, absolute, readable and mode `0600` or `0400` (the same mode helper as the
+PEM rows). On a `container` cell the key is a `MISS` naming the gap: a container cell's plan
+carries no such environment or mount yet. A Kubernetes compatibility cell (`CELL_KIND=k8s` with
+`CELL_KUBERNETES_CONFIG`) that sets `CELL_DB_DSN` or `CELL_DB_PASSFILE` is refused by `desk`, `up`
+and `check`, naming the key and never its value: that profile composes no database environment. The mode keeps out other OS users only; these rows never
+claim that cells are separated from each other (see [`docs/postgres.md`](postgres.md) §Isolation
+boundary).
 
 Run it after `new`, and again after any key or token rotation.
 
@@ -1363,7 +1391,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `DESKD_APP_ID_VAR` | **github** — the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
 | `ORGS` | **github** — comma-separated orgs to mint one installation token each for |
 | `GITLAB_GROUP` | **gitlab** — the GitLab group this cell reads |
-| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`) |
+| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`). On a GitLab cell, the base `cell.env` states (this key when set non-empty, else its `FORGE_API_BASE`) is exported as `GITLAB_API_BASE` into the claude and cursor role windows and Codex command subprocesses. Scrubbed launches compose the same cell-declared value. Host windows retain their existing inheritance policy when no base is declared; cellctl's compiled `gitlab.com` fallback is never exported, so `desktoken` still refuses an unconfigured base. `FORGE_API_BASE` itself is not exported. Codex command and scrubbed exports refuse unparseable URLs and URL userinfo, nonempty queries or fragments before producing arguments or plans, since these fields can carry credentials; refusals omit the URL. Existing host Claude/Cursor forwarding is unchanged. Changes to this credential destination require security review (#4845); inherited-value clearing, HTTPS enforcement and conflicting-key policy remain separate (#4855) |
 | `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
 | `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
@@ -1379,6 +1407,8 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
+| `CELL_DB_DSN` | the cell's own PostgreSQL database, as a libpq connection string with **no password** (for example `host=127.0.0.1 port=5432 dbname=cell_example_cell user=cell_example_cell sslmode=disable`); when set, every role window gets it as `ASSAY_CELL_DB_DSN`; unset, the cell has no database and nothing is composed (see [`docs/postgres.md`](postgres.md)) |
+| `CELL_DB_PASSFILE` | the absolute path of that database's pgpass file (mode `0600` or `0400`, outside the repository); exported as `PGPASSFILE` when `CELL_DB_DSN` is set, so libpq reads the password itself and it is never an environment value or an argv element |
 
 ### Machine-wide defaults — `defaults.env`
 
@@ -1528,6 +1558,7 @@ processes are not configuration.
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
+| `CELL_DB_DSN`, `CELL_DB_PASSFILE` | one cell's database and its credential file: each cell has its own role and database ([docs/postgres.md](postgres.md)) |
 | `CELL_KUBERNETES_CONFIG` | binds one cell to its explicit Kubernetes compatibility profile and approved target |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
@@ -1983,14 +2014,14 @@ samples are unknown, never zero. No tool installation or live role restart occur
 `CELL_KIND=k8s` keeps its existing local launch path unless the cell explicitly
 sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in
-`containers/k8s/compatibility/`. The example is not deployable: image, agent,
-initialization and actual operator values need qualification. A missing or invalid
-explicit profile makes no API operation. There is no ambient context discovery,
+`containers/k8s/compatibility/`. The example pins the published v1.0.65 role images
+for `linux/amd64`, but is not deployable: agent, initialization and actual operator
+values need qualification. A missing or invalid explicit profile makes no API operation. There is no ambient context discovery,
 credential-plugin execution, proxy, insecure TLS or redirect fallback.
 
 Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
-an approved new image release and custodian-owned preparation. It inherits the
-historical five-role package and retains its Secrets, PVCs and network floor;
+custodian-owned preparation and qualification of its published image pins. It
+inherits the historical five-role package and retains its Secrets, PVCs and network floor;
 all five workloads install at zero replicas. Only exact-name StatefulSet/scale
 reads and updates, Pod reads and named-container attach are in the operator
 Role. This does not authorize Secret access, arbitrary Pod creation, exec,
@@ -2066,9 +2097,15 @@ continuation and conversation continuation are separate: a PVC only proves the
 filesystem part. A new clean Pod starts a new agent execution; this profile makes
 no conversation-resume or unattended crash/partition recovery promise.
 
-The source checkpoint deliberately carries an unbuilt candidate record.
-`sh containers/k8s/check.sh --compatibility-cellctl --self-test` can pass hostile
-synthetic fixtures while still returning `could-not-check` for the actual
-candidate. Only a genuine protected-release manifest digest and its release
-record can remove that image hold. Runtime/model usefulness and effective
-custody remain the separate qualification step.
+The opt-in component and example bind the published v1.0.65 role manifest digests;
+its [candidate record and preparation handoff](../containers/k8s/components/compatibility-cellctl/README.md)
+identify the exact release source, artifact checksum and remaining operator acts.
+The historical base still uses v1.0.52. Both select Linux AMD64 nodes; a multi-platform
+verify-runner release does not supply ARM64 desk images.
+`sh containers/k8s/check.sh --compatibility-cellctl --self-test` passes the hostile
+synthetic fixtures but still reports `checked-failed` on the actual component's
+unprepared launch identities. Real per-role initialization/launch values and
+existing custodian groups remain required; never replace them with fixture values.
+Brief 31 remains blocked, and this pin checkpoint is not its final immutable
+delivery for independent qualification. Runtime/model usefulness, effective
+custody and activation retain their separate human qualification gates.

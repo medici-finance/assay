@@ -29,26 +29,12 @@ id: 7283d5be-f91b-4d51-9e56-caade85e6030
 
 ## Context
 files:
-- NEW `qualgen/dorajoin/denominator.go` (planned) — the **quality denominator**:
-  durable-change volume = landed lines MINUS 14-day churn MINUS `copied`, computed from
-  the M1 aggregates (brief-02: line-operation taxonomy + churn). Reported per window,
-  stream, and author-identity class, three-state where inputs are unmeasured.
-- NEW `qualgen/dorajoin/cfr.go` (planned) — the **traced-CFR refinement**: the traced
-  defect-inducing rate (from brief-07) reported ALONGSIDE incident-based CFR, never
-  replacing it, with the evidence-tier split (tiers 1-3) visible on every number and the
-  trace-rate published beside it (spec §10 honest-claims).
-- NEW `qualgen/dorajoin/joinkeys.go` (planned) — the join-key resolver: **PR number +
-  merge SHA + stream/task ID** (the keys the board already uses). Emits a three-state
-  match flag; an unjoinable delivery record is `could-not-join`, never dropped.
-- NEW `qualgen/dorajoin/source.go` (planned) — the `DeliveryMetricsSource` interface (a
-  pluggable delivery-metrics source) with an in-tree reference adapter reading a
-  file-based delivery-metrics feed; house wiring to a live collector is configuration.
-- NEW `qualgen/dorajoin/schema.go` (planned) — output field naming that FOLLOWS DevLake's
-  domain-layer names where a concept matches (`commits`, `pull_requests`, `incidents`),
-  purely for cross-tool comparability. DevLake itself is NOT a dependency — this is naming
-  only.
-- CONSUMES `qualgen/metrics/` (planned) M1 aggregates (brief-02) and `qualgen/szz/` (planned) traces
-  (brief-07).
+- **add** `qualgen/dorajoin/denominator.go` (planned) — the **quality denominator**: durable-change volume = landed lines MINUS 14-day churn MINUS `copied`, computed from the M1 aggregates (brief-02: line-operation taxonomy + churn). Reported per window, stream, and author-identity class, three-state where inputs are unmeasured.
+- **add** `qualgen/dorajoin/cfr.go` (planned) — the **traced-CFR refinement**: the traced defect-inducing rate (from brief-07) reported ALONGSIDE incident-based CFR, never replacing it, with the evidence-tier split (tiers 1-3) visible on every number and the trace-rate published beside it (spec §10 honest-claims).
+- **add** `qualgen/dorajoin/joinkeys.go` (planned) — the join-key resolver: **PR number + merge SHA + stream/task ID** (the keys the board already uses). Emits a three-state match flag; an unjoinable delivery record is `could-not-join`, never dropped.
+- **add** `qualgen/dorajoin/source.go` (planned) — the `DeliveryMetricsSource` interface (a pluggable delivery-metrics source) with an in-tree reference adapter reading a file-based delivery-metrics feed; house wiring to a live collector is configuration.
+- **add** `qualgen/dorajoin/schema.go` (planned) — output field naming that FOLLOWS DevLake's domain-layer names where a concept matches (`commits`, `pull_requests`, `incidents`), purely for cross-tool comparability. DevLake itself is NOT a dependency — this is naming only.
+- **consumes** `qualgen/metrics/` (planned) (M1 aggregates, brief-02) and `qualgen/szz/` (planned) (traces, brief-07).
 
 facts:
 - The delivery-metrics collector keeps collecting; this tool JOINS to it (spec §2, §8),

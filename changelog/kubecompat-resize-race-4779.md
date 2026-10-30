@@ -1,2 +1,0 @@
-### Fixed
-- `TestKubeCompatIdentity` (native Kubernetes attach) no longer fails intermittently. The offline fake API could finish the attached exec and close the connection before it read the terminal-size frame the client had already sent, so the recorded size stayed zero. The fixture now holds the exec result until that frame is read, and the test asserts the size right after attach returns instead of polling for it (#4779).

@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
@@ -285,14 +285,14 @@ func prBaseFromChange(c deskkit.OpenChange) prBase {
 //
 // A failure fails the whole run, named for the repo, exactly as fetchOpenPRs does — the
 // error text is the same so the out-of-installation scoping check still recognizes it.
-func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, err error) {
+func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, visibility string, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
-		return nil, nil, false, ferr
+		return nil, nil, false, "", ferr
 	}
 	q, qerr := f.ReviewQueueSnapshot(fr)
 	if qerr != nil {
-		return nil, nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, qerr)
+		return nil, nil, false, "", deskkit.Unverifiable("cannot read open PRs for "+repo, qerr)
 	}
 	prs = make([]prBase, 0, len(q.Changes))
 	reviews = make(map[int][]review, len(q.Changes))
@@ -302,7 +302,7 @@ func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, trun
 			reviews[c.Number] = reviewsFromForge(c.Reviews)
 		}
 	}
-	return prs, reviews, warnTruncated(repo, len(prs), q.TruncatedAtCap, q.Cap), nil
+	return prs, reviews, warnTruncated(repo, len(prs), q.TruncatedAtCap, q.Cap), q.Visibility, nil
 }
 
 // outOfInstallationMarkers are the phrases GitHub uses when the authenticated identity
@@ -1651,6 +1651,8 @@ func fetchAndMapGateScores() (map[string]int, error) {
 // deterministic order (see cmdActions).
 type actionsPartial struct {
 	resolved []resolvedReview
+	// The current queue snapshot's repository scalar, never saved in prfacts.
+	visibility string
 
 	rows        []actionRow
 	external    []externalRow
@@ -1703,11 +1705,12 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 	// kind). The reviews it carries replace classifyPR's per-PR review read (N+1 → 1, and
 	// the head and its reviews come from one consistent instant); a PR it did not carry in
 	// full is read per-item as before.
-	prs, queued, truncated, err := fetchReviewQueue(repo)
+	prs, queued, truncated, visibility, err := fetchReviewQueue(repo)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
 	}
 	part.truncated = truncated
+	part.visibility = visibility
 	ciRequired := deskkit.CIRequired(repo)
 	// #2421: the previous sweep's per-PR facts for this repo (prfacts.go). Saved only when the
 	// whole repo classified, so a failed sweep never replaces good facts with partial ones.
@@ -2083,11 +2086,6 @@ func actionsSweep(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	mainHealth := assessBranchHealth()
 	redBases := mainHealth.redRepoSet()
 
-	// an internal hardening review: the public-repo risk rule visibility-drift check rides
-	// the actions header the same way mainHealth does, so the periodic surface the finding
-	// asked for is this loop rather than a new cron nobody yet runs.
-	policyAlarm := assessPolicyDrift()
-
 	// Bounded-concurrency sweep (per-repo → product → full). Each repo's work runs in
 	// one of sweepConcurrency workers and returns its own partial; a repo error fails the
 	// whole run, deterministically named. See sweep.go. #1652's zero-CI probe
@@ -2099,6 +2097,14 @@ func actionsSweep(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	if err != nil {
 		return nil, err
 	}
+	// The same live queue responses can carry repository visibility. Reuse only
+	// those current-invocation observations; a backend without the scalar still
+	// gets the original explicit live metadata probe. No policy check is dropped.
+	visibility := make(map[string]string, len(repos))
+	for i, repo := range repos {
+		visibility[repo] = partials[i].visibility
+	}
+	policyAlarm := assessPolicyDriftFrom(visibility)
 
 	// Merge per-repo partials → product-level → full. The merge order is deterministic
 	// (products sorted, repos in roster order within each product), and the full report is
@@ -2974,12 +2980,23 @@ type visibilityObservation struct {
 // killing the board. That is the same judgement #295's branch-health probe already makes, and
 // it is stated here rather than inferred from the absence of an error return.
 func assessPolicyDrift() policyDriftAlarm {
+	return assessPolicyDriftFrom(nil)
+}
+
+// assessPolicyDriftFrom accepts only the current invocation's queue observations.
+// Standalone policydrift and unavailable/unknown snapshot values keep the same
+// explicit metadata read and NOT OBSERVED failure behavior as before.
+func assessPolicyDriftFrom(snapshot map[string]string) policyDriftAlarm {
 	scope := deskkit.AllowedRepos()
 	alarm := policyDriftAlarm{Scope: scope}
 
 	// Never errors, by construction: every arm below returns a nil error, so the pool's
 	// fail-closed path is unreachable from here and the discarded error cannot hide one.
 	obs, _ := sweepRepos(scope, boardSweepLimit, func(repo string) (visibilityObservation, error) {
+		switch vis := snapshot[repo]; vis {
+		case "public", "private", "internal":
+			return visibilityObservation{repo: repo, vis: vis, observed: true}, nil
+		}
 		f, fr, ferr := forgeFor(repo)
 		if ferr != nil {
 			return visibilityObservation{repo: repo}, nil // unobserved → reported NOT OBSERVED

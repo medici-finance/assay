@@ -53,16 +53,26 @@ consumers:
 
 ## Context
 
-files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`, `forgeread/mirror/reviewcoverage_test.go` (planned)
-`forgeread/adapters/github/`, `forgeread/adapters/gitlab/`, `forgeread/README.md`,
-`tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`,
-`tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/sharedread.go`,
-`tools/desk/internal/deskkit/mirrorsource.go` (new) and tests,
-`tools/desk/internal/deskkit/forge_surface_deskread_test.go`, `docs/streams/forge-gitlab/inventory.md`,
-`workflow/store/` (planned by graph-execution/19; mirror tables, migration and the
-graph-execution/28 fact-completeness mapping),
-`statusgen/testdata/regressionfloor/` (planned by graph-execution/29; one case),
-`changelog/forge-mirror-polling.md` (new).
+files:
+- `tools/forge-import-check/check_env_imports.go` (source-only helper)
+- `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures)
+- `forgeread/mirror/` (new)
+- `forgeread/mirror/mirrortest/` (new)
+- `forgeread/adapters/access.go`
+- `forgeread/mirror/reviewcoverage_test.go` (planned)
+- `forgeread/adapters/github/`
+- `forgeread/adapters/gitlab/`
+- `forgeread/README.md`
+- `tools/desk/internal/deskkit/forge.go`
+- `tools/desk/internal/deskkit/forge_github.go`
+- `tools/desk/internal/deskkit/forge_gitlab.go`
+- `tools/desk/internal/deskkit/sharedread.go`
+- `tools/desk/internal/deskkit/mirrorsource.go` (new) and tests
+- `tools/desk/internal/deskkit/forge_surface_deskread_test.go`
+- `docs/streams/forge-gitlab/inventory.md`
+- `workflow/store/` (planned by graph-execution/19; mirror tables, migration and the graph-execution/28 fact-completeness mapping)
+- `statusgen/testdata/regressionfloor/` (planned by graph-execution/29; one case)
+- `changelog/forge-mirror-polling.md` (new)
 
 facts (4696d598e, 2026-10-13):
 - `forgeread/` exists (forge-neutral/36, implemented). Its root package is offline and frozen only;

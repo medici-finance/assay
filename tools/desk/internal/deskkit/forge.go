@@ -906,6 +906,11 @@ type OpenChanges struct {
 // straddle a push — N sequential reads can see the list at one head and a change's reviews
 // after a newer head landed. Truncation carries the SAME meaning as OpenChanges.
 type ReviewQueue struct {
+	// Visibility is the live repository visibility when the backend carries it in
+	// this same snapshot: public, private or internal. Empty means unavailable,
+	// not private. Consumers needing it must then retain their explicit live probe.
+	// It is not a cross-run cache or an authorization decision.
+	Visibility string `json:",omitempty"`
 	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
 	Changes []QueuedChange
 	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).

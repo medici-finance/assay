@@ -1,0 +1,6 @@
+# An if with no else returns 0 when its condition fails, so a scan used as the
+# condition is masked even under set -e.
+want: step-not-fatal
+file: Makefile
+replace: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; \\\n"
+with: "\tif sh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; then :; fi; \\\n"

@@ -8,6 +8,16 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "statusgen/scripts/count-git-launch.sh",
+      "reason": "desktools-v2/76 source-only offline Git-launch ratchet invoked by its original Verify row 4; no arguments, never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "statusgen/internal/gitlaunch",
+      "reason": "desktools-v2/76 source-only AST inventory and ratchet implementation invoked by count-git-launch.sh and bounded tests; inspects source only and is never installed or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s/compatibility/desk-session.test.sh",
       "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
     },
@@ -45,6 +55,11 @@
       "class": "test",
       "pattern": "docs/research/criterion-evidence-freshness/replay.py",
       "reason": "source-only offline replay and negative controls for graph-execution/32's frozen synthetic evidence study; explicitly invoked by its brief Verify rows and research README, never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "statusgen/bench/perfworkload.sh",
+      "reason": "statusgen/26 source-only launcher for the opt-in TestPerfWorkloadSamples synthetic offline acceptance and measurement test; never installed, packaged or released as an operator CLI"
     },
     {
       "class": "test",
@@ -230,6 +245,16 @@
       "class": "test",
       "pattern": "containers/scripts/layer-secret-scan.mutate.sh",
       "reason": "developer mutation runner for the layer-secret-scan fixtures (issue #2256); runs layer-secret-scan.test.sh against mutated copies of the scan, not an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/postgres/drill.sh",
+      "reason": "throwaway-server verification drill for the local PostgreSQL scripts (desk-containers/26 Verify row 7): starts its own two disposable compose projects, runs one pass of about 21 checks against provision-cell.sh and restore.sh and exits non-zero on any failure (it carries no mutation code: the five mutations are manual edit-and-rerun steps in the brief's Verify row 7); a test instrument, never the operator's backup, restore or provisioning path"
+    },
+    {
+      "class": "library",
+      "pattern": "containers/postgres/lib.sh",
+      "reason": "shared helper sourced by the containers/postgres operator scripts (desk-containers/26); no shebang, no main guard, no argument parser and never run on its own"
     },
     {
       "class": "test",
@@ -2121,6 +2146,91 @@
       "state": "pending"
     },
     {
+      "executable": "provision-cell.sh",
+      "path": "containers/postgres/provision-cell.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "184 lines at 176847f81475",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "restore.sh",
+      "path": "containers/postgres/restore.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "247 lines at 176847f81475",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "check-isolation.sh",
+      "path": "containers/postgres/check-isolation.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "96 lines at 176847f81475",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "backup.sh",
+      "path": "containers/postgres/backup.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "123 lines at 176847f81475",
+      "owner": "desktools-v2/57",
+      "state": "pending"
+    },
+    {
+      "executable": "scram-verifier.py",
+      "path": "containers/postgres/scram-verifier.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "containers/postgres/provision-cell.sh",
+        "containers/postgres/drill.sh",
+        "docs/postgres.md"
+      ],
+      "parser": "Python sys.argv (one subcommand, selftest; password on stdin)",
+      "complexity": "simple",
+      "basis": "85 lines at 176847f81475",
+      "owner": "desktools-v2/57",
+      "state": "pending"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",
@@ -2366,6 +2476,25 @@
       "basis": "130 lines at 3ad1ad83c871",
       "owner": "desktools-v2/53",
       "state": "pending"
+    },
+    {
+      "executable": "fetch-baseline.sh",
+      "path": "statusgen/fetch-baseline.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by ci.yml and release.yml",
+      "consumers": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "statusgen/witnessv2_skew_test.go"
+      ],
+      "parser": "bash positional arguments; --from-source mode word",
+      "complexity": "simple",
+      "basis": "109 lines at ec9f8f04e6fe",
+      "owner": "statusgen/36",
+      "state": "exempt",
+      "reason": "CI and release-gate helper that provides the v1.0.52 statusgen baseline (checksum-verified download, or a source build at the pinned commit) as SG_OLD_BIN for the statusgen/36 witness skew tests (#4459); never installed as an operator CLI; retires with those skew tests"
     },
     {
       "executable": "aggregate.py",

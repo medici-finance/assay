@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.65
+**Describes reference implementation:** `statusgen` v1.0.67
 
 ## 1. Scope
 
@@ -409,6 +409,15 @@ The body MUST contain a `## Context` section. It MUST include:
   Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
   be reported explicitly, never interpreted as absent deliverables. See the
   [declaration and observation contract](../docs/declared-input-scope.md).
+- An OPTIONAL column-zero `inputs:` field narrowing a Verify row's witness scope to
+  the literal repository-relative files and directories (a trailing `/`) its Commands read. It
+  reads a strict subset of the `files:` grammar: bare or backtick-quoted entries as an inline
+  value or `- ` list items, separated by commas, semicolons or spaces, ended by an em dash;
+  globs, braces, backslashes, absolute paths and `..` make the whole declaration unreadable,
+  and an unreadable or absent `inputs:` means the witness scope is the whole tree. A Command
+  that names a repository path outside the declared set is refused by the witness reader
+  (`witness-input-undeclared`) and flagged by `--lint`. STATUS.md and `docs/streams/**` are
+  never inputs. See [declared-input-scope](../docs/declared-input-scope.md).
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
