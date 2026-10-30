@@ -67,8 +67,9 @@ files: `schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v
 `statusgen/testdata/patterns/bad-effect-route-no-floor.yaml` (planned),
 `statusgen/testdata/patterns/bad-exit-unreachable.yaml` (planned),
 `statusgen/testdata/patterns/bad-containment-default.yaml` (planned),
-`plugins/assay/skills/author-brief/SKILL.md` and `.cursor/skills/author-brief/SKILL.md`
-(generated enforcement table only), `changelog/graph-execution-34-signal-classes.md` (planned).
+`plugins/assay/skills/author-brief/SKILL.md` (generated enforcement table only),
+`.cursor/skills/author-brief/SKILL.md` (generated enforcement table only),
+`changelog/graph-execution-34-signal-classes.md` (planned).
 
 single-point-of-failure: the ONE control for the containment boundary is that a containment
 step is a `human` decision node, which carries no effects. Two layers stand behind it, each in a
