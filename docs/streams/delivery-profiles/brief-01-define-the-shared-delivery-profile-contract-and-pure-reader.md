@@ -29,7 +29,7 @@ sources:
 consumers:
   - "loopadmin/deliveryprofile/: fixed-here after implementation; planned pure owner"
   - "loopadmin/runner/fake/: follow-up delivery-profiles/02"
-  - "deskd/internal/deliveryprofile/: follow-up delivery-profiles/03 and /04"
+  - "tools/desk/internal/cellapi/deliveryprofile/: follow-up delivery-profiles/03 and /04"
   - "tools/desk/internal/cellapi/: follow-up delivery-profiles/04 if selected by the delivered R7 owner"
   - "public thin cockpit: follow-up delivery-profiles/05"
   - "milestone acceptance adapters: out-of-scope (milestone-support/06 owns acceptance; profile decoding grants no authority and does not modify that adapter)"

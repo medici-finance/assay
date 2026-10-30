@@ -39,7 +39,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/cellapi/`, `tools/desk/cellapi/` (planned), `tools/desk/testdata/cellapi/deliveryprofiles/` (planned), `tools/desk/go.mod`, `tools/desk/go.sum`, `deskd/internal/deliveryprofile/` (planned), `docs/delivery-profiles.md` (planned), `changelog/delivery-profiles-04.md` (planned)
+files: `tools/desk/internal/cellapi/`, `tools/desk/cellapi/` (planned), `tools/desk/testdata/cellapi/deliveryprofiles/` (planned), `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/internal/cellapi/deliveryprofile/` (planned), `docs/delivery-profiles.md` (planned), `changelog/delivery-profiles-04.md` (planned)
 
 facts:
 - Source baseline: public main `15ab949bd6158c2a9ef469adf362f3fb5d2fca5a`, inspected 30 October 2026; [spec source inventory](spec.md#sources-and-observed-baseline--30-october-2026) distinguishes shipped code from planned owners.

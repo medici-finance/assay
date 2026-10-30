@@ -35,9 +35,9 @@ This PR's existence authorizes neither. Implementation briefs retain their own g
 | Quality evidence | `quality/18` stub-coverage report is todo; no measured seam coverage or performance baseline collected for this change | Use explicit contract and consumer journeys; do not claim existing universal coverage or measured savings. |
 
 Observed interfaces do not establish a runnable cockpit-to-supervisor route today.
-The planned bridge belongs in the selected public service host after cell-api/02,
+The profile lifecycle and bridge belong in the selected public service host after cell-api/02,
 reusing /26's public API after it ships and preserving cell-api/03 authorization. Do not mock that bridge to claim the first integrated outcome. If /26 cannot
-be imported at its actual module/version boundary, /04 holds while /01–03 can proceed.
+be imported at its actual module/version boundary, /03–04 hold while /01–02 can proceed.
 Active claims and file-level PR overlap were not exhaustively inspected at authoring;
 pickup must refresh them and checkpoint affected owners before changing shared seams.
 
@@ -109,7 +109,8 @@ explicitly scoped authorization path; no production no-auth mode or auth bypass 
 
 ## Lifecycle, isolation and observation
 
-The existing service binary gains an explicit opt-in disposable profile mode; ordinary
+The R7-selected existing service binary gains an explicit opt-in disposable profile mode
+after cell-api/02 and graph-execution/26; ordinary
 startup is unchanged. It validates the complete profile before creating resources or
 starting children, then prints the selected profile, component modes and loopback targets.
 Host adapters allocate an owned temporary root, scoped synthetic session, ephemeral
@@ -199,7 +200,7 @@ Rollback means stop the disposable profile and remove its owned resources; norma
 startup and existing user flows remain unchanged. A failed or partial cleanup is visible,
 not a successful run. Published contract changes follow module/schema versioning; pin
 release artifacts only through their existing publication/adoption path. /01 must verify
-`GOWORK=off` public imports, including external consumer closure without a private import;
+`GOWORK=off` public imports, including external consumer closure without a foreign internal import;
 local replace proves source compatibility only. No local source is presented as a release.
 
 Design alternatives: ad hoc mocks are quick but have no shared composition/provenance;
@@ -210,13 +211,20 @@ scenario and lifecycle glue. It retires duplicate selected-journey setup recipes
 all existing test doubles. Actual change/complexity and startup-cost baselines must be
 recorded during implementation; no measured reduction or performance claim is made now.
 
+The lifecycle adapter belongs in `tools/desk/internal/cellapi/deliveryprofile/` under
+the delivered R7 host, with its host option in `tools/desk/cmd/deskd/`. These are planned
+placements reconciled with cell-api/02 before effects. No adapter imports another
+module's internal package. The current standalone `deskd/` compatibility module is an
+inventory source, not a second profile implementation target. Delegate subprocess
+lifetime to the delivered `loopadmin/process`/supervisor API, never a new exec owner.
+
 ## Decisions and remaining gates
 
 D1 driver: approve this bounded design/admission, request corrections, or hold.
 Recommendation: approve for parked-to-active admission through a separate recorded ruling;
 this draft does not make that transition. Real-supervisor availability is not assumed.
 D2 at real-replacement pickup: select the delivered adapter, supported host and explicitly
-permitted local invocation scope; absent selection keeps /07 held without blocking /01–06.
+permitted local invocation scope; absent selection keeps /07 held without blocking otherwise eligible /01–06.
 No production tokens, external provider calls, cluster access, workflow activation, tag,
 installed pin, ready flip, merge or actual milestone acceptance is authorized by authorship.
 
