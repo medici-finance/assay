@@ -655,7 +655,20 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
 		"git status && gh pr view 1",
 		"gh run list --json status,name",
-		"gh run view 1 --json status -t '{{.status}}'",
+		"gh pr view 1 --json status --jq .status",
+		`gh pr view 1 --json status --jq ".status"`,
+		"gh pr list --json status --jq=.[0].name",
+		"gh pr list --json status -q .[].name",
+		"gh run list --json status -q=.[0].status",
+		"gh run list --json status -q.[0].status",
+		"gh run view 1 --json status --jq .jobs[0].status",
+		"gh pr view 1 --json status --jq .env.HOME",
+		"gh issue list --repo x/y --json status",
+		"gh issue list -R=x/y --json status",
+		"gh issue list -Rx/y --json status",
+		"gh run list --status completed --limit=5 -L 3 --json status",
+		"gh run view 1 --log-failed --json status",
+		"gh pr list --assignee @me --state=open --json status",
 		"gh pr checks 1 | grep -A3 status",
 		"gh pr checks 1 | grep -A 3 -i status | head -n 5 | wc -l",
 		"gh pr checks 1 | tail -5 | grep status",
@@ -666,6 +679,114 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 			t.Errorf("%q: a listed read must stay allowed", cmd)
 		}
 	}
+}
+
+// regression: #5046
+func TestForgeStatusJqFieldPathsOnly(t *testing.T) {
+	// Only literal field paths clear, in every spelling of the flag.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --json status --jq env",
+		"gh pr view 1 --json status --jq env.HOME",
+		`gh pr view 1 --json status --jq "env.HOME"`,
+		`gh pr view 1 --json status --jq 'env.HOME'`,
+		`gh pr view 1 --json status "--jq" env.HOME`,
+		"gh pr view 1 --json status --jq=env.HOME",
+		`gh pr view 1 --json status "--jq=env.HOME"`,
+		`gh pr view 1 --json status --jq="env.HOME"`,
+		"gh pr view 1 --json status -q env.HOME",
+		`gh pr view 1 --json status "-q" env.HOME`,
+		"gh pr view 1 --json status -qenv.HOME",
+		"gh pr view 1 --json status -q=env.HOME",
+		`gh pr view 1 --json status -q"env.HOME"`,
+		"gh run list --json status --jq env.HOME",
+		"gh issue list --json status -q env",
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq env.HOME`,
+		"gh pr view 1 --json status --jq .a --jq env.HOME",
+		"gh pr view 1 --search --jq env.HOME status",
+		"gh pr view 1 --json status --jq",
+		"gh pr view 1 --json status -q",
+		"gh pr view 1 --json status --jq .",
+		"gh pr view 1 --json status --jq .a,.b",
+		"gh pr view 1 --json status --jq .a+.b",
+		"gh pr view 1 --json status --jq length",
+		"gh pr view 1 --json status --jq .a-b",
+		`gh pr view 1 --json status --jq ""`,
+		"gh pr view 1 --json status --jq=",
+		"gh pr view 1 --json status --template x",
+		"gh pr view 1 --json status --template=x",
+		"gh pr view 1 --json status -t x",
+		"gh pr view 1 --json status -tx",
+		"gh pr view 1 --json status -t=x",
+		`gh run view 1 --json status -t '{{.status}}'`,
+		"gh pr view 1 --json status -cq env.HOME",
+		"gh pr list --json status -Lq env.HOME",
+		"gh pr list --json status -L5",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusQuotedBlank(t *testing.T) {
+	// A quoted blank is one word to the shell and several here, so it refuses,
+	// on a filter and on a gh read alike.
+	const pre = "git status; gh pr list | "
+	var rows []string
+	for _, f := range []string{
+		`grep "x -A" 123`, `grep 'x -B' 123`, `grep "x "-C 123`, `grep -v "nomatch -A" 456`,
+		`grep "x	-A" 123`, `grep "x -A"`, `grep 'a b'`, `head "-n 5"`, `grep "x`,
+	} {
+		rows = append(rows, pre+f)
+	}
+	forgeRefuseAll(t, append(rows,
+		`gh pr view 1 --search "x --search" --jq env.HOME --json status`,
+		`gh pr view 1 "x --json" --jq env.HOME status`,
+		`gh issue list --search "a b" --json status`,
+		`gh pr view 1 --json status --jq ".a .b"`,
+		`gh pr view 1 --json status --jq" "env.HOME`,
+		`gh pr view "1 --json status`,
+		`git status "a b" && gh pr view 1`,
+	))
+}
+
+// regression: #5046
+func TestForgeStatusExpansionBesideRead(t *testing.T) {
+	// git status and a filter take free arguments, so an expansion, a substitution
+	// or a redirection there refuses on its bytes, and a newline ends a command.
+	forgeRefuseAll(t, []string{
+		`git status $x; gh pr view 1`,
+		`git status "$x"; gh pr view 1`,
+		"git status `x`; gh pr view 1",
+		`git status \x; gh pr view 1`,
+		`git status (x); gh pr view 1`,
+		`git status >x; gh pr view 1`,
+		`git status <x; gh pr view 1`,
+		"git status -s\n./x.sh\ngh pr view 1",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusGhArgsClosed(t *testing.T) {
+	// Every word on a listed gh read is on the list: no unknown flag, no host.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --json status --unknown",
+		"gh pr view 1 --json status --unknown=x",
+		"gh pr view 1 --json status -x",
+		"gh pr view 1 --json status --",
+		"gh pr view 1 --json status -",
+		"gh pr view https://example.com/x/y/pull/1 --json status",
+		"gh issue list -R example.com/x/y --json status",
+		"gh issue list --repo=example.com/x/y --json status",
+		"gh issue list -Rexample.com/x/y --json status",
+		"gh issue list -R x --json status",
+		"gh issue list -R --json status",
+		"gh pr list --search is:open --json status",
+		"gh pr list --search=is:open --json status",
+		"gh pr list --state= --json status",
+		`gh pr view "" --json status`,
+		"gh pr view 1 h* --json status",
+		"gh pr view ~x --json status",
+		"gh pr view 1 --json status --help",
+		"gh run list -w x --json status",
+	})
 }
 
 // regression: #5046

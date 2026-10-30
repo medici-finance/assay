@@ -54,12 +54,45 @@ func forgeTrigger(s string) bool {
 // alias can sit under a command (`gh alias set 'issue mine' …`) but cannot
 // replace one of these, even written straight into gh's config (checked against
 // gh 2.102.0). `gh <one word>` and `gh api <path>` could be an alias, so neither
-// clears. None of these prints the stored credential or reads a local file.
+// clears. Their arguments stay on forgeGhFlags, and only literal field paths clear.
 var forgeGhReads = map[string]bool{
 	"pr view": true, "pr list": true, "pr checks": true,
 	"run view": true, "run list": true,
 	"issue view": true, "issue list": true,
 }
+
+// forgeGhFlags: the flags of the forgeGhReads pairs that clear, spelled exactly
+// (gh 2.102.0's own flag lists). Off this list: --web and -w, which start a
+// configured program, --template and -t, and any short flag with an attached value
+// or in a cluster, since a cluster can end in a flag that takes a value. -R and -q
+// are in forgeGhChecked. A flag that takes a value on one pair and none on another
+// (-a) cannot hide a flag behind it: every word starting `-` is checked here.
+var forgeGhFlags = func() map[string]bool {
+	m := map[string]bool{}
+	for _, f := range strings.Fields(`--all --app --assignee --attempt --author --base --branch
+		--comments --commit --created --draft --event --exit-status --fail-fast --head --interval
+		--job --json --label --limit --log --log-failed --mention --milestone --required --search
+		--state --status --type --user --verbose --watch --workflow
+		-A -B -H -L -S -a -b -c -d -e -i -j -l -m -s -u -v`) {
+		m[f] = true
+	}
+	return m
+}()
+
+// forgeGhChecked: the flags whose value must match a pattern, in any spelling
+// (`--jq x`, `--jq=x`, `-q x`, `-q=x`, `-qx`). A jq value clears only as a literal
+// field path (`.status`, `.[0].name`); a repo clears only as OWNER/REPO, no host.
+var forgeGhChecked = map[string]*regexp.Regexp{
+	"--jq": forgeFieldPath, "-q": forgeFieldPath,
+	"--repo": forgeOwnerRepo, "-R": forgeOwnerRepo,
+}
+
+var (
+	forgeFieldPath = regexp.MustCompile(`^(\.[A-Za-z_][A-Za-z0-9_]*|\.?\[[0-9]*\])+$`)
+	forgeOwnerRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+	// forgeGhWord: any other word on a listed read, so no URL naming another host.
+	forgeGhWord = regexp.MustCompile(`^[A-Za-z0-9._,/@-]+$`)
+)
 
 // forgeFilters: the output filters that clear, with the flags each may take and
 // how many operands: grep's pattern, none for the rest, so none opens a file.
@@ -89,7 +122,8 @@ var (
 // else refuses, as that pair did before #5046: a computed word, an alias, another
 // program, a wrapper, a redirection. Quotes are not modeled, and they cannot hide
 // a command: a shell ends a command only at a byte split on here, so every command
-// it runs starts a piece checked here. A quoted separator costs a false refusal.
+// it runs starts a piece checked here. A quoted separator costs a false refusal,
+// and so does a quoted blank (forgeQuotedBlank), which words here would misread.
 func forgeListedReads(s string) bool {
 	for _, c := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(";&|\n", r) }) {
 		c = strings.Trim(c, " \t")
@@ -97,13 +131,13 @@ func forgeListedReads(s string) bool {
 			continue
 		}
 		c = forgeRoleEnv.ReplaceAllString(c, "")
-		if strings.ContainsAny(c, "$`\\<>()") {
+		if strings.ContainsAny(c, "$`\\<>()") || forgeQuotedBlank(c) {
 			return false
 		}
 		f := strings.FieldsFunc(c, func(r rune) bool { return r == ' ' || r == '\t' })
 		switch {
 		case len(f) >= 2 && f[0] == "git" && f[1] == "status":
-		case len(f) >= 3 && f[0] == "gh" && forgeGhReads[f[1]+" "+f[2]] && !forgeOpensBrowser(f[3:]):
+		case len(f) >= 3 && f[0] == "gh" && forgeGhReads[f[1]+" "+f[2]] && forgeGhArgs(f[3:]):
 		case len(f) >= 1 && forgeFilterArgs(f[0], f[1:]):
 		default:
 			return false
@@ -112,17 +146,59 @@ func forgeListedReads(s string) bool {
 	return true
 }
 
-// forgeOpensBrowser reports whether args hold gh's `--web`, with or without a
-// `=value`, or `-w`, alone or in a cluster: the one flag on a listed read that
-// starts a configured program.
-func forgeOpensBrowser(args []string) bool {
-	for _, a := range args {
-		a = forgeDropQuotes.Replace(a)
-		if a == "--web" || strings.HasPrefix(a, "--web=") || !strings.HasPrefix(a, "--") && strings.HasPrefix(a, "-") && strings.Contains(a, "w") {
+// forgeQuotedBlank reports whether a quote in c is left open or holds a blank.
+// c holds no backslash here, so every quote byte opens or closes a span. Words are
+// split on blanks without modeling quotes, so `grep "x -A" 123` would otherwise
+// read as a flag and a count where the shell sees a pattern and a file.
+func forgeQuotedBlank(c string) bool {
+	var open rune
+	for _, r := range c {
+		switch {
+		case open == 0 && (r == '"' || r == '\''):
+			open = r
+		case r == open:
+			open = 0
+		case open != 0 && (r == ' ' || r == '\t'):
 			return true
 		}
 	}
-	return false
+	return open != 0
+}
+
+// forgeGhArgs reports whether every argument of a listed gh read is a listed flag
+// or a plain word. A flag in forgeGhChecked must carry a matching value. It does
+// not track which other flags take a value, and needs not to: a word starting `-`
+// is checked wherever it sits, so a value position cannot hide a flag.
+func forgeGhArgs(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		a := forgeDropQuotes.Replace(args[i])
+		name, val, hasVal := strings.Cut(a, "=")
+		if len(a) > 2 && a[0] == '-' && a[1] != '-' && forgeGhChecked[a[:2]] != nil {
+			name, val, hasVal = a[:2], strings.TrimPrefix(a[2:], "="), true
+		}
+		if !strings.HasPrefix(a, "-") {
+			if !forgeGhWord.MatchString(a) {
+				return false
+			}
+			continue
+		}
+		if re := forgeGhChecked[name]; re != nil {
+			if !hasVal {
+				if i++; i == len(args) {
+					return false
+				}
+				val = forgeDropQuotes.Replace(args[i])
+			}
+			if !re.MatchString(val) {
+				return false
+			}
+			continue
+		}
+		if !forgeGhFlags[name] || hasVal && !forgeGhWord.MatchString(val) {
+			return false
+		}
+	}
+	return true
 }
 
 // forgeFilterArgs reports whether name is a listed filter and args stay inside

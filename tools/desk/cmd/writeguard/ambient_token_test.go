@@ -714,6 +714,7 @@ func TestHookStatusReads(t *testing.T) {
 		"gh pr view 1 --json statusCheckRollup",
 		"gh api repos/x/y/commits/abc/status",
 		"git status -sb",
+		"gh pr view 1 --json status --jq .status",
 		`GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
 		`GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
 		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
@@ -724,6 +725,11 @@ func TestHookStatusReads(t *testing.T) {
 	}
 	for _, cmd := range []string{
 		`gh "$s" status -t`,
+		"gh pr view 1 --json status --jq env.HOME",
+		"gh pr view 1 --json status -qenv.HOME",
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq env.HOME`,
+		"gh pr view 1 --json status --template x",
+		`git status; gh pr list | grep "x -A" 123`,
 		`gh "$s" status --show-token`,
 		`gh "$s" status -at`,
 		`f=--show-token; gh "$s" status "$f"`,

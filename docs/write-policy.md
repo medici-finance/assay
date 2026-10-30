@@ -99,7 +99,9 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   together, matched case-insensitively. The `gh` and `status` pair is cleared
   only when every command in the text is a listed read spelled literally:
   `git status`; `gh pr view`, `list` or `checks`; `gh run view` or `list`;
-  `gh issue view` or `list`, without `--web`, with or without a value; `grep`,
+  `gh issue view` or `list`, with flags from a closed list, so no `--web` or
+  `--template`; `--jq` and `-q` take only a literal field path such as `.status` or
+  `.[0].name`, and `-R` takes only OWNER/REPO; a quoted blank refuses; `grep`,
   `head`, `tail` or `wc` with no file operand, where a number is an operand unless
   it follows a flag that takes a count (`head 123` opens a file, `head -n 5` does not);
   the role mint and a `GH_TOKEN=$(cat "$T")` prefix. So
@@ -128,7 +130,9 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `gh run view "$id" --json status` (a computed argument),
   `gh pr list --json status | head -5c` (a count flag read two ways by different tools),
   `gh run view 1 --json status --jq '.status | ascii_upcase'` (a quoted `|` splits
-  the text), and a commit
+  the text), `gh issue list --search "a b" --json status` (a quoted blank),
+  `gh pr list --search is:open --json status`, `gh pr list -L5 --json status` (a
+  short flag with an attached value), and a commit
   message, PR body or comment passed inline (`-m "…"`, `--body "…"`) that says
   "auth" or "token". The way through is a file: `git commit -F <file>`,
   `--body-file <file>`, or a pattern file (`grep -f <file>`). This departs from the
@@ -153,7 +157,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 6 | Shapes a shell lexer could misplace (heredoc delimiters, `((`, `$((`, `$[`, `${…}`, `name[…]`, substitutions, backquotes, process substitution, unclosed spans, quote forms) refused with a trigger word and allowed without, and the message idioms refused when they name one, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings\|TestUnmodeled\|TestForgeReviewShapes\|TestForgeIdiomOutcomes' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc\|TestHookUnmodeled\|TestHookReviewShapes\|TestHookIdiomOutcomes' -count=1` | PASS |
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
-| 9 | `gh` and `status` clear only as listed reads: those reads allowed, with or without a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
+| 9 | `gh` and `status` clear only as listed reads: those reads allowed, with or without a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs, flags off the closed list, anything but a literal field path for `--jq`, a quoted blank, a number that opens a file and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals\|TestForgeStatusJqFieldPathsOnly\|TestForgeStatusQuotedBlank\|TestForgeStatusGhArgsClosed\|TestForgeStatusExpansionBesideRead\|TestForgeStatusWebValueForms\|TestForgeStatusFilterNumbers' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
 
 ## Consumers and migration
 
