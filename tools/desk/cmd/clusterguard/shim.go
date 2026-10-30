@@ -61,6 +61,20 @@ var bareOnlyVerbs = map[string]map[string]bool{
 	"talosctl": set("services"),
 }
 
+// flagRestrictedVerbs are allowlisted verbs that are read-only only with the
+// flags listed for them. The subcommand also accepts flags that make it do more
+// than read, and the allowlist entry vouches for the reading form, not for
+// every flag the CLI may add to it — so after such a verb, a flag that is
+// neither listed here nor in the CLI's valueFlags takes the call off the
+// read-only tier, exactly as an unclassified verb does. Every flag listed here
+// consumes a value. Every entry here must also be in readOnlyVerbs.
+var flagRestrictedVerbs = map[string]map[string]map[string]bool{
+	"talosctl": {
+		"health": set("--wait-timeout", "--control-plane-nodes", "--worker-nodes",
+			"--init-node", "--k8s-endpoint"),
+	},
+}
+
 // valueFlags are the global flags that CONSUME the next argument. Without them
 // the verb scan would read a flag's value as the verb — `kubectl -n prod get`
 // would classify on "prod".
@@ -215,11 +229,35 @@ func hasPositional(cli string, rest []string) bool {
 	return false
 }
 
+// unlistedAfter returns the first argument after a flagRestrictedVerbs entry
+// that the entry does not classify, or "" when every one is classified. A
+// classified argument is a flag listed for the verb or in the CLI's valueFlags
+// (bare or written `--flag=value`), or the value such a flag consumes. A token
+// that starts with "-" is never taken as a value, so a listed flag cannot hide
+// the flag after it. Anything else — a positional argument, a lone `-`, a bare
+// `--` — names no listed flag, so it is unclassified.
+func unlistedAfter(cli, verb string, rest []string) string {
+	listed := flagRestrictedVerbs[cli][verb]
+	vf := valueFlags[cli]
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		name, _, inline := strings.Cut(a, "=")
+		if !listed[name] && !vf[name] {
+			return a
+		}
+		if !inline && i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "-") {
+			i++ // skip the listed flag's value
+		}
+	}
+	return ""
+}
+
 // isReadOnly reports whether this invocation is on the CLI's read-only
 // allowlist. No verb at all is NOT read-only: a bare invocation, or one whose
 // verb sits behind a flag the guard cannot classify, is unclassifiable, and
 // unclassifiable is the mutating side of the line. A bareOnlyVerbs entry is
-// read-only only when no positional argument follows it.
+// read-only only when no positional argument follows it; a flagRestrictedVerbs
+// entry is read-only only when every argument after it is classified.
 func isReadOnly(cli string, args []string) bool {
 	allowed, known := readOnlyVerbs[cli]
 	if !known || len(allowed) == 0 {
@@ -230,6 +268,9 @@ func isReadOnly(cli string, args []string) bool {
 		return false
 	}
 	if bareOnlyVerbs[cli][s.verb] && hasPositional(cli, args[s.at+1:]) {
+		return false
+	}
+	if _, restricted := flagRestrictedVerbs[cli][s.verb]; restricted && unlistedAfter(cli, s.verb, args[s.at+1:]) != "" {
 		return false
 	}
 	return true
@@ -283,6 +324,14 @@ func decide(cli string, args []string, t optInTier) verdict {
 					"its bare form: a positional argument after it is not classified, so the call is "+
 					"treated as mutating. An operator who means to mutate the cluster exports %s=mutate deliberately.",
 				allowClusterEnv, scan.verb, cli, allowClusterEnv)
+			return v
+		}
+		if flagRestrictedVerbs[cli][scan.verb] != nil {
+			v.reason = fmt.Sprintf(
+				"%s is exported at the read-only level, and %q is on %s's read-only allowlist only with "+
+					"the flags this guard classifies for it: %q after it is not one of them, so the call is "+
+					"treated as mutating. An operator who means to mutate the cluster exports %s=mutate deliberately.",
+				allowClusterEnv, scan.verb, cli, unlistedAfter(cli, scan.verb, args[scan.at+1:]), allowClusterEnv)
 			return v
 		}
 		v.reason = fmt.Sprintf(

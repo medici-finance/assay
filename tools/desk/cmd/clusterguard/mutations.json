@@ -84,6 +84,30 @@
       "file": "cmd/clusterguard/shim.go",
       "old": "\t\tif bareOnlyVerbs[cli][scan.verb] {",
       "new": "\t\tif false && bareOnlyVerbs[cli][scan.verb] {"
+    },
+    {
+      "name": "a flag-restricted read-only verb stops inspecting the arguments after it (an unlisted flag after it passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "restricted && unlistedAfter(cli, s.verb, args[s.at+1:]) != \"\"",
+      "new": "false && restricted && unlistedAfter(cli, s.verb, args[s.at+1:]) != \"\""
+    },
+    {
+      "name": "an unlisted flag after a flag-restricted verb is accepted as classified",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif !listed[name] && !vf[name] {\n\t\t\treturn a\n\t\t}",
+      "new": "\t\tif false && !listed[name] && !vf[name] {\n\t\t\treturn a\n\t\t}"
+    },
+    {
+      "name": "a listed flag after a flag-restricted verb consumes the next token even when it is a flag (an unlisted flag hides behind a listed one)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "if !inline && i+1 < len(rest) && !strings.HasPrefix(rest[i+1], \"-\") {",
+      "new": "if !inline && i+1 < len(rest) {"
+    },
+    {
+      "name": "the flag-restricted refusal stops saying the entry is read-only only with its listed flags",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif flagRestrictedVerbs[cli][scan.verb] != nil {",
+      "new": "\t\tif false && flagRestrictedVerbs[cli][scan.verb] != nil {"
     }
   ]
 }
