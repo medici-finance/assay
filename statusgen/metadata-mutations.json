@@ -25,6 +25,12 @@
       "file": "library_metadata.go",
       "old": "read := referenceGitCore(root)",
       "new": "read := ordinaryGitCore(root)"
+    },
+    {
+      "name": "heartbeat date uses a Go layout instead of native %cI",
+      "file": "library_metadata.go",
+      "old": "return exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%h %cI\", row.ID, \"--\").Output()",
+      "new": "short, _ := exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", row.ID).Output(); return []byte(strings.TrimSpace(string(short)) + \" \" + row.CommitterTime.Format(\"2006-01-02T15:04:05-07:00\") + \"\\n\"), nil"
     }
   ]
 }

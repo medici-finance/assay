@@ -27,6 +27,19 @@ func coreMetadataReferenceParity(t *testing.T) {
 	if err != nil || !bytes.Equal(gotHeartbeat, wantHeartbeat) {
 		t.Fatalf("heartbeat %q want %q: %v", gotHeartbeat, wantHeartbeat, err)
 	}
+	// A zero committer offset renders by Git version, never by host time zone.
+	for _, stamp := range []string{"2026-08-01T00:00:00+0000", "2026-08-02T00:00:00+0530"} {
+		t.Setenv("GIT_COMMITTER_DATE", stamp)
+		if err := os.WriteFile(filepath.Join(root, "STATUS.md"), []byte(stamp+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, root, "commit", "-qam", "board "+stamp)
+		want := parityGitBytes(t, root, "log", "-1", "--format=%h %cI", "--", "STATUS.md")
+		got, err := gitLastPathHeartbeatOutput(root)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("committer offset %s: %q want %q: %v", stamp, got, want, err)
+		}
+	}
 	for _, width := range []string{"12", "no", "0", "auto"} {
 		runGit(t, root, "config", "core.abbrev", width)
 		want, wantErr := exec.Command("git", "-C", root, "log", "-1", "--format=%h %cI", "--", "STATUS.md").Output()

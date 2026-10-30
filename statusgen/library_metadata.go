@@ -78,8 +78,10 @@ func referenceSnapshotOutput(repo *gitcore.Repo) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// Only abbreviation formatting remains native: core.abbrev and repository-wide
-// collision rules are not replaced by slicing a full object name.
+// Only display formatting of the selected commit remains native: core.abbrev
+// and repository-wide collision rules are not replaced by slicing a full object
+// name, and the strict ISO date suffix for a zero offset depends on the Git
+// version ("Z" from 2.45, "+00:00" before), so no Go layout reproduces it.
 func gitLastPathHeartbeatOutput(root string) ([]byte, error) {
 	native := func() ([]byte, error) {
 		return exec.Command("git", "-C", root, "log", "-1", "--format=%h %cI", "--", "STATUS.md").Output()
@@ -101,9 +103,5 @@ func gitLastPathHeartbeatOutput(root string) ([]byte, error) {
 	if row.NativeReason != "" {
 		return native()
 	}
-	short, err := exec.Command("git", "-C", root, "rev-parse", "--short", row.ID).Output()
-	if err != nil {
-		return nil, err
-	}
-	return []byte(strings.TrimSpace(string(short)) + " " + row.CommitterTime.Format("2006-01-02T15:04:05-07:00") + "\n"), nil
+	return exec.Command("git", "-C", root, "log", "-1", "--format=%h %cI", row.ID, "--").Output()
 }
