@@ -447,6 +447,29 @@ func TestForgePassThrough(t *testing.T) {
 }
 
 // regression: #4821
+func TestForgeWordBreak(t *testing.T) {
+	// A backslash sequence a shell, echo -e or printf may read as a word
+	// boundary: a line continuation a shell drops at the end of its input
+	// (the last body line of a quoted heredoc fed to it), and an escape that
+	// decodes to a blank or a newline, at the end or the start of a word.
+	forgeRefuseAll(t, []string{
+		"dash <<'END'\nexport PAGER=cat\ngh config get -h example.com oauth_token\\" + "\nEND",
+		"zsh -s <<\"DONE\"\ngh -R example/repo config get oauth_token\\" + "\nDONE",
+		"tee -a run.log <<'Q' | bash -s\ngh config get oauth_token\\" + "\nQ",
+		`printf 'gh config get -h example.com oauth_token\n' | sh`,
+		`printf 'gh\tauth\ttoken -u bot' | bash -s`,
+		`printf 'gh\x20auth\x20token' | dash`,
+		`printf 'gh\040auth\040token\n' > run.sh; sh run.sh`,
+		`bash -c $'gh config get oauth_token\ntrue'`,
+		`bash -c $'gh\cIauth\cItoken'`,
+		`zsh -c $'gh\` + `u0020auth\` + `u0020token -h example.com'`,
+		`echo -e 'gh config get oauth_token\r' | bash`,
+		`printf 'gh config get oauth_token\x0a' | sh`,
+		`bash -c $'gh\cJstatus'`,
+	})
+}
+
+// regression: #4821
 func TestForgeMentionsRefused(t *testing.T) {
 	// The accepted false refusals: a trigger word as data (prose, a search
 	// pattern, a comment, a heredoc to a file, a path, a field name).

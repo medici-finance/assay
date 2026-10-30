@@ -677,3 +677,25 @@ func TestHookReviewClasses(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4821
+func TestHookWordBreak(t *testing.T) {
+	// A backslash sequence a shell or printf may read as a word boundary,
+	// through run(): a continuation dropped at the end of a heredoc fed to a
+	// shell, and escapes decoding to a blank or newline.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for name, cmd := range map[string]string{
+		"continuation-end": "bash -s <<'END'\ngh config get -h example.com oauth_token\\" + "\nEND",
+		"escape-end":       `printf 'gh config get oauth_token\n' | sh`,
+		"escape-start":     `printf 'gh\tauth\ttoken -u bot' | bash -s`,
+		"numeric-escape":   `zsh -c $'gh\x20auth\x20token'`,
+		"control-escape":   `bash -c $'gh\cIauth\cItoken'`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			requireAmbientRefusal(t, v, err, cmd)
+		})
+	}
+}

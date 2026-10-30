@@ -90,15 +90,24 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   discovery: it guards a credential, not a path, so a session outside any checkout
   is refused too. Malformed hook input or tool input stays a no-decision (fail open).
 - **What refuses.** A trigger word anywhere in the command text refuses
-  (`deskcore/writepolicy/forgetoken.go`). The guard does not parse the shell, and no
-  shell construct decides an allow. The trigger words are a whole word `auth`,
+  (`deskcore/writepolicy/forgetoken.go`). The guard does not parse the shell: it has
+  no lexer, no command positions and no quoting or heredoc model. Its one piece of
+  shell modelling is the normalization below, and that keeps every reading it
+  models instead of choosing one, so any reading that completes a trigger word
+  refuses. The trigger words are a whole word `auth`,
   `token`, `oauth_token` or `git-credential`, or the words `gh` and `status`
   together, matched case-insensitively. Before matching, one pass drops quotes, a
   `$` before a quote, backslashes and line continuations, and decodes `\xHH`,
-  `\uHHHH`, `\UHHHHHHHH` and octal escapes. A word ends only at a blank, a newline
-  or one of ``;&|()<>`{},"``; so `GH_TOKEN`, `desktoken`, `--token-file`, a path
-  component such as `./auth/x`, and a test name holding `Token` do not match. The
-  match is one pass per trigger word, linear in the command's length.
+  `\uHHHH`, `\UHHHHHHHH` and octal escapes. A word starts and ends at a blank, a
+  newline or one of ``;&|()<>`{},``, and at a backslash sequence that a shell,
+  `echo -e` or printf may read as a boundary: a line continuation (a shell joins
+  it mid-input but drops it at the end of its input, such as the last body line
+  of a quoted heredoc fed to a shell), `\n`, `\t`, `\r`, `\cI`, `\cJ`, `\cM`, or a
+  numeric escape that decodes to a blank, newline or operator byte. Each such
+  sequence is read both ways, as part of the word and as a boundary. So
+  `GH_TOKEN`, `desktoken`, `--token-file`, a path component such as `./auth/x`,
+  and a test name holding `Token` do not match. The match is one pass per trigger
+  word, linear in the command's length.
 - **Accepted false refusals (desk-decided).** Text naming a trigger word as data is
   refused like a read. Examples: `echo 'gh auth token'`, `grep -n 'auth' notes.md`,
   `rg -n token src/`, a comment, a heredoc written to a file that says "token",
@@ -108,10 +117,12 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   "auth" or "token". The way through is a file: `git commit -F <file>`,
   `--body-file <file>`, or a pattern file (`grep -f <file>`). This departs from the
   policy's allow-and-log default and is recorded on the PR that added it.
-- **Coverage.** The guard covers accidental or habitual ambient token reads by a
-  cooperating session. Deliberate evasion (dynamic evaluation, decoding, command
-  names built from parts) is out of scope for this guard and is left to other
-  layers: no operator credential in verify containers, and server-side App
+- **Coverage.** The guard covers accidental or habitual ambient token reads through
+  the gh CLI's commands by a cooperating session. It does not cover a credential
+  read that bypasses those commands: through a git credential helper, the OS
+  keychain, or a direct read of the gh CLI's config file. Deliberate evasion
+  (dynamic evaluation, decoding, command names built from parts) is out of scope
+  for this guard and is left to other layers: no operator credential in verify containers, and server-side App
   permissions. This scope is a relay of the driver's answer
   (https://github.com/medici-finance/assay/issues/4821#issuecomment-6523907010),
   which the driver's merge of the PR that added this section ratifies.
@@ -125,6 +136,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 5 | The match decides within a deadline on long inputs: wrapper chains, repeated ANSI-C spans, many heredoc operators, long runs of quoted spans, many substitutions, deep nesting and a megabyte of text, at the core and at the hook. The shared masking `Classify` runs first is not bounded while #4854 is open | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWrapperChainLinear\|TestForgeScanWorkBounded' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenWrapperChain\|TestAmbientTokenScanDeadline' -count=1` | PASS |
 | 6 | Shapes a shell lexer could misplace (heredoc delimiters, `((`, `$((`, `$[`, `${…}`, `name[…]`, substitutions, backquotes, process substitution, unclosed spans, quote forms) refused with a trigger word and allowed without, and the message idioms refused when they name one, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings\|TestUnmodeled\|TestForgeReviewShapes\|TestForgeIdiomOutcomes' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc\|TestHookUnmodeled\|TestHookReviewShapes\|TestHookIdiomOutcomes' -count=1` | PASS |
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
+| 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
 
 ## Consumers and migration
 
