@@ -453,6 +453,9 @@ func pendingRun(f deskkit.Forge, repo deskkit.ForgeRepo, root string, it loopeng
 		in := deskkit.OutcomeReceiptInput{BriefPath: b.Brief, LandedBrief: content, ToolVersion: rec.ToolVersion, Repo: b.Repo}
 		if b.Version == 2 {
 			in.SourceRepo, in.Source = b.SourceRepo, b.Source
+			if in.SiblingSources, e = deskkit.VerifierSiblingSources(b); e != nil {
+				return false, e
+			}
 		}
 		derived, e := deskkit.BuildOutcomeRecord(raw, in, source)
 		if e != nil {

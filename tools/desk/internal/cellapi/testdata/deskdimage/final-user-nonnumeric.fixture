@@ -1,0 +1,5 @@
+# A user name cannot be proven non-root from the image config.
+want: final-user-nonnumeric
+file: Dockerfile
+replace: "USER 65532:65532"
+with: "USER deskd:deskd"

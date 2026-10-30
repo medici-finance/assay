@@ -1,0 +1,6 @@
+# .ONESHELL runs a target's whole recipe in one shell, so deskd-build's closing
+# echo decides its status and a failed go build reports success.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\n.ONESHELL:\n"

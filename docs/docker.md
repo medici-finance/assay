@@ -287,11 +287,14 @@ an attach connection establishes safe recovery or a qualified managed cell.
 The historical Kubernetes base still consumes its recorded shell-only v1.0.52
 images. The separate `containers/k8s/components/compatibility-cellctl` template
 selects the new image-owned bounded launcher and installs all roles paused. Its
-unbuilt candidate marker is an explicit adoption hold, not a usable image pin.
-Build and publish through the existing protected release producer, record actual
-role-image manifest digests and the unchanged release image record, and qualify
-operator/agent/profile values before activation. A local config ID, source hash,
-synthetic fixture or dry-run release is insufficient.
+candidate record now pins the five published v1.0.65 role manifest references and
+the unchanged release image record. All five role images are `linux/amd64`, matching
+the inherited node selectors; the separate multi-platform verify-runner does not
+provide ARM64 desk images. See the [candidate provenance and preparation handoff](../containers/k8s/components/compatibility-cellctl/README.md).
+Actual launch/init identities, existing role-custodian groups and operator/agent
+profile inputs remain unresolved. The actual offline profile checker stays failed
+until those inputs are genuinely prepared; synthetic fixtures cannot satisfy it.
+Deployment, credential custody, activation and final qualification remain held.
 
 The existing image credential preflight remains the entrypoint. The launcher
 uses only the already-prepared pinned agent, role instructions and retained work
@@ -311,3 +314,8 @@ ASSAY_TEST_DOCKER_HOST=unix:///var/run/docker.sock \
 This command uses synthetic agent/credential-free fixtures, not the real model or
 cluster. Missing local Docker/image capability is could-not-check. The fixture
 image identity is test-environment evidence and supplies no candidate provenance.
+
+## Local PostgreSQL for host cells
+
+A separate compose project, `containers/postgres/`, runs one loopback-only PostgreSQL server
+with one database and restricted role per cell — see [`docs/postgres.md`](postgres.md).

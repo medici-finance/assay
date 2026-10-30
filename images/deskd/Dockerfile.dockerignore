@@ -1,0 +1,9 @@
+# BuildKit reads this file for images/deskd/Dockerfile; patterns are relative to
+# the build context, deskd/. Keep local build output and any SQLite index a
+# developer ran deskd against out of the context.
+dist
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+.env

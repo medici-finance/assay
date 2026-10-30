@@ -1,0 +1,6 @@
+# The scan moves to a recipe line of its own that has no errexit, and a
+# closing echo after it masks a failed scan.
+want: step-not-fatal
+file: Makefile
+replace: "\techo \"deskd-image: layer-secret scan of assay-deskd:$$tag\"; \\\n\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; \\\n\techo \"deskd-image: built and scanned"
+with: "\techo \"deskd-image: layer-secret scan of assay-deskd:$$tag\"\n\t@tag=\"$$(git rev-parse HEAD)\"; sh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; echo \"deskd-image: built and scanned"

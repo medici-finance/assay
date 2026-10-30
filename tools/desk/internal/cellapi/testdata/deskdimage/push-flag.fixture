@@ -1,0 +1,5 @@
+# The build pushes as it builds.
+want: push-flag
+file: Makefile
+replace: "\tdocker build -f"
+with: "\tdocker build --push -f"

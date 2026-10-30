@@ -51,7 +51,7 @@ files:
 - `tools/desk/cmd/cellctl/up.go` — `cmdUp` refuses a per-run non-house `--kind` on a persisted house cell before its reconcile preflight and before any `--set` persist, with or without `--set` (see Liveness)
 - `tools/desk/cmd/cellctl/set.go` — a `CELL_KIND` change through `applyEnvKVs` (so `set`, `desk --set` and `up --set` alike) refuses unless the cell is stopped (see Liveness)
 - `tools/desk/cmd/cellctl/git.go` — under `--force` only, `mergeRoleWorktree` hands its refusal back to the repair table instead of dying; without `--force` its message and exit code are unchanged
-- `tools/desk/cmd/cellctl/repair.go` (planned) (new — the repair table, the per-row prompt, the repair log)
+- `tools/desk/cmd/cellctl/repair.go` (planned) (new: the repair table, the per-row prompt, the repair log)
 - `tools/desk/cmd/cellctl/repair_test.go` (planned) (new)
 - `docs/cellctl.md` — the `desk` verb's `--force` / `-y` section
 - `changelog/desk-containers-25-desk-force.md` (planned)

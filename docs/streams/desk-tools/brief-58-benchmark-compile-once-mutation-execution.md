@@ -27,8 +27,8 @@ domain: complex
 # Brief 58 — Benchmark compile-once mutation execution
 
 ## Context
-files: tools/desk/cmd/muhar/main.go, tools/desk/cmd/muhar/harness.go, tools/desk/cmd/muhar/runner.go, tools/desk/cmd/muhar/schemata.go, tools/desk/cmd/muhar/buildmode_test.go, tools/desk/cmd/muhar/classification_test.go, tools/desk/cmd/muhar/schemata_e2e_test.go, tools/desk/cmd/muhar/schemata_test.go, tools/desk/cmd/muhar/README.md, changelog/muhar-build-modes.md
 sequencing: desk-tools/56 (brief merged in medici-finance/assay#4364) lists the same `main.go`, `harness.go`, `runner.go` and `README.md`; if its implementation is still in flight, it lands first and this one merges main before editing the shared files — a soft ordering, not a dependency.
+files: tools/desk/cmd/muhar/main.go, tools/desk/cmd/muhar/harness.go, tools/desk/cmd/muhar/runner.go, tools/desk/cmd/muhar/schemata.go, tools/desk/cmd/muhar/buildmode_test.go, tools/desk/cmd/muhar/classification_test.go, tools/desk/cmd/muhar/schemata_e2e_test.go, tools/desk/cmd/muhar/schemata_test.go, tools/desk/cmd/muhar/README.md, changelog/muhar-build-modes.md
 facts:
 - Schemata already compiles eligible mutants once behind runtime selection and reruns green schemata results classically; this brief must not build a second schemata implementation.
 - Selection-narrowed mutants deliberately run classically, so schemata is not a substitute for test selection.

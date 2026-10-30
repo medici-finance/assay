@@ -52,6 +52,7 @@
     "ASSAY_USAGE_DIR",
     "ASSAY_ALLOWED_REPOS",
     "ASSAY_ALLOW_CLUSTER",
+    "ASSAY_ASSERTED_HUMANS",
     "ASSAY_AUTHORIZED_AUTHORS",
     "ASSAY_AUTOAPPROVE_AREAS",
     "ASSAY_AUTOAPPROVE_DAILY_CAP",
@@ -68,6 +69,7 @@
     "ASSAY_DETERMINISTIC_GATE_PATTERNS",
     "ASSAY_FORMER_HUMAN_LOGIN_MAP",
     "ASSAY_GITLAB_DISPLAY_NAMES",
+    "ASSAY_GITLAB_ROLE_EMAILS",
     "ASSAY_GITLAB_SESSION_EMAILS",
     "ASSAY_HOME_REPO",
     "ASSAY_HUMAN_LOGIN_MAP",
@@ -95,10 +97,11 @@
   ],
   "roster": {
     "ASSAY_BLESS_LOGIN": "ada:1001",
-    "ASSAY_TRUSTED_LOGINS": "ada:1001,shared-agent:100002,unpinned-human",
+    "ASSAY_TRUSTED_LOGINS": "ada:1001,shared-agent:100002,unpinned-human,ops-bot:5005",
     "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003,worker=example-worker-app:4004",
     "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/untriggered:no-ci:private,example-org/open:ci:public,example-org/unstated,pattern-org/*",
-    "ASSAY_HUMAN_LOGIN_MAP": "ada-display:ada"
+    "ASSAY_HUMAN_LOGIN_MAP": "ada-display:ada",
+    "ASSAY_ASSERTED_HUMANS": "ops-bot:5005"
   },
   "cases": [
     {
@@ -256,6 +259,24 @@
       "trustedAuthor": true,
       "trustedContent": false,
       "mayBless": false
+    },
+    {
+      "why": "a human whose login ends in -bot, loaded through its pinned ASSAY_ASSERTED_HUMANS pair: a trusted author, never the blessing authority",
+      "login": "ops-bot",
+      "id": 5005,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": false,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "the asserted login carrying another id: the assertion is bound to the pinned pair, so this is untrusted content",
+      "login": "ops-bot",
+      "id": 5006,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
     }
   ],
   "repoCases": [
@@ -438,6 +459,54 @@
         "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=helios:1001"
       },
       "problemContains": "must never be the blessing authority"
+    },
+    {
+      "why": "a -bot login in the human roster with no assertion: the name-shape check still refuses",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001,ops-bot:5005",
+        "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003"
+      },
+      "problemContains": "renders as a bot/App account"
+    },
+    {
+      "why": "an assertion that is a bare login, not a pinned login:id pair",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001,ops-bot:5005",
+        "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003",
+        "ASSAY_ASSERTED_HUMANS": "ops-bot"
+      },
+      "problemContains": "is not a pinned login:id pair"
+    },
+    {
+      "why": "an assertion pinned to another id than the roster entry carries",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001,ops-bot:5005",
+        "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003",
+        "ASSAY_ASSERTED_HUMANS": "ops-bot:5006"
+      },
+      "problemContains": "no pinned ASSAY_ASSERTED_HUMANS entry for that exact login:id"
+    },
+    {
+      "why": "an assertion naming a forge-structural bot rendering",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001,ops-bot:5005",
+        "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003",
+        "ASSAY_ASSERTED_HUMANS": "ops-bot:5005,ops[bot]:5007"
+      },
+      "problemContains": "forge-structural"
+    },
+    {
+      "why": "an assertion no roster entry uses",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ASSERTED_HUMANS": "ops-bot:5005"
+      },
+      "problemContains": "is asserted but no"
     }
   ]
 }

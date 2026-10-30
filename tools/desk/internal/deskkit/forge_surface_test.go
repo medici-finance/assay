@@ -34,6 +34,7 @@ import (
 // relative literal rather than a discovered path because Scan FAILS CLOSED on a tree with no
 // shipped Go source, so a wrong root is an error, never a silent pass.
 const deskTreeRoot = "../.."
+const liftedGitTreeRoot = "../../../../gitcore"
 
 // TestNoForgeCLIShellout is the CI-gating half of the closed surface: no shipped source under
 // tools/desk invokes `gh`, `glab`, or any other forge CLI.
@@ -47,6 +48,14 @@ func TestNoForgeCLIShellout(t *testing.T) {
 	findings, err := forgeban.Scan(deskTreeRoot)
 	if err != nil {
 		t.Fatalf("the ban could not scan the desk tree: %v — this is could-not-check, NOT a clean tree", err)
+	}
+	lifted, err := forgeban.Scan(liftedGitTreeRoot)
+	if err != nil {
+		t.Fatalf("the ban could not scan lifted Git source: %v — could-not-check, NOT clean", err)
+	}
+	for _, finding := range lifted {
+		finding.File = "gitcore/" + finding.File
+		findings = append(findings, finding)
 	}
 	if len(findings) == 0 {
 		t.Fatal("the ban's scan produced no findings at all, not even the known unresolved exec sites — " +

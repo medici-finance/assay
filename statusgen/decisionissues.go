@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,6 +24,7 @@ const decisionLabel = "needs-decision"
 // feeds title/labels/body straight to `gh issue create`; marker is the
 // idempotency key.
 type decisionIssue struct {
+	Card   gateCard `json:"card"`
 	Brief  string   `json:"brief"`
 	Title  string   `json:"title"`
 	Labels []string `json:"labels"`
@@ -68,12 +72,19 @@ func loadDecisionMarkers(path string) (map[string]bool, error) {
 // on each answer, and links. Fully offline: everything is lifted from the brief
 // file plus the static repo slug.
 func renderDecisionBody(root string, bf *BriefFile, row *Brief) string {
+	return renderDecisionWith(root, bf, row, makeGateCard(root, bf, cardDecision))
+}
+
+// renderDecisionWith renders the body around a card the caller built once, so
+// the payload's Card field and the body's card line are one value.
+func renderDecisionWith(root string, bf *BriefFile, row *Brief, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", decisionMarker(bf.Brief)) // briefid:raw identity marker; open issues carry the raw id, dedupe must match
+	b.WriteString(renderCardLinks(card))
 
 	// Situation
 	fmt.Fprintf(&b, "## Situation\n\n")
-	fmt.Fprintf(&b, "**%s** has been **%s** and is awaiting human sign-off before it can proceed to `done`.\n\n", bf.Title, row.Status)
+	fmt.Fprintf(&b, "**%s** has been **%s** and is awaiting a human decision. This decision does not accept the later Verify results or mark the brief `done`.\n\n", bf.Title, row.Status)
 
 	// gate-why as the situation prose
 	if gw := strings.TrimSpace(bf.GateWhy); gw != "" {
@@ -96,7 +107,7 @@ func renderDecisionBody(root string, bf *BriefFile, row *Brief) string {
 
 	fmt.Fprintf(&b, "### Option A: Sign off — accept the brief as-is\n\n")
 	fmt.Fprintf(&b, "The brief proceeds through verification and eventually to `done`.\n\n")
-	fmt.Fprintf(&b, "**Why we'd want it:** the work described in the brief is complete, the evidence is recorded, and the Verify table is satisfied.\n\n")
+	fmt.Fprintf(&b, "**Why we'd want it:** the proposed direction and documented risks are acceptable. Verification results require their own independent check and final acceptance.\n\n")
 	fmt.Fprintf(&b, "**What it limits or costs:** signing off on a human-gated brief means accepting the risks (%s) the brief documents. Once accepted, the work enters the verification queue and moves toward irreversibility.\n\n", strings.Join(reasons, ", "))
 
 	fmt.Fprintf(&b, "### Option B: Request changes\n\n")
@@ -184,12 +195,14 @@ func decisionIssues(root string, streams []*Stream, existing map[string]bool) []
 			if existing[marker] {
 				continue
 			}
+			card := makeGateCard(root, bf, cardDecision)
 			out = append(out, decisionIssue{
+				Card:   card,
 				Brief:  bf.Brief,
 				Title:  issueTitle("needs-decision: ", bf.Brief, bf.Title),
 				Labels: []string{decisionLabel},
 				Marker: marker,
-				Body:   renderDecisionBody(root, bf, row),
+				Body:   renderDecisionWith(root, bf, row, card),
 			})
 		}
 	}
@@ -246,4 +259,176 @@ func runDecisionIssues(root, markersPath string) int {
 	}
 	fmt.Println(string(enc))
 	return 0
+}
+
+// gateCard extends both emitter payloads. Links are observations only: they
+// cannot combine human-authorized acts, satisfy a Verify row or write a stamp.
+const (
+	cardDecision   = "decision"
+	cardAcceptance = "verification-acceptance"
+	cardPrefix     = "<!-- assay-card: "
+)
+
+type gateCard struct {
+	Schema         string `json:"schema"`
+	Purpose        string `json:"purpose"`
+	Brief          string `json:"brief"`
+	Local          string `json:"local"`
+	Repository     string `json:"repository,omitempty"`
+	ID             string `json:"id,omitempty"`
+	Version        int    `json:"version"`
+	SourceRevision string `json:"source_revision,omitempty"`
+	SourceURL      string `json:"source_url,omitempty"`
+	VerifyRevision string `json:"verification_revision,omitempty"`
+	VerifyURL      string `json:"verification_url,omitempty"`
+	DecisionURL    string `json:"decision_url,omitempty"`
+	AcceptanceURL  string `json:"acceptance_url,omitempty"`
+	Unavailable    string `json:"could_not_check,omitempty"`
+}
+
+func makeGateCard(root string, bf *BriefFile, purpose string) gateCard {
+	c := gateCard{Schema: "gate-card/v1", Purpose: purpose, Repository: verifyRepoSlug(), ID: bf.ID, Version: max(bf.Version, 1)}
+	var err error
+	c.Brief, c.Local, err = cardBriefIdentity(root, bf)
+	if err != nil {
+		c.Unavailable = "brief identity unresolved"
+		return c
+	}
+	// Older offline configurations may omit the home slug. Resolve that
+	// link scope from the same local registry, never a network lookup or guess.
+	if c.Repository == "" {
+		if reg, present, err := loadGraphRepos(root); err == nil && present {
+			if self, err := loadMigrateRegistry(root); err == nil {
+				entry := reg.Aliases[self.self]
+				if !entry.Unpublished {
+					c.Repository = entry.Repo
+				}
+			}
+		}
+	}
+	rel, err := filepath.Rel(root, bf.Path)
+	if err != nil {
+		c.Unavailable = "brief path unresolved"
+		return c
+	}
+	rel = filepath.ToSlash(rel)
+	// Advisory links use the canonical in-process reader only. Unsupported
+	// native profiles remain unknown; no native operation or fallback is added.
+	source := ""
+	var committed []byte
+	var readErr error
+	read := ordinaryGitCore(root)
+	if read.err == nil && read.native == "" {
+		source, readErr = read.repo.HeadID()
+		if readErr == nil {
+			var content string
+			content, readErr = read.repo.FileAt(source, read.prefix+rel)
+			committed = []byte(content)
+		}
+	}
+	current, diskErr := os.ReadFile(bf.Path)
+	if source != "" && readErr == nil && diskErr == nil && bytes.Equal(committed, current) {
+		c.SourceRevision = source
+		if c.Repository != "" {
+			c.SourceURL = fmt.Sprintf("https://github.com/%s/blob/%s/%s", c.Repository, source, rel)
+		}
+	} else {
+		c.Unavailable = "source revision unavailable or brief differs from HEAD"
+	}
+	if pass, err := flipLatestPass(bf.Evidence); err == nil {
+		c.VerifyRevision = pass.SHA
+		// This points to the recorded run, not a newly certified witness.
+		if c.Repository != "" {
+			c.VerifyURL = fmt.Sprintf("https://github.com/%s/tree/%s", c.Repository, pass.SHA)
+		}
+	}
+	if c.Repository != "" {
+		base := "https://github.com/" + c.Repository
+		c.DecisionURL = base + "/issues?q=" + url.QueryEscape("is:issue label:needs-decision in:body \""+c.Local+"\"")
+		if bf.DecisionIssue > 0 {
+			c.DecisionURL = fmt.Sprintf("%s/issues/%d", base, bf.DecisionIssue)
+		}
+		c.AcceptanceURL = base + "/issues?q=" + url.QueryEscape("is:issue label:verify-gate in:body \""+c.Local+"\"")
+	}
+	return c
+}
+
+func renderCardLinks(c gateCard) string {
+	raw, _ := json.Marshal(c) // all fields have JSON's fixed, encodable types
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s%s -->\n\n**Card purpose:** `%s`. Related records remain separate; links grant no acceptance authority.\n\n", cardPrefix, raw, c.Purpose)
+	if c.Brief != "" {
+		fmt.Fprintf(&b, "**Canonical brief:** `%s` (revision %d).\n\n", c.Brief, c.Version)
+	}
+	for _, link := range []struct{ label, url string }{{"Decision record (or search)", c.DecisionURL}, {"Verification acceptance records (search)", c.AcceptanceURL}, {"Brief source revision", c.SourceURL}, {"Recorded verification revision (not acceptance)", c.VerifyURL}} {
+		if link.url != "" {
+			fmt.Fprintf(&b, "- [%s](%s)\n", link.label, link.url)
+		}
+	}
+	if c.Unavailable != "" {
+		fmt.Fprintf(&b, "\nLink provenance: could-not-check — %s.\n", c.Unavailable)
+	}
+	b.WriteString("\nA closed earlier decision does not satisfy verification. Final acceptance still requires the independent verification prerequisite and the existing human-only close path. Combined decision/acceptance cards are not supported.\n\n")
+	return b.String()
+}
+
+// readGateCard is opt-in: legacy markers remain readable, but a present typed
+// card must be one literal, complete record. A body carries a card only when a
+// non-code line starts with the card prefix; a mention of the marker name in
+// prose, a quote or code is not a card and leaves the legacy marker to decide.
+// A card line that is present but malformed, duplicated or unknown never falls
+// back to legacy authority.
+//
+// Scope: the emitters in this package write a decision-purpose card only into
+// needs-decision bodies and an acceptance card only into verify-gate bodies.
+// The one reader, briefIssueRulesOn, judges decision-gate bodies, which no
+// emitter here writes a card into, and the verify-gate close workflow keys on
+// its marker alone. So in this package the card is informational for readers;
+// the reader constrains only a card a filer or a person adds to a
+// decision-gate body.
+func readGateCard(body string) (*gateCard, error) {
+	// A forge web edit stores CRLF; card and marker checks read one form.
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	prose := stripCode(body)
+	var lines []string
+	for _, line := range strings.Split(prose, "\n") {
+		if strings.HasPrefix(line, cardPrefix) {
+			lines = append(lines, line)
+		}
+	}
+	switch {
+	case len(lines) == 0:
+		return nil, nil
+	case len(lines) > 1 || strings.Count(prose, cardPrefix) != 1:
+		// A second record, even mid-line, makes the present card ambiguous.
+		return nil, fmt.Errorf("ambiguous card links")
+	case !strings.HasSuffix(lines[0], " -->"):
+		return nil, fmt.Errorf("malformed card links")
+	}
+	raw := strings.TrimSuffix(strings.TrimPrefix(lines[0], cardPrefix), " -->")
+	var c gateCard
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&c); err != nil {
+		return nil, err
+	}
+	if (c.Purpose == cardDecision && verifyMarkerRe.MatchString(body)) || (c.Purpose == cardAcceptance && (decisionGateMarkerRe.MatchString(body) || decisionMarkerRe.MatchString(body))) {
+		return nil, fmt.Errorf("combined cards are unsupported")
+	}
+	if c.Schema != "gate-card/v1" || (c.Purpose != cardDecision && c.Purpose != cardAcceptance) || c.Brief == "" || !refInRepoBriefRe.MatchString(c.Local) || c.Version < 1 {
+		return nil, fmt.Errorf("invalid card links")
+	}
+	// Canonical identity may be local or v2; neither may name a different item.
+	if c.Brief != c.Local {
+		// Keep the full ID (including alias) for the existing repository-aware
+		// classifier; this check only checks internal consistency, never resolves it.
+		_, alias, stream, num, ok := parseBriefV2ID(c.Brief)
+		if !ok || alias == "" || stream+"/"+num != c.Local {
+			return nil, fmt.Errorf("mixed card identities")
+		}
+	}
+	if dec.Decode(new(any)) != io.EOF {
+		return nil, fmt.Errorf("trailing card data")
+	}
+	return &c, nil
 }

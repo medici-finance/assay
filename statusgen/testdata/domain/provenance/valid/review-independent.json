@@ -1,0 +1,62 @@
+{
+  "schema": "evidence-provenance-v1",
+  "requires": [
+    "provenance@1"
+  ],
+  "work": {
+    "brief": "example:widgets:build:07",
+    "instance": "inst-example-07",
+    "node": "inst-example-07.review",
+    "attempt": "inst-example-07.review.a1"
+  },
+  "candidate": {
+    "repository": "example-org/widgets",
+    "base-commit": "1111111111111111111111111111111111111111",
+    "base-tree": "2222222222222222222222222222222222222222",
+    "commit": "3333333333333333333333333333333333333333",
+    "tree": "4444444444444444444444444444444444444444",
+    "manifest-digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "contract": {
+    "version": 1,
+    "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "duty": "review",
+  "evidence": "sha256:6eebf9fa5d5112b1c6300e7f9edb90e5ca5ddf73677a3149826c48086ebf0f63",
+  "requester": {
+    "id": "principal:bob",
+    "kind": "human"
+  },
+  "represented": {
+    "id": "principal:bob",
+    "kind": "human"
+  },
+  "executor": {
+    "id": "principal:bob",
+    "kind": "human"
+  },
+  "responsible": "principal:bob",
+  "delegation": [],
+  "sponsor": "principal:sponsor-1",
+  "issuer": "issuer:example-idp",
+  "key": "key:bob-1",
+  "capture": {
+    "actor": {
+      "id": "service:capture-adapter",
+      "kind": "service"
+    },
+    "source": "forge-review",
+    "observed-at": "2026-10-20T12:00:00Z"
+  },
+  "environment": {
+    "manifest-digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "declared-proof": "attested",
+  "corroboration": {
+    "attribution": "corroborated",
+    "lineage": "corroborated",
+    "execution": "corroborated",
+    "signature": "missing",
+    "custody": "missing"
+  }
+}

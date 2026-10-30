@@ -138,23 +138,21 @@ files:
 - `tools/desk/cmd/deskboard/board.go` (existing) — `cmdPRs` re-expressed as a `sweepRepos` caller over a new per-repo partial (the out-of-installation carve-out moves INSIDE the worker as a field on that partial); `assessPolicyDrift` likewise.
 - `tools/desk/cmd/deskboard/stalled.go` (existing) — `cmdStalled` re-expressed as a `sweepRepos` caller, with its per-PR stage as a nested `sweepConcurrent` exactly as `cmdActions` already nests one.
 - `tools/desk/cmd/deskboard/roots.go` (planned) (new, same package) — `rootConcurrency`, the shared per-root resolution (`resolveRootsOnce`) and the concurrent per-root runner both `cmdDispatch` and `cmdAwaiting` call.
-- `tools/desk/cmd/deskboard/dispatch.go` and `nextup.go` (existing) — each loses its private root-resolution/pin/version preamble and its serial per-root loop to the shared pair above; neither changes its report shape, its population note, or its fail-closed behaviour.
+- `tools/desk/cmd/deskboard/dispatch.go` and `tools/desk/cmd/deskboard/nextup.go` (existing) — each loses its private root-resolution/pin/version preamble and its serial per-root loop to the shared pair above; neither changes its report shape, its population note, or its fail-closed behaviour.
 - `tools/desk/cmd/deskboard/throughput.go` (existing) — `cmdThroughput` resolves roots once and reads depths through the depth-only halves instead of re-running three whole verbs.
 - `tools/desk/cmd/deskboard/main.go` (existing) — `deskToolsPinReal` gains the per-platform fallback lookup. No other change to `staleState`'s order or its could-not-check arm.
-- `tools/desk/cmd/deskboard/concurrency_test.go` (planned), `roots_test.go` (planned),
-  `throughput_depth_test.go` (planned), `staleplatform_test.go` (planned) — all new.
+- `tools/desk/cmd/deskboard/concurrency_test.go` (planned), `tools/desk/cmd/deskboard/roots_test.go` (planned), `tools/desk/cmd/deskboard/throughput_depth_test.go` (planned), `tools/desk/cmd/deskboard/staleplatform_test.go` (planned) — all new.
 - `tools/desk/cmd/deskboard/mutations.json` (planned) (new) — the mutation spec for row 11.
 - `tools/desk/cmd/deskflip/flip.go` (existing) — the reordered `flipConditions` and gate body, and one memoized raw rollup reader behind `readChecks` and `checkRunsAtHeadReader`.
 - `tools/desk/cmd/deskflip/mutations.json` (existing) — entries added for the reorder and the shared read; existing entries re-anchored where this diff moves their anchor text.
 - `tools/desk/internal/deskkit/helprequest.go` (planned) (new) — `HelpOnly`, `ErrHelpRequested`, `IsHelpRequest`.
 - `tools/desk/internal/deskkit/offlinecheck.go` (planned) (new) — `OfflineCheckHint`.
-- `tools/desk/internal/deskkit/helprequest_test.go` (planned) and `offlinecheck_test.go` (planned) — new.
-- `tools/desk/cmd/deskpost/`, `cmd/deskpr/`, `cmd/deskreply/`, `cmd/deskwt/`, `cmd/deskfile/`, `cmd/desktoken/` (existing) — the six-verb help retrofit; `deskpost`/`deskpr`/`deskreply` additionally route their body/schema refusals through the hint; `deskpr` gains `--check`.
+- `tools/desk/internal/deskkit/helprequest_test.go` (planned) and `tools/desk/internal/deskkit/offlinecheck_test.go` (planned) — new.
+- `tools/desk/cmd/deskpost/`, `tools/desk/cmd/deskpr/`, `tools/desk/cmd/deskreply/`, `tools/desk/cmd/deskwt/`, `tools/desk/cmd/deskfile/`, `tools/desk/cmd/desktoken/` (existing) — the six-verb help retrofit; `deskpost`/`deskpr`/`deskreply` additionally route their body/schema refusals through the hint; `deskpr` gains `--check`.
 - `tools/desk/README.md` (existing) — a short section on `deskpr --check` and on what `--dry-run` covers in the two verbs that already have it.
 - `changelog/perf-desk-tools--27-09141630.md` (planned) (new).
 
-facts (read at `e428134c`, 2026-09-14; measurements taken the same day on one operating desk
-host with a ten-repo roster and four configured stream roots):
+facts (read at `e428134c`, 2026-09-14; measurements taken the same day on one operating desk host with a ten-repo roster and four configured stream roots):
 
 - **The pool exists, is documented, and has two callers.** `sweep.go` states its own purpose in
   its header — every board-wide verb "used to walk `deskkit.AllowedRepos()` in a plain serial

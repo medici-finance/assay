@@ -63,14 +63,10 @@ id: a91ce800-824a-4f84-9604-094f5d3674fa
 
 files:
 - `tools/desk/internal/deskkit/forge.go` — the frozen seam; three ops added.
-- `tools/desk/internal/deskkit/forge_github.go`, `forge_gitlab.go` — the two backend
-  implementations of the three new ops.
-- `tools/desk/internal/deskkit/forge_github_golden_test.go`,
-  `forge_gitlab_golden_test.go` — golden fixtures for the new ops, both backends.
-- `tools/desk/internal/deskkit/forgeresolve.go` — `ForgeFor` and the custody binding;
-  the run-credential resolution this brief adds reuses this, not a parallel path.
-- `tools/desk/internal/deskkit/rosterconfig.go` — the new per-repo run-credential config
-  key and the `release-runner` role register here.
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — the two backend implementations of the three new ops.
+- `tools/desk/internal/deskkit/forge_github_golden_test.go`, `tools/desk/internal/deskkit/forge_gitlab_golden_test.go` (planned) — golden fixtures for the new ops, both backends.
+- `tools/desk/internal/deskkit/forgeresolve.go` — `ForgeFor` and the custody binding; the run-credential resolution this brief adds reuses this, not a parallel path.
+- `tools/desk/internal/deskkit/rosterconfig.go` — the new per-repo run-credential config key and the `release-runner` role register here.
 - `tools/desk/cmd/deskrun/` (new) — the verb.
 - `docs/streams/forge-gitlab/inventory.md` — the frozen op table, rows 38-40 appended.
 - `tools/desk/README.md` — the Tool reference table, `deskrun`'s row.

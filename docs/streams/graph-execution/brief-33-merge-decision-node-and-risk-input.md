@@ -19,6 +19,8 @@ gate-why: >-
   will bind to. The human confirms the derived mapping and that no agent role gains a merge
   capability.
 decision-trigger: creation
+decision-issue: 4511
+ruling: https://github.com/medici-finance/assay/issues/4511#issuecomment-6505759648
 issues: [1933]
 schema: brief-v2
 version: 1
@@ -53,16 +55,7 @@ consumers:
 
 ## Context
 
-files: `spec/workflow-patterns/implementation-v1.yaml`, `statusgen/testdata/patterns/good-implementation-v1.yaml`,
-`statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-pattern-v1.md`,
-`schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v1.json`, `statusgen/patterns.go`,
-`statusgen/patterns_test.go`, `statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml` (planned),
-`statusgen/testdata/patterns/bad-human-role-not-decision.yaml` (planned),
-`statusgen/testdata/patterns/bad-floor-effect-target.yaml` (planned), `spec/workflow-instance-v1.md`,
-`schemas/workflow-instance-v1.json` and the embedded copy `TestInstanceSchemaParity` pins, `statusgen/instance.go`,
-`statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml` (every fixture that pins the pattern digest),
-`statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned),
-`docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned).
+files: `spec/workflow-patterns/implementation-v1.yaml`, `statusgen/testdata/patterns/good-implementation-v1.yaml`, `statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-pattern-v1.md`, `schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v1.json`, `statusgen/patterns.go`, `statusgen/patterns_test.go`, `statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml` (planned), `statusgen/testdata/patterns/bad-human-role-not-decision.yaml` (planned), `statusgen/testdata/patterns/bad-floor-effect-target.yaml` (planned), `spec/workflow-instance-v1.md`, `schemas/workflow-instance-v1.json`, `statusgen/instance.go`, `statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml`, `statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned), `docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned) — and the embedded copy `TestInstanceSchemaParity` pins, `statusgen/instance.go`, `statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml` (every fixture that pins the pattern digest), `statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned), `docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned).
 
 single-point-of-failure: no verified control confines the merge act to a human today — NONE until
 graph-execution/14 binds admission's human-floor refusal at dispatch (/14 depends on this brief and <!-- graph: encoded graph-execution/33→graph-execution/14 -->
@@ -309,7 +302,7 @@ one appeared. Neither is a pass.
 | 11 | check | `(cmp spec/workflow-patterns/implementation-v1.yaml statusgen/testdata/patterns/good-implementation-v1.yaml && tail -n +3 statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml \| cmp - spec/workflow-patterns/implementation-v1.yaml && cmp schemas/workflow-pattern-v1.json statusgen/schemas/workflow-pattern-v1.json && ! grep -rFq edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94 statusgen/testdata)` | exit 0 |
 | 12 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go test -count=1 -v -run '^(TestPatterns\|TestInstance)' .) > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; for t in TestPatternsHumanFloorOutput TestPatternsHumanRoleDecision TestInstanceHumanNodeActor; do grep -Fq -- "--- PASS: $t (" "$T/out" \|\| exit 4; done)` | exit 0 (exit 4 = a named test did not run and pass) |
 | 13 | check | `(cd tools/desk && GOWORK=off go test -count=1 -run '^TestAgenticAdmissionRiskInputUnion$' ./internal/deskkit/)` | exit 0; output contains "ok" |
-| 14 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-floor-effect-target.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; grep -Fq 'target: merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" \|\| exit 3; [ "$(grep -Fc 'merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml")" -eq 1 ] \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-floor-output]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (effect-target branch alone: `merge-commit` appears exactly once in the fixture, on the effect target, so no flow- or block-style output names it; exit 3 otherwise. Fail-first: on 36665f2b0 the same file lints clean, `patterns: 1 checked-clean`, exit 0) |
+| 14 | check +mutation | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-floor-effect-target.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; grep -Fq 'target: merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" \|\| exit 3; [ "$(grep -Fc 'merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml")" -eq 1 ] \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-floor-output]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (effect-target branch alone: `merge-commit` appears exactly once in the fixture, on the effect target, so no flow- or block-style output names it; exit 3 otherwise. Fail-first: on 36665f2b0 the same file lints clean, `patterns: 1 checked-clean`, exit 0) |
 
 ## Pre-mortem
 

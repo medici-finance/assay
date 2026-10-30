@@ -168,3 +168,46 @@ The admission layer has four rules:
 The layer is not yet active. Nothing on the dispatch path consults it. Binding it at the
 dispatch boundary is graph-execution/14, behind its own human gate. Until then it changes
 no behaviour, and the three layers above remain the whole of what is enforced.
+
+## What evidence provenance does and does not prove
+
+Evidence provenance (`spec/evidence-provenance-v1.md`, `statusgen/domain/provenance.go`,
+graph-execution/31) records, for one evidence item, who requested it, whom it represented,
+which provider identity executed it, the principal accountable for it and the principals
+who delegated to that one. Duty independence is then compared on those accountable
+principals. Its limits:
+
+- **Different keys, Apps or issuers are not independence.** Two duties performed under two
+  keys of one principal, or by an agent whose delegation leads back to the author, are not
+  independent. A shared issuer does not make two distinct principals dependent either.
+- **A sponsor is not a delegator.** Being accountable for the work does not put a principal
+  in every actor's lineage.
+- **A bot acting for a person is not a human act.** A provider App or agent session stays
+  that kind even when it represents a human.
+- **A label is not proof.** The effective proof class rises only with corroborated
+  dimensions. A claimed signature, a self-report or a withheld fact holds a duty that needs
+  more. Nothing here verifies a signature, qualifies hardware-backed approval or threshold
+  signing, or proves custody; those need separately qualified evidence.
+- **Environment identity is not reproducibility.** The environment manifest digest makes
+  evidence attributable and comparable. It does not show the run can be repeated.
+- **No waiver.** An unsatisfied independent duty is not relaxed here. Any exception is a
+  retained human decision recorded by its existing owner.
+
+The contract is pure and not active. Duty evaluation reads provenance only through a
+selection port: it checks every item against the selector's record, refuses a claim that
+differs and holds as could-not-check without a selector. The selector itself must come
+from trusted composition, never from model text. No production selector is installed,
+and a selector that echoes its input protects nothing. Admission (graph-execution/14),
+the publication review bridge (/25) and control exports (/15) are planned consumers.
+Decision [#4800](https://github.com/medici-finance/assay/issues/4800#issuecomment-6481737472)
+selected required corroboration for admission/publication, ratified in
+[DR-evidence-provenance](streams/decisions/DR-evidence-provenance.md). Consumer wiring
+and activation remain separately scoped. Until those consumers are implemented and
+activated, the existing identity checks and human gates remain the whole of what is
+enforced.
+
+## Effect recovery boundary
+
+| Contract | Enforced boundary and attribution limit |
+|---|---|
+| drainloop declared-effect recovery | Before every Apply, reconcile the authoritative receipt; require durable EFFECT-INTENT (or an atomic intent/claim-generation handoff), then record completion. The adapter-specific idempotency/fencing guarantee depends on the provider's actual dedupe and ownership enforcement. Unknown outcomes hold wherever deduplication or authoritative absence cannot be enforced; stale pending generations reconcile or hold. Bypasses are only attributed, never an unconditional exactly-once guarantee. |

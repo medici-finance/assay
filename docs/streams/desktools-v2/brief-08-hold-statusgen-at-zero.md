@@ -44,12 +44,11 @@ id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ## Context
 
 files:
-- `tools/desk/scripts/forge-ban.sh` (planned) — the statusgen column of class a (gh launches)
-  exits non-zero above zero.
+- `tools/desk/scripts/forge-ban.sh` (planned) — the statusgen column of class a (gh launches) exits non-zero above zero.
 - `.github/workflows/forge-surface-control.yml` — that half becomes a gate, not an echo, and the path filter gains `statusgen/**` so a statusgen change runs it.
-- NEW `statusgen/forgeread_nogh_test.go` (planned) — the no-`gh` scan proof.
-- NEW `statusgen/reader_boundary_test.go` (planned) — the capability-boundary test, row 10.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
+- **NEW** `statusgen/forgeread_nogh_test.go` (planned) — the no-`gh` scan proof.
+- **NEW** `statusgen/reader_boundary_test.go` (planned) — the capability-boundary test, row 10.
+- **`changelog/<branch>.md`** — the per-PR fragment this repository requires.
 
 single-point-of-failure: after `forge-neutral/18`, the one control keeping `gh` out of
 statusgen is review noticing a new shell-out. This brief adds two layers that fail for

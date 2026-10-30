@@ -59,7 +59,7 @@ be represented as one.
 |---|---|---|
 | `id` | string | REQUIRED. Unique within the pattern. |
 | `kind` | string | REQUIRED. Exactly one of `artifact`, `check`, `decision`, `effect`. |
-| `role` | string | REQUIRED. Exactly one of `desk`, `reviewer`, `verifier`, `worker` — a `topology.yaml` `apps:` role name. A node names a role, never a login or an id: binding a role to an identity is the roster's job, not the pattern's. |
+| `role` | string | REQUIRED. Exactly one of `desk`, `reviewer`, `verifier`, `worker` — a `topology.yaml` `apps:` role name — or `human`. `human` is not a topology role and binds no identity; it is permitted only on effect-free `kind: decision` nodes, closed by an external authenticated human act (instance §8). A node names a role, never a login or an id: binding a role to an identity is the roster's job, not the pattern's. |
 | `inputs` | array of `{artifact, revision?}` | OPTIONAL. What the node needs before it runs. |
 | `outputs` | array of string | OPTIONAL. The durable artifacts the node produces, by name. |
 | `evidence` | array of `{kind, claim, mandatory?, signal?, band?, window?, source?}` | OPTIONAL. The claims the node owes. `kind` MUST be one of `command`, `review`, `witness`, `observe`. Each `claim` MUST be stated in words a verifier can check — not "it works". `signal`, `band`, `window` and `source` are meaningful ONLY for `kind: observe`; see §4.1.1. |
@@ -91,7 +91,7 @@ would read as "declared and inapplicable" rather than "not applicable at all".
 Neither pattern this document's reference implementation ships
 (`spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-patterns/research-v1.yaml`)
 carries an `observe` entry, because neither pattern's own nodes assert a deploy —
-`implementation`'s `merge` node produces a merge commit, not a running deploy. The
+`implementation`'s `merge` node is a human decision that produces a merge commit, not a running deploy. The
 shape below is illustrative only, under a placeholder `example-org` deploy:
 
 ```yaml
@@ -127,6 +127,15 @@ shape below is illustrative only, under a placeholder `example-org` deploy:
 4. `risk-input` MUST map every one of the four risk-class verdicts (`low`, `standard`,
    `elevated`, `human`) to a (possibly empty) list of gate-node ids.
 5. `join` MUST name a node whose `kind` is `check`.
+6. A node outputting a human-floor artifact MUST be `kind: decision`, `role: human`.
+   No effect, whatever its kind, MAY target a human-floor artifact
+   (`pattern-human-floor-output`). The closed artifact list is `merge-commit`, `release`,
+   `deployment`, corresponding one-to-one to admission's `humanFloorOperations`
+   (`tools/desk/internal/deskkit/admission.go`): `merge-commit` ↔ `merge`, `release` ↔
+   `release`, `deployment` ↔ `deploy`. Adding an operation on either side requires adding
+   its artifact on the other in the same change. This list checks declared names, not acts.
+7. A node with `role: human` MUST be `kind: decision` and declare no effects
+   (`pattern-human-role-not-decision`). The schema independently enforces this shape.
 
 ## 5. `risk-input` — risk class as a declared input
 
@@ -136,6 +145,33 @@ class MUST require every node `risk-input` names for that class before the patte
 node may run. This is how the risk class the brief already declares (`risk:` /
 `gate:` in brief-v1/v2 frontmatter) becomes an input to which nodes are mandatory, rather
 than a separate routing decision made again by hand.
+
+### Implementation pattern: derivation
+
+The implementation pattern version 2 follows the human ruling on
+[decision #4511](https://github.com/medici-finance/assay/issues/4511#issuecomment-6505759648):
+
+| Risk class | Mandatory gates | Derivation |
+|---|---|---|
+| `low` | `[review]` | Every merged change carries the non-author review floor (`docs/enforcement-model.md`, §4.2 rule 3 above). |
+| `standard` | `[review, verify]` | Admission §6 maps `bounded` to `standard`; bounded work also owes non-implementer verification of the merged result. |
+| `elevated` | `[review, merge, verify]` | Admission §2 defines `supervised-agent` as bounded work with a more heavily gated graph, and §6 maps it to `elevated`. It must name a strict superset of standard's gates. `merge` is the remaining gate: `implement` is the work, and `close` has no mandatory evidence. |
+| `human` | `[review, merge, verify]` | The mapping is monotone (contains elevated's gates) and includes the human merge decision by the ruling. |
+
+Human differs from elevated outside the pattern: `human-led` permits agents only to read
+(admission §2), human-floor operations force `human-led` (§4 step 10), and a `gate: human`
+brief owes a human Review gate. The merge floor holds for every risk class by node shape,
+regardless of whether its risk list explicitly names `merge`.
+
+This shape declares the floor; it does not authenticate who merged. No verified control
+confines the act today: the inspected forge ruleset requires approval from someone other
+than the last pusher and required checks, but does not restrict the merging identity.
+Other forge confinement is unverified. Graph-execution/14 will bind admission's human-floor
+refusal for operations requested through dispatch, deriving `merge` from the floor artifact
+`merge-commit`, not the effect label. An out-of-band merge remains bounded only by the held
+credential's scope (unverified). The instance §8 decision record states a human act happened;
+it does not prove who performed it. The wording about gates before join, where `verify` is
+also the join, remains a separate specification follow-up.
 
 ## 6. `join` — the integration check
 
@@ -156,6 +192,9 @@ A node's `effects[].kind` MUST be permitted for the node's `role`, derived from 
 | `reviewer` | `review`, `comment` |
 | `verifier` | `evidence-commit`, `comment` |
 | `desk` | `file-issue`, `comment`, `dispatch` |
+
+`human` holds no effect kind and is not added to this table. Widening the topology
+role-effect table is outside this amendment's scope.
 
 The `pattern-effect-exceeds-role` lint rule refuses a node whose effect kind is not
 permitted for its role. This is the single point of failure this schema depends on for

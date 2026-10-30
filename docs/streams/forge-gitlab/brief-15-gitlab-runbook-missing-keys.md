@@ -77,16 +77,10 @@ reads as an all-clear.
 
 files:
 - `docs/adopting-assay-gitlab.md` — three changes:
-  - the forge-binding key added to the post-provisioning boot section alongside the existing
-    API-base and scan-scope keys, with its value shape and where it is set;
-  - a first-class board-push-credential subsection: which token kind (project or group access
-    token, not a human credential and not a per-role fleet token), which scope, which role when
-    the default branch is protected, masked and protected visibility, and where in the settings
-    it is created — and the runner section's pointer corrected to point at it;
-  - a source-pin-lane subsection that states the rule and cross-references the other forge's
-    runbook rather than restating it, so the two cannot drift.
-- `statusgen/init.go` — one pointer line in the generated CI comment naming the new subsection.
-  No behaviour change; the refusal text stays authoritative.
+  - **change** — the forge-binding key added to the post-provisioning boot section alongside the existing API-base and scan-scope keys, with its value shape and where it is set;
+  - **change** — a first-class board-push-credential subsection: which token kind (project or group access token, not a human credential and not a per-role fleet token), which scope, which role when the default branch is protected, masked and protected visibility, and where in the settings it is created — and the runner section's pointer corrected to point at it;
+  - **change** — a source-pin-lane subsection that states the rule and cross-references the other forge's runbook rather than restating it, so the two cannot drift.
+- `statusgen/init.go` — one pointer line in the generated CI comment naming the new subsection. No behaviour change; the refusal text stays authoritative.
 - `docs/streams/forge-gitlab/README.md` — the status row.
 - `changelog/forge-gitlab-15-gitlab-runbook-missing-keys.md` (planned).
 

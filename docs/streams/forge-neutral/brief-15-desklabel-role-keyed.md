@@ -146,12 +146,12 @@ and the verbs must refuse rather than fall back to a raw call"*).
 files:
 - `tools/desk/cmd/desklabel/` (new) — `main.go`, `verbs.go` (`add`/`rm`), `vocabulary.go` (the role-ownership table), `forge.go` (session-role custody wiring, the deskclose/deskfile precedent).
 - `tools/desk/internal/deskkit/forge.go` — `ApplyIssueLabels`, the one op this brief adds.
-- `tools/desk/internal/deskkit/forge_github.go`, `forge_gitlab.go` — both backends implement it.
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` — both backends implement it.
 - `docs/streams/forge-gitlab/inventory.md` — row 38.
 - `tools/desk/README.md` — the Tool reference table, `desklabel`'s row.
 
-**Why the risk answers are all `no`.** `desklabel` mints no new custody path: it reuses
-`ForgeFor`/`SetGitHubCustodyMinter` exactly as `deskclose` does (brief 13's already-human-gated
+**Why the risk answers are all `no`.** `desklabel` mints no new custody path: it reuses `ForgeFor`/`SetGitHubCustodyMinter`
+exactly as `deskclose` does (brief 13's already-human-gated
 precedent), so no credential decision is made here. Every write is a label — idempotent,
 reversible, and bounded to a closed, reviewed-in-this-PR vocabulary; there is no close, no
 merge, no push, and no path to a "human-decided" forgery (see the vocabulary's explicit
@@ -779,7 +779,61 @@ VERIFY rows: 8 of 13 pass under the witness (rows 2, 3, 4, 5, 8, 9, 10, 12). Row
 Added by the verify desk after review: the issue links for rows 1 and 11, and the corrected rows 6 and 7 counts, quote and line cites.
 
 **VERIFY: BLOCKED** — no product failure observed. 8 of 13 rows pass under an admitted network-off witness at b5f4fcb2bbb4. Row 1 timed out under container emulation (environment limit, medici-finance/assay#4323, open). Rows 6 and 7 have an Expect-versus-command mismatch, and row 13 has no cmd: span (medici-finance/assay#1927, open). Row 11 cannot pass on merged main as written (medici-finance/assay#1281, open).
+### Non-implementer verifier run — 2026-10-27 claude-opus-5-5-verifier — VERIFY: BLOCKED
 
+Prior attempts on this brief (2026-09-17 through the 2026-10-24 block above, all on earlier merged-main sources) ended held or BLOCKED. The latest, at b5f4fcb2bbb4, credited rows 2, 3, 4, 5, 8, 9, 10 and 12 under an admitted container witness. This block adds a fresh witness run at merged main 384d5eda2ca2 and edits nothing above.
+
+Admission: `deskdispatch --check-verifier` exited 0 from the admitted home before any row, and again after the last row and before landing. Both runs bound run=e745d95cc5a0607b8de5f35f6343b73311e8d6d99faec43f669ccf5317e2f50d, source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8, model claude-opus-5-5, tier strong (medici-finance/assay#4709). Since b5f4fcb2bbb4, `tools/desk/cmd/desklabel` is byte-identical (`git diff --stat` empty). This brief changed only by the appended 2026-10-24 Evidence block, so the Verify table is unchanged. `tools/desk/README.md` changed, but it still names desklabel (row 12).
+
+Witness lanes. Rows 1-10 and 12 ran in one admission bracket (opened 2026-10-27T23:16:48Z, closed 2026-10-27T23:28:11Z). They used `statusgen verifyrun --sandbox=container-netns` in the pinned verify-runner v1.0.63 image (digest in the Container-Image line below). The image is amd64, emulated on an arm64 darwin host. The container ran with `--network none`, a read-only root, all capabilities dropped and `no-new-privileges`. The home was mounted read-only, and a pre-populated Go module cache was mounted read-only, with `GOPROXY=off` and `GOTOOLCHAIN=local`. `statusgen verifyrun --bracket-digest` on the closed witness reported `verdict=match`.
+
+Rows 11 and 13 ran on the host after the bracket closed, as `statusgen verifyrun --rows 11,13 --dry-run`. Row 11 reads git history, and the container cannot resolve the home's linked-worktree gitdir (medici-finance/assay#4327, open). The `--dry-run` mode kept the home unmodified. The host table below is that run's stdout, copied byte for byte. Both runs had the home clean at 384d5eda2ca2. Host 1-minute load was about 36 when the bracket opened and 46-53 during the container run.
+
+Fail-first: no row is risk-bearing. Every frontmatter risk answer is `no`, and the row tags are `check:ci`, `check:ci +dereference`, `check:ci +flow`, `check` and `check +mutation`. None of these is a risk-bearing, live, mutating or end-to-end tag. So no `--fail-first` witness is owed, and none was run. For the record, the delivering merge's parent, read from the forge, is bfe06363fd73.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- sandbox=container-netns — timed out after 10m0s — no verdict was produced | sha256:578a4f7a0df8 | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/desklabel/... -count=1` | pass exit=0 sandbox=container-netns | sha256:37270e1ebfde | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | pass exit=0 sandbox=container-netns | sha256:668fed6203c1 | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestApplyIssueLabelsBothBackends -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:daa78825daf6 | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelAppliesOwnedLabelGitHub -count=1 -v && go test ./cmd/desklabel/... -run TestDesklabelAppliesOwnedLabelGitLab -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:b1be571e560d | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelRefusesUnownedLabel -count=1 -v` | fail exit=0 sandbox=container-netns | sha256:9bd7924db95e | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelRefusesHumanDecidedForEveryRole -count=1 -v` | fail exit=0 sandbox=container-netns | sha256:d17507a305a4 | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelSharedVocabularyAnyRole -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:67e4cdbfd19f | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `test -d tools/desk/cmd/desklabel && { grep -rn -e 'flag.String("as"' -e '"--as"' tools/desk/cmd/desklabel --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | pass exit=0 sandbox=container-netns | sha256:9a271f2a916b | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./internal/forgeban/... -count=1` | pass exit=0 sandbox=container-netns | sha256:aa3f9701103e | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `grep -c 'desklabel' tools/desk/README.md` | pass exit=0 sandbox=container-netns | sha256:1121cfccd591 | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:6963ad5593dc6a427eb55e64b98194a327862d2882567ed257475fd4810eb876
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4709 run=e745d95cc5a0607b8de5f35f6343b73311e8d6d99faec43f669ccf5317e2f50d source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 brief=docs/streams/forge-neutral/brief-15-desklabel-role-keyed.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=e745d95cc5a0607b8de5f35f6343b73311e8d6d99faec43f669ccf5317e2f50d source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 tree=sha256:6963ad5593dc6a427eb55e64b98194a327862d2882567ed257475fd4810eb876 witness=sha256:17554ab6fdaf256630872193394d97ecb01f90441934ffb5ebf545d852228e3b opened=2026-10-27T23:16:48Z closed=2026-10-27T23:28:11Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 11 | `statusgen --root . --consumers --brief forge-neutral/15` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `desklabel` | could-not-run exit=- — prose-led-command: not executed; the first span desklabel is a lone word mentioned ahead of the command span, not a command. Mark the command with a cmd: code span | sha256: | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4709 run=e745d95cc5a0607b8de5f35f6343b73311e8d6d99faec43f669ccf5317e2f50d source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 brief=docs/streams/forge-neutral/brief-15-desklabel-role-keyed.md model=claude-opus-5-5 tier=strong
+
+Rows, credited only from the two witness tables above:
+- Rows 2, 3, 4, 5, 8, 9, 10 and 12: pass under the container witness.
+- Row 1: could-not-run. The full `go build ./... && go test ./...` hit verifyrun's 10-minute row limit under amd64 emulation, with host load around 50. This is an environment limit (could-not-check), not a product failure (medici-finance/assay#4323, open).
+- Rows 6 and 7: the witness cells read `fail exit=0 sandbox=container-netns`, and for each row verifyrun's console adds `exit 0, expected 5`. The Expect cell asks for exit 5, the desklabel refusal code. The row's command is `go test`, which exits 0 when the test asserting exit 5 passes, so a passing command cannot meet that Expect (medici-finance/assay#1927, open; its 2026-10-04 comment names forge-neutral/15 rows 6 and 7). This is a defect in how the rows are written, not in the product. The 2026-10-24 block's hand observation is unchanged: every subtest asserts `deskkit.ExitRefused` and makes zero forge calls. That code is byte-identical here. Nothing was re-run by hand in this block, and nothing is credited from a hand run.
+- Row 11: could-not-run (host sandbox=unshare, darwin; medici-finance/assay#1800, open). It also cannot pass on merged main as written (medici-finance/assay#1281, open; its title names forge-neutral/15).
+- Row 13: could-not-run as a prose-led command with no cmd: span (medici-finance/assay#1927, open). The 2026-10-24 block's hand mutation result is unchanged and uncredited: the mutant is caught, and the code is byte-identical. Like earlier prose-led runs, this witness has an empty Output digest. So `--check` may again bind row 13 to the older 2026-09-27 `fail exit=5` witness (medici-finance/assay#4340, open).
+
+Attempts: one container bracket and one host `--rows 11,13 --dry-run` run. None was discarded or repeated, and no hand run was made.
+
+Risk values, re-read at 384d5eda2ca2 against the cited lines; each still matches:
+RISK-VALUE: DERIVED — human-decided Owner = ownerNone ("no role") @ tools/desk/cmd/desklabel/vocabulary.go:128 — decisionLabels = {"needs-decision", "human-decided"} @ tools/desk/cmd/deskclose/github.go:36 makes it the record of a human ruling; permits() case ownerNone returns false for every role (vocabulary.go:151-152).
+RISK-VALUE: DERIVED — superseded? and the disposition rows Owner = roleWorker ("worker") @ vocabulary.go:112-118 — labelProposed = "superseded?" @ tools/desk/cmd/deskclose/superseded.go:57 is the worker's proposal.
+RISK-VALUE: DERIVED — authorization-needed / approval-needed Owner = roleReviewer ("reviewer") @ vocabulary.go:122,124 — labelBeforeFlip / labelAfterFlip @ tools/desk/cmd/deskflip/flip.go:115-116, the reviewer-run ready-flip pair.
+RISK-VALUE: DERIVED — helpWantedLabel = "help wanted" @ vocabulary.go:57 and labels.decision_owed (topology.yaml:330, 332, 336) Owner = ownerShared ("shared") — the escalation vocabulary every role must be able to raise.
+No risk value is NAMED, NOT DERIVED, so no question issue is owed.
+
+VERIFY rows: 8 of 13 pass under the witness (rows 2, 3, 4, 5, 8, 9, 10, 12). Rows 6 and 7 read fail only because their Expect cells cannot be met. Rows 1, 11 and 13 are could-not-run.
+
+**VERIFY: BLOCKED** — no product failure observed. 8 of 13 rows pass under an admitted network-off witness at 384d5eda2ca2. Row 1 timed out under container emulation (environment limit, medici-finance/assay#4323, open). Rows 6 and 7 have an Expect-versus-command mismatch, and row 13 has no cmd: span (medici-finance/assay#1927, open). Row 11 cannot pass on merged main as written (medici-finance/assay#1281, open), and it cannot run on this darwin host (medici-finance/assay#1800, open).
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers are `no`; see the note in

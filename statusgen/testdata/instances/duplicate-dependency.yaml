@@ -13,8 +13,8 @@ work:
   intent: Report the eligibility verdict beside each validated example record.
 pattern:
   name: implementation
-  version: 1
-  digest: sha256:edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94
+  version: 2
+  digest: sha256:d9b81b3d15963b374714fc1cf408e6c867be33f9c0b7ab99a05d99e3e985a57b
 acceptance:
   version: 3
   ref: docs/streams/example-stream/brief-07-seven.md@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -87,12 +87,10 @@ nodes:
       - {claim: the reviewer App APPROVED the head commit, mandatory: true}
   - id: inst-example-07-a.merge
     node: merge
-    role: desk
-    actor: {binding: roster/example-cell/desk, cell: example-cell, capabilities: [file-issue, comment, dispatch]}
-    effects:
-      - {kind: dispatch, target: merge-commit}
+    role: human
+    effects: []
     evidence:
-      - {claim: "the risk-input gate for this brief's risk class is satisfied", mandatory: true}
+      - {claim: "the forge records the merge of the approved head as an authenticated human act, and no role identity performed it", mandatory: true}
   - id: inst-example-07-a.verify
     node: verify
     role: verifier
