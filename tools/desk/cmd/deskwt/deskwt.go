@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // getwd is the seam for the tool's working directory (the worktree it runs in).

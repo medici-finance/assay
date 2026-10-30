@@ -44,13 +44,9 @@ id: e2a63c73-00e1-4541-8131-3e9232bfa8fd
 ## Context
 
 files:
-- NEW `tools/desk/scripts/forge-ban.sh` (planned) — a portable (macOS + Linux) grep that
-  counts reach-around sites and, in advisory mode, prints the count and exits 0.
-- `.github/workflows/forge-surface-control.yml` — the existing forge-surface CI job the
-  counter joins (advisory step added; not flipped to failing here).
-- NEW `docs/streams/desktools-v2/seam-contract.md` (planned) — the one-page statement of the
-  contract: the four fact classes (gh subprocess, remote name, query shape, host literal) may
-  appear ONLY in `forge_github.go` / `forge_gitlab.go` and their tests.
+- **NEW** `tools/desk/scripts/forge-ban.sh` (planned) — a portable (macOS + Linux) grep that counts reach-around sites and, in advisory mode, prints the count and exits 0.
+- `.github/workflows/forge-surface-control.yml` — the existing forge-surface CI job the counter joins (advisory step added; not flipped to failing here).
+- **NEW** `docs/streams/desktools-v2/seam-contract.md` (planned) — the one-page statement of the contract: the four fact classes (gh subprocess, remote name, query shape, host literal) may appear ONLY in `forge_github.go` / `forge_gitlab.go` and their tests.
 
 single-point-of-failure: the ban-lint is the ONE control that makes a reach-around a red
 build. It is NOT the only layer: it is backed by a second, independent control that fails for

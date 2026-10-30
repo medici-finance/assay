@@ -125,7 +125,7 @@ go-git walks repeated PER CANDIDATE, and most of that is work no gate reads — 
 walk to render a commit COUNT inside a skip string nothing parses, an unmemoized ancestor walk
 that runs to exhaustion for the 19-in-20 candidates that are genuinely unmerged, and a full
 `Status()` over ~4,100 files run BEFORE the merge gate that would have held the worktree anyway.
-This is the same defect the stream's own `tools/desk/internal/gitcore/contains.go` header
+This is the same defect the stream's own [pre-lift containment reader](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/contains.go) header
 already diagnoses and fixes for a different caller, so the brief takes the same shape: ONE walk
 per sweep into an
 ancestor-hash set, the merge gate ahead of `Status()`, one shared object cache, and the count
@@ -223,7 +223,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | in-progress | — | — |
 | 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
 | 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
-| 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | todo | — | — |
+| 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | implemented | — | — |
 | 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 2 | M | todo | — | — |
 | 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 3 | M | todo | — | — |
 | 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |

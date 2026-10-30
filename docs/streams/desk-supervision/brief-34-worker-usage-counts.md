@@ -60,13 +60,13 @@ consumers:
 ## Context
 files:
 - **edit** `tools/desk/internal/deskkit/dispatchrecord.go` — own latest dispatch lookup alongside the existing append-only store reader.
-- **regenerate** `.cursor/skills/worker-desk/SKILL.md` and `.cursor/assay-managed.json` with `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay`; never hand-edit the generated copy or its digest.
+- **regenerate** `.cursor/skills/worker-desk/SKILL.md` and `.cursor/assay-managed.json` — with `deskinstall --harness cursor --forge github --repo . --bundle plugins/assay`; never hand-edit the generated copy or its digest.
 - **add** `tools/desk/cmd/deskusage/testdata/mutations.py` — production-overlay mutation replay, run with `python3 tools/desk/cmd/deskusage/testdata/mutations.py`.
 - **add** `tools/desk/internal/deskkit/usage.go` — `UsageRecord` type (schema `usage-v1`), store-directory resolution, append writer, strict reader.
 - **add** `tools/desk/internal/deskkit/usage_test.go`.
 - **edit** `tools/desk/internal/deskkit/audittoolkey.go` — register the local command with the existing audit owner.
 - **add** `tools/desk/cmd/deskusage/main.go`, `tools/desk/cmd/deskusage/record.go`,
-  `tools/desk/cmd/deskusage/summary.go` and their tests — the verb.
+  `tools/desk/cmd/deskusage/summary.go` — the verb, and their tests.
 - **edit** `tools/desk/internal/deskkit/rosterconfig.go` — `EnvUsageDir = "ASSAY_USAGE_DIR"` and its entry in `knownRosterKeys()` (line 536).
 - **edit** `statusgen/rosterconfig.go` (`scanKnownRosterKeys`, line 457) and `statusgen/testdata/roster_coupling.json` — the twin of the new key (the file's own KEEP-IN-SYNC rule).
 - **edit** `plugins/assay/skills/worker-desk/SKILL.md` — the "Fill to N, refill on completion" bullet (line 127) gains the record step.
@@ -240,6 +240,72 @@ Pre-mortem → detection map:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Verification — 2026-10-29 (non-implementer, claude-opus-5-5, tier strong)
+
+Source: merged main 5729430698d4 (delivery PR #4135, merge 421f214d48c6). Admission: deskdispatch --check-verifier rc 0 before the first row and again before this Evidence was finalised (same run id). check:ci rows 1-7 and 10 ran network-off in verify-runner v1.0.65 inside closed admission brackets (bracket-digest verdict=match for both); check rows 8, 9 and 11 ran through host verifyrun --dry-run (darwin arm64).
+
+Verification-Attestation: medici-finance/assay#4814 run=425db1f5a6f7627f021a165271c2e258b0ae2c1c0f1aca5663f00aeb51dfc86a source=5729430698d44ffd874bb25275d056f5a5404dc6 brief=docs/streams/desk-supervision/brief-34-worker-usage-counts.md model=claude-opus-5-5 tier=strong
+
+Bracket 1 witness (rows 1-7, 10):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskusage/... ./internal/deskkit/...` | could-not-run exit=- sandbox=container-netns — timed out after 10m0s — no verdict was produced | sha256:6f7bed3ec5a0 | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageRecord_RefusesTranscriptShapedInput$' -v > "${TMPDIR:-/tmp}/b34-transcript.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_RefusesTranscriptShapedInput' "${TMPDIR:-/tmp}/b34-transcript.out"` | pass exit=0 sandbox=container-netns | sha256:66353dc76d61 | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageSummary_RefusesPollutedStore$' -v > "${TMPDIR:-/tmp}/b34-polluted.out" 2>&1 && grep -F -e '--- PASS: TestUsageSummary_RefusesPollutedStore' "${TMPDIR:-/tmp}/b34-polluted.out"` | pass exit=0 sandbox=container-netns | sha256:85fe62b0d8d2 | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageStore_RefusesGitWorkTree$' -v > "${TMPDIR:-/tmp}/b34-gitdir.out" 2>&1 && grep -F -e '--- PASS: TestUsageStore_RefusesGitWorkTree' "${TMPDIR:-/tmp}/b34-gitdir.out"` | pass exit=0 sandbox=container-netns | sha256:d60204e73b3e | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageRecord_ThreeState$' -v > "${TMPDIR:-/tmp}/b34-3state.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_ThreeState' "${TMPDIR:-/tmp}/b34-3state.out"` | pass exit=0 sandbox=container-netns | sha256:85f86fb2e3fc | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && test "$(grep -c -e '^--- PASS: TestUsage_RecordToSummaryFlow ' -e '^--- PASS: TestUsageClaimKeyDispatchRecovery ' "${TMPDIR:-/tmp}/b34-flow.out")" -eq 2` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd statusgen && go test . -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-sg-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-sg-roster.out") && (cd tools/desk && go test ./internal/deskkit/ -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-dk-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-dk-roster.out") && grep -F -e 'ASSAY_USAGE_DIR' statusgen/testdata/roster_coupling.json` | pass exit=0 sandbox=container-netns | sha256:07271f88036d | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --root .` | pass exit=0 sandbox=container-netns | sha256:ba7b526bb0bd | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:14caf0ea56811f25c67d30cc8f736f33e114ece3a6504c05fc4a241f9def8d9f
+Container-Image: sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f
+Verification-Attestation: medici-finance/assay#4814 run=425db1f5a6f7627f021a165271c2e258b0ae2c1c0f1aca5663f00aeb51dfc86a source=5729430698d44ffd874bb25275d056f5a5404dc6 brief=docs/streams/desk-supervision/brief-34-worker-usage-counts.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=425db1f5a6f7627f021a165271c2e258b0ae2c1c0f1aca5663f00aeb51dfc86a source=5729430698d44ffd874bb25275d056f5a5404dc6 tree=sha256:14caf0ea56811f25c67d30cc8f736f33e114ece3a6504c05fc4a241f9def8d9f witness=sha256:8c5aeec9200b708144b320706b7110e517401475b5a3f0367f9fd7ac3f9fefb9 opened=2026-10-29T17:01:04Z closed=2026-10-29T17:13:30Z before=receipt after=check-verifier
+
+Bracket 2 witness (row 1 re-run alone, runner --timeout 45m, command unchanged):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskusage/... ./internal/deskkit/...` | fail exit=1 sandbox=container-netns | sha256:041064451675 | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:14caf0ea56811f25c67d30cc8f736f33e114ece3a6504c05fc4a241f9def8d9f
+Container-Image: sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f
+Verification-Attestation: medici-finance/assay#4814 run=425db1f5a6f7627f021a165271c2e258b0ae2c1c0f1aca5663f00aeb51dfc86a source=5729430698d44ffd874bb25275d056f5a5404dc6 brief=docs/streams/desk-supervision/brief-34-worker-usage-counts.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=425db1f5a6f7627f021a165271c2e258b0ae2c1c0f1aca5663f00aeb51dfc86a source=5729430698d44ffd874bb25275d056f5a5404dc6 tree=sha256:14caf0ea56811f25c67d30cc8f736f33e114ece3a6504c05fc4a241f9def8d9f witness=sha256:53d5c5658323986a373ad1f5f76a003a2ff1414563bea2260ebc1c8ef5885250 opened=2026-10-29T17:13:43Z closed=2026-10-29T17:27:04Z before=receipt after=check-verifier
+
+Host witness (rows 8, 9, 11; verifyrun --dry-run):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 8 | `grep -n 'deskusage record' plugins/assay/skills/worker-desk/SKILL.md && grep -n -i 'transcript' plugins/assay/skills/worker-desk/SKILL.md` | pass exit=0 | sha256:baa3624e8496 | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -n 'func cmdRelease' tools/desk/cmd/deskclaim-ref/claim.go && ! grep -rn -i -e 'deskusage' -e 'UsageRecord' -e 'usage-v1' tools/desk/cmd/deskclaim-ref/ tools/desk/cmd/deskdispatch/` | pass exit=0 | sha256:af0444daed5b | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `for k in input_tokens output_tokens cost_micros; do if grep -qF "json:\"$k" loopadmin/runner/usage.go && grep -qF "\"$k\"" tools/desk/internal/deskkit/usage.go; then :; else echo "MISMATCH $k"; exit 1; fi; done; echo aligned` | pass exit=0 | sha256:04325331435a | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4814 run=425db1f5a6f7627f021a165271c2e258b0ae2c1c0f1aca5663f00aeb51dfc86a source=5729430698d44ffd874bb25275d056f5a5404dc6 brief=docs/streams/desk-supervision/brief-34-worker-usage-counts.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | row 1 as in Verify | exit 0 | COULD-NOT-CHECK (environment). Bracket 1: could-not-run, verifyrun 10m row limit. Bracket 2: exit 1, the deskkit package hit go test's built-in 10m per-package timeout under linux/amd64 emulation (panic: test timed out after 10m0s); cmd/deskusage ok. Supplemental, no credit: host-native run with -timeout 30m gives cmd/deskusage ok and one deskkit failure, TestSharedReadLowerScope, which needs the checkout's origin remote to map to a known forge (the scratch clone's origin is a local path); the same test passes once origin is a github.com URL. Main CI build-test-shard desk-1/2/3 green at source | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | row 2 as in Verify | exit 0, transcript-shaped input refused | pass exit=0, prints --- PASS: TestUsageRecord_RefusesTranscriptShapedInput (sha256:66353dc76d61) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | row 3 as in Verify | exit 0, polluted store refused | pass exit=0, prints --- PASS: TestUsageSummary_RefusesPollutedStore (sha256:85fe62b0d8d2) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | row 4 as in Verify | exit 0, git work tree and symlink into one refused | pass exit=0, prints --- PASS: TestUsageStore_RefusesGitWorkTree (sha256:d60204e73b3e) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | row 5 as in Verify | exit 0, three-state counts | pass exit=0, prints --- PASS: TestUsageRecord_ThreeState (sha256:85f86fb2e3fc) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | row 6 as in Verify | exit 0, flow and claim-key recovery both pass | pass exit=0, count of the two PASS lines equals 2 (no stdout, sha256:e3b0c44298fc) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 7 | row 7 as in Verify | exit 0, key in coupling vector, both coupling tests pass | pass exit=0 (sha256:07271f88036d) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 8 | row 8 as in Verify | exit 0, record step and transcript ban in one passage | pass exit=0, SKILL.md lines 131 (deskusage record --claim-key) and 134 (never read, quote or pass worker transcript) (sha256:baa3624e8496) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 9 | row 9 as in Verify | exit 0, cmdRelease exists, no usage references | pass exit=0, claim.go:279 func cmdRelease, negative search clean (sha256:af0444daed5b) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 10 | row 10 as in Verify | exit 0 | pass exit=0 (sha256:ba7b526bb0bd) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 11 | row 11 as in Verify | exit 0, prints aligned | pass exit=0, prints aligned (sha256:04325331435a) | 2026-10-29 | assay-verifier-app[bot] @ 5729430698d4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+RISK-VALUE: file mode 0600 (usage.go:281) — DERIVED from Task 2 "file mode 0600"; owner-only read for a local per-user store, matching the roster beacon opener (rosterbeacon_unix.go:18).
+RISK-VALUE: directory mode 0700 (usage.go:247) — DERIVED: a 0600 file under a group/world-listable directory leaks file names and timing, so the directory is owner-only too.
+RISK-VALUE: field count 11 (usage.go:134) — DERIVED: 6 string fields (schema, ts, dispatch_ref, repo, item, tier) + 5 counts (input_tokens, output_tokens, total_tokens, cost_micros, wall_seconds), exactly Task 1's list; any extra key such as prompt is refused.
+RISK-VALUE: item bound 256 and grammar stream/NN or issue-N (usage.go:74, usage.go:23) — DERIVED from Task 1's item definition; the bound keeps a free-text payload out of the item field.
+RISK-VALUE: schema usage-v1, file usage.jsonl (usage.go:20-21) — DERIVED from Task 1 naming.
+RISK-VALUE: reader buffer 64 KiB (usage.go:306) — NAMED, NOT DERIVED: an operational knob far above an eleven-field line; an over-long line fails closed.
+
+Rows 2-11 pass; row 1 could not be checked in this environment and no failing obligation was observed.
+
+**VERIFY: BLOCKED** — row 1 COULD-NOT-CHECK (go test's 10m package timeout under amd64 emulation); rows 2-11 pass.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

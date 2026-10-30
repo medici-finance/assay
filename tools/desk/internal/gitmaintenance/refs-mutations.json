@@ -1,4 +1,5 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/gitmaintenance && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskmerge && (cd ../../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
   "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs|TestFetchHookKeepsVerdict|TestFetchNoHookListVerdict|TestFetchCompletionWarning' -count=1 -timeout=120s",
   "control": {
     "name": "CONTROL invert producer completion proof",
@@ -63,7 +64,7 @@
     },
     {
       "name": "accept symbolic aliases as observed hash references",
-      "file": "internal/gitcore/refread.go",
+      "file": "../../gitcore/refread.go",
       "old": "if ref.Type() != plumbing.HashReference {",
       "new": "if false && ref.Type() != plumbing.HashReference {"
     },

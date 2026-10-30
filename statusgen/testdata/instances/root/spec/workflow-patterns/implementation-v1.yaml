@@ -1,8 +1,8 @@
 # FIXTURE COPY for graph-execution/09 instance tests (statusgen/instance_test.go).
 # The instance fixtures pin this file's sha256; editing it is pattern drift.
 # The implementation workflow pattern: implementer produces a change,
-# an independent reviewer checks it, desk clears the gate the risk class
-# requires, an independent verifier proves the merged result, desk closes.
+# an independent reviewer checks it, a person merges the approved head,
+# an independent verifier proves the merged result, desk closes.
 #
 # This is the shape `worker-desk` -> `pr-review-desk` -> `verify-desk` already
 # runs; the pattern states it as one reviewed, versioned artifact rather than
@@ -12,12 +12,12 @@
 # `python3 -c 'import json,yaml,jsonschema; jsonschema.validate(yaml.safe_load(open("spec/workflow-patterns/implementation-v1.yaml")), json.load(open("schemas/workflow-pattern-v1.json")))'`.
 schema: workflow-pattern-v1
 pattern: implementation
-version: 1
+version: 2
 risk-input:
   low: [review]
   standard: [review, verify]
-  elevated: [review, verify]
-  human: [review, verify]
+  elevated: [review, merge, verify]
+  human: [review, merge, verify]
 nodes:
   - id: implement
     kind: artifact
@@ -48,17 +48,15 @@ nodes:
       wait: [changes-requested]
       fail: [findings-unaddressed]
   - id: merge
-    kind: effect
-    role: desk
+    kind: decision
+    role: human
     inputs:
       - {artifact: approval}
     outputs: [merge-commit]
     evidence:
-      - {kind: command, claim: "the risk-input gate for this brief's risk class is satisfied", mandatory: true}
-    effects:
-      - {kind: dispatch, target: merge-commit}
+      - {kind: command, claim: "the forge records the merge of the approved head as an authenticated human act, and no role identity performed it", mandatory: true}
     outcomes:
-      wait: [checks-pending]
+      wait: [checks-pending, awaiting-human]
       fail: [conflicting]
   - id: verify
     kind: check

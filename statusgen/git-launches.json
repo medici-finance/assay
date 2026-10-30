@@ -1,0 +1,2253 @@
+{
+  "direct_ceiling": 83,
+  "dynamic_ceiling": 12,
+  "seam_ceiling": 109,
+  "reasons": {
+    "s001": {
+      "operation": "historyGit(dir, \"rev-list\", \"--first-parent\", \"HEAD\", \"^\"+delivery)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+    },
+    "s002": {
+      "operation": "provenanceParents(dir, amendment)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+    },
+    "s003": {
+      "operation": "historyGit(dir, \"show\", \"--end-of-options\", rev+\":./\"+file)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+    },
+    "s004": {
+      "operation": "provenanceRepoTop(dir)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+    },
+    "s005": {
+      "operation": "historyGit(root, \"remote\", \"get-url\", \"origin\")",
+      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
+      "owner": "statusgen/acceptancetransition.go — acceptanceTransition caller maintainer"
+    },
+    "s006": {
+      "operation": "historyGit(dir, \"rev-parse\", \"--verify\", \"--quiet\", tree+\"^{commit}\")",
+      "why": "This caller accepts only a >=12-hex witness prefix and independently resolves it exactly to runSHA. The selected library prefix matcher does not implement native ambiguity rejection; all abbreviations remain outside the qualified adapter scope. A four-hex native collision diagnostic is narrower than this caller, and no >=12 collision is claimed. Keep native disambiguation rather than replace it with prefix equality or a new resolver.",
+      "owner": "statusgen/acceptancetransition.go — transitionWitnessTree caller maintainer"
+    },
+    "s007": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\",\n\tfmt.Sprintf(\"-%d\", limit), \"--format=%H\", \"--\", relPath)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/autoflip.go — method.CommitsTouching caller maintainer"
+    },
+    "s008": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", sha+\":\"+rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/backfill.go — readmeAtCommit caller maintainer"
+    },
+    "s009": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--reverse\", \"--format=%H %ct\", \"--\", rel)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/backfill.go — streamReadmeCommits caller maintainer"
+    },
+    "s010": {
+      "operation": "exec.Command(\"git\", \"check-ref-format\", ref)",
+      "why": "Native ref validation/exact namespace lookup retains existing rejection and ambiguity rules. The selected library ResolveRevision has demonstrated abbreviation/caret differences; this validation boundary is not replaced with a hand-written ref grammar.",
+      "owner": "statusgen/baseref.go — exactRefCommit caller maintainer"
+    },
+    "s011": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show-ref\", \"--verify\", \"--hash\", \"--\", ref)",
+      "why": "Native ref validation/exact namespace lookup retains existing rejection and ambiguity rules. The selected library ResolveRevision has demonstrated abbreviation/caret differences; this validation boundary is not replaced with a hand-written ref grammar.",
+      "owner": "statusgen/baseref.go — exactRefCommit caller maintainer"
+    },
+    "s012": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", oid+\"^{commit}\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. Exact ref existence/namespace, caller ordering and refusal policy remain with the existing caller.",
+      "owner": "statusgen/baseref.go — exactRefCommit caller maintainer"
+    },
+    "s013": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--end-of-options\", oid, \"HEAD\")",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/baseref.go — resolveMergeBaseExact caller maintainer"
+    },
+    "s014": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"add\", \"--dry-run\", \"--ignore-missing\", \"--\", p)",
+      "why": "Native index/worktree/ignore query retains the exact porcelain/NUL/quoting, untracked and rule-origin diagnostics used here. The existing read API is not a demonstrated replacement for these output and mutable-index contracts; no custom ignore/index formatter is introduced.",
+      "owner": "statusgen/boardignore.go — boardIgnoreHits caller maintainer"
+    },
+    "s015": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"check-ignore\", \"-v\", \"--no-index\", \"--\", p)",
+      "why": "Native index/worktree/ignore query retains the exact porcelain/NUL/quoting, untracked and rule-origin diagnostics used here. The existing read API is not a demonstrated replacement for these output and mutable-index contracts; no custom ignore/index formatter is introduced.",
+      "owner": "statusgen/boardignore.go — boardIgnoreRule caller maintainer"
+    },
+    "s016": {
+      "operation": "isShallowRepository(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/briefinfo.go — checkBriefInfoAttribution caller maintainer"
+    },
+    "s017": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--no-merges\",\n\t\"--format=%h%x00%B%x1e\", base+\"..HEAD\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/citationcorroborate.go — commitMessagesSince caller maintainer"
+    },
+    "s018": {
+      "operation": "historyGit(root, \"show\", \"--end-of-options\", \"HEAD:\"+rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/consumerdelivery.go — deriveConsumerDelivery caller maintainer"
+    },
+    "s019": {
+      "operation": "historyGit(root, \"merge-base\", \"--is-ancestor\", chosen.delivery, remoteMainRef)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/consumerdelivery.go — deriveConsumerDelivery caller maintainer"
+    },
+    "s020": {
+      "operation": "historyGit(root, args...)",
+      "why": "Existing native argv constructor. Its operation callers are inventoried separately with their own profile and capability reasons; this definition is not evidence that every delegated operation is incompatible with go-git.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s021": {
+      "operation": "provenanceRootPrefix(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s022": {
+      "operation": "git(\"rev-parse\", \"--verify\", delivery+\"^{commit}\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. Exact ref existence/namespace, caller ordering and refusal policy remain with the existing caller.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s023": {
+      "operation": "git(\"rev-parse\", \"--verify\", delivery+\"^1\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. The complete exact delivery path uses canonical ParentHashes and takes the first metadata hash without requiring that parent object to exist. Native missing-parent metadata success is preserved.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s024": {
+      "operation": "git(\"merge-base\", \"--is-ancestor\", delivery, \"HEAD\")",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s025": {
+      "operation": "historyGit(root, \"diff\", \"--name-only\", \"--no-renames\", \"-z\", base, delivery, \"--\")",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s026": {
+      "operation": "historyGit(root, \"archive\", \"--format=tar\", delivery+\"^{tree}\")",
+      "why": "Native worktree/archive lifecycle is retained, including linked administrative registration, attributes/export behavior, cleanup and caller materialization guards. Canonical linked-worktree reading does not implement the same provisioning/archive contract.",
+      "owner": "statusgen/consumerdelivery.go — runDeliveryConsumers caller maintainer"
+    },
+    "s027": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", base+\"...HEAD\")",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/consumers.go — changedPathsSince caller maintainer"
+    },
+    "s028": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\")",
+      "why": "Native index/worktree/ignore query retains the exact porcelain/NUL/quoting, untracked and rule-origin diagnostics used here. The existing read API is not a demonstrated replacement for these output and mutable-index contracts; no custom ignore/index formatter is introduced.",
+      "owner": "statusgen/consumers.go — changedPathsSince caller maintainer"
+    },
+    "s029": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", base, \"HEAD\")",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/consumers.go — consumerEntriesAtBase caller maintainer"
+    },
+    "s030": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", ref)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/consumers.go — consumerEntriesAtBase caller maintainer"
+    },
+    "s031": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", base, \"HEAD\")",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/consumers.go — pinConsumerBase caller maintainer"
+    },
+    "s032": {
+      "operation": "provenanceRepoTop(cc.dir)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/containercredit.go — method.placeWitness caller maintainer"
+    },
+    "s033": {
+      "operation": "historyGit(cc.dir, \"blame\", \"--line-porcelain\", \"-L\", fmt.Sprintf(\"%d,%d\", c.header, c.bracket), \"--\", cc.base)",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
+      "owner": "statusgen/containercredit.go — method.provenance caller maintainer"
+    },
+    "s034": {
+      "operation": "isShallowRepository(cc.dir)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/containercredit.go — method.provenanceSetup caller maintainer"
+    },
+    "s035": {
+      "operation": "historyGit(cc.dir, \"cat-file\", \"-e\", \"HEAD:\"+cc.rel)",
+      "why": "Native generic object-existence semantics are retained: cat-file -e succeeds for a blob in a commit with malformed unrelated parent metadata where FileAt fails decoding; TreeishID can return a missing target hash where native -e fails. Tree entry enumeration does not establish object existence. Native/API diagnostic evidence is retained; do not add a parser or new target-existence policy.",
+      "owner": "statusgen/containercredit.go — method.provenanceSetup caller maintainer"
+    },
+    "s036": {
+      "operation": "historyGit(cc.dir, \"remote\", \"get-url\", \"origin\")",
+      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
+      "owner": "statusgen/containercredit.go — method.recordSetup caller maintainer"
+    },
+    "s037": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", ref+\":\"+filepath.ToSlash(path))",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/corroborate.go — briefRowsAtRef caller maintainer"
+    },
+    "s038": {
+      "operation": "exec.Command(\"git\", args...)",
+      "why": "Native effective origin URL includes native configuration scope/includes, environment and URL rewriting. Canonical local RemoteURL does not establish the same effective query contract; no second configuration resolver is added.",
+      "owner": "statusgen/corroborate.go — repoFromOriginAt caller maintainer"
+    },
+    "s039": {
+      "operation": "gitCurrentSHA(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/coverage.go — currentTreeRevision caller maintainer"
+    },
+    "s040": {
+      "operation": "exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...)",
+      "why": "Existing native argv constructor. Its operation callers are inventoried separately with their own profile and capability reasons; this definition is not evidence that every delegated operation is incompatible with go-git.",
+      "owner": "statusgen/coverage_repo.go — coverageGit caller maintainer"
+    },
+    "s041": {
+      "operation": "coverageGit(r.root, \"diff\", \"--name-only\", \"--no-renames\", \"-z\", \"--end-of-options\", a, b, \"--\")",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/coverage_repo.go — method.DiffNames caller maintainer"
+    },
+    "s042": {
+      "operation": "coverageGit(r.root, \"rev-parse\", \"--git-dir\")",
+      "why": "Retained conditional native --git-dir branch of the already migrated InRepository flow. Supported canonical discovery/open success answers directly; positively selected unsupported discovery profiles use the original native contract. TestGoGitReadParity qualifies cold upper discovery flows.",
+      "owner": "statusgen/coverage_repo.go — method.InRepository caller maintainer"
+    },
+    "s043": {
+      "operation": "coverageGit(r.root, \"rev-parse\", \"--is-shallow-repository\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_repo.go — method.IsShallow caller maintainer"
+    },
+    "s044": {
+      "operation": "coverageGit(r.root, \"merge-base\", \"--end-of-options\", a, b)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/coverage_repo.go — method.MergeBase caller maintainer"
+    },
+    "s045": {
+      "operation": "coverageGit(r.root, \"merge-base\", \"--all\", \"--end-of-options\", a, b)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/coverage_repo.go — method.MergeBaseAll caller maintainer"
+    },
+    "s046": {
+      "operation": "coverageGit(r.root, \"ls-tree\", \"-z\", \"--full-tree\", \"--end-of-options\", rev, \"--\", p)",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/coverage_repo.go — method.ObjectAt caller maintainer"
+    },
+    "s047": {
+      "operation": "coverageGit(r.root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", token+\"^{commit}\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_repo.go — method.ResolveCommit caller maintainer"
+    },
+    "s048": {
+      "operation": "coverageGit(r.root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", token+\"^{commit}\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_repo.go — method.ResolveCommit caller maintainer"
+    },
+    "s049": {
+      "operation": "coverageGit(r.root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", token)",
+      "why": "Generic object resolution is retained: native rev-parse --verify accepts a tree object ID while canonical Repo.Resolve is commit-oriented and rejects it. Exact commit adapter parity does not establish arbitrary-object resolution; no second resolver is added. Native/API diagnostic evidence is retained for review.",
+      "owner": "statusgen/coverage_repo.go — method.ResolveObject caller maintainer"
+    },
+    "s050": {
+      "operation": "coverageGit(r.root, args...)",
+      "why": "This constructed argv performs the existing bounded/range or first-parent history walk. Canonical PathHistory is an unfiltered committer-time walk and is not the native selection/rendering contract. Preserve the original history verdict rather than implement another history engine.",
+      "owner": "statusgen/coverage_repo.go — method.RevList caller maintainer"
+    },
+    "s051": {
+      "operation": "provenanceRootPrefix(r.root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/coverage_repo.go — method.RootPrefix caller maintainer"
+    },
+    "s052": {
+      "operation": "coverageGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--name-only\", \"--full-tree\", \"--end-of-options\", rev)",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_repo.go — method.TreeFiles caller maintainer"
+    },
+    "s053": {
+      "operation": "coverageGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev)",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_repo.go — method.TreeModes caller maintainer"
+    },
+    "s054": {
+      "operation": "coverageGit(r.root, \"show\", \"--end-of-options\", rev+\":./\"+briefRel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/coverage_repo.go — method.briefBodyAt caller maintainer"
+    },
+    "s055": {
+      "operation": "exec.Command(\"git\", \"-C\", path, \"symbolic-ref\", \"-q\", \"refs/remotes/origin/HEAD\")",
+      "why": "Native symbolic-ref recursively follows origin/HEAD -> alias -> main; canonical SymbolicRefTarget returns only the immediate alias. The observed chain would change the chosen integration branch. Retain this operation without adding a custom symbolic-ref resolver. The separate selected commit query uses the canonical owner.",
+      "owner": "statusgen/crossroot.go — integrationTip caller maintainer"
+    },
+    "s056": {
+      "operation": "exec.Command(\"git\", \"-C\", path, \"rev-parse\", \"--verify\", \"--quiet\", ref+\"^{commit}\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. Exact ref existence/namespace, caller ordering and refusal policy remain with the existing caller.",
+      "owner": "statusgen/crossroot.go — integrationTip caller maintainer"
+    },
+    "s057": {
+      "operation": "repoTopLevel(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/decisiongatehold.go — decisionGatePRLane caller maintainer"
+    },
+    "s058": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-z\", rev, \"--\", \"docs\")",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/decisiongatehold.go — gateSnapshotAtRev caller maintainer"
+    },
+    "s059": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-r\", \"-t\", \"-z\", rev, \"--\", \"docs/streams\", \"docs/archive\")",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/decisiongatehold.go — gateSnapshotAtRev caller maintainer"
+    },
+    "s060": {
+      "operation": "gitShowObject(root, rev, p)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/decisiongatehold.go — gateSnapshotAtRev caller maintainer"
+    },
+    "s061": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-z\", rev, \"--\", rel)",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/decisiongatehold.go — graphReposAtRev caller maintainer"
+    },
+    "s062": {
+      "operation": "gitShowObject(root, rev, rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/decisiongatehold.go — graphReposAtRev caller maintainer"
+    },
+    "s063": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--verify\", \"--quiet\", strings.TrimSpace(baseRef)+\"^{commit}\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. Exact ref existence/namespace, caller ordering and refusal policy remain with the existing caller.",
+      "owner": "statusgen/decisiongatehold.go — runDecisionGate caller maintainer"
+    },
+    "s064": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-z\", rev, \"--\", cur)",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/decisiongatehold.go — treeLinkKind caller maintainer"
+    },
+    "s065": {
+      "operation": "gitShowObject(root, rev, p)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/decisiongatehold.go — treeLinkKind caller maintainer"
+    },
+    "s066": {
+      "operation": "exec.Command(exe, args...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/difflint.go — productionDiffLintRunner caller maintainer"
+    },
+    "s067": {
+      "operation": "repoTopLevel(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/difflint.go — productionRelFromTop caller maintainer"
+    },
+    "s068": {
+      "operation": "gitHeadOutput(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/difflint.go — productionResolveBase caller maintainer"
+    },
+    "s069": {
+      "operation": "gitMergeBaseOut(root, \"HEAD\", baseRef)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/difflint.go — productionResolveBase caller maintainer"
+    },
+    "s070": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
+      "owner": "statusgen/doratiming.go — doraTargetRepo caller maintainer"
+    },
+    "s072": {
+      "operation": "exec.Command(\"git\", append([]string{\"-C\", root, \"log\", \"-1\", \"--format=%h %cI\"}, selector...)...)",
+      "why": "One scalar heartbeat log. After canonical LastPathCommit selects the commit, only display formatting of that full ID remains native (selector: the ID, no pathspec or history walk): core.abbrev and repository-wide object collision rules are not replaced by truncating a full ID, and the strict ISO date suffix for a zero committer offset depends on the Git version (Z from 2.45, +00:00 before), which no Go layout reproduces. For an observed unsupported repository, header, pathspec-environment or log-configuration profile, the same site keeps the unchanged native path log (selector: -- STATUS.md). Read errors never retry. TestGoGitReadParity/last-path-time-and-reference-snapshot pins zero and non-zero offsets; TestGoGitReadParity/last-path-log-follow and TestLastPathNativeProfiles compare bytes against native.",
+      "owner": "statusgen/library_metadata.go — canonical metadata adapter"
+    },
+    "s073": {
+      "operation": "historyGit(root, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", start, end), \"--\", rel)",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
+      "owner": "statusgen/evidenceactor.go — blameEvidenceAuthors caller maintainer"
+    },
+    "s074": {
+      "operation": "isShallowRepository(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/evidenceactor.go — evidenceActorGate caller maintainer"
+    },
+    "s075": {
+      "operation": "exec.Command(\"git\", append(historyGitPrefix(dir), args...)...)",
+      "why": "Existing native argv constructor. Its operation callers are inventoried separately with their own profile and capability reasons; this definition is not evidence that every delegated operation is incompatible with go-git.",
+      "owner": "statusgen/evidenceactor.go — historyGit caller maintainer"
+    },
+    "s076": {
+      "operation": "gitShallowOutput(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/evidenceactor.go — isShallowRepository caller maintainer"
+    },
+    "s077": {
+      "operation": "historyGit(dir, \"cat-file\", \"commit\", c)",
+      "why": "Positive unsupported storage/repository profile retains the historical isolated cat-file commit read. The default supported path reads exact encoded RawCommit bytes, then uses the unchanged raw-author policy parser; decoded Commit.Author is not substituted. Cold packed/worktree/alternate controls and missing-object no-retry controls qualify that split.",
+      "owner": "statusgen/evidenceactor.go — rawCommitAuthor caller maintainer"
+    },
+    "s078": {
+      "operation": "gitOut(root, \"cat-file\", \"-e\", rev+\":\"+rel)",
+      "why": "Native generic object-existence semantics are retained: cat-file -e succeeds for a blob in a commit with malformed unrelated parent metadata where FileAt fails decoding; TreeishID can return a missing target hash where native -e fails. Tree entry enumeration does not establish object existence. Native/API diagnostic evidence is retained; do not add a parser or new target-existence policy.",
+      "owner": "statusgen/failfirst.go — pathHeldAt caller maintainer"
+    },
+    "s079": {
+      "operation": "gitOut(root, \"worktree\", \"remove\", \"--force\", wt)",
+      "why": "Native worktree/archive lifecycle is retained, including linked administrative registration, attributes/export behavior, cleanup and caller materialization guards. Canonical linked-worktree reading does not implement the same provisioning/archive contract.",
+      "owner": "statusgen/failfirst.go — runFailFirstBase caller maintainer"
+    },
+    "s080": {
+      "operation": "gitOut(root, \"worktree\", \"add\", \"--detach\", \"--quiet\", wt, base)",
+      "why": "Native worktree/archive lifecycle is retained, including linked administrative registration, attributes/export behavior, cleanup and caller materialization guards. Canonical linked-worktree reading does not implement the same provisioning/archive contract.",
+      "owner": "statusgen/failfirst.go — runFailFirstBase caller maintainer"
+    },
+    "s081": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", full, of)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/failfirst_ancestry.go — commitIsAncestor caller maintainer"
+    },
+    "s082": {
+      "operation": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", base+\"^{commit}\")",
+      "why": "Retained conditional revision branch of the already migrated full-ID resolution flow. Abbreviated witnesses and positive ordinary native profiles keep the original rev-parse query; canonical full-ID reads are qualified separately. The later ancestry verdict remains native with TestGraphReadGaps evidence.",
+      "owner": "statusgen/failfirst_ancestry.go — commitIsAncestor caller maintainer"
+    },
+    "s083": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
+      "owner": "statusgen/forge.go — remoteOriginURL caller maintainer"
+    },
+    "s084": {
+      "operation": "exec.Command(d.bin, argv...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/forgeread.go — method.IssueList caller maintainer"
+    },
+    "s085": {
+      "operation": "exec.Command(d.bin, argv...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/forgeread.go — method.OpenIssues caller maintainer"
+    },
+    "s086": {
+      "operation": "exec.Command(d.bin, argv...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/forgeread.go — method.readItem caller maintainer"
+    },
+    "s087": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", a, b)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/gitbatch.go — gitMergeBaseOut caller maintainer"
+    },
+    "s088": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", a, b)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/gitbatch.go — gitMergeBaseOut caller maintainer"
+    },
+    "s089": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", spec)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/gitbatch.go — gitShowObject caller maintainer"
+    },
+    "s090": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", spec)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/gitbatch.go — method.readObjectLocked caller maintainer"
+    },
+    "s091": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"cat-file\", \"--batch\")",
+      "why": "Generic session batch owner retains native revision:path, tree/tag rendering, missing/ambiguous/protocol and retirement behavior. The existing FileAt accessor has the malformed-parent blob-read gap recorded by TestTypedHeaderParity; RawCommit is exact commit bytes, not a generic blob/treeish protocol replacement. No competing batch reader/cache/parser is introduced.",
+      "owner": "statusgen/gitbatch.go — startCatFileBatch caller maintainer"
+    },
+    "s092": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"HEAD\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/gitcore_read.go — gitHeadOutput caller maintainer"
+    },
+    "s093": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--show-prefix\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/gitcore_read.go — gitPrefixOutput caller maintainer"
+    },
+    "s094": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--is-shallow-repository\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/gitcore_read.go — gitShallowOutput caller maintainer"
+    },
+    "s095": {
+      "operation": "historyGit(root, \"show\", \"-s\", \"--format=%P\", \"--end-of-options\", rev)",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/gitcore_read.go — provenanceParents caller maintainer"
+    },
+    "s096": {
+      "operation": "historyGit(dir, \"rev-parse\", \"--show-toplevel\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/gitcore_read.go — provenanceRepoTop caller maintainer"
+    },
+    "s097": {
+      "operation": "historyGit(root, \"rev-parse\", \"--show-prefix\")",
+      "why": "Native compatibility branch of the qualified typed adapter. Positively observed unsupported discovery/configuration, filesystem, shallow or selector profiles choose this branch before the object read. Cold-profile and poisoned-native controls qualify the supported Go path; errors are uncertainty, not fallback.",
+      "owner": "statusgen/gitcore_read.go — provenanceRootPrefix caller maintainer"
+    },
+    "s098": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"-c\", \"core.quotePath=false\",\n\t\"log\", \"--format=%x01%ae\", \"--name-only\", \"--\", subdir)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/gitinfo.go — buildPathAuthorIndex caller maintainer"
+    },
+    "s099": {
+      "operation": "gitShowObject(root, sha, filepath.ToSlash(relPath))",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/gitinfo.go — evidenceSectionAtCommit caller maintainer"
+    },
+    "s100": {
+      "operation": "exec.Command(\"git\", \"-C\", root,\n\t\"log\", \"-L\", fmt.Sprintf(\"%d,%d:%s\", start, end, slashPath), \"--format=%x01%ae\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/gitinfo.go — evidenceSectionTouchedByOtherIdentity caller maintainer"
+    },
+    "s101": {
+      "operation": "gitShowObject(root, \"HEAD\", slashPath)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/gitinfo.go — evidenceSectionTouchedByOtherIdentity caller maintainer"
+    },
+    "s102": {
+      "operation": "gitShowObject(root, \"HEAD\", slashPath)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/gitinfo.go — frontmatterKeyLineProvenance caller maintainer"
+    },
+    "s103": {
+      "operation": "historyGit(root, \"blame\", \"--porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", lineNo, lineNo), \"HEAD\", \"--\", slashPath)",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
+      "owner": "statusgen/gitinfo.go — frontmatterKeyLineProvenance caller maintainer"
+    },
+    "s104": {
+      "operation": "historyGit(root, \"log\", \"-1\", \"--no-use-mailmap\",\n\t\"--format=%ae%x00%cs\", sha, \"--\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/gitinfo.go — frontmatterKeyLineProvenance caller maintainer"
+    },
+    "s105": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", \"-s\", \"--format=%ct\", \"HEAD\")",
+      "why": "Native committer timestamp rendering is retained: TestHeaderReadParity records native timestamp 1 versus decoded zero on a duplicate-author commit. The unused experimental convenience API was removed; raw encoded author reading remains independently qualified.",
+      "owner": "statusgen/gitinfo.go — gitCommitTime caller maintainer"
+    },
+    "s106": {
+      "operation": "gitHeadOutput(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/gitinfo.go — gitCurrentSHA caller maintainer"
+    },
+    "s107": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", rel)",
+      "why": "Literal last-touch and board freshness reads use canonical LastPathCommit with native default TREESAME simplification, deletion/mode/directory coverage, fresh HEAD and object errors. This native branch preserves positively observed pathspec/environment/repository or noncanonical signature profiles. Actual read errors never retry.",
+      "owner": "statusgen/library_metadata.go — canonical metadata adapter"
+    },
+    "s108": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--reverse\", \"--format=%ae\", \"--\", relPath)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/gitinfo.go — gitPathFirstAuthorIdentity caller maintainer"
+    },
+    "s109": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ae\", \"--\", relPath)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/gitinfo.go — gitPathLastAuthorIdentity caller maintainer"
+    },
+    "s110": {
+      "operation": "exec.CommandContext(ctx, \"git\", \"-C\", root, \"ls-remote\", \"--heads\", \"origin\")",
+      "why": "Existing explicit network operation retains native transport, URL rewrite, credential/helper and cancellation behavior. Canonical explicit-auth transport is not a drop-in replacement for the caller inherited native policy; this local-read migration grants no new credential or network authority.",
+      "owner": "statusgen/gitinfo.go — listRemoteBranches caller maintainer"
+    },
+    "s111": {
+      "operation": "gitCurrentSHA(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/history.go — recordHistory caller maintainer"
+    },
+    "s112": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--find-renames\", \"--name-status\", base, \"HEAD\", \"--\", newPath)",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/humanstamp.go — detectRename caller maintainer"
+    },
+    "s113": {
+      "operation": "gitHeadOutput(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/humanstamp.go — humanStampProblems caller maintainer"
+    },
+    "s114": {
+      "operation": "gitShowObject(root, base, rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/humanstamp.go — humanStampProblems caller maintainer"
+    },
+    "s115": {
+      "operation": "gitShowObject(root, base, oldPath)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/humanstamp.go — humanStampProblems caller maintainer"
+    },
+    "s116": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"--name-only\", \"-r\", base, dir+\"/\")",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/idvalidate.go — grandfatheredIDs caller maintainer"
+    },
+    "s117": {
+      "operation": "gitShowObject(root, base, line)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/idvalidate.go — grandfatheredIDs caller maintainer"
+    },
+    "s118": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-S\", `\"`+name+`\"`, \"--format=%ct\", \"--\", declRel(root, flagFile))",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/instrumentaudit.go — gitDeclIntroUnix caller maintainer"
+    },
+    "s119": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"-p\", \"--no-color\", \"--no-ext-diff\",\n\t\"--format=\"+strings.ReplaceAll(declCommitMark, \"\\x00\", \"%x00\")+\"%ct\", \"--\", rel)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/instrumentaudit.go — readDeclPatchIndex caller maintainer"
+    },
+    "s120": {
+      "operation": "exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...)",
+      "why": "Trusted-base ratchet inspection uses isolated native merge-base, exact tree membership and raw immutable JSON bytes. These definitions and their callers are counted explicitly; they are source verification infrastructure, outside the measured statusgen CLI workload.",
+      "owner": "statusgen/internal/gitlaunch/main.go — baselineGit caller maintainer"
+    },
+    "s121": {
+      "operation": "baselineGit(root, \"merge-base\", \"refs/remotes/origin/main\", \"HEAD\")",
+      "why": "Trusted-base ratchet inspection uses isolated native merge-base, exact tree membership and raw immutable JSON bytes. These definitions and their callers are counted explicitly; they are source verification infrastructure, outside the measured statusgen CLI workload.",
+      "owner": "statusgen/internal/gitlaunch/main.go — checkPrior caller maintainer"
+    },
+    "s122": {
+      "operation": "baselineGit(root, \"ls-tree\", \"--full-tree\", \"-z\", base, \"--\", \"statusgen/git-launches.json\")",
+      "why": "Trusted-base ratchet inspection uses isolated native merge-base, exact tree membership and raw immutable JSON bytes. These definitions and their callers are counted explicitly; they are source verification infrastructure, outside the measured statusgen CLI workload.",
+      "owner": "statusgen/internal/gitlaunch/main.go — checkPrior caller maintainer"
+    },
+    "s123": {
+      "operation": "baselineGit(root, \"show\", base+\":statusgen/git-launches.json\")",
+      "why": "Trusted-base ratchet inspection uses isolated native merge-base, exact tree membership and raw immutable JSON bytes. These definitions and their callers are counted explicitly; they are source verification infrastructure, outside the measured statusgen CLI workload.",
+      "owner": "statusgen/internal/gitlaunch/main.go — checkPrior caller maintainer"
+    },
+    "s124": {
+      "operation": "exec.Command(\"git\", \"-C\", ix.root, \"log\", \"--pretty=format:\", \"--name-only\", \"--\", changelogDir+\"/\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/linkcheck.go — method.build caller maintainer"
+    },
+    "s125": {
+      "operation": "gitShallowOutput(ix.root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/linkcheck.go — method.build caller maintainer"
+    },
+    "s126": {
+      "operation": "exec.Command(executable, \"--root\", treeDir, \"--lint\", \"--all\")",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/lintaudit.go — productionLintRunner caller maintainer"
+    },
+    "s127": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--since=30.days\", \"--format=%H %ct\", \"--\", \"docs/streams\", \"statusgen\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/lintaudit.go — productionLogSampler caller maintainer"
+    },
+    "s128": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"worktree\", \"add\", \"--detach\", \"--quiet\", dir, sha)",
+      "why": "Native worktree/archive lifecycle is retained, including linked administrative registration, attributes/export behavior, cleanup and caller materialization guards. Canonical linked-worktree reading does not implement the same provisioning/archive contract.",
+      "owner": "statusgen/lintaudit.go — productionWorktree caller maintainer"
+    },
+    "s129": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"worktree\", \"remove\", \"--force\", \"--quiet\", dir)",
+      "why": "Native worktree/archive lifecycle is retained, including linked administrative registration, attributes/export behavior, cleanup and caller materialization guards. Canonical linked-worktree reading does not implement the same provisioning/archive contract.",
+      "owner": "statusgen/lintaudit.go — productionWorktree caller maintainer"
+    },
+    "s130": {
+      "operation": "exec.Command(\"sh\", \"-c\", cmdline)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/mergecheck.go — execOverTree caller maintainer"
+    },
+    "s131": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"cat-file\", \"-p\", tree+\":\"+path)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/mergecheck.go — fileInTree caller maintainer"
+    },
+    "s132": {
+      "operation": "exec.Command(\"git\", append([]string{\"-C\", root}, args...)...)",
+      "why": "Existing native argv constructor. Its operation callers are inventoried separately with their own profile and capability reasons; this definition is not evidence that every delegated operation is incompatible with go-git.",
+      "owner": "statusgen/mergecheck.go — gitOut caller maintainer"
+    },
+    "s133": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"archive\", \"--format=tar\", tree)",
+      "why": "Native worktree/archive lifecycle is retained, including linked administrative registration, attributes/export behavior, cleanup and caller materialization guards. Canonical linked-worktree reading does not implement the same provisioning/archive contract.",
+      "owner": "statusgen/mergecheck.go — materializeTree caller maintainer"
+    },
+    "s134": {
+      "operation": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", ref+\"^{commit}\")",
+      "why": "The existing gitOut wrapper includes native revision stderr in its operator-facing error. The proposed typed subset changed that error contract on missing/wrong-kind inputs; its port was rejected after comparison. Retain the original operation and formatting rather than call canonical read errors native Git diagnostics.",
+      "owner": "statusgen/mergecheck.go — resolveCommit caller maintainer"
+    },
+    "s135": {
+      "operation": "gitOut(absRoot, \"fetch\", \"--quiet\", \"origin\")",
+      "why": "Existing explicit network operation retains native transport, URL rewrite, credential/helper and cancellation behavior. Canonical explicit-auth transport is not a drop-in replacement for the caller inherited native policy; this local-read migration grants no new credential or network authority.",
+      "owner": "statusgen/mergecheck.go — runMergecheck caller maintainer"
+    },
+    "s136": {
+      "operation": "gitOut(absRoot, \"merge-base\", baseSHA, headSHA)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/mergecheck.go — runMergecheck caller maintainer"
+    },
+    "s137": {
+      "operation": "gitOut(absRoot, \"rev-list\", \"--count\", headSHA+\"..\"+baseSHA)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/mergecheck.go — runMergecheck caller maintainer"
+    },
+    "s138": {
+      "operation": "gitOut(absRoot, \"rev-parse\", headSHA+\"^{tree}\")",
+      "why": "Native commit^{tree} returns a tree ID, while selected canonical Resolve(commit^{tree}) was observed returning the commit ID; TreeishID rejects an empty child path. No existing public typed operation matches this root-tree query. Retain the original owner rather than invent a raw-header/tree resolver.",
+      "owner": "statusgen/mergecheck.go — runMergecheck caller maintainer"
+    },
+    "s139": {
+      "operation": "gitOut(root, \"ls-tree\", \"-r\", \"--name-only\", tree)",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/mergecheck.go — treeFiles caller maintainer"
+    },
+    "s140": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"merge-tree\", \"--write-tree\", \"--name-only\", base, head)",
+      "why": "Native three-way merge-tree writes a trial merge tree and reports conflicts. The existing canonical owner exposes a different fast-forward merge contract; preserving conflict/output/materialization semantics requires a separate owned change, not a read substitution.",
+      "owner": "statusgen/mergecheck.go — trialMerge caller maintainer"
+    },
+    "s141": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"cat-file\", \"--batch\")",
+      "why": "This one-shot full-ID batch could read successful raw commit bytes through RawCommit, but the attempted port changed the all-or-error native diagnostic contract (including PUBLIC NOTICE error output); qualification rejected it. Retain the existing batch/order/message/error owner. This does not claim RawCommit lacks byte parity or conflate this caller with generic blob batches.",
+      "owner": "statusgen/mergedstatus.go — commitMessages caller maintainer"
+    },
+    "s142": {
+      "operation": "exec.Command(\"git\", args...)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/mergedstatus.go — revListParents caller maintainer"
+    },
+    "s143": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"fetch\", \"origin\", \"main\")",
+      "why": "Existing explicit network operation retains native transport, URL rewrite, credential/helper and cancellation behavior. Canonical explicit-auth transport is not a drop-in replacement for the caller inherited native policy; this local-read migration grants no new credential or network authority.",
+      "owner": "statusgen/newbrief.go — defaultNewBriefFreshness caller maintainer"
+    },
+    "s144": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", \"refs/remotes/origin/main\")",
+      "why": "Native --short depends on core.abbrev and collision policy: the same tip produced 4 versus 12 hex digits with different native configuration. HeadID returns the full ID and Resolve resolves names; neither implements the native short formatter. No prefix-slicing resolver is added.",
+      "owner": "statusgen/newbrief.go — defaultNewBriefFreshness caller maintainer"
+    },
+    "s145": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"show\", \"-s\", \"--format=%cs\", \"refs/remotes/origin/main\")",
+      "why": "Native %cs formatting/error semantics differ from decoded Committer.When: a duplicate-author literal commit produced native 2026-10-27 versus decoded 0001-01-01, and missing-parent native show failed where decoded date succeeded. Retain native formatting; TestHeaderReadParity independently preserves the timestamp decoding gap.",
+      "owner": "statusgen/newbrief.go — defaultNewBriefFreshness caller maintainer"
+    },
+    "s146": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-status\", \"-M\", \"-z\", \"--relative\", \"--no-color\", baseSHA, \"--\", \".\")",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/noticeratchet.go — productionChangedBriefs caller maintainer"
+    },
+    "s147": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-files\", \"--others\", \"--exclude-standard\", \"-z\")",
+      "why": "Native index/worktree/ignore query retains the exact porcelain/NUL/quoting, untracked and rule-origin diagnostics used here. The existing read API is not a demonstrated replacement for these output and mutable-index contracts; no custom ignore/index formatter is introduced.",
+      "owner": "statusgen/noticeratchet.go — productionChangedBriefs caller maintainer"
+    },
+    "s148": {
+      "operation": "exec.CommandContext(ctx, bin, \"--help\")",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/perfrecord.go — deskreadTakesPerf caller maintainer"
+    },
+    "s149": {
+      "operation": "provenanceParents(dir, delivery)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/protectedclosure.go — deliveryCoordinates caller maintainer"
+    },
+    "s150": {
+      "operation": "historyGit(dir, \"rev-list\", \"--first-parent\", \"--end-of-options\", head, \"^\"+parents[0])",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/protectedclosure.go — deliveryCoordinates caller maintainer"
+    },
+    "s151": {
+      "operation": "historyGit(dir, \"show\", \"--end-of-options\", rev+\":./\"+file)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/protectedclosure.go — protectedAcceptanceFor caller maintainer"
+    },
+    "s152": {
+      "operation": "coverageGit(filepath.Dir(path), \"show\", \"--end-of-options\", sha+\":./\"+filepath.Base(path))",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/reconcilefold.go — briefVersionAt caller maintainer"
+    },
+    "s153": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", \"--no-renames\", \"-z\",\n\tbase, \"--\", findingsRegisterDir)",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/registercorroborate.go — localTouchedFindings caller maintainer"
+    },
+    "s154": {
+      "operation": "repoTopLevel(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/registercorroborate.go — registerTransitionLane caller maintainer"
+    },
+    "s155": {
+      "operation": "exec.Command(\"git\", \"-C\", dir, \"rev-parse\", \"--show-toplevel\")",
+      "why": "Ordinary discovery compatibility branch selected before reading for observed native environment/configuration/filesystem profiles. Supported ordinary discovery uses the canonical owner; this retained definition is not a second resolver.",
+      "owner": "statusgen/registercorroborate.go — repoTopLevel caller maintainer"
+    },
+    "s156": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--quiet\", \"--no-ext-diff\", base, \"--\")",
+      "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
+      "owner": "statusgen/registercorroborate.go — treeMatchesBase caller maintainer"
+    },
+    "s157": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--diff-filter=A\", \"--first-parent\",\n\t\"--name-only\", \"--format=\", base, \"--\", dir+\"/\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/registers.go — deletedRegisterFiles caller maintainer"
+    },
+    "s158": {
+      "operation": "gitShowObject(root, base, f)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/registers.go — deletedRegisterFiles caller maintainer"
+    },
+    "s159": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"log\", \"--topo-order\", \"--format=%H %ct\",\n\t\"--end-of-options\", base+\"..HEAD\", \"--\", rel)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/registers.go — parkSetDate caller maintainer"
+    },
+    "s160": {
+      "operation": "gitShowObject(root, rev, rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/registers.go — parkSetDate caller maintainer"
+    },
+    "s161": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"--name-only\", \"-r\", base, dir+\"/\")",
+      "why": "This pathspec, nonrecursive/tree-object or quoted-output query is outside the qualified recursive full-commit TreeEntries adapter. Replacing it with a complete-tree read can change which missing unrelated subtrees are visited and therefore change the error verdict. Keep this original native operation rather than adding a second tree traversal algorithm.",
+      "owner": "statusgen/registers.go — registerFieldTransitions caller maintainer"
+    },
+    "s162": {
+      "operation": "gitShowObject(root, base, line)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/registers.go — registerFieldTransitions caller maintainer"
+    },
+    "s163": {
+      "operation": "gitShowObject(root, base, rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/registers.go — registerFieldTransitions caller maintainer"
+    },
+    "s164": {
+      "operation": "gitCurrentSHA(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/roadmap.go — runRoadmap caller maintainer"
+    },
+    "s165": {
+      "operation": "exec.Command(\"git\", \"-C\", dir, \"rev-parse\", \"--\"+which)",
+      "why": "Native administrative-path lookup preserves worktree/common-dir selection and requested relative/absolute spelling. The canonical repository handle is not an equivalent general rev-parse --git-path/--git-dir formatter.",
+      "owner": "statusgen/scanguard.go — scanGitDir caller maintainer"
+    },
+    "s166": {
+      "operation": "gitShallowOutput(path)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/siblingmerge.go — checkSiblingCheckout caller maintainer"
+    },
+    "s167": {
+      "operation": "exec.Command(\"git\", \"-C\", path, \"log\", \"--first-parent\",\n\t\"-n\", strconv.Itoa(siblingMergeHistoryLimit), \"--format=%x1e%H%x00%B\")",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/siblingmerge.go — readSiblingCommits caller maintainer"
+    },
+    "s168": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--verify\", candidate+\"^{commit}\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. Exact ref existence/namespace, caller ordering and refusal policy remain with the existing caller.",
+      "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
+    },
+    "s169": {
+      "operation": "ordinary native stale-FAIL context/config, first-parent/path summary; canonical typed merge-range message reads on the supported profile",
+      "why": "Merge-range graph work uses gitcore.CommitRange with full immutable endpoints, shared decoded facts and copied parent slices. The native summary supplies its full ID separately from the displayed abbreviation. Reference-name shadowing and declared message-encoding/format profiles positively retain the original range command; actual graph errors never retry. Config/ref context and first-parent/path summary remain native. TestLibraryStaleFailRange and TestCommitRange cover graph parity, missing objects, result isolation and actual zero-native flow; original stale-FAIL controls remain.",
+      "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
+    },
+    "s171": {
+      "operation": "gitShallowOutput(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/stalefail.go — newestFailFix caller maintainer"
+    },
+    "s172": {
+      "operation": "gitShowObject(root, base, relpath)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/streamcap.go — productionStreamBaseIsActive caller maintainer"
+    },
+    "s173": {
+      "operation": "gitShowObject(root, base, filepath.ToSlash(filepath.Join(rel, \"README.md\")))",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/unrun.go — closedAtBase caller maintainer"
+    },
+    "s174": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--path-format=absolute\", \"--git-path\", \"assay-verifier-attestation.json\")",
+      "why": "Native administrative-path lookup preserves worktree/common-dir selection and requested relative/absolute spelling. The canonical repository handle is not an equivalent general rev-parse --git-path/--git-dir formatter.",
+      "owner": "statusgen/forgecredential.go — verifierAdmissionMarked maintainer (shared by verifierAdmission and storedLoginRefusal)"
+    },
+    "s175": {
+      "operation": "historyGit(dir, \"cat-file\", \"-e\", rev+\":./\"+base)",
+      "why": "Native generic object-existence semantics are retained: cat-file -e succeeds for a blob in a commit with malformed unrelated parent metadata where FileAt fails decoding; TreeishID can return a missing target hash where native -e fails. Tree entry enumeration does not establish object existence. Native/API diagnostic evidence is retained; do not add a parser or new target-existence policy.",
+      "owner": "statusgen/verifyflip.go — flipEvidenceAt caller maintainer"
+    },
+    "s176": {
+      "operation": "historyGit(dir, \"rev-parse\", \"--verify\", \"--quiet\", rev+\"^{commit}\")",
+      "why": "Native compatibility branch of a migrated scalar caller. Supported exact commit/profile inputs use the existing canonical owner and are exercised by TestRevisionCallerFlow; unsupported selectors and positively observed native profiles preserve this original argv before reading. Reader errors do not retry. Exact ref existence/namespace, caller ordering and refusal policy remain with the existing caller.",
+      "owner": "statusgen/verifyflip.go — flipEvidenceAt caller maintainer"
+    },
+    "s177": {
+      "operation": "historyGit(dir, \"show\", rev+\":./\"+base)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/verifyflip.go — flipEvidenceAt caller maintainer"
+    },
+    "s178": {
+      "operation": "historyGit(dir, \"rev-list\", \"--full-history\", since+\"..HEAD\", \"--\", base)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/verifyflip.go — flipHistoryWalk caller maintainer"
+    },
+    "s179": {
+      "operation": "historyGit(dir, \"log\", \"-1\", \"--format=%P\", h)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/verifyflip.go — flipJudgeHistory caller maintainer"
+    },
+    "s180": {
+      "operation": "exec.Command(\"git\", \"--no-replace-objects\", \"-c\", \"diff.algorithm=myers\",\n\t\"-C\", dir, \"merge-base\", \"--all\", \"--end-of-options\", a, b)",
+      "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
+      "owner": "statusgen/verifyflip.go — flipMergeBases caller maintainer"
+    },
+    "s181": {
+      "operation": "isShallowRepository(dir)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/verifyflip.go — flipProvenance caller maintainer"
+    },
+    "s182": {
+      "operation": "historyGit(dir, append(args, \"--\", base)...)",
+      "why": "This constructed argv performs the existing bounded/range or first-parent history walk. Canonical PathHistory is an unfiltered committer-time walk and is not the native selection/rendering contract. Preserve the original history verdict rather than implement another history engine.",
+      "owner": "statusgen/verifyflip.go — flipProvenance caller maintainer"
+    },
+    "s183": {
+      "operation": "historyGit(dir, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", first, last), \"--\", base)",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
+      "owner": "statusgen/verifyflip.go — flipProvenance caller maintainer"
+    },
+    "s184": {
+      "operation": "exec.Command(dockerPath, argv...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/verifyincontainer.go — runInContainer caller maintainer"
+    },
+    "s185": {
+      "operation": "gitCurrentSHA(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/verifyissues.go — briefLinkAtCommit caller maintainer"
+    },
+    "s186": {
+      "operation": "exec.Command(\"git\", \"-C\", dir, \"status\", \"--porcelain=v1\", \"-z\", \"--untracked-files=all\")",
+      "why": "Native index/worktree/ignore query retains the exact porcelain/NUL/quoting, untracked and rule-origin diagnostics used here. The existing read API is not a demonstrated replacement for these output and mutable-index contracts; no custom ignore/index formatter is introduced.",
+      "owner": "statusgen/verifyrun.go — evidenceOnlyChange caller maintainer"
+    },
+    "s187": {
+      "operation": "exec.Command(\"git\", \"-C\", dir, \"show\", \"HEAD:\"+rel)",
+      "why": "Generic native treeish/blob rendering is retained. TestTypedHeaderParity records native blob success where the existing canonical full-commit-decoding accessor rejects malformed unrelated headers; arbitrary selectors, relative/noncanonical paths and tree rendering also exceed the qualified typed contract. No custom raw commit/tree/revision parser or failed-read retry is introduced.",
+      "owner": "statusgen/verifyrun.go — evidenceOnlyChange caller maintainer"
+    },
+    "s188": {
+      "operation": "repoTopLevel(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/verifyrun.go — evidenceOnlyChange caller maintainer"
+    },
+    "s189": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"config\", \"--get\", key)",
+      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
+      "owner": "statusgen/verifyrun.go — gitConfigValue caller maintainer"
+    },
+    "s190": {
+      "operation": "exec.Command(probe[0], append(probe[1:], \"true\")...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/verifyrun.go — netnsFacility caller maintainer"
+    },
+    "s191": {
+      "operation": "exec.Command(prefix[0], append(prefix[1:], \"true\")...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/verifyrun.go — networkOffWrapper caller maintainer"
+    },
+    "s192": {
+      "operation": "exec.CommandContext(ctx, bash, \"-o\", \"pipefail\", \"-c\", \"exit 0\")",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/verifyrun.go — probeShell caller maintainer"
+    },
+    "s193": {
+      "operation": "repoTopLevel(dir)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/verifyrun.go — repoRootFor caller maintainer"
+    },
+    "s194": {
+      "operation": "exec.CommandContext(ctx, argv[0], argv[1:]...)",
+      "why": "Opaque command, shell, forge/container or Verify executor. This conservative source bucket can launch Git but is not a repository-read API. Preserve its existing executable, process, cancellation and consent contract; no runtime Git frequency is inferred.",
+      "owner": "statusgen/verifyrun.go — runVerifyCommandWith caller maintainer"
+    },
+    "s195": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\")",
+      "why": "Native index/worktree/ignore query retains the exact porcelain/NUL/quoting, untracked and rule-origin diagnostics used here. The existing read API is not a demonstrated replacement for these output and mutable-index contracts; no custom ignore/index formatter is introduced.",
+      "owner": "statusgen/verifyrun.go — treeSHA caller maintainer"
+    },
+    "s196": {
+      "operation": "gitCurrentSHA(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/verifyrun.go — treeSHA caller maintainer"
+    },
+    "s197": {
+      "operation": "gitPrefixOutput(root)",
+      "why": "Qualified ordinary-profile prefix primitive reused by verifyrunRootBelowToplevel. TestRevisionCallerFlow blocks native revision calls at the supported root, while TestRevisionOrdinaryNestedPrefix compares the actual nested native prefix oracle, poisons native execution for the Go result and checks the real nested-root refusal. Positive unsupported ordinary profiles retain the original native branch before reading; errors never retry.",
+      "owner": "statusgen/verifyrun.go — verifyrunRootBelowToplevel caller maintainer"
+    },
+    "s198": {
+      "operation": "gitCurrentSHA(root)",
+      "why": "Qualified typed read uses the canonical gitcore owner on the complete supported profile. Its existing native branch is selected before reading for positively observed repository/configuration, shallow, filesystem or selector limitations. Ordinary and isolated provenance policies remain distinct; actual read errors never retry natively. TestGoGitReadParity exercises cold upper calls with native execution poisoned.",
+      "owner": "statusgen/verifyrun.go — verifyrunRootBelowToplevel caller maintainer"
+    },
+    "s199": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "why": "Native configuration query retains include/scope/environment and URL rewrite behavior. The existing canonical parser/local RemoteURL accessor does not by itself establish the effective native query contract; no additional configuration resolver or authority widening is added.",
+      "owner": "statusgen/verifyrun.go — witnessOriginRepo caller maintainer"
+    },
+    "s200": {
+      "operation": "historyGit(w.root, \"blame\", \"--line-porcelain\", \"-L\", strconv.Itoa(start)+\",\"+strconv.Itoa(end), \"--\", filepath.ToSlash(rel))",
+      "why": "Provenance blame retains native execution. TestBlameNativeBoundary reproduces different introducing-commit assignments for a synthetic repeated-line history with the pinned go-git engine. Working-tree callers also require uncommitted-line attribution absent from the upstream committed-blob API. No decoded library author is substituted for the existing raw-header identity authority.",
+      "owner": "statusgen/coverage_json.go — method.citingLines caller maintainer"
+    },
+    "s201": {
+      "operation": "historyGit(w.root, \"rev-list\", \"--first-parent\", \"--ancestry-path\", \"--reverse\", commit+\"..\"+w.tip)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/coverage_json.go — method.landingCR caller maintainer"
+    },
+    "s202": {
+      "operation": "historyGit(w.root, \"show\", \"-s\", \"--format=%P%x1f%B\", landing)",
+      "why": "Native commit-message rendering remains at this operation: the %P and %B format fields are read together from one native show so the landing commit's parent shape and body come from the same object. The canonical decoded Log contract does not claim byte-identical message rendering. This does not claim a typed read is impossible.",
+      "owner": "statusgen/coverage_json.go — method.landingCR caller maintainer"
+    },
+    "s203": {
+      "operation": "historyGit(w.root, \"rev-parse\", \"--verify\", \"-q\", ref+\"^{commit}\")",
+      "why": "Native exact-selector resolution remains at this operation: the ref+^{commit} spelling with --verify -q is the existing reference resolution the first-parent walk starts from. Unsupported selectors keep the original argv; errors are uncertainty, not fallback.",
+      "owner": "statusgen/coverage_json.go — method.readFirstParents caller maintainer"
+    },
+    "s204": {
+      "operation": "historyGit(w.root, \"rev-list\", \"--first-parent\", w.tip)",
+      "why": "Native history selection/rendering remains at this operation: full-history path simplification, first-parent/range walks, blame/-L/-S, date/identity formatting and bounded streams are not the canonical PathHistory/decoded Log contract. TestFlipHistoryParity demonstrates the path-walk difference; TestHeaderReadParity demonstrates decoded timestamp divergence. This does not claim unrelated typed ParentHashes reads are impossible.",
+      "owner": "statusgen/coverage_json.go — method.readFirstParents caller maintainer"
+    },
+    "s205": {
+      "operation": "coverageGit(root, append([]string{\"-c\", \"core.attributesFile=\" + os.DevNull, \"-c\", \"core.quotePath=false\"}, args...)...)",
+      "why": "Native witness constructor: it wraps the existing coverageGit seam with core.attributesFile=/dev/null and core.quotePath=false, then adds GIT_NO_REPLACE_OBJECTS and GIT_ATTR_NOSYSTEM so a v2 digest does not depend on machine-level attribute configuration. It adds no operation of its own; every witness read (ls-tree, check-attr) keeps the original argv through coverageGit.",
+      "owner": "statusgen/coverage_witness.go — witnessGit caller maintainer"
+    },
+    "s206": {
+      "operation": "exec.Command(\"git\", \"-C\", root, \"config\", \"--get-regexp\", pattern)",
+      "why": "Effective-configuration observation for the library single-path log. Git alone resolves system, global, local and worktree scopes and includes; go-git cannot locate the system scope, so one native config read answers whether log.follow, log.showSignature or an i18n log encoding key is set. Presence routes the unchanged native log; values are never re-parsed. Exit 1 (no key) and success are kept per root for the run; any other failure is native and not kept. GIT_CONFIG, which only git config honours, routes native without this read. TestLastPathConfigObservedOnce pins one observation per root per run.",
+      "owner": "statusgen/library_metadata.go — canonical metadata adapter"
+    }
+  },
+  "sites": [
+    {
+      "key": "acceptancetransition.go::acceptanceTransition::seam#1",
+      "expression": "historyGit(dir, \"rev-list\", \"--first-parent\", \"HEAD\", \"^\"+delivery)",
+      "disposition": "retained",
+      "reason": "s001"
+    },
+    {
+      "key": "acceptancetransition.go::acceptanceTransition::seam#2",
+      "expression": "provenanceParents(dir, amendment)",
+      "disposition": "moved",
+      "reason": "s002"
+    },
+    {
+      "key": "acceptancetransition.go::acceptanceTransition::seam#3",
+      "expression": "historyGit(dir, \"show\", \"--end-of-options\", rev+\":./\"+file)",
+      "disposition": "retained",
+      "reason": "s003"
+    },
+    {
+      "key": "acceptancetransition.go::acceptanceTransition::seam#4",
+      "expression": "provenanceRepoTop(dir)",
+      "disposition": "moved",
+      "reason": "s004"
+    },
+    {
+      "key": "acceptancetransition.go::acceptanceTransition::seam#5",
+      "expression": "historyGit(root, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s005"
+    },
+    {
+      "key": "acceptancetransition.go::transitionWitnessTree::seam#1",
+      "expression": "historyGit(dir, \"rev-parse\", \"--verify\", \"--quiet\", tree+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s006"
+    },
+    {
+      "key": "autoflip.go::method.CommitsTouching::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\",\n\tfmt.Sprintf(\"-%d\", limit), \"--format=%H\", \"--\", relPath)",
+      "disposition": "retained",
+      "reason": "s007"
+    },
+    {
+      "key": "backfill.go::readmeAtCommit::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", sha+\":\"+rel)",
+      "disposition": "retained",
+      "reason": "s008"
+    },
+    {
+      "key": "backfill.go::streamReadmeCommits::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--reverse\", \"--format=%H %ct\", \"--\", rel)",
+      "disposition": "retained",
+      "reason": "s009"
+    },
+    {
+      "key": "baseref.go::exactRefCommit::direct#1",
+      "expression": "exec.Command(\"git\", \"check-ref-format\", ref)",
+      "disposition": "retained",
+      "reason": "s010"
+    },
+    {
+      "key": "baseref.go::exactRefCommit::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show-ref\", \"--verify\", \"--hash\", \"--\", ref)",
+      "disposition": "retained",
+      "reason": "s011"
+    },
+    {
+      "key": "baseref.go::exactRefCommit::direct#3",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", oid+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s012"
+    },
+    {
+      "key": "baseref.go::resolveMergeBaseExact::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--end-of-options\", oid, \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s013"
+    },
+    {
+      "key": "boardignore.go::boardIgnoreHits::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"add\", \"--dry-run\", \"--ignore-missing\", \"--\", p)",
+      "disposition": "retained",
+      "reason": "s014"
+    },
+    {
+      "key": "boardignore.go::boardIgnoreRule::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"check-ignore\", \"-v\", \"--no-index\", \"--\", p)",
+      "disposition": "retained",
+      "reason": "s015"
+    },
+    {
+      "key": "briefinfo.go::checkBriefInfoAttribution::seam#1",
+      "expression": "isShallowRepository(root)",
+      "disposition": "moved",
+      "reason": "s016"
+    },
+    {
+      "key": "citationcorroborate.go::commitMessagesSince::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--no-merges\",\n\t\"--format=%h%x00%B%x1e\", base+\"..HEAD\")",
+      "disposition": "retained",
+      "reason": "s017"
+    },
+    {
+      "key": "consumerdelivery.go::deriveConsumerDelivery::seam#1",
+      "expression": "historyGit(root, \"show\", \"--end-of-options\", \"HEAD:\"+rel)",
+      "disposition": "retained",
+      "reason": "s018"
+    },
+    {
+      "key": "consumerdelivery.go::deriveConsumerDelivery::seam#2",
+      "expression": "historyGit(root, \"merge-base\", \"--is-ancestor\", chosen.delivery, remoteMainRef)",
+      "disposition": "retained",
+      "reason": "s019"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#1",
+      "expression": "historyGit(root, args...)",
+      "disposition": "retained",
+      "reason": "s020"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#2",
+      "expression": "provenanceRootPrefix(root)",
+      "disposition": "moved",
+      "reason": "s021"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#3",
+      "expression": "git(\"rev-parse\", \"--verify\", delivery+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s022"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#4",
+      "expression": "git(\"rev-parse\", \"--verify\", delivery+\"^1\")",
+      "disposition": "retained",
+      "reason": "s023"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#5",
+      "expression": "git(\"merge-base\", \"--is-ancestor\", delivery, \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s024"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#6",
+      "expression": "historyGit(root, \"diff\", \"--name-only\", \"--no-renames\", \"-z\", base, delivery, \"--\")",
+      "disposition": "retained",
+      "reason": "s025"
+    },
+    {
+      "key": "consumerdelivery.go::runDeliveryConsumers::seam#7",
+      "expression": "historyGit(root, \"archive\", \"--format=tar\", delivery+\"^{tree}\")",
+      "disposition": "retained",
+      "reason": "s026"
+    },
+    {
+      "key": "consumers.go::changedPathsSince::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", base+\"...HEAD\")",
+      "disposition": "retained",
+      "reason": "s027"
+    },
+    {
+      "key": "consumers.go::changedPathsSince::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\")",
+      "disposition": "retained",
+      "reason": "s028"
+    },
+    {
+      "key": "consumers.go::consumerEntriesAtBase::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", base, \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s029"
+    },
+    {
+      "key": "consumers.go::consumerEntriesAtBase::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", ref)",
+      "disposition": "retained",
+      "reason": "s030"
+    },
+    {
+      "key": "consumers.go::pinConsumerBase::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", base, \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s031"
+    },
+    {
+      "key": "containercredit.go::method.placeWitness::seam#1",
+      "expression": "provenanceRepoTop(cc.dir)",
+      "disposition": "moved",
+      "reason": "s032"
+    },
+    {
+      "key": "containercredit.go::method.provenance::seam#1",
+      "expression": "historyGit(cc.dir, \"blame\", \"--line-porcelain\", \"-L\", fmt.Sprintf(\"%d,%d\", c.header, c.bracket), \"--\", cc.base)",
+      "disposition": "retained",
+      "reason": "s033"
+    },
+    {
+      "key": "containercredit.go::method.provenanceSetup::seam#1",
+      "expression": "isShallowRepository(cc.dir)",
+      "disposition": "moved",
+      "reason": "s034"
+    },
+    {
+      "key": "containercredit.go::method.provenanceSetup::seam#2",
+      "expression": "historyGit(cc.dir, \"cat-file\", \"-e\", \"HEAD:\"+cc.rel)",
+      "disposition": "retained",
+      "reason": "s035"
+    },
+    {
+      "key": "containercredit.go::method.recordSetup::seam#1",
+      "expression": "historyGit(cc.dir, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s036"
+    },
+    {
+      "key": "corroborate.go::briefRowsAtRef::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", ref+\":\"+filepath.ToSlash(path))",
+      "disposition": "retained",
+      "reason": "s037"
+    },
+    {
+      "key": "corroborate.go::repoFromOriginAt::direct#1",
+      "expression": "exec.Command(\"git\", args...)",
+      "disposition": "retained",
+      "reason": "s038"
+    },
+    {
+      "key": "coverage.go::currentTreeRevision::seam#1",
+      "expression": "gitCurrentSHA(root)",
+      "disposition": "moved",
+      "reason": "s039"
+    },
+    {
+      "key": "coverage_json.go::method.citingLines::seam#1",
+      "expression": "historyGit(w.root, \"blame\", \"--line-porcelain\", \"-L\", strconv.Itoa(start)+\",\"+strconv.Itoa(end), \"--\", filepath.ToSlash(rel))",
+      "disposition": "retained",
+      "reason": "s200"
+    },
+    {
+      "key": "coverage_json.go::method.landingCR::seam#1",
+      "expression": "historyGit(w.root, \"rev-list\", \"--first-parent\", \"--ancestry-path\", \"--reverse\", commit+\"..\"+w.tip)",
+      "disposition": "retained",
+      "reason": "s201"
+    },
+    {
+      "key": "coverage_json.go::method.landingCR::seam#2",
+      "expression": "historyGit(w.root, \"show\", \"-s\", \"--format=%P%x1f%B\", landing)",
+      "disposition": "retained",
+      "reason": "s202"
+    },
+    {
+      "key": "coverage_json.go::method.readFirstParents::seam#1",
+      "expression": "historyGit(w.root, \"rev-parse\", \"--verify\", \"-q\", ref+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s203"
+    },
+    {
+      "key": "coverage_json.go::method.readFirstParents::seam#2",
+      "expression": "historyGit(w.root, \"rev-list\", \"--first-parent\", w.tip)",
+      "disposition": "retained",
+      "reason": "s204"
+    },
+    {
+      "key": "coverage_repo.go::coverageGit::direct#1",
+      "expression": "exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...)",
+      "disposition": "retained",
+      "reason": "s040"
+    },
+    {
+      "key": "coverage_repo.go::method.DiffNames::seam#1",
+      "expression": "coverageGit(r.root, \"diff\", \"--name-only\", \"--no-renames\", \"-z\", \"--end-of-options\", a, b, \"--\")",
+      "disposition": "retained",
+      "reason": "s041"
+    },
+    {
+      "key": "coverage_repo.go::method.InRepository::seam#1",
+      "expression": "coverageGit(r.root, \"rev-parse\", \"--git-dir\")",
+      "disposition": "retained",
+      "reason": "s042"
+    },
+    {
+      "key": "coverage_repo.go::method.IsShallow::seam#1",
+      "expression": "coverageGit(r.root, \"rev-parse\", \"--is-shallow-repository\")",
+      "disposition": "retained",
+      "reason": "s043"
+    },
+    {
+      "key": "coverage_repo.go::method.MergeBase::seam#1",
+      "expression": "coverageGit(r.root, \"merge-base\", \"--end-of-options\", a, b)",
+      "disposition": "retained",
+      "reason": "s044"
+    },
+    {
+      "key": "coverage_repo.go::method.MergeBaseAll::seam#1",
+      "expression": "coverageGit(r.root, \"merge-base\", \"--all\", \"--end-of-options\", a, b)",
+      "disposition": "retained",
+      "reason": "s045"
+    },
+    {
+      "key": "coverage_repo.go::method.ObjectAt::seam#1",
+      "expression": "coverageGit(r.root, \"ls-tree\", \"-z\", \"--full-tree\", \"--end-of-options\", rev, \"--\", p)",
+      "disposition": "retained",
+      "reason": "s046"
+    },
+    {
+      "key": "coverage_repo.go::method.ResolveCommit::seam#1",
+      "expression": "coverageGit(r.root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", token+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s047"
+    },
+    {
+      "key": "coverage_repo.go::method.ResolveCommit::seam#2",
+      "expression": "coverageGit(r.root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", token+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s048"
+    },
+    {
+      "key": "coverage_repo.go::method.ResolveObject::seam#1",
+      "expression": "coverageGit(r.root, \"rev-parse\", \"--verify\", \"--quiet\", \"--end-of-options\", token)",
+      "disposition": "retained",
+      "reason": "s049"
+    },
+    {
+      "key": "coverage_repo.go::method.RevList::seam#1",
+      "expression": "coverageGit(r.root, args...)",
+      "disposition": "retained",
+      "reason": "s050"
+    },
+    {
+      "key": "coverage_repo.go::method.RootPrefix::seam#1",
+      "expression": "provenanceRootPrefix(r.root)",
+      "disposition": "moved",
+      "reason": "s051"
+    },
+    {
+      "key": "coverage_repo.go::method.TreeFiles::seam#1",
+      "expression": "coverageGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--name-only\", \"--full-tree\", \"--end-of-options\", rev)",
+      "disposition": "retained",
+      "reason": "s052"
+    },
+    {
+      "key": "coverage_repo.go::method.TreeModes::seam#1",
+      "expression": "coverageGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev)",
+      "disposition": "retained",
+      "reason": "s053"
+    },
+    {
+      "key": "coverage_repo.go::method.briefBodyAt::seam#1",
+      "expression": "coverageGit(r.root, \"show\", \"--end-of-options\", rev+\":./\"+briefRel)",
+      "disposition": "retained",
+      "reason": "s054"
+    },
+    {
+      "key": "coverage_witness.go::witnessGit::seam#1",
+      "expression": "coverageGit(root, append([]string{\"-c\", \"core.attributesFile=\" + os.DevNull, \"-c\", \"core.quotePath=false\"}, args...)...)",
+      "disposition": "retained",
+      "reason": "s205"
+    },
+    {
+      "key": "crossroot.go::integrationTip::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", path, \"symbolic-ref\", \"-q\", \"refs/remotes/origin/HEAD\")",
+      "disposition": "retained",
+      "reason": "s055"
+    },
+    {
+      "key": "crossroot.go::integrationTip::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", path, \"rev-parse\", \"--verify\", \"--quiet\", ref+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s056"
+    },
+    {
+      "key": "decisiongatehold.go::decisionGatePRLane::seam#1",
+      "expression": "repoTopLevel(root)",
+      "disposition": "moved",
+      "reason": "s057"
+    },
+    {
+      "key": "decisiongatehold.go::gateSnapshotAtRev::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-z\", rev, \"--\", \"docs\")",
+      "disposition": "retained",
+      "reason": "s058"
+    },
+    {
+      "key": "decisiongatehold.go::gateSnapshotAtRev::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-r\", \"-t\", \"-z\", rev, \"--\", \"docs/streams\", \"docs/archive\")",
+      "disposition": "retained",
+      "reason": "s059"
+    },
+    {
+      "key": "decisiongatehold.go::gateSnapshotAtRev::seam#1",
+      "expression": "gitShowObject(root, rev, p)",
+      "disposition": "retained",
+      "reason": "s060"
+    },
+    {
+      "key": "decisiongatehold.go::graphReposAtRev::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-z\", rev, \"--\", rel)",
+      "disposition": "retained",
+      "reason": "s061"
+    },
+    {
+      "key": "decisiongatehold.go::graphReposAtRev::seam#1",
+      "expression": "gitShowObject(root, rev, rel)",
+      "disposition": "retained",
+      "reason": "s062"
+    },
+    {
+      "key": "decisiongatehold.go::runDecisionGate::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--verify\", \"--quiet\", strings.TrimSpace(baseRef)+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s063"
+    },
+    {
+      "key": "decisiongatehold.go::treeLinkKind::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"-z\", rev, \"--\", cur)",
+      "disposition": "retained",
+      "reason": "s064"
+    },
+    {
+      "key": "decisiongatehold.go::treeLinkKind::seam#1",
+      "expression": "gitShowObject(root, rev, p)",
+      "disposition": "retained",
+      "reason": "s065"
+    },
+    {
+      "key": "difflint.go::productionDiffLintRunner::dynamic#1",
+      "expression": "exec.Command(exe, args...)",
+      "disposition": "retained",
+      "reason": "s066"
+    },
+    {
+      "key": "difflint.go::productionRelFromTop::seam#1",
+      "expression": "repoTopLevel(root)",
+      "disposition": "moved",
+      "reason": "s067"
+    },
+    {
+      "key": "difflint.go::productionResolveBase::seam#1",
+      "expression": "gitHeadOutput(root)",
+      "disposition": "moved",
+      "reason": "s068"
+    },
+    {
+      "key": "difflint.go::productionResolveBase::seam#2",
+      "expression": "gitMergeBaseOut(root, \"HEAD\", baseRef)",
+      "disposition": "retained",
+      "reason": "s069"
+    },
+    {
+      "key": "doratiming.go::doraTargetRepo::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s070"
+    },
+    {
+      "key": "evidenceactor.go::blameEvidenceAuthors::seam#1",
+      "expression": "historyGit(root, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", start, end), \"--\", rel)",
+      "disposition": "retained",
+      "reason": "s073"
+    },
+    {
+      "key": "evidenceactor.go::evidenceActorGate::seam#1",
+      "expression": "isShallowRepository(root)",
+      "disposition": "moved",
+      "reason": "s074"
+    },
+    {
+      "key": "evidenceactor.go::historyGit::direct#1",
+      "expression": "exec.Command(\"git\", append(historyGitPrefix(dir), args...)...)",
+      "disposition": "retained",
+      "reason": "s075"
+    },
+    {
+      "key": "evidenceactor.go::isShallowRepository::seam#1",
+      "expression": "gitShallowOutput(root)",
+      "disposition": "moved",
+      "reason": "s076"
+    },
+    {
+      "key": "evidenceactor.go::rawCommitAuthor::seam#1",
+      "expression": "historyGit(dir, \"cat-file\", \"commit\", c)",
+      "disposition": "retained",
+      "reason": "s077"
+    },
+    {
+      "key": "failfirst.go::pathHeldAt::seam#1",
+      "expression": "gitOut(root, \"cat-file\", \"-e\", rev+\":\"+rel)",
+      "disposition": "retained",
+      "reason": "s078"
+    },
+    {
+      "key": "failfirst.go::runFailFirstBase::seam#1",
+      "expression": "gitOut(root, \"worktree\", \"remove\", \"--force\", wt)",
+      "disposition": "retained",
+      "reason": "s079"
+    },
+    {
+      "key": "failfirst.go::runFailFirstBase::seam#2",
+      "expression": "gitOut(root, \"worktree\", \"add\", \"--detach\", \"--quiet\", wt, base)",
+      "disposition": "retained",
+      "reason": "s080"
+    },
+    {
+      "key": "failfirst_ancestry.go::commitIsAncestor::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", full, of)",
+      "disposition": "retained",
+      "reason": "s081"
+    },
+    {
+      "key": "failfirst_ancestry.go::commitIsAncestor::seam#1",
+      "expression": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", base+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s082"
+    },
+    {
+      "key": "forge.go::remoteOriginURL::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s083"
+    },
+    {
+      "key": "forgecredential.go::verifierAdmissionMarked::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--path-format=absolute\", \"--git-path\", \"assay-verifier-attestation.json\")",
+      "disposition": "retained",
+      "reason": "s174"
+    },
+    {
+      "key": "forgeread.go::method.IssueList::dynamic#1",
+      "expression": "exec.Command(d.bin, argv...)",
+      "disposition": "retained",
+      "reason": "s084"
+    },
+    {
+      "key": "forgeread.go::method.OpenIssues::dynamic#1",
+      "expression": "exec.Command(d.bin, argv...)",
+      "disposition": "retained",
+      "reason": "s085"
+    },
+    {
+      "key": "forgeread.go::method.readItem::dynamic#1",
+      "expression": "exec.Command(d.bin, argv...)",
+      "disposition": "retained",
+      "reason": "s086"
+    },
+    {
+      "key": "gitbatch.go::gitMergeBaseOut::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", a, b)",
+      "disposition": "retained",
+      "reason": "s087"
+    },
+    {
+      "key": "gitbatch.go::gitMergeBaseOut::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", a, b)",
+      "disposition": "retained",
+      "reason": "s088"
+    },
+    {
+      "key": "gitbatch.go::gitShowObject::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", spec)",
+      "disposition": "retained",
+      "reason": "s089"
+    },
+    {
+      "key": "gitbatch.go::method.readObjectLocked::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", spec)",
+      "disposition": "retained",
+      "reason": "s090"
+    },
+    {
+      "key": "gitbatch.go::startCatFileBatch::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"cat-file\", \"--batch\")",
+      "disposition": "retained",
+      "reason": "s091"
+    },
+    {
+      "key": "gitcore_read.go::gitHeadOutput::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s092"
+    },
+    {
+      "key": "gitcore_read.go::gitPrefixOutput::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--show-prefix\")",
+      "disposition": "retained",
+      "reason": "s093"
+    },
+    {
+      "key": "gitcore_read.go::gitShallowOutput::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--is-shallow-repository\")",
+      "disposition": "retained",
+      "reason": "s094"
+    },
+    {
+      "key": "gitcore_read.go::provenanceParents::seam#1",
+      "expression": "historyGit(root, \"show\", \"-s\", \"--format=%P\", \"--end-of-options\", rev)",
+      "disposition": "retained",
+      "reason": "s095"
+    },
+    {
+      "key": "gitcore_read.go::provenanceRepoTop::seam#1",
+      "expression": "historyGit(dir, \"rev-parse\", \"--show-toplevel\")",
+      "disposition": "retained",
+      "reason": "s096"
+    },
+    {
+      "key": "gitcore_read.go::provenanceRootPrefix::seam#1",
+      "expression": "historyGit(root, \"rev-parse\", \"--show-prefix\")",
+      "disposition": "retained",
+      "reason": "s097"
+    },
+    {
+      "key": "gitinfo.go::buildPathAuthorIndex::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"-c\", \"core.quotePath=false\",\n\t\"log\", \"--format=%x01%ae\", \"--name-only\", \"--\", subdir)",
+      "disposition": "retained",
+      "reason": "s098"
+    },
+    {
+      "key": "gitinfo.go::evidenceSectionAtCommit::seam#1",
+      "expression": "gitShowObject(root, sha, filepath.ToSlash(relPath))",
+      "disposition": "retained",
+      "reason": "s099"
+    },
+    {
+      "key": "gitinfo.go::evidenceSectionTouchedByOtherIdentity::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root,\n\t\"log\", \"-L\", fmt.Sprintf(\"%d,%d:%s\", start, end, slashPath), \"--format=%x01%ae\")",
+      "disposition": "retained",
+      "reason": "s100"
+    },
+    {
+      "key": "gitinfo.go::evidenceSectionTouchedByOtherIdentity::seam#1",
+      "expression": "gitShowObject(root, \"HEAD\", slashPath)",
+      "disposition": "retained",
+      "reason": "s101"
+    },
+    {
+      "key": "gitinfo.go::frontmatterKeyLineProvenance::seam#1",
+      "expression": "gitShowObject(root, \"HEAD\", slashPath)",
+      "disposition": "retained",
+      "reason": "s102"
+    },
+    {
+      "key": "gitinfo.go::frontmatterKeyLineProvenance::seam#2",
+      "expression": "historyGit(root, \"blame\", \"--porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", lineNo, lineNo), \"HEAD\", \"--\", slashPath)",
+      "disposition": "retained",
+      "reason": "s103"
+    },
+    {
+      "key": "gitinfo.go::frontmatterKeyLineProvenance::seam#3",
+      "expression": "historyGit(root, \"log\", \"-1\", \"--no-use-mailmap\",\n\t\"--format=%ae%x00%cs\", sha, \"--\")",
+      "disposition": "retained",
+      "reason": "s104"
+    },
+    {
+      "key": "gitinfo.go::gitCommitTime::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", \"-s\", \"--format=%ct\", \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s105"
+    },
+    {
+      "key": "gitinfo.go::gitCurrentSHA::seam#1",
+      "expression": "gitHeadOutput(root)",
+      "disposition": "moved",
+      "reason": "s106"
+    },
+    {
+      "key": "gitinfo.go::gitPathFirstAuthorIdentity::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--reverse\", \"--format=%ae\", \"--\", relPath)",
+      "disposition": "retained",
+      "reason": "s108"
+    },
+    {
+      "key": "gitinfo.go::gitPathLastAuthorIdentity::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ae\", \"--\", relPath)",
+      "disposition": "retained",
+      "reason": "s109"
+    },
+    {
+      "key": "gitinfo.go::listRemoteBranches::direct#1",
+      "expression": "exec.CommandContext(ctx, \"git\", \"-C\", root, \"ls-remote\", \"--heads\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s110"
+    },
+    {
+      "key": "history.go::recordHistory::seam#1",
+      "expression": "gitCurrentSHA(root)",
+      "disposition": "moved",
+      "reason": "s111"
+    },
+    {
+      "key": "humanstamp.go::detectRename::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--find-renames\", \"--name-status\", base, \"HEAD\", \"--\", newPath)",
+      "disposition": "retained",
+      "reason": "s112"
+    },
+    {
+      "key": "humanstamp.go::humanStampProblems::seam#1",
+      "expression": "gitHeadOutput(root)",
+      "disposition": "moved",
+      "reason": "s113"
+    },
+    {
+      "key": "humanstamp.go::humanStampProblems::seam#2",
+      "expression": "gitShowObject(root, base, rel)",
+      "disposition": "retained",
+      "reason": "s114"
+    },
+    {
+      "key": "humanstamp.go::humanStampProblems::seam#3",
+      "expression": "gitShowObject(root, base, oldPath)",
+      "disposition": "retained",
+      "reason": "s115"
+    },
+    {
+      "key": "idvalidate.go::grandfatheredIDs::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"--name-only\", \"-r\", base, dir+\"/\")",
+      "disposition": "retained",
+      "reason": "s116"
+    },
+    {
+      "key": "idvalidate.go::grandfatheredIDs::seam#1",
+      "expression": "gitShowObject(root, base, line)",
+      "disposition": "retained",
+      "reason": "s117"
+    },
+    {
+      "key": "instrumentaudit.go::gitDeclIntroUnix::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-S\", `\"`+name+`\"`, \"--format=%ct\", \"--\", declRel(root, flagFile))",
+      "disposition": "retained",
+      "reason": "s118"
+    },
+    {
+      "key": "instrumentaudit.go::readDeclPatchIndex::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-p\", \"--no-color\", \"--no-ext-diff\",\n\t\"--format=\"+strings.ReplaceAll(declCommitMark, \"\\x00\", \"%x00\")+\"%ct\", \"--\", rel)",
+      "disposition": "retained",
+      "reason": "s119"
+    },
+    {
+      "key": "internal/gitlaunch/main.go::baselineGit::direct#1",
+      "expression": "exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...)",
+      "disposition": "retained",
+      "reason": "s120"
+    },
+    {
+      "key": "internal/gitlaunch/main.go::checkPrior::seam#1",
+      "expression": "baselineGit(root, \"merge-base\", \"refs/remotes/origin/main\", \"HEAD\")",
+      "disposition": "retained",
+      "reason": "s121"
+    },
+    {
+      "key": "internal/gitlaunch/main.go::checkPrior::seam#2",
+      "expression": "baselineGit(root, \"ls-tree\", \"--full-tree\", \"-z\", base, \"--\", \"statusgen/git-launches.json\")",
+      "disposition": "retained",
+      "reason": "s122"
+    },
+    {
+      "key": "internal/gitlaunch/main.go::checkPrior::seam#3",
+      "expression": "baselineGit(root, \"show\", base+\":statusgen/git-launches.json\")",
+      "disposition": "retained",
+      "reason": "s123"
+    },
+    {
+      "key": "library_metadata.go::gitLastPathHeartbeatOutput::direct#1",
+      "expression": "exec.Command(\"git\", append([]string{\"-C\", root, \"log\", \"-1\", \"--format=%h %cI\"}, selector...)...)",
+      "disposition": "retained",
+      "reason": "s072"
+    },
+    {
+      "key": "library_metadata.go::gitLastPathTimeOutput::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"-1\", \"--format=%ct\", \"--\", rel)",
+      "disposition": "moved",
+      "reason": "s107"
+    },
+    {
+      "key": "library_metadata.go::lastPathConfigNative::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"config\", \"--get-regexp\", pattern)",
+      "disposition": "retained",
+      "reason": "s206"
+    },
+    {
+      "key": "linkcheck.go::method.build::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", ix.root, \"log\", \"--pretty=format:\", \"--name-only\", \"--\", changelogDir+\"/\")",
+      "disposition": "retained",
+      "reason": "s124"
+    },
+    {
+      "key": "linkcheck.go::method.build::seam#1",
+      "expression": "gitShallowOutput(ix.root)",
+      "disposition": "moved",
+      "reason": "s125"
+    },
+    {
+      "key": "lintaudit.go::productionLintRunner::dynamic#1",
+      "expression": "exec.Command(executable, \"--root\", treeDir, \"--lint\", \"--all\")",
+      "disposition": "retained",
+      "reason": "s126"
+    },
+    {
+      "key": "lintaudit.go::productionLogSampler::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--since=30.days\", \"--format=%H %ct\", \"--\", \"docs/streams\", \"statusgen\")",
+      "disposition": "retained",
+      "reason": "s127"
+    },
+    {
+      "key": "lintaudit.go::productionWorktree::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"worktree\", \"add\", \"--detach\", \"--quiet\", dir, sha)",
+      "disposition": "retained",
+      "reason": "s128"
+    },
+    {
+      "key": "lintaudit.go::productionWorktree::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"worktree\", \"remove\", \"--force\", \"--quiet\", dir)",
+      "disposition": "retained",
+      "reason": "s129"
+    },
+    {
+      "key": "mergecheck.go::execOverTree::dynamic#1",
+      "expression": "exec.Command(\"sh\", \"-c\", cmdline)",
+      "disposition": "retained",
+      "reason": "s130"
+    },
+    {
+      "key": "mergecheck.go::fileInTree::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"cat-file\", \"-p\", tree+\":\"+path)",
+      "disposition": "retained",
+      "reason": "s131"
+    },
+    {
+      "key": "mergecheck.go::gitOut::direct#1",
+      "expression": "exec.Command(\"git\", append([]string{\"-C\", root}, args...)...)",
+      "disposition": "retained",
+      "reason": "s132"
+    },
+    {
+      "key": "mergecheck.go::materializeTree::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"archive\", \"--format=tar\", tree)",
+      "disposition": "retained",
+      "reason": "s133"
+    },
+    {
+      "key": "mergecheck.go::resolveCommit::seam#1",
+      "expression": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", ref+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s134"
+    },
+    {
+      "key": "mergecheck.go::runMergecheck::seam#1",
+      "expression": "gitOut(absRoot, \"fetch\", \"--quiet\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s135"
+    },
+    {
+      "key": "mergecheck.go::runMergecheck::seam#2",
+      "expression": "gitOut(absRoot, \"merge-base\", baseSHA, headSHA)",
+      "disposition": "retained",
+      "reason": "s136"
+    },
+    {
+      "key": "mergecheck.go::runMergecheck::seam#3",
+      "expression": "gitOut(absRoot, \"rev-list\", \"--count\", headSHA+\"..\"+baseSHA)",
+      "disposition": "retained",
+      "reason": "s137"
+    },
+    {
+      "key": "mergecheck.go::runMergecheck::seam#4",
+      "expression": "gitOut(absRoot, \"rev-parse\", headSHA+\"^{tree}\")",
+      "disposition": "retained",
+      "reason": "s138"
+    },
+    {
+      "key": "mergecheck.go::treeFiles::seam#1",
+      "expression": "gitOut(root, \"ls-tree\", \"-r\", \"--name-only\", tree)",
+      "disposition": "retained",
+      "reason": "s139"
+    },
+    {
+      "key": "mergecheck.go::trialMerge::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"merge-tree\", \"--write-tree\", \"--name-only\", base, head)",
+      "disposition": "retained",
+      "reason": "s140"
+    },
+    {
+      "key": "mergedstatus.go::commitMessages::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"cat-file\", \"--batch\")",
+      "disposition": "retained",
+      "reason": "s141"
+    },
+    {
+      "key": "mergedstatus.go::revListParents::direct#1",
+      "expression": "exec.Command(\"git\", args...)",
+      "disposition": "retained",
+      "reason": "s142"
+    },
+    {
+      "key": "newbrief.go::defaultNewBriefFreshness::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"fetch\", \"origin\", \"main\")",
+      "disposition": "retained",
+      "reason": "s143"
+    },
+    {
+      "key": "newbrief.go::defaultNewBriefFreshness::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--short\", \"refs/remotes/origin/main\")",
+      "disposition": "retained",
+      "reason": "s144"
+    },
+    {
+      "key": "newbrief.go::defaultNewBriefFreshness::direct#3",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"show\", \"-s\", \"--format=%cs\", \"refs/remotes/origin/main\")",
+      "disposition": "retained",
+      "reason": "s145"
+    },
+    {
+      "key": "noticeratchet.go::productionChangedBriefs::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-status\", \"-M\", \"-z\", \"--relative\", \"--no-color\", baseSHA, \"--\", \".\")",
+      "disposition": "retained",
+      "reason": "s146"
+    },
+    {
+      "key": "noticeratchet.go::productionChangedBriefs::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-files\", \"--others\", \"--exclude-standard\", \"-z\")",
+      "disposition": "retained",
+      "reason": "s147"
+    },
+    {
+      "key": "perfrecord.go::deskreadTakesPerf::dynamic#1",
+      "expression": "exec.CommandContext(ctx, bin, \"--help\")",
+      "disposition": "retained",
+      "reason": "s148"
+    },
+    {
+      "key": "protectedclosure.go::deliveryCoordinates::seam#1",
+      "expression": "provenanceParents(dir, delivery)",
+      "disposition": "moved",
+      "reason": "s149"
+    },
+    {
+      "key": "protectedclosure.go::deliveryCoordinates::seam#2",
+      "expression": "historyGit(dir, \"rev-list\", \"--first-parent\", \"--end-of-options\", head, \"^\"+parents[0])",
+      "disposition": "retained",
+      "reason": "s150"
+    },
+    {
+      "key": "protectedclosure.go::protectedAcceptanceFor::seam#1",
+      "expression": "historyGit(dir, \"show\", \"--end-of-options\", rev+\":./\"+file)",
+      "disposition": "retained",
+      "reason": "s151"
+    },
+    {
+      "key": "reconcilefold.go::briefVersionAt::seam#1",
+      "expression": "coverageGit(filepath.Dir(path), \"show\", \"--end-of-options\", sha+\":./\"+filepath.Base(path))",
+      "disposition": "retained",
+      "reason": "s152"
+    },
+    {
+      "key": "registercorroborate.go::localTouchedFindings::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", \"--no-renames\", \"-z\",\n\tbase, \"--\", findingsRegisterDir)",
+      "disposition": "retained",
+      "reason": "s153"
+    },
+    {
+      "key": "registercorroborate.go::registerTransitionLane::seam#1",
+      "expression": "repoTopLevel(root)",
+      "disposition": "moved",
+      "reason": "s154"
+    },
+    {
+      "key": "registercorroborate.go::repoTopLevel::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", dir, \"rev-parse\", \"--show-toplevel\")",
+      "disposition": "retained",
+      "reason": "s155"
+    },
+    {
+      "key": "registercorroborate.go::treeMatchesBase::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--quiet\", \"--no-ext-diff\", base, \"--\")",
+      "disposition": "retained",
+      "reason": "s156"
+    },
+    {
+      "key": "registers.go::deletedRegisterFiles::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--diff-filter=A\", \"--first-parent\",\n\t\"--name-only\", \"--format=\", base, \"--\", dir+\"/\")",
+      "disposition": "retained",
+      "reason": "s157"
+    },
+    {
+      "key": "registers.go::deletedRegisterFiles::seam#1",
+      "expression": "gitShowObject(root, base, f)",
+      "disposition": "retained",
+      "reason": "s158"
+    },
+    {
+      "key": "registers.go::parkSetDate::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"log\", \"--topo-order\", \"--format=%H %ct\",\n\t\"--end-of-options\", base+\"..HEAD\", \"--\", rel)",
+      "disposition": "retained",
+      "reason": "s159"
+    },
+    {
+      "key": "registers.go::parkSetDate::seam#1",
+      "expression": "gitShowObject(root, rev, rel)",
+      "disposition": "retained",
+      "reason": "s160"
+    },
+    {
+      "key": "registers.go::registerFieldTransitions::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"ls-tree\", \"--name-only\", \"-r\", base, dir+\"/\")",
+      "disposition": "retained",
+      "reason": "s161"
+    },
+    {
+      "key": "registers.go::registerFieldTransitions::seam#1",
+      "expression": "gitShowObject(root, base, line)",
+      "disposition": "retained",
+      "reason": "s162"
+    },
+    {
+      "key": "registers.go::registerFieldTransitions::seam#2",
+      "expression": "gitShowObject(root, base, rel)",
+      "disposition": "retained",
+      "reason": "s163"
+    },
+    {
+      "key": "roadmap.go::runRoadmap::seam#1",
+      "expression": "gitCurrentSHA(root)",
+      "disposition": "moved",
+      "reason": "s164"
+    },
+    {
+      "key": "scanguard.go::scanGitDir::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", dir, \"rev-parse\", \"--\"+which)",
+      "disposition": "retained",
+      "reason": "s165"
+    },
+    {
+      "key": "siblingmerge.go::checkSiblingCheckout::seam#1",
+      "expression": "gitShallowOutput(path)",
+      "disposition": "moved",
+      "reason": "s166"
+    },
+    {
+      "key": "siblingmerge.go::readSiblingCommits::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", path, \"log\", \"--first-parent\",\n\t\"-n\", strconv.Itoa(siblingMergeHistoryLimit), \"--format=%x1e%H%x00%B\")",
+      "disposition": "retained",
+      "reason": "s167"
+    },
+    {
+      "key": "stalefail.go::newestFailFix::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"rev-parse\", \"--verify\", candidate+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s168"
+    },
+    {
+      "key": "stalefail.go::newestFailFix::direct#2",
+      "expression": "exec.Command(\"git\", append([]string{\"-C\", root}, args...)...)",
+      "disposition": "retained",
+      "reason": "s169"
+    },
+    {
+      "key": "stalefail.go::newestFailFix::seam#1",
+      "expression": "gitShallowOutput(root)",
+      "disposition": "moved",
+      "reason": "s171"
+    },
+    {
+      "key": "streamcap.go::productionStreamBaseIsActive::seam#1",
+      "expression": "gitShowObject(root, base, relpath)",
+      "disposition": "retained",
+      "reason": "s172"
+    },
+    {
+      "key": "unrun.go::closedAtBase::seam#1",
+      "expression": "gitShowObject(root, base, filepath.ToSlash(filepath.Join(rel, \"README.md\")))",
+      "disposition": "retained",
+      "reason": "s173"
+    },
+    {
+      "key": "verifyflip.go::flipEvidenceAt::seam#1",
+      "expression": "historyGit(dir, \"cat-file\", \"-e\", rev+\":./\"+base)",
+      "disposition": "retained",
+      "reason": "s175"
+    },
+    {
+      "key": "verifyflip.go::flipEvidenceAt::seam#2",
+      "expression": "historyGit(dir, \"rev-parse\", \"--verify\", \"--quiet\", rev+\"^{commit}\")",
+      "disposition": "retained",
+      "reason": "s176"
+    },
+    {
+      "key": "verifyflip.go::flipEvidenceAt::seam#3",
+      "expression": "historyGit(dir, \"show\", rev+\":./\"+base)",
+      "disposition": "retained",
+      "reason": "s177"
+    },
+    {
+      "key": "verifyflip.go::flipHistoryWalk::seam#1",
+      "expression": "historyGit(dir, \"rev-list\", \"--full-history\", since+\"..HEAD\", \"--\", base)",
+      "disposition": "retained",
+      "reason": "s178"
+    },
+    {
+      "key": "verifyflip.go::flipJudgeHistory::seam#1",
+      "expression": "historyGit(dir, \"log\", \"-1\", \"--format=%P\", h)",
+      "disposition": "retained",
+      "reason": "s179"
+    },
+    {
+      "key": "verifyflip.go::flipMergeBases::direct#1",
+      "expression": "exec.Command(\"git\", \"--no-replace-objects\", \"-c\", \"diff.algorithm=myers\",\n\t\"-C\", dir, \"merge-base\", \"--all\", \"--end-of-options\", a, b)",
+      "disposition": "retained",
+      "reason": "s180"
+    },
+    {
+      "key": "verifyflip.go::flipProvenance::seam#1",
+      "expression": "isShallowRepository(dir)",
+      "disposition": "moved",
+      "reason": "s181"
+    },
+    {
+      "key": "verifyflip.go::flipProvenance::seam#2",
+      "expression": "historyGit(dir, append(args, \"--\", base)...)",
+      "disposition": "retained",
+      "reason": "s182"
+    },
+    {
+      "key": "verifyflip.go::flipProvenance::seam#3",
+      "expression": "historyGit(dir, \"blame\", \"--line-porcelain\",\n\t\"-L\", fmt.Sprintf(\"%d,%d\", first, last), \"--\", base)",
+      "disposition": "retained",
+      "reason": "s183"
+    },
+    {
+      "key": "verifyincontainer.go::runInContainer::dynamic#1",
+      "expression": "exec.Command(dockerPath, argv...)",
+      "disposition": "retained",
+      "reason": "s184"
+    },
+    {
+      "key": "verifyissues.go::briefLinkAtCommit::seam#1",
+      "expression": "gitCurrentSHA(root)",
+      "disposition": "moved",
+      "reason": "s185"
+    },
+    {
+      "key": "verifyrun.go::evidenceOnlyChange::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", dir, \"status\", \"--porcelain=v1\", \"-z\", \"--untracked-files=all\")",
+      "disposition": "retained",
+      "reason": "s186"
+    },
+    {
+      "key": "verifyrun.go::evidenceOnlyChange::direct#2",
+      "expression": "exec.Command(\"git\", \"-C\", dir, \"show\", \"HEAD:\"+rel)",
+      "disposition": "retained",
+      "reason": "s187"
+    },
+    {
+      "key": "verifyrun.go::evidenceOnlyChange::seam#1",
+      "expression": "repoTopLevel(root)",
+      "disposition": "moved",
+      "reason": "s188"
+    },
+    {
+      "key": "verifyrun.go::gitConfigValue::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"config\", \"--get\", key)",
+      "disposition": "retained",
+      "reason": "s189"
+    },
+    {
+      "key": "verifyrun.go::netnsFacility::dynamic#1",
+      "expression": "exec.Command(probe[0], append(probe[1:], \"true\")...)",
+      "disposition": "retained",
+      "reason": "s190"
+    },
+    {
+      "key": "verifyrun.go::networkOffWrapper::dynamic#1",
+      "expression": "exec.Command(prefix[0], append(prefix[1:], \"true\")...)",
+      "disposition": "retained",
+      "reason": "s191"
+    },
+    {
+      "key": "verifyrun.go::probeShell::dynamic#1",
+      "expression": "exec.CommandContext(ctx, bash, \"-o\", \"pipefail\", \"-c\", \"exit 0\")",
+      "disposition": "retained",
+      "reason": "s192"
+    },
+    {
+      "key": "verifyrun.go::repoRootFor::seam#1",
+      "expression": "repoTopLevel(dir)",
+      "disposition": "moved",
+      "reason": "s193"
+    },
+    {
+      "key": "verifyrun.go::runVerifyCommandWith::dynamic#1",
+      "expression": "exec.CommandContext(ctx, argv[0], argv[1:]...)",
+      "disposition": "retained",
+      "reason": "s194"
+    },
+    {
+      "key": "verifyrun.go::treeSHA::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\")",
+      "disposition": "retained",
+      "reason": "s195"
+    },
+    {
+      "key": "verifyrun.go::treeSHA::seam#1",
+      "expression": "gitCurrentSHA(root)",
+      "disposition": "moved",
+      "reason": "s196"
+    },
+    {
+      "key": "verifyrun.go::verifyrunRootBelowToplevel::seam#1",
+      "expression": "gitPrefixOutput(root)",
+      "disposition": "moved",
+      "reason": "s197"
+    },
+    {
+      "key": "verifyrun.go::verifyrunRootBelowToplevel::seam#2",
+      "expression": "gitCurrentSHA(root)",
+      "disposition": "moved",
+      "reason": "s198"
+    },
+    {
+      "key": "verifyrun.go::witnessOriginRepo::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"remote\", \"get-url\", \"origin\")",
+      "disposition": "retained",
+      "reason": "s199"
+    }
+  ]
+}

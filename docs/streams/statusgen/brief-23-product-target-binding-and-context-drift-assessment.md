@@ -31,7 +31,7 @@ consumers:
 
 ## Context
 
-files: `spec/brief-v1.md`, `spec/context-handoff-v1.md`, `schemas/context-handoff-v1.json`, `schemas/amendment-manifest-v1.json`, brief schemas/readers, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`; `changelog/statusgen-23-portfolio.md` (planned).
+files: `spec/brief-v1.md`, `spec/context-handoff-v1.md`, `schemas/context-handoff-v1.json`, `schemas/amendment-manifest-v1.json`, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`, `changelog/statusgen-23-portfolio.md` (planned) — brief schemas/readers, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`; `changelog/statusgen-23-portfolio.md` (planned).
 
 facts (d484dd5df, 13 October 2026; the statusgen/19 line refreshed against main after PR #2763):
 - Statusgen/19 owns the initial handoff contract and has merged (PR #2763; contract files exist on main); /20 owns discovery/recheck and is still todo.

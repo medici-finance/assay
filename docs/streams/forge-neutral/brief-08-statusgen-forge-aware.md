@@ -46,8 +46,7 @@ files:
 - `statusgen/autoflip.go` — the review read and the reviewer-login composition.
 - `statusgen/claimdecay.go` — the dead-claim decay pass and its NOTICE.
 - `docs/adopting-assay.md` — the runbook's self-description at line 12.
-- `docs/streams/forge-neutral/gitlab-ci-half.md` (planned) — the two-halves board-writer
-  design for a GitLab pipeline, so `init`'s template has a specification behind it.
+- `docs/streams/forge-neutral/gitlab-ci-half.md` (planned) — the two-halves board-writer design for a GitLab pipeline, so `init`'s template has a specification behind it.
 
 **Why the risk answers are all `no`.** This brief adds a second CI template, makes two reads
 forge-aware, and turns a silent degradation into an honest one. It changes no credential and

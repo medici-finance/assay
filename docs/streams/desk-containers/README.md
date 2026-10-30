@@ -45,7 +45,7 @@ component list, build/run topology, and open questions.
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
 | 15 | [The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred](brief-15-cell-op-machine-seam.md) | 7 | M | implemented | — | — |
-| 16 | [Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | todo | — | — |
+| 16 | [Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | implemented | — | — |
 | 17 | [`cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table](brief-17-up-converges-the-cell.md) | 8 | M | implemented | — | — |
 | 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism](brief-18-drain-pause-resume-handoff.md) | 9 | M | todo | — | — |
 | 19 | [`cellctl restart <cell> [role...]` — CLI adapter onto the runner-lifecycle restart sequence (drain → stop → start per role, rolling), so the pipeline never fully stops](brief-19-restart-rolling.md) | 10 | S | todo | — | — |
@@ -60,7 +60,7 @@ component list, build/run topology, and open questions.
 | 28 | [Package in-cluster cellctl and bind the interactive desk profile](brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md) | 10 | M | todo | — | — |
 | 29 | [Qualify the Kubernetes desk cell and operator recovery end to end](brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md) | 11 | M | todo | — | — |
 | 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | todo | — | — |
-| 31 | [Operate trusted compatibility Kubernetes desks through cellctl](brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md) | 8 | M | todo | — | — |
+| 31 | [Operate trusted compatibility Kubernetes desks through cellctl](brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md) | 8 | M | blocked | — | — |
 | 32 | [Qualify the compatibility Kubernetes desk cell](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | 9 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 

@@ -1,0 +1,6 @@
+# An exit before the build on the same line ends the line with status 0, so
+# neither the build nor the scan runs and the target is green.
+want: step-not-fatal
+file: Makefile
+replace: "\tdocker build -f images/deskd/Dockerfile --build-arg"
+with: "\texit 0; \\\n\tdocker build -f images/deskd/Dockerfile --build-arg"

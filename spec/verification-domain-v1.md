@@ -79,8 +79,9 @@ record review or human approval, make a decision, publish, or advance any field 
 Progress. `Assessment.CheckCurrent` checks work, candidate, definition, generation
 and evaluator identity against the caller's current record before reuse; it is not a
 signature check. Missing context cannot be reconstructed from file non-overlap or
-content hashes. Complete applicability, time validity and context invalidation remain
-graph-execution/30's scope; v1 supplies no substitute applicability fingerprint.
+content hashes. Complete applicability, time validity and context invalidation use the additive
+[evaluation-context-v1](evaluation-context-v1.md) contract in this same pure package;
+the base record alone supplies no substitute applicability fingerprint.
 
 ## Canonicalization and conformance
 

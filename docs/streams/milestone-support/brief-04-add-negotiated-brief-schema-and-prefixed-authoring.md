@@ -43,7 +43,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/briefv2.go`, `statusgen/brieffile.go`, `statusgen/briefschemaversions.go`, `statusgen/newbrief.go`, `statusgen/newbrief_test.go`, `statusgen/conform_test.go`, `statusgen/testdata/milestone-support/04/` (planned), `schemas/brief-v4.json` (planned), `spec/brief-v1.md`, `docs/contracts.md`, `changelog/milestone-support-04.md` (planned), `statusgen/testdata/milestone-support/04-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/briefv2.go`, `statusgen/brieffile.go`, `statusgen/briefschemaversions.go`, `statusgen/newbrief.go`, `statusgen/newbrief_test.go`, `statusgen/conform_test.go`, `statusgen/testdata/milestone-support/04/` (planned), `schemas/brief-v4.json` (planned), `spec/brief-v1.md`, `docs/contracts.md`, `changelog/milestone-support-04.md` (planned), `statusgen/testdata/milestone-support/04-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

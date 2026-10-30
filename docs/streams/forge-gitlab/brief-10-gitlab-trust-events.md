@@ -84,23 +84,9 @@ keeping the field EMPTY only where no account resolves — a per-field could-not
 attribution, never fabricated and never read as "not the author".
 
 files:
-- `tools/desk/internal/deskkit/forge_gitlab.go` — replace the `PRTrustEvents`/`IssueTrustEvents`
-  `trustEventsGap` refusals with a real read: GitLab MR/issue notes (`GET …/notes` or the
-  discussions API, Free-tier), filtering out `system` notes, mapping each note's author `{id,
-  username}` to `ContentEvent.Author` (rendered login, bot discrimination resolved from the users
-  API, never defaulted) and `AuthorID` (the numeric id), `created_at` to `CreatedAt`, and the
-  note-content edit time to `EditedAt`; the item body's content-edit time to `BodyEdited`; and
-  pagination completeness to `Complete`. In the same edit, resolve `GetCommit`'s author/committer
-  login by looking the commit's author/committer email up to an instance account (Free-tier user
-  lookup), filling `AuthorLogin`/`CommitterLogin` when it resolves and leaving them EMPTY (per-field
-  could-not-check) when it does not.
-- `tools/desk/internal/deskkit/forge_github.go` — the reference semantics only; unchanged. The
-  GitLab reads must equal what these already produce.
-- `tools/desk/internal/deskkit/trust.go`, `trustfetch.go` — the `TrustPayload`/`ContentEvent` shape
-  and `trustFromEnvelope`/`collectEvents`/`Blessed` the GitLab payload must feed identically; the
-  GitLab backend routes its parsed events through the SAME reader so seam and CLI cannot draw
-  different blessings from one payload. No shape change is in scope — the GitLab read fills the
-  existing struct.
+- `tools/desk/internal/deskkit/forge_gitlab.go` — replace the `PRTrustEvents`/`IssueTrustEvents` `trustEventsGap` refusals with a real read: GitLab MR/issue notes (`GET …/notes` or the discussions API, Free-tier), filtering out `system` notes, mapping each note's author `{id, username}` to `ContentEvent.Author` (rendered login, bot discrimination resolved from the users API, never defaulted) and `AuthorID` (the numeric id), `created_at` to `CreatedAt`, and the note-content edit time to `EditedAt`; the item body's content-edit time to `BodyEdited`; and pagination completeness to `Complete`. In the same edit, resolve `GetCommit`'s author/committer login by looking the commit's author/committer email up to an instance account (Free-tier user lookup), filling `AuthorLogin`/`CommitterLogin` when it resolves and leaving them EMPTY (per-field could-not-check) when it does not.
+- `tools/desk/internal/deskkit/forge_github.go` — the reference semantics only; unchanged. The GitLab reads must equal what these already produce.
+- `tools/desk/internal/deskkit/trust.go`, `tools/desk/internal/deskkit/trustfetch.go` — the `TrustPayload`/`ContentEvent` shape and `trustFromEnvelope`/`collectEvents`/`Blessed` the GitLab payload must feed identically; the GitLab backend routes its parsed events through the SAME reader so seam and CLI cannot draw different blessings from one payload. No shape change is in scope — the GitLab read fills the existing struct.
 
 single-point-of-failure: the trust read is the one control the review/bless gate stands on — a
 mapping that fail-opens (a `BodyEdited` signal that fails to move on a bless-then-edit so a rewritten

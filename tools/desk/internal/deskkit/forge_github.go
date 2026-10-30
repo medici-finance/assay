@@ -248,8 +248,8 @@ func (g *GitHubForge) doJSON(method, path string, in, out any) error {
 	return err
 }
 
-// doJSONHeader is doJSON returning the response headers too, for the ONE caller that needs
-// the forge's own pagination signal (ListOpenIssues reads `Link: rel="next"`).
+// doJSONHeader is doJSON returning the response headers too, including the forge's
+// own pagination signal (`Link: rel="next"`).
 //
 // A degraded transport never yields a SHORTER answer with a nil error (#1032): the body
 // read's error is kept — a connection cut mid-transfer hands back whatever arrived, which
@@ -809,12 +809,13 @@ const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$afte
 const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}}`
 
 // ghReviewQueueQuery is the ReviewQueueSnapshot document: ghOpenChangesQuery with
-// ghReviewQueueReviewsSel inserted after baseRefName (TestReviewQueueQueryIsOpenChangesPlusReviews
-// pins that nothing else differs). ONE POST answers the whole queue — change metadata, CI
+// ghReviewQueueReviewsSel inserted after baseRefName, plus the repository visibility scalar
+// consumed by actions' policy-drift alarm (TestReviewQueueQueryIsOpenChangesPlusReviews
+// pins exactly those additions). ONE POST answers the whole queue — change metadata, CI
 // rollup contexts and every change's reviews — so the head a change is classified at and the
 // reviews reduced against it come from one consistent read. Its point cost is the open-changes
 // read's plus one nested connection per change (see the stream's query-cost record).
-const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){visibility pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
 const forgeQueueReviewsCap = 100
@@ -891,6 +892,7 @@ type ghQueueReviews struct {
 type ghOpenChangesEnvelope struct {
 	Data struct {
 		Repository struct {
+			Visibility   string `json:"visibility"`
 			PullRequests struct {
 				Nodes []ghOpenChangeNode `json:"nodes"`
 			} `json:"pullRequests"`
@@ -904,7 +906,7 @@ type ghOpenChangesEnvelope struct {
 // openChangesRead POSTs one open-change document (ghOpenChangesQuery or ghReviewQueueQuery)
 // and returns its nodes. Any GraphQL-level error fails the whole read could-not-check, exactly
 // as the open-changes read always has — a partial response is never mapped.
-func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, error) {
+func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, string, error) {
 	in := map[string]any{
 		"query": query,
 		"variables": map[string]any{
@@ -913,16 +915,22 @@ func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghO
 	}
 	var out ghOpenChangesEnvelope
 	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(out.Errors) > 0 {
 		msgs := make([]string, 0, len(out.Errors))
 		for _, e := range out.Errors {
 			msgs = append(msgs, e.Message)
 		}
-		return nil, Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
+		return nil, "", Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
 	}
-	return out.Data.Repository.PullRequests.Nodes, nil
+	visibility := strings.ToLower(out.Data.Repository.Visibility)
+	switch visibility {
+	case "public", "private", "internal":
+	default:
+		visibility = "" // missing or future enum: never manufacture a policy observation
+	}
+	return out.Data.Repository.PullRequests.Nodes, visibility, nil
 }
 
 // ghOpenChange maps one open-change node to the seam's OpenChange.
@@ -968,7 +976,7 @@ func ghOpenChange(n ghOpenChangeNode) OpenChange {
 }
 
 func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
-	nodes, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
+	nodes, _, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
 	if err != nil {
 		return nil, err
 	}
@@ -1001,7 +1009,7 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 // connection at all — comes back with ReviewsComplete=false and no reviews, and the caller
 // reads that one change with ReviewsAtHead.
 func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
-	nodes, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
+	nodes, visibility, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
 	if err != nil {
 		return nil, err
 	}
@@ -1029,6 +1037,7 @@ func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 		changes = append(changes, qc)
 	}
 	return &ReviewQueue{
+		Visibility:     visibility,
 		Changes:        changes,
 		Cap:            forgeOpenChangesCap,
 		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
@@ -2200,13 +2209,7 @@ func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	if strings.TrimSpace(sha) == "" {
 		return nil, Unverifiable("GetCommit needs a non-empty sha for "+repo.Slug(), nil)
 	}
-	var w ghCommitWire
-	path := fmt.Sprintf("/repos/%s/%s/commits/%s", repo.Owner, repo.Name, sha)
-	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
-	}
-	rc := w.toRepoCommit()
-	return &rc, nil
+	return g.commitWithFiles(repo, sha)
 }
 
 // ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
@@ -2270,24 +2273,7 @@ func (g *GitHubForge) CompareRefs(repo ForgeRepo, base, head string) (*RefCompar
 	if strings.TrimSpace(base) == "" || strings.TrimSpace(head) == "" {
 		return nil, Unverifiable("CompareRefs needs both base and head for "+repo.Slug(), nil)
 	}
-	var w ghCompareWire
-	path := fmt.Sprintf("/repos/%s/%s/compare/%s...%s", repo.Owner, repo.Name, base, head)
-	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
-	}
-	out := &RefComparison{Status: w.Status, AheadBy: w.AheadBy, BehindBy: w.BehindBy}
-	for _, c := range w.Commits {
-		out.Commits = append(out.Commits, c.toRepoCommit())
-	}
-	// The unpaginated compare can stop at 250 commits. The count is evidence,
-	// never treat a missing count or a short read as an empty interval.
-	out.CommitsComplete = w.TotalCommits != nil && len(w.Commits) == *w.TotalCommits
-	for _, f := range w.Files {
-		out.Files = append(out.Files, ChangedFile{
-			Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status,
-		})
-	}
-	return out, nil
+	return g.compareWithHistory(repo, base, head)
 }
 
 // ghSearchWire is the /search/issues read shape (only the fields consumed). The search API

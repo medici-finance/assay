@@ -61,8 +61,8 @@ cells can be reconciled before the staged workflow patch lands.
 | 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | in-progress | — | — |
 | 08 | [witness ledger — the board writer records every merged-PR fact the fold reads, so a merged PR is read from the forge once, ever](brief-08-witness-ledger.md) | 2 | M | todo | — | — |
 | 09 | [incremental reconcile — forge reads scale with open PRs plus PRs changed since the last regen, never with total PR history](brief-09-incremental-reconcile.md) | 3 | M | todo | — | — |
-| 10 | [Complete candidate coverage for partial-delivery reconciliation](brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md) | 0 | M | todo | — | — |
-| 11 | [Preserve incomplete delivery in the audited board cohort](brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md) | 0 | M | implemented | — | — |
+| 10 | [Complete candidate coverage for partial-delivery reconciliation](brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md) | 0 | M | implemented | — | — |
+| 11 | [Preserve incomplete delivery in the audited board cohort](brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

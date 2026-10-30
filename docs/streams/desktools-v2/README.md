@@ -103,7 +103,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 41 | [Migrate the scan and monitor loops to Cobra and Viper](brief-41-migrate-the-scan-and-monitor-loops-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 42 | [Migrate the comms verbs to Cobra and Viper](brief-42-migrate-the-comms-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
-| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 45 | [Migrate the board reader verbs to Cobra and Viper](brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 47 | [Migrate the small admin verbs to Cobra and Viper](brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md) | 3 | M | todo | — | — |
@@ -124,16 +124,16 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 4 | M | todo | — | — |
 | 63 | [Define perf-v3 attribution, profiles and compatible local readers](brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md) | 2 | M | implemented | — | — |
 | 64 | [Propagate performance context through desks, agents and tool CLIs](brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md) | 3 | M | implemented | — | — |
-| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | implemented | — | — |
+| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ e25479a69d69 (forge-identity) | — |
 | 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | implemented | — | — |
 | 67 | [Define an extensible perf-v4 envelope and compatible readers](brief-67-define-an-extensible-perf-v4-envelope-and-compatible-readers.md) | 3 | M | todo | — | — |
 | 68 | [Select perf-v4 in shared producers and qualify the direct migration](brief-68-select-perf-v4-in-shared-producers-and-qualify-the-direct-migration.md) | 4 | M | todo | — | — |
 | 69 | [Specify extensible JSON contracts and migration targets](brief-69-specify-extensible-json-contracts-and-migration-targets.md) | 1 | M | done | 2026-10-24 assay-verifier-app[bot] @ 385cb29e5682 (forge-identity) | 2026-10-27 assay-reviewer-app[bot] (approved PR #3830 @ 8ee5cc30f25b13843667a5f174951e9d0cdeb4b4) |
 | 70 | [Exempt workflow-bound issue filings from the filing budget](brief-70-exempt-workflow-bound-issue-filings-from-the-filing-budget.md) | 1 | M | todo | — | — |
 | 71 | [Credit container witness rows bracketed by host verifier admission](brief-71-credit-container-witness-rows-bracketed-by-host-verifier-admission.md) | 1 | M | implemented | — | — |
-| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | todo | — | — |
+| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | implemented | — | — |
 | 73 | [Make deskevidence own the on-behalf-of principal on Runner cells](brief-73-make-deskevidence-own-the-on-behalf-of-principal-on-runner-cells.md) | 1 | M | todo | — | — |
-| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | todo | — | — |
+| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | implemented | — | — |
 | 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
 | 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
 | 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |

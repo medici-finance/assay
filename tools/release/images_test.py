@@ -22,6 +22,23 @@ VERSION = 'v1.2.3'
 SOURCE = 'a' * 40
 
 
+NATIVE_CONFIG = b'{"architecture":"arm64","os":"linux"}'
+NATIVE_ID = 'sha256:' + hashlib.sha256(NATIVE_CONFIG).hexdigest()
+
+
+def native_archive(path, ref='ghcr.io/example/verify-runner:v1.2.3-linux-arm64', extra=False):
+    config_name = NATIVE_ID.split(':')[1] + '.json'
+    records = [{'Config': config_name, 'RepoTags': [ref], 'Layers': []}]
+    if extra:
+        records.append(dict(records[0], RepoTags=['ghcr.io/example/other:old']))
+    files = {'manifest.json': json.dumps(records).encode(), config_name: NATIVE_CONFIG}
+    with tarfile.open(path, 'w') as archive:
+        for name, content in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+
+
 def workflow_jobs(text):
     return dict(re.findall(r'(?ms)^  ([a-zA-Z0-9_-]+):\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)',
                            text.split('\njobs:\n', 1)[1]))
@@ -44,7 +61,7 @@ def publication_problems(text):
         problems.append('exactly one release-approved job must own publication')
     match = re.search(r'^    needs: \[(.*?)\]', publisher, re.M)
     needs = {item.strip() for item in match.group(1).split(',')} if match else set()
-    if not {'resolve', 'guard', 'test', 'artifacts'} <= needs:
+    if not {'resolve', 'guard', 'test', 'artifacts', 'runner-arm64'} <= needs:
         problems.append('publication must wait for all preparation gates')
     if 'runs-on: medici-builder-public-release' not in publisher:
         problems.append('publisher needs the dedicated Docker-capable release runner')
@@ -83,6 +100,9 @@ def publication_problems(text):
         'release-images.json verify-runner-image.txt checksums.txt; do',
         "publish=os.environ['DRY_RUN'] != 'true'",
         'persist-credentials: false',
+        'path: ${{ runner.temp }}/release-native-arm64-in',
+        'NATIVE: ${{ runner.temp }}/release-native-arm64-in',
+        "native=os.environ['NATIVE']",
         "trap 'rm -rf \"$DOCKER_CONFIG\" \"$SOURCE\"' EXIT",
     ]
     for value in required:
@@ -122,16 +142,42 @@ printf 'scan %s\\n' "$1" >> "$CALLS"
                 info.mode = 0o755
                 info.size = len(name)
                 out.addfile(info, io.BytesIO(name.encode()))
+        self.native = self.root / 'native-in'
+        self.native.mkdir()
+        self.native_archive = self.native / 'verify-runner-linux-arm64.tar'
+        native_archive(self.native_archive)
+        self.native_receipt = self.native / 'verify-runner-linux-arm64.json'
+        self.native_receipt.write_text(json.dumps({
+            'schema': 'native-runner-v1', 'version': VERSION,
+            'source_revision': SOURCE, 'platform': 'linux/arm64',
+            'ref': 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64',
+            'image_id': NATIVE_ID,
+            'archive_sha256': hashlib.sha256(self.native_archive.read_bytes()).hexdigest(),
+        }))
         bindir = self.root / 'bin'
         bindir.mkdir()
         docker = bindir / 'docker'
         docker.write_text('''#!/usr/bin/env python3
-import hashlib, json, os, sys
+import hashlib, io, json, os, sys, tarfile
 args = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as f: f.write(json.dumps(args)+'\\n')
 mode = os.environ.get('MODE', '')
 def digest(ref): return 'sha256:' + hashlib.sha256(ref.encode()).hexdigest()
 ARCHES = {'linux/amd64': '-linux-amd64', 'linux/arm64': '-linux-arm64'}
+if args[:1] == ['info']:
+    print('linux/amd64' if mode == 'native-wrong-host' else 'linux/aarch64'); sys.exit(0)
+if args[:1] == ['save']:
+    from pathlib import Path
+    config = b'{"architecture":"arm64","os":"linux"}'
+    config_name = hashlib.sha256(config).hexdigest() + '.json'
+    files = {'manifest.json': json.dumps([{'Config': config_name, 'RepoTags': [args[-1]], 'Layers': []}]).encode(), config_name: config}
+    with tarfile.open(args[args.index('--output') + 1], 'w') as archive:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name); info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    sys.exit(0)
+if args[:2] == ['image', 'inspect'] and args[3] == '{{.Id}}':
+    print('sha256:' + ('e'*64 if mode == 'native-id-mismatch' else hashlib.sha256(b'{"architecture":"arm64","os":"linux"}').hexdigest())); sys.exit(0)
 if args[:2] == ['manifest', 'inspect'] and '@' in args[-1]:
     repo, dgst = args[-1].split('@')
     if dgst != 'sha256:' + 'c'*64: print('manifest unknown', file=sys.stderr); sys.exit(1)
@@ -174,14 +220,25 @@ if args[:2] == ['image', 'inspect']:
         self.env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
                         CALLS=str(self.calls), PYTHONDONTWRITEBYTECODE='1')
 
-    def invoke(self, publish=False, mode=''):
+    def invoke(self, publish=False, mode='', native=None):
         code = ('from pathlib import Path; import sys; from images import build_images; '
-                'build_images(Path(sys.argv[1]), *sys.argv[2:8], sys.argv[8] == "publish")')
+                'build_images(Path(sys.argv[1]), *sys.argv[2:8], sys.argv[8] == "publish", '
+                'native=sys.argv[9])')
         return subprocess.run(['python3', '-c', code, str(self.root), VERSION, SOURCE,
                                'ghcr.io/example/assay', 'ghcr.io/example/verify-runner',
-                               str(self.inputs), str(self.out), 'publish' if publish else 'build'],
+                               str(self.inputs), str(self.out), 'publish' if publish else 'build',
+                               str(native or self.native)],
                               cwd=self.script.parent,
                               env=dict(self.env, MODE=mode), text=True, capture_output=True)
+
+    def invoke_native(self, mode=''):
+        code = ('from pathlib import Path; import sys; from images import build_native_runner; '
+                'build_native_runner(Path(sys.argv[1]), *sys.argv[2:5], '
+                'Path(sys.argv[5]), Path(sys.argv[6]))')
+        return subprocess.run(['python3', '-c', code, str(self.root), VERSION, SOURCE,
+                               'ghcr.io/example/verify-runner', str(self.inputs), str(self.out)],
+                              cwd=self.script.parent, env=dict(self.env, MODE=mode),
+                              text=True, capture_output=True)
 
     def recorded(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
@@ -192,10 +249,9 @@ if args[:2] == ['image', 'inspect']:
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         probes = [c for c in calls if c[0] == 'run' and 'python3' in c]
-        # regression: #4323 — the probe runs on every runner platform.
+        # The publisher probes amd64; native arm64 is checked before transfer.
         self.assertEqual([(p[p.index('--platform') + 1], p[p.index('python3') + 1]) for p in probes],
-                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
-                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64')])
         for probe in probes:
             self.assertEqual(probe[-3:], ['-B', '-c',
                              (self.root / 'images/verify-runner/check.py').read_text()])
@@ -230,31 +286,31 @@ if args[:2] == ['image', 'inspect']:
         calls = self.recorded()
         self.assertFalse(any('"push"' in s or '"manifest"' in s for s in calls))
         self.assertEqual(sum(s.startswith('scan ') for s in calls), 6)
-        # Eight amd64 images and two runner platforms report a version; both
-        # runner platforms run the capability probe.
-        self.assertEqual(sum('"run"' in s for s in calls), 12)
+        # The native job checks arm64; this job checks eight amd64 images
+        # and the amd64 runner, plus its capability probe.
+        self.assertEqual(sum('"run"' in s for s in calls), 10)
         self.assertIn('DESK_TOOLS_IMAGE=ghcr.io/example/assay/desk-tools:v1.2.3', '\n'.join(calls))
         self.assertEqual((self.root / '.release-images/harness/statusgen').read_bytes(),
                          (self.inputs / 'statusgen-linux-amd64').read_bytes())
-        for arch in ('amd64', 'arm64'):
-            self.assertEqual((self.root / f'.release-images/verify-runner/statusgen-linux-{arch}').read_bytes(),
-                             (self.inputs / f'statusgen-linux-{arch}').read_bytes())
+        self.assertEqual((self.root / '.release-images/verify-runner/statusgen-linux-amd64').read_bytes(),
+                         (self.inputs / 'statusgen-linux-amd64').read_bytes())
         self.assertFalse((self.root / '.release-images/harness/statusgen-linux-arm64').exists())
 
     # regression: #4323
-    def test_runner_builds_each_platform_and_never_the_bare_tag(self):
+    def test_publisher_builds_only_amd64_and_imports_native_arm64(self):
         result = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
         self.assertEqual([(c[c.index('--platform') + 1], c[c.index('-t') + 1]) for c in builds],
-                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
-                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64')])
         versions = [c for c in calls if c[0] == 'run' and 'statusgen' in c and 'verify-runner' in c[-2]]
         self.assertEqual([(c[c.index('--platform') + 1], c[-2]) for c in versions],
-                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64'),
-                          ('linux/arm64', 'ghcr.io/example/verify-runner:v1.2.3-linux-arm64')])
+                         [('linux/amd64', 'ghcr.io/example/verify-runner:v1.2.3-linux-amd64')])
         self.assertFalse(any('ghcr.io/example/verify-runner:v1.2.3' in c for c in calls))
+        loads = [c for c in calls if c[:1] == ['load']]
+        self.assertEqual(len(loads), 1)
+        self.assertIn(str(self.native_archive.resolve()), loads[0])
 
     # regression: #4323
     def test_runner_platform_builds_push_a_single_manifest(self):
@@ -262,7 +318,7 @@ if args[:2] == ['image', 'inspect']:
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
         builds = [c for c in calls if c[0] == 'build' and c[-2].endswith('images/verify-runner/Dockerfile')]
-        self.assertEqual(len(builds), 2)
+        self.assertEqual(len(builds), 1)
         for build in builds:
             # An attestation-carrying image pushes as an index, which
             # `docker manifest create` refuses after the tags are spent.
@@ -281,7 +337,7 @@ if args[:2] == ['image', 'inspect']:
     # regression: #4323
     def test_missing_arm64_statusgen_stops_before_any_build(self):
         (self.inputs / 'statusgen-linux-arm64').unlink()
-        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertNotEqual(self.invoke_native().returncode, 0)
         self.assertFalse(any('"build"' in s for s in self.recorded()))
 
     def test_publish_produces_complete_consistent_manifest_after_all_checks(self):
@@ -454,6 +510,195 @@ if args[:2] == ['image', 'inspect']:
                     attested = published['List the release assets to attest'].split('; do', 1)[0]
                     self.assertRegex(attested, r'(?<![\w-])' + asset + r'(?![\w-])')
 
+    def test_native_arm64_build_checks_and_saves_without_publication(self):
+        result = self.invoke_native()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        self.assertEqual(calls[0], ['info', '--format', '{{.OSType}}/{{.Architecture}}'])
+        builds = [c for c in calls if c[0] == 'build']
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(builds[0][builds[0].index('--platform') + 1], 'linux/arm64')
+        self.assertIn('--provenance=false', builds[0])
+        self.assertIn('--sbom=false', builds[0])
+        runs = [c for c in calls if c[0] == 'run']
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(c[c.index('--platform') + 1] == 'linux/arm64' for c in runs))
+        self.assertTrue(any('statusgen' in c for c in runs))
+        probe = next(c for c in runs if 'python3' in c)
+        for flag in ('--read-only', '--cap-drop', '--security-opt', '--user', '--pids-limit',
+                     '--memory', '--cpus', '--tmpfs'):
+            self.assertIn(flag, probe)
+        self.assertEqual(probe[probe.index('--network') + 1], 'none')
+        self.assertEqual(probe[probe.index('--cap-drop') + 1], 'ALL')
+        self.assertEqual(probe[probe.index('--security-opt') + 1], 'no-new-privileges')
+        self.assertEqual(probe[probe.index('--user') + 1], '1000:1000')
+        self.assertNotIn('--privileged', probe)
+        self.assertNotIn('--mount', probe)
+        self.assertNotIn('--volume', probe)
+        save = next(i for i, c in enumerate(calls) if c[0] == 'save')
+        self.assertLess(max(calls.index(c) for c in runs), save)
+        self.assertFalse(any(c[0] in ('push', 'manifest', 'login') for c in calls))
+        receipt = json.loads((self.out / 'verify-runner-linux-arm64.json').read_text())
+        expected = json.loads(self.native_receipt.read_text())
+        self.assertEqual(receipt, expected)
+        self.assertEqual((self.out / 'verify-runner-linux-arm64.tar').read_bytes(),
+                         self.native_archive.read_bytes())
+
+    def test_native_arm64_failures_never_export_or_publish(self):
+        for mode in ('native-wrong-host', 'wrong-arch', 'missing-yaml', 'missing-jsonschema'):
+            with self.subTest(mode=mode):
+                self.setUp()
+                result = self.invoke_native(mode)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('save', 'push', 'manifest', 'login') for c in calls))
+                self.assertFalse((self.out / 'verify-runner-linux-arm64.json').exists())
+                if mode == 'native-wrong-host':
+                    self.assertFalse(any(c[0] in ('build', 'run') for c in calls))
+
+    def test_native_receipt_and_archive_must_match_before_import(self):
+        for field in ('schema', 'version', 'source_revision', 'platform', 'ref',
+                      'image_id', 'archive_sha256', 'missing-archive', 'tampered-archive'):
+            with self.subTest(field=field):
+                self.setUp()
+                receipt = json.loads(self.native_receipt.read_text())
+                if field == 'missing-archive':
+                    self.native_archive.unlink()
+                elif field == 'tampered-archive':
+                    self.native_archive.write_bytes(b'changed native bytes')
+                else:
+                    receipt[field] = 'incorrect'
+                    self.native_receipt.write_text(json.dumps(receipt))
+                result = self.invoke(True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
+                self.assertFalse((self.out / 'release-images.json').exists())
+
+    def test_native_archive_cannot_replace_other_image_tags(self):
+        for mode in ('extra-image', 'wrong-tag', 'wrong-config'):
+            with self.subTest(mode=mode):
+                self.setUp()
+                native_archive(self.native_archive,
+                               ref='ghcr.io/example/other:old' if mode == 'wrong-tag' else
+                                   'ghcr.io/example/verify-runner:v1.2.3-linux-arm64',
+                               extra=mode == 'extra-image')
+                if mode == 'wrong-config':
+                    with tarfile.open(self.native_archive, 'a') as archive:
+                        info = tarfile.TarInfo(NATIVE_ID.split(':')[1] + '.json')
+                        content = b'changed config'
+                        info.size = len(content)
+                        archive.addfile(info, io.BytesIO(content))
+                receipt = json.loads(self.native_receipt.read_text())
+                receipt['archive_sha256'] = hashlib.sha256(self.native_archive.read_bytes()).hexdigest()
+                self.native_receipt.write_text(json.dumps(receipt))
+                result = self.invoke(True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
+
+    def test_each_native_import_refusal_fires_before_any_load(self):
+        # Each case is well formed except for the one property under test, and
+        # names the refusal that must fire, so another guard cannot satisfy it.
+        config_name = NATIVE_ID.split(':')[1] + '.json'
+        manifest = json.dumps([{'Config': config_name, 'Layers': [],
+                                'RepoTags': ['ghcr.io/example/verify-runner:v1.2.3-linux-arm64']}]).encode()
+
+        def save(members):
+            with tarfile.open(self.native_archive, 'w') as archive:
+                for name, content in members:
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    archive.addfile(info, io.BytesIO(content))
+
+        cases = {
+            'config-differs': ([('manifest.json', manifest), (config_name, b'{"architecture":"amd64"}')],
+                               None, 'config differs from the checked image'),
+            'checksum-differs': ([('manifest.json', manifest), (config_name, NATIVE_CONFIG)],
+                                 hashlib.sha256(b'other bytes').hexdigest(),
+                                 'archive checksum mismatch'),
+            'two-manifests': ([('manifest.json', manifest), ('manifest.json', manifest),
+                               (config_name, NATIVE_CONFIG)],
+                              None, 'no single Docker save manifest'),
+        }
+        for name, (members, digest, message) in cases.items():
+            with self.subTest(case=name):
+                self.setUp()
+                save(members)
+                receipt = json.loads(self.native_receipt.read_text())
+                receipt['archive_sha256'] = digest or hashlib.sha256(self.native_archive.read_bytes()).hexdigest()
+                self.native_receipt.write_text(json.dumps(receipt))
+                result = self.invoke(True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn(message, result.stderr)
+                calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+                self.assertFalse(any(c[0] in ('load', 'push') for c in calls))
+
+    def test_imported_native_image_identity_must_match_before_publication(self):
+        result = self.invoke(True, 'native-id-mismatch')
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        self.assertTrue(any(c[0] == 'load' for c in calls))
+        self.assertFalse(any(c[0] == 'push' for c in calls))
+        self.assertFalse((self.out / 'release-images.json').exists())
+
+    def test_native_transport_must_hold_exactly_the_archive_and_receipt(self):
+        # S1: the transported files are admitted from a directory of their own.
+        # Anything beside them, a missing file or a link refuses before any load.
+        extra = self.native / 'checksums.txt'
+        extra.write_text('replacement')
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertFalse(any(c[:1] == ['load'] for c in
+                             (json.loads(s) for s in self.recorded() if s.startswith('['))))
+        extra.unlink()
+        moved = self.root / 'moved.json'
+        self.native_receipt.rename(moved)
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.native_receipt.symlink_to(moved)
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('regular files', result.stderr)
+        self.native_receipt.unlink()
+        moved.rename(self.native_receipt)
+        self.assertEqual(self.invoke().returncode, 0)
+
+    def test_native_transport_shared_with_the_verified_inputs_is_refused(self):
+        for name in ('verify-runner-linux-arm64.tar', 'verify-runner-linux-arm64.json'):
+            (self.inputs / name).write_bytes((self.native / name).read_bytes())
+        result = self.invoke(native=self.inputs)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('exactly the archive and its receipt', result.stderr)
+        self.assertFalse(any(c[:1] == ['load'] for c in
+                             (json.loads(s) for s in self.recorded() if s.startswith('['))))
+
+    def test_native_arm64_workflow_precedes_the_approved_publisher(self):
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            with self.subTest(path=path):
+                text = (HERE.parents[1] / path).read_text()
+                jobs = workflow_jobs(text)
+                native = jobs['runner-arm64']
+                self.assertIn('runs-on: ubuntu-24.04-arm', native)
+                self.assertIn('needs: [resolve, guard, test, artifacts]', native)
+                self.assertNotIn('environment: release', native)
+                self.assertNotRegex(native, r'(?m)^      (contents|packages|id-token): write$')
+                step = workflow_steps(native)['Build and check native arm64 verify-runner']
+                self.assertIn('build_native_runner', step)
+                self.assertNotRegex(step, r'(?m)^        if:', 'dry runs must build native arm64 too')
+                for name in ('verify-runner-linux-arm64.tar', 'verify-runner-linux-arm64.json'):
+                    self.assertIn(name, native)
+                self.assertIn('name: release-runner-arm64', native)
+                publisher = jobs['release']
+                self.assertIn('runner-arm64', publisher.split('    runs-on:', 1)[0])
+                self.assertIn('name: release-runner-arm64', publisher)
+                self.assertLess(publisher.index('name: release-runner-arm64'),
+                                publisher.index('name: Build, verify and publish the release images'))
+                download = workflow_steps(publisher)['Download checked native arm64 image']
+                self.assertIn('path: ${{ runner.temp }}/release-native-arm64-in', download)
+                self.assertNotRegex(download, r'(?m)^          path: (\.|\$\{\{ github\.workspace \}\})$',
+                                    'the native image must not land in the verified inputs')
+                self.assertNotIn('BINFMT_IMAGE', text)
+                self.assertNotIn('--privileged', text)
+
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
         main = (root / '.github/workflows/release.yml').read_text()
@@ -463,8 +708,10 @@ if args[:2] == ['image', 'inspect']:
                                            '\npermissions:\n  contents: write\n', 1),
             'missing-approval': main.replace('    environment: release\n', '', 1),
             'second-approval': main + '\n  second:\n    environment: release\n',
-            'missing-tests': main.replace('needs: [resolve, guard, test, artifacts]',
-                                          'needs: [resolve, guard, artifacts]', 1),
+            'missing-tests': main.replace('needs: [resolve, guard, test, artifacts, runner-arm64]',
+                                          'needs: [resolve, guard, artifacts, runner-arm64]', 1),
+            'missing-native-dependency': main.replace('needs: [resolve, guard, test, artifacts, runner-arm64]',
+                                                      'needs: [resolve, guard, test, artifacts]', 1),
             'missing-image-step': main.replace('Build, verify and publish the release images', 'removed', 1),
             'wrong-order': main.replace('Build, verify and publish the release images', 'TEMP', 1)
                               .replace('Create and push the dispatched tag',
@@ -472,6 +719,8 @@ if args[:2] == ['image', 'inspect']:
                               .replace('TEMP', 'Create and push the dispatched tag', 1),
             'ignored-image-failure': main.replace('Build, verify and publish the release images\n',
                                                   'Build, verify and publish the release images\n        continue-on-error: true\n', 1),
+            'native-into-workspace': main.replace('path: ${{ runner.temp }}/release-native-arm64-in', 'path: .', 1),
+            'native-not-passed': main.replace("native=os.environ['NATIVE']", "native=os.environ['INPUT']", 1),
             'unguarded-writer': main + '\n  other:\n    permissions:\n      packages: write\n',
             'missing-ref-check': main.replace('from tools.release.images_contract import RUNNER_PLATFORM, validate', 'removed', 1),
             'lenient-runner-platform': main.replace('runner_platforms=(RUNNER_PLATFORM,)', '', 1),
