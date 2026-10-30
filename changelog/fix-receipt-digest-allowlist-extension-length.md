@@ -1,0 +1,2 @@
+### Fixed
+- The pattern sweep's two receipt-digest allowlists in `.gitleaks.toml` (the `verify-outcomes.jsonl` block and the per-outcome-record block) now admit a `file:` input key whose extension is one to eight lowercase letters, up from five, so a verify-outcome record whose inputs name a `.fixture` file with a trigger word in its path no longer trips `generic-api-key` (#4992). Every other axis is unchanged: the `generic-api-key` rule only, the anchored record paths, and the 64-hex value; a nine-letter extension or an identifier-shaped key still trips.
