@@ -191,9 +191,9 @@ func ghIssueBlessChecker(repo string, issue int) (bool, error) {
 	if !ok {
 		return false, fmt.Errorf("bad repo %q", repo)
 	}
-	out, err := exec.Command("gh", "api", "graphql",
+	out, err := ghGuard(exec.Command("gh", "api", "graphql",
 		"-f", "query="+scanIssueTrustQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(issue)).Output()
+		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(issue))).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {

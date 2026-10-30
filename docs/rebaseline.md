@@ -59,6 +59,9 @@ deskrebaseline <brief> --row K [--root DIR] [--repo owner/name] [--open]
 
 - `<brief>` — a brief file path, or a `<stream>/<NN>` id resolved under `--root` first, then under `--repo`'s configured stream root.
 - `--row K` — the 1-based row of the brief's `## Verify` table to classify.
+- `deskrebaseline --help` (also `-h`, `help`, `--version`) answers before anything is read. A
+  command line it cannot use is refused with exit 5 before the brief is read: a missing
+  `--row`, a row that is not a positive integer, a second `<brief>`, or an unknown flag.
 - **Without `--open` (dry-run)** — prints the classification, the git intactness evidence, and
   the plan. It creates **no branch** and always exits `0`: a classification report is not a
   refusal. Read the printed `verdict:` line.

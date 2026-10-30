@@ -304,6 +304,8 @@ func hookPolicyMutations(t *testing.T) {
 		{"managed-inherits-fallback", "if managed && !validManaged(in) {\n\t\treturn outcome(Unknown, ManagedHold)", "if managed && !validManaged(in) {\n\t\treturn outcome(Allow, NoObjection)", "^TestWritePolicyCases/managed-never-inherits-legacy-fallback$", "FAIL: TestWritePolicyCases/managed-never", true},
 		{"managed-unknown-allows", "if managed && unresolved {\n\t\treturn outcome(Unknown, ManagedHold)", "if managed && unresolved {\n\t\treturn outcome(Allow, NoObjection)", "^TestWritePolicyCases/managed-never-inherits-legacy-fallback$", "unknown outside shared inherited allow", true},
 		{"classification-borrows-environment", "lex.Env = env", "lex.Env = lex.Env", "^TestClassificationOwnsItsSnapshot$", "FAIL: TestClassificationOwnsItsSnapshot", true},
+		// #4821 positive control: a matcher that never fires must fail the hook-level refusal fixture.
+		{"ambient-token-unmatched", "return forgeTokenRead(c.request.Target)", "return false", "^TestAmbientTokenRefusedLoop$", "an ambient gh token read must be refused", false},
 	} {
 		t.Run(m.name, func(t *testing.T) {
 			dst := t.TempDir()
