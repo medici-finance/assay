@@ -32,7 +32,10 @@ values remain missing; the example's `REQUIRES_*`/`REPLACE_*` strings are not fa
 Repeat this section in each role's **authorized preparation context**, using that
 role's exact published image and intended retained volume mounted at `/work`.
 The workload must remain paused, with no prior or concurrent execution on that
-volume. The package runs as UID/GID 999; prepare files for that identity. Creating
+volume. Run descriptor creation, cold preparation and readback as the workload's
+UID **999** and primary GID **999**, not as root or a different preparer. The
+descriptor and history are owner-only under umask 077; a different owner leaves
+them unreadable at boot. Creating
 or mounting a PVC, obtaining preparation access and provisioning the approved
 package/toolchain use the deployment owner's existing procedure. This guide
 supplies no cluster-access command or permission to create a preparation Pod.
@@ -60,6 +63,8 @@ from pathlib import Path
 import re
 
 work = Path('/work')
+if os.geteuid() != 999 or os.getegid() != 999:
+    raise SystemExit('held: preparation requires workload UID/GID 999')
 if os.path.lexists(work / '.assay-compat'):
     raise SystemExit('held: history exists; do not reset or reinitialize it')
 with open('/dev/tty', 'r') as terminal_in, open('/dev/tty', 'w') as terminal_out:
@@ -184,7 +189,24 @@ ambient context, proxy, insecure TLS or managed-isolation claim is introduced.
 
 ## Offline checks and handoff
 
-In the adopting source copy, from its repository root, run:
+Use a Git checkout for the adopting source copy, not an extracted source archive.
+The existing checker dereferences the candidate's source with `git show`; the
+published source object `fc0da35c571c9c01e23b1499b594f275fa2c2c61` and its launcher
+path must be available locally. A shallow checkout that lacks that object cannot
+complete the check. Before checking, confirm it without a network fetch:
+
+```sh
+git cat-file -e 'fc0da35c571c9c01e23b1499b594f275fa2c2c61^{commit}'
+git show fc0da35c571c9c01e23b1499b594f275fa2c2c61:containers/k8s/compatibility/desk-session.py > /dev/null
+```
+
+The preparation check also requires `kustomize` **v5.8.3**, Python 3, and the
+existing Go toolchain/module cache for its YAML adapter. `check.sh` disables
+network/module/toolchain downloads. Missing tools, cached dependencies or source
+objects are **could-not-check**, not a clean profile; provision them through the
+owner's approved tooling procedure before retrying.
+
+From that checkout's repository root, run:
 
 ```sh
 sh containers/k8s/check.sh --compatibility-cellctl --self-test
