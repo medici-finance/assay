@@ -144,6 +144,12 @@
       "file": "acceptancetransition.go",
       "old": "if line == placeholder {",
       "new": "if strings.Contains(line, placeholder) {"
+    },
+    {
+      "name": "placeholder exact quotation widened to suffix",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if strings.HasSuffix(line, placeholder) {"
     }
   ]
 }

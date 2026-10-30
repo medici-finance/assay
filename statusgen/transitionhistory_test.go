@@ -10,7 +10,7 @@ import (
 // independent verification of desk-tools/38 or a substitute human ruling.
 func TestTransitionDeliveredPlaceholder(t *testing.T) {
 	const placeholder = "<!-- Independent verifier appends one row per Verify command after implementation. -->"
-	cases := []string{"quoted-placeholder", "nested-placeholder", "unchanged-result", "unquoted-elsewhere", "quoted-with-suffix", "changed-quotation", "missing-placeholder", "placeholder-plus-result", "arbitrary-comment", "lookalike", "quoted-result", "changed-amendment-history", "lost-current-history", "offline"}
+	cases := []string{"quoted-placeholder", "nested-placeholder", "unchanged-result", "unquoted-elsewhere", "quoted-with-suffix", "quoted-with-prefix", "changed-quotation", "missing-placeholder", "placeholder-plus-result", "arbitrary-comment", "lookalike", "quoted-result", "changed-amendment-history", "lost-current-history", "offline"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			delivered := placeholder
@@ -43,6 +43,9 @@ func TestTransitionDeliveredPlaceholder(t *testing.T) {
 				}
 				if name == "quoted-with-suffix" {
 					replacement += " extra text"
+				}
+				if name == "quoted-with-prefix" {
+					replacement = quote + "Historical execution: FAIL " + delivered
 				}
 				if name == "changed-quotation" {
 					replacement = strings.Replace(replacement, "after implementation.", "after editing.", 1)
