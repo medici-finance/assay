@@ -29,12 +29,8 @@ id: 3c93f9b4-af9b-4de7-a41d-f93c3fa530e5
 ## Context
 
 files:
-- `statusgen/main.go` — `run()` chains the check functions (`check`, `checkBriefFiles`,
-  `checkPlaceholderFiles`, `freshnessCheckNotices`, `registerIntegrityProblems`,
-  `darSyncProblems`, `attributionProblems`, `verifySectionProblems`, `unfailableRowNotices`,
-  `linkProblems`, `registerRefProblems`, `qualityNotices`, `standingAlarmNotices`,
-  `debtNotice`, intake-alarm checks)
-- a NEW audit subcommand file, e.g. `statusgen/lintaudit.go` (planned) + `statusgen/lintaudit_test.go` (planned)
+- `statusgen/main.go` — `run()` chains the check functions (`check`, `checkBriefFiles`, `checkPlaceholderFiles`, `freshnessCheckNotices`, `registerIntegrityProblems`, `darSyncProblems`, `attributionProblems`, `verifySectionProblems`, `unfailableRowNotices`, `linkProblems`, `registerRefProblems`, `qualityNotices`, `standingAlarmNotices`, `debtNotice`, intake-alarm checks)
+- **a NEW audit subcommand file, e.g.** `statusgen/lintaudit.go` (planned) + `statusgen/lintaudit_test.go` (planned)
 - `docs/streams/statusgen/README.md` — one convention line
 
 facts:

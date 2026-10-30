@@ -45,15 +45,6 @@ id: 4b4dc7f7-13f1-42cc-8b97-6ff097f1e7c8
 
 ## Context
 
-files:
-- `tools/ci-load/activation/ci.yml`, `plugin-drift.yml`, `assay-statusgen.yml`,
-  `assay-qualgen.yml`, `evidence-automerge.yml` — the five post-change workflow files.
-- `tools/ci-load/activation/ci-load.diff` — the unified diff of those five against the versions in `.github/workflows/`, as a reading aid.
-- `tools/ci-load/activation/README.md` — copy command, verification, rollback, and the rule the edits were held to.
-- `tools/ci-load/pathsemantics.py` — the offline negative control for Verify rows 3 / 3b: it reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on five diff shapes, three of which must NOT skip.
-- `docs/streams/desk-supervision/README.md` — the Briefs row and the wave block.
-- `changelog/ci-per-push-fanout.md` (planned) — the fragment. Marked `(planned)` because a release roll AGGREGATES every fragment into the dated `CHANGELOG.md` section and CLEARS `changelog/` in the same commit, so a fragment path is transient by design: it exists only between the brief's own PR and the next release cut. This one was consumed by the v0.26.0 roll.
-
 prescribes (applied by a human copy, NOT written by this brief's diff):
 `.github/workflows/ci.yml`, `plugin-drift.yml`, `assay-statusgen.yml`, `assay-qualgen.yml`,
 `evidence-automerge.yml`. The implementing identity holds no `workflows` permission and
@@ -62,6 +53,14 @@ the same shape `tools/pairedversions/activation/` already uses. The risk×files 
 is not being dodged by that split: the four risk answers are stated for the PRESCRIBED
 change, not just for the staged files, and the reasoning a reviewer should check is in
 `single-point-of-failure` below.
+
+files:
+- `tools/ci-load/activation/ci.yml`, `tools/ci-load/activation/plugin-drift.yml`, `tools/ci-load/activation/assay-statusgen.yml`, `tools/ci-load/activation/assay-qualgen.yml`, `tools/ci-load/activation/evidence-automerge.yml` — the five post-change workflow files.
+- `tools/ci-load/activation/ci-load.diff` — the unified diff of those five against the versions in `.github/workflows/`, as a reading aid.
+- `tools/ci-load/activation/README.md` — copy command, verification, rollback, and the rule the edits were held to.
+- `tools/ci-load/pathsemantics.py` — the offline negative control for Verify rows 3 / 3b: it reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on five diff shapes, three of which must NOT skip.
+- `docs/streams/desk-supervision/README.md` — the Briefs row and the wave block.
+- `changelog/ci-per-push-fanout.md` (planned) — the fragment. Marked `(planned)` because a release roll AGGREGATES every fragment into the dated `CHANGELOG.md` section and CLEARS `changelog/` in the same commit, so a fragment path is transient by design: it exists only between the brief's own PR and the next release cut. This one was consumed by the v0.26.0 roll.
 
 single-point-of-failure: none of these edits stands between a fault and any damage — they
 select WHICH workflows are asked a question, and change nothing about how any workflow

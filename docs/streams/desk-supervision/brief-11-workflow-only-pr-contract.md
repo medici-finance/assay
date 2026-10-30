@@ -53,14 +53,8 @@ consumers:
 files:
 - **create** `docs/streams/desk-supervision/workflow-only-pr-contract.md` (planned) — the rule of record: a workflow change travels as a single PR whose diff touches ONLY `.github/workflows/**` and its own `changelog/*` fragment; the workflow App is its author; no other-file coupling is permitted.
 - **create** `tools/workflowpr/` (Go) — the verb: given a prepared workflow change, it opens a workflow-only branch, commits the `.github/workflows/**` change (and changelog fragment) as the workflow App, and opens the PR. Whether it also merges is set by the merge-authority decision below.
-- **create** a mixed-PR **guard** invoked by the EXISTING CI (a `tools/workflowpr --check <base>..<head>`
-  mode or a sibling guard tool run from `ci.yml`), NOT a brand-new workflow file — so installing
-  the guard does not itself require `workflows: write` and cannot bootstrap-block on the very rule
-  it enforces.
-- **register** the guard's CI job as a REQUIRED status check in branch protection / a repository
-  ruleset, with the workflow App absent from any bypass list — a repo-settings change, not a
-  workflow file, and the placement that keeps the guard outside the one identity's own write
-  surface (see the DR's branch-protection `accepted:` entry).
+- **create** `tools/workflowpr/` — a mixed-PR **guard** invoked by the EXISTING CI (a `tools/workflowpr --check <base>..<head>` mode or a sibling guard tool run from `ci.yml`), NOT a brand-new workflow file — so installing the guard does not itself require `workflows: write` and cannot bootstrap-block on the very rule it enforces.
+- **register** — the guard's CI job as a REQUIRED status check in branch protection / a repository ruleset, with the workflow App absent from any bypass list — a repo-settings change, not a workflow file, and the placement that keeps the guard outside the one identity's own write surface (see the DR's branch-protection `accepted:` entry).
 - **edit** `docs/adopting-assay.md` — reference the contract from the PR-discipline section.
 
 facts:

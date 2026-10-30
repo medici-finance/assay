@@ -98,8 +98,7 @@ id: 7f1c9a4e-6b3d-4e5a-9c2f-1d8e4a7b0c63
 
 files:
 - `.github/workflows/human-approved-gate.yml` (planned) — out-of-scope for this brief, specified here, authored by a follow-on — the workflow this brief's item 1 proposes.
-- `medici-finance/assay`'s `protect-main` ruleset (repo settings, id `20301257`) — the
-  required-status-checks list a human adds `human-approved` to, once the workflow exists.
+- **`medici-finance/assay`'s `protect-main` ruleset (repo settings, id `20301257`)** — the required-status-checks list a human adds `human-approved` to, once the workflow exists.
 - `tools/desk/cmd/repohardenguard/` — the existing read-only audit tool this brief's item 4 points at rather than duplicates.
 
 This is the closing brief of the five-brief series #992 tracks. Briefs 14-17 give the desk a

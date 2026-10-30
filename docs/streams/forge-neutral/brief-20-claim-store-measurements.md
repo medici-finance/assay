@@ -36,7 +36,7 @@ id: e90319ae-edc8-4dc2-8127-f9e609c4704c
 ## Context
 files:
 - `docs/streams/forge-neutral/reviewer-write-boundary.md` — §3.1 gains two inventory tables; §3.3 rows S2 and S4 move from could-not-check to a dated result.
-- `changelog/<branch-slug>.md` (planned) — the per-PR fragment.
+- **planned** — `changelog/<branch-slug>.md`, the per-PR fragment.
 
 This brief writes no tool code. It is documentation backed by reads on **fixtures** the
 measuring operator owns.
