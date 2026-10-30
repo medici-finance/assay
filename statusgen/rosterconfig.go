@@ -609,6 +609,10 @@ type scanConfig struct {
 	AssertionUses  map[string][]string
 	Dropped        []string
 
+	// Notices names single entries not applied without refusing the configuration (a
+	// name:login entry whose name contains a space). KEEP IN SYNC with deskkit.Config.
+	Notices []string
+
 	Problems []string
 }
 
@@ -1087,9 +1091,18 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		cfg.Repos[slug] = ci + ":" + vis
 	}
 
-	for _, entry := range scanSplitList(vals[scanEnvHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+	// Split by trustcore.SplitNameLoginList, not scanSplitList: a name with a space BETWEEN its
+	// words (`Ada Lovelace:ada`) stays ONE entry, refused on its own with a NOTICE (no mapping)
+	// instead of shredding into a colon-less word that refused the whole roster plus a fragment
+	// mapping nobody wrote. A malformed or bot-shaped entry still refuses the whole roster, and so
+	// does a space before the colon (`ada :ada`), which the splitter leaves as two malformed
+	// entries. The whitespace check reads the UNTRIMMED name half, so a space the trim would drop
+	// can never turn a refused entry into a mapping. Applies to BOTH name:login maps below. KEEP
+	// IN SYNC with deskkit.parseConfig.
+	var notices []string
+	for _, entry := range trustcore.SplitNameLoginList(vals[scanEnvHumanLoginMap]) {
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", scanEnvHumanLoginMap, entry)
@@ -1103,6 +1116,10 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 				"exclude. Refusing", scanEnvHumanLoginMap, entry, login)
 			continue
 		}
+		if trustcore.NameHasWhitespace(rawName) {
+			notices = append(notices, trustcore.SpacedNameNotice(scanEnvHumanLoginMap, entry))
+			continue
+		}
 		cfg.HumanLogins[name] = login
 	}
 
@@ -1113,9 +1130,9 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	// same reason it does on the current map: a `human:<name>` must never resolve to a
 	// shared-agent identity, even for a departed human. An unset value is neither an
 	// error nor a refusal.
-	for _, entry := range scanSplitList(vals[scanEnvFormerHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+	for _, entry := range trustcore.SplitNameLoginList(vals[scanEnvFormerHumanLoginMap]) {
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", scanEnvFormerHumanLoginMap, entry)
@@ -1128,8 +1145,13 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 				"Refusing", scanEnvFormerHumanLoginMap, entry, login)
 			continue
 		}
+		if trustcore.NameHasWhitespace(rawName) {
+			notices = append(notices, trustcore.SpacedNameNotice(scanEnvFormerHumanLoginMap, entry))
+			continue
+		}
 		cfg.FormerHumanLogins[name] = login
 	}
+	cfg.Notices = notices
 
 	// ADDITIVE-ONLY, and an unset value is neither an error nor a refusal.
 	cfg.RiskExtra = scanSplitList(vals[scanEnvRiskPathTriggersExtra])
@@ -1255,7 +1277,8 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 
 	if len(problems) > 0 {
 		// Fail closed: a refused roster loads nothing. Dropped only names what was discarded.
-		return scanConfig{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems)}
+		return scanConfig{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems),
+			Notices: notices}
 	}
 	return cfg
 }
@@ -1354,6 +1377,9 @@ func (c scanConfig) EffectiveConfigLines() []string {
 	}
 	for _, d := range c.Dropped {
 		lines = append(lines, "assay-config: DROPPED "+d)
+	}
+	for _, n := range c.Notices {
+		lines = append(lines, "assay-config: NOTICE — "+n)
 	}
 	return lines
 }

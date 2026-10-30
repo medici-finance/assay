@@ -853,6 +853,12 @@ type Config struct {
 	// still loads nothing; this only names what the refusal discarded.
 	Dropped []string
 
+	// Notices names single ENTRIES that were not applied without refusing the configuration —
+	// today only an ASSAY_HUMAN_LOGIN_MAP entry whose name half contains a space
+	// (trustcore.SpacedNameNotice). Each renders as an `assay-config: NOTICE` line and forces
+	// the full echo, so a dropped entry is never silent.
+	Notices []string
+
 	// Ext carries the per-key OUTCOME of every extension key this loader
 	// validates (rosterconfig.go's TRUST/EXTENSION split, this brief),
 	// keyed by its canonical `assay.roster.ext.<name>` catalogue name (see
@@ -1539,9 +1545,17 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	recordExt(&cfg, EnvScanRepos, vals[EnvScanRepos], scanReposIssue)
 
 	// --- human-name → login map ---
-	for _, entry := range splitList(vals[EnvHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+	// Split by trustcore.SplitNameLoginList, not splitList: a name with a space BETWEEN its words
+	// (`Ada Lovelace:ada`) stays ONE entry, refused on its own with a NOTICE (it yields no mapping)
+	// instead of shredding into a colon-less word that refused the whole roster plus a fragment
+	// mapping nobody wrote. A malformed or bot-shaped entry still refuses the whole roster, and so
+	// does a space before the colon (`ada :ada`), which the splitter leaves as two malformed
+	// entries. The whitespace check reads the UNTRIMMED name half, so a space the trim would drop
+	// can never turn a refused entry into a mapping. KEEP IN SYNC with statusgen's scanParseConfig.
+	var notices []string
+	for _, entry := range trustcore.SplitNameLoginList(vals[EnvHumanLoginMap]) {
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", EnvHumanLoginMap, entry)
@@ -1555,8 +1569,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 				"exclude. Refusing", EnvHumanLoginMap, entry, login)
 			continue
 		}
+		if trustcore.NameHasWhitespace(rawName) {
+			notices = append(notices, trustcore.SpacedNameNotice(EnvHumanLoginMap, entry))
+			continue
+		}
 		cfg.HumanLogins[name] = login
 	}
+	cfg.Notices = notices
 
 	// --- OS-account → login map (ASSAY_OS_USER_LOGIN_MAP), an EXTENSION key ---
 	// Feeds ONLY the scan-override audit identity. A MALFORMED entry does not refuse
@@ -1883,7 +1902,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		// Fail closed, P1: a refused roster loads NOTHING, however well-formed its other keys
 		// are. Dropped only names what the refusal discarded, so the echo can say why a
 		// configured key reads empty.
-		return Config{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems)}
+		return Config{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems),
+			Notices: notices}
 	}
 	return cfg
 }
@@ -2187,6 +2207,9 @@ func (c Config) EffectiveConfigLines() []string {
 	}
 	for _, d := range c.Dropped {
 		lines = append(lines, "assay-config: DROPPED "+d)
+	}
+	for _, n := range c.Notices {
+		lines = append(lines, "assay-config: NOTICE — "+n)
 	}
 	return lines
 }
