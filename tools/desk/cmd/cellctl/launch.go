@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -123,6 +124,22 @@ func (c *Cell) forgeEndpointBase() string {
 		return v
 	}
 	return ""
+}
+
+// forgeEndpointExportBase guards the new argv/plan surfaces. URL userinfo,
+// queries and fragments can hold credentials, so refuse them before output.
+// Keep the host-window resolver unchanged; HTTPS, inheritance and conflicting
+// keys remain separate policy work. Never echo the URL or a parser error.
+func (c *Cell) forgeEndpointExportBase() (string, error) {
+	base := c.forgeEndpointBase()
+	if base == "" {
+		return "", nil
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("cell forge endpoint must be parseable and contain no URL userinfo, query or fragment before export to Codex commands or scrubbed plans")
+	}
+	return base, nil
 }
 
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the

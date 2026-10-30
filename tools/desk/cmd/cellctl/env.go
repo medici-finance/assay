@@ -108,7 +108,11 @@ func (c *Cell) scrubbedEnvValue(key, role, harness, session, composedPath string
 	case "LANG":
 		return c.Env.Get("LANG")
 	case "GITLAB_API_BASE":
-		return c.forgeEndpointBase()
+		base, err := c.forgeEndpointExportBase()
+		if err != nil {
+			die("desk: %v", err)
+		}
+		return base
 	case envCellDBDSN:
 		// "" when CELL_DB_DSN is unset: a cell with no database composes neither variable.
 		dsn, _ := c.cellDBComposed()

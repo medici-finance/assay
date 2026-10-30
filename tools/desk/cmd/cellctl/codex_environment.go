@@ -76,7 +76,11 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	// The cell-declared endpoint is the only additional credential-path value
 	// admitted here. Resolve it directly rather than copying an inherited endpoint
 	// onto argv; the operator process keeps its original environment.
-	if base := c.forgeEndpointBase(); base != "" {
+	base, err := c.forgeEndpointExportBase()
+	if err != nil {
+		return nil, err
+	}
+	if base != "" {
 		values["GITLAB_API_BASE"] = base
 	}
 	return values, nil
