@@ -1,5 +1,4 @@
 """Handoff wiring: hosted native checks and in-cluster checked-object delivery."""
-import fnmatch
 from pathlib import Path
 import re
 import unittest
@@ -75,12 +74,20 @@ class HybridWorkflowTest(unittest.TestCase):
         uploads=re.findall(r'(?ms)^      - name: Upload prepared release artifacts[^\n]*\n(.*?)(?=^      - |\Z)',workflow_jobs(text)['artifacts'])
         for source in ('a'*40, 'b'*40):
             meta=transport.metadata('example/project','42','2','a'*40,source,'v1.2.3')
-            expected=transport.members(meta)
+            self.assertEqual(len(uploads), 7)
             selected=[]
             for block in uploads:
                 patterns=re.findall(r'^            (.+)$',block,re.M)
-                selected += [name for name in expected if any(fnmatch.fnmatchcase(name,p) for p in patterns)]
-            self.assertCountEqual(selected,expected)
+                self.assertTrue(patterns)
+                for pattern in patterns:
+                    if '*' in pattern:
+                        self.assertIn(pattern, ('tool-validation-*.json', 'tool-validation-*.md'))
+                        pattern=pattern.replace('*', meta['tag'])
+                    self.assertNotRegex(pattern, r'[?\[\]]')
+                    if pattern == 'release-source.bundle' and source == meta['base']:
+                        continue
+                    selected.append(pattern)
+            self.assertCountEqual(selected, transport.members(meta))
 
     # regression: #4887
     def test_expected_proof_credential_and_route_controls_cannot_disappear(self):

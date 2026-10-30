@@ -17,6 +17,8 @@ FILES = ('tools/release/transport.py', 'tools/release/transport_test.py',
 RUNTIME = 'tools/release/transport.py'
 WORKFLOW = '.github/workflows/release.yml'
 CASES = (
+ ('arm64-roster-omission', RUNTIME, "'statusgen-linux-arm64', ", ''),
+ ('checksum-roster-omission', RUNTIME, "'build-inputs.sha256', ", ''),
  ('bundle-digest', RUNTIME, 'bundle.stat().st_size != expected_size or sha256_file(bundle) != expected_digest', 'bundle.stat().st_size != expected_size'),
  ('manifest-digest', RUNTIME, "if hashlib.sha256(manifest).hexdigest() != expected_manifest:", 'if False:'),
  ('run-source-version', RUNTIME, 'or any(decoded.get(k) != v for k, v in meta.items())', 'or False'),
