@@ -111,7 +111,7 @@ func TestGitLabRosterUnsetClaim(t *testing.T) {
 		"NOTICE: STATUSGEN_ROSTER_ENV is not set",
 		"Merge-request job: statusgen --lint refuses it",
 		"'" + lintOut + "'",
-		fmt.Sprintf("and exits %d, so this job FAILS", lintCode),
+		fmt.Sprintf("and exits %d, so the merge-request job FAILS", lintCode),
 	} {
 		if !strings.Contains(notice, want) {
 			t.Errorf("the roster step's NOTICE does not say %q, which is what statusgen --lint does with no roster (exit %d, stdout %q):\n%s", want, lintCode, lintOut, notice)
@@ -132,7 +132,13 @@ func TestGitLabRosterUnsetClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := string(docBytes)
+	// Only section 2e counts: a copy of these lines elsewhere in the guide must not
+	// satisfy the check.
+	_, doc, ok := strings.Cut(string(docBytes), "\n## 2e. ")
+	if !ok {
+		t.Fatal("docs/adopting-assay-gitlab.md has no section 2e heading")
+	}
+	doc, _, _ = strings.Cut(doc, "\n## ")
 	for _, line := range strings.Split(strings.ReplaceAll(notice, home, "/root"), "\n") {
 		if line = strings.TrimSpace(line); line != "" && !strings.Contains(doc, line) {
 			t.Errorf("docs/adopting-assay-gitlab.md section 2e does not quote the roster step's line verbatim:\n%s", line)

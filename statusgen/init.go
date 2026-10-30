@@ -834,7 +834,7 @@ stages: [statusgen]
     if [ -z "${STATUSGEN_ROSTER_ENV:-}" ]; then
       echo "NOTICE: STATUSGEN_ROSTER_ENV is not set — no trust roster for this job."
       echo "statusgen reads the roster from ${HOME}/.config/assay/roster.env, which nothing has written. A missing roster file is a REFUSED configuration, not a partial one."
-      echo "Merge-request job: statusgen --lint refuses it — it prints 'LINT: REFUSED configuration; trust-dependent checks could-not-check' and exits 5, so this job FAILS until the variable is set."
+      echo "Merge-request job: statusgen --lint refuses it — it prints 'LINT: REFUSED configuration; trust-dependent checks could-not-check' and exits 5, so the merge-request job FAILS until the variable is set."
       echo "Default-branch regen job: the board is still generated, but every roster-backed check on it (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass."
       echo "Set a CI/CD variable named STATUSGEN_ROSTER_ENV holding the NON-secret roster lines (ASSAY_TRUSTED_BOT_SLUGS with its verifier= binding, ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP) — never a token, key, or password. See docs/adopting-assay-gitlab.md, section Trust roster for CI."
     else
