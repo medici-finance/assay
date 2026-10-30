@@ -19,10 +19,10 @@ func TestHeldRecountedNotHolds(t *testing.T) {
 		{"ge/29 past flip hold", "Why this entry exists: the earlier PASS at 0c292571a3e0794598cb11733d0b6c966c89aae0 landed through #4602, but its board flip was held on #4536. This entry is a fresh, complete run of every row."},
 		{"#4200 RISK-VALUE mapping", "RISK-VALUE: DERIVED — listTimeout = 45 * time.Second @ tools/desk/internal/deskkit/preflight.go:1098 — carried over unchanged from the deleted dry-run probe's context.WithTimeout(45*time.Second); a timeout maps to could-not-check, never to permitted. Reversible operational knob, ranked last."},
 		{"tally label only", "Summary: passed 8; could-not-check 0, held 0."},
-		{"tally in parentheses", "Every row ran (could-not-check 0)."},
+		{"tally in parentheses", "Every check ran (could-not-check 0)."},
 		{"tally with colon", "Accounting: passed 9; could-not-check: 0."},
 		{"flip had been held", "The earlier flip had been held on medici-finance/assay#4536."},
-		{"coerces mutation", "The mutation coerces could-not-check to green, and the row then fails."},
+		{"mutation sentence", "The mutation rounds could-not-check to pass, and the test then fails."},
 	} {
 		cases = append(cases, heldScanCase{c.name, pass + c.line + "\n", false})
 	}
@@ -33,7 +33,9 @@ func TestHeldRecountedNotHolds(t *testing.T) {
 //
 // Prose stays read: every shape below refuses a strict PASS, and each sits
 // beside one of the three excused shapes so a loosened excuse is seen. The
-// first group is what the reviewer of the first revision showed released.
+// first group is what the reviewer of the first revision showed released; the
+// later groups are what the reviewers of the second showed released, and one
+// line per guard of each excused shape, built so that guard alone keeps it read.
 func TestHeldRecountedKeepsHolds(t *testing.T) {
 	const pass = "**VERIFY: PASS** — every original row passes.\n\n"
 	var cases []heldScanCase
@@ -61,34 +63,81 @@ func TestHeldRecountedKeepsHolds(t *testing.T) {
 		{"zero then caps cnc", "Live probe COULD-NOT-CHECK 0 clusters reachable."},
 		{"zero colon caps held", "Row 2 HELD: 0 runners online."},
 		{"zero colon row cnc", "Row 3 could-not-check: 0 clusters reachable."},
+
+		// The second revision's reviewers: real holds the wider excuses released.
+		{"converted offline", "Row 3: the runner was offline, so I converted could-not-check to pass."},
+		{"promoted no runner", "We promoted could-not-check to pass for the live smoke row; no runner was online."},
+		{"coerced to green", "The live probe never reached the cluster; the verifier coerced could-not-check to green."},
+		{"rounds runner absent", "Row 4 passed only because verifyrun rounds could-not-check to pass when the runner is absent."},
+		{"upgraded to a pass", "The harness upgraded could-not-check to a pass on this host (no cluster contact)."},
+		{"rounded into success", "Row 2 smoke: rounded could-not-check into success, runner offline."},
+		{"converts row label", "Row 3: the gate converts could-not-check to pass, so row 3 stays unproven."},
+		{"rounded re-run", "Smoke run: rounded could-not-check to green; re-run needed."},
+		{"flip row named", "Row 3's flip was held on #4536."},
+		{"flip verified", "The verified flip was held on #4536."},
+		{"flip this entry", "This entry's flip had been held on medici-finance/assay#4536."},
+		{"flip comma still is", "The flip was held on #4536, and still is."},
+		{"flip comma pending", "Its board flip was held on #4536, pending the runner."},
+		{"flip semicolon reason", "The verified flip was held on #4536; the runner is offline."},
+		{"flip had been comma", "This brief's flip had been held on medici-finance/assay#4536, awaiting the runner."},
+		{"flip paren reason", "Its board flip was held on #4536) and the runner is offline."},
+		{"tally paren after row", "Verify row 3 (could-not-check 0)."},
+		{"tally comma after row", "Row 3, could-not-check 0."},
+		{"tally colon after row", "Row 3 (could-not-check: 0)."},
+		{"td tally", "<td>(could-not-check 0)</td>"},
+		{"tally beside td", "Accounting: passed 8; could-not-check 0. <td>x</td>"},
+
+		// Zero tally: one guard each.
 		{"zero then noun", "Accounting: passed 8; could-not-check 0 clusters reachable."},
+		{"zero no clause break", "The smoke step could-not-check 0."},
 		{"zero after row", "Verify row 3 could-not-check 0."},
 		{"zero beside short ratio", "Accounting: 1 of 2 rows passed; could-not-check 0."},
 		{"zero tally caps", "Accounting: passed 8; COULD-NOT-CHECK 0."},
 		{"zero tally mixed case", "Accounting: passed 8; Could-Not-Check 0."},
 		{"nonzero tally", "Accounting: passed 8; could-not-check 2."},
-		{"rounds caps", "The adapter rounds COULD-NOT-CHECK to pass."},
+		{"tally then second hold", "Accounting: passed 8; could-not-check 0; the live probe is held."},
+		{"pipe line", "Accounting: could-not-check 0; passed 8 | n/a."},
+		{"struck span beside tally", "Accounting: ~~passed 7~~ passed 8; could-not-check 0."},
+		{"count before", "Accounting: 9 obligations, 8 passed, 1 could-not-check."},
+
+		// Mutation sentence: one guard each.
+		{"rounds caps", "The mutation rounds COULD-NOT-CHECK to pass."},
+		{"mutation verb missing", "The mutation maps could-not-check to pass."},
+		{"mutation past verb", "The mutation rounded could-not-check to pass."},
+		{"mutation target green", "The mutation rounds could-not-check to green."},
+		{"mutation no target", "The mutation rounds could-not-check down to fail."},
+		{"verb without mutation", "The verifier rounds could-not-check to pass."},
+		{"mutation offline", "The mutation rounds could-not-check to pass while the runner is offline."},
+		{"mutation row outside", "Row 4: the mutation rounds could-not-check to pass."},
+		{"mutation row inside", "Mutations: (row 2 rounds could-not-check to pass)."},
+		{"mutation paren open", "Mutations: row 2 (the adapter rounds could-not-check to pass on this host) failed."},
 		{"rounds with row", "Row 2 could-not-check, and the adapter rounds it to pass."},
 		{"rounds after held", "Row 2 is held, so the adapter rounds could-not-check to pass here and also holds row 3 could-not-check."},
 		{"maps without verb", "Row 2 could-not-check to pass the gate."},
-		{"flip held present", "Its board flip is held on #4536."},
-		{"flip held no tracker", "Its board flip was held on the runner."},
-		{"flip held and still", "Its board flip was held on #4536 and the row is still held."},
-		{"flip held caps", "Its board flip was HELD on #4536."},
-		{"flip held reason", "Its board flip was held on #4536 pending the runner."},
+
+		// Past flip hold: one guard each.
+		{"flip held present", "The earlier flip is held on #4536."},
+		{"flip held no tracker", "The earlier flip was held on the runner."},
+		{"flip held caps", "The earlier flip was HELD on #4536."},
+		{"flip held reason", "The earlier flip was held on #4536 pending the runner."},
+		{"flip earlier comma", "The earlier flip was held on #4536, pending the runner."},
+		{"flip earlier semicolon", "The earlier flip was held on #4536; the runner is offline."},
+		{"flip earlier paren", "The earlier flip was held on #4536) and the runner is offline."},
+		{"flip held and still", "The earlier flip was held on #4536 and the row is still held."},
+		{"flip still next", "The earlier flip was held on #4536. It still is."},
+		{"flip no earlier", "Its board flip was held on #4536."},
+		{"flip earlier row", "Row 3's earlier flip was held on #4536."},
+		{"flip earlier verified", "The earlier verified flip was held on #4536."},
+		{"tracker without flip", "The earlier smoke step was held on #4536."},
+
+		// Other prose.
 		{"row before", "Verify row 3 could-not-check on this host."},
 		{"rows plural", "Rows 2 and 4 are held."},
 		{"reason pending", "The cluster step is held pending a runner."},
-		{"count before", "Accounting: 9 obligations, 8 passed, 1 could-not-check."},
 		{"lead dash", "could-not-check — OFFLINE (no cluster contact permitted)."},
 		{"lead emphasis", "**Held at `implemented` — the deliverable still carries a confirmed fail-open.**"},
 		{"verdict blocked", "VERIFY: BLOCKED — the cluster rows could-not-check offline."},
 		{"risk record", "RISK-VALUE: DERIVED — smoke run = \"could-not-check\" @ runner.log:1 — no runner online."},
-		{"tally then second hold", "Accounting: passed 8; could-not-check 0; the live probe is held."},
-		{"pipe line", "Accounting: could-not-check 0; passed 8 | n/a."},
-		{"rounds without target", "The adapter rounds could-not-check down to fail."},
-		{"tracker without flip", "The live smoke step was held on #4536."},
-		{"struck span beside tally", "Accounting: ~~passed 7~~ passed 8; could-not-check 0."},
 	} {
 		cases = append(cases, heldScanCase{c.name, pass + c.line + "\n", true})
 	}
