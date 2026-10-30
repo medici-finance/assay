@@ -200,7 +200,8 @@ func huskDetachedProof(dir string) func(head string) string {
 	}
 }
 
-// huskLockOwner decides whether the caller may retire a husk's lock, and says why in words
+// huskLockOwner decides whether the caller may retire a lock — a husk's, or (remove's ordinary
+// path) a live tree's — and says why in words
 // (the evidence line for the audit row and the refusal alike). It never retires git's
 // in-flight "initializing" lock, nor a lock naming no session — nobody is identifiable as
 // its owner.

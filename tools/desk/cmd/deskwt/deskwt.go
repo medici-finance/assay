@@ -826,6 +826,26 @@ func runRemove(o removeOpts) (err error) {
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported
 	// but the deletion PROCEEDS (a cleanup hook that fails must never strand a worktree the
 	// caller asked to remove). The hook runs with cwd = the worktree about to be removed.
+	// OWNER — judged BEFORE anything is deleted. git never prunes a locked registration, so
+	// deleting a locked tree stranded its registration (exit 6, branch still held) — and did
+	// so to a tree another live session had locked. A session's own end-of-PR remove of its
+	// own locked home is the normal case: the caller's own lock, or one whose session the
+	// roster proves gone, is retired just before the delete; any other lock is refused with
+	// the tree untouched. The same owner rule the husk arm applies.
+	locked, lerr := guard.lockedWorktrees(dir)
+	if lerr != nil {
+		return lerr
+	}
+	lockReason, isLocked := locked[rt]
+	lockNote := ""
+	if isLocked {
+		ok, why := huskLockOwner(guard, rt, lockReason)
+		if !ok {
+			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
+		}
+		lockNote = "; lock retired: " + why
+	}
+
 	// The repo is read BEFORE the delete: dir may be the home itself (#4272), gone after it.
 	ac.repo = repoOrEmpty(dir)
 	if _, herr := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{
@@ -834,10 +854,21 @@ func runRemove(o removeOpts) (err error) {
 		fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
 	}
 
+	if isLocked {
+		if _, uerr := runGit(dir, "worktree", "unlock", rt); uerr != nil {
+			return deskkit.Unverifiable("could not unlock "+rt+" before removing it", uerr)
+		}
+	}
 	if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
+		if isLocked {
+			if _, relErr := runGit(survivingGitDir(guard, dir, []string{rt}), "worktree", "lock", "--reason", lockReason, rt); relErr != nil {
+				return deskkit.Unverifiable("could not remove "+rt+" and could not restore its lock: "+rmErr.Error(), relErr)
+			}
+			fmt.Fprintln(os.Stderr, "deskwt: removal failed; the original lock on "+rt+" was restored")
+		}
 		return rmErr
 	}
-	ac.detail = "removed " + rt
+	ac.detail = "removed " + rt + lockNote
 	fmt.Println("removed " + path)
 	return nil
 }

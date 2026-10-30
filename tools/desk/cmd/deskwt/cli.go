@@ -411,7 +411,15 @@ upstream (or --base) lacks is RECLAIMED — deleted and recreated — with an au
 is checked out somewhere, or carries unpushed commits, is REFUSED, naming the worktree path or
 the commit count.`
 
-	removeLong = `remove also clears a registration whose worktree has NO git link left — an empty-directory
+	removeLong = `remove releases a LOCKED worktree only when the lock is the caller's own session's
+($DESK_SESSION, then $CLAUDE_SESSION_ID) or the roster proves its session gone: that lock is
+retired just before the delete and restored if the delete fails. Any other lock — another
+live session's, one naming no session, git's "initializing" lock — is refused and the tree
+is left untouched. This is the end-of-PR step for a session that made its own home:
+` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
+pushed and the tree is clean.
+
+remove also clears a registration whose worktree has NO git link left — an empty-directory
 husk, or a directory already gone — which the gates above cannot open (they exited 6 and left
 the branch registered forever). It does so only when the directory holds nothing, no process
 holds it open (lsof — without root it sees only the caller's own processes; unavailable = could-not-check, refuse), the admin HEAD is recoverable
