@@ -29,7 +29,7 @@ func TestContainerHistoryFailFirst(t *testing.T) {
 	runGit(t, fx.home, "update-ref", remoteMainRef, head)
 	check := checkJSON(1, fixtureRun, head, "docs/brief.md", "m")
 	putFile(t, fx.check, check)
-	bundle := filepath.Join(t.TempDir(), "history.bundle")
+	bundle := filepath.Join(t.TempDir(), "history.pack")
 	res, stderr := captureVerifyrun(t, []string{"--open-bracket", "--root", fx.home, "--brief", fx.brief, "--out", fx.receipt, "--history-out", bundle})
 	if res.code != 0 {
 		t.Fatalf("open: %d %s", res.code, stderr)
@@ -48,7 +48,7 @@ func TestContainerHistoryFailFirst(t *testing.T) {
 	if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "names no commit") {
 		t.Fatalf("without history, want original refusal: %d %s", res.code, stderr)
 	}
-	res, stderr = captureVerifyrun(t, append(args, "--history-bundle", bundle))
+	res, stderr = captureVerifyrun(t, append(args, "--history-pack", bundle))
 	if res.code != 0 {
 		t.Fatalf("with history: %d %s", res.code, stderr)
 	}
@@ -76,14 +76,14 @@ func TestContainerHistoryFailFirst(t *testing.T) {
 func TestHistoryRefusesInputs(t *testing.T) {
 	fx := newContainerFixture(t)
 	head := gitOutT(t, fx.home, "rev-parse", "HEAD")
-	bundle := filepath.Join(t.TempDir(), "history.bundle")
+	bundle := filepath.Join(t.TempDir(), "history.pack")
 	if err := exportContainerHistory(fx.home, bundle, head); err != nil {
 		t.Fatal(err)
 	}
 	if err := exportContainerHistory(fx.home, bundle, head); err == nil {
 		t.Fatal("overwrote an existing bundle")
 	}
-	if err := exportContainerHistory(fx.home, filepath.Join(fx.home, "history.bundle"), head); err == nil {
+	if err := exportContainerHistory(fx.home, filepath.Join(fx.home, "history.pack"), head); err == nil {
 		t.Fatal("exported into the admitted home")
 	}
 	if _, _, cleanup, err := importContainerHistory(fx.home, fx.brief, bundle, fixtureSource); err == nil {
@@ -95,7 +95,7 @@ func TestHistoryRefusesInputs(t *testing.T) {
 		cleanup()
 		t.Fatal("accepted a corrupt bundle")
 	}
-	res, stderr := captureVerifyrun(t, []string{"--brief", fx.brief, "--history-bundle", bundle, "--fail-first"})
+	res, stderr := captureVerifyrun(t, []string{"--brief", fx.brief, "--history-pack", bundle, "--fail-first"})
 	if res.code != verifyrunExitUsageError || !strings.Contains(stderr, "only to a container-netns") {
 		t.Fatalf("history accepted outside container fail-first: %d %s", res.code, stderr)
 	}
@@ -110,7 +110,7 @@ func TestHistoryBaselineGuards(t *testing.T) {
 	runGit(t, fx.home, "add", "docs/later.md")
 	runGit(t, fx.home, "commit", "-m", "later brief")
 	head := gitOutT(t, fx.home, "rev-parse", "HEAD")
-	bundle := filepath.Join(t.TempDir(), "history.bundle")
+	bundle := filepath.Join(t.TempDir(), "history.pack")
 	if err := exportContainerHistory(fx.home, bundle, head); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestHistoryNoHostConfig(t *testing.T) {
 	runGit(t, fx.home, "config", "credential.helper", "sensitive-host-helper")
 	runGit(t, fx.home, "config", "remote.origin.url", "https://example.invalid/private-remote")
 	putFile(t, filepath.Join(fx.home, ".git", "hooks", "post-checkout"), "host hook must not travel\n")
-	bundle := filepath.Join(t.TempDir(), "history.bundle")
+	bundle := filepath.Join(t.TempDir(), "history.pack")
 	if err := exportContainerHistory(fx.home, bundle, head); err != nil {
 		t.Fatal(err)
 	}

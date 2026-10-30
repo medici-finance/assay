@@ -1995,10 +1995,10 @@ Flags:
                     runner_source, runner_tree, on_behalf_of) to --out, outside
                     the home.
   --history-out <file>  with --open-bracket, export complete admitted HEAD history
-                    to a new Git bundle outside the home. Mount it read-only in
+                    to a new Git object pack outside the home. Mount it read-only in
                     the container; no host config, hooks or credentials travel.
-  --history-bundle <file>  with container-netns --fail-first, import that bundle
-                    into private scratch for baseline checkouts. Its HEAD must
+  --history-pack <file>  with container-netns --fail-first, import that pack
+                    into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
                     See docs/container-baseline-history.md.
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
@@ -2186,8 +2186,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	imageDigest := fs.String("container-image-digest", "", "container-netns only (required): sha256:<64 hex> digest of the image the rows run in, supplied by the host")
 	openBracket := fs.Bool("open-bracket", false, "host open step of a container run: run the admission check, digest the home and write the receipt to --out")
 	openOut := fs.String("out", "", "with --open-bracket: the receipt file to write, outside the home")
-	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git bundle outside the home")
-	historyBundle := fs.String("history-bundle", "", "container-netns --fail-first: read-only admitted-source Git bundle for isolated baseline checkouts")
+	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git object pack outside the home")
+	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
 	creditMode := fs.Bool("credit", false, "with --bracket-digest and --source: judge each bracket's credit (provenance, record, binding)")
@@ -2320,8 +2320,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --history-out only applies to --open-bracket")
 		return verifyrunExitUsageError
 	}
-	if *historyBundle != "" && (*sandbox != sandboxContainerNetns || !*failFirstMode || *openBracket || *closeBracket || *checkMode || *inContainer || *bracketDigestMode) {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --history-bundle applies only to a container-netns --fail-first execution")
+	if *historyPack != "" && (*sandbox != sandboxContainerNetns || !*failFirstMode || *openBracket || *closeBracket || *checkMode || *inContainer || *bracketDigestMode) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack applies only to a container-netns --fail-first execution")
 		return verifyrunExitUsageError
 	}
 	if *openBracket || *closeBracket || *openOut != "" {
@@ -2608,16 +2608,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var riskyIDs map[string]bool
 	if *failFirstMode {
 		baseRoot, baseBrief := root, path
-		if *historyBundle != "" {
+		if *historyPack != "" {
 			binding, err := checkBinding(container.cell.Check)
 			if err != nil {
-				fmt.Fprintln(stderr, "statusgen verifyrun: --history-bundle:", err)
+				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
 				return verifyrunExitCouldNot
 			}
 			var cleanup func()
-			baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyBundle, binding.Source)
+			baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
 			if err != nil {
-				fmt.Fprintln(stderr, "statusgen verifyrun: --history-bundle:", err)
+				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
 				return verifyrunExitCouldNot
 			}
 			defer cleanup()
