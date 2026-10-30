@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -472,5 +473,42 @@ func TestAmbientTokenArithHeredoc(t *testing.T) {
 		if v.Block {
 			t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
 		}
+	}
+}
+
+// regression: #4821
+func TestAmbientTokenSubstHeredoc(t *testing.T) {
+	// The end of a `$(…)` holding a heredoc, a heredoc's delimiter line, and
+	// a `${…}` span must each be found where the shell finds them, or the
+	// hook reads a later read as data.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for i, cmd := range []string{
+		"printf '%s\\n' \"$(tr a-z A-Z <<'END'\nsee (a) and b)\nEND\ngh auth token\n)\"",
+		"wc -l <<END\n$(sort <<'TXT'\nb)\nTXT\ngh auth token\n)\nEND",
+		"n=$(wc -l <<'TXT'\n)\ngh auth token\nTXT\n)",
+		"cat > notes.md <<'DONE'\nDONE \nit's\nDONE\ngh auth token\necho 'x'",
+		"printf %s ${p%\\}<<T}\ngh auth token\nT}",
+	} {
+		t.Run(fmt.Sprintf("refused-%d", i), func(t *testing.T) {
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			requireAmbientRefusal(t, v, err, cmd)
+		})
+	}
+	for i, cmd := range []string{
+		"git commit -m \"$(cat <<'MSG'\nwriteguard: tidy\n\nSteps: 1) lex 2) judge\nMSG\n)\"",
+		"x=$(cat <<'T'\nnote a) here\nT\n)\ncat > notes.md <<'N'\nsee gh auth token\nN",
+		"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's gh auth token\nE",
+	} {
+		t.Run(fmt.Sprintf("allowed-%d", i), func(t *testing.T) {
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			if err != nil {
+				t.Fatalf("%q: run: %v", cmd, err)
+			}
+			if v.Block {
+				t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
+			}
+		})
 	}
 }

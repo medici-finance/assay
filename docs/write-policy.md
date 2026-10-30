@@ -133,13 +133,29 @@ sanctioned path and says a failed or empty mint is a stop to report.
   inside a `((…))` or `$((…))` the scan confirms as arithmetic: the first `)`
   closing its parentheses is immediately followed by a second `)`, as the shell
   decides it. A `((` that closes any other way opens nested subshells, and its
-  `<<` stays a heredoc. When the scan cannot place a `<<`, it refuses the call if
-  that heredoc's delimiter line exists, rather than guess which way the shell
-  reads it. That covers a `<<` after a `((` or `$((` it cannot confirm (one
-  holding a quote, backquote, `#` or nested expansion), after `$[`, and inside a
-  `${…}` or a `name[…]` subscript, plus a heredoc inside `$(…)` whose delimiter
-  line is not inside the substitution. It over-reaches on a data heredoc that
-  follows such a construct.
+  `<<` stays a heredoc. A heredoc body ends only at a line that is exactly its
+  delimiter (leading tabs stripped for `<<-`). A line that differs only by
+  surrounding blanks stays body, as it does in the shell. A `${…}` or `name[…]`
+  span ends at a `}` or `]` outside quotes and escapes. When the scan cannot
+  place a `<<`, it refuses the call if that heredoc's delimiter line exists,
+  rather than guess which way the shell reads it. That covers a `<<` after a
+  `((` or `$((` it cannot confirm (one holding a quote other than around a
+  plain word, a backquote, a `#` or a nested expansion), after `$[`, and inside
+  a `${…}` or a `name[…]` subscript. A heredoc delimiter spelled with a
+  substitution is refused outright.
+- **Substitution end (desk-decided).** A `$(…)` holding a heredoc ends where
+  bash 4 and later and zsh end it: after the heredoc bodies, at the first `)`
+  outside them. That holds at every place a substitution is read: unquoted, in
+  a double-quoted string, and in an unquoted-delimiter heredoc body. bash 3.2,
+  the macOS `/bin/sh`, ends it at the first `)` even inside a body. Where the two
+  ends differ, the rest of the command is judged under both readings, and a read
+  under either one is refused. Where the scan cannot be sure of the later end
+  (a heredoc read after `((`, `$[`, `${` or `name[` inside the substitution),
+  it refuses the call. This over-reaches for bash 4 and zsh on text they treat
+  as heredoc data but bash 3.2 runs. For example, an unquoted `x=$(cat <<'E'`
+  whose body has an unbalanced `)` and a later line that is a read is refused.
+  A double-quoted commit message (`git commit -m "$(cat <<'E' …)"`) stays
+  allowed, because bash 3.2 reads the rest of it as quoted text.
 - **Work bound.** The scan reads the raw command, with no masking pass of its own,
   and charges every step to a budget of 32 units per byte plus a fixed base: each
   script lexed (its length), each candidate command position and gh argument
@@ -180,9 +196,9 @@ sanctioned path and says a failed or empty mint is a stop to report.
 | 2 | Core classification, including the depth fail-closed and ANSI-C decoding | `cd deskcore && go test ./writepolicy/ -run 'TestAmbientForgeTokenClassify\|TestForgeANSICDecode' -count=1` | PASS |
 | 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/ambient-token-unmatched' -count=1` | PASS (mutant caught) |
 | 4 | Operator `!` input is untouched (paired control, manual; re-run after any harness change) | One session, hook armed, `DESK_LOOP` or `DESK_SESSION` set in the hook's environment. (a) The agent runs a control command through its Bash tool, e.g. `gh auth token >/dev/null`. (b) The operator types the identical command with the `!` prefix in the same session. | (a) refused with `ambient forge credential read`; (b) runs with no refusal. A refusal in (b) means the harness now routes operator input through PreToolUse: stop and re-decide the gate. |
-| 5 | The scan's own work is bounded for the shapes tested: wrapper chains, repeated ANSI-C spans, many heredoc operators on one line and long runs of quoted spans each decide within the per-byte budget and within a deadline, and the hook decides those shapes within its deadline. The deadline is shown for these shapes only: the shared masking that runs first is not bounded while #4854 is open | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWrapperChainLinear\|TestForgeScanWorkBounded' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenWrapperChain\|TestAmbientTokenScanDeadline' -count=1` | PASS |
+| 5 | The scan's own work is bounded for the shapes tested: wrapper chains, repeated ANSI-C spans, many heredoc operators on one line, long runs of quoted spans and many substitutions whose two ends differ each decide within the per-byte budget and within a deadline, and the hook decides those shapes within its deadline. The deadline is shown for these shapes only: the shared masking that runs first is not bounded while #4854 is open | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWrapperChainLinear\|TestForgeScanWorkBounded' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenWrapperChain\|TestAmbientTokenScanDeadline' -count=1` | PASS |
 | 6 | Budget exhaustion and excess nesting are refused outright, whatever the text spells, including decoded and split spellings and a command naming no read | `cd deskcore && go test ./writepolicy/ -run 'TestForgeBudgetFailsClosed\|TestForgeUndecidedRefused' -count=1` | PASS |
-| 7 | Heredoc placement: a `((` not confirmed as arithmetic keeps its `<<` a heredoc, an unplaced `<<` with a delimiter line is refused, confirmed arithmetic and plain data heredocs stay allowed, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc' -count=1` | PASS |
+| 7 | Heredoc placement and substitution end: a `((` not confirmed as arithmetic keeps its `<<` a heredoc, an unplaced `<<` with a delimiter line is refused, a delimiter line matches only exactly, a quoted or escaped `}` does not end a `${…}` span, a `$(…)` holding a heredoc ends after its bodies at all three places a substitution is read and under the bash 3.2 reading too, and confirmed arithmetic, plain data heredocs and commit messages with an unbalanced `)` stay allowed, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc' -count=1` | PASS |
 
 ## Consumers and migration
 

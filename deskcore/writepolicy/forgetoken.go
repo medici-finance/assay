@@ -43,9 +43,17 @@ import (
 // a shift and nothing runs. A `<<` the scan cannot place (after a `((` or
 // `$((` it cannot confirm either way, after `$[`, or inside a `${…}` or a
 // `name[…]` subscript) may be a shift in bash, so a heredoc it opens whose
-// delimiter line exists is undecided. So is a heredoc inside `$( … )` whose
-// delimiter line is not inside the substitution: the substitution's end was
-// found without reading the heredoc.
+// delimiter line exists is undecided. A heredoc body ends at the first line
+// that is exactly its delimiter word (after its leading tabs, for `<<-`), as
+// the shell compares it.
+//
+// A `$( … )` (unquoted, double-quoted or in a heredoc body) holding a heredoc
+// ends where the shells disagree when a body holds a `)`: bash 4+ and zsh read
+// the bodies to find its end (substEnd); bash 3.2, which is macOS /bin/sh,
+// takes the first `)` that closes the parentheses. The scan follows the first
+// reading and judges the rest of the script under the second one as well
+// (fork). A heredoc in a substitution whose delimiter line is not inside it,
+// or whose end the scan cannot place, is undecided.
 //
 // The scan reads the RAW command and does its own quote, comment and heredoc
 // handling (it uses none of the shared maskers), so quoting a word
@@ -130,13 +138,14 @@ func (st *forgeState) spend(n int) bool {
 // script lexes cmd as a script of its own: a top-level command, or the text a
 // `sh -c`, `eval`, here-string, pipe, heredoc or substitution executes.
 func (st *forgeState) script(cmd string, depth int) bool {
-	return st.lexScript(cmd, depth, false, false)
+	return st.lexScript(cmd, depth, false, false, false)
 }
 
 // lexScript is script with the lexer's starting state: subst marks the text of
-// a `$( … )` whose end matchParen found, ambig a script in which any `<<` may
-// be a shift (the inside of a `$((` that is not confirmed either way).
-func (st *forgeState) lexScript(cmd string, depth int, subst, ambig bool) bool {
+// a `$( … )` whose end substEnd placed, ambig a script in which any `<<` may
+// be a shift (the inside of a `$((` that is not confirmed either way), old a
+// script read the way bash 3.2 reads it (see fork).
+func (st *forgeState) lexScript(cmd string, depth int, subst, ambig, old bool) bool {
 	if depth > maxForgeTokenDepth {
 		// Nesting too deep to lex is not evidence of absence, and the text
 		// cannot be judged by its spelling either: refuse.
@@ -145,9 +154,16 @@ func (st *forgeState) lexScript(cmd string, depth int, subst, ambig bool) bool {
 	if !st.spend(len(cmd) + 1) {
 		return true
 	}
-	l := forgeLexer{st: st, raw: cmd, depth: depth, subst: subst, ambig: ambig,
+	l := forgeLexer{st: st, raw: cmd, depth: depth, subst: subst, ambig: ambig, old: old,
 		shifts: strings.Contains(cmd, "<<")}
 	return l.scan()
+}
+
+// substScript lexes the text of a `$( … )`: under the bash 4+ reading its
+// heredocs must all end inside it (subst); under the bash 3.2 one a heredoc
+// left open runs to the end of the text, as that shell reads it.
+func (l *forgeLexer) substScript(text string, ambig, old bool) bool {
+	return l.st.lexScript(text, l.depth+1, !old, ambig, old)
 }
 
 // forgeLineFeedsShell reports whether a heredoc's introducing command line
@@ -196,6 +212,7 @@ type forgeHeredoc struct {
 	word   string
 	quoted bool // the delimiter was quoted: the body is not expanded
 	ambig  bool // the `<<` may be a shift in bash, not a heredoc
+	dash   bool // `<<-`: leading tabs are removed from each body line
 }
 
 type forgeLexer struct {
@@ -216,6 +233,34 @@ type forgeLexer struct {
 	// scan cannot place, so any later `<<` may be a shift. subst: this script
 	// is the text of a `$( … )`. shifts: the script holds a `<<` at all.
 	ambig, subst, shifts bool
+	// old: the script is read as bash 3.2 reads it (a substitution ends at
+	// the first `)` closing its parentheses). forked: the bash 3.2 reading of
+	// the rest of this script has been judged. pos: where scan starts.
+	old, forked bool
+	pos         int
+}
+
+// fork judges the rest of the script, from at, the way bash 3.2 reads it: a
+// copy of the lexer in its current state, in which every substitution ends at
+// the first `)` closing its parentheses. One fork per script covers that
+// reading of everything after the first substitution the two readings end
+// differently, so a lexer forks at most once, and a fork never does.
+func (l *forgeLexer) fork(at int) bool {
+	if l.old || l.forked {
+		return false
+	}
+	l.forked = true
+	if !l.st.spend(len(l.raw) - at + 1) {
+		return true
+	}
+	f := forgeLexer{st: l.st, raw: l.raw, depth: l.depth,
+		words: append([]forgeWord(nil), l.words...), inWord: l.inWord,
+		dyn: l.dyn, brace: l.brace, glob: l.glob,
+		stdin:   append([]forgeWord(nil), l.stdin...),
+		pending: append([]forgeHeredoc(nil), l.pending...), lineStart: l.lineStart,
+		ambig: l.ambig, subst: l.subst, shifts: l.shifts, old: true, pos: at}
+	f.cur.WriteString(l.cur.String())
+	return f.scan()
 }
 
 func (l *forgeLexer) flush() {
@@ -254,7 +299,7 @@ func isParamStart(b byte) bool {
 
 func (l *forgeLexer) scan() bool {
 	s := l.raw
-	for i := 0; i < len(s); i++ {
+	for i := l.pos; i < len(s); i++ {
 		c := s[i]
 		switch {
 		case c == '\\':
@@ -289,7 +334,7 @@ func (l *forgeLexer) scan() bool {
 			l.word(s[i+1 : i+1+j])
 			i += 1 + j
 		case c == '"':
-			j, hit := l.double(i + 1)
+			j, hit := l.double(i)
 			if hit {
 				return true
 			}
@@ -315,8 +360,8 @@ func (l *forgeLexer) scan() bool {
 				}
 				ambig = kind == arithUnplaced
 			}
-			k := matchParen(s, i+2)
-			if l.st.lexScript(s[i+2:k], l.depth+1, true, ambig) {
+			k, split, refuse := l.substEnd(s, i+2, l.old)
+			if refuse || split && l.fork(i) || l.substScript(s[i+2:k], ambig, l.old) {
 				return true
 			}
 			l.word("$()")
@@ -373,12 +418,20 @@ func (l *forgeLexer) scan() bool {
 			if op == "<<" {
 				// A heredoc: its delimiter is the operator's target word, and
 				// its body starts after this command line.
-				if j < len(s) && s[j] == '-' {
+				dash := j < len(s) && s[j] == '-'
+				if dash {
 					j++
 				}
-				if w, quoted, end := heredocWord(s, j); w != "" || quoted {
+				w, quoted, end, odd := heredocWord(s, j)
+				if odd {
+					// A substitution or backquote in the delimiter word: the
+					// shells read its end by their own rules, so the body's
+					// end cannot be placed.
+					return true
+				}
+				if w != "" || quoted {
 					l.words = append(l.words, forgeWord{s: w})
-					l.pending = append(l.pending, forgeHeredoc{w, quoted, l.ambig})
+					l.pending = append(l.pending, forgeHeredoc{w, quoted, l.ambig, dash})
 					i = end - 1
 				}
 			}
@@ -467,7 +520,7 @@ func (l *forgeLexer) scan() bool {
 	}
 	if l.subst && len(l.pending) > 0 {
 		// A heredoc opened on a substitution's last line has its body past the
-		// end matchParen found: that end cannot be trusted.
+		// substitution's end: that end cannot be trusted.
 		return true
 	}
 	return l.end(false)
@@ -479,10 +532,10 @@ func (l *forgeLexer) scan() bool {
 // a quoted one it is data. A body whose delimiter line never comes is lexed
 // as commands with all that follows it (fail closed: a delimiter read
 // differently from the shell cannot hide them). It returns the index after
-// the last body. Inside a `$( … )` a missing delimiter line is undecided
-// instead (the substitution's end was found without reading the heredoc), and
-// so is a heredoc whose `<<` may be a shift: the lines this would read as its
-// body may be commands.
+// the last body. Inside a `$( … )` read the bash 4+ way a missing delimiter
+// line is undecided instead (the substitution's end and the heredoc disagree),
+// and so is a heredoc whose `<<` may be a shift: the lines this would read as
+// its body may be commands.
 func (l *forgeLexer) heredocs(line string, start int) (int, bool) {
 	s := l.raw
 	if !l.st.spend(len(line) + 1) {
@@ -493,7 +546,7 @@ func (l *forgeLexer) heredocs(line string, start int) (int, bool) {
 	l.pending = nil
 	i := start
 	for _, h := range pend {
-		end, next := heredocEnd(s, i, h.word)
+		end, next := heredocEnd(s, i, h.word, h.dash)
 		if end < 0 {
 			if l.subst {
 				return len(s), true
@@ -504,7 +557,7 @@ func (l *forgeLexer) heredocs(line string, start int) (int, bool) {
 			return len(s), true
 		}
 		body := s[i:end]
-		if fed && l.st.script(body, l.depth+1) || !fed && !h.quoted && l.expansions(body) {
+		if fed && l.st.script(body, l.depth+1) || !fed && !h.quoted && l.expansions(body, 0, l.old) {
 			return len(s), true
 		}
 		i = next
@@ -526,13 +579,27 @@ const (
 // arithmeticEnd decides a `((` (or `$((`) whose text starts at from the way
 // bash does: it is arithmetic iff the first `)` that closes the text's
 // parentheses is followed at once by another `)`. The scan confirms that only
-// for plain text, where it is a parenthesis count; a quote, a backslash, a
-// backtick, a comment character or a `$(`, `${`, `$[`, `$'` or `$"` (which
-// bash reads by their own rules) leaves it unplaced. It returns the index of
-// that first closing `)`.
+// where it is a parenthesis count: plain text, `$#`, and a `${…}` or a
+// double-quoted span holding no parenthesis, quote, backslash, backtick or
+// nested expansion (which then cannot change the count, however bash reads
+// it). Any other quote, backslash, backtick or comment character, or a `$(`,
+// `$[`, `$'` or `$"` (which bash reads by their own rules) leaves it unplaced.
+// It returns the index of that first closing `)`.
 func (l *forgeLexer) arithmeticEnd(from int) (int, arithKind) {
 	s := l.raw
 	depth, j, kind := 0, from, arithNo
+	plain := func(k int, end byte) int { // index of end after a plain run, or -1
+		for ; k < len(s); k++ {
+			switch c := s[k]; {
+			case c == end:
+				return k
+			case c == '$' && k+1 < len(s) && strings.IndexByte("({['\"", s[k+1]) < 0:
+			case strings.IndexByte("(){}'\"`\\$", c) >= 0:
+				return -1
+			}
+		}
+		return -1
+	}
 scan:
 	for ; j < len(s); j++ {
 		switch c := s[j]; {
@@ -545,6 +612,22 @@ scan:
 				kind = arithYes
 			}
 			break scan
+		case c == '$' && j+1 < len(s) && s[j+1] == '#':
+			j++ // the argument count, not a comment
+		case c == '$' && j+1 < len(s) && s[j+1] == '{':
+			k := plain(j+2, '}')
+			if k < 0 {
+				kind = arithUnplaced
+				break scan
+			}
+			j = k
+		case c == '"':
+			k := plain(j+1, '"')
+			if k < 0 {
+				kind = arithUnplaced
+				break scan
+			}
+			j = k
 		case strings.IndexByte("'\"`\\#", c) >= 0,
 			c == '$' && j+1 < len(s) && strings.IndexByte("({['\"", s[j+1]) >= 0:
 			kind = arithUnplaced
@@ -573,16 +656,72 @@ func (l *forgeLexer) commandStart() bool {
 
 // spanShift reports whether the span opened before from (by open, closed by
 // the matching close) holds a `<<`, and whether the budget ran out reading it.
+// The close is found as the shell finds it: an escaped byte, a quoted span and
+// a substitution do not end the span or nest in it. A span the scan cannot
+// read that way (an unterminated quote, an ANSI-C span, or a substitution or
+// backquote that is unterminated or holds a `<<`) is reported as holding one:
+// the scan then cannot place a later `<<` either.
 func (l *forgeLexer) spanShift(from int, open, close byte) (exhausted, shift bool) {
 	s := l.raw
+	// skipSubst returns the index ending a `$(` or backquote at k, or -1.
+	skipSubst := func(k int) int {
+		var e int
+		if s[k] == '`' {
+			e = nextBacktick(s, k+1)
+		} else {
+			e = matchParen(s, k+2)
+		}
+		if e >= len(s) || strings.Contains(s[k:e], "<<") {
+			return -1
+		}
+		return e
+	}
 	depth, j := 1, from
+scan:
 	for ; j < len(s) && depth > 0; j++ {
-		switch s[j] {
-		case open:
+		switch c := s[j]; {
+		case c == '\\':
+			j++
+		case c == '\'':
+			k := strings.IndexByte(s[j+1:], '\'')
+			if k < 0 {
+				shift = true
+				break scan
+			}
+			j += k + 1
+		case c == '"':
+			k := j + 1
+			for ; k < len(s) && s[k] != '"'; k++ {
+				switch {
+				case s[k] == '\\':
+					k++
+				case s[k] == '`' || s[k] == '$' && k+1 < len(s) && s[k+1] == '(':
+					if k = skipSubst(k); k < 0 {
+						shift = true
+						break scan
+					}
+				}
+			}
+			if k >= len(s) {
+				shift = true
+				break scan
+			}
+			j = k
+		case c == '$' && j+1 < len(s) && s[j+1] == '\'':
+			shift = true
+			break scan
+		case c == '`' || c == '$' && j+1 < len(s) && s[j+1] == '(':
+			k := skipSubst(j)
+			if k < 0 {
+				shift = true
+				break scan
+			}
+			j = k
+		case c == open:
 			depth++
-		case close:
+		case c == close:
 			depth--
-		case '<':
+		case c == '<':
 			shift = shift || j+1 < len(s) && s[j+1] == '<'
 		}
 	}
@@ -602,15 +741,20 @@ func isName(w string) bool {
 
 // heredocEnd finds the delimiter line for a body starting at from: it returns
 // the body's end and the index after that line, or -1 when no line matches.
-// Surrounding blanks are ignored, which can only end a body sooner than the
-// shell does.
-func heredocEnd(s string, from int, word string) (int, int) {
+// The line must be exactly the word, as the shell compares it: with dash
+// (`<<-`) after its leading tabs are removed, and never with other blanks
+// around it, since a line the shell keeps as body text would end the body
+// early here and leave the rest of it to be lexed as commands.
+func heredocEnd(s string, from int, word string, dash bool) (int, int) {
 	for i := from; i < len(s); {
 		line, next := s[i:], len(s)
 		if le := strings.IndexByte(s[i:], '\n'); le >= 0 {
 			line, next = s[i:i+le], i+le+1
 		}
-		if strings.TrimSpace(line) == word {
+		if dash {
+			line = strings.TrimLeft(line, "\t")
+		}
+		if line == word {
 			return i, next
 		}
 		i = next
@@ -620,13 +764,15 @@ func heredocEnd(s string, from int, word string) (int, int) {
 
 // heredocWord reads a heredoc delimiter from j (leading blanks skipped) with
 // the shell's quote removal (bash decodes `$'…'` there too), reporting
-// whether any part was quoted and the index after the word.
-func heredocWord(s string, j int) (string, bool, int) {
+// whether any part was quoted, the index after the word, and odd when the word
+// holds a substitution or backquote (whose end the shells read by their own
+// rules, so the word and the index after it are not certain).
+func heredocWord(s string, j int) (string, bool, int, bool) {
 	for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
 		j++
 	}
 	var b strings.Builder
-	quoted := false
+	quoted, odd := false, false
 	for j < len(s) && strings.IndexByte(" \t\n;&|()<>", s[j]) < 0 {
 		switch c := s[j]; {
 		case c == '\\':
@@ -664,10 +810,12 @@ func heredocWord(s string, j int) (string, bool, int) {
 			b.WriteString(unescapeDouble(s[j+1 : min(k, len(s))]))
 			j = k + 1
 		case c == '$' && j+1 < len(s) && s[j+1] == '(':
+			odd = true
 			k := matchParen(s, j+2)
 			b.WriteString(s[j:min(k+1, len(s))])
 			j = k + 1
 		case c == '`':
+			odd = true
 			k := nextBacktick(s, j+1)
 			b.WriteString(s[j:min(k+1, len(s))])
 			j = k + 1
@@ -676,20 +824,32 @@ func heredocWord(s string, j int) (string, bool, int) {
 			j++
 		}
 	}
-	return b.String(), quoted, min(j, len(s))
+	return b.String(), quoted, min(j, len(s)), odd
 }
 
 // expansions lexes, as scripts, the substitutions in the body of a heredoc
-// under an unquoted delimiter: the shell runs them before the command reads
-// the body.
-func (l *forgeLexer) expansions(s string) bool {
-	for j := 0; j < len(s); j++ {
+// under an unquoted delimiter, from from: the shell runs them before the
+// command reads the body. old reads them as bash 3.2 does; from the first
+// substitution whose two ends differ, the rest of the body is also read that
+// way.
+func (l *forgeLexer) expansions(s string, from int, old bool) bool {
+	forked := old // the bash 3.2 reading of the rest is judged once
+	for j := from; j < len(s); j++ {
 		switch {
 		case s[j] == '\\':
 			j++
 		case s[j] == '$' && j+1 < len(s) && s[j+1] == '(':
-			k := matchParen(s, j+2)
-			if l.st.script(s[j+2:k], l.depth+1) {
+			k, split, refuse := l.substEnd(s, j+2, old)
+			if refuse {
+				return true
+			}
+			if split && !forked {
+				forked = true
+				if !l.st.spend(len(s)-j+1) || l.expansions(s, j, true) {
+					return true
+				}
+			}
+			if l.substScript(s[j+2:k], false, old) {
 				return true
 			}
 			j = k
@@ -704,13 +864,13 @@ func (l *forgeLexer) expansions(s string) bool {
 	return false
 }
 
-// double scans a double-quoted span opening before `from`, lexing every
-// substitution inside it as a command and marking the word dynamic on any
-// expansion. It returns the closing quote's index (len(m) when unterminated)
-// and whether a substitution ran the token read.
-func (l *forgeLexer) double(from int) (int, bool) {
+// double scans a double-quoted span whose opening quote is at open, lexing
+// every substitution inside it as a command and marking the word dynamic on
+// any expansion. It returns the closing quote's index (len(s) when
+// unterminated) and whether a substitution ran the token read.
+func (l *forgeLexer) double(open int) (int, bool) {
 	s := l.raw
-	for j := from; j < len(s); j++ {
+	for j := open + 1; j < len(s); j++ {
 		switch {
 		case s[j] == '\\':
 			j++
@@ -718,8 +878,8 @@ func (l *forgeLexer) double(from int) (int, bool) {
 			return j, false
 		case s[j] == '$' && j+1 < len(s) && s[j+1] == '(':
 			l.dyn = true
-			k := matchParen(s, j+2)
-			if l.st.script(s[j+2:k], l.depth+1) {
+			k, split, refuse := l.substEnd(s, j+2, l.old)
+			if refuse || split && l.fork(open) || l.substScript(s[j+2:k], false, l.old) {
 				return j, true
 			}
 			j = k
@@ -735,6 +895,107 @@ func (l *forgeLexer) double(from int) (int, bool) {
 		}
 	}
 	return len(s), false
+}
+
+// substEnd finds the `)` closing a `$(` whose text starts at from in s. It
+// returns the end the scan follows, split when the other reading ends the
+// substitution elsewhere (the caller then judges that reading as well), and
+// refuse when the end cannot be placed. Bash 4+ and zsh read the heredocs
+// inside to find it (heredocParen); bash 3.2 (old) takes the first `)` that
+// closes the parentheses, as matchParen does. Without a `<<` before that
+// first `)` the two readings agree. Where the bash 4+ end cannot be found (a
+// delimiter line that never comes) the first `)` stands, and the text's own
+// lexing refuses the open heredoc; where it is found after a `<<` the scan
+// cannot place, the end is undecided.
+func (l *forgeLexer) substEnd(s string, from int, old bool) (k int, split, refuse bool) {
+	k = matchParen(s, from)
+	if old || !strings.Contains(s[from:k], "<<") {
+		return k, false, false
+	}
+	k2, found, sure, spent := heredocParen(s, from)
+	if !l.st.spend(spent) {
+		return k, false, true
+	}
+	switch {
+	case !found || k2 == k:
+		return k, false, false
+	case !sure:
+		return k, false, true
+	}
+	return k2, true, false
+}
+
+// heredocParen is matchParen that also reads heredocs, as bash 4+ and zsh
+// do: at the end of a line on which a `<<` opened a heredoc, the body up to
+// its delimiter line is skipped. It returns the closing `)`, found false when
+// a delimiter line (or the close) never comes or a delimiter word holds a
+// substitution, sure false when a heredoc was read after a `((`, `$[`, `${`
+// or `name[` (where its `<<` may be a shift or text), and the bytes it read.
+// Every unquoted `<<` outside a comment is read as a heredoc: one that is
+// not can only make the end later than the shell's or undecided.
+func heredocParen(s string, from int) (k int, found, sure bool, spent int) {
+	depth, unsure := 1, false
+	sure = true
+	var quote byte
+	var pend []forgeHeredoc
+	for j := from; j < len(s); j++ {
+		c := s[j]
+		switch {
+		case quote != 0:
+			if c == quote && !(quote == '"' && oddBackslashesBefore(s, j)) {
+				quote = 0
+			}
+		case c == '\\':
+			j++
+		case c == '#' && (j == from || strings.IndexByte(" \t\n;&|(", s[j-1]) >= 0):
+			for j+1 < len(s) && s[j+1] != '\n' {
+				j++
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(':
+			depth++
+			unsure = unsure || j+1 < len(s) && s[j+1] == '('
+		case c == ')':
+			if depth--; depth == 0 {
+				return j, true, sure, j - from + 1
+			}
+		case c == '$' && j+1 < len(s) && (s[j+1] == '[' || s[j+1] == '{'),
+			c == '[' && j > from && isName(s[j-1:j]):
+			unsure = true
+		case c == '<' && j+1 < len(s) && s[j+1] == '<':
+			if j+2 < len(s) && s[j+2] == '<' {
+				j += 2 // a here-string
+				continue
+			}
+			n := j + 2
+			dash := n < len(s) && s[n] == '-'
+			if dash {
+				n++
+			}
+			w, quoted, end, odd := heredocWord(s, n)
+			if odd {
+				return 0, false, false, end - from
+			}
+			if w != "" || quoted {
+				pend = append(pend, forgeHeredoc{word: w, dash: dash})
+				sure = sure && !unsure
+			}
+			j = end - 1
+		case c == '\n' && len(pend) > 0:
+			i := j + 1
+			for _, h := range pend {
+				e, next := heredocEnd(s, i, h.word, h.dash)
+				if e < 0 {
+					return 0, false, false, len(s) - from
+				}
+				i = next
+			}
+			pend = nil
+			j = i - 1
+		}
+	}
+	return 0, false, false, len(s) - from
 }
 
 // ansiCEnd returns the index of the quote closing a `$'…'` body that starts

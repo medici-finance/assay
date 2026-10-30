@@ -154,7 +154,8 @@ func TestForgeScanWorkBounded(t *testing.T) {
 	// shape outruns it: each fixture is decided within a deadline, without
 	// exhausting the budget, at a bounded number of units per byte. The
 	// shapes are ANSI-C spans holding an escaped quote, many heredoc
-	// operators on one line, and many quoted spans.
+	// operators on one line, many quoted spans, and many substitutions whose
+	// two readings end differently (each script judges the other reading once).
 	const n = 600
 	for _, tc := range []struct {
 		name, cmd string
@@ -166,6 +167,10 @@ func TestForgeScanWorkBounded(t *testing.T) {
 		{"heredoc-line-allow", "sort " + strings.Repeat("<<E ", 8*n) + "\n" + strings.Repeat("E\n", 8*n) + "echo done", false},
 		{"quoted-spans", strings.Repeat(`x "b" 'c' `, 4*n) + "; gh auth token", true},
 		{"quoted-spans-allow", strings.Repeat(`x "b" 'c' `, 4*n), false},
+		{"subst-heredoc", strings.Repeat("echo \"$(cat <<'M'\n1) a\nM\n)\"\n", n) + "gh auth token", true},
+		{"subst-heredoc-allow", strings.Repeat("echo \"$(cat <<'M'\n1) a\nM\n)\"\n", n), false},
+		{"body-subst", "cat <<B\n" + strings.Repeat("$(cat <<'M'\n1) a\nM\n)\n", n) + "B\ngh auth token", true},
+		{"body-subst-allow", "cat <<B\n" + strings.Repeat("$(cat <<'M'\n1) a\nM\n)\n", n) + "B", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, st := forgeWithin(t, tc.cmd, 2*time.Second)
@@ -235,12 +240,19 @@ func TestForgeArithHeredoc(t *testing.T) {
 		{"((true); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
 		{"((true); true)\ncat > notes.md <<'E'\nit's gh auth token\nE\necho 'done'", false},
 		// Text the scan cannot read as a parenthesis count: undecided.
-		{"((\"$n\"); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
-		{"((\"x\"<<E))\ngh auth token\nE", true},
+		{"(('n'); true)\ncat > notes.md <<'E'\nit's here\nE\ngh auth token\necho 'done'", true},
+		{"(('x'<<E))\ngh auth token\nE", true},
 		// Confirmed arithmetic: its `<<` is a shift, so the next line runs.
 		{"((x<<E))\ngh auth token\nE", true},
+		{"((\"x\"<<E))\ngh auth token\nE", true},
 		{"((n = 1<<2)) && cat > notes.md <<'E'\nit's gh auth token\nE", false},
 		{"for ((i=0; i<2; i++)); do echo $i; done\ncat > n.md <<'E'\ngh auth token\nE", false},
+		// `$#`, a plain `${…}` and a plain quoted word keep the count, so a
+		// data heredoc after them is placed, and a read after its body judged.
+		{"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's\nE", false},
+		{"for ((i=0; i<${#a[@]}; i++)); do :; done\ncat > n.md <<'E'\nit's\nE\ngh auth token\necho 'x'", true},
+		{"if (( $# > 0 )); then :; fi\ncat > n.md <<'E'\nit's\nE", false},
+		{"(( \"$n\" > 1 )) && cat > n.md <<'E'\nit's\nE", false},
 	} {
 		if got := forgeTokenRead(tc.cmd); got != tc.want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
@@ -269,6 +281,29 @@ func TestForgeShiftSiblings(t *testing.T) {
 		{"x=$(cat <<'E'\nit's\nE\n); echo \"$x\"", false},
 		// `<((` is a process substitution holding a subshell, not arithmetic.
 		{"cat <((cat <<'E'\nit's\nE\n) ); gh auth token; echo 'ok'", true},
+		// A substitution ends past the heredoc bodies inside it (bash 4+,
+		// zsh) wherever it is: unquoted, double-quoted or in a heredoc body.
+		{"printf '%s\\n' \"$(tr a-z A-Z <<'END'\nsee (a) and b)\nEND\ngh auth token\n)\"", true},
+		{"wc -l <<END\n$(sort <<'TXT'\nb)\nTXT\ngh auth token\n)\nEND", true},
+		{"git commit -m \"$(cat <<'MSG'\nwriteguard: tidy\n\nSteps: 1) lex 2) judge\nMSG\n)\"", false},
+		{"wc -l <<END\n$(sort <<'TXT'\nb) a\nTXT\n)\nEND", false},
+		{"n=$(wc -l <<'TXT'\nstep 2) done\nTXT\n); cat > n.md <<'E'\nit's\nE", false},
+		// bash 3.2 ends it at the first `)` instead: that reading is judged too.
+		{"n=$(wc -l <<'TXT'\n)\ngh auth token\nTXT\n)", true},
+		{"echo \"$(cat <<'T'\n)\"; gh auth token; echo \"\nT\n)\"", true},
+		// A delimiter line is the word exactly (leading tabs removed for `<<-`).
+		{"tee n.md <<'DONE' >/dev/null\nDONE \nwe're here\nDONE\ngh auth token\nprintf 'ok'", true},
+		{"cat <<END\n\tEND\nit's\nEND\ngh auth token\necho 'x'", true},
+		{"cat <<-END\n\tbody\n\tEND\ngh auth token", true},
+		{"cat > n.md <<'END'\n END\nEND\necho ok", false},
+		// A quoted or escaped close does not end a `${…}` or `name[…]` span.
+		{": ${opt:-\"a}b\"<<T}\ngh auth token\nT}", true},
+		{"printf %s ${p%\\}<<T}\ngh auth token\nT}", true},
+		{"m[\"k]\"<<T]=v\ngh auth token\nT]=v", true},
+		{"echo ${v:-\"}\"}; cat > n.md <<'E'\nit's\nE", false},
+		{"echo ${D:-$(pwd)}; cat > n.md <<'E'\nit's\nE", false},
+		// A substitution in a delimiter word: the body's end is undecided.
+		{"cat <<$(echo E)\nbody\n$(echo E)\necho ok", true},
 	} {
 		if got := forgeTokenRead(tc.cmd); got != tc.want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
