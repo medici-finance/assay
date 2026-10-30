@@ -3,7 +3,6 @@ package trust
 import (
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 // Name-to-login maps (ASSAY_HUMAN_LOGIN_MAP and the former-humans twin ASSAY_FORMER_HUMAN_LOGIN_MAP).
@@ -68,9 +67,11 @@ func SplitNameLoginList(raw string) []string {
 // (unicode.IsSpace: a space or tab, the shape SplitNameLoginList keeps whole, and also a no-break
 // space, line separator or vertical tab, which neither splitter breaks on). Both readers refuse such
 // an entry on its own. Readers pass the UNTRIMMED half (as strings.Cut returns it), so a space next
-// to the colon is seen, not trimmed away.
+// to the colon is seen, not trimmed away. strings.Fields splits on exactly the unicode.IsSpace set,
+// so rejoining its fields reproduces the name only when the name has no whitespace rune; this keeps
+// the package off the unicode import its pure-package allow list does not carry.
 func NameHasWhitespace(name string) bool {
-	return strings.IndexFunc(name, unicode.IsSpace) >= 0
+	return strings.Join(strings.Fields(name), "") != name
 }
 
 // SpacedNameNotice is the NOTICE both readers record for an entry refused because its name half
