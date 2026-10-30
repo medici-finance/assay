@@ -165,7 +165,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("cannot read historical Evidence")
 	}
 	deliveredEvidence, err := flipEvidenceAt(dir, delivery, file)
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(deliveredEvidence)) {
+	if err != nil || !transitionDeliveredEvidencePreserved(historical, deliveredEvidence) {
 		return fail("pre-amendment history lost delivered Evidence")
 	}
 	atAmendment, e := flipEvidenceAt(dir, amendment, file)
@@ -373,4 +373,32 @@ func expectOnlyChange(original, next verifyRow) bool {
 	comparable := next
 	comparable.Expect, comparable.RiskText = original.Expect, original.RiskText
 	return reflect.DeepEqual(original, comparable)
+}
+
+// transitionDeliveredEvidencePreserved retains the byte-prefix rule for every
+// substantive result. Only the exact generated empty-Evidence placeholder may
+// instead survive as an exact Markdown quotation (#4563, human ruling
+// https://github.com/medici-finance/assay/issues/4563#issuecomment-6528575948).
+// Amendment and current-history preservation are checked separately, unchanged.
+func transitionDeliveredEvidencePreserved(historical, delivered string) bool {
+	if strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(delivered)) {
+		return true
+	}
+	const placeholder = "<!-- Independent verifier appends one row per Verify command after implementation. -->"
+	if strings.TrimSpace(delivered) != placeholder {
+		return false
+	}
+	for _, line := range strings.Split(historical, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, ">") {
+			continue
+		}
+		for strings.HasPrefix(line, ">") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+		}
+		if line == placeholder {
+			return true
+		}
+	}
+	return false
 }

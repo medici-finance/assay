@@ -38,8 +38,8 @@ files:
 - **create** `plugins/assay/references/claude-code.md` — Claude Code bindings
 - **create** `plugins/assay/references/codex.md` — Codex bindings + degradation cells
 - **create** `tools/harnesslint` — Go module: neutrality + vocabulary-closure lint
-- **amend** the `Makefile`, the CI workflows (the lint's CI hook), `go.work`
-- **amend** the `plugins/assay` SOURCES coverage roster — declare the new references/ files
+- **amend** `Makefile`, `go.work`, `.github/workflows/ci.yml` — the CI workflows (the lint's CI hook): `ci.yml` is the one workflow that runs the lint
+- **amend** `plugins/assay/SOURCES.yaml` — the `plugins/assay` SOURCES coverage roster: declare the new references/ files
 
 facts:
 - **The capability vocabulary is CLOSED (stream README)**: `dispatch-worker`,

@@ -1407,6 +1407,21 @@ var (
 // also be one of repoAliases, the aliases the registry at the judged base
 // declares for repo (decisionGateAliases); none widens nothing.
 func briefIssueRulesOn(body, repo string, boardIDs, fmBriefs, repoAliases []string) bool {
+	card, err := readGateCard(body)
+	if err != nil {
+		return false
+	}
+	if card != nil {
+		if card.Purpose != cardDecision || card.Repository != repo {
+			return false
+		}
+		// Typed links constrain the subject of an existing decision marker; they
+		// never introduce a new ruling marker or borrow verification authority.
+		if !briefIssueRulesOn("<!-- decision-gate: "+card.Brief+" -->", repo, boardIDs, fmBriefs, repoAliases) {
+			return false
+		}
+	}
+
 	repoName := repo
 	if i := strings.LastIndex(repo, "/"); i >= 0 {
 		repoName = repo[i+1:]

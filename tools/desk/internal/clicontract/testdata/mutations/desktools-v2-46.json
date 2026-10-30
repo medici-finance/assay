@@ -1,0 +1,113 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$' ./cmd/deskpins/ ./cmd/deskmanifest/ ./cmd/deskprovenance/ ./cmd/deskrebaseline/ ./cmd/deskrelease/",
+  "control": {
+    "name": "CONTROL — deskrebaseline: a parse failure exits with the wrong code (usage exit 5 becomes 6)",
+    "file": "cmd/deskrebaseline/main.go",
+    "old": "UsageExit: deskkit.ExitRefused,",
+    "new": "UsageExit: deskkit.ExitUnverifiable,"
+  },
+  "mutations": [
+    {
+      "name": "deskpins: help runs the check (the pin file is read before the command line is parsed)",
+      "file": "cmd/deskpins/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_ = pinsFn(\".\", stdout, stderr)\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskpins: an undeclared environment source (root also read from DESKPINS_ROOT)",
+      "file": "cmd/deskpins/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKPINS_ROOT\"},"
+    },
+    {
+      "name": "deskpins: the single-dash forms dropped (the declared -check -root and the legacy -version stop parsing)",
+      "file": "cmd/deskpins/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskmanifest: help runs the lint (the tree is walked before the command line is parsed)",
+      "file": "cmd/deskmanifest/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_, _ = lintFn(\".\", false)\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskmanifest: an undeclared environment source (root also read from DESKMANIFEST_ROOT)",
+      "file": "cmd/deskmanifest/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKMANIFEST_ROOT\"},"
+    },
+    {
+      "name": "deskmanifest: the legacy single-dash spellings dropped (lint -root stops parsing)",
+      "file": "cmd/deskmanifest/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskprovenance: help gathers a live card (the network read runs before the command line is parsed)",
+      "file": "cmd/deskprovenance/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_, _ = gatherFn(\"o/n\", 1, \"worker\")\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskprovenance: an undeclared environment source (--post also read from DESKPROVENANCE_POST)",
+      "file": "cmd/deskprovenance/main.go",
+      "old": "{Key: \"post\", Kind: cli.Bool, Flag: \"post\", Default: false,",
+      "new": "{Key: \"post\", Kind: cli.Bool, Flag: \"post\", Default: false, Env: []string{\"DESKPROVENANCE_POST\"},"
+    },
+    {
+      "name": "deskprovenance: the legacy single-dash spellings dropped (-dry-run -fixture stop parsing)",
+      "file": "cmd/deskprovenance/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskrebaseline: help runs the startup (the unpinned warning prints before the command line is parsed)",
+      "file": "cmd/deskrebaseline/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(errw)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskrebaseline: an undeclared environment source (repo also read from DESKREBASELINE_REPO)",
+      "file": "cmd/deskrebaseline/main.go",
+      "old": "{Key: \"repo\", Kind: cli.String, Flag: \"repo\", Default: \"\",",
+      "new": "{Key: \"repo\", Kind: cli.String, Flag: \"repo\", Default: \"\", Env: []string{\"DESKREBASELINE_REPO\"},"
+    },
+    {
+      "name": "deskrebaseline: the legacy single-dash spellings dropped (-row stops parsing)",
+      "file": "cmd/deskrebaseline/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskrelease: help runs the roster startup (activation check before the command line is parsed)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "code := cli.Run(build, argv, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(errw)\n\t}\n\tcode := cli.Run(build, argv, cli.Options{"
+    },
+    {
+      "name": "deskrelease: an undeclared flag source (cut gains a --repo flag the cut parser never sees)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "root.AddCommand(cut)",
+      "new": "cut.Flags().String(\"repo\", \"\", \"release home\")\n\troot.AddCommand(cut)"
+    },
+    {
+      "name": "deskrelease: cut's argv handed to the general parser (DisableFlagParsing dropped, so cut refusals are no longer the cut parser's)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "\t\tDisableFlagParsing: true,\n",
+      "new": "\t\tDisableFlagParsing: false,\n"
+    },
+    {
+      "name": "deskrelease: an unparseable command line skips the kill switch (unknown verb exits 2 before Guard, unaudited)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "if !handled && code == cli.ExitUsage {",
+      "new": "if !handled && code == -1 {"
+    },
+    {
+      "name": "deskrelease: cut -h alone answered as help (the audited cut refusal is skipped)",
+      "file": "cmd/deskrelease/main.go",
+      "old": "\t\t\tmark()\n\t\t\t// Kill switch FIRST among the acts",
+      "new": "\t\t\tmark()\n\t\t\tif len(rest) == 1 && (rest[0] == \"-h\" || rest[0] == \"--help\") {\n\t\t\t\treturn cmd.Help()\n\t\t\t}\n\t\t\t// Kill switch FIRST among the acts"
+    }
+  ]
+}

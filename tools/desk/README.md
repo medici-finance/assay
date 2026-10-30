@@ -121,6 +121,24 @@ and the domain refusals and exits 1/2/5 are unchanged. `GITLAB_API_BASE` stays a
 environment-only setting, read only when a verb runs, and both verbs accept the shared
 persistent `--perf-*` attribution flags.
 
+`deskpins`, `deskmanifest`, `deskprovenance`, `deskrebaseline` and `deskrelease` also generate
+their help with Cobra (desktools-v2/46). `--help`, `-h`, `help` and `--version` print to stdout
+and exit 0 before any roster, configuration, credential, network or child-process read. A bare
+invocation still prints help to stderr and exits with the tool's old usage code: 5 for
+`deskpins` and `deskrebaseline`, 2 for the other three. A command line the tree cannot parse
+exits with that same code; for `deskrelease` it does so only after the startup and the
+kill-switch check, so a disabled suite still refuses (3) and audits it. `deskmanifest` and
+`deskprovenance` keep their Go-flag single-dash spellings (`-root`, `-dry-run`). Two tools
+gain spellings they did not accept before: `deskrebaseline` now takes `-row K`, and `deskpins`
+now takes `-check`, `-root D`, `--check=V` and `--root=D` (its old argument loop refused them
+with 5). Every root also carries the shared optional `--perf-*` attribution flags; these five
+tools do not record them yet, so they are accepted and ignored. None of the five declares an
+environment variable or configuration key. `deskrelease cut` is the exception to Cobra
+parsing: it takes its argv raw, so the cut parser is still the only parser, and any word it
+does not recognise is refused (exit 5) and audited. That includes a flag written before
+`cut` and a help word: `cut -h` and `cut --help` are refused like any other flag. The verb's
+help is `deskrelease help cut`.
+
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
 tools touch state under your own config home; hooks and CI gates are invoked by git and
@@ -987,6 +1005,7 @@ contract, and the fail-closed guarantees) is documented in
 |---|---|
 | repo outside the fixed allowed set | risk-classed (no policy is never a waiver) |
 | repo compiled in as PUBLIC | risk-classed |
+| repo compiled in as INTERNAL (visible instance-wide) | risk-classed, exactly like PUBLIC |
 | repo in the set with no stated visibility (zero value) | risk-classed |
 | changed-file list empty | risk-classed (a PR always changes ≥1 file) |
 | changed-file list short of GitHub's `changed_files` | **unverifiable** (exit 6) |
@@ -1345,7 +1364,8 @@ It receives ONE JSON object on stdin:
 ```
 
 `visibility` is `public`, `private` or `unknown` (a target the roster does not list is
-`unknown`, never `private`). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
+`unknown`, never `private`; a target listed `:internal` is sent as `public`, the exposure
+class it is gated under, so no other value ever arrives). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
 `commit` or `ref`. A field with no text is not sent. The object is one line.
 
 Each `text` is a JSON string, and the callout must **decode** it before matching anything
@@ -3313,6 +3333,18 @@ exit `5`. Any other flag after the verb is taken to consume nothing, so the toke
 as positional — the fail-closed guess on this side of the verb. A lone `-` is positional, as the
 flag parser reads it, and so is anything after a bare `--`.
 
+An allowlist entry can also be **flag-restricted**: read-only only with the flags the guard lists
+for it (`flagRestrictedVerbs` in `cmd/clusterguard/shim.go`). Such a subcommand also accepts flags
+that make it do more than read, and the entry vouches for the reading form, not for every flag the
+CLI may add to it. Every argument of such a call, BEFORE the verb as well as after it, must be a
+flag listed for it or in the CLI's value-flag table (bare or `--flag=value`), or the value such a
+flag consumes; anything else — an unlisted flag, a positional argument, an empty argument, a lone
+`-`, a bare `--` — takes the call off the read-only tier, exit `5`, and the refusal names the
+argument. The pre-verb side matters because the verb scan skips a pre-verb `--flag=value` as
+self-contained, while the CLI's flag parser may still hand that flag to the subcommand. A token
+starting with `-` is never taken as a listed flag's value, so a listed flag cannot hide the flag
+after it, and a `--flag=value` consumes nothing.
+
 Exit `5` is a **refusal, not a fallback trigger**. The message says so explicitly: reaching the
 same CLI by absolute path, by a rebuilt `PATH`, or through another tool is not the sanctioned
 response to it.
@@ -3857,7 +3889,7 @@ them all. The effective set is echoed on every run, so a widening appears in run
 history. There is no narrower write scope: the outward-writing tools gate on the same
 `IsAllowedRepo` as the read-only boards.
 
-An `ASSAY_ALLOWED_REPOS` entry is either explicit (`owner/name[:ci|:no-ci][:public|:private]`)
+An `ASSAY_ALLOWED_REPOS` entry is either explicit (`owner/name[:ci|:no-ci][:public|:private|:internal]`)
 or a bare **PATTERN** `owner/*` (generalised to configuration): a pattern admits
 every current *and future* repo under that owner to `IsAllowedRepo` with no further entry
 required — this is how an operator reproduces the org-default write scope this brief
@@ -3872,20 +3904,25 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
 - `AllowedRepos()` never returns a pattern element — every caller passes each element to
   `gh api repos/<repo>`, so an `owner/*` slug there is a live break (C-10 fails the whole
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
-- **Writes to a public (or `internal`) repo require an explicit `:public` allowed-repos
-  entry** — the public-repo write gate (`PublicRepoGate`). The authorization is
-  REPOSITORY-scoped, decided once by a human out-of-band: a public/internal repo listed as
-  `owner/name:public` is a place the desk may write, and every write verb passes on it
+- **Writes to a public repo require an explicit `:public` allowed-repos entry, and writes to
+  an `internal` repo an explicit `:internal` one** — the public-repo write gate
+  (`PublicRepoGate`). The authorization is REPOSITORY-scoped, decided once by a human
+  out-of-band: a public repo listed as `owner/name:public` (an internal repo listed as
+  `owner/name:internal`) is a place the desk may write, and every write verb passes on it
   (create / review / ready / reply / evidence / release — `PublicRepoGate` is the single
   choke point). A repo that is absent, matched only by an `owner/*` pattern (patterns carry
-  no visibility policy), tagged `:private`, or carrying no visibility token **refuses**
-  (exit 5) with the remedy in the message. This replaces the former per-item `+1` reaction
+  no visibility policy), tagged `:private`, carrying no visibility token, or tagged with the
+  other non-private token (`:internal` on a live-public repo, `:public` on a live-internal
+  one) **refuses** (exit 5) with the remedy in the message. `internal` is visible to every
+  account on the forge instance, so it is never treated as private: an `:internal` repo is
+  risk-classed, self-containment scanned and stamped with the neutral on-behalf-of form
+  exactly like a `:public` one. This replaces the former per-item `+1` reaction
   check, which was unsatisfiable for the write that matters most — opening the FIRST pull
   request, which has no issue/PR number yet — and expressed the human decision in the wrong
   unit. A draft PR is inert until a human merges it, so the repository-level decision plus
   the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
   - Both reads are load-bearing at once. The gate reads the **live** visibility from the
-    forge AND the **configured** `:public` claim, and they must AGREE: a repo flipped to
+    forge AND the **configured** `:public` / `:internal` claim, and they must AGREE: a repo flipped to
     public after the set was written still refuses (the configured claim disagrees), and a
     stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
     on the stale claim (the live read disagrees). A live read that fails or returns an
@@ -5981,7 +6018,7 @@ absolute-sounding claims about matchers are what produced #1538:
 |---|---|
 | verbs | `cut <tag>` only. No delete, force, move, override, or waiver verb exists. |
 | tag validation | two independent layers: a refspec-metacharacter screen (`:` `+` `^` `~` `@` `*` `?` `[` `\`, whitespace, control chars) and the anchored pattern `^(desk-tools\|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`. Each refuses with its own reason. |
-| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. |
+| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag and a flag written before `cut`. That includes `cut -h` and `cut --help`; the verb's help is `deskrelease help cut`. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
 | input | argv only — never stdin, never an environment variable. |
 | `--dry-run` | validates, reads the remote, and stops **before** `POST /git/refs`. **When the tag is still free** — the case the flag is for — exit 0, audited `result=dryrun` — a class **neither rate-limit meter counts** (#214). It used to audit `noop`, which the non-progress breaker counts, so five rehearsals opened a 15-minute breaker against the real cut: checking whether a release was safe could lock the release out. A dry run is still *subject* to both meters; it just does not feed them, and it is IGNORED rather than treated as progress, so it cannot reset a breaker a real refusal loop opened either. Against a tag that already **exists**, the stop is never reached: the row below settles the invocation first, and the rehearsal audits `noop`/`refused`/`unverifiable` like the real thing. |
 | transport | `POST /repos/{owner}/{repo}/git/refs`. `git push` is never executed; no local checkout is touched, so a `git -C` variance and a stale sibling clone are both impossible. |
@@ -6319,8 +6356,10 @@ The dispatcher creates an isolated tracking checkout outside both source roots a
 retains its exact location in local run metadata. The tracking repository owns the
 attestation issue, Evidence and outcome records; no tracking file is copied into the
 deliverable tree. Private tracking with a public deliverable, and two separate private
-repositories, are supported. Unknown visibility or a public tracking destination for a
-restricted deliverable refuses. Prompts and packets are local, owner-only files outside
+repositories, are supported. Exposure ranks private < internal < public, and the tracking
+repository may never be more exposed than the deliverable: an internal tracker refuses a
+private deliverable, and a public tracker refuses a private or internal one. Unknown
+visibility on either side refuses. Prompts and packets are local, owner-only files outside
 Git trees; they must not be published. The packet names both immutable revisions, reads
 its brief/history from tracking, and checks both heads before returning.
 
@@ -6347,6 +6386,31 @@ and a clean readable tree. Any new clean deliverable commit, including an unrela
 empty commit, wakes this conservative manifest; tracking input changes also wake it.
 Missing, wrong or dirty roots are could-not-check. Older readers cannot establish
 unchangedness for the new key. Explicit-recheck receipts keep their existing predicate.
+
+A brief may declare paths in more than one sibling repository (`../one/a.go`,
+`../two/b.go`). Prepare binds each further declared sibling, beside the deliverable
+source, to its configured root's fetched `origin/main` in the attestation's
+`SiblingSources` field (`owner/repo@<40-hex>`, comma-joined, sorted), and the outcome
+record carries one `repo-source:<owner/name>` key per bound sibling. Each sibling's
+declared paths are covered only by that sibling's own key; delivery PRs in a bound sibling
+must be ancestors of that sibling's commit. A sibling without a single configured root at
+its fetched `origin/main`, or one a public tracking repository may not name, stays
+unbound, and its paths still refuse the record; prepare prints one `NOTICE` per unbound
+sibling naming it and why.
+
+Fetch every declared sibling root (and check out its `origin/main`) before prepare: a
+sibling bound at a stale `origin/main` makes a later Evidence landing refuse any of that
+sibling's delivery PRs merged after the bound commit, naming the repository, the merge
+commit and the bound source. The fix is a fresh fetch and a new run, never a relaxed join.
+
+Migration: `wake_schema` does not bump. The key vocabulary is unchanged; a record simply
+carries more than one `repo-source:` key, and every reader since the key was introduced
+evaluates each one independently. A reader older than the key reads every
+`repo-source:` key as could-not-check, never unchanged. The attestation body is
+strict-decoded, so a reader older than this change refuses a body carrying
+`SiblingSources` rather than ignoring it; upgrade readers (`deskevidence`, `verifyloop`,
+`statusgen`) before dispatchers. Single-repository and single-sibling bodies omit the
+field and render byte-for-byte as before.
 
 Recovery retains the original nonce, source home and isolated tracking home, including
 a lost issue-create response. A legacy failure with no record or missing association

@@ -49,8 +49,19 @@ consumers:
 
 ## Context
 
-files: `workflow/store/forgeeffects.go` (planned), `workflow/store/forgeeffects_test.go` (planned), `workflow/store/forgemirror.go` (planned), `workflow/store/forgemirror_test.go` (planned), `tools/desk/internal/forgeservice/write/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/deskfile/`, `tools/desk/cmd/deskreply/`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-write-through.md` (planned), `tools/desk/internal/forgeservice/write/contextreceipt_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files:
+- `workflow/store/forgeeffects.go` (planned)
+- `workflow/store/forgeeffects_test.go` (planned)
+- `workflow/store/forgemirror.go` (planned)
+- `workflow/store/forgemirror_test.go` (planned)
+- `tools/desk/internal/forgeservice/write/` (planned)
+- `tools/desk/internal/forgeexecutor/` (planned)
+- `tools/desk/cmd/deskfile/`
+- `tools/desk/cmd/deskreply/`
+- `docs/forge-service.md` (planned)
+- `docs/enforcement-model.md`
+- `changelog/forge-write-through.md` (planned)
+- `tools/desk/internal/forgeservice/write/contextreceipt_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - 37 owns the admission-bound mirror; 19 owns PostgreSQL and 04 owns intent/receipt/reconciliation. Their qualified implementations are prerequisites, not features this brief reimplements.

@@ -190,6 +190,29 @@ forge-aware (#655): on a GitLab adopter `token-mint-cold` verifies the
 not GitHub App PEMs. Any older PEM-oriented remediation you still see is GitHub-path leftover —
 a GitLab deployment has no PEMs to install.
 
+**Each role's own commit address — `ASSAY_GITLAB_ROLE_EMAILS` (#4978).** `deskwt role-init`,
+`deskwt add --role` and `deskdispatch` stamp a GitLab role's worktree `user.email`. A
+service-account noreply address carries a group id and a per-account suffix the roster entry
+does not, so the tools cannot build it from `ASSAY_TRUSTED_BOT_SLUGS`, and
+`ASSAY_GITLAB_SESSION_EMAILS` is a flat list that does not say which address is whose. When more
+than one role commits as its own service account, bind each role to its address:
+
+```
+ASSAY_GITLAB_ROLE_EMAILS=verifier=service_account_group_1234_ab12cd@noreply.gitlab.example.com,worker=service_account_group_1234_ef34gh@noreply.gitlab.example.com
+```
+
+Read each account's address from `GET /api/v4/user` authenticated as that role (its
+`commit_email`). Every bound address must already be one the commit-identity preflight accepts
+(the service-account noreply shape, or an `ASSAY_GITLAB_SESSION_EMAILS` entry), each role must be
+bound to a `gitlab:` identity, and one address may not be bound to two accounts. A value that
+breaks any rule shows as `INVALID` in the effective-config block the desk tools print, and every GitLab role then refuses to
+stamp (exit 5) until it is fixed; the rest of the roster keeps working. Without a binding, a
+role takes the session list only when that list names one address unambiguously: a single
+session-user address (every role commits as that user — the two-identity model), or a single
+service-account address when only one GitLab account is bound. A list of several addresses, or
+one service-account address shared by several bound accounts, refuses and names this key —
+before #4978 the tools took the first entry for every role.
+
 ## 2. Provisioning script — `tools/create-fleet-gitlab.sh`
 
 **On Windows, prefer `deskfleet provision` instead — this section is the fallback.**
@@ -346,6 +369,10 @@ empty sweep is never reported as a clean, empty board, so intake-desk and worker
 the GitLab issue/orphan lane as could-not-check rather than empty. **It is a DISTINCT key from
 the write boundary `ASSAY_ALLOWED_REPOS`** — a green write-lane preflight says nothing about
 it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set it.
+(A project whose GitLab visibility is `internal` is tagged `:internal` in
+`ASSAY_ALLOWED_REPOS` — `mygroup/myproject:ci:internal` — not `:public` and not `:private`: the
+public-repo write gate requires the tag to name the visibility the forge reports, and an
+`internal` project keeps every public-repo requirement, `ASSAY_HUMAN_LOGIN_MAP` included.)
 
 - **Required value shape.** A comma-separated list of `<group>/<project>` slugs — the scan
   scope. It must contain **at least the adopter project itself** (the same slug that appears
@@ -632,6 +659,18 @@ alike, so a refused push is classified by asking about the token again. A token 
 only `write_repository` may be refused the self-introspection read itself; the job then
 prints a could-not-check NOTICE and the dry-run push is the check.
 
+**The runner's job-token header.** A runner's checkout can store the CI job token in git
+config as an `http.<url>.extraheader` Authorization header. git sends a configured header
+instead of asking any credential helper, so without a reset the board push would
+authenticate as the job token and GitLab would refuse it with a 403. For each board push
+(the dry run included) the job lists every `http.extraheader` and `http.<url>.extraheader`
+key by NAME and passes `-c <name>=` for each. An empty value empties git's header list for
+that one push, and command-line config is read after every config file, so the reset
+covers local, global, system and environment config alike. No config file is edited, so
+the job's other git calls still use the runner's credential, and no header value is ever
+printed. If git cannot list the keys, the job prints a could-not-check NOTICE and pushes
+anyway; a refused push is then classified as above.
+
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
 its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this
@@ -748,17 +787,27 @@ A roster-known **human** verifier on GitLab is accepted by the Evidence-actor ch
 private commit noreply address `<user-id>-<username>@users.noreply.<host>` the way a GitHub human
 is via the GitHub form — no extra configuration beyond the human's `ASSAY_TRUSTED_LOGINS` entry.
 
-**Loud when absent.** With the variable unset the step prints, verbatim from the generated
-file's own source (`statusgen/init.go`, `initGitlabCI`):
+**Loud when absent — and the lint job fails.** A missing roster file is a *refused*
+configuration, not a partial one (see [statusgen-lint-refusal.md](statusgen-lint-refusal.md)),
+so the two jobs end differently without the variable:
+
+- **`statusgen-lint` (merge requests) fails.** `statusgen --lint` refuses before it judges the
+  tree: it prints `LINT: REFUSED configuration; trust-dependent checks could-not-check` and
+  exits **5**, and the job is red until `STATUSGEN_ROSTER_ENV` is set.
+- **`statusgen-regen` (default branch) still writes the board**, but every roster-backed check
+  on it reports could-not-check, which is not a pass.
+
+With the variable unset the step prints, verbatim from the generated file's own source
+(`statusgen/init.go`, `initGitlabCI`; a test runs the step and `statusgen` and holds these lines
+to what the binary does, with the runner's `HOME` shown as `/root`):
 
 ```
 NOTICE: STATUSGEN_ROSTER_ENV is not set — no trust roster for this job.
+statusgen reads the roster from /root/.config/assay/roster.env, which nothing has written. A missing roster file is a REFUSED configuration, not a partial one.
+Merge-request job: statusgen --lint refuses it — it prints 'LINT: REFUSED configuration; trust-dependent checks could-not-check' and exits 5, so the merge-request job FAILS until the variable is set.
+Default-branch regen job: the board is still generated, but every roster-backed check on it (the Evidence-actor check on verified/done rows, the trust gates) reports could-not-check. That is NOT a pass.
+Set a CI/CD variable named STATUSGEN_ROSTER_ENV holding the NON-secret roster lines (ASSAY_TRUSTED_BOT_SLUGS with its verifier= binding, ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP) — never a token, key, or password. See docs/adopting-assay-gitlab.md, section Trust roster for CI.
 ```
-
-followed by what `statusgen` will report without it (could-not-check on every roster-backed
-check) and the variable to set. The job **continues** — the board still regenerates, exactly as
-before — but the gap is now named in the log rather than inferable only from
-`role-bindings=(none bound)`.
 
 **Verify.** In the regen job's log, `assay-config: … configured=true` and a `role-bindings=`
 line naming your `verifier=` binding — not `(none bound)`, and no `NOTICE: STATUSGEN_ROSTER_ENV

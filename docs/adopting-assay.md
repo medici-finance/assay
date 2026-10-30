@@ -261,7 +261,9 @@ finished `assay:install` run hands you a checklist rather than the impression th
 6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
    **push to `main`**, the **release tag** and any **history rewrite** are yours *every time*, not
    just at install. So is the decision to add a public repository to the allowed-repos set with
-   the `:public` token: it is a one-time, repository-scoped authorization that only you make,
+   the `:public` token (an instance-visible `internal` repository takes the `:internal` token
+   instead, and is gated exactly like a public one): it is a one-time, repository-scoped
+   authorization that only you make,
    and a repository you have not listed stays refused. The quick-reference table above is the
    standing list.
 7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
@@ -596,9 +598,10 @@ identity* — plan for it before you turn protection on, not after the board sil
 > Variables) with the values from `configure-roster`; `ASSAY_TRUSTED_BOT_SLUGS` must bind
 > `verifier=<slug>:<bot-user-id>` or the Evidence-actor check has nothing to compare against.
 > They carry logins, numeric ids and role bindings **only** — a token or key never belongs in
-> them. A GitLab adopter has the same gap and a different transport: one CI/CD variable,
-> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — see
-> [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster for CI".
+> them. A GitLab adopter has a different transport — one CI/CD variable,
+> `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — and a different outcome when
+> it is unset: see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster
+> for CI", for what each GitLab job does without it.
 
 > **DECISION-GATE HOLD — the PR check, and the admin act that makes it bind
 > ([`lifecycle-v1.md`](../spec/lifecycle-v1.md) §4.5).** A `gate: human` brief may move to

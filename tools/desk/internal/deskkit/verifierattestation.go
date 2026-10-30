@@ -556,6 +556,9 @@ func readVerifierAttestation(f verifierAttestationReader, repo ForgeRepo, n int)
 	if why := attestation.BindingProblem(b, repo.Slug(), attestation.GeneralV1V2, IsAllowedRepo(b.SourceRepo)); why != "" {
 		return r, Refused("invalid verifier attestation binding: " + why)
 	}
+	if _, err := VerifierSiblingSources(b); err != nil {
+		return r, err
+	}
 	if err := r.CheckEvidenceTarget(b.Brief); err != nil {
 		return r, err
 	}
@@ -807,4 +810,19 @@ func PlanVerifierAttestation(root, brief string) error {
 		brief = r.Binding.Brief
 	}
 	return verifierLocalCheck(root, brief, r, verifierExecution)
+}
+
+// VerifierSiblingSources decodes a binding's further sibling sources (#4876),
+// each in the configured repository set, as an outcome record's input.
+func VerifierSiblingSources(b VerifierBinding) (map[string]string, error) {
+	siblings, err := attestation.ParseSiblingSources(b.SiblingSources)
+	if err != nil {
+		return nil, Refused("invalid verifier attestation binding: " + err.Error())
+	}
+	for repo := range siblings {
+		if !IsAllowedRepo(repo) {
+			return nil, Refused("invalid verifier attestation binding: sibling source " + repo + " is outside the configured repository set")
+		}
+	}
+	return siblings, nil
 }

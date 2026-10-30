@@ -78,22 +78,16 @@ GitLab gate at it. The `Draft:` prefix is kept as the human-facing signal (pilot
 the flip works on Free); this gate is additive to it. The human merge stays the outer gate.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` — the merge-hold op set on the `Forge` interface (one
-  open, one read, one release/re-arm), with its consumers in the same change (spec §6).
-- `tools/desk/internal/deskkit/forge_gitlab.go` — the implementation over the discussions API;
-  the flip-side reading of `draft_status` and `discussions_not_resolved`.
+- `tools/desk/internal/deskkit/forge.go` — the merge-hold op set on the `Forge` interface (one open, one read, one release/re-arm), with its consumers in the same change (spec §6).
+- `tools/desk/internal/deskkit/forge_gitlab.go` — the implementation over the discussions API; the flip-side reading of `draft_status` and `discussions_not_resolved`.
 - `tools/desk/internal/deskkit/forge_github.go` — a typed not-applicable implementation.
-- `tools/desk/internal/deskkit/forge-gitlab-mutations.json` and the golden tests beside it — the
-  recorded fixtures for open, read, release and re-arm.
+- `tools/desk/internal/deskkit/forge-gitlab-mutations.json` — with the golden tests beside it, the recorded fixtures for open, read, release and re-arm.
 - `tools/desk/cmd/deskpr/deskpr.go` — open the hold after `CreateDraftChange` on GitLab.
-- `tools/desk/cmd/deskpost/forgeclient.go` — release on approve at head; re-arm on
-  request-changes and on any verdict at a head the hold was not released at.
+- `tools/desk/cmd/deskpost/forgeclient.go` — release on approve at head; re-arm on request-changes and on any verdict at a head the hold was not released at.
 - `tools/desk/cmd/deskflip/flip.go` — the GitLab `reviewer-approved` and `mergeable` conditions.
 - `docs/adopting-assay-gitlab.md` — the by-hand table row and the §0.1 paragraph naming the gate.
 - `docs/streams/forge-gitlab/README.md` — the status row.
-- `CHANGELOG.md`, the v1.0.9 section — the fragment (changelog/forge-gitlab-17-resolved-threads-gate.md)
-  this authoring change carried was consumed by the v1.0.9 changelog roll, so the fragment file no
-  longer exists and the section is its record; the implementation change adds its own fragment.
+- `CHANGELOG.md` (the v1.0.9 section) — the fragment (changelog/forge-gitlab-17-resolved-threads-gate.md) this authoring change carried was consumed by the v1.0.9 changelog roll, so the fragment file no longer exists and the section is its record; the implementation change adds its own fragment.
 
 single-point-of-failure: the project setting `only_allow_merge_if_all_discussions_are_resolved`
 is the ONE server-side control — a Maintainer who flips it off, or a provisioner that never set

@@ -50,10 +50,8 @@ independent second layer is unchanged and must stay — the six release steps st
 the release on a survivor, and this brief must not weaken or replace any of them.
 
 files:
-- `tools/toolvalidation/` (implementation home) — a new single-purpose Go module that reads
-  the mutation specs plus the captured `muhar` reports and emits the pack in two formats.
-- `.github/workflows/release.yml` — capture each existing `muhar` report to a file, run the
-  assembler, upload the two artifacts alongside the binaries and `checksums.txt`.
+- `tools/toolvalidation/` (implementation home) — a new single-purpose Go module that reads the mutation specs plus the captured `muhar` reports and emits the pack in two formats.
+- `.github/workflows/release.yml` — capture each existing `muhar` report to a file, run the assembler, upload the two artifacts alongside the binaries and `checksums.txt`.
 
 facts:
 - **Do not re-run the mutations.** The six sweeps already run in the `test` job and are the

@@ -49,6 +49,16 @@ type forgeEnvCase struct {
 }
 
 var forgeEnvCases = []forgeEnvCase{
+	{name: "gitlab-only cell base",
+		cellEnv: "CELL_FORGE=gitlab\nGITLAB_API_BASE=" + forgeFixtureBase + "\n",
+		gitlab:  forgeFixtureBase, gitlabSet: true},
+	{name: "gitlab key wins conflicting forge key",
+		cellEnv: "CELL_FORGE=gitlab\nGITLAB_API_BASE=" + forgeFixtureBase + "\nFORGE_API_BASE=https://other.example.com/api/v4\n",
+		gitlab:  forgeFixtureBase, gitlabSet: true},
+	{name: "empty primary falls back to forge key",
+		cellEnv: "CELL_FORGE=gitlab\nGITLAB_API_BASE=\nFORGE_API_BASE=" + forgeFixtureBase + "\n",
+		gitlab:  forgeFixtureBase, gitlabSet: true},
+
 	// regression: #4841 — a non-default base the cell holds reaches the role window as
 	// GITLAB_API_BASE, the key desktoken reads. FORGE_API_BASE is not forwarded: nothing in the
 	// window reads it, and a nested cellctl would rank it over its own cell's cell.env.

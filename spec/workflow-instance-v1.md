@@ -69,7 +69,7 @@ is the normative shape; it is closed (`additionalProperties: false`) at every le
 | `budget` | contract | REQUIRED. `ref` — a reservation reference, never an amount of authority. |
 | `inputs` | contract | REQUIRED. Immutable input references: `name`, `ref`, `digest`, `origin`, `trust`. |
 | `dependencies` | contract | REQUIRED. The dependency manifest: `ref`, `kind` (`source`, `api`, `schema`, `build`, `policy`, `environment`), `fingerprint`, `supports` (acceptance rows it supports). A `ref` appears once; a repeated ref is refused (`instance-identity-mismatch`). |
-| `nodes` | contract + records | REQUIRED. One node instance per pattern node: `id`, `node`, `role`, `actor {binding, cell, capabilities}`, `effects`, `evidence`; `attempts` are records. |
+| `nodes` | contract + records | REQUIRED. One node instance per pattern node: `id`, `node`, `role`, `actor {binding, cell, capabilities}` (required for topology roles, absent for `human`), `effects`, `evidence`; `attempts` are records. |
 | `decisions` | records | OPTIONAL. Human decisions as references (§8). |
 | `assignment` | projection | REQUIRED. `backend`, `generation` (>= 1), `runner-profile` reference. |
 | `execution-state` | projection | REQUIRED. `projection-version`, `generation`, `state`. |
@@ -132,6 +132,12 @@ The assignment and execution state are a projection of where the work is running
    reference and digest.
 8. **Eligibility is reported, not folded.** A validator MAY report the work item's
    eligibility verdict beside its result; that verdict MUST NOT change the instance verdict.
+
+9. **Human node.** A node whose pattern role is `human` MUST carry no `actor`, no
+   `effects` entries and no `attempts` (`instance-human-node-actor`). It binds no
+   capabilities. The human act is recorded only in `decisions[]` (§8). Human nodes do not
+   resolve an actor or enter the role-effect permission table; actor Cell checks apply
+   only to topology-role nodes, whose actors remain required.
 
 ## 6. Reader capabilities and old-reader refusal
 

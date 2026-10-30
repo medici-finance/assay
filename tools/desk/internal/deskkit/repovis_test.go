@@ -7,7 +7,8 @@ import (
 )
 
 // The public-repo WRITE gate authorizes an outward write by the REPOSITORY, not the item:
-// a public/internal repo listed in the allowed-repos set with the `:public` token passes,
+// a public repo listed in the allowed-repos set with the `:public` token passes (an internal
+// repo needs the `:internal` token — see TestGateInternalToken),
 // and the former per-item `+1` reaction check is gone. These tests drive the decision
 // table over (live visibility × configured entry) with the package stub fetcher — no
 // network, no reaction fixtures.
@@ -27,8 +28,9 @@ ASSAY_ALLOWED_REPOS=example-org/*
 `
 
 // TestPublicRepoGateListedPublicPasses — a repo listed with :public passes for every write
-// shape (the signature no longer distinguishes create / comment / verdict), against both a
-// live "public" and a live "internal" read.
+// shape (the signature no longer distinguishes create / comment / verdict) against a live
+// "public" read. A live "internal" read on the same :public entry now REFUSES: the configured
+// claim must name the live value (TestGateInternalToken).
 func TestPublicRepoGateListedPublicPasses(t *testing.T) {
 	installRoster(t, gateRoster)
 
@@ -43,10 +45,10 @@ func TestPublicRepoGateListedPublicPasses(t *testing.T) {
 		})
 	}
 
-	t.Run("internal_listed_public_passes", func(t *testing.T) {
+	t.Run("internal_listed_public_refuses", func(t *testing.T) {
 		f := &stubRepoInfoFetcher{visibility: "internal"}
-		if err := PublicRepoGate(f, "example-org", "pubrepo"); err != nil {
-			t.Fatalf("listed :public repo, live internal should pass, got %v", err)
+		if err := PublicRepoGate(f, "example-org", "pubrepo"); !IsRefused(err) {
+			t.Fatalf("listed :public repo, live internal: got %v, want Refused/exit 5 — the claim must name the live value", err)
 		}
 	})
 
@@ -297,4 +299,71 @@ func TestIsBlessAuthorityIDStrictRejectsZero(t *testing.T) {
 		t.Fatal("IsBlessAuthorityID no longer admits id==0 — it and IsBlessAuthorityIDStrict have collapsed " +
 			"into one; either delete the strict variant deliberately or restore the arm")
 	}
+}
+
+// internalGateRoster carries one entry per visibility token plus a bare entry, so every
+// (live visibility x configured token) cell of the internal arm has a repo to read.
+const internalGateRoster = `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001
+ASSAY_HUMAN_LOGIN_MAP=ada:ada
+ASSAY_ALLOWED_REPOS=example-org/inner:ci:internal,example-org/pubrepo:ci:public,example-org/privrepo:ci:private,example-org/bare
+`
+
+// TestGateInternalToken — live visibility `internal` has its own allowed-repos token. The
+// gate accepts a live-internal repo ONLY on an explicit `:internal` entry, refuses
+// `:internal` on a live-public repo, and keeps the internal repo under every public-form
+// requirement (risk-classing, the self-containment scan, the neutral on-behalf-of form).
+//
+// regression: #4978
+func TestGateInternalToken(t *testing.T) {
+	installRoster(t, internalGateRoster)
+
+	t.Run("internal_token_on_live_public_refuses", func(t *testing.T) {
+		f := &stubRepoInfoFetcher{visibility: "public"}
+		err := PublicRepoGate(f, "example-org", "inner")
+		if !IsRefused(err) {
+			t.Fatalf(":internal entry, live public: got %v, want Refused/exit 5 — :internal must never authorize a public write", err)
+		}
+		if !containsRemedy(err) {
+			t.Fatalf("refusal names no :public remedy: %v", err)
+		}
+	})
+
+	t.Run("live_internal_without_internal_token_refuses", func(t *testing.T) {
+		for _, repo := range []string{"bare", "privrepo", "pubrepo", "not-in-set"} {
+			f := &stubRepoInfoFetcher{visibility: "internal"}
+			err := PublicRepoGate(f, "example-org", repo)
+			if !IsRefused(err) {
+				t.Fatalf("%s, live internal: got %v, want Refused/exit 5", repo, err)
+			}
+			if msg := err.Error(); !strings.Contains(msg, "example-org/"+repo+":internal") || !strings.Contains(msg, EnvAllowedRepos) {
+				t.Fatalf("%s: refusal does not name the :internal remedy: %v", repo, err)
+			}
+		}
+	})
+
+	t.Run("live_internal_with_internal_token_passes", func(t *testing.T) {
+		for _, v := range []string{"internal", "INTERNAL", " internal\n"} {
+			f := &stubRepoInfoFetcher{visibility: v}
+			if err := PublicRepoGate(f, "example-org", "inner"); err != nil {
+				t.Fatalf("live %q on an :internal entry should pass, got %v", v, err)
+			}
+		}
+	})
+
+	t.Run("internal_keeps_public_form", func(t *testing.T) {
+		const repo = "example-org/inner"
+		if RepoVisibility(repo) != VisibilityInternal {
+			t.Fatalf("RepoVisibility(%q) = %v, want internal", repo, RepoVisibility(repo))
+		}
+		if !publicFormRequired(repo) {
+			t.Fatalf("publicFormRequired(%q) = false — an internal repo must take the public form", repo)
+		}
+		if !VisibilityRiskClassed(repo) {
+			t.Fatalf("VisibilityRiskClassed(%q) = false — an internal repo must be risk-classed", repo)
+		}
+		if !SelfContainApplies(repo) {
+			t.Fatalf("SelfContainApplies(%q) = false — an internal repo must be self-containment scanned", repo)
+		}
+	})
 }
