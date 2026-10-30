@@ -57,13 +57,13 @@ a trailing parenthetical never perturbs the runner-agreement comparison.
 A trailer stamped onto a write to a **public** repo is world-readable for good — a posted
 review cannot be edited afterwards, and a commit message cannot be taken back out of
 history. So the form the trailer names is chosen from the target repo's **configured**
-visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` token, read with no network call
+visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` / `:internal` token, read with no network call
 — the same value `VisibilityRiskClassed` reads):
 
 | Target | The trailer names |
 |---|---|
 | A repo the roster states is `:private` | the mapped login — unchanged |
-| Everything else — `:public`, an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
+| Everything else — `:public`, `:internal` (visible instance-wide), an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
 
 The rule is stated in the fail-closed direction on purpose, exactly as
 `VisibilityRiskClassed` states its own: *everything except a repo declared private takes the

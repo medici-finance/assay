@@ -53,6 +53,7 @@ func seamRoster(t *testing.T) {
 		"acme/private-widget:ci:private",
 		"acme/open-widget:ci:public",
 		"acme/unstated-widget:ci",
+		"acme/inner-widget:ci:internal",
 	}, ",")
 	withRoster(t, r)
 }
@@ -79,6 +80,11 @@ func TestSeamFailClosedShortCircuitsBeforeClassifier(t *testing.T) {
 		{
 			"public repo", "acme/open-widget", []string{"README.md"},
 			"PUBLIC repo — every PR on a public repo is risk-classed",
+		},
+		{
+			// regression: #4978 — the INTERNAL wording is pinned, not only the outcome.
+			"internal repo", "acme/inner-widget", []string{"README.md"},
+			"INTERNAL repo — visible instance-wide, so risk-classed exactly like a public repo",
 		},
 		{
 			"visibility unstated", "acme/unstated-widget", []string{"README.md"},

@@ -84,7 +84,8 @@ func TestPolicyDriftDetectsFlip(t *testing.T) {
 }
 
 // TestPolicyDriftRejectsUnparseableVisibility — an API value this code does not
-// understand ("internal", "") is not silently mapped to anything; it is drift.
+// understand ("") is not silently mapped to anything; it is drift. "internal" now
+// parses, but against a roster with no `:internal` entry it is still drift.
 func TestPolicyDriftRejectsUnparseableVisibility(t *testing.T) {
 	for _, body := range []string{
 		`{"visibility":"internal","private":true}`,
