@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-// The ambient forge-credential refusal: a Bash call that runs `gh auth token`
-// in any form is refused while the hook's own environment carries DESK_LOOP or
+// The ambient forge-credential refusal: a Bash call whose text holds a word of
+// the gh token read (auth, token, oauth_token, git-credential, or gh with
+// status) is refused while the hook's own environment carries DESK_LOOP or
 // DESK_SESSION, and the hook stays silent with neither set. Every case drives
 // run() with a real hook payload, so the refusal is proven at its call site.
 
@@ -50,8 +51,8 @@ func requireAmbientRefusal(t *testing.T, v Verdict, err error, cmd string) {
 	}
 }
 
-// ambientRefused is every executable form of the read. Each one runs the gh
-// CLI's token subcommand; none of them is a mention.
+// ambientRefused is executable forms of the read. Each one runs the gh CLI's
+// token subcommand; none of them is a mention.
 var ambientRefused = []string{
 	"gh auth token",
 	"gh auth token --user someone",
@@ -160,9 +161,33 @@ func TestAmbientTokenSecondInstance(t *testing.T) {
 
 // regression: #4821
 func TestAmbientTokenOtherGhAllowed(t *testing.T) {
-	// Other gh use is untouched, and inert mentions follow the existing
-	// masking convention: quoted prose, comments and the body of a heredoc
-	// written to a file are data, not commands.
+	// gh use whose text holds no trigger word is untouched, as are the
+	// sanctioned mint, a minted token passed to one command, and the
+	// file-based ways through for prose.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "fixture-session")
+	for _, cmd := range []string{
+		"gh pr view 12",
+		"gh api user --jq .login",
+		"gh pr list --state open",
+		`GH_TOKEN=$(cat "$T") gh pr view 1`,
+		"desktoken --no-rotate worker --repo example/repo",
+		"deskclaim-ref release k --token-file f",
+		"git commit -F msg.txt",
+		"gh pr comment 1 --body-file body.md",
+		"grep -n -f patterns.txt notes.md",
+		"command -v gh",
+		"which gh",
+	} {
+		ambientAllowed(t, wt, cmd)
+	}
+}
+
+// regression: #4821
+func TestHookMentionsRefused(t *testing.T) {
+	// The accepted false refusals: a trigger word as data is refused like a
+	// read. Each row was allowed by the earlier shell-model scan.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "fixture-session")
@@ -172,8 +197,6 @@ func TestAmbientTokenOtherGhAllowed(t *testing.T) {
 		"gh auth login",
 		"gh auth login --with-token < token",
 		"gh auth logout",
-		"gh pr view 12",
-		"gh api user --jq .login",
 		"gh token",
 		"gh tokens auth",
 		"gh pr view token",
@@ -184,17 +207,19 @@ func TestAmbientTokenOtherGhAllowed(t *testing.T) {
 		"cat > notes.md <<'EOF'\ngh auth token\nEOF",
 		"cat > notes.md <<\"EOF\"\nT=$(gh auth token)\nEOF",
 		"echo gh auth token",
-		"ls ./gh/auth/token",
-		"command -v gh",
-		"which gh",
+		"gh auth switch -h example.com -u token",
+		"gh auth switch --user token",
+		"gh auth status -h token",
+		"gh auth status --show-token=0",
+		"gh auth status --show-token=False",
+		`gh auth status --hostname "$H"`,
+		"echo 'gh auth token' | cat",
+		"cat <<'X' | grep auth\ngh auth token\nX",
+		"git status && gh pr view 1",
+		"mkdir -p auth",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
-		if err != nil {
-			t.Fatalf("%q: run: %v", cmd, err)
-		}
-		if v.Block {
-			t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
-		}
+		requireAmbientRefusal(t, v, err, cmd)
 	}
 }
 
@@ -391,31 +416,16 @@ func TestAmbientTokenFormClasses(t *testing.T) {
 
 // regression: #4821
 func TestAmbientTokenFormsAllowed(t *testing.T) {
-	// The paired allow side of the classes above: a flag's VALUE is not a
-	// positional, a false show-token spelling prints nothing, and text piped
-	// to a non-shell or a heredoc fed to a non-shell stays data.
+	// The allow side of the classes above: a computed word with no trigger
+	// word in the text is allowed.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "")
 	for _, cmd := range []string{
-		"gh auth switch -h example.com -u token",
-		"gh auth switch --user token",
-		"gh auth status -h token",
-		"gh auth status --show-token=0",
-		"gh auth status --show-token=False",
-		`gh auth status --hostname "$H"`,
 		`gh "$sub" list`,
-		"echo 'gh auth token' | cat",
-		"cat <<'X' | grep auth\ngh auth token\nX",
 		`"$EDITOR" notes.md`,
 	} {
-		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
-		if err != nil {
-			t.Fatalf("%q: run: %v", cmd, err)
-		}
-		if v.Block {
-			t.Fatalf("%q must not be refused:\n%s", cmd, v.Reason)
-		}
+		ambientAllowed(t, wt, cmd)
 	}
 }
 
@@ -448,8 +458,8 @@ func TestAmbientTokenScanDeadline(t *testing.T) {
 
 // regression: #4821
 func TestAmbientTokenArithHeredoc(t *testing.T) {
-	// A `((` is not modeled: the hook refuses when the read's trigger follows
-	// it, even as heredoc data (accepted false refuses), and allows it without.
+	// Around a `((`: the hook refuses when the text holds a trigger word, even
+	// as heredoc data (accepted false refusals), and allows it without.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "")
@@ -479,9 +489,8 @@ func TestAmbientTokenArithHeredoc(t *testing.T) {
 
 // regression: #4821
 func TestAmbientTokenSubstHeredoc(t *testing.T) {
-	// The end of a `$(…)` holding a heredoc, a heredoc's delimiter line, and
-	// a `${…}` span must each be found where the shell finds them, or the
-	// hook reads a later read as data.
+	// Shapes where a lexer once placed the end of a `$(…)` holding a heredoc,
+	// a heredoc's delimiter line, or a `${…}` span elsewhere than the shell.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "")
@@ -528,9 +537,9 @@ func ambientAllowed(t *testing.T, wt, cmd string) {
 	}
 }
 
-// ambientUnmodeled drives each row through the hook with each trigger at
-// "@" (refused), and with `echo ok` there (allowed: the construct alone is
-// not refused).
+// ambientUnmodeled drives each row (a shell construct a lexer could misplace)
+// through the hook with each trigger at "@" (refused), and with `echo ok`
+// there (allowed: the construct alone is not refused).
 func ambientUnmodeled(t *testing.T, rows []string) {
 	t.Helper()
 	_, wt := gitFixture(t)
@@ -617,14 +626,16 @@ func TestHookReviewShapes(t *testing.T) {
 
 // regression: #4821
 func TestHookIdiomOutcomes(t *testing.T) {
-	// A heredoc-built message or body: allowed without the trigger, refused
-	// with it; -F / --body-file is the way through.
+	// A message or body naming a trigger word is refused however it is passed
+	// on the command line; -F / --body-file is the way through.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "")
 	for _, cmd := range []string{
 		"git commit -m \"$(cat <<'MSG'\nfix: rotate the token cache\nMSG\n)\"",
 		"gh pr create --title t --body \"$(cat <<'EOF'\nthe auth flow\nEOF\n)\"",
+		"git commit -m \"fix: rotate the token cache\"", "gh pr edit 1 --body \"see the auth flow\"",
+		"gh pr comment 1 --body \"$(printf 'see token docs')\"",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
 		requireAmbientRefusal(t, v, err, cmd)
@@ -633,9 +644,36 @@ func TestHookIdiomOutcomes(t *testing.T) {
 		"git commit -m \"$(cat <<'MSG'\nfix: tidy the lexer\nMSG\n)\"",
 		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"",
 		"git commit -F msg.txt", "gh pr create --title t --body-file body.md",
-		"git commit -m \"fix: rotate the token cache\"", "gh pr edit 1 --body \"see the auth flow\"",
-		"gh pr comment 1 --body \"$(printf 'see token docs')\"",
 	} {
 		ambientAllowed(t, wt, cmd)
+	}
+}
+
+// regression: #4821
+func TestHookReviewClasses(t *testing.T) {
+	// One neutral shape per class the latest reviews found, each allowed by
+	// the earlier shell-model scan: a word the shell keeps whole, a prefix
+	// outside a closed set, a computed word of unknown arity, the clobber
+	// operator, a string run as a command, and a pass-through stage.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "")
+	for class, cmd := range map[string]string{
+		"word-span":         "touch }#x; gh auth token -u someone",
+		"word-span-cr":      "ls -d q\r#|gh auth token",
+		"command-prefix":    "PATH+=:/opt/x gh auth token",
+		"builtin-runner":    "builtin command -p gh auth token",
+		"dynamic-arity":     "command gh {auth,token}",
+		"subst-script":      `eval "$(printf '%s ' gh auth token)"`,
+		"clobber-operator":  "gh auth 2>|err.log token",
+		"computed-shell":    `"${SHELL:-sh}" -c 'gh auth token'`,
+		"string-to-command": "trap 'gh auth token' ERR",
+		"pass-through":      "printf 'gh auth token' | tee /dev/null | sh",
+		"args-from-stdin":   "printf 'auth token' | xargs gh",
+	} {
+		t.Run(class, func(t *testing.T) {
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			requireAmbientRefusal(t, v, err, cmd)
+		})
 	}
 }

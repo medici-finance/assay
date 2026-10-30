@@ -86,12 +86,12 @@ func (c Classification) ID() string           { return c.id }
 func (c Classification) PathTokens() []string { return append([]string(nil), c.tokens...) }
 func (c Classification) Masked() string       { return c.masked }
 
-// ReadsAmbientForgeToken reports whether the classified Bash command runs the
-// gh CLI's token read in one of the executed forms forgetoken.go judges (the
-// forms its tests pin; the classes it does not judge are listed in
-// docs/write-policy.md), or when that scan cannot finish (nesting too deep, or
-// past its work budget), which is refused the same. It is lexical only;
-// whether that is refused is the adapter's gate.
+// ReadsAmbientForgeToken reports whether the classified command's text holds
+// a gh token-read trigger word anywhere (forgetoken.go: whole words `auth`,
+// `token`, `oauth_token`, `git-credential`, or `status` with `gh`, seen
+// through quotes, backslashes and escapes). It does not parse the shell, so
+// prose naming a trigger word reports true. Whether that is refused is the
+// adapter's gate.
 func (c Classification) ReadsAmbientForgeToken() bool {
 	return forgeTokenRead(c.request.Target)
 }

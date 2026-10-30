@@ -11,7 +11,7 @@ func TestAmbientForgeTokenClassify(t *testing.T) {
 	read := func(cmd string) bool {
 		return Classify(Request{Tool: "Bash", Target: cmd}, LexicalContext{}).ReadsAmbientForgeToken()
 	}
-	deep := func(inner string) string { return strings.Repeat("eval ", maxForgeTokenDepth+2) + inner }
+	deep := func(inner string) string { return strings.Repeat("eval ", 10) + inner }
 	for _, tc := range []struct {
 		cmd  string
 		want bool
@@ -20,21 +20,22 @@ func TestAmbientForgeTokenClassify(t *testing.T) {
 		{"gh 2>/dev/null auth token", true},
 		{">out.txt gh auth token", true},
 		{"gh auth token>/dev/null", true},
-		{"gh auth status --show-token=false", false},
 		{"gh auth status --show-token=true", true},
 		{"gh auth status --show-token=TRUE", true},
-		{"gh auth status -a", false},
-		{"gh auth login --with-token <<< token", false},
-		{"gh auth refresh", false},
-		{"gh auth", false},
+		// A trigger word anywhere refuses: no shape holding one is allowed.
+		{"gh auth status --show-token=false", true},
+		{"gh auth status -a", true},
+		{"gh auth login --with-token <<< token", true},
+		{"gh auth refresh", true},
+		{"gh auth", true},
+		{"echo \"it's gh auth token\"", true},
+		{"echo 'unterminated; gh auth token", true},
+		{deep("gh auth token"), true},
+		// No trigger word: allowed, however it is nested or quoted.
 		{"gh", false},
 		{"", false},
-		{"echo \"it's gh auth token\"", false},
-		{"echo 'unterminated; gh auth token", true},
 		{"echo 'unterminated; ls", false},
-		// Too deep to lex is undecided, and an undecided scan is refused.
-		{deep("gh auth token"), true},
-		{deep("ls"), true},
+		{deep("ls"), false},
 	} {
 		if got := read(tc.cmd); got != tc.want {
 			t.Errorf("ReadsAmbientForgeToken(%q) = %v, want %v", tc.cmd, got, tc.want)
@@ -42,12 +43,25 @@ func TestAmbientForgeTokenClassify(t *testing.T) {
 	}
 }
 
+// forgeWithin runs forgeTokenRead under a deadline: a hook timeout lets the
+// call through, so a match that does not finish in time is a fail-open.
+func forgeWithin(t *testing.T, cmd string, d time.Duration) bool {
+	t.Helper()
+	done := make(chan bool, 1)
+	go func() { done <- forgeTokenRead(cmd) }()
+	select {
+	case hit := <-done:
+		return hit
+	case <-time.After(d):
+		t.Fatalf("%d-byte command: no decision within %v", len(cmd), d)
+	}
+	return false
+}
+
 // regression: #4821
 func TestForgeWrapperChainLinear(t *testing.T) {
-	// A wrapper chain is judged with one look per word: the judged-position
-	// count is pinned linear in the chain length, and the work budget is not
-	// what stops it (a scan that only finishes by exhausting the budget would
-	// pass on the fail-closed rule while hiding the blow-up).
+	// A long wrapper chain is decided in time: the match is one pass per
+	// trigger word, so the read after the chain is seen.
 	for _, k := range []int{26, 400, 4000} {
 		for _, tc := range []struct {
 			cmd  string
@@ -57,70 +71,31 @@ func TestForgeWrapperChainLinear(t *testing.T) {
 			{strings.Repeat("env ", k) + "true", false},
 			{strings.Repeat("timeout 5 ", k/2) + "gh pr view 1", false},
 		} {
-			got, st := forgeTokenReadStats(tc.cmd)
-			if got != tc.want {
+			if got := forgeWithin(t, tc.cmd, 2*time.Second); got != tc.want {
 				t.Fatalf("k=%d %q…: read = %v, want %v", k, tc.cmd[:24], got, tc.want)
 			}
-			if st.exhausted {
-				t.Fatalf("k=%d %q…: budget exhausted (%d units), want a linear scan", k, tc.cmd[:24], st.spent)
-			}
-			if words := len(strings.Fields(tc.cmd)); st.judged > 2*words+8 {
-				t.Fatalf("k=%d %q…: judged %d positions for %d words, want <= %d", k, tc.cmd[:24], st.judged, words, 2*words+8)
-			}
-		}
-	}
-}
-
-// regression: #4821
-func TestForgeBudgetFailsClosed(t *testing.T) {
-	// Input built to outrun the work budget is undecided, and an undecided
-	// scan is refused whatever follows (over-reach on pathological input only).
-	chain := "env " + strings.Repeat("gh auth ", 3000)
-	for _, tc := range []struct {
-		cmd  string
-		want bool
-	}{
-		{chain + "; echo gh auth token", true},
-		{chain + "; echo ok", true},
-	} {
-		got, st := forgeTokenReadStats(tc.cmd)
-		if !st.exhausted {
-			t.Fatalf("fixture must exhaust the budget (spent %d)", st.spent)
-		}
-		if got != tc.want {
-			t.Fatalf("exhausted scan: read = %v, want %v", got, tc.want)
 		}
 	}
 }
 
 // regression: #4821
 func TestForgeANSICDecode(t *testing.T) {
-	for in, want := range map[string]string{
-		`tok\x65n`:      "token",
-		`\147h`:         "gh",
-		`\u0074oken`:    "token",
-		`\U00000067h`:   "gh",
-		`a\'b`:          "a'b",
-		`\q`:            `\q`,
-		`no escapes`:    "no escapes",
-		`\x`:            `\x`,
-		`line\nbreak\t`: "line\nbreak\t",
-	} {
-		if got := decodeANSIC(in); got != want {
-			t.Errorf("decodeANSIC(%q) = %q, want %q", in, got, want)
-		}
-	}
-	// A span holding `\'` ends elsewhere in a POSIX sh: unmodeled, so it is
-	// refused when the trigger follows it (an accepted false refuse).
+	// Escapes the shells, echo -e and printf decode are read as the byte they
+	// stand for, inside or outside a `$'…'` span.
 	for _, tc := range []struct {
 		cmd  string
 		want bool
 	}{
+		{`gh auth $'tok\x65n'`, true},
+		{`$'\147h' $'\x61uth' $'token'`, true},
+		{`gh $'\U00000061uth' status`, true},
+		{`printf '\164\157\153\145\156'`, true},
 		{`echo $'it\'s'; gh auth token`, true},
 		{`echo $'it\'s gh auth token'`, true},
-		{`echo $'it\'s'; ls`, false},
+		{`echo $'tab\there gh auth token'`, true},
 		{`echo $'tab\there'; gh auth token`, true},
-		{`echo $'tab\there gh auth token'`, false},
+		{`echo $'it\'s'; ls`, false},
+		{`printf '\q\x\n'`, false},
 	} {
 		if got := forgeTokenRead(tc.cmd); got != tc.want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", tc.cmd, got, tc.want)
@@ -128,37 +103,16 @@ func TestForgeANSICDecode(t *testing.T) {
 	}
 }
 
-// forgeWithin runs forgeTokenReadStats under a deadline: a hook timeout lets
-// the call through, so a scan that does not finish in time is a fail-open.
-func forgeWithin(t *testing.T, cmd string, d time.Duration) (bool, forgeStats) {
-	t.Helper()
-	type res struct {
-		hit bool
-		st  forgeStats
-	}
-	done := make(chan res, 1)
-	go func() {
-		hit, st := forgeTokenReadStats(cmd)
-		done <- res{hit, st}
-	}()
-	select {
-	case r := <-done:
-		return r.hit, r.st
-	case <-time.After(d):
-		t.Fatalf("%d-byte command: no decision within %v", len(cmd), d)
-	}
-	return false, forgeStats{}
-}
-
 // regression: #4821
 func TestForgeScanWorkBounded(t *testing.T) {
-	// Every pass the forge scan makes is charged to its work budget, so no
-	// shape outruns it: each fixture is decided within a deadline, without
-	// exhausting the budget, at a bounded number of units per byte. The
-	// shapes are ANSI-C spans holding an escaped quote, many heredoc
-	// operators on one line, many quoted spans, and many substitutions whose
-	// two readings end differently (each script judges the other reading once).
+	// Shapes that once made a shell-model scan slow or undecided: ANSI-C spans
+	// holding an escaped quote, many heredoc operators on one line, many quoted
+	// spans, substitutions holding heredocs, a long wrapper prefix and deep
+	// nesting. Each is decided within a deadline, refused with a trigger word
+	// in any spelling and allowed without one.
 	const n = 600
+	prefix := "sudo " + strings.Repeat("gh pr x ", 2500)
+	nest := func(inner string) string { return strings.Repeat("eval ", 10) + inner }
 	for _, tc := range []struct {
 		name, cmd string
 		want      bool
@@ -173,63 +127,28 @@ func TestForgeScanWorkBounded(t *testing.T) {
 		{"subst-heredoc-allow", strings.Repeat("echo \"$(cat <<'M'\n1) a\nM\n)\"\n", n), false},
 		{"body-subst", "cat <<B\n" + strings.Repeat("$(cat <<'M'\n1) a\nM\n)\n", n) + "B\ngh auth token", true},
 		{"body-subst-allow", "cat <<B\n" + strings.Repeat("$(cat <<'M'\n1) a\nM\n)\n", n) + "B", false},
+		{"prefix-ansi-c", prefix + `; gh auth $'\x74oken'`, true},
+		{"prefix-split", prefix + "; gh auth to''ken", true},
+		{"prefix-allow", prefix + "; echo ok", false},
+		{"nest-split", nest("gh auth t'o'ken"), true},
+		{"nest-ansi-c", nest(`gh $'\x61uth' token`), true},
+		{"nest-allow", nest("ls"), false},
+		{"megabyte", strings.Repeat("x ", 1<<19) + "; gh auth token", true},
+		{"megabyte-allow", strings.Repeat("x ", 1<<19), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, st := forgeWithin(t, tc.cmd, 2*time.Second)
-			if got != tc.want {
+			if got := forgeWithin(t, tc.cmd, 2*time.Second); got != tc.want {
 				t.Errorf("read = %v, want %v", got, tc.want)
-			}
-			if st.exhausted || st.spent > 8*len(tc.cmd)+64 {
-				t.Errorf("spent %d units on %d bytes (exhausted %v), want <= 8 per byte",
-					st.spent, len(tc.cmd), st.exhausted)
 			}
 		})
 	}
 }
 
 // regression: #4821
-func TestForgeUndecidedRefused(t *testing.T) {
-	// Where the scan cannot finish (the budget runs out, or nesting is deeper
-	// than maxForgeTokenDepth) the command is refused outright. A raw-text
-	// test there would let through any spelling the lexer decodes: ANSI-C
-	// escapes, or a word split by quotes.
-	prefix := "sudo " + strings.Repeat("gh auth x ", 2500)
-	nest := func(inner string) string { return strings.Repeat("eval ", maxForgeTokenDepth+2) + inner }
-	for _, tc := range []struct {
-		cmd      string
-		exhausts bool
-	}{
-		{prefix + `; gh auth $'\x74oken'`, true},
-		{prefix + "; gh auth to''ken", true},
-		{prefix + "; echo ok", true},
-		{nest("gh auth t'o'ken"), false},
-		{nest(`gh $'\x61uth' token`), false},
-		{nest("ls"), false},
-	} {
-		got, st := forgeWithin(t, tc.cmd, 2*time.Second)
-		if st.exhausted != tc.exhausts {
-			t.Fatalf("%q…: exhausted = %v, want %v", tc.cmd[len(tc.cmd)-24:], st.exhausted, tc.exhausts)
-		}
-		if !got {
-			t.Errorf("%q…: an undecided scan must be refused", tc.cmd[len(tc.cmd)-24:])
-		}
-	}
-	// Paired: the same reads, short enough to judge in full, are refused on
-	// their own, and a plain command is not.
-	for cmd, want := range map[string]bool{
-		`gh auth $'\x74oken'`: true, "gh auth to''ken": true, "gh auth t'o'ken": true, "echo ok": false,
-	} {
-		if got, st := forgeTokenReadStats(cmd); got != want || st.exhausted {
-			t.Errorf("%q: read = %v (exhausted %v), want %v", cmd, got, st.exhausted, want)
-		}
-	}
-}
-
-// regression: #4821
 func TestForgeArithHeredoc(t *testing.T) {
 	// A `((` is arithmetic or nested subshells as bash decides by where the
-	// parens close, so the scan does not model it: the rest of the script is
-	// refused iff it holds the trigger, even as data (accepted false refuses).
+	// parens close. The guard models neither: the script is refused iff it
+	// holds a trigger word, even as data (accepted false refusals).
 	for _, tc := range []struct {
 		cmd  string
 		want bool
@@ -257,9 +176,10 @@ func TestForgeArithHeredoc(t *testing.T) {
 
 // regression: #4821
 func TestForgeShiftSiblings(t *testing.T) {
-	// The defect class: a `<<` the scan reads as a heredoc (or not) where the
-	// shell reads it the other way. Each refused shape runs the read in bash
-	// or zsh; each allowed one is the same construct, placed.
+	// A `<<` a shell model could read as a heredoc (or not) where the shell
+	// reads it the other way. Each refused shape runs the read in bash or zsh;
+	// each allowed one holds no trigger word. A trigger word in data is
+	// refused too.
 	for _, tc := range []struct {
 		cmd  string
 		want bool
@@ -269,9 +189,11 @@ func TestForgeShiftSiblings(t *testing.T) {
 		{"x=$((1<<2)); cat > n.md <<'E'\nit's here\nE", false},
 		{"echo $[1<<E]\ngh auth token\nE]", true},
 		{"echo ${x:-<<E}\ngh auth token\nE}", true},
-		{"echo ${x:-y}; cat > n.md <<'E'\ngh auth token\nE", false},
+		{"echo ${x:-y}; cat > n.md <<'E'\ngh auth token\nE", true},
+		{"echo ${x:-y}; cat > n.md <<'E'\nit's\nE", false},
 		{"a[x<<E]=1\ngh auth token\nE]=1", true},
-		{"a[1]=2; cat > n.md <<'E'\ngh auth token\nE", false},
+		{"a[1]=2; cat > n.md <<'E'\ngh auth token\nE", true},
+		{"a[1]=2; cat > n.md <<'E'\nit's\nE", false},
 		// A heredoc in a substitution whose body holds the closing paren.
 		{"x=$(cat <<'E'\n) it's\nE\n); gh auth token; echo 'ok'", true},
 		{"x=$(cat <<'E'\nit's\nE\n); echo \"$x\"", false},
@@ -298,7 +220,7 @@ func TestForgeShiftSiblings(t *testing.T) {
 		{"m[\"k]\"<<T]=v\ngh auth token\nT]=v", true},
 		{"echo ${v:-\"}\"}; cat > n.md <<'E'\nit's\nE", false},
 		{"echo ${D:-$(pwd)}; cat > n.md <<'E'\nit's\nE", false},
-		// A substitution in a delimiter word: unmodeled, decided by the trigger.
+		// A substitution in a delimiter word.
 		{"cat <<$(echo E)\nbody\n$(echo E)\necho ok", false},
 		{"cat <<$(echo E)\nbody\n$(echo E)\ngh auth token", true},
 	} {
@@ -308,22 +230,24 @@ func TestForgeShiftSiblings(t *testing.T) {
 	}
 }
 
-// forgeTriggers spell the read in the ways the trigger must see through:
+// forgeTriggers spell the read in the ways the match must see through:
 // plain, quoted, escaped, ANSI-C decoded, behind a computed command word,
-// and the other token prints. "@" in a construct row stands for each.
+// and the other token prints. "@" in a construct row stands for each. The
+// TestUnmodeled* tables keep one row set per shell construct a lexer could
+// misplace; the guard no longer models any of them.
 var forgeTriggers = []string{
 	"gh auth token", `gh a'u'th to\ken`, `gh $'\x61uth' token`, `$c auth "token"`,
 	`gh "$s" status -t`, "gh config get oauth_token", "gh auth git-credential",
 }
 
 // forgeUnmodeled asserts each row is refused with every trigger in it, and
-// allowed with `echo ok` there: the construct itself is not refused.
+// allowed with `echo ok` there: the construct alone is not refused.
 func forgeUnmodeled(t *testing.T, rows []string) {
 	t.Helper()
 	for _, row := range rows {
 		for _, trig := range forgeTriggers {
 			if cmd := strings.ReplaceAll(row, "@", trig); !forgeTokenRead(cmd) {
-				t.Errorf("%q: the trigger in an unmodeled construct must refuse", cmd)
+				t.Errorf("%q: the trigger in the construct must refuse", cmd)
 			}
 		}
 		if cmd := strings.ReplaceAll(row, "@", "echo ok"); forgeTokenRead(cmd) {
@@ -394,8 +318,8 @@ func TestUnmodeledQuoteForms(t *testing.T) {
 // regression: #4821
 func TestForgeReviewShapes(t *testing.T) {
 	// Neutral shapes of the classes earlier reviews found (each one runs the
-	// read in bash 5, bash 3.2 or zsh): a span end the scan once placed where
-	// the shell does not. Each is an unmodeled construct now, so it is refused.
+	// read in bash 5, bash 3.2 or zsh): a span end a lexer once placed where
+	// the shell does not. Each holds a trigger word, so it is refused.
 	for name, cmd := range map[string]string{
 		"ansi-c-in-dq-subst": "out=\"$(printf '%s\\n' $'k\\')' ; gh auth token ; printf )\"",
 		"procsubst-heredoc":  "/bin/bash -c \"wc -l <(tac <<Q\nx)\ngh auth token\nQ\n)\"",
@@ -415,25 +339,153 @@ func TestForgeReviewShapes(t *testing.T) {
 
 // regression: #4821
 func TestForgeIdiomOutcomes(t *testing.T) {
-	// A message or body in a heredoc substitution is unmodeled: allowed
-	// without the trigger, refused with it (use -F / --body-file). A plain
-	// substitution is lexed, so its text is judged, not matched.
+	// A message, body or comment naming a trigger word is refused however it
+	// is passed on the command line; -F / --body-file is the way through.
 	for cmd, want := range map[string]bool{
 		"git commit -m \"$(cat <<'MSG'\nfix: tidy the lexer\nMSG\n)\"":         false,
 		"git commit -m \"$(cat <<'MSG'\nfix: rotate the token cache\nMSG\n)\"": true,
 		"git commit -F msg.txt": false,
 		"git commit -m \"$(cat <<'T'\nit's 1)\nT\n)\"; y=$(cat <<'U'\nok (a\nU\n)":       false,
 		"git commit -m \"$(cat <<'T'\nit's 1)\nT\n)\"; y=$(cat <<'U'\nok (a token\nU\n)": true,
-		"git commit -m \"fix: rotate the token cache\"":                                  false,
-		"gh pr edit 1 --body \"see the auth flow\"":                                      false,
+		"git commit -m \"fix: rotate the token cache\"":                                  true,
+		"gh pr edit 1 --body \"see the auth flow\"":                                      true,
 		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"":               false,
 		"gh pr create --title t --body \"$(cat <<'EOF'\nthe auth flow\nEOF\n)\"":         true,
 		"gh pr create --title t --body-file body.md":                                     false,
 		"gh pr edit 1 --body \"$(cat body.md)\"":                                         false,
-		"gh pr comment 1 --body \"$(printf 'see token docs')\"":                          false,
+		"gh pr comment 1 --body \"$(printf 'see token docs')\"":                          true,
 	} {
 		if got := forgeTokenRead(cmd); got != want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}
+
+// forgeRefuseAll asserts every command is refused.
+func forgeRefuseAll(t *testing.T, cmds []string) {
+	t.Helper()
+	for _, cmd := range cmds {
+		if !forgeWithin(t, cmd, 2*time.Second) {
+			t.Errorf("%q: a trigger word in the text must refuse", cmd)
+		}
+	}
+}
+
+// regression: #4821
+func TestForgeWordSpan(t *testing.T) {
+	// A word the shell keeps whole (a carriage return or a leading `}` before
+	// `#`) must not hide the rest of the line as a comment.
+	forgeRefuseAll(t, []string{
+		"ls -d q\r#|gh auth token",
+		"printf '%s\\n' k }#tail && gh auth token",
+		"touch }#x; gh auth token -u someone",
+	})
+}
+
+// regression: #4821
+func TestForgeCommandPrefix(t *testing.T) {
+	// Command-position prefixes outside any closed set: an append
+	// assignment, a builtin runner, zsh precommand modifiers.
+	forgeRefuseAll(t, []string{
+		"PATH+=:/opt/x gh auth token",
+		"builtin command -p gh auth token",
+		"nocorrect nice gh auth token",
+		"noglob command gh auth token",
+		"repeat 3 gh auth token",
+	})
+}
+
+// regression: #4821
+func TestForgeDynamicArity(t *testing.T) {
+	// One brace or computed word standing for several components, and a
+	// substituted script handed to eval, a shell's -c or a here-string.
+	forgeRefuseAll(t, []string{
+		"command gh {auth,token}",
+		"gh $(printf '%s\\n' auth token)",
+		`set -- auth token -u x; gh "$@"`,
+		"pair='auth token'; gh $pair",
+		`eval "$(printf '%s ' gh auth token)"`,
+		`dash -c "$(printf 'gh auth token')"`,
+		`zsh <<< "$(printf 'gh auth token')"`,
+	})
+}
+
+// regression: #4821
+func TestForgeClobberOperator(t *testing.T) {
+	// `>|` (with or without a descriptor) between the read's words.
+	forgeRefuseAll(t, []string{
+		"gh auth 2>|err.log token",
+		"gh >|out.txt auth token -u x",
+		"gh auth 1>| out.txt token",
+	})
+}
+
+// regression: #4821
+func TestForgeStringToCommand(t *testing.T) {
+	// A computed shell word, and builtins or variables that run a string.
+	forgeRefuseAll(t, []string{
+		`"${SHELL:-sh}" -c 'gh auth token'`,
+		`$ZSH_NAME -c 'gh auth token -u x'`,
+		`printf 'gh auth token' | "$SHELL"`,
+		"builtin eval 'gh auth token -u x'",
+		"trap 'gh auth token' ERR",
+		"mapfile -C 'gh auth token' -c 1 arr < list.txt",
+		"PS4='$(gh auth token)' bash -xc :",
+	})
+}
+
+// regression: #4821
+func TestForgePassThrough(t *testing.T) {
+	// Arguments or scripts that reach gh or a shell through another command,
+	// and a read spelled with literal words held in variables or an alias.
+	forgeRefuseAll(t, []string{
+		"printf 'auth token' | xargs gh",
+		"printf 'gh auth token' | tee /dev/null | sh",
+		"c=gh s=auth; $c $s token",
+		"read -r p q <<< 'auth token'; gh $p $q",
+		"alias q=gh; q auth token",
+		"find . -maxdepth 0 -exec gh auth token \\;",
+	})
+}
+
+// regression: #4821
+func TestForgeMentionsRefused(t *testing.T) {
+	// The accepted false refusals: a trigger word as data (prose, a search
+	// pattern, a comment, a heredoc to a file, a path, a field name).
+	forgeRefuseAll(t, []string{
+		"echo 'gh auth token'",
+		"grep -n 'gh auth token' notes.md",
+		"rg -n token src/",
+		"# gh auth token\necho ok",
+		"cat > notes.md <<'EOF'\nthe auth flow\nEOF",
+		"mkdir -p auth",
+		"gh auth status",
+		"gh pr view token",
+		"gh run list --json status,name",
+		"git status && gh pr view 1",
+	})
+}
+
+// regression: #4821
+func TestForgeNoTriggerAllowed(t *testing.T) {
+	// The allow side: text holding no trigger word, including the sanctioned
+	// mint, a minted token passed to one command, and the file-based ways
+	// through for prose.
+	for _, cmd := range []string{
+		"gh pr view 12",
+		"gh api user --jq .login",
+		`GH_TOKEN=$(cat "$T") gh pr view 1`,
+		"desktoken --no-rotate worker --repo example/repo",
+		"deskclaim-ref release k --token-file f",
+		"git status --short",
+		"grep -n -f patterns.txt notes.md",
+		"git commit -F msg.txt",
+		"gh pr comment 1 --body-file body.md",
+		"go test ./writepolicy/ -run TestAmbientToken",
+		"command -v gh",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: no trigger word, so it must stay allowed", cmd)
 		}
 	}
 }
