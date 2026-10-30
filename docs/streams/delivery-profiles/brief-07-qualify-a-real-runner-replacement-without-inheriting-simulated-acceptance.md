@@ -54,7 +54,7 @@ design-fit:
   weight: "No new binary, service, framework or durable store; bounded library/host/test changes. Measure actual complexity at implementation, no reduction claimed now."
   why-add: "Existing owners lack this explicit profile composition/journey; another orchestration or mock-service layer would duplicate their semantics."
 
-single-point-of-failure: profile or runner subject misinterpreted by a shared adapter — independent consuming-boundary authorization and exact-subject checks plus planted-fault consumer tests back it; common schema defects still require review against the source contract.
+single-point-of-failure: the milestone-support/06 acceptance boundary must bind exact profile, version and subject; delivery-profiles/07 exports qualification evidence and cannot accept itself. Independent real/fake subject checks and driver acceptance back that boundary; row 3 proves evidence applicability only and does not replace the acceptance gate.
 
 ## Read first
 
@@ -81,7 +81,7 @@ Default if no answer: none — blocks until answered.
 ## Task
 
 1. Wait for compatible delivered graph-execution/22 adapter and explicit driver selection of supported disposable local host/invocation scope. Record actual model/harness/artifact, capabilities and required credentials scope; no provider/cluster permission is inferred from profile selection. Unsupported or unavailable real adapter stays unqualified.
-2. Run shared /02 contract cases against both fake and selected real adapter at pinned revisions, then rerun the same real client/service/supervisor journey using the actual real adapter. Capability equivalence covers declared lifecycle/interfaces only, never model output quality or unmeasured performance.
+2. Require driver-supplied invocation-scoped credentials through the selected graph-execution/22 adapter's existing approved custody boundary. The profile host receives only an opaque reference, never the secret; it issues/brokers nothing. Absent/invalid credentials or unsupported custody fail before launch with zero provider sends and no ambient/config-file fallback. Keep /03 containment unchanged; only the explicitly authorized adapter's existing secret-delivery channel is allowed, and any provider contact still needs its own grant. Run shared /02 contract cases against both fake and selected real adapter at pinned revisions, then rerun the same real client/service/supervisor journey using the actual real adapter. Capability equivalence covers declared lifecycle/interfaces only, never model output quality or unmeasured performance.
 3. Use a new profile subject/version as /01 requires, retain fake-profile evidence unchanged, and export fresh criteria and cleanup evidence. Prove fake or stale receipts cannot satisfy real-required acceptance; an explicitly simulated consumer may still use the fake profile.
 4. Keep deterministic fake scenarios for regression, document differences/unsupported observations and local rollback to the previous profile selection. No production adoption, tag, pin, workflow, live cluster contact or automatic acceptance. Scope extension beyond approved local invocation is a new driver decision.
 
@@ -107,8 +107,8 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileReplacement$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileReplacement ' "$out")` | exit 0 and named PASS. Actual selected real adapter and fake run shared cases; deliberate contract mismatch fails, unavailable real runtime is not skipped. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileRealJourney$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileRealJourney ' "$out")` | exit 0 and named PASS. Real client/host/supervisor/adapter execute the separately authorized local workload and cleanup; exact actual subject is recorded. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileNoInheritance$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileNoInheritance ' "$out")` | exit 0 and named PASS. Fake, stale or wrong-environment evidence cannot satisfy real-required qualification; historical fake result remains readable. |
-
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/07` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
+| 5 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileRealSecrets$' ./internal/cellapi/integration/... > "$out" && grep -F -- '--- PASS: TestProfileRealSecrets ' "$out")` | exit 0 and named PASS. Actual selected real-adapter path: missing credential produces zero launch/provider sends; real-shaped non-secret sentinel planted in harness stderr, provider error, trace and failed-run residue never reaches logs/export/retained artifacts. Plant a no-redaction mutation to prove failure; ambient fallback and host-secret access remain refused. |
 
 ## Pre-mortem
 

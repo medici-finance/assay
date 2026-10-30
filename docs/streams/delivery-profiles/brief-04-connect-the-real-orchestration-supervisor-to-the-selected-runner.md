@@ -108,8 +108,9 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileBridge$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileBridge ' "$out")` | exit 0 and named PASS. Real service adapter invokes delivered supervisor and runner.Client with fake adapter; launch/observe/cancel/reconcile share exact subject. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileBridgeFence$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileBridgeFence ' "$out")` | exit 0 and named PASS. Wrong session/generation/profile blocked independently below outer check, no launch; unqualified supervisor or database cannot silently skip. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileUnknown$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileUnknown ' "$out")` | exit 0 and named PASS. Lost acknowledgement reconciles one launch; deliberate replay-on-unknown and wrong-subject mutations turn test red. |
-
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/04` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
+
+Coordination: /03 owns lifecycle setup in the shared deliveryprofile package; this brief owns its supervisor bridge. Checkpoint the interface and serialize common-package edits; equal wave numbers do not authorize concurrent edits there.
 
 ## Pre-mortem
 

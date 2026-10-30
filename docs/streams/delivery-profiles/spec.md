@@ -78,7 +78,7 @@ host/adapter binding, not merely echo a user-authored `real` label. Compare decl
 observed identity before enabling actions and exporting qualification; mismatch holds.
 The profile identity is distinct from the runner's existing execution-profile extension:
 composition is not model/harness qualification. Carry both identities, do not repurpose
-or replace `runner.ExecutionProfile` or the current capability negotiation contract.
+or replace `runner.ProfileRequirement` (decoded by `LaunchRequest.ExecutionProfile()`) or the current capability negotiation contract.
 
 ## First profile and exact proof boundary
 
@@ -104,8 +104,16 @@ from an in-memory fake. If the delivered /26 supervisor requires a coordination 
 its real disposable PostgreSQL harness remains required: this plan does not invent a
 no-journal supervisor or substitute its store. Missing database capability holds the
 integrated profile, not the independent contract/fake work. Backend integration must prove selected profile resources stay
-separate from operational stores and claims. A local synthetic actor uses a separate
-explicitly scoped authorization path; no production no-auth mode or auth bypass is added.
+separate from operational stores and claims. The synthetic actor is admitted by the same issuer and admission machinery selected
+and approved by cell-api/03 (R7 ingress, existing R3/R4 capability/executor custody).
+That owner supplies the disposable caller credential for a profile-only audience and
+run namespace; the profile host neither issues nor brokers credentials. Record the
+selected issuer/configuration identity at implementation pickup. If that owner has no
+supported disposable credential mechanism, hold this profile and obtain its scoped
+owner amendment; do not add a second issuer. Ordinary-mode hosts reject profile-audience
+credentials and profile routes. Independently, the lower store/claim/effect admission
+rejects a synthetic principal targeting any non-profile cell, claim or store even with
+ingress checks bypassed. No production no-auth mode or authorization bypass is added.
 
 ## Lifecycle, isolation and observation
 
@@ -117,6 +125,16 @@ Host adapters allocate an owned temporary root, scoped synthetic session, epheme
 ports and process-group handles; reject symlink escapes, unowned output paths, remote
 binds and ambient provider credentials. Every created resource has recorded ownership.
 The launcher supplies an allowlisted child environment, not the user's whole environment.
+For the separately authorized real-runner profile only, the driver supplies a credential
+through the selected graph-execution/22 adapter's existing approved custody boundary,
+scoped to the named local invocation. The host sees only an opaque credential reference;
+it does not read, issue or broker the secret. Missing/invalid credential or unsupported
+custody fails before launch, with no ambient/config-file fallback. The adapter's approved
+secret delivery is the only permitted additional capability; /03's remote-target,
+ordinary-mode, synthetic-principal and owned-resource restrictions remain in force.
+Any provider contact needs its own explicit grant; a profile is no such grant. Test
+credential-shaped sentinels, never real secrets, in stderr, provider errors and traces;
+none may survive export, logs or retained failed-run residue.
 
 Startup is all-or-cleanup: record partial resources, stop only owned children and report
 what remains when cleanup fails. Reset creates a fresh run identity and clean fake state;
@@ -147,7 +165,7 @@ subject and uses existing Verify/Evidence and authorized milestone acceptance me
 | C04 | UI, report and logs identify the fake and its limitations; missing/changed metadata or stale run evidence cannot become real-service acceptance. No mocked requests can satisfy a criterion requiring a real provider. | independent verifier and driver acceptance; /01, /05–06 |
 | C05 | Partial startup, interrupted run, reset and repeated teardown leave no owned running child or writable credential; unowned sentinel files/processes survive. Fault controls cannot contact an external endpoint or use ambient credentials. | independent verifier; /03, /06 |
 | C06 | Same contract/lifecycle cases run against the fake and each selected real replacement at pinned versions; unsupported semantics are reported, mismatches fail, and real substitution creates a new subject and scoped acceptance. | independent verifier; /02, /07; real adapter is external prerequisite |
-| C07 | Evidence export binds source/artifact/profile/scenario digests, OS/runtime, component modes, actual exercised edges, named criteria/results, event trace, verifier, time, cleanup result and unknowns. No secret, fabricated provider telemetry or automatic acceptance stamp. | independent verifier; /06–07 |
+| C07 | Evidence export binds source/artifact/profile/scenario digests, OS/runtime, component modes, actual exercised edges, named criteria/results, event trace, verifier, time, cleanup result and unknowns. No secret, fabricated provider telemetry or automatic acceptance stamp. Export normalizes local paths/hostnames/usernames to opaque references; keep private local artifacts outside the public bundle. | independent verifier; /06–07 |
 
 The negative controls must plant wrong-but-plausible behaviour: fake labelled real,
 ignored required mode/contract, UI-only synthetic completion, replay of a stale result,
@@ -217,6 +235,16 @@ placements reconciled with cell-api/02 before effects. No adapter imports anothe
 module's internal package. The current standalone `deskd/` compatibility module is an
 inventory source, not a second profile implementation target. Delegate subprocess
 lifetime to the delivered `loopadmin/process`/supervisor API, never a new exec owner.
+
+## Revision following design review — 30 October 2026
+
+Review of the initial draft identified missing named synthetic-credential ownership,
+real-runner custody/redaction proof and detached Verify rows. The amendment above and
+briefs /03, /06 and /07 preserve existing issuer/admission and custody owners and add
+explicit ordinary-mode, lower-boundary isolation and real-output negative controls.
+No permission or operational gate is relaxed. Original authoring baseline remains
+recorded; current main was merged at `5fdae0d07` for this revision. Existing R7 and
+supervisor Tasks, Verify and Evidence are unchanged; only their inverse edges differ.
 
 ## Decisions and remaining gates
 

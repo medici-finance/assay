@@ -2,8 +2,8 @@
 brief: assay:assay:delivery-profiles:03
 title: "Build the isolated local profile lifecycle in the existing service host"
 why: "An early delivery must start and clean up predictably without reading operational credentials or leaving processes behind."
-wave: 10
-depends: ["delivery-profiles/01", "cell-api/02", "graph-execution/26"]
+wave: 14
+depends: ["delivery-profiles/01", "cell-api/02", "graph-execution/26", "cell-api/03"]
 unblocks: ["delivery-profiles/05"]
 effort: M
 gate: human
@@ -38,7 +38,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/cellapi/deliveryprofile/` (planned), `tools/desk/cmd/deskd/`, `tools/desk/testdata/cellapi/deliveryprofiles/` (planned), `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/delivery-profiles.md` (planned), `changelog/delivery-profiles-03.md` (planned)
+files: `tools/desk/internal/cellapi/deliveryprofile/` (planned), `tools/desk/cmd/deskd/` (planned), `tools/desk/testdata/cellapi/deliveryprofiles/` (planned), `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/delivery-profiles.md` (planned), `changelog/delivery-profiles-03.md` (planned)
 
 facts:
 - Source baseline: public main `15ab949bd6158c2a9ef469adf362f3fb5d2fca5a`, inspected 30 October 2026; [spec source inventory](spec.md#sources-and-observed-baseline--30-october-2026) distinguishes shipped code from planned owners.
@@ -79,7 +79,7 @@ Default if no answer: none — blocks until answered.
 ## Task
 
 1. Add an explicit disposable profile lifecycle to the existing public service host. Reuse /01 validation before effects. Wait for delivered cell-api/02 and graph-execution/26. Extend the R7-selected service host and delegate child lifetime to the public process/supervisor owner. The current standalone deskd module is compatibility evidence only; do not add another profile host there or copy it across module boundaries.
-2. Implement start, reset, status and idempotent teardown with owned temporary root, scoped synthetic session, ephemeral loopback listeners, reviewed recipe references and allowlisted child environment. Never select a provider or arbitrary executable from user-controlled profile text; ordinary startup retains existing semantics.
+2. Obtain synthetic caller credentials only from the existing issuer/admission owner selected and approved by cell-api/03; record issuer/configuration identity and bind profile-only audience, exact run namespace and disposable principal. The profile host issues/brokers no token. If unsupported, hold for that owner's scoped amendment. Refuse profile routes and these credentials in ordinary mode; independently refuse a synthetic principal reading/acting on non-profile cells, claims or stores below ingress. Implement start, reset, status and idempotent teardown with owned temporary root, scoped synthetic session, ephemeral loopback listeners, reviewed recipe references and allowlisted child environment. Never select a provider or arbitrary executable from user-controlled profile text; ordinary startup retains existing semantics.
 3. Reject external targets, ambient provider credentials, unowned/symlink-escaped roots and arbitrary delete/kill targets. Actual process/transport boundaries independently enforce policy with upper validation bypassed. Print selected profile/modes/targets before any contact.
 4. Record partial startup and cleanup failures; cleanup only resources this run owns. Interrupt/restart finds its own residue without reviving a stale subject. Read-only evidence retention contains no credential. Do not introduce a durable coordination store or a synthetic production claim.
 
@@ -105,8 +105,11 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileLifecycle$' ./internal/cellapi/deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileLifecycle ' "$out")` | exit 0 and named PASS. Real host lifecycle starts/resets/stops disposable fixtures; partial-start and interrupt cases leave no owned running resource. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileContain$' ./internal/cellapi/deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileContain ' "$out")` | exit 0 and named PASS. With outer validator bypassed, remote dial/ambient credential attempt is refused at actual I/O boundary; sentinel files survive. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileHost$' ./cmd/deskd/... > "$out" && grep -F -- '--- PASS: TestProfileHost ' "$out")` | exit 0 and named PASS. Actual host entrypoint requires opt-in; ordinary startup contract unchanged; repeated teardown and unowned-process negative controls pass. |
-
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/03` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
+| 5 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileOrdinaryDeny$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfileOrdinaryDeny ' "$out")` | exit 0 and named PASS. Ordinary-mode production mux refuses profile routes and profile-audience credential, with a positive opt-in-profile control; planted ordinary-mode acceptance fails. |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfilePrincipalFence$' ./internal/cellapi/... > "$out" && grep -F -- '--- PASS: TestProfilePrincipalFence ' "$out")` | exit 0 and named PASS. Bypass ingress and directly exercise lower store/claim/effect admission: synthetic principal cannot read or mutate non-profile cells/claims/stores; counters show zero access and scoped disposable positive control succeeds. |
+
+Coordination: /03 owns `tools/desk/internal/cellapi/deliveryprofile/` lifecycle setup; /04 owns the host-to-supervisor bridge. Checkpoint the common package/interface with the other worker before editing; do not dispatch both into shared package changes without an agreed serialization.
 
 ## Pre-mortem
 

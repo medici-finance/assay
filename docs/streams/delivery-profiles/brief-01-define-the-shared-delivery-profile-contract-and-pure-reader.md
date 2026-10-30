@@ -79,7 +79,7 @@ Default if no answer: none — blocks until answered.
 
 ## Task
 
-1. Publish the versioned spec/schema and one strict pure Decode/Validate/Canonical/Digest API in the existing loopadmin module. Inputs are supplied bytes/values; no filesystem, environment, clock, process, credential, network or acceptance authority. Do not reuse runner.ExecutionProfile for composition.
+1. Publish the versioned spec/schema and one strict pure Decode/Validate/Canonical/Digest API in the existing loopadmin module. Inputs are supplied bytes/values; no filesystem, environment, clock, process, credential, network or acceptance authority. Do not reuse runner.ProfileRequirement (decoded by LaunchRequest.ExecutionProfile()) for composition.
 2. Validate exact identities, component modes/artifact versions, operation-scoped interface contracts, connection references, deterministic scenarios, supported scope/limitations and lifecycle/evidence references. Reject unknown schema, fields, modes, absent required metadata and incompatible connections. Recipe references select reviewed host code, never arbitrary shell commands.
 3. Provide valid/invalid conformance fixtures and external-consumer proof under GOWORK=off, including the actual service consumer module. Preserve module publication gaps: a relative replace or placeholder module version proves source builds only. Update the canonical semantic-owner and documentation rows, not a second registry.
 4. Bind evidence to profile, component/scenario/artifact digests and actual environment; preserve absent observations. Define compatibility and new-subject requirements when fake becomes real. No milestone field, lifecycle state or receipt acceptance is invented.
@@ -106,7 +106,6 @@ record actual commands/digests and restore each mutation before the next check.
 | 1 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileDecode$' ./deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileDecode ' "$out")` | exit 0 and named PASS. Strict production decoding rejects an unknown mode and missing component; planted ignore-mode mutation fails. |
 | 2 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileContract$' ./deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileContract ' "$out")` | exit 0 and named PASS. Connections and evidence bind one profile/scenario subject; changed digest or execution-profile confusion fails. |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestProfileImport$' ./deliveryprofile/... > "$out" && grep -F -- '--- PASS: TestProfileImport ' "$out")` | exit 0 and named PASS. Temporary external consumer plus actual delivered service import use the public package, with dependency closure and no private/internal import. |
-
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief delivery-profiles/01` | exit 0 at implementation diff; actual edited consumers corroborate routing. Out-of-scope rationale remains a reviewer judgment. |
 
 ## Pre-mortem

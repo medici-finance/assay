@@ -4,7 +4,7 @@ title: Qualify mounted cell API authorization and privacy
 why: "Network exposure and cached projections can leak private information even when a route table looks protected. The mounted server must enforce caller scope and current admission independently of clients and lower-level stores."
 wave: 13
 depends: ["cell-api/02", "forge-neutral/40", "graph-execution/18"]
-unblocks: ["cell-api/04", "cell-api/05", "delivery-profiles/05"]
+unblocks: ["cell-api/04", "cell-api/05", "delivery-profiles/05", "delivery-profiles/03"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
