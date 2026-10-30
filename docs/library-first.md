@@ -308,3 +308,20 @@ Consumer routing: the two QID/trailer adapters and domain's isolated mutation sn
 are fixed here. `statusgen/briefv2.go`/new authoring, record loaders, capability negotiation,
 claims, ruling/domain adaptation and history/export remain the respective milestone
 follow-ups /02, /03, /04, /08, /09 and /12. No operational new grammar is advertised here.
+
+## Shared reader capability assessment — milestone-support/02
+
+`statusgen/readercaps` is the pure owner of supplied operation-scoped requirements
+and advertisements, with one three-state assessment. Its JSON decoders preserve
+unknown required features and reject malformed/duplicate declarations.
+`readercaps/record` reuses briefdoc and the existing YAML codec; `readercaps/tree` is
+the explicitly effectful filesystem adapter. Neither is imported by the pure core.
+Statusgen discovery and the existing desk schema gate call the shared implementation
+in process. No credential, current-subject or authority boundary moves.
+
+The statusgen module edge already exists in tools/desk; no dependency is added or
+upgraded. GOWORK=off consumer tests qualify source integration, not publication.
+Only wired legacy syntax and negotiation preflight are advertised. Milestone runtime,
+new authoring, complete dispatch/pickup and rollout remain subsequent deliveries.
+See [the contract](../spec/reader-capabilities-v1.md) for the allocated envelope,
+conformance cases, host observation responsibilities and old-reader limitation.

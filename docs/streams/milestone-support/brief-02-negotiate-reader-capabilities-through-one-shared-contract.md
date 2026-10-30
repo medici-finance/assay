@@ -27,19 +27,19 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/readercaps/: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/briefschemaversions.go: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/main.go: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/internal/deskkit/briefschemagate.go: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/cmd/deskboard/: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/go.mod: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "spec/reader-capabilities-v1.md: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "schemas/reader-capabilities-v1.json: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "spec/milestone-v1.md: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "spec/stream-v1.md: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "spec/brief-v1.md: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "docs/contracts.md: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
-  - "docs/library-first.md: follow-up milestone-support/02 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/readercaps/: fixed-here (pure assessment/decoders, existing-codec record adapter and explicit filesystem adapter)"
+  - "statusgen/briefschemaversions.go: fixed-here (truthful additive JSON discovery)"
+  - "statusgen/main.go: fixed-here (existing version/discovery entrypoint reused and tested, unchanged)"
+  - "tools/desk/internal/deskkit/briefschemagate.go: fixed-here (shared assessment with preserved legacy release-boundary adaptation)"
+  - "tools/desk/cmd/deskboard/: fixed-here (offline JSON discovery and independent consuming-boundary test)"
+  - "tools/desk/go.mod: fixed-here (existing statusgen require/replace reused, unchanged; source consumers tested GOWORK=off)"
+  - "spec/reader-capabilities-v1.md: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
+  - "schemas/reader-capabilities-v1.json: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
+  - "spec/milestone-v1.md: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
+  - "spec/stream-v1.md: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
+  - "spec/brief-v1.md: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
+  - "docs/contracts.md: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
+  - "docs/library-first.md: fixed-here (shared core, discovery/preflight or canonical contract; existing module edge reused)"
   - "docs/streams/milestone-support/brief-03-load-and-validate-versioned-milestone-records.md: follow-up milestone-support/03 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md: follow-up milestone-support/04 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md: follow-up milestone-support/08 (consumes this delivery; exact runtime readers enumerated at pickup)"
@@ -49,7 +49,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/readercaps/` (planned), `statusgen/briefschemaversions.go`, `statusgen/main.go`, `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/cmd/deskboard/`, `tools/desk/go.mod`, `spec/reader-capabilities-v1.md` (planned), `schemas/reader-capabilities-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `spec/brief-v1.md`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-02.md` (planned), `statusgen/testdata/milestone-support/02-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/readercaps/` (planned), `statusgen/briefschemaversions.go`, `statusgen/main.go`, `statusgen/versiongate.go`, `statusgen/capabilities_test.go` (planned), `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/internal/deskkit/capabilities_test.go` (planned), `tools/desk/cmd/deskboard/`, `tools/desk/go.mod`, `spec/reader-capabilities-v1.md` (planned), `schemas/reader-capabilities-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `spec/brief-v1.md`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-02.md` (planned), `statusgen/testdata/milestone-support/02-mutations.json` (planned), `statusgen/testdata/milestone-support/02-mutate.py` (planned), `statusgen/testdata/milestone-support/01-mutate.py` (existing bounded runner reused) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

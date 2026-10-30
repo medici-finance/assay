@@ -1,0 +1,86 @@
+{
+  "schema": "readercaps-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/02-mutate.py",
+  "cases": [
+    {
+      "name": "required-feature",
+      "target": "statusgen/readercaps/caps.go",
+      "old": "if !contains(pair.have, feature) {",
+      "new": "if false && !contains(pair.have, feature) {",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsCompat"
+    },
+    {
+      "name": "stale-observation",
+      "target": "statusgen/readercaps/caps.go",
+      "old": "if peer.State != Current {",
+      "new": "if false && peer.State != Current {",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsCompat"
+    },
+    {
+      "name": "unsupported-discovery",
+      "target": "statusgen/briefschemaversions.go",
+      "old": "schemas = append(schemas, schema)",
+      "new": "schemas = append(schemas, schema, \"milestone-v1\")",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestStatusgenCapsTruth"
+    },
+    {
+      "name": "statusgen-consumer",
+      "target": "statusgen/versiongate.go",
+      "old": "result.State != readercaps.Supported {",
+      "new": "false && result.State != readercaps.Supported {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestStatusgenCapsTruth"
+    },
+    {
+      "name": "desk-consumer",
+      "target": "tools/desk/internal/deskkit/briefschemagate.go",
+      "old": "result.State != readercaps.Supported {",
+      "new": "false && result.State != readercaps.Supported {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "lower-boundary",
+      "target": "tools/desk/cmd/deskboard/main.go",
+      "old": "\"deskboard\", stderr); code != 0 {",
+      "new": "\"deskboard\", stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "record-obligation",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "return readercaps.DecodeRequirements(encoded)",
+      "new": "_ = encoded; return empty, nil",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "schema-version",
+      "target": "schemas/reader-capabilities-v1.json",
+      "old": "\"const\": \"reader-requirements-v1\"",
+      "new": "\"const\": \"reader-requirements-v99\"",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestReaderCapsSchema"
+    },
+    {
+      "name": "second-effect-import",
+      "target": "statusgen/readercaps/planted.go",
+      "plant": "package readercaps\nimport _ \"os/exec\"\n",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsBoundary"
+    }
+  ]
+}

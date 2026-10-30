@@ -38,6 +38,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/readercaps"
+	capstree "github.com/medici-finance/assay/statusgen/readercaps/tree"
 )
 
 // statusgenExitTreeTooNew is the exit code a brief-reading tool returns when the
@@ -135,6 +138,13 @@ func treeHasBriefV2(root string) bool {
 // one-line upgrade message to stderr and returns the refusal exit code (>0). It
 // returns 0 (proceed) for an unstamped/latest build or a tree with no brief-v2.
 func refuseIfTreeTooNew(roots []string, version string, stderr io.Writer) int {
+	if result := capstree.Check(roots, statusgenReaderCaps()); result.State != readercaps.Supported {
+		fmt.Fprintln(stderr, "statusgen: reader capabilities:", result.Reason)
+		if result.State == readercaps.Unsupported {
+			return 5
+		}
+		return statusgenExitTreeTooNew
+	}
 	if !gateBelowV1(version) {
 		return 0
 	}

@@ -1,0 +1,1 @@
+- Add one shared reader capability contract, truthful JSON discovery, and requirements refusal in the existing statusgen and desk schema preflights. Milestone runtime and rollout remain separately scoped.
