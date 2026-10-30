@@ -96,11 +96,17 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   models instead of choosing one, so any reading that completes a trigger word
   refuses. The trigger words are a whole word `auth`,
   `token`, `oauth_token` or `git-credential`, or the words `gh` and `status`
-  together with a word starting `-t`, `-at` or `--show-token` (`gh auth status`
-  prints no token without one), matched case-insensitively. So `gh "$s" status -t`
-  refuses, while `gh run view 1 --json status,conclusion`,
-  `gh pr checks 1 | grep status` and `git status --short && gh pr view 1` do not:
-  they hold neither `auth` nor a print flag. Before matching, one pass drops quotes, a
+  together, matched case-insensitively. The `gh` and `status` pair is cleared
+  only when every command in the text is a listed read spelled literally:
+  `git status`; `gh pr view`, `list` or `checks`; `gh run view` or `list`;
+  `gh issue view` or `list`, without `--web`; `grep`, `head`, `tail` or `wc` with no file operand;
+  the role mint and a `GH_TOKEN=$(cat "$T")` prefix. So
+  `gh run view 1 --json status,conclusion`, `gh pr checks 1 | grep status` and
+  `git status --short && gh pr view 1` run, while `gh "$s" status "$f"`,
+  `gh au status "$f"` and `git status && gh issue mine` refuse: a computed word
+  or a gh alias could be the credential read. The clearing reads text only, so a
+  listed read still runs whatever `PATH` or an earlier config step put behind its
+  name. Before matching, one pass drops quotes, a
   `$` before a quote, backslashes and line continuations, and decodes `\xHH`,
   `\uHHHH`, `\UHHHHHHHH` and octal escapes. A word starts and ends at a blank, a
   newline or one of ``;&|()<>`{},``, and at a backslash sequence that a shell,
@@ -116,7 +122,10 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   refused like a read. Examples: `echo 'gh auth token'`, `grep -n 'auth' notes.md`,
   `rg -n token src/`, a comment, a heredoc written to a file that says "token",
   `mkdir -p auth`, `gh auth status`, `gh auth login`, `gh pr view token`,
-  `git status && gh pr create -t title` (`-t` read as the print flag), and a commit
+  `git status && gh pr create -t title` (`pr create` is not a listed read),
+  `gh run view "$id" --json status` (a computed argument),
+  `gh run view 1 --json status --jq '.status | ascii_upcase'` (a quoted `|` splits
+  the text), and a commit
   message, PR body or comment passed inline (`-m "…"`, `--body "…"`) that says
   "auth" or "token". The way through is a file: `git commit -F <file>`,
   `--body-file <file>`, or a pattern file (`grep -f <file>`). This departs from the
@@ -125,9 +134,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   the gh CLI's commands by a cooperating session. It does not cover a credential
   read that bypasses those commands: through a git credential helper, the OS
   keychain, or a direct read of the gh CLI's config file. Deliberate evasion
-  (dynamic evaluation, decoding, command names built from parts, or a `gh` subcommand
-  and print flag that are both computed, as in `gh "$s" status "$f"`, where neither
-  `auth` nor the flag is in the text) is out of scope
+  (dynamic evaluation, decoding, command names built from parts) is out of scope
   for this guard and is left to other layers: no operator credential in verify containers, and server-side App
   permissions. This scope is a relay of the driver's answer
   (https://github.com/medici-finance/assay/issues/4821#issuecomment-6523907010),
@@ -143,7 +150,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 6 | Shapes a shell lexer could misplace (heredoc delimiters, `((`, `$((`, `$[`, `${…}`, `name[…]`, substitutions, backquotes, process substitution, unclosed spans, quote forms) refused with a trigger word and allowed without, and the message idioms refused when they name one, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings\|TestUnmodeled\|TestForgeReviewShapes\|TestForgeIdiomOutcomes' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc\|TestHookUnmodeled\|TestHookReviewShapes\|TestHookIdiomOutcomes' -count=1` | PASS |
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
-| 9 | `gh` and `status` refuse only with a token-print flag: reads naming `status` allowed, with or without a command-scoped `GH_TOKEN`; a computed subcommand with the flag and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusPrintFlag\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
+| 9 | `gh` and `status` clear only as listed reads: those reads allowed, with or without a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
 
 ## Consumers and migration
 

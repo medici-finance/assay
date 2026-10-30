@@ -701,8 +701,8 @@ func TestHookWordBreak(t *testing.T) {
 
 // regression: #5046
 func TestHookStatusReads(t *testing.T) {
-	// Through run(): a read naming status is allowed, the computed subcommand
-	// with a token-print flag and every literal gh auth form are refused.
+	// Through run(): a listed read naming status is allowed; a computed word, a
+	// gh alias, another program and every literal gh auth form are refused.
 	_, wt := gitFixture(t)
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "worker-desk", "fixture-session")
@@ -718,6 +718,7 @@ func TestHookStatusReads(t *testing.T) {
 		`GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
 		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
 		`GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
+		`T=$(desktoken --no-rotate worker --repo x/y 2>/dev/null); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
 	} {
 		ambientAllowed(t, wt, cmd)
 	}
@@ -727,6 +728,12 @@ func TestHookStatusReads(t *testing.T) {
 		`gh "$s" status -at`,
 		`f=--show-token; gh "$s" status "$f"`,
 		`GH_TOKEN=$(cat "$T") gh "$s" status -t`,
+		`gh "$s" status "$f"`,
+		`gh "$s" status -aat`,
+		`gh au status "$f"`,
+		`gh au status -aat`,
+		"git status && gh issue mine",
+		"gh pr view 1 --json status; ./x.sh",
 		"gh auth status",
 		"gh auth status -t",
 		"git status && gh auth token",

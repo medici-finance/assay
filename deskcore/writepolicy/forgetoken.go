@@ -1,6 +1,9 @@
 package writepolicy
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // --- ambient forge-credential read (#4821) ---
 //
@@ -15,8 +18,8 @@ import "strings"
 // -F <file> / --body-file <file> / a pattern file).
 //
 // The trigger (forgeTrigger) is a whole word `auth`, `token`, `oauth_token` or
-// `git-credential`, or the words `status` and `gh` together with a token-print
-// flag (forgePrintFlags), matched without case.
+// `git-credential`, matched without case, or the words `status` and `gh` both,
+// unless every command in the text is a listed read (forgeListedReads).
 // Before matching, the text is normalized the cheap way, in the same single
 // pass: quotes, a `$` before a quote, backslashes and line continuations are
 // dropped, and the escapes `$'…'`, `echo -e` and printf decode (`\xHH`,
@@ -26,41 +29,123 @@ import "strings"
 // shell, echo -e or printf may read as a boundary (forgeBreaks), so
 // `GH_TOKEN`, `desktoken` and `--token-file` hold no trigger word.
 //
-// Cost: one pass over the text per word and flag, linear in its length.
+// Cost: one pass over the text per trigger word, linear in its length.
 func forgeTokenRead(raw string) bool { return forgeTrigger(raw) }
 
 // forgeTriggerWords: the words of every gh token read the guard refuses
-// (`gh auth token`, `gh auth status`, `gh auth git-credential`, `gh config get
-// oauth_token`).
-var forgeTriggerWords = []string{"auth", "token", "oauth_token", "git-credential"}
-
-// forgePrintFlags: the flag that makes `gh auth status` print the token, alone
-// (`-t`, also matching `-ta` and `-t=1`), after the only boolean short that can
-// lead a cluster (`-at`), and in long form (`--show-token`, also with `=value`).
-// A status check prints no token without one of them. `auth` missing from the
-// text means the subcommand is computed, so a form the flag does not spell out
-// as well is deliberate evasion, which this guard leaves to other layers.
-var forgePrintFlags = []string{"-t", "-at", "--show-token"}
+// (`gh auth token`, `gh auth status` printing the token, `gh auth
+// git-credential`, `gh config get oauth_token`), plus `status` and `gh`, which
+// trigger only together.
+var forgeTriggerWords = []string{"auth", "token", "oauth_token", "git-credential", "status", "gh"}
 
 // forgeTrigger reports whether s holds one of the trigger words as a whole
-// word after normalization (forgeHasWord), or `gh`, `status` and a token-print
-// flag together. It over-approximates on purpose: `status` may be anyone's
-// word and the flag anyone's flag.
+// word after normalization (forgeHasWord), or `status` and `gh` in a text that
+// forgeListedReads does not clear. It over-approximates on purpose.
 func forgeTrigger(s string) bool {
-	for _, w := range forgeTriggerWords {
-		if forgeHasWord(s, w, false, false) {
+	for _, w := range forgeTriggerWords[:4] {
+		if forgeHasWord(s, w, false) {
 			return true
 		}
 	}
-	if !forgeHasWord(s, "status", false, false) || !forgeHasWord(s, "gh", true, false) {
-		return false
+	return forgeHasWord(s, "status", false) && forgeHasWord(s, "gh", true) && !forgeListedReads(s)
+}
+
+// forgeGhReads: the gh reads that clear `status`. Each is a pair, because a gh
+// alias can sit under a command (`gh alias set 'issue mine' …`) but cannot
+// replace one of these, even written straight into gh's config (checked against
+// gh 2.102.0). `gh <one word>` and `gh api <path>` could be an alias, so neither
+// clears. None of these prints the stored credential or reads a local file.
+var forgeGhReads = map[string]bool{
+	"pr view": true, "pr list": true, "pr checks": true,
+	"run view": true, "run list": true,
+	"issue view": true, "issue list": true,
+}
+
+// forgeFilters: the output filters that clear, with the flags each may take and
+// how many operands: grep's pattern, none for the rest, so none opens a file.
+var forgeFilters = map[string]struct {
+	flags    *regexp.Regexp
+	operands int
+}{
+	"grep": {regexp.MustCompile(`^-[AaBCEFHchilnoqsvwx0-9]+$`), 1},
+	"head": {regexp.MustCompile(`^-[nc0-9]+$`), 0},
+	"tail": {regexp.MustCompile(`^-[nc0-9]+$`), 0},
+	"wc":   {regexp.MustCompile(`^-[lwcm]+$`), 0},
+}
+
+var (
+	forgeDropQuotes = strings.NewReplacer(`"`, "", "'", "")
+	// forgeRoleEnv: the role credential for one command, from a file variable.
+	forgeRoleEnv = regexp.MustCompile(`^GH_TOKEN=\$\(cat "\$[A-Za-z_][A-Za-z0-9_]*"\)[ \t]+`)
+	// forgeRoleMint: the sanctioned mint, assigned to a variable.
+	forgeRoleMint = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=\$\(desktoken( [-A-Za-z0-9_ ./]+)?( 2>/dev/null)?\)$`)
+)
+
+// forgeListedReads reports whether every command in s is one listed read:
+// `git status`, a forgeGhReads pair, a forgeFilters filter, or the role mint,
+// spelled literally. It decides only for the `status` and `gh` pair, and anything
+// else refuses, as that pair did before #5046: a computed word, an alias, another
+// program, a wrapper, a redirection. Quotes are not modeled, and they cannot hide
+// a command: a shell ends a command only at a byte split on here, so every command
+// it runs starts a piece checked here. A quoted separator costs a false refusal.
+func forgeListedReads(s string) bool {
+	for _, c := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(";&|\n", r) }) {
+		c = strings.Trim(c, " \t")
+		if c == "" || forgeRoleMint.MatchString(c) {
+			continue
+		}
+		c = forgeRoleEnv.ReplaceAllString(c, "")
+		if strings.ContainsAny(c, "$`\\<>()") {
+			return false
+		}
+		f := strings.FieldsFunc(c, func(r rune) bool { return r == ' ' || r == '\t' })
+		switch {
+		case len(f) >= 2 && f[0] == "git" && f[1] == "status":
+		case len(f) >= 3 && f[0] == "gh" && forgeGhReads[f[1]+" "+f[2]] && !forgeOpensBrowser(f[3:]):
+		case len(f) >= 1 && forgeFilterArgs(f[0], f[1:]):
+		default:
+			return false
+		}
 	}
-	for _, f := range forgePrintFlags {
-		if forgeHasWord(s, f, true, true) {
+	return true
+}
+
+// forgeOpensBrowser reports whether args hold gh's `--web` or `-w`, alone or in a
+// cluster: the one flag on a listed read that starts a configured program.
+func forgeOpensBrowser(args []string) bool {
+	for _, a := range args {
+		a = forgeDropQuotes.Replace(a)
+		if a == "--web" || !strings.HasPrefix(a, "--") && strings.HasPrefix(a, "-") && strings.Contains(a, "w") {
 			return true
 		}
 	}
 	return false
+}
+
+// forgeFilterArgs reports whether name is a listed filter and args stay inside
+// its flags and operand count. Quotes are dropped first, so `"-r"` reads as a
+// flag, and a glob byte refuses, since it may expand to more operands. A bare
+// number does not count: it is a count for `head -n` or `grep -A`.
+func forgeFilterArgs(name string, args []string) bool {
+	flt, ok := forgeFilters[name]
+	if !ok {
+		return false
+	}
+	operands := 0
+	for _, a := range args {
+		a = forgeDropQuotes.Replace(a)
+		switch {
+		case strings.ContainsAny(a, "*?[]{}~"):
+			return false
+		case strings.HasPrefix(a, "-"):
+			if !flt.flags.MatchString(a) {
+				return false
+			}
+		case strings.Trim(a, "0123456789") != "":
+			operands++
+		}
+	}
+	return operands <= flt.operands
 }
 
 // forgeDelim reports whether b may end a shell word (blanks and operators),
@@ -149,10 +234,9 @@ func forgeEscapes(s string, p int, f func(n int, v int)) {
 // backslashes and line continuations are dropped and escapes decoded
 // (case-insensitively). A word starts at the start of s, after a forgeDelim
 // byte or after a forgeBreaks sequence, and ends at either; cmd also allows
-// a start after `/` or `=` (`/x/gh`, zsh `=gh`, `f=-t`) and a `.exe` suffix;
-// prefix lets w end anywhere, so w only has to start the word. One pass over s:
-// the set of prefixes of w matched so far is kept per position.
-func forgeHasWord(s, w string, cmd, prefix bool) bool {
+// a command path (`/x/gh`, zsh `=gh`) and a `.exe` suffix. One pass over s: the set of prefixes of w matched so
+// far is kept per position.
+func forgeHasWord(s, w string, cmd bool) bool {
 	n, full := len(s), uint32(1)<<len(w)
 	act := make([]uint32, n+1)
 	for p := 0; p <= n; p++ {
@@ -167,7 +251,7 @@ func forgeHasWord(s, w string, cmd, prefix bool) bool {
 		if a == 0 {
 			continue
 		}
-		if a&full != 0 && (prefix || p == n || brk || forgeDelim(s[p]) || cmd && strings.HasPrefix(strings.ToLower(s[p:min(p+4, n)]), ".exe")) {
+		if a&full != 0 && (p == n || brk || forgeDelim(s[p]) || cmd && strings.HasPrefix(strings.ToLower(s[p:min(p+4, n)]), ".exe")) {
 			return true
 		}
 		if p == n {

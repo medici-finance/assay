@@ -465,7 +465,7 @@ func TestForgeWordBreak(t *testing.T) {
 		`zsh -c $'gh\` + `u0020auth\` + `u0020token -h example.com'`,
 		`echo -e 'gh config get oauth_token\r' | bash`,
 		`printf 'gh config get oauth_token\x0a' | sh`,
-		`bash -c $'gh\cJ$s\cJstatus\cJ-t'`,
+		`bash -c $'gh\cJstatus'`,
 	})
 }
 
@@ -510,11 +510,12 @@ func TestForgeNoTriggerAllowed(t *testing.T) {
 }
 
 // regression: #5046
-func TestForgeStatusPrintFlag(t *testing.T) {
-	// `gh` and `status` together refuse only with a token-print flag in the
-	// text. The subcommand is computed here on purpose: a literal `auth`
-	// refuses on its own.
+func TestForgeStatusComputedForms(t *testing.T) {
+	// A computed word after gh could be anything, with or without a print flag.
 	forgeRefuseAll(t, []string{
+		`gh "$s" status "$f"`,
+		`gh "$s" status -aat`,
+		`gh "$s" status -aaat`,
 		`gh "$s" status -t`,
 		`gh "$s" status -at`,
 		`gh "$s" status -ta`,
@@ -526,9 +527,19 @@ func TestForgeStatusPrintFlag(t *testing.T) {
 		`gh "$s" status -"t"`,
 		`gh "$s" status $'-\x74'`,
 		`gh "$s" status --show-tok\en`,
-		"gh \"$s\" status \\" + "\n  -t",
+		"gh \"$s\" status \\\n  -t",
 		`f=-t; gh "$s" status $f`,
 		`f=--show-token; gh "$s" status "$f"`,
+		`gh "$s" status`,
+		`gh $s status`,
+		`gh ${s} status`,
+		"gh `x` status",
+		`gh $(x) status`,
+		`gh "$s" "$u"; git status`,
+		`gh "$s" view 1 --json status`,
+		`gh pr "$v" --json status`,
+		`gh pr"$x" view --json status`,
+		`g=gh; $g "$s" status "$f"`,
 		`/usr/local/bin/gh "$s" status -t`,
 		`T=$(gh "$s" status -t)`,
 		`GH_TOKEN=$(cat "$T") gh "$s" status -t`,
@@ -538,9 +549,96 @@ func TestForgeStatusPrintFlag(t *testing.T) {
 }
 
 // regression: #5046
+func TestForgeStatusAliasForms(t *testing.T) {
+	// A literal word after gh may be an alias, and a pair under a command may
+	// be too (`gh issue mine`). Only the listed pairs cannot be one.
+	forgeRefuseAll(t, []string{
+		`gh au status "$f"`,
+		`gh au status -aat`,
+		`gh au status -t`,
+		`gh au status --show-token`,
+		`gh au status`,
+		`gh au -at status`,
+		`gh au "$f" status`,
+		`gh au "$x" "$f"; git status`,
+		`echo status; gh au "$x" "$f"`,
+		`g=gh; $g au status "$f"`,
+		`gh pr view 1 --json status; "$g" au status "$f"`,
+		"gh au status -at",
+		"git status && gh au",
+		"git status && gh issue mine",
+		"gh pr mine --json status",
+		"gh run mine; git status",
+		"gh status",
+		"gh pr; git status",
+		`gh "pr view" 1 --json status`,
+		`gh pr\ view 1 --json status`,
+		`gh p\x72 view 1 --json status`,
+		"gh pr{,x} view 1 --json status",
+		"GH pr view 1 --json status",
+		"gh api repos/x/y --json status",
+		"gh alias set au x; git status",
+		"gh extension exec x; git status",
+		`gh config get "$k"; git status`,
+	})
+}
+
+// regression: #5046
+func TestForgeStatusOtherCommands(t *testing.T) {
+	// Beside a listed read, anything that could print the credential another
+	// way still refuses.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --json status; ./x.sh",
+		"gh pr view 1 --json status && ./x.sh",
+		"gh pr view 1 --json status & ./x.sh",
+		"gh pr view 1 --json status; sh x.sh",
+		"gh pr view 1 --json status | sh",
+		`eval "$c"; git status; gh pr view 1`,
+		"bash -c 'gh pr view 1 --json status'",
+		"cat ~/.config/gh/hosts.yml; gh pr view 1 --json status",
+		"security find-generic-password; gh pr view 1 --json status",
+		"gh pr view 1 --json status | grep -r x",
+		"gh pr view 1 --json status | grep x hosts.yml",
+		`gh pr view 1 --json status | grep "-rx"`,
+		"gh pr view 1 --json status | grep -f hosts.yml",
+		"gh pr view 1 --json status | grep --include=x y",
+		"gh pr view 1 --json status | grep h*",
+		"gh pr view 1 --json status | head hosts.yml",
+		"gh pr view 1 --json status | tail -f hosts.yml",
+		"gh pr view 1 --json status | wc hosts.yml",
+		"gh pr view 1 --json status | jq env",
+		"gh pr view 1 --json status > x",
+		"gh pr view 1 --json status < x",
+		"PAGER=x gh pr view 1 --json status",
+		"GH_DEBUG=api gh pr view 1 --json status",
+		`GH_TOKEN=$(cat "$(x)") gh pr view 1 --json status`,
+		`GH_TOKEN=$(x) gh pr view 1 --json status`,
+		`GH_TOKEN=$(cat "$T") "$g" pr view 1 --json status; gh pr view 1`,
+		"gh pr view 1 --web --json status",
+		`gh pr view 1 "--web" --json status`,
+		"gh pr view 1 -w; git status",
+		"gh issue list -cw; git status",
+		"T=$(desktokenx); gh pr view 1 --json status",
+		"T=$(desktoken $(x)); gh pr view 1 --json status",
+		"T=$(desktoken x > y); gh pr view 1 --json status",
+		"git -c core.pager=x status; gh pr view 1",
+		"git log; gh pr view 1 --json status",
+		"gh pr view 1 --json status \\\n; x",
+		"gh\rpr view 1 --json status",
+		"gh pr view `x` --json status",
+		`gh pr view 1 \--web --json status`,
+		"gh pr view 1 (x) --json status",
+		"(gh pr view 1 --json status)",
+		"gh pr view 1 --json status\n./x.sh",
+		`GH_DEBUG=$(cat "$T") gh pr view 1 --json status`,
+		"gh pr checks 1 --json status | tail -f",
+	})
+}
+
+// regression: #5046
 func TestForgeStatusReadsAllowed(t *testing.T) {
 	// `status` as gh output or another command's word is not the credential
-	// read, with or without a command-scoped GH_TOKEN.
+	// read, with or without a command-scoped GH_TOKEN or the role mint.
 	for _, cmd := range []string{
 		"git status --short && gh pr view 1 --json state",
 		"gh run view 1 --json status,conclusion",
@@ -549,25 +647,30 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 		"gh pr view 1 --json statusCheckRollup",
 		"gh api repos/x/y/commits/abc/status",
 		"git status -sb",
+		`GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
 		`GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
 		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		`GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
+		`T=$(desktoken --no-rotate worker --repo x/y 2>/dev/null); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
 		"git status && gh pr view 1",
 		"gh run list --json status,name",
-		"gh status",
-		`gh "$s" status`,
+		"gh run view 1 --json status -t '{{.status}}'",
 		"gh pr checks 1 | grep -A3 status",
-		`[ "$n" -lt 5 ] && gh run view 1 --json status --jq .status`,
+		"gh pr checks 1 | grep -A 3 -i status | head -n 5 | wc -l",
+		"gh pr checks 1 | tail -5 | grep status",
 		"gh pr list -s open; git status --porcelain",
+		"gh issue view 1 --json state; git status",
 	} {
 		if forgeTokenRead(cmd) {
-			t.Errorf("%q: no token-print flag, so it must stay allowed", cmd)
+			t.Errorf("%q: a listed read must stay allowed", cmd)
 		}
 	}
 }
 
 // regression: #5046
 func TestForgeStatusKeepsAuthForms(t *testing.T) {
-	// The narrowing leaves the literal words alone: every gh auth form still
+	// The clearing never reaches the literal words: every gh auth form still
 	// refuses, whichever way status appears beside it.
 	forgeRefuseAll(t, []string{
 		"gh auth status",
@@ -577,26 +680,20 @@ func TestForgeStatusKeepsAuthForms(t *testing.T) {
 		"git status && gh auth token",
 		"gh run view 1 --json status; gh auth status --show-token",
 		"gh pr checks 1 | grep status; gh config get oauth_token",
+		"gh pr view auth --json status",
 	})
 }
 
 // regression: #5046
-func TestForgeStatusRetainedAndGapForms(t *testing.T) {
-	// False refusals the narrowing keeps: the flag is read as the print flag
-	// whichever command carries it.
+func TestForgeStatusRetainedRefusals(t *testing.T) {
+	// False refusals this design keeps, named in docs/write-policy.md. Each one
+	// can run as a listed read, as a file-backed body, or in two calls.
 	forgeRefuseAll(t, []string{
 		"git status && gh pr create -t title",
-		"gh run view 1 --json status -t '{{.status}}'",
+		`gh run view "$id" --json status`,
+		"gh run view 1 --json status --jq '.status | ascii_upcase'",
+		`[ "$n" -lt 5 ] && gh run view 1 --json status`,
+		"cd x && gh pr view 1 --json status",
+		"gh pr checks 1 | grep 'a b status'",
 	})
-	// The known gap, pinned so that it stays visible: with the subcommand and
-	// the flag both computed, neither is in the text. Refused before #5046.
-	// docs/write-policy.md places these under the deliberate-evasion scope.
-	for _, cmd := range []string{
-		`gh "$s" status "$f"`,
-		`gh "$s" status -aat`,
-	} {
-		if forgeTokenRead(cmd) {
-			t.Errorf("%q: the documented gap changed; update docs/write-policy.md", cmd)
-		}
-	}
 }
