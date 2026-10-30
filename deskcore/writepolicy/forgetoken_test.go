@@ -669,6 +669,54 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 }
 
 // regression: #5046
+func TestForgeStatusWebValueForms(t *testing.T) {
+	// A bool flag takes `=value`, and gh still opens the browser program.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --web=true --json status",
+		"gh pr view 1 --web=1 --json status",
+		"gh pr view 1 --web=false --json status",
+		"gh pr view 1 --web= --json status",
+		`gh pr view 1 "--web=true" --json status`,
+		`gh pr view 1 '--web=true' --json status`,
+		`gh pr view 1 --web="true" --json status`,
+		`gh pr view 1 "--web"=true --json status`,
+		`gh pr view 1 --we"b=true" --json status`,
+		"gh run view 1 --web=true --json status",
+		"gh pr checks 1 --web=true | grep status",
+		"gh issue list --web=true; git status",
+		"gh pr view 1 -w=true --json status",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusFilterNumbers(t *testing.T) {
+	// A number is a count only straight after a flag that takes one. Anywhere
+	// else it is a file operand: `head 123` opens a file named 123.
+	const pre = "git status; gh pr list | "
+	var refused []string
+	for _, f := range []string{
+		"head 123", "tail 123", "wc 123", "wc -l 123", `head "123"`, `head ""`,
+		"grep status 123", "grep 123 456", `grep "" 123`, "grep -A 3 status 123", "grep -3 status 123",
+		"head -n 5 123", "head -n5 123", "head -5 123", "tail -n 5 123", "tail -5 123", "head -c 5 123",
+		"head -n", "grep -A", "head -n x", `head -n ""`, "head -n -c 5", "grep -A -i 3",
+		"head -5c 123", "tail -5c 123", "head -5n 123", "head -n5c", "head -nc 5",
+		"grep -3A 2 status", "grep -A3i status",
+	} {
+		refused = append(refused, pre+f)
+	}
+	forgeRefuseAll(t, refused)
+	for _, f := range []string{
+		"head -n 5", "head -n5", "head -5", "head -c 5", `head -n "5"`, "tail -n 5", "tail -5", "tail -c 5",
+		"grep -A 3 status", "grep -A3 status", "grep -iA 3 status", "grep -B 2 -C 3 status", "grep -C3 status",
+		"grep -3 status", "grep -c status", "grep -n status", "grep 123", "wc -l", "wc",
+	} {
+		if forgeTokenRead(pre + f) {
+			t.Errorf("%q: a listed read must stay allowed", pre+f)
+		}
+	}
+}
+
+// regression: #5046
 func TestForgeStatusKeepsAuthForms(t *testing.T) {
 	// The clearing never reaches the literal words: every gh auth form still
 	// refuses, whichever way status appears beside it.

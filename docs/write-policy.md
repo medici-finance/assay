@@ -99,7 +99,9 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   together, matched case-insensitively. The `gh` and `status` pair is cleared
   only when every command in the text is a listed read spelled literally:
   `git status`; `gh pr view`, `list` or `checks`; `gh run view` or `list`;
-  `gh issue view` or `list`, without `--web`; `grep`, `head`, `tail` or `wc` with no file operand;
+  `gh issue view` or `list`, without `--web`, with or without a value; `grep`,
+  `head`, `tail` or `wc` with no file operand, where a number is an operand unless
+  it follows a flag that takes a count (`head 123` opens a file, `head -n 5` does not);
   the role mint and a `GH_TOKEN=$(cat "$T")` prefix. So
   `gh run view 1 --json status,conclusion`, `gh pr checks 1 | grep status` and
   `git status --short && gh pr view 1` run, while `gh "$s" status "$f"`,
@@ -124,6 +126,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `mkdir -p auth`, `gh auth status`, `gh auth login`, `gh pr view token`,
   `git status && gh pr create -t title` (`pr create` is not a listed read),
   `gh run view "$id" --json status` (a computed argument),
+  `gh pr list --json status | head -5c` (a count flag read two ways by different tools),
   `gh run view 1 --json status --jq '.status | ascii_upcase'` (a quoted `|` splits
   the text), and a commit
   message, PR body or comment passed inline (`-m "…"`, `--body "…"`) that says

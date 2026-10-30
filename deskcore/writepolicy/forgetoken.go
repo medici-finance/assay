@@ -63,14 +63,16 @@ var forgeGhReads = map[string]bool{
 
 // forgeFilters: the output filters that clear, with the flags each may take and
 // how many operands: grep's pattern, none for the rest, so none opens a file.
+// values holds the flags that take a count (forgeFlagValue).
 var forgeFilters = map[string]struct {
 	flags    *regexp.Regexp
 	operands int
+	values   string
 }{
-	"grep": {regexp.MustCompile(`^-[AaBCEFHchilnoqsvwx0-9]+$`), 1},
-	"head": {regexp.MustCompile(`^-[nc0-9]+$`), 0},
-	"tail": {regexp.MustCompile(`^-[nc0-9]+$`), 0},
-	"wc":   {regexp.MustCompile(`^-[lwcm]+$`), 0},
+	"grep": {regexp.MustCompile(`^-[AaBCEFHchilnoqsvwx0-9]+$`), 1, "ABC"},
+	"head": {regexp.MustCompile(`^-[nc0-9]+$`), 0, "nc"},
+	"tail": {regexp.MustCompile(`^-[nc0-9]+$`), 0, "nc"},
+	"wc":   {regexp.MustCompile(`^-[lwcm]+$`), 0, ""},
 }
 
 var (
@@ -110,12 +112,13 @@ func forgeListedReads(s string) bool {
 	return true
 }
 
-// forgeOpensBrowser reports whether args hold gh's `--web` or `-w`, alone or in a
-// cluster: the one flag on a listed read that starts a configured program.
+// forgeOpensBrowser reports whether args hold gh's `--web`, with or without a
+// `=value`, or `-w`, alone or in a cluster: the one flag on a listed read that
+// starts a configured program.
 func forgeOpensBrowser(args []string) bool {
 	for _, a := range args {
 		a = forgeDropQuotes.Replace(a)
-		if a == "--web" || !strings.HasPrefix(a, "--") && strings.HasPrefix(a, "-") && strings.Contains(a, "w") {
+		if a == "--web" || strings.HasPrefix(a, "--web=") || !strings.HasPrefix(a, "--") && strings.HasPrefix(a, "-") && strings.Contains(a, "w") {
 			return true
 		}
 	}
@@ -124,28 +127,53 @@ func forgeOpensBrowser(args []string) bool {
 
 // forgeFilterArgs reports whether name is a listed filter and args stay inside
 // its flags and operand count. Quotes are dropped first, so `"-r"` reads as a
-// flag, and a glob byte refuses, since it may expand to more operands. A bare
-// number does not count: it is a count for `head -n` or `grep -A`.
+// flag, and a glob byte refuses, since it may expand to more operands. A number
+// is a count only straight after a flag that takes one (`head -n 5`, `grep -A 3`);
+// anywhere else it is an operand, since `head 123` opens a file named 123.
 func forgeFilterArgs(name string, args []string) bool {
 	flt, ok := forgeFilters[name]
 	if !ok {
 		return false
 	}
-	operands := 0
+	operands, value := 0, false
 	for _, a := range args {
 		a = forgeDropQuotes.Replace(a)
 		switch {
 		case strings.ContainsAny(a, "*?[]{}~"):
 			return false
-		case strings.HasPrefix(a, "-"):
-			if !flt.flags.MatchString(a) {
+		case value:
+			if a == "" || strings.Trim(a, forgeDigits) != "" {
 				return false
 			}
-		case strings.Trim(a, "0123456789") != "":
+			value = false
+		case strings.HasPrefix(a, "-"):
+			next, ok := forgeFlagValue(a[1:], flt.values)
+			if !flt.flags.MatchString(a) || !ok {
+				return false
+			}
+			value = next
+		default:
 			operands++
 		}
 	}
-	return operands <= flt.operands
+	return !value && operands <= flt.operands
+}
+
+const forgeDigits = "0123456789"
+
+// forgeFlagValue reads a flag cluster for a flag in values. next says the count
+// is the following argument; ok is false for a spelling read two ways by
+// different tools: a number before the flag (`-5c 123` reads file 123 under some
+// head and tail builds) or anything but a number after it (`-n5c`).
+func forgeFlagValue(cluster, values string) (next, ok bool) {
+	i := strings.IndexAny(cluster, values)
+	if i < 0 {
+		return false, true
+	}
+	if strings.ContainsAny(cluster[:i], forgeDigits) || strings.Trim(cluster[i+1:], forgeDigits) != "" {
+		return false, false
+	}
+	return i+1 == len(cluster), true
 }
 
 // forgeDelim reports whether b may end a shell word (blanks and operators),
