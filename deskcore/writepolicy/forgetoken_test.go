@@ -422,11 +422,15 @@ func TestForgeIdiomOutcomes(t *testing.T) {
 		"git commit -m \"$(cat <<'MSG'\nfix: tidy the lexer\nMSG\n)\"":         false,
 		"git commit -m \"$(cat <<'MSG'\nfix: rotate the token cache\nMSG\n)\"": true,
 		"git commit -F msg.txt": false,
-		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"":       false,
-		"gh pr create --title t --body \"$(cat <<'EOF'\nthe auth flow\nEOF\n)\"": true,
-		"gh pr create --title t --body-file body.md":                             false,
-		"gh pr edit 1 --body \"$(cat body.md)\"":                                 false,
-		"gh pr comment 1 --body \"$(printf 'see token docs')\"":                  false,
+		"git commit -m \"$(cat <<'T'\nit's 1)\nT\n)\"; y=$(cat <<'U'\nok (a\nU\n)":       false,
+		"git commit -m \"$(cat <<'T'\nit's 1)\nT\n)\"; y=$(cat <<'U'\nok (a token\nU\n)": true,
+		"git commit -m \"fix: rotate the token cache\"":                                  false,
+		"gh pr edit 1 --body \"see the auth flow\"":                                      false,
+		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"":               false,
+		"gh pr create --title t --body \"$(cat <<'EOF'\nthe auth flow\nEOF\n)\"":         true,
+		"gh pr create --title t --body-file body.md":                                     false,
+		"gh pr edit 1 --body \"$(cat body.md)\"":                                         false,
+		"gh pr comment 1 --body \"$(printf 'see token docs')\"":                          false,
 	} {
 		if got := forgeTokenRead(cmd); got != want {
 			t.Errorf("forgeTokenRead(%q) = %v, want %v", cmd, got, want)

@@ -633,6 +633,7 @@ func TestHookIdiomOutcomes(t *testing.T) {
 		"git commit -m \"$(cat <<'MSG'\nfix: tidy the lexer\nMSG\n)\"",
 		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\nEOF\n)\"",
 		"git commit -F msg.txt", "gh pr create --title t --body-file body.md",
+		"git commit -m \"fix: rotate the token cache\"", "gh pr edit 1 --body \"see the auth flow\"",
 		"gh pr comment 1 --body \"$(printf 'see token docs')\"",
 	} {
 		ambientAllowed(t, wt, cmd)
