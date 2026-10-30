@@ -579,3 +579,24 @@ func TestForgeStatusKeepsAuthForms(t *testing.T) {
 		"gh pr checks 1 | grep status; gh config get oauth_token",
 	})
 }
+
+// regression: #5046
+func TestForgeStatusRetainedAndGapForms(t *testing.T) {
+	// False refusals the narrowing keeps: the flag is read as the print flag
+	// whichever command carries it.
+	forgeRefuseAll(t, []string{
+		"git status && gh pr create -t title",
+		"gh run view 1 --json status -t '{{.status}}'",
+	})
+	// The known gap, pinned so that it stays visible: with the subcommand and
+	// the flag both computed, neither is in the text. Refused before #5046.
+	// docs/write-policy.md places these under the deliberate-evasion scope.
+	for _, cmd := range []string{
+		`gh "$s" status "$f"`,
+		`gh "$s" status -aat`,
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: the documented gap changed; update docs/write-policy.md", cmd)
+		}
+	}
+}
