@@ -391,6 +391,12 @@ replace example.com/in => ../good/inner'
 	echo "PASS  replace-set: $rs_n self-test cases"
 }
 
+# Sourced by a sibling runner (17.sh) for the helpers above: stop before
+# dispatching a mode.
+if [ -n "${BRIEFFLOW_LIB:-}" ]; then
+	return 0
+fi
+
 mode="${1:-}"
 case "$mode" in
 identity) mode_tests identity TestBriefEventIdentity ;;

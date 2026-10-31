@@ -137,6 +137,8 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
 | 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
 | 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
+| 78 | [Migrate the release object transport adapter to the shared CLI contract](brief-78-migrate-the-release-object-transport-adapter.md) | 4 | M | todo | — | — |
+| 79 | [Migrate the release object client bootstrap to the shared CLI contract](brief-79-migrate-the-release-object-client-bootstrap.md) | 4 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -234,6 +236,19 @@ requires its top-level PASS line; missing selections and failures are red. The
 fixtures use local git repositories, local HTTP servers and fake CLI executables.
 
 ## Cobra/Viper migration track
+
+### Release workflow adapter ownership — PR #4939
+
+The executable object handoff and pinned-client bootstrap are pending CLI ports, not
+library/test exclusions. [Brief 78](brief-78-migrate-the-release-object-transport-adapter.md)
+owns the complex handoff alone in wave 4 after /16 and /46;
+[brief 79](brief-79-migrate-the-release-object-client-bootstrap.md) owns the simple
+bootstrap independently in wave 4 after /16 and /46's existing release-command migration. Both feed
+/17, whose existing wave-5 critical path is unchanged. Their future ports are human-gated;
+this routing repair does not implement or complete them, and neither adds a dependency on
+/68. The current release controls and the original migration scope of every existing owner
+remain intact. Generated status rows are left to statusgen.
+
 
 - **Wave 1 — /15:** shared command/configuration adapter and conformance fixtures, complete
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
