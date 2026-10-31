@@ -91,7 +91,7 @@ documentation and changelog fragment.
 
 - [x] Preserve original Task/Verify/Evidence/dependency obligations.
 - [x] Prepare bounded custody/rotation, reopen, budget, provider and pacing choices.
-- [ ] Commit decision-ready preparation; dispatcher owns centralized ensure at spec.
+- [x] Commit decision-ready preparation; dispatcher filed decision issue #5111 through centralized ensure at spec. The issue remains pending, not approved.
 - [ ] Publish draft with supported issue linkage, implementation tests and mutation results.
 - [ ] Hand off exact PR/head and unresolved runtime obligations without a lifecycle change.
 

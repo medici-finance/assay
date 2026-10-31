@@ -24,6 +24,7 @@ risk:
   sensitive-data: no
 gate-why: Ownership and restore behavior constrain external effects; the owner confirms stale writers cannot retain independent authority.
 decision-trigger: spec
+decision-issue: 5111
 issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
