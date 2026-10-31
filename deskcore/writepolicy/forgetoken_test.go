@@ -547,7 +547,7 @@ func TestForgeStatusComputedForms(t *testing.T) {
 		`g=gh; $g "$s" status "$f"`,
 		`/usr/local/bin/gh "$s" status -t`,
 		`T=$(gh "$s" status -t)`,
-		`GH_TOKEN=$(cat "$T") gh "$s" status -t`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh "$s" status -t`,
 		"bash <<'E'\ngh \"$s\" status -t\nE",
 		`printf 'gh "$s" status -t' | sh`,
 	})
@@ -616,9 +616,10 @@ func TestForgeStatusOtherCommands(t *testing.T) {
 		"gh pr view 1 --json status < x",
 		"PAGER=x gh pr view 1 --json status",
 		"GH_DEBUG=api gh pr view 1 --json status",
-		`GH_TOKEN=$(cat "$(x)") gh pr view 1 --json status`,
-		`GH_TOKEN=$(x) gh pr view 1 --json status`,
-		`GH_TOKEN=$(cat "$T") "$g" pr view 1 --json status; gh pr view 1`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$(x)") gh pr view 1 --json status`,
+		`T=$(desktoken worker); GH_TOKEN=$(x) gh pr view 1 --json status`,
+		`T=$(desktoken worker); PAGER=$(cat "$T") gh pr view 1 --json status`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") "$g" pr view 1 --json status; gh pr view 1`,
 		"gh pr view 1 --web --json status",
 		`gh pr view 1 "--web" --json status`,
 		"gh pr view 1 -w; git status",
@@ -643,7 +644,7 @@ func TestForgeStatusOtherCommands(t *testing.T) {
 // regression: #5046
 func TestForgeStatusReadsAllowed(t *testing.T) {
 	// `status` as gh output or another command's word is not the credential
-	// read, with or without a command-scoped GH_TOKEN or the role mint.
+	// read, on its own or with the role mint and a command-scoped GH_TOKEN.
 	for _, cmd := range []string{
 		"git status --short && gh pr view 1 --json state",
 		"gh run view 1 --json status,conclusion",
@@ -652,10 +653,10 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 		"gh pr view 1 --json statusCheckRollup",
 		"gh api repos/x/y/commits/abc/status",
 		"git status -sb",
-		`GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
-		`GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
-		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
-		`GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
 		`T=$(desktoken --no-rotate worker --repo x/y 2>/dev/null); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
 		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
 		"git status && gh pr view 1",
@@ -705,7 +706,7 @@ func TestForgeStatusJqFieldPathsOnly(t *testing.T) {
 		`gh pr view 1 --json status -q"x.y"`,
 		"gh run list --json status --jq x.y",
 		"gh issue list --json status -q x",
-		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq x.y`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq x.y`,
 		"gh pr view 1 --json status --jq .a --jq x.y",
 		"gh pr view 1 --search --jq x.y status",
 		"gh pr view 1 --json status --jq",
@@ -887,7 +888,91 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		"gh pr list --json status | grep ^a",
 		"gh pr list --json status | grep a#",
 		"F=$(desktoken worker); gh pr view 1 --json status",
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`git status && T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
 	})
+}
+
+// forgePrefixForms: spellings of the role mint then a GH_TOKEN prefix that clear.
+var forgePrefixForms = []string{
+	`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	"T=$(desktoken worker)\nGH_TOKEN=$(cat \"$T\") gh pr view 1 --json status",
+	`T=$(desktoken worker) && GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	`TF=$(desktoken worker); GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+	`git status; T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	`T=$(desktoken worker); git status; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr list --json status; GH_TOKEN=$(cat "$T") gh pr view 1`,
+	`T=$(desktoken worker); TF=$(desktoken worker); GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+}
+
+// regression: #5046
+func TestForgeStatusPrefixNeedsMint(t *testing.T) {
+	// The prefix clears only after a mint of the same variable that is sure to run
+	// in this shell before it. A later mint, another variable, or a mint a separator
+	// or a comment could skip or fork, does not count.
+	const read = `GH_TOKEN=$(cat "$T") gh pr view 1 --json status`
+	forgeRefuseAll(t, []string{
+		read,
+		`GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+		read + "; T=$(desktoken worker)",
+		`TF=$(desktoken worker); ` + read,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+		`T=$(desktoken worker) | ` + read,
+		`T=$(desktoken worker) & ` + read,
+		`T=$(desktoken worker) &; ` + read,
+		`T=$(desktoken worker) || ` + read,
+		"T=$(desktoken worker) |\n" + read,
+		`git status || T=$(desktoken worker); ` + read,
+		`git status && T=$(desktoken worker); ` + read,
+		`git status | T=$(desktoken worker); ` + read,
+		`git status & T=$(desktoken worker); ` + read,
+		"git status &&\nT=$(desktoken worker); " + read,
+		"git status |\nT=$(desktoken worker); " + read,
+		"git status # ; T=$(desktoken worker)\n" + read,
+		"git status #\nT=$(desktoken worker); " + read,
+	})
+	// A closed set of names on both sides, each name on both sides of one command.
+	for _, name := range []string{"X", "TFF", "TT", "t", "T0", "GH_TOKEN", "PATH"} {
+		forgeRefuseAll(t, []string{fmt.Sprintf(`%[1]s=$(desktoken worker); GH_TOKEN=$(cat "$%[1]s") gh pr view 1 --json status`, name)})
+	}
+	forgeRefuseAll(t, []string{"TFF=$(desktoken worker); gh pr view 1 --json status"})
+	for _, cmd := range forgePrefixForms {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: must clear", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusPrefixFormsRunTheMint(t *testing.T) {
+	// Every form that clears reads the file the mint just assigned, in a real shell,
+	// whatever the variable held before it ran.
+	dir := t.TempDir()
+	file := filepath.Join(dir, "minted")
+	for name, body := range map[string]string{
+		"minted":    "",
+		"desktoken": "#!/bin/sh\nprintf '%s\\n' '" + file + "'\n",
+		"gh":        "#!/bin/sh\n",
+		"git":       "#!/bin/sh\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, shell := range [][]string{{"sh"}, {"bash"}, {"zsh", "-f"}} {
+		t.Run(strings.Join(shell, " "), func(t *testing.T) {
+			bin := forgeShell(t, shell[0])
+			for _, form := range forgePrefixForms {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, bin, append(append([]string{}, shell[1:]...), "-c", form)...)
+				cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "PATH=" + dir + ":" + os.Getenv("PATH"), "T=held-before", "TF=held-before"}
+				if out, err := cmd.CombinedOutput(); err != nil || len(out) != 0 {
+					t.Errorf("%q under %v: output %q, run error %v", form, shell, out, err)
+				}
+			}
+		})
+	}
 }
 
 // regression: #5046
@@ -940,7 +1025,14 @@ func TestForgeStatusClosedSets(t *testing.T) {
 			}
 		}
 	}
+	// Rows, so this holds on a machine without the shell the read-back test needs.
+	for _, b := range "*?[]{}~^#=!%:+" {
+		forgeRefuseAll(t, []string{fmt.Sprintf("gh pr list --json status a%c", b)})
+	}
 	forgeRefuseAll(t, []string{
+		"gh pr list --json status | wc -5",
+		"gh pr list --json status | wc -l5",
+		"T=$(desktoken --repo=x/y worker); gh pr view 1 --json status",
 		"gh pr list --repo a:b/c --json status",
 		"gh pr list --repo a/b:c --json status",
 		"gh pr list -R a:b/c --json status",
@@ -1047,30 +1139,35 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ran := 0
 	for _, shell := range [][]string{{"sh"}, {"bash"}, {"bash", "-O", "extglob"}, {"zsh", "-f"}, {"zsh", "-f", "-o", "extendedglob"}} {
-		bin, err := exec.LookPath(shell[0])
-		if err != nil {
-			continue
-		}
-		ran++
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, bin, append(append([]string{}, shell[1:]...), path)...)
-		cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
-		out, err := cmd.CombinedOutput()
-		got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
-		for i, w := range cleared {
-			if want := forgeDropQuotes.Replace(w); i >= len(got) || got[i] != want {
-				t.Errorf("%q: %v does not read this word back unchanged (run error: %v)", w, shell, err)
-				break
+		t.Run(strings.Join(shell, " "), func(t *testing.T) {
+			bin := forgeShell(t, shell[0])
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, bin, append(append([]string{}, shell[1:]...), path)...)
+			cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+			out, err := cmd.CombinedOutput()
+			got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+			for i, w := range cleared {
+				if want := forgeDropQuotes.Replace(w); i >= len(got) || got[i] != want {
+					t.Errorf("%q: %v does not read this word back unchanged (run error: %v)", w, shell, err)
+					break
+				}
 			}
-		}
-		if err != nil || len(got) != len(cleared) {
-			t.Errorf("%q: %v gave %d lines for %d words (run error: %v)", shell[0], shell, len(got), len(cleared), err)
-		}
+			if err != nil || len(got) != len(cleared) {
+				t.Errorf("%q: %v gave %d lines for %d words (run error: %v)", shell[0], shell, len(got), len(cleared), err)
+			}
+		})
 	}
-	if ran == 0 {
-		t.Skip("could not check: no shell on PATH")
+}
+
+// forgeShell finds a shell, or skips the subtest by name, so a shell this machine
+// lacks reads as SKIP in the test output and never as a pass.
+func forgeShell(t *testing.T, name string) string {
+	t.Helper()
+	bin, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("could not check: %s is not on PATH", name)
 	}
+	return bin
 }

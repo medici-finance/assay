@@ -115,11 +115,18 @@ var forgeFilters = map[string]struct {
 
 var (
 	forgeDropQuotes = strings.NewReplacer(`"`, "", "'", "")
-	// forgeRoleEnv: the role credential for one command, from a file variable.
-	forgeRoleEnv = regexp.MustCompile(`^GH_TOKEN=\$\(cat "\$[A-Za-z_][A-Za-z0-9_]*"\)[ \t]+`)
+	// forgeRoleEnv: the role credential for one command, from the file variable the
+	// role mint assigned earlier in the same text (forgeListedReads checks that).
+	forgeRoleEnv = regexp.MustCompile(`^GH_TOKEN=\$\(cat "\$(TF?)"\)[ \t]+`)
 	// forgeRoleMint: the sanctioned mint, assigned to GH_TOKEN or to the file variable
 	// forgeRoleEnv reads, and to no name that a shell or gh gives a meaning.
 	forgeRoleMint = regexp.MustCompile(`^(GH_TOKEN|TF?)=\$\(desktoken( [-A-Za-z0-9_ ./]+)?( 2>/dev/null)?\)$`)
+	// forgeSeparator: what ends a command, with the blanks around the next one.
+	forgeSeparator = regexp.MustCompile(`[;&|\n][;&|\n \t]*`)
+	// forgeMintBefore and forgeMintAfter: the separators on each side of a mint that
+	// always runs it in this shell, so the next command sees what it assigned.
+	forgeMintBefore = regexp.MustCompile(`^[;\n \t]*$`)
+	forgeMintAfter  = regexp.MustCompile(`^([;\n \t]*|&&[\n \t]*)$`)
 )
 
 // forgeListedReads reports whether every command in s is one listed read:
@@ -130,13 +137,35 @@ var (
 // a command: a shell ends a command only at a byte split on here, so every command
 // it runs starts a piece checked here. A quoted separator costs a false refusal,
 // and so does a quoted blank (forgeQuotedBlank), which words here would misread.
+// A GH_TOKEN prefix clears only after a mint of its variable that is sure to run:
+// one no earlier `#` could comment out and no separator could skip or fork.
 func forgeListedReads(s string) bool {
-	for _, c := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(";&|\n", r) }) {
-		c = strings.Trim(c, " \t")
-		if c == "" || forgeRoleMint.MatchString(c) {
+	minted := map[string]bool{}
+	seps := forgeSeparator.FindAllStringIndex(s, -1)
+	for i := 0; i <= len(seps); i++ {
+		start, end, before, after := 0, len(s), "", ""
+		if i > 0 {
+			start, before = seps[i-1][1], s[seps[i-1][0]:seps[i-1][1]]
+		}
+		if i < len(seps) {
+			end, after = seps[i][0], s[seps[i][0]:seps[i][1]]
+		}
+		c := strings.Trim(s[start:end], " \t")
+		if c == "" {
 			continue
 		}
-		c = forgeRoleEnv.ReplaceAllString(c, "")
+		if m := forgeRoleMint.FindStringSubmatch(c); m != nil {
+			if forgeMintBefore.MatchString(before) && forgeMintAfter.MatchString(after) && !strings.Contains(s[:start], "#") {
+				minted[m[1]] = true
+			}
+			continue
+		}
+		if m := forgeRoleEnv.FindStringSubmatch(c); m != nil {
+			if !minted[m[1]] {
+				return false
+			}
+			c = c[len(m[0]):]
+		}
 		if strings.ContainsAny(c, "$`\\<>()") || forgeQuotedBlank(c) {
 			return false
 		}

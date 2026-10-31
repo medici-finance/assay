@@ -111,8 +111,10 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `head`, `tail` or `wc` with no file operand, no glob byte and no `^` or `#`
   outside quotes, where a number is an operand unless
   it follows a flag that takes a count (`head 123` opens a file, `head -n 5` does not);
-  the role mint assigned to `GH_TOKEN`, `T` or `TF`, and a `GH_TOKEN=$(cat "$T")`
-  prefix. So
+  the role mint assigned to `GH_TOKEN`, `T` or `TF`, and a `GH_TOKEN=$(cat "$T")` or
+  `GH_TOKEN=$(cat "$TF")` prefix, which clears only when a mint of that same variable
+  comes earlier in the text, after nothing but `;` or a newline, before `;`, a newline
+  or `&&`, and with no `#` before it. So
   `gh run view 1 --json status,conclusion`, `gh pr checks 1 | grep status` and
   `git status --short && gh pr view 1` run, while `gh "$s" status "$f"`,
   `gh au status "$f"` and `git status && gh issue mine` refuse: a computed word
@@ -149,6 +151,9 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `gh pr list --json status | grep ^a` and `grep a#` beside it (`^` or `#` outside
   quotes on a filter operand; `grep '^a'` clears),
   `F=$(desktoken worker); gh pr view 1 --json status` (the mint under another name),
+  `GH_TOKEN=$(cat "$T") gh pr view 1 --json status` with no mint earlier in the same
+  text, and `git status && T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1
+  --json status` (a mint a separator could skip),
   `gh pr list --search is:open --json status`, `gh pr list -L5 --json status` (a
   short flag with an attached value), and a commit
   message, PR body or comment passed inline (`-m "…"`, `--body "…"`) that says
@@ -175,7 +180,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 6 | Shapes a shell lexer could misplace (heredoc delimiters, `((`, `$((`, `$[`, `${…}`, `name[…]`, substitutions, backquotes, process substitution, unclosed spans, quote forms) refused with a trigger word and allowed without, and the message idioms refused when they name one, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings\|TestUnmodeled\|TestForgeReviewShapes\|TestForgeIdiomOutcomes' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc\|TestHookUnmodeled\|TestHookReviewShapes\|TestHookIdiomOutcomes' -count=1` | PASS |
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
-| 9 | `gh` and `status` clear only as listed reads: those reads allowed, with or without a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs, flags off the closed list, anything but a literal field path for `--jq`, a quoted blank, a number that opens a file and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals\|TestForgeStatusJqFieldPathsOnly\|TestForgeStatusQuotedBlank\|TestForgeStatusGhArgsClosed\|TestForgeStatusExpansionBesideRead\|TestForgeStatusWebValueForms\|TestForgeStatusFilterNumbers\|TestForgeStatusClearedWordsSurviveExpansion\|TestForgeStatusFilterOperandQuotes\|TestForgeStatusClosedSets' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
+| 9 | `gh` and `status` clear only as listed reads: those reads allowed, on their own or with the role mint and a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs, flags off the closed list, anything but a literal field path for `--jq`, a quoted blank, a number that opens a file and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals\|TestForgeStatusJqFieldPathsOnly\|TestForgeStatusQuotedBlank\|TestForgeStatusGhArgsClosed\|TestForgeStatusExpansionBesideRead\|TestForgeStatusWebValueForms\|TestForgeStatusFilterNumbers\|TestForgeStatusClearedWordsSurviveExpansion\|TestForgeStatusFilterOperandQuotes\|TestForgeStatusClosedSets\|TestForgeStatusPrefixNeedsMint\|TestForgeStatusPrefixFormsRunTheMint' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
 
 ## Consumers and migration
 
