@@ -955,7 +955,7 @@ if args[:2] == ['image', 'inspect']:
             'publisher-general-ci': main.replace('    runs-on: medici-builder-public-release\n',
                                                  '    runs-on: medici-builder-public\n', 1),
             'publisher-label-suffix': main.replace('    runs-on: medici-builder-public-release\n',
-                                                   '    runs-on: medici-builder-public-release-shared\n', 1),
+                                                   '    runs-on: ' + RELEASE_RUNNERS['release'] + '-shared\n', 1),
             'publisher-label-shadowed': main.replace('    runs-on: medici-builder-public-release\n',
                                                      '    runs-on: medici-builder-public\n'
                                                      '    # runs-on: medici-builder-public-release\n', 1),
