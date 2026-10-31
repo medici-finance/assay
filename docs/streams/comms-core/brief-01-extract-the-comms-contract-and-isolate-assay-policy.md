@@ -124,6 +124,33 @@ line-count assertion.
 
 <!-- Independent verifier records commands, exits, output, revision, date and identity. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestContractCompatibility$' > ${TMPDIR:-/tmp}/comms-core-01-flow.log 2>&1 && grep -F -- '--- PASS: TestContractCompatibility ' ${TMPDIR:-/tmp}/comms-core-01-flow.log` | pass exit=0 | sha256:a148007abc0c | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestContractDependencyBoundary$' > ${TMPDIR:-/tmp}/comms-core-01-boundary.log 2>&1 && grep -F -- '--- PASS: TestContractDependencyBoundary ' ${TMPDIR:-/tmp}/comms-core-01-boundary.log` | fail exit=1 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd comms && GOWORK=off go test -count=1 ./... && cd ../tools/desk && GOWORK=off go test -count=1 ./internal/comms/... ./internal/commsqueue/... ./cmd/commsgw/... ./cmd/commsloop/... ./cmd/deskcomms/...)` | fail exit=1 | sha256:92d05c4fab0d | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd comms && GOWORK=off GOOS=windows go vet ./... && cd ../tools/desk && GOWORK=off GOOS=windows go vet ./cmd/deskcomms ./cmd/commsgw ./cmd/commsloop)` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOWORK=off go test -count=1 -v ./internal/... -run '^TestPolicyAdapterRefusesForbiddenMessage$' > ${TMPDIR:-/tmp}/comms-core-01-policy.log 2>&1 && grep -F -- '--- PASS: TestPolicyAdapterRefusesForbiddenMessage ' ${TMPDIR:-/tmp}/comms-core-01-policy.log` | pass exit=0 | sha256:3c0007441c51 | 2026-10-30 | assay-verifier-app[bot] @ 5fdae0d07b58 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4985 run=c70c4258dd71eb01876a3d7d1669af95086fb01845532d4c37ff04b465351025 source=5fdae0d07b58aba9042b112258727ac33862bd93 brief=docs/streams/comms-core/brief-01-extract-the-comms-contract-and-isolate-assay-policy.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: FAIL** — rows 2 and 3 exit 1; rows 1, 4 and 5 pass. Source 5fdae0d07b58, Go 1.27.2 darwin/arm64, witness written by statusgen verifyrun v1.0.67 with TMPDIR set to a scratch directory outside any Go module. Evidence only: gate human, sensitive-data risk, lifecycle left at its current state for the human gate.
+
+Failure detail. Row 2 fails on the last negative control of the dependency-boundary test (comms/contract/deps_test.go, line 108): it runs go list -e -deps ./... in an empty temporary directory and expects an error or an empty listing. Under Go 1.27.2, outside any module, that command exits 0 and lists the pseudo-package ./... carrying a load error, so the test reports "a directory with no module listed cleanly — a missing module must fail the row, not count zero". All seven planted-import subtests pass; only the missing-module control fails. The test passes only when the temporary directory happens to sit below an unrelated go.mod, where ./... matches no packages and the listing is empty. Row 3 fails on the same test inside its comms half. Class: implementation defect in the delivered test's negative control (a listed package carrying a load error is not treated as a failed walk); the contract's real closure check and every planted-import check pass.
+
+Supplemental observations (no acceptance credit; 2026-10-30; runner assay-verifier-app[bot], model verifier):
+
+- Row 2 test with TMPDIR unset (default /tmp): exit 1, same line-108 failure. With TMPDIR below a directory holding an unrelated go.mod: exit 0. Direct probe: go list -e -deps ./... in an empty directory outside any module exits 0 and prints ./... under Go 1.27.2.
+- Row 3 split: the comms half (cd comms and GOWORK=off go test -count=1 ./...) exits 0 only with TMPDIR below an enclosing go.mod; the tools/desk half with row 3's exact package list exits 0, all five packages ok. Row 3's failure is the row 2 test alone; the tools/desk half is short-circuited by the and-chain in the witness run.
+- Row 5 mutation: in a scratch clone at 5fdae0d07b58, the ACL check inside Admit (tools/desk/internal/comms/envelope.go) disabled, the policy-adapter refusal test exits 1 with a FAIL line and no PASS line. The mutation obligation discriminates.
+- Ambient identity: no row calls gh, so the forge-identity Runner stamp carries no ambient-login exposure here.
+
+Risk-bearing values (risk sensitive-data yes, irreversible no). Enumeration covered the non-test Go files under comms/contract and the alias layer in tools/desk/internal/comms changed by the implementation merge 2cb2b41f02e6; every literal is byte-identical to its pre-extraction value in tools/desk/internal/comms at d71c48d61886. Ranked: wire and signature literals first (a change strands every signed or persisted cellmsg-v1 message), then the assertion validity window, then size caps and capability labels (reversible operational bounds, ranked last, no derivation required: MaxEnvelopeBytes = 64 * 1024 @ comms/contract/envelope.go:23, MaxPayloadBytes = 16 * 1024 @ :25, MaxFieldBytes = 256 @ :27, MaxRefs = 32 @ :29, MaxRefBytes = 256 @ :31, CapDeliveryToken = "delivery-token/v1" @ comms/contract/types.go:211, CapClientIdentity = "client-identity/v1" @ comms/contract/types.go:216).
+
+- RISK-VALUE: DERIVED — assertion domain tag = "comms/assertion/cellmsg-v1" plus a newline byte @ comms/contract/identity.go:258 — identical to the pre-extraction literal (same file line in tools/desk/internal/comms at d71c48d61886); the brief requires unchanged assertion bytes, and row 1's assertion-byte fixtures pass.
+- RISK-VALUE: DERIVED — Schema = "cellmsg-v1" @ comms/contract/envelope.go:14 — identical to the pre-extraction literal (tools/desk/internal/comms envelope.go line 15 at d71c48d61886); the brief keeps the cellmsg-v1 wire unchanged.
+- RISK-VALUE: NAMED, NOT DERIVED — DefaultTTL = 2 * time.Minute @ comms/contract/identity.go:88 — unchanged by the extraction, as the brief requires; whether two minutes is the right assertion lifetime belongs to the brief that introduced it and is not derived here.
+- RISK-VALUE: NAMED, NOT DERIVED — DefaultSkew = 1 * time.Minute @ comms/contract/identity.go:93 — unchanged by the extraction; the right clock-skew tolerance is not derived here for the same reason.
+
 ## Review
 
 Gate: human. Confirm the compatibility report, actual served/direct bypass cases, and

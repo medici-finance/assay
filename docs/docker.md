@@ -295,6 +295,9 @@ Actual launch/init identities, existing role-custodian groups and operator/agent
 profile inputs remain unresolved. The actual offline profile checker stays failed
 until those inputs are genuinely prepared; synthetic fixtures cannot satisfy it.
 Deployment, credential custody, activation and final qualification remain held.
+The [custodian preparation guide](kubernetes-compatibility-preparation.md) lists
+the required approved inputs and uses the existing launcher to prepare and read
+back each role's genuine identities before binding its profile and workloads.
 
 The existing image credential preflight remains the entrypoint. The launcher
 uses only the already-prepared pinned agent, role instructions and retained work

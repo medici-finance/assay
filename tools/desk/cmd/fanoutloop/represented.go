@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -42,6 +43,9 @@ var representedPRs func(repo string) ([]deskkit.PRRef, error)
 // authoring and every representing PR counts as before. main() wires liveRepresentedPRFiles.
 var representedPRFiles func(repo string, number int) ([]deskkit.ChangedFile, error)
 
+// representedPRBatchFiles optionally reads one lazy candidate frontier using the shared planner reader.
+var representedPRBatchFiles func(repo string, numbers []int) map[int]deskkit.PendingChangeObservation
+
 // representedSourceFor is the FanoutLoop.Represented closure cmdPlan wires when representedPRs is
 // live: it reads the repo's open+merged PRs ONCE (representedPRs) and reduces them in memory to the
 // brief→RepresentedPR map — never one list call per row. A transport error propagates as
@@ -77,13 +81,48 @@ func representedSourceFor(repo string, candidates func() (map[string]bool, error
 		}
 		all := deskkit.RepresentingPRsByBrief(prs)
 		out := make(map[string]deskkit.RepresentedPR, len(all))
+		pending := make(map[string][]deskkit.RepresentedPR)
 		for id, list := range all {
 			if !cands[id] {
 				out[id] = list[0]
 				continue
 			}
-			if rp, ok := firstDeliveringPR(repo, id, list); ok {
-				out[id] = rp
+			if representedPRBatchFiles == nil {
+				if rp, ok := firstDeliveringPR(repo, id, list); ok {
+					out[id] = rp
+				}
+				continue
+			}
+			pending[id] = list
+		}
+		// Only the first unclassified PR for each brief is authoritative this round.
+		// Never prefetch older history: an unreadable/delivering head ends that walk.
+		for len(pending) > 0 {
+			ids := make([]string, 0, len(pending))
+			for id := range pending {
+				ids = append(ids, id)
+			}
+			sort.Strings(ids)
+			numbers := make([]int, 0, len(ids))
+			for _, id := range ids {
+				numbers = append(numbers, pending[id][0].Number)
+			}
+			observations := representedPRBatchFiles(repo, numbers)
+			for _, id := range ids {
+				list := pending[id]
+				rp := list[0]
+				observation, ok := observations[rp.Number]
+				if !ok {
+					observation.Err = fmt.Errorf("complete changed-file observation absent")
+				}
+				if !authoringPR(repo, id, rp, observation.Files, observation.Err) {
+					out[id] = rp
+					delete(pending, id)
+				} else if len(list) == 1 {
+					delete(pending, id)
+				} else {
+					pending[id] = list[1:]
+				}
 			}
 		}
 		return out, nil
@@ -96,21 +135,29 @@ func representedSourceFor(repo string, candidates func() (map[string]bool, error
 func firstDeliveringPR(repo, briefID string, list []deskkit.RepresentedPR) (deskkit.RepresentedPR, bool) {
 	for _, rp := range list {
 		files, err := representedPRFiles(repo, rp.Number)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — could not read %s#%d's changed files to tell whether it "+
-				"DELIVERED %s or only AUTHORED it (%v); counting it as the brief's representing PR, the answer "+
-				"before the authoring exemption (could-not-check, not a pass)\n", repo, rp.Number, briefID, err)
-			return rp, true
-		}
-		if deskkit.BriefAuthoringOnly(briefID, files) {
-			fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s#%d names %s in its `Brief:` trailer but only "+
-				"AUTHORED it (it adds the brief's file and touches only stream board READMEs, brief files and "+
-				"changelog fragments), so it does not represent the brief\n", repo, rp.Number, briefID)
+		if authoringPR(repo, briefID, rp, files, err) {
 			continue
 		}
 		return rp, true
 	}
 	return deskkit.RepresentedPR{}, false
+}
+
+// authoringPR is the shared classification for serial and batched observations.
+func authoringPR(repo, briefID string, rp deskkit.RepresentedPR, files []deskkit.ChangedFile, err error) bool {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — could not read %s#%d's changed files to tell whether it "+
+			"DELIVERED %s or only AUTHORED it (%v); counting it as the brief's representing PR, the answer "+
+			"before the authoring exemption (could-not-check, not a pass)\n", repo, rp.Number, briefID, err)
+		return false
+	}
+	if deskkit.BriefAuthoringOnly(briefID, files) {
+		fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s#%d names %s in its `Brief:` trailer but only "+
+			"AUTHORED it (it adds the brief's file and touches only stream board READMEs, brief files and "+
+			"changelog fragments), so it does not represent the brief\n", repo, rp.Number, briefID)
+		return true
+	}
+	return false
 }
 
 // candidateBriefIDs is the candidate set cmdPlan hands representedSourceFor: the lower-cased brief
