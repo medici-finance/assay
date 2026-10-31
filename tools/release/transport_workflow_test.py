@@ -1,0 +1,188 @@
+"""Handoff wiring: hosted native checks and in-cluster checked-object delivery."""
+from pathlib import Path
+import re
+import unittest
+
+from tools.release import transport
+from tools.release.images_test import workflow_jobs, workflow_steps, publication_problems
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def deadline_problems(step):
+    match = re.search(r'^        timeout-minutes: ([0-9]+)$', step, re.M)
+    return [] if match and 0 < int(match.group(1)) <= 15 else ['checked handoff needs a fixed bounded deadline']
+
+
+def hybrid_problems(text):
+    jobs = workflow_jobs(text)
+    producer, publisher, native = (jobs.get(k, '') for k in ('artifacts', 'release', 'runner-arm64'))
+    problems = []
+    for block, pool in [(producer, 'assay-release-object-builder'),
+                        (publisher, 'assay-release-object-publisher')]:
+        if '    runs-on: ' + pool + '\n' not in block:
+            problems.append('object handoff must use its explicitly configured release pool')
+    if '    environment: release-object-store-producer\n' not in producer:
+        problems.append('producer needs its protected-ref credential environment')
+    steps = workflow_steps(producer)
+    store = steps.get('Store checked release inputs for the in-cluster publisher', '')
+    fetch = workflow_steps(publisher).get('Fetch checked release inputs from the object store', '')
+    problems.extend(deadline_problems(fetch))
+    for verb, step in [('upload', store), ('download', fetch)]:
+        if 'python3 -B -m tools.release.transport ' + verb not in step:
+            problems.append('missing explicit checked object operation: ' + verb)
+        if 'continue-on-error:' in step or '||' in step:
+            problems.append('object transfer must fail closed without a fallback')
+        for key in ('ENDPOINT', 'BUCKET', 'REGION', 'ACCESS_KEY_ID', 'SECRET_ACCESS_KEY'):
+            value = 'RELEASE_OBJECT_' + key + ': ${{ secrets.RELEASE_OBJECT_' + key + ' }}'
+            if value not in step:
+                problems.append('missing step-scoped protected object input: ' + key)
+        for value in ('--repository "$REPOSITORY"', '--run "$RELEASE_RUN"',
+                      '--attempt "$RELEASE_ATTEMPT"', '--base "$BASE_SHA"',
+                      '--source "$SOURCE_SHA"', '--tag "$RELEASE_TAG"'):
+            if value not in step:
+                problems.append('missing immutable handoff coordinate: ' + value)
+    for field in ('bundle_sha256', 'manifest_sha256', 'bundle_bytes'):
+        if field + ': ${{ steps.object-store.outputs.' + field + ' }}' not in producer:
+            problems.append('producer digest/size must leave through trusted job outputs')
+        if '${{ needs.artifacts.outputs.' + field + ' }}' not in fetch:
+            problems.append('consumer must bind the producing job output')
+    if 'handoff_attempt: ${{ steps.object-store.outputs.handoff_attempt }}' not in producer:
+        problems.append('producer must publish the attempt bound into its manifest')
+    if 'RELEASE_ATTEMPT: ${{ needs.artifacts.outputs.handoff_attempt }}' not in fetch or 'github.run_attempt' in fetch:
+        problems.append('publisher reruns must retain the producing attempt')
+    for value in ('--expected-sha256 "$BUNDLE_SHA256"',
+                  '--expected-manifest-sha256 "$MANIFEST_SHA256"', '--expected-bytes "$BUNDLE_BYTES"'):
+        if value not in fetch:
+            problems.append('consumer must require its trusted expected proof')
+    if 'pattern: release-build-*' in publisher:
+        problems.append('in-cluster publisher must not silently use GitHub artifact transport')
+    if 'pattern: release-build-*' not in native or 'merge-multiple: true' not in native:
+        problems.append('hosted native input transport must remain GitHub artifacts')
+    if 'RELEASE_OBJECT_' in native or 'tools.release.transport' in native:
+        problems.append('hosted native job must not receive object-store credentials or routing')
+    if text.count('RELEASE_OBJECT_ACCESS_KEY_ID: ${{ secrets.RELEASE_OBJECT_ACCESS_KEY_ID }}') != 2:
+        problems.append('object credentials must appear only in the two transport steps')
+    if not (publisher.find('Fetch checked release inputs from the object store') <
+            publisher.find('Restore the prepared source and verify release artifacts') <
+            publisher.find('Build, verify and publish the release images')):
+        problems.append('checked handoff must precede existing checksum and publication gates')
+    return problems
+
+
+def ci_transport_problems(text):
+    step = workflow_steps(workflow_jobs(text)['build-test-shard']).get('Test release image contract', '')
+    required = ('tools.release.images_test', 'tools.release.transport_test',
+                'tools.release.transport_workflow_test',
+                'python3 -B -m tools.release.transport_mutation --out')
+    return deadline_problems(step) + [item for item in required if item not in step] + (
+        ['release tests must fail the rest shard'] if 'continue-on-error:' in step or
+        "if: matrix.shard == 'rest'" not in step else [])
+
+
+class HybridWorkflowTest(unittest.TestCase):
+    # regression: #4939 C5
+    def test_fetch_and_ci_contract_checks_have_fixed_deadlines(self):
+        for rel in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (ROOT / rel).read_text()
+            fetch = workflow_steps(workflow_jobs(text)['release'])['Fetch checked release inputs from the object store']
+            self.assertEqual(deadline_problems(fetch), [])
+            for value in ('0', '16', '${{ inputs.unbounded }}'):
+                self.assertTrue(deadline_problems(fetch.replace('timeout-minutes: 15', 'timeout-minutes: ' + value)))
+            self.assertTrue(deadline_problems(fetch.replace('        timeout-minutes: 15\n', '')))
+        ci = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertEqual(ci_transport_problems(ci), [])
+
+    # regression: #4887
+    def test_privileged_runner_binding_is_fixed_in_reviewed_source(self):
+        for rel in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (ROOT / rel).read_text()
+            jobs = workflow_jobs(text)
+            self.assertIn('    runs-on: assay-release-object-builder\n', jobs['artifacts'])
+            self.assertIn('    runs-on: assay-release-object-publisher\n', jobs['release'])
+            for name in ('artifacts', 'release'):
+                self.assertNotRegex(jobs[name], r'runs-on:.*\$\{\{')
+            changed = text.replace('runs-on: assay-release-object-publisher',
+                                   'runs-on: general-ci', 1)
+            self.assertNotEqual(changed, text)
+            self.assertTrue(publication_problems(changed))
+
+    # regression: #4887
+    def test_publisher_rerun_uses_the_producing_attempt(self):
+        for rel in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            jobs = workflow_jobs((ROOT / rel).read_text())
+            self.assertIn('handoff_attempt: ${{ steps.object-store.outputs.handoff_attempt }}',
+                          jobs['artifacts'])
+            store = workflow_steps(jobs['artifacts'])['Store checked release inputs for the in-cluster publisher']
+            fetch = workflow_steps(jobs['release'])['Fetch checked release inputs from the object store']
+            self.assertIn('RELEASE_ATTEMPT: ${{ github.run_attempt }}', store)
+            self.assertIn('RELEASE_ATTEMPT: ${{ needs.artifacts.outputs.handoff_attempt }}', fetch)
+            self.assertNotIn('github.run_attempt', fetch)
+
+    # regression: #4887
+    def test_ci_runs_the_transport_security_suites_and_mutations(self):
+        for rel in ('.github/workflows/ci.yml',):
+            text = (ROOT / rel).read_text()
+            step = workflow_steps(workflow_jobs(text)['build-test-shard'])['Test release image contract']
+            for module in ('tools.release.images_test', 'tools.release.transport_test',
+                           'tools.release.transport_workflow_test'):
+                self.assertIn(module, step)
+            self.assertIn('python3 -B -m tools.release.transport_mutation --out', step)
+            self.assertEqual(ci_transport_problems(text), [])
+            for module in ('tools.release.transport_test', 'tools.release.transport_workflow_test'):
+                self.assertTrue(ci_transport_problems(text.replace(module, 'tools.release.images_test', 1)))
+
+    # regression: #4887
+    def test_hybrid_wiring_preserves_all_existing_publication_gates(self):
+        for rel in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text=(ROOT/rel).read_text()
+            self.assertEqual(hybrid_problems(text), [])
+            self.assertEqual(publication_problems(text), [])
+
+    # regression: #4887
+    def test_every_github_upload_member_is_also_in_the_checked_object_handoff(self):
+        text=(ROOT/'.github/workflows/release.yml').read_text()
+        uploads=re.findall(r'(?ms)^      - name: Upload prepared release artifacts[^\n]*\n(.*?)(?=^      - |\Z)',workflow_jobs(text)['artifacts'])
+        for source in ('a'*40, 'b'*40):
+            meta=transport.metadata('example/project','42','2','a'*40,source,'v1.2.3')
+            self.assertEqual(len(uploads), 7)
+            selected=[]
+            for block in uploads:
+                patterns=re.findall(r'^            (.+)$',block,re.M)
+                self.assertTrue(patterns)
+                for pattern in patterns:
+                    if '*' in pattern:
+                        self.assertIn(pattern, ('tool-validation-*.json', 'tool-validation-*.md'))
+                        pattern=pattern.replace('*', meta['tag'])
+                    self.assertNotRegex(pattern, r'[?\[\]]')
+                    if pattern == 'release-source.bundle' and source == meta['base']:
+                        continue
+                    selected.append(pattern)
+            self.assertCountEqual(selected, transport.members(meta))
+
+    # regression: #4887
+    def test_expected_proof_credential_and_route_controls_cannot_disappear(self):
+        text=(ROOT/'.github/workflows/release.yml').read_text()
+        self.assertEqual(hybrid_problems(text), [])
+        changes=[('runs-on: assay-release-object-builder','runs-on: general-ci'),
+                 ('runs-on: assay-release-object-publisher','runs-on: general-ci'),
+                 ('--expected-sha256 "$BUNDLE_SHA256"',''),
+                 ('--expected-manifest-sha256 "$MANIFEST_SHA256"',''),
+                 ('--expected-bytes "$BUNDLE_BYTES"',''),
+                 ('needs.artifacts.outputs.bundle_sha256','steps.untrusted.outputs.bundle_sha256'),
+                 ('environment: release-object-store-producer','environment: unprotected'),
+                 ('transport download','transport upload')]
+        for old,new in changes:
+            mutated=text.replace(old,new,1)
+            self.assertNotEqual(mutated,text)
+            self.assertTrue(hybrid_problems(mutated))
+
+    # regression: #4887
+    def test_client_is_installed_only_after_the_exact_archive_digest_check(self):
+        text=(ROOT/'tools/release/install-object-client.sh').read_text()
+        self.assertIn('readonly version=2.37.8',text)
+        self.assertIn('readonly digest=6a2f98fee0901ff623ff9abb5c80f4d67c40e5c0ac5e2ad7afa2ba756a7d5088',text)
+        self.assertLess(text.index('sha256sum -c -'),text.index('unzip -q'))
+        self.assertLess(text.index('unzip -q'),text.index('"$1/unpacked/aws/install"'))
+        self.assertNotIn('sudo',text)
+        self.assertNotIn('latest',text)
