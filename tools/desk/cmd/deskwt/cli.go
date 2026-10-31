@@ -417,10 +417,11 @@ files: that lock is retired just before the delete and restored if the delete fa
 session id is self-asserted and inherited, so the own-lock arm also refuses a tree whose
 "git status --porcelain" lists anything (untracked files, a modified submodule, a nested
 repository), naming the rows (exit 5, nothing deleted). What git ignores is NOT listed and is
-deleted with the tree: ignored files, a directory that ignores itself, and any worktree
-nested under an ignored path (its own lock is not judged, and its registration is left
-behind). An inherited $DESK_SESSION passes the session match; the loss is then limited to
-what that status cannot see. Any other lock on the target — another session's, whatever
+deleted with the tree: ignored files, a directory that ignores itself, a tracked edit
+hidden with skip-worktree, and any worktree nested under an ignored path (its own lock is
+not judged; a locked one keeps its registration and branch held). An inherited
+$DESK_SESSION passes the session match; the loss is then limited to what that status
+cannot see. Any other lock on the target — another session's, whatever
 its roster beacon says (a beacon is written only when its session updates the roster, so an
 old or missing one is not proof the session is gone), one naming no session, git's
 "initializing" lock — is refused with exit 5 and the tree is left untouched; a clean, pushed

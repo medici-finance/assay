@@ -11,7 +11,7 @@ package main
 //
 // The fix: before anything is deleted, remove judges the lock. The caller's own session's lock
 // is retired as the last step before the delete (and restored if the delete fails) when the tree
-// has a clean `git status --porcelain`; any other lock is REFUSED with the tree untouched, whatever the
+// has a clean `git status --porcelain`; any other lock on the target is REFUSED with the tree untouched, whatever the
 // state of the owner's roster beacon: a beacon is stamped only when its session writes the
 // roster, so an old one is not proof the owner is gone. A dead session's tree is reaped by
 // `deskwt prune --reap-dead-sessions`.
@@ -272,6 +272,142 @@ func TestRemoveOwnLockedRefusalNamesRows(t *testing.T) {
 	}
 	assertExists(t, filepath.Join(home, "never-added.go"))
 	assertLocked(t, work, home, true)
+}
+
+// The dirt check is bound to the target. A caller whose environment carries GIT_WORK_TREE,
+// GIT_DIR or GIT_CONFIG_* (a git hook, alias or wrapper can) must not point it at another
+// tree or another exclude file: the target's own status lists wip.go, so remove refuses.
+// regression: F-locked-remove
+func TestRemoveOwnLockedIgnoresInheritedGitEnvironment(t *testing.T) {
+	rows := map[string]func(t *testing.T, work string){
+		"GIT_WORK_TREE": func(t *testing.T, work string) {
+			t.Setenv("GIT_WORK_TREE", work)
+		},
+		"GIT_DIR+GIT_WORK_TREE": func(t *testing.T, work string) {
+			t.Setenv("GIT_DIR", filepath.Join(work, ".git"))
+			t.Setenv("GIT_WORK_TREE", work)
+		},
+		"GIT_CONFIG excludesFile": func(t *testing.T, work string) {
+			ex := filepath.Join(t.TempDir(), "ignore-all")
+			writeFile(t, ex, "*\n")
+			t.Setenv("GIT_CONFIG_COUNT", "1")
+			t.Setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+			t.Setenv("GIT_CONFIG_VALUE_0", ex)
+		},
+	}
+	i := 0
+	for name, set := range rows {
+		i++
+		t.Run(name, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			t.Setenv("DESK_SESSION", "")
+			home := lockedHome(t, "genv"+string(rune('a'+i)), "test")
+			wip := filepath.Join(home, "wip.go")
+			writeFile(t, wip, "package wip\n")
+			set(t, work)
+
+			rc, stderr := runCapErr(t, []string{"remove", home})
+			if rc != deskkit.ExitRefused {
+				t.Fatalf("remove under an inherited %s rc=%d, want %d:\n%s", name, rc, deskkit.ExitRefused, stderr)
+			}
+			assertExists(t, wip)
+			assertLocked(t, work, home, true)
+			if !strings.Contains(stderr, "wip.go") {
+				t.Fatalf("the refusal does not name wip.go:\n%s", stderr)
+			}
+		})
+	}
+}
+
+// A modified submodule is listed whatever the submodule ignore settings say: the gate compares
+// submodules in full (--ignore-submodules=none), so diff.ignoreSubmodules=all does not hide the
+// edit, and the first row keeps its leading status column.
+// regression: F-locked-remove
+func TestRemoveOwnLockedSubmoduleEditRefused(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	t.Setenv("DESK_SESSION", "")
+	home := lockedHome(t, "ownsubmod", "test")
+
+	sub := filepath.Join(t.TempDir(), "sub")
+	mustGit(t, "", "init", "-q", "-b", "main", sub)
+	mustGit(t, sub, "config", "user.email", "t@e.st")
+	mustGit(t, sub, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(sub, "lib.go"), "package lib\n")
+	mustGit(t, sub, "add", "lib.go")
+	mustGit(t, sub, "commit", "-q", "-m", "lib")
+	mustGit(t, home, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "vendor")
+	mustGit(t, home, "-c", "user.email=t@e.st", "-c", "user.name=Test", "commit", "-q", "-m", "add the submodule")
+	mustGit(t, home, "push", "-q", "-u", "origin", "HEAD")
+
+	writeFile(t, filepath.Join(home, "vendor", "lib.go"), "package lib // edited\n")
+	mustGit(t, home, "config", "diff.ignoreSubmodules", "all")
+	mustGit(t, home, "config", "submodule.vendor.ignore", "all")
+	if got := strings.TrimSpace(mustGit(t, home, "status", "--porcelain")); got != "" {
+		t.Fatalf("positive control: the ignore settings should hide the edit from plain status, got %q", got)
+	}
+
+	rc, stderr := runCapErr(t, []string{"remove", home})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("remove of an own locked home with an edited submodule rc=%d, want %d:\n%s", rc, deskkit.ExitRefused, stderr)
+	}
+	if !strings.Contains(stderr, "first:\n M vendor") {
+		t.Fatalf("the refusal does not list the submodule row with its status column:\n%s", stderr)
+	}
+	assertExists(t, filepath.Join(home, "vendor", "lib.go"))
+	assertLocked(t, work, home, true)
+}
+
+// A worktree nested under an IGNORED path of the target is not listed by the target's status, so
+// it is deleted with the tree. Its registration is pruned when it is unlocked and stays (locked,
+// branch held) when it carries a lock; the help and the codex.md recipe say exactly that, and the
+// stranded case is tracked on #5074. This pins the documented behaviour; it is not an endorsement.
+func TestRemoveOwnLockedNestedWorktreeUnderIgnoredPath(t *testing.T) {
+	for _, nestedLocked := range []bool{false, true} {
+		name := map[bool]string{false: "unlocked", true: "locked"}[nestedLocked]
+		t.Run(name, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			t.Setenv("DESK_SESSION", "")
+			home := lockedHome(t, "nest"+name[:3], "test")
+			common := strings.TrimSpace(mustGit(t, work, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+			if err := os.MkdirAll(filepath.Join(common, "info"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(common, "info", "exclude"), ".nested/\n")
+			nested := filepath.Join(home, ".nested", "agent-1")
+			mustGit(t, home, "worktree", "add", "-q", "-b", "agent-1-"+name, nested)
+			if nestedLocked {
+				mustGit(t, home, "worktree", "lock", "--reason", "session=other", nested)
+			}
+
+			rc, stderr := runCapErr(t, []string{"remove", home})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("remove rc=%d, want 0:\n%s", rc, stderr)
+			}
+			listed := strings.Contains(mustGit(t, work, "worktree", "list", "--porcelain"), "agent-1")
+			if listed != nestedLocked {
+				t.Fatalf("nested worktree (locked=%v) still registered=%v, want %v", nestedLocked, listed, nestedLocked)
+			}
+		})
+	}
+}
+
+// The refusal prints the first ten rows and says how many it left out.
+func TestCapRows(t *testing.T) {
+	var lines []string
+	for i := 0; i < 12; i++ {
+		lines = append(lines, "?? f"+string(rune('a'+i)))
+	}
+	all := strings.Join(lines, "\n")
+	if got := capRows(strings.Join(lines[:10], "\n"), 10); got != strings.Join(lines[:10], "\n") {
+		t.Fatalf("ten rows were altered: %q", got)
+	}
+	got := capRows(all, 10)
+	if !strings.HasPrefix(got, strings.Join(lines[:10], "\n")+"\n") || !strings.Contains(got, "and 2 more") || strings.Contains(got, "fk") {
+		t.Fatalf("twelve rows were not capped to ten plus a count:\n%s", got)
+	}
 }
 
 // A delete that fails after the unlock restores the original lock and its reason: the tree is

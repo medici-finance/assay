@@ -828,15 +828,15 @@ func runRemove(o removeOpts) (err error) {
 	// deleting a locked tree stranded its registration (exit 6, branch still held) — and did
 	// so to a tree another live session had locked. A session's own end-of-PR remove of its
 	// own locked home is the normal case: the caller's OWN session's lock is retired just
-	// before the delete. Every other lock is refused with the tree untouched — including one
+	// before the delete. Every other lock on the target is refused with the tree untouched — including one
 	// whose roster beacon looks old: a beacon is stamped only when its session mutates the
 	// roster, so a long-quiet beacon is no evidence the owner is gone, and this tree still
 	// holds content (untracked files the gates above do not count) with no open-handle probe
 	// behind it. A dead session's tree goes through `deskwt prune --reap-dead-sessions`, which
 	// holds on untracked files. Because the session id is self-asserted and inherited, the
-	// own-lock arm also refuses a tree whose `git status` lists anything. The check is the TARGET's
-	// lock only: what git ignores (including a worktree nested under an ignored path, with its own
-	// lock) is deleted with the tree.
+	// own-lock arm also refuses a tree whose `git status` lists anything. The lock check covers the
+	// TARGET's lock only: what git ignores (including a worktree nested under an ignored path,
+	// whose own lock, if it has one, is not judged) is deleted with the tree.
 	locked, lerr := guard.lockedWorktrees(dir)
 	if lerr != nil {
 		return lerr
@@ -852,11 +852,15 @@ func runRemove(o removeOpts) (err error) {
 		// files forced on whatever status.showUntrackedFiles says and submodules compared in
 		// full. go-git's status is NOT used here: it ignores core.excludesFile and, in a linked
 		// worktree, info/exclude, so it refused a tree the recipe's command reports clean.
-		dirty, derr := runGit(rt, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none")
+		// The read is bound to the target: every inherited GIT_* variable (GIT_DIR,
+		// GIT_WORK_TREE, GIT_CONFIG_*) is dropped, which would otherwise point this destructive
+		// gate at another tree or another exclude file (deadsession.go states the rule). The
+		// fsmonitor hook is turned off so the gate runs no configured program.
+		dirty, derr := targetGitStatus(rt)
 		if derr != nil {
 			return deskkit.Unverifiable("cannot check "+rt+" for untracked files before retiring its lock", derr)
 		}
-		if rows := strings.TrimSpace(dirty); rows != "" {
+		if rows := strings.Trim(dirty, "\r\n"); strings.TrimSpace(rows) != "" {
 			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first:\n" + capRows(rows, 10))
 		}
 		lockNote = "; lock retired: " + why
@@ -1047,4 +1051,19 @@ func capRows(rows string, n int) string {
 		return rows
 	}
 	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... and %d more (git status --porcelain)", len(lines)-n)
+}
+
+// targetGitStatus runs git's own `status --porcelain` in the target with the caller's GIT_*
+// variables dropped, and returns the output UNTRIMMED: the first row's leading status column
+// (" M vendor") is part of the row, and deskkit.Run would strip it.
+func targetGitStatus(rt string) (string, error) {
+	cmd := execCommand("git", "-c", "core.fsmonitor=false", "status", "--porcelain",
+		"--untracked-files=normal", "--ignore-submodules=none")
+	cmd.Dir = rt
+	cmd.Env = scrubbedGitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
