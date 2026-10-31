@@ -124,7 +124,7 @@ newbrief authoring (/04), milestone acceptance, or release/adoption (/14).
 
 `readercaps/testdata/conformance.json` is shared positive/negative wire data. The named
 production tests are TestReaderCapsCompat, TestStatusgenCapsTruth and
-TestDeskCapsPreflight (deskkit, deskboard and deskevidence). TestReaderCapsSchema checks the shape
+TestDeskCapsPreflight (deskkit, deskboard, deskevidence, deskclaim and deskpr). TestReaderCapsSchema checks the shape
 artifact with the existing validator; decoder tests cover stricter duplicate rules.
 TestReaderCapsBoundary checks direct production imports and the compiled dependency closure.
 The executable controls live in `statusgen/testdata/milestone-support/02-mutations.json`.

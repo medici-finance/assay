@@ -279,6 +279,24 @@
       "module": "tools/desk",
       "package": "./cmd/deskevidence",
       "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "deskclaim-preflight",
+      "target": "tools/desk/cmd/deskclaim/main.go",
+      "old": "\"deskclaim\", os.Stderr); code != 0 {",
+      "new": "\"deskclaim\", os.Stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "deskpr-preflight",
+      "target": "tools/desk/cmd/deskpr/main.go",
+      "old": "\"deskpr\", os.Stderr); code != 0 {",
+      "new": "\"deskpr\", os.Stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskpr",
+      "test": "TestDeskCapsPreflight"
     }
   ]
 }
