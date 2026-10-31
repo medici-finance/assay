@@ -146,12 +146,18 @@ reads beyond the JSON output. The list of what counts is in the code
 (`deskcore/writepolicy/ghfilter.go`, `Classification.ReadsOutsideGhOutput`). Ordinary
 selection and formatting filters keep working. The check runs on any gh command.
 
-The text is read as shell words with their quotes and backslashes removed, so a flag
-and its value count however they are quoted, with any redirections between them skipped.
+The text is read as shell words with the quotes and backslashes those shells remove
+taken out, so quoting does not hide a flag or its value, and the redirection operators
+those shells have are skipped between them. Where the shells disagree on a word, it is
+refused if either reading reads beyond the output.
 A string inside a filter is only taken as a string when the flag and the value are
 plainly quoted. A quoted word that could hold a command is read again, and so is a
 substituted command. What the shell expands in a filter is not filter text. A brace
 expansion in a flag or a value is refused without being worked out.
+
+Text the reader does not model can put it out of step with the shell. To recover, it
+reads the text again, under a budget. A call that spends the budget is judged whole,
+with no string taken as a string.
 
 **Limit: this is not a complete control.** It reads against that list, which was
 checked on gh 2.102.0 alone, and on `sh`, `dash`, `bash` and `zsh` with their usual
@@ -162,9 +168,13 @@ settings. These are out of scope:
 - A flag, a filter or the gh word that the shell computes, decodes from an escape or
   matches against files, including one assembled from a variable.
 - Words changed by the session's shell settings, aliases or functions from outside the call.
+- Text the reader does not follow, which can still hide a filter, even one written out
+  in the call.
 
-The check reads words without parsing the shell or tying a flag to its command, so some
-text that is not a gh filter is refused; the refusal names the way through.
+The check reads words without parsing the shell or tying a flag to its command. That has
+two costs. Some text that is not a gh filter is refused, and the refusal names the way
+through. Some text the shell reads differently is silently missed, and nothing reports
+that.
 
 | # | Verify | Method | Expected |
 |---|---|---|---|

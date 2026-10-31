@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -151,6 +152,140 @@ func TestGhFilterOrdinaryAllowed(t *testing.T) {
 	}
 }
 
+// ghFilterStep is a line whose filter the listed shells hand to gh, and whether the
+// check must refuse it; each shell's own reading of the line is checked too.
+type ghFilterStep struct {
+	line, filter string
+	shells       []string
+}
+
+func ghFilterSteps() []ghFilterStep {
+	all := []string{"sh", "dash", "bash", "zsh -f"}
+	var rows []ghFilterStep
+	add := func(line, filter string, shells ...string) {
+		if shells == nil {
+			shells = all
+		}
+		rows = append(rows, ghFilterStep{line, filter, shells})
+	}
+	// Text with a quote the reader takes as opening one, before an ordinary filter.
+	for _, before := range []string{
+		"# it's\n",
+		"# \"\n",
+		"true # '\n",
+		"cat <<E >/dev/null\n'\nE\n",
+		"cat <<'E' >/dev/null\nit's\nE\n",
+		"echo ${u:-'}'} >/dev/null; ",
+		`echo ${u:-"}"} >/dev/null; `,
+		`echo ${u#'}'} >/dev/null; `,
+	} {
+		add(before+"gh api x --jq '.a|env'", ".a|env")
+		add(before+`gh api x -q ".a|env.X"`, ".a|env.X")
+		add(before+`eval "gh api x --jq '.a|env'"`, ".a|env")
+		if strings.HasSuffix(before, "\n") {
+			add(before+`eval gh\ api\ x\ --jq\ \'.a\|env\'`, ".a|env")
+		}
+		// The same text inside the string, with the filter escaped there too.
+		add(`eval '`+strings.ReplaceAll(before+"gh api x --jq '.a|env'", "'", `'\''`)+`'`, ".a|env")
+		add(`eval "`+strings.ReplaceAll(strings.ReplaceAll(before, `"`, `\"`), `$`, `\$`)+`gh api x --jq \".a|env\""`, ".a|env")
+	}
+	// A brace in quotes in an expansion beside the filter.
+	add(`gh api x --jq ${u:+'}'}'.a|env'`, ".a|env")
+	add(`gh api x --jq ${u:+"}"}'.a|env'`, ".a|env")
+	add(`gh api x --jq "${u:+"}"}.a|env"`, ".a|env")
+	// A `)` the reader takes as closing a substitution. The older bash some hosts
+	// have as sh cannot parse these.
+	add(`echo "$(case x in x) gh api y --jq ".a|env";; esac)"`, ".a|env", "dash", "bash", "zsh -f")
+	add("echo \"$(true # )\ngh api y --jq \".a|env\")\"", ".a|env", "dash", "bash", "zsh -f")
+	// The rest of a redirection operator.
+	for _, f := range []string{"--jq", "-q"} {
+		add("gh api x "+f+" <<- E env.X\nbody\nE", "env.X")
+		add("gh api x "+f+" <<-E env.X\nbody\nE", "env.X")
+		add("gh api x "+f+" >! o env.X", "env.X", "zsh -f")
+		add("gh api x "+f+" >!o env.X", "env.X", "zsh -f")
+		add("gh api x "+f+" >>! o env.X", "env.X", "zsh -f")
+		add("gh api x "+f+" >&! o env.X", "env.X", "zsh -f")
+		add("gh api x "+f+" &>! o env.X", "env.X", "zsh -f")
+		add("gh api x "+f+" >! env.X", "env.X", "sh", "dash", "bash")
+		// An argument, not a descriptor.
+		add("gh api x "+f+" {a:env.X}>o", "{a:env.X}")
+		add("gh api x "+f+" {env.X}>o", "{env.X}")
+		// A carriage return is a byte of the word.
+		add("gh api x "+f+" \renv.X", "\renv.X")
+		// The shells differ on the `$` of `$\"`.
+		add("gh api x "+f+` $"ENV.X"`, "$ENV.X", "dash", "zsh -f")
+		add("gh api x "+f+` $'ENV.X'`, "$ENV.X", "dash")
+		// Beside an expansion: the shell reads one digit, and an unset name gives nothing.
+		add("gh api x "+f+" $1env.X", "env.X")
+		add("gh api x "+f+` "$1env.X"`, "env.X")
+		add("gh api x "+f+"$1 env.X", "env.X")
+		add("gh api x "+f+"$u env.X", "env.X")
+	}
+	add("gh api x --jq=\renv.X", "\renv.X")
+	add("gh api x -iq\renv.X", "\renv.X")
+	add("gh api x -q=\renv.X", "\renv.X")
+	add("gh api x --jq=$1env.X", "env.X")
+	return rows
+}
+
+// regression: #5078
+func TestGhFilterOutOfStepRefused(t *testing.T) {
+	// A real shell hands each filter over, so none of these is a false refusal.
+	want := map[string][]ghFilterStep{}
+	for _, row := range ghFilterSteps() {
+		if !ghFilterClassified(row.line) {
+			t.Errorf("%q: gh gets filter %q, and the check allowed it", row.line, row.filter)
+		}
+		for _, sh := range row.shells {
+			want[sh] = append(want[sh], row)
+		}
+	}
+	for sh, rows := range want {
+		t.Run(sh, func(t *testing.T) {
+			lines := make([]string, len(rows))
+			for i, r := range rows {
+				lines[i] = r.line
+			}
+			for i, argv := range ghFilterShellArgv(t, strings.Fields(sh), lines, true) {
+				if !slices.Contains(ghFilterValues(argv), rows[i].filter) {
+					t.Errorf("%q: argv %q does not hand over %q", lines[i], argv, rows[i].filter)
+				}
+			}
+		})
+	}
+}
+
+// regression: #5078
+func TestGhFilterOutOfStepAllowed(t *testing.T) {
+	for _, cmd := range []string{
+		"# it's\ngh api x --jq '.a|.b'",
+		"# it's\ngh api x --jq '.a|select(.b==\"env\")'",
+		"# \"\ngh api x --jq \".a|.b\"",
+		"cat <<'E' >/dev/null\nit's\nE\ngh api x --jq '.a|.b'",
+		`echo ${u:-'}'} >/dev/null; gh api x --jq '.a|.b'`,
+		`gh api x --jq ${u:+'}'}'.a|.b'`,
+		`gh api x --jq "${u:-'}".a`,
+		"gh api x --jq <<- E .a\nbody\nE",
+		"gh api x --jq >! o .a",
+		"gh api x --jq >!o .a",
+		"gh api x --jq &>! o .a",
+		"gh api x --jq {x}>o .a",
+		"gh api x --jq {x_1}>o .a",
+		"gh api x --jq 2>o .a",
+		"gh api x --jq .a\r\ngh api y --jq .b\r",
+		`gh api x --jq $".a"`,
+		`gh api x --jq $'.a'`,
+		`gh api x --jq $"env_x"`,
+		`gh api x --jq "$1.a"`,
+		`gh api x --jq$u .a`,
+		`gh api x -q$u .a`,
+	} {
+		if ghFilterClassified(cmd) {
+			t.Errorf("%q: must stay allowed", cmd)
+		}
+	}
+}
+
 func TestGhFilterScanWorkBounded(t *testing.T) {
 	long := strings.Repeat("-q '.a' ", 200000)
 	for _, cmd := range []string{
@@ -170,6 +305,19 @@ func TestGhFilterScanWorkBounded(t *testing.T) {
 		"gh api x --jq " + strings.Repeat("2>o ", 200000),
 		"gh api x --jq " + strings.Repeat("$f ", 300000),
 		"gh " + strings.Repeat("{a,", 300000),
+		// The reads that take no state from earlier text.
+		"gh " + strings.Repeat("-q ' ", 200000),
+		"gh " + strings.Repeat(`-q " `, 200000),
+		"gh " + strings.Repeat(`"$( `, 200000),
+		"gh " + strings.Repeat("- ", 500000) + "'",
+		"gh " + strings.Repeat("$ ", 500000) + `"`,
+		"gh " + strings.Repeat("-q 'a\n", 150000),
+		"gh\n" + strings.Repeat("'\n", 500000),
+		"gh " + strings.Repeat(`"-q `, 200000),
+		"gh " + strings.Repeat(`'bash -c " `, 100000),
+		"gh " + strings.Repeat(`\ `, 500000),
+		"gh " + strings.Repeat(`-q\ `, 250000),
+		"gh\n" + strings.Repeat(`\ `, 500000),
 	} {
 		start := time.Now()
 		if ghFilterReads(cmd) {
@@ -178,6 +326,28 @@ func TestGhFilterScanWorkBounded(t *testing.T) {
 		if d := time.Since(start); d > 5*time.Second {
 			t.Errorf("%.40q…: took %v", cmd, d)
 		}
+	}
+}
+
+// regression: #5078
+func TestGhFilterBudgetFailClosed(t *testing.T) {
+	// Text that spends the budget is judged whole, with no string taken as one, so
+	// padding hides nothing, and the cost is a false refusal only on such text.
+	pad := "gh " + strings.Repeat(`\ `, 200000)
+	for _, tail := range []string{"\n# it's\ngh api x --jq '.a|env'", ` --jq 'env.X'`, ` --jq '"env"'`} {
+		start := time.Now()
+		if !ghFilterReads(pad + tail) {
+			t.Errorf("padding then %q: must report true", tail)
+		}
+		if d := time.Since(start); d > 5*time.Second {
+			t.Errorf("padding then %q: took %v", tail, d)
+		}
+	}
+	if ghFilterReads(pad + ` --jq '.a'`) {
+		t.Errorf("padding then an ordinary filter: holds no name, must stay allowed")
+	}
+	if ghFilterReads(`gh api x --jq '"env"'`) {
+		t.Errorf("a short call never spends the budget, so its string keeps its credit")
 	}
 }
 

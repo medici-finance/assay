@@ -149,3 +149,35 @@ func TestHookGhFilterWordsLikeShell(t *testing.T) {
 		}
 	}
 }
+
+// regression: #5078
+func TestHookGhFilterOutOfStep(t *testing.T) {
+	// One row per class; the core test checks each against the real shells.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "fixture-session")
+	for _, row := range []struct{ refused, allowed string }{
+		{"# it's\ngh api x --jq '.a|env'", "# it's\ngh api x --jq '.a|.b'"},
+		{"cat <<'E' >/dev/null\nit's\nE\ngh api x --jq '.a|env'", "cat <<'E' >/dev/null\nit's\nE\ngh api x --jq '.a|.b'"},
+		{`echo ${u:-'}'}; gh api x --jq '.a|env'`, `echo ${u:-'}'}; gh api x --jq '.a|.b'`},
+		{`echo "$(case x in x) gh api y --jq ".a|env";; esac)"`, `echo "$(case x in x) gh api y --jq ".a|.b";; esac)"`},
+		{`gh api x --jq ${u:+'}'}'.a|env'`, `gh api x --jq ${u:+'}'}'.a|.b'`},
+		{"eval \"# \\\"\ngh api x --jq \\\".a|env\\\"\"", "eval \"# \\\"\ngh api x --jq \\\".a|.b\\\"\""},
+		{"gh api x --jq <<- E env.X\nbody\nE", "gh api x --jq <<- E .a\nbody\nE"},
+		{"gh api x --jq >! o env.X", "gh api x --jq >! o .a"},
+		{"gh api x -q &>! o env.X", "gh api x -q &>! o .a"},
+		{"gh api x --jq {a:env.X}>o", "gh api x --jq {x}>o .a"},
+		{"gh api x --jq \renv.X", "gh api x --jq .a\r"},
+		{`gh api x --jq $"ENV.X"`, `gh api x --jq $".a"`},
+		{`gh api x --jq $'ENV.X'`, `gh api x --jq $'.a'`},
+		{"gh api x --jq $1env.X", "gh api x --jq $1.a"},
+		{"gh api x --jq$u env.X", "gh api x --jq$u .a"},
+		{"gh api x -q$u env.X", "gh api x -q$u .a"},
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(row.refused))
+		if err != nil || !v.Block {
+			t.Errorf("%q: want refused, got block=%v err=%v", row.refused, v.Block, err)
+		}
+		ambientAllowed(t, wt, row.allowed)
+	}
+}

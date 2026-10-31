@@ -12,16 +12,21 @@ import "strings"
 // The text is read as shell words with their quotes and backslashes removed, not
 // parsed as a program: a flag in any word counts, in any command, as long as a
 // gh word is somewhere in the text. A quoted word that could hold a command is
-// read again, as are command substitutions. docs/write-policy.md states the limits.
+// read again, as are command substitutions. Text the reader does not model can
+// leave it out of step with the shell, so resync reads the text again without what
+// came before.
+// docs/write-policy.md states the limits.
 //
-// Cost: one pass for the gh word, and at most ghFilterDepth+1 passes over any
-// byte, each of which reads a filter value at most twice.
+// Cost: one pass for the gh word, at most ghFilterDepth+1 passes over any byte in
+// each reading, each of which reads a filter value at most twice, and a shared
+// budget for reading again: spent, the whole text is judged with no string credit.
 func ghFilterReads(s string) bool {
 	if !forgeHasWord(s, "gh", true) {
 		return false
 	}
-	var g ghFilterScan
-	g.commands(s, 0, false, 0)
+	g := ghFilterScan{text: s, budget: ghReadAgainFloor + ghReadAgainWork*len(s)}
+	g.commands(s, 0, ghToEnd, 0)
+	g.resync(s, 0)
 	return g.found
 }
 
@@ -32,20 +37,63 @@ const (
 	// ghExpansion stands in a word for what the shell expands there. It is no
 	// byte of a name, so nothing inside the expansion is read as filter text.
 	ghExpansion = 0
+	// ghDollarQuote stands in a word for the `$` of `$"` and `$'`, which some of
+	// the shells drop and others keep. A name right after it is read both ways.
+	ghDollarQuote = 1
+	// ghReadAgainWork and ghReadAgainFloor set the budget for reading text again,
+	// in bytes: multiples of the text's length, and enough for any short call.
+	ghReadAgainWork  = 8
+	ghReadAgainFloor = 1 << 16
 )
 
-type ghFilterScan struct{ found bool }
+// ghStop says where commands stops reading.
+type ghStop int
 
-// commands reads the words of s from p until the end, or until the `)` closing a
-// command substitution when sub is set, and returns the offset it stopped at.
-func (g *ghFilterScan) commands(s string, p int, sub bool, d int) int {
+const (
+	ghToEnd     ghStop = iota // the end of the text
+	ghToParen                 // the `)` closing a command substitution
+	ghOneFilter               // the end of the first word, or of its filter if it is a flag
+)
+
+type ghFilterScan struct {
+	found  bool
+	spent  bool   // the budget is gone, and the whole text has been judged
+	text   string // the whole text
+	budget int
+}
+
+// spend takes n bytes from the budget, and reports whether any is left.
+func (g *ghFilterScan) spend(n int) bool {
+	if g.budget -= n; g.budget < 0 && !g.spent {
+		g.spent = true
+		g.found = g.found || jqReadsOutside(g.text, false)
+	}
+	return !g.spent
+}
+
+// resync reads s again with no state carried from earlier text.
+func (g *ghFilterScan) resync(s string, d int) {
+	for p := 0; p < len(s) && !g.found && !g.spent; p++ {
+		if p > 0 && strings.IndexByte(" \t\n;&|(", s[p-1]) < 0 || strings.IndexByte("-'\"\\${", s[p]) < 0 {
+			continue
+		}
+		g.spend(g.commands(s, p, ghOneFilter, d) - p)
+	}
+}
+
+// commands reads the words of s from p until stop, and returns the offset it
+// stopped at.
+func (g *ghFilterScan) commands(s string, p int, stop ghStop, d int) int {
 	if d > ghFilterDepth {
 		g.found = g.found || jqReadsOutside(s[min(p, len(s)):], false)
 		return len(s)
 	}
 	parens := 0
-	pending, credit := false, false
+	pending, credit, keep, read := false, false, false, false
 	for p < len(s) && !g.found {
+		if stop == ghOneFilter && read && !pending {
+			return p
+		}
 		c := s[p]
 		switch {
 		case c == ' ' || c == '\t':
@@ -53,20 +101,22 @@ func (g *ghFilterScan) commands(s string, p int, sub bool, d int) int {
 		case c == '\\' && p+1 < len(s) && s[p+1] == '\n':
 			p += 2
 		case c == '<' || c == '>' || c == '&' && p+1 < len(s) && s[p+1] == '>':
-			p = g.redirection(s, p, d)
-		case c == ')' && sub && parens == 0:
+			var both bool
+			p, both = g.redirection(s, p, d)
+			keep = keep || both
+		case c == ')' && stop == ghToParen && parens == 0:
 			return p + 1
-		case strings.IndexByte("\r\n;&|()", c) >= 0:
+		case strings.IndexByte("\n;&|()", c) >= 0:
 			if c == '(' {
 				parens++
 			} else if c == ')' {
 				parens--
 			}
-			pending = false
+			pending, keep = false, false
 			p++
 		default:
 			w := g.word(s, p, d)
-			p = w.end
+			p, read = w.end, true
 			if w.namesDescriptor(s) {
 				continue
 			}
@@ -75,20 +125,21 @@ func (g *ghFilterScan) commands(s string, p int, sub bool, d int) int {
 				if w.pieces == 0 && strings.Trim(w.text, "\x00") == "" {
 					continue // an expansion alone may vanish: the next word can be the value
 				}
-				pending = false
+				pending = keep // an ambiguous redirection: the next word may be the value too
 				if w.brace || jqReadsOutside(w.text, credit && w.plain(0)) {
 					g.found = true
 					continue
 				}
 			}
-			at, flag := ghFilterFlag(w.text)
+			keep = false
+			value, strs, next, flag := w.filterFlag()
 			switch {
 			case w.braceFlag():
 				g.found = true
-			case flag && at < 0:
+			case next:
 				pending, credit = true, w.pieces == 0 && w.exact
 			case flag:
-				g.found = jqReadsOutside(w.text[at:], w.plain(at))
+				g.found = jqReadsOutside(value, strs)
 			case !wasValue:
 				g.nested(w, d)
 			}
@@ -99,32 +150,47 @@ func (g *ghFilterScan) commands(s string, p int, sub bool, d int) int {
 
 // redirection steps past a redirection at p and its target, which is never a
 // flag or a filter; a target in quotes can still hold a command (a here-string).
-// A process substitution is left to the caller as a command list.
-func (g *ghFilterScan) redirection(s string, p, d int) int {
+// A process substitution is left to the caller as a command list. The operator's
+// `-` (`<<-`) and `!` are part of it. Only zsh reads a `!` that way: with a blank
+// after it, the next word is a target there and an ordinary word elsewhere, so it
+// is left unread, and both is set so that the caller reads it as either.
+func (g *ghFilterScan) redirection(s string, p, d int) (end int, both bool) {
 	for p < len(s) && strings.IndexByte("<>&|", s[p]) >= 0 {
 		p++
 	}
-	if p < len(s) && s[p] == '(' {
-		return p
+	if p < len(s) && s[p] == '-' && strings.HasSuffix(s[:p], "<<") {
+		p++
 	}
+	bang := p < len(s) && s[p] == '!'
+	if bang {
+		p++
+	}
+	if p < len(s) && s[p] == '(' {
+		return p, false
+	}
+	gap := p
 	for p < len(s) && (s[p] == ' ' || s[p] == '\t' || strings.HasPrefix(s[p:], "\\\n")) {
 		if s[p] == '\\' {
 			p++
 		}
 		p++
 	}
-	if p == len(s) || strings.IndexByte("\r\n;&|()<>", s[p]) >= 0 {
-		return p
+	if p == len(s) || strings.IndexByte("\n;&|()<>", s[p]) >= 0 {
+		return p, false
+	}
+	if bang && p > gap {
+		return p, true
 	}
 	w := g.word(s, p, d)
 	g.nested(w, d)
-	return w.end
+	return w.end, false
 }
 
 // nested reads a word again as commands when quoting could be hiding some in it.
 func (g *ghFilterScan) nested(w ghWord, d int) {
-	if (w.pieces > 0 || !w.exact) && strings.ContainsAny(w.text, " \t\r\n;&|()<>`'\"\\$") {
-		g.commands(w.text, 0, false, d+1)
+	if (w.pieces > 0 || !w.exact) && strings.ContainsAny(w.text, " \t\n;&|()<>`'\"\\$") && g.spend(len(w.text)) {
+		g.commands(w.text, 0, ghToEnd, d+1)
+		g.resync(w.text, d+1)
 	}
 }
 
@@ -157,6 +223,35 @@ func ghFilterFlag(word string) (at int, flag bool) {
 	return 0, false
 }
 
+// ghStandIns removes the stand-ins from a word's text.
+var ghStandIns = strings.NewReplacer(string(rune(ghExpansion)), "", string(rune(ghDollarQuote)), "")
+
+// filterFlag reads the word as a filter flag. A stand-in is taken to give nothing,
+// so an expansion beside the flag does not hide it. value is what the word gives
+// the filter, stand-ins kept, and strs whether its strings count as strings; next
+// is set when the value is the next word.
+func (w ghWord) filterFlag() (value string, strs, next, flag bool) {
+	bare := ghStandIns.Replace(w.text)
+	at, flag := ghFilterFlag(bare)
+	switch {
+	case !flag:
+		return "", false, false, false
+	case at < 0:
+		return "", false, true, true
+	case len(bare) == len(w.text):
+		return w.text[at:], w.plain(at), false, true
+	}
+	for i, n := 0, 0; i < len(w.text); i++ {
+		if n == at {
+			return w.text[i:], false, false, true
+		}
+		if w.text[i] != ghExpansion && w.text[i] != ghDollarQuote {
+			n++
+		}
+	}
+	return "", false, false, true
+}
+
 // ghWord is one shell word with its quotes and backslashes removed.
 type ghWord struct {
 	text   string
@@ -179,8 +274,9 @@ func (w ghWord) namesDescriptor(s string) bool {
 	if w.pieces > 0 || !w.exact || w.end >= len(s) || s[w.end] != '<' && s[w.end] != '>' {
 		return false
 	}
-	if strings.HasPrefix(w.text, "{") && strings.HasSuffix(w.text, "}") {
-		return true
+	if n := len(w.text); n > 2 && w.text[0] == '{' && w.text[n-1] == '}' {
+		return strings.TrimFunc(w.text[1:n-1], func(r rune) bool { return r < 0x80 && jqNameByte(byte(r)) }) == "" &&
+			(w.text[1] < '0' || w.text[1] > '9')
 	}
 	return strings.Trim(w.text, "0123456789") == ""
 }
@@ -188,10 +284,11 @@ func (w ghWord) namesDescriptor(s string) bool {
 // braceFlag reports whether a brace expansion could produce a filter flag. The
 // expansion is not worked out, so this fails closed on any that could.
 func (w ghWord) braceFlag() bool {
-	if !w.brace || w.text[0] != '-' && w.text[0] != '{' {
+	t := ghStandIns.Replace(w.text)
+	if !w.brace || t == "" || t[0] != '-' && t[0] != '{' {
 		return false
 	}
-	return strings.Contains(w.text, "-") && (strings.Contains(w.text, "q") || strings.Contains(w.text, ".."))
+	return strings.Contains(t, "-") && (strings.Contains(t, "q") || strings.Contains(t, ".."))
 }
 
 // word reads the shell word at p. An unterminated quote runs to the end of s.
@@ -222,6 +319,7 @@ func (g *ghFilterScan) word(s string, p, d int) ghWord {
 		case c == '$' && p+1 < len(s) && s[p+1] == '\'':
 			piece()
 			w.exact = false
+			b.WriteByte(ghDollarQuote)
 			for p += 2; p < len(s) && s[p] != '\''; p++ {
 				if s[p] == '\\' && p+1 < len(s) {
 					p++
@@ -230,6 +328,8 @@ func (g *ghFilterScan) word(s string, p, d int) ghWord {
 			}
 			p++
 		case c == '$' && p+1 < len(s) && s[p+1] == '"':
+			w.exact = false
+			b.WriteByte(ghDollarQuote)
 			p++
 		case c == '"':
 			piece()
@@ -243,8 +343,8 @@ func (g *ghFilterScan) word(s string, p, d int) ghWord {
 			p += 2
 		case shellExpands(s, p):
 			w.after = w.pieces > 0
-			p = g.expansion(&b, s, p, d)
-		case strings.IndexByte(" \t\r\n;&|()<>", c) >= 0:
+			p = g.expansion(&b, s, p, false, d)
+		case strings.IndexByte(" \t\n;&|()<>", c) >= 0:
 			w.text, w.end = b.String(), p
 			return w
 		default:
@@ -277,7 +377,7 @@ func (g *ghFilterScan) doubleQuoted(b *strings.Builder, s string, p, d int) int 
 			b.WriteByte(s[p+1])
 			p += 2
 		case shellExpands(s, p):
-			p = g.expansion(b, s, p, d)
+			p = g.expansion(b, s, p, true, d)
 		default:
 			b.WriteByte(s[p])
 			p++
@@ -300,8 +400,9 @@ func shellExpands(s string, p int) bool {
 
 // expansion writes the stand-in for the expansion at p and returns the offset
 // past it. What the shell would compute is not filter text, but commands
-// substituted there still run, so they are read as commands.
-func (g *ghFilterScan) expansion(b *strings.Builder, s string, p, d int) int {
+// substituted there still run, so they are read as commands. dq says whether it
+// sits in double quotes.
+func (g *ghFilterScan) expansion(b *strings.Builder, s string, p int, dq bool, d int) int {
 	b.WriteByte(ghExpansion)
 	switch {
 	case s[p] == '`':
@@ -312,32 +413,44 @@ func (g *ghFilterScan) expansion(b *strings.Builder, s string, p, d int) int {
 			}
 			body.WriteByte(s[p])
 		}
-		g.commands(body.String(), 0, false, d+1)
+		g.commands(body.String(), 0, ghToEnd, d+1)
 		return p + 1
 	case s[p+1] == '(':
-		return g.commands(s, p+2, true, d+1)
+		return g.commands(s, p+2, ghToParen, d+1)
 	case s[p+1] == '{':
-		return g.parameter(s, p+2, d)
+		return g.parameter(s, p+2, dq, d)
 	}
-	q := p + 1
-	for q < len(s) && jqNameByte(s[q]) {
-		q++
-	}
-	if q == p+1 {
-		q++
+	q := p + 2 // a digit or a special parameter is one byte
+	if c := s[p+1]; jqNameByte(c) && (c < '0' || c > '9') {
+		for q < len(s) && jqNameByte(s[q]) {
+			q++
+		}
 	}
 	return q
 }
 
-// parameter steps past a ${…} body, reading any command substituted inside it.
-func (g *ghFilterScan) parameter(s string, p, d int) int {
+// parameter steps past a ${…} body, reading any command substituted inside it. A
+// brace in quotes does not close it; in double quotes a single quote is plain text.
+func (g *ghFilterScan) parameter(s string, p int, dq bool, d int) int {
+	inner := false
 	for open := 1; p < len(s) && open > 0; {
 		switch {
 		case s[p] == '\\':
 			p += 2
 		case strings.HasPrefix(s[p:], "$(") || s[p] == '`':
 			var sink strings.Builder
-			p = g.expansion(&sink, s, p, d)
+			p = g.expansion(&sink, s, p, false, d)
+		case s[p] == '"':
+			inner = !inner
+			p++
+		case inner:
+			p++
+		case s[p] == '\'' && !dq:
+			j := strings.IndexByte(s[p+1:], '\'')
+			if j < 0 {
+				return len(s)
+			}
+			p += j + 2
 		case s[p] == '{':
 			open++
 			p++
@@ -412,6 +525,9 @@ func jqNameReads(q string, i, j int) bool {
 	name := q[i:j]
 	if i > 0 && q[i-1] == '$' {
 		return name == "ENV"
+	}
+	if i > 0 && q[i-1] == ghDollarQuote && name == "ENV" {
+		return true
 	}
 	if i > 0 && q[i-1] == '.' && (i < 2 || q[i-2] != '.') {
 		return false
