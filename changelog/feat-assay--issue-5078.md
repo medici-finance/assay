@@ -1,0 +1,2 @@
+### Fixed
+- `writeguard` now checks `gh --jq` and `-q` filters on every `gh` read in a desk session, not only on commands holding the word `status`. It refuses a literal filter naming `env`, `$ENV`, `now`, `localtime` or `strflocaltime`, which read outside the command's JSON output. Filters that select or format that JSON keep working. `docs/write-policy.md` states what the check does not cover: reads with no filter, printing a variable from the shell, and filters the shell computes.

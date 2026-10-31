@@ -96,6 +96,14 @@ func (c Classification) ReadsAmbientForgeToken() bool {
 	return forgeTokenRead(c.request.Target)
 }
 
+// ReadsOutsideGhOutput reports whether the classified command's text holds gh
+// and a literal --jq / -q filter naming a jq function or variable that reads
+// outside the command's JSON output (ghfilter.go). Ordinary selection and
+// formatting filters report false. Whether that is refused is the adapter's gate.
+func (c Classification) ReadsOutsideGhOutput() bool {
+	return ghFilterReads(c.request.Target)
+}
+
 type PathRequest struct{ Input string }
 type PathState string
 

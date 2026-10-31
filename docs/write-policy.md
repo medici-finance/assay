@@ -138,6 +138,57 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
 
+## gh output filter check
+
+gh runs a `--jq` or `-q` filter itself, and that language can read past the JSON it
+was given: on gh 2.102.0, `gh api <path> --jq env.NAME` prints the variable. A
+filter sees the same environment as the command, including a minted `GH_TOKEN`
+passed to it. In a desk session (the same two variables as above) a Bash call is refused when its
+text holds the word `gh` and a literal filter naming one of `env`, `$ENV`, `now`,
+`localtime` or `strflocaltime` (`deskcore/writepolicy/ghfilter.go`,
+`Classification.ReadsOutsideGhOutput`). The first two read the environment, `now`
+the clock, the last two the machine's time zone. Every other filter that selects
+or formats the command's JSON keeps working. The check runs on any gh command,
+with or without the word `status`.
+
+- **Reading a filter.** A name in a string literal, a field (`.env`) or a jq
+  variable of the filter's own does not count; a `\(…)` interpolation inside a string
+  does. A nested command or a comment can make the quoting uncertain, so a backslash
+  outside quotes, `$'…'`, or a backslash or `#` outside a jq string gives strings
+  no credit for that filter. `gh` is matched as above; flags are `--jq`, `--jq=`,
+  `-q`, `-q=`, `-qx`, and `-q` ending a short-flag cluster.
+- **Accepted false refusals (desk-decided).** Like the check above, this one does not
+  parse the shell, so a `-q` on another command in the same text counts:
+  `gh pr view 1 | grep -q env` is refused and `grep --quiet env` is not. An unquoted
+  object key (`{env: .a}`, `{env}`) is refused, and a quoted one (`{"env": .a}`) is
+  not. A name in a jq comment is refused.
+- **Limit: this is not a complete control.** It catches a literal filter written in
+  the call, on the names above. It does not cover, and is not to be read as covering:
+  - a read with no filter, which is out of scope;
+  - printing a variable with a plain shell command (`printenv`, `echo "$GH_TOKEN"`),
+    or with a filter outside gh (`gh … | jq 'env.X'`);
+  - a filter the shell computes (`--jq "$f"`, `--jq "$(cat f.jq)"`), including one whose text
+    is assigned earlier in the same call. Recipes build filters this way, so a computed
+    filter is allowed rather than refused;
+  - a filter hidden by decoding (`$'\x65nv'`), the same evasion the section above
+    leaves to other layers, or `gh` reached through a name that holds no `gh` word;
+  - other gh flags that read a file or send it elsewhere (`--input`, `-F key=@file`),
+    which are not output filters;
+  - `--template`. On gh 2.102.0 `env`, `expandenv`, `getenv`, `readFile` and `os`
+    are undefined there, so no template reads a variable or a file. Its `timeago`
+    function reads the clock and is left alone.
+
+  The name list comes from `builtins` on gh 2.102.0, one version only. `input`,
+  `inputs` and module loading are in the language but refuse to run there, so they are
+  not on the list. A later gh that adds a reading name or enables one of these is not
+  caught until the list changes.
+
+| # | Verify | Method | Expected |
+|---|---|---|---|
+| 1 | Core: each name, each flag spelling, each shell spelling and position refused; ordinary filters, fields, strings, keys in quotes and the stated limits allowed; work bounded on long inputs | `cd deskcore && go test ./writepolicy/ -run 'TestGhFilter' -count=1` | PASS |
+| 2 | Hook: refused in a desk session with the refusal text, the same reads allowed, silent outside a desk session | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookGhFilter' -count=1` | PASS |
+| 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/gh-filter-unmatched' -count=1` | PASS (mutant caught) |
+
 ## Consumers and migration
 
 | Consumer | Disposition / owner | Retirement proof |
