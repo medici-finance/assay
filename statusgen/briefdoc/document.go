@@ -424,7 +424,7 @@ func ParseMapping(block string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	if found, ok := invisibleKey(values); ok {
+	if found, ok := invisibleKey(map[string]interface{}(values)); ok {
 		return nil, fmt.Errorf("frontmatter key %q contains an invisible character", found)
 	}
 	return values, nil

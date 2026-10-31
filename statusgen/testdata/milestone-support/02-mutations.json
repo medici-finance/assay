@@ -211,8 +211,8 @@
     {
       "name": "mapping-key-characters",
       "target": "statusgen/briefdoc/document.go",
-      "old": "if found, ok := invisibleKey(values); ok {",
-      "new": "if found, ok := invisibleKey(values); false && ok {",
+      "old": "if found, ok := invisibleKey(map[string]interface{}(values)); ok {",
+      "new": "if found, ok := invisibleKey(map[string]interface{}(values)); false && ok {",
       "module": "statusgen",
       "package": "./readercaps/record",
       "test": "TestRecordRequirements"
