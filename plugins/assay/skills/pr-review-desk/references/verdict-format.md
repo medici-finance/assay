@@ -168,18 +168,21 @@ a control the diff does not add, say) and no code at head would change, mark it 
 1. **On the `Security-Review: fail`**, add `Blocked-On-Body: f-body-1 <64-hex digest of the body
    as you read it>`. Never add it when any part of the fail rests on code, config or a check:
    that fail stays unmarked. `Blocked-On-Check:` and `External-Prereq-Only:` are not security-lane
-   clearances, and a security fail carrying either one always blocks.
+   clearances: at `deskflip`, rule 2 refuses a security fail carrying either one while it stands
+   as a CHANGES_REQUESTED at the head; `deskpost ready` does not apply that rule.
 2. **After the author edits the body**, re-read it via the API and post a `Security-Review: pass`
    at the same head carrying `Body-Reread-Digest: <64-hex digest of the live body you re-read>`.
    It needs no `Resolved-Body-Finding:` or `CI-Green-At:` line, because the pass is the whole
    security lane's verdict and CI stays the gate's own check.
 
-`deskflip` clears the fail only when your pass is the last security verdict you posted at that
-head, it stands (a COMMENTED or APPROVED review; a dismissed or pending one clears nothing), its
-digest equals the live body's and differs from every fail's, and the forge records a
-body edit after the last fail. Neither the fail nor the pass may also carry a correctness
-`Verdict:` line, in any form: a body that speaks for both lanes is never cleared this way. A
-later unmarked fail blocks again, and a clearance applies only at its own head: after any head
+`deskflip` reads your newest pass at that head after the last fail that stands as a COMMENTED or
+APPROVED review; a later pass in another review state (dismissed or pending, say) does not
+displace it and clears nothing itself. It clears the fail when that pass's digest equals the
+live body's and differs from every fail's, and the forge records a body edit after the last
+fail. Neither the fail, nor a later fail in its chain, nor a pass at that head after the fail
+may also carry a correctness `Verdict:` line, read the way `deskpost ready`'s lane classifier
+reads it; `deskflip` refuses the clearance when one does.
+A later unmarked fail blocks again, and a clearance applies only at its own head: after any head
 move the fail stands until a pass at the new head.
 
 The gate cannot check that your marker is true. "The basis was only the body" is your claim; the

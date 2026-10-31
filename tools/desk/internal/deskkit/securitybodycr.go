@@ -25,9 +25,9 @@ package deskkit
 //
 // WHAT CLEARS IT. All of these, each in the fail-closed direction:
 //
-//   - a later `Security-Review: pass` from the same reviewer stands AT THE SAME HEAD — the
-//     last security verdict the reviewer posted after the fail is that pass, so no later
-//     fail stands;
+//   - a later `Security-Review: pass` from the same reviewer stands AT THE SAME HEAD after
+//     the last fail. The newest such standing pass is the one read; a later pass in a state
+//     that does not stand does not count and does not displace it (TestSecBodyLaterDismissedPass);
 //   - every security fail between the marked fail and that pass is itself marked and parses
 //     cleanly. A later UNMARKED fail blocks, whatever passes follow it at this head, because
 //     its basis may be code;
@@ -54,8 +54,8 @@ package deskkit
 //     correctness-lane approves there.
 //   - ONLY THE STANDING PASS COUNTS. The correctness lane admits any after-CR APPROVE that
 //     documents the clearance, because rule 1 separately requires an APPROVED to govern at
-//     head. A security pass IS the lane's verdict, so only the last security verdict after
-//     the fail is read, and a later fail (marked or not) undoes an earlier pass.
+//     head. A security pass IS the lane's verdict, so the newest standing pass after the last
+//     fail is read, and a later fail (marked or not) undoes an earlier pass.
 //   - NO `Resolved-Body-Finding:` / `CI-Green-At:` LINES. A pass is a whole-lane verdict: it
 //     says the security lane is clean at head, which already covers the one finding the fail
 //     declared, and CI stays the gate's own checks-green condition in both lanes. The pass

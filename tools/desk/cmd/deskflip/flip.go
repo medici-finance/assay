@@ -1285,8 +1285,8 @@ func bodyEditedAtReader(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) func() (
 // ONE VERDICT FOR THE LANE (#5092). A fail and a later pass at the SAME head read here as the
 // pass, and rule 2 of checkReviewerApproved reads the same fail, as a CHANGES_REQUESTED at
 // head, through securityBodyCRCleared. That function clears it only when the shared marked
-// body-only decision holds, which needs the reviewer's last security verdict at head to be the
-// clearing pass; it also checks securityVerdictStanding — this condition's reduction — as a
+// body-only decision holds, which needs a standing pass from the reviewer at head with no fail
+// after it; it also checks securityVerdictStanding — this condition's reduction — as a
 // second layer. So the two conditions cannot read the lane differently in the grant direction: an
 // unmarked same-head fail is refused there, and a marked one clears in both or neither. A
 // clearance binds to its head like any pass: once the head moves, the fail stands again

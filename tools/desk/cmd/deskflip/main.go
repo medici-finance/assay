@@ -119,10 +119,12 @@ nothing is mutated:
                     for a security pass; a DISMISSED or PENDING one clears nothing)
                     carrying "Body-Reread-Digest: <digest>" EQUAL to the live body's, the
                     forge records a body edit LATER than the fail, no later security fail
-                    stands (a later unmarked fail blocks), and neither the fail nor the
-                    pass also carries a correctness "Verdict:" line. An unmarked security
-                    fail standing at head blocks as before, until a new commit; a security
-                    pass never clears a correctness CR.
+                    stands (a later unmarked fail blocks), and neither the fail, a later
+                    fail, nor a pass at head after the fail also carries a correctness
+                    "Verdict:" line, read as deskpost ready's lane classifier reads it.
+                    The newest standing pass at head is the one read; a later DISMISSED or PENDING pass does not displace it. An
+                    unmarked security fail standing at head blocks as before, until a new
+                    commit; a security pass never clears a correctness CR.
   checks-green      every check at the head has completed successfully. A pending or
                     unreadable rollup is could-not-verify, never green.
   desk-decided      MECHANICAL: a Desk-decided body section, when present, must parse, and

@@ -801,8 +801,8 @@ type reviewState struct {
 //
 // DIFFERENCE FROM THE GATE, security lane. deskflip's securityBodyCRCleared also requires the
 // security-verdict reduction (securityVerdictStanding) to read a pass at head; the board has
-// no such check. The two agree on outcome, because when the shared decision clears, the
-// reviewer's last security verdict is that pass at head. But it leaves the reviewer filter
+// no such check. The two agree on outcome, because when the shared decision clears, no fail
+// follows the clearing pass, so that reduction reads a pass at head. But it leaves the reviewer filter
 // on the `after` list below as the board's ONLY actor control: the shared decision takes no
 // actor, so another account's pass must never reach it (pinned by TestSecBodyBoardStaysBlocked,
 // "pass from another account"). Each review reaches the decision with its review state, so
