@@ -125,9 +125,14 @@ worktree locked for a session that has gone, and every later session that needs 
   first run `git status --porcelain` and deal with every line it prints. Then, from inside the
   worktree, `deskwt remove "$(git rev-parse --show-toplevel)"`, under the same
   `$DESK_SESSION`. `remove` refuses an uncommitted tracked change or an unpushed commit, so a
-  refusal means work would be lost: fix it, then re-run. Its gates do not count ignored files,
-  which are deleted with the tree. For a locked tree it also refuses any untracked file (exit
-  5, nothing deleted), because a session id is self-asserted and can be inherited. It retires
+  refusal means work would be lost: fix it, then re-run. Its gates do not count what git
+  ignores, which is deleted with the tree: ignored files, a directory that ignores itself, and
+  any worktree nested under an ignored path (its own lock is not judged and its registration
+  is left behind). For a locked tree it also refuses anything `git status --porcelain` lists
+  (untracked files, a modified submodule, a nested repository) and prints those rows (exit 5,
+  nothing deleted), because a session id is self-asserted and can be inherited: a caller that
+  inherits the owner's `$DESK_SESSION` passes the session match, and what it can then lose is
+  limited to what that status cannot see. It retires
   the lock only when the lock is this session's own; a lock held by any other session is
   refused with exit 5 and the tree is left as it was, whatever that session's roster beacon
   says. A tree whose session has ended is reaped by `deskwt prune --reap-dead-sessions`, not by

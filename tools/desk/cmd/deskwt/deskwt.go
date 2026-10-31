@@ -834,7 +834,9 @@ func runRemove(o removeOpts) (err error) {
 	// holds content (untracked files the gates above do not count) with no open-handle probe
 	// behind it. A dead session's tree goes through `deskwt prune --reap-dead-sessions`, which
 	// holds on untracked files. Because the session id is self-asserted and inherited, the
-	// own-lock arm also refuses a tree holding untracked content.
+	// own-lock arm also refuses a tree whose `git status` lists anything. The check is the TARGET's
+	// lock only: what git ignores (including a worktree nested under an ignored path, with its own
+	// lock) is deleted with the tree.
 	locked, lerr := guard.lockedWorktrees(dir)
 	if lerr != nil {
 		return lerr
@@ -846,12 +848,16 @@ func runRemove(o removeOpts) (err error) {
 		if !ok {
 			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
 		}
-		dirty, derr := wtRepo.DirtyPorcelain()
+		// The same read the recipe tells the session to run: git's own status, with untracked
+		// files forced on whatever status.showUntrackedFiles says and submodules compared in
+		// full. go-git's status is NOT used here: it ignores core.excludesFile and, in a linked
+		// worktree, info/exclude, so it refused a tree the recipe's command reports clean.
+		dirty, derr := runGit(rt, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none")
 		if derr != nil {
 			return deskkit.Unverifiable("cannot check "+rt+" for untracked files before retiring its lock", derr)
 		}
-		if strings.TrimSpace(dirty) != "" {
-			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first (git status --porcelain)")
+		if rows := strings.TrimSpace(dirty); rows != "" {
+			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first:\n" + capRows(rows, 10))
 		}
 		lockNote = "; lock retired: " + why
 	}
@@ -1031,4 +1037,14 @@ func ownLockOwner(reason string) (bool, string) {
 		return true, "the caller is the locking session " + sess
 	}
 	return false, "it belongs to session " + sess + ", not the caller — a roster beacon is not proof that session is gone (a clean, pushed tree of a dead session is reaped by `deskwt prune --reap-dead-sessions` once it has been idle past --min-idle, 1h by default; try --dry-run first, it sweeps every ownerless tree)"
+}
+
+// capRows keeps the first n lines of a multi-line report and says how many it left out, so a
+// refusal names the files without printing a whole build tree.
+func capRows(rows string, n int) string {
+	lines := strings.Split(rows, "\n")
+	if len(lines) <= n {
+		return rows
+	}
+	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... and %d more (git status --porcelain)", len(lines)-n)
 }

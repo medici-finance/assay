@@ -11,7 +11,7 @@ package main
 //
 // The fix: before anything is deleted, remove judges the lock. The caller's own session's lock
 // is retired as the last step before the delete (and restored if the delete fails) when the tree
-// holds no untracked content; any other lock is REFUSED with the tree untouched, whatever the
+// has a clean `git status --porcelain`; any other lock is REFUSED with the tree untouched, whatever the
 // state of the owner's roster beacon: a beacon is stamped only when its session writes the
 // roster, so an old one is not proof the owner is gone. A dead session's tree is reaped by
 // `deskwt prune --reap-dead-sessions`.
@@ -207,6 +207,71 @@ func TestRemoveOwnLockedUntrackedRefused(t *testing.T) {
 		t.Fatalf("remove after clearing the untracked file rc=%d, want 0:\n%s", rc, stderr)
 	}
 	assertDeregistered(t, work, home)
+}
+
+// The gate reads what the recipe's own command reads: a file git ignores through
+// core.excludesFile or the common info/exclude is not "untracked" to git, so `git status
+// --porcelain` is empty and remove must succeed (it used to refuse, and its refusal pointed at
+// the empty command). The ignored file is deleted with the tree, as the recipe says.
+// regression: F-locked-remove
+func TestRemoveOwnLockedIgnoredViaExcludesNotRefused(t *testing.T) {
+	for _, route := range []string{"info-exclude", "excludesfile"} {
+		t.Run(route, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			t.Setenv("DESK_SESSION", "")
+			home := lockedHome(t, "ign"+route[:4], "test")
+			switch route {
+			case "info-exclude":
+				common := strings.TrimSpace(mustGit(t, work, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+				if err := os.MkdirAll(filepath.Join(common, "info"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, filepath.Join(common, "info", "exclude"), "scratch.log\n")
+			case "excludesfile":
+				ex := filepath.Join(t.TempDir(), "global-ignore")
+				writeFile(t, ex, "scratch.log\n")
+				mustGit(t, work, "config", "core.excludesFile", ex)
+			}
+			writeFile(t, filepath.Join(home, "scratch.log"), "noise\n")
+			if got := strings.TrimSpace(mustGit(t, home, "status", "--porcelain")); got != "" {
+				t.Fatalf("positive control: git status --porcelain is %q, want empty", got)
+			}
+
+			rc, stderr := runCapErr(t, []string{"remove", home})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("remove of an own locked home whose only extra file is git-ignored (%s) rc=%d, want 0:\n%s", route, rc, stderr)
+			}
+			assertDeregistered(t, work, home)
+		})
+	}
+}
+
+// The refusal names the files it would delete, and it holds under status.showUntrackedFiles=no
+// (git's own status is empty there; the gate forces untracked files on) and for a nested
+// repository holding only its .git, which go-git's status does not report.
+// regression: F-locked-remove
+func TestRemoveOwnLockedRefusalNamesRows(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	t.Setenv("DESK_SESSION", "")
+	home := lockedHome(t, "ownrows", "test")
+	mustGit(t, home, "config", "--worktree", "status.showUntrackedFiles", "no")
+	mustGit(t, work, "config", "status.showUntrackedFiles", "no")
+	writeFile(t, filepath.Join(home, "never-added.go"), "package wip\n")
+	mustGit(t, "", "init", "-q", filepath.Join(home, "nested-repo"))
+
+	rc, stderr := runCapErr(t, []string{"remove", home})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("remove rc=%d, want %d:\n%s", rc, deskkit.ExitRefused, stderr)
+	}
+	for _, want := range []string{"never-added.go", "nested-repo"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("the refusal does not name %q:\n%s", want, stderr)
+		}
+	}
+	assertExists(t, filepath.Join(home, "never-added.go"))
+	assertLocked(t, work, home, true)
 }
 
 // A delete that fails after the unlock restores the original lock and its reason: the tree is
