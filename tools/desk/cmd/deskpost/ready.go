@@ -653,7 +653,7 @@ func securityVerdictStanding(reviews []reviewInfo, head string) secVerdict {
 //
 //   - STATE (NB2 on PR #399): the reduction filtered on login and commit only, so ANY App
 //     review containing the marker satisfied gate (e) — including a PENDING draft the App
-//     had never submitted. See the allow-list note below for what it is and is not.
+//     had never submitted. See securityPassStates for what the allow-list is and is not.
 //   - laneBoth (NB3): one body cannot be both of the two artifacts a risk-classed PR
 //     requires at the same head. See classifyLane.
 //
@@ -669,17 +669,15 @@ func securityGrantOf(r reviewInfo) secVerdict {
 	if classifyLane(r.Body) == laneBoth {
 		return secNone
 	}
-	if !deskkit.SecurityPassStateStands(r.State) {
+	if !securityPassStates[r.State] {
 		return secNone
 	}
 	return secPass
 }
 
-// THE ALLOW-LIST of GitHub review STATES a `Security-Review: pass` may be carried on is
-// deskkit.SecurityPassStateStands. It used to be a map here; it moved to deskkit unchanged
-// (#5092) so deskflip's rule-2 security clearance and deskboard's lift read the SAME list as
-// this gate for the same grant. It is an allow-list, not a deny-list, so a state GitHub adds
-// later grants nothing until someone decides it should.
+// securityPassStates is the allow-list of GitHub review STATES a `Security-Review: pass`
+// may be carried on. It is an allow-list, not a deny-list, so a state GitHub adds later
+// grants nothing until someone decides it should.
 //
 // APPROVED is the legacy shape (`deskpost review --verdict approve` with a security body).
 // COMMENTED is the shape `deskpost security-review --verdict pass` posts, and the reason
@@ -717,6 +715,10 @@ func securityGrantOf(r reviewInfo) secVerdict {
 // has never filtered on state at all, so a
 // COMMENTED marker already counted there while deskpost refused it. The two now agree on
 // the shape the desk actually posts.
+var securityPassStates = map[string]bool{
+	"APPROVED":  true, // legacy: `deskpost review --verdict approve`, security body
+	"COMMENTED": true, // `deskpost security-review --verdict pass`
+}
 
 // securityPassAtHead reports whether the governing security verdict is a pass at the
 // current head. Absence is never a pass, and a pass grants only at head (a standing fail,

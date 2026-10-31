@@ -327,9 +327,11 @@ still yours to post, as an ordinary clause-13 finding.
   `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
   The full rule is in `verdict-format.md`, section "A security fail whose ONLY basis is the PR
   body". `deskflip` clears the fail only when that pass is your last security verdict at the
-  head, its digest matches the live body and differs from the fail's, and the forge records a
-  body edit after the fail. An unmarked fail is cleared only by a new commit. The gate cannot
-  check that the marker is true; that is your claim.
+  head, it is posted as a COMMENTED or APPROVED review, its digest matches the live body and
+  differs from the fail's, the forge records a body edit after the fail, and neither the fail
+  nor the pass also carries a correctness `Verdict:` line. At `deskflip`, an unmarked fail
+  standing as a CHANGES_REQUESTED at the head is cleared only by a new commit; `deskpost ready`
+  does not apply that rule. The gate cannot check that the marker is true; that is your claim.
 <!-- lane:security:end -->
 - Cite sops material, never quote it. When a finding is about an encrypted file, name it by
   `path:line` and describe it in words: the `sops` footer, its `mac` or `lastmodified` field,

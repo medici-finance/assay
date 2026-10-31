@@ -1183,12 +1183,17 @@ func bodyEditCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo
 //     are cleared by correctness APPROVEs, and a correctness approval never clears a security
 //     fail;
 //   - each later review is handed over WITH its review state, so the shared decision admits a
-//     pass only in a state deskkit.SecurityPassStateStands allows (the list `deskpost ready`
-//     reads for the same grant): a DISMISSED or PENDING pass clears nothing;
+//     pass only in a state deskkit.SecurityPassStateStands allows (the same two states
+//     `deskpost ready`'s own list holds): a DISMISSED or PENDING pass clears nothing;
+//   - a fail or a pass whose body also carries a correctness verdict line refuses in the
+//     shared decision. Rule 1 drops every security-marked body, so clearing such a CR here
+//     would drop its correctness half unread;
 //   - a marked fail clears only when the shared decision clears it AND the security lane's
 //     standing verdict at head (securityVerdictStanding, the reduction checkSecurityVerdict
-//     reads) is a pass. The decision walks only the reviews after this fail; the second check
-//     is what keeps rule 2 and condition security-verdict reading one verdict for the lane.
+//     reads) is a pass. The head binding comes from rule 2's head filter and the shared
+//     decision, and after a head move from condition security-verdict itself; this second
+//     check is a second layer that errs safe. When the decision clears, the reduction's last
+//     verdict is already that pass, so on unmutated code it does not fire.
 //
 // later is reviews after cr in the forge's ascending order; reviews is the whole list.
 func securityBodyCRCleared(reviewerLogin string, cr reviewInfo, later, reviews []reviewInfo, head string, live liveBodyRead) error {
@@ -1280,8 +1285,9 @@ func bodyEditedAtReader(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) func() (
 // ONE VERDICT FOR THE LANE (#5092). A fail and a later pass at the SAME head read here as the
 // pass, and rule 2 of checkReviewerApproved reads the same fail, as a CHANGES_REQUESTED at
 // head, through securityBodyCRCleared. That function clears it only when the shared marked
-// body-only decision holds AND securityVerdictStanding — this condition's reduction — is a
-// pass, so the two conditions cannot read the lane differently in the grant direction: an
+// body-only decision holds, which needs the reviewer's last security verdict at head to be the
+// clearing pass; it also checks securityVerdictStanding — this condition's reduction — as a
+// second layer. So the two conditions cannot read the lane differently in the grant direction: an
 // unmarked same-head fail is refused there, and a marked one clears in both or neither. A
 // clearance binds to its head like any pass: once the head moves, the fail stands again
 // here (#361) and the clearing pass, pinned at the old head, clears nothing.

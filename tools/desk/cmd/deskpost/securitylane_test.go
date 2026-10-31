@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/cmd/deskpost/internal/bodycheck"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -685,19 +686,47 @@ func TestSecurityReviewRateLimitOmitsTheFallbackRecipe(t *testing.T) {
 	}
 }
 
-// THE ONE ALLOW-LIST (#5092). securityGrantOf reads deskkit.SecurityPassStateStands, the
-// list deskflip's rule-2 security clearance and deskboard's lift also read. This pins that
-// the ready gate's grant still follows it for every state the forge reports, and that the
-// list is still exactly APPROVED and COMMENTED, as it was when it lived here.
+// TWO LISTS THAT MUST MATCH (#5092). `deskpost ready` keeps its own allow-list
+// (securityPassStates); deskflip's rule-2 security clearance and deskboard's lift read
+// deskkit.SecurityPassStateStands. This pins the two to each other and to APPROVED and
+// COMMENTED for every state the forge reports, through securityGrantOf as well as the map,
+// so a change to either list fails here until the other follows.
 //
 // regression: #5092
 func TestReadyPassStatesMatchDeskkit(t *testing.T) {
 	want := map[string]bool{"APPROVED": true, "COMMENTED": true}
-	for _, st := range []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", ""} {
+	for _, st := range []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", "", "approved"} {
 		r := reviewInfo{State: st, CommitID: "abc", Body: "## Security review\n\nSecurity-Review: pass"}
-		got := securityGrantOf(r) == secPass
-		if got != deskkit.SecurityPassStateStands(st) || got != want[st] {
-			t.Errorf("state %q: ready grants=%v, deskkit=%v, want %v", st, got, deskkit.SecurityPassStateStands(st), want[st])
+		grants := securityGrantOf(r) == secPass
+		if securityPassStates[st] != want[st] || deskkit.SecurityPassStateStands(st) != want[st] || grants != want[st] {
+			t.Errorf("state %q: ready list=%v, ready grants=%v, deskkit=%v, want %v",
+				st, securityPassStates[st], grants, deskkit.SecurityPassStateStands(st), want[st])
+		}
+	}
+	if len(securityPassStates) != len(want) {
+		t.Errorf("ready's list holds %d states, want %d", len(securityPassStates), len(want))
+	}
+}
+
+// The security-lane clearance refuses a body carrying a correctness verdict line, read by
+// deskkit.HasCorrectnessVerdictLine, a copy of the reader classifyLane uses. This pins the
+// copy to bodycheck's reader and to classifyLane over each form the reader accepts (built at
+// runtime), and fenced lines.
+//
+// regression: #5092
+func TestLaneReaderMatchesDeskkit(t *testing.T) {
+	m := strings.Repeat("*", 2)
+	var lines []string
+	for _, v := range []string{"Verdict: approve", "Verdict: request-changes", "verdict:  APPROVE"} {
+		lines = append(lines, v, m+v+m, "```\n"+v+"\n```")
+	}
+	lines = append(lines, "Verdict: maybe", "> Verdict: approve", "")
+	for _, ln := range lines {
+		body := "## Security review\n\nSecurity-Review: fail\n" + ln
+		bc, dk := bodycheck.CorrectnessVerdictLine(body), deskkit.HasCorrectnessVerdictLine(body)
+		both := classifyLane(body) == laneBoth
+		if bc != dk || both != dk {
+			t.Errorf("line %q: bodycheck=%v deskkit=%v classifyLane both=%v", ln, bc, dk, both)
 		}
 	}
 }

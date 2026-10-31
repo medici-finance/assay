@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -156,8 +157,9 @@ func TestSecBodyBoardActions(t *testing.T) {
 	t.Logf("unmarked twin: %s (%s)", unmarked.Action, unmarked.Note)
 }
 
-// REVIEW STATE. The board admits the clearing pass only in the states the gate and
-// `deskpost ready` admit, APPROVED or COMMENTED; every other state keeps the row blocking.
+// REVIEW STATE. The board admits the clearing pass only in the states the gate admits,
+// APPROVED or COMMENTED (the same two `deskpost ready`'s own list holds); every other state
+// keeps the row blocking.
 //
 // regression: #5092
 func TestSecBodyBoardPassStates(t *testing.T) {
@@ -179,5 +181,40 @@ func TestSecBodyBoardPassStates(t *testing.T) {
 					got.approved, got.blocking, got.bodyEditReverified)
 			}
 		})
+	}
+}
+
+// sbdVariant returns another form of the line the lane reader accepts, built at runtime.
+func sbdVariant(line string) string {
+	m := strings.Repeat("*", 2)
+	return m + line + m
+}
+
+// A fail or a pass whose body also carries a correctness verdict line speaks for both lanes.
+// The shared decision refuses it, so the row stays blocking, for each form the lane reader
+// accepts.
+//
+// regression: #5092
+func TestSecBodyBoardTwoLane(t *testing.T) {
+	for _, v := range []string{"Verdict: request-changes", "Verdict: approve"} {
+		for form, ln := range map[string]string{"plain": v, "variant": sbdVariant(v)} {
+			fail, pass := sbdSecFail(true, "2026-07-14T18:03:22Z"), sbdSecPass("2026-07-14T18:24:55Z")
+			twoFail, twoPass := fail, pass
+			twoFail.Body += "\n" + ln
+			twoPass.Body += "\n" + ln
+			cases := map[string][]review{
+				"fail": {twoFail, sbdApprove("2026-07-14T18:05:00Z"), pass},
+				"pass": {fail, sbdApprove("2026-07-14T18:05:00Z"), twoPass},
+			}
+			for which, reviews := range cases {
+				t.Run(which+"/"+form+"/"+v, func(t *testing.T) {
+					st := beBoardReduce(reviews, beBoardBodyAfter)
+					if st.approved || !st.blocking || st.bodyEditReverified {
+						t.Fatalf("approved=%v blocking=%v reverified=%v — want the row to stay blocking",
+							st.approved, st.blocking, st.bodyEditReverified)
+					}
+				})
+			}
+		}
 	}
 }

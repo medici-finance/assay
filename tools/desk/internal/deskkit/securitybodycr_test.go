@@ -160,7 +160,7 @@ func TestSecBodyRereadEqualsFail(t *testing.T) {
 var scrForgeStates = []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", ""}
 
 // The clearing pass counts only in a review state that carries a standing pass: APPROVED or
-// COMMENTED, the list `deskpost ready` reads for the same grant. Every other state refuses
+// COMMENTED, the same two states `deskpost ready`'s own list holds. Every other state refuses
 // with the clearance's own reason, naming the state.
 //
 // regression: #5092
@@ -180,8 +180,8 @@ func TestSecBodyPassStates(t *testing.T) {
 	}
 }
 
-// The allow-list itself, exactly. `deskpost ready`, deskflip and deskboard all read it, so a
-// change here changes every surface at once and must be deliberate.
+// The allow-list itself, exactly. deskflip and deskboard read it, and a test in cmd/deskpost
+// pins `deskpost ready`'s own list to it, so a change here must be deliberate.
 //
 // regression: #5092
 func TestSecBodyPassStateList(t *testing.T) {
@@ -203,5 +203,63 @@ func TestSecBodyLaterDismissedPass(t *testing.T) {
 	in.Later = append(in.Later, late)
 	if dec := EvaluateSecurityBodyClearance(in); !dec.Cleared {
 		t.Fatalf("a standing pass followed by a dismissed one: %s", dec.Reason)
+	}
+}
+
+// scrVariant returns another form of the line the lane reader accepts, built at runtime.
+func scrVariant(line string) string {
+	m := strings.Repeat("*", 2)
+	return m + line + m
+}
+
+// scrTwoLaneLines are the correctness verdict lines a security body must not carry for the
+// clearance to apply, in each form the lane reader accepts.
+func scrTwoLaneLines() []string {
+	return []string{
+		"Verdict: request-changes",
+		"Verdict: approve",
+		scrVariant("Verdict: request-changes"),
+		scrVariant("Verdict: approve"),
+	}
+}
+
+// A marked fail that also carries a correctness verdict line is not cleared by a security
+// pass: the gate's correctness rule drops every security-marked body, so the clearance
+// would drop its correctness half unread.
+//
+// regression: #5092
+func TestSecBodyTwoLaneFail(t *testing.T) {
+	for _, ln := range scrTwoLaneLines() {
+		in := scrInput()
+		in.FailBody = scrFailBody(scrBodyBefore) + "\n" + ln
+		wantSCRRefused(t, in, "also carries a correctness verdict line")
+	}
+}
+
+// The same for the clearing pass, and for a later marked fail in the chain.
+//
+// regression: #5092
+func TestSecBodyTwoLanePass(t *testing.T) {
+	for _, ln := range scrTwoLaneLines() {
+		in := scrInput()
+		in.Later[0].Body = scrPassBody(scrBodyAfter) + "\n" + ln
+		wantSCRRefused(t, in, "also carries a correctness verdict line")
+
+		in = scrInput()
+		second := scrPass(scrFailBody(scrBodyBefore+" (second read)")+"\n"+ln, scrHead, "2026-01-01T00:05:00Z")
+		in.Later = []SecurityVerdictReview{second, scrPass(scrPassBody(scrBodyAfter), scrHead, scrPassAt)}
+		wantSCRRefused(t, in, "also carries a correctness verdict line")
+	}
+}
+
+// A correctness verdict line inside a fenced block is quotation to the lane reader, so it
+// does not refuse (deskpost ready's classifier reads it the same way).
+//
+// regression: #5092
+func TestSecBodyFencedVerdict(t *testing.T) {
+	in := scrInput()
+	in.FailBody = scrFailBody(scrBodyBefore) + "\n```\nVerdict: approve\n```"
+	if dec := EvaluateSecurityBodyClearance(in); !dec.Cleared {
+		t.Fatalf("a fenced correctness line refused the clearance: %s", dec.Reason)
 	}
 }

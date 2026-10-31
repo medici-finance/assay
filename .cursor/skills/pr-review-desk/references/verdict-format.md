@@ -161,10 +161,10 @@ fence and ambiguity rules as the check-only lines apply.
 
 ### A security fail whose ONLY basis is the PR body
 
-A `Security-Review: fail` is never cleared by a correctness APPROVE, and an unmarked one is
-cleared only by a new commit. When the fail's **whole** basis is the PR body (the description
-claims a control the diff does not add, say) and no code at head would change, mark it the same
-way:
+A `Security-Review: fail` is never cleared by a correctness APPROVE. At `deskflip`, an unmarked
+one standing as a CHANGES_REQUESTED at the head is cleared only by a new commit; `deskpost ready`
+does not apply that rule. When the fail's **whole** basis is the PR body (the description claims
+a control the diff does not add, say) and no code at head would change, mark it the same way:
 
 1. **On the `Security-Review: fail`**, add `Blocked-On-Body: f-body-1 <64-hex digest of the body
    as you read it>`. Never add it when any part of the fail rests on code, config or a check:
@@ -178,8 +178,10 @@ way:
 `deskflip` clears the fail only when your pass is the last security verdict you posted at that
 head, it stands (a COMMENTED or APPROVED review; a dismissed or pending one clears nothing), its
 digest equals the live body's and differs from every fail's, and the forge records a
-body edit after the last fail. A later unmarked fail blocks again, and a clearance applies only
-at its own head: after any head move the fail stands until a pass at the new head.
+body edit after the last fail. Neither the fail nor the pass may also carry a correctness
+`Verdict:` line, in any form: a body that speaks for both lanes is never cleared this way. A
+later unmarked fail blocks again, and a clearance applies only at its own head: after any head
+move the fail stands until a pass at the new head.
 
 The gate cannot check that your marker is true. "The basis was only the body" is your claim; the
 later pass and the forge's body-edit record back it up, and nothing else does.

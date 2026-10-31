@@ -6929,19 +6929,27 @@ correctness CR either. The fail clears at the same head only when all of these h
 (`internal/deskkit/securitybodycr.go`, shared by `deskflip` and `deskboard`):
 
 - the fail declares `Blocked-On-Body: <finding-id> <body-digest>`, read by the same parser as the
-  correctness lane's. An unmarked fail is cleared only by a new commit;
+  correctness lane's. At `deskflip`, an unmarked fail standing as a CHANGES_REQUESTED at the head
+  is cleared only by a new commit; `deskpost ready` does not apply that rule;
 - the reviewer's last security verdict after the fail is a `Security-Review: pass` at the head,
   carrying `Body-Reread-Digest: <digest>` equal to the live body's digest, on a review in a state
-  that carries a standing pass: APPROVED or COMMENTED, the same list `deskpost ready` reads
-  (`deskkit.SecurityPassStateStands`). A DISMISSED, PENDING or CHANGES_REQUESTED review carrying
-  the pass clears nothing. Every security fail
-  between the two must be marked and at the head: a later unmarked fail blocks, and a later fail
-  at another commit stands;
+  that carries a standing pass: APPROVED or COMMENTED (`deskkit.SecurityPassStateStands`).
+  `deskpost ready` keeps its own list of the same two states, and a test pins the two lists to
+  each other. A DISMISSED, PENDING or CHANGES_REQUESTED review carrying the pass clears nothing.
+  Every security fail between the two must be marked and at the head: a later unmarked fail
+  blocks, and a later fail at another commit stands;
+- neither the fail, nor a later fail in the chain, nor the pass carries a correctness `Verdict:`
+  line (read as `deskpost ready`'s lane classifier reads it). Rule 1 drops every security-marked
+  body, so clearing a body that speaks for both lanes would drop its correctness half;
 - the forge records a body edit later than the last fail, and the re-read digest differs from
-  every fail's recorded digest;
-- the security lane's own standing verdict at head (the `security-verdict` reduction) is a pass,
-  so the two conditions agree. A clearance applies only at its own head: after a
-  content-preserving head move the fail stands until a pass at the new head.
+  every fail's recorded digest.
+
+A clearance applies only at its own head. Rule 2 reads a CR at the current head, and the shared
+decision admits only a pass at that head. After a content-preserving head move the condition
+`security-verdict` keeps the fail standing (a fail stands across a head move, and a pass counts
+only at the head) until a pass at the new head. Inside rule 2, `deskflip` also requires that
+condition's reduction to read a pass at head. That is a second layer that errs safe: when the
+decision clears, the reduction already reads the same pass.
 
 The gate cannot check that the marker is true, that the fail's whole basis was the PR body. That
 is the reviewer's claim; the later pass and the forge's body-edit record back it up. On the board,

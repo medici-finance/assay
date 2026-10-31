@@ -32,9 +32,14 @@ package deskkit
 //     cleanly. A later UNMARKED fail blocks, whatever passes follow it at this head, because
 //     its basis may be code;
 //   - that pass was posted in a review STATE that carries a standing pass
-//     (SecurityPassStateStands: APPROVED or COMMENTED, the list `deskpost ready` reads for the
-//     same grant). A DISMISSED, PENDING or CHANGES_REQUESTED review carrying the marker does
-//     not stand, so it clears nothing;
+//     (SecurityPassStateStands: APPROVED or COMMENTED, the same two states `deskpost ready`'s
+//     own list holds). A DISMISSED, PENDING or CHANGES_REQUESTED review carrying the marker
+//     does not stand, so it clears nothing;
+//   - neither the fail, nor a later fail in its chain, nor any pass at head after the last
+//     fail carries a correctness verdict line (HasCorrectnessVerdictLine, the reading
+//     `deskpost ready`'s lane classifier uses). Such a body speaks for both lanes, and the
+//     gate's correctness rule drops every security-marked body, so clearing it would drop
+//     its correctness half unread;
 //   - the pass documents `Body-Reread-Digest:` equal to the digest of the live body the
 //     caller read at the gate;
 //   - the forge's own record of the body's last edit is LATER than the last fail in that
@@ -82,18 +87,18 @@ type SecurityVerdictReview struct {
 }
 
 // SecurityPassStateStands reports whether a `Security-Review: pass` posted in review STATE
-// state can stand as the security lane's pass. It is the ONE definition of that allow-list:
-// `deskpost ready` (securityGrantOf), deskflip's rule-2 clearance and deskboard's lift all
-// read it, so the ready gate and this clearance cannot disagree about which states grant.
+// state can stand as the security lane's pass. deskflip's rule-2 clearance and deskboard's
+// lift read it. `deskpost ready` keeps its own list (securityPassStates in
+// cmd/deskpost/ready.go). The two lists must hold the same states; a test in cmd/deskpost
+// pins them to each other and to APPROVED and COMMENTED.
 //
 // It is an allow-list, so a state the forge adds later grants nothing until someone decides
 // it should. APPROVED is the legacy shape (`deskpost review --verdict approve` with a
 // security body); COMMENTED is the shape `deskpost security-review --verdict pass` posts.
 // PENDING (an unsubmitted draft, visible only to its author) and DISMISSED (an approval a
 // maintainer dismissed) are excluded, and so is CHANGES_REQUESTED. The match is exact, as it
-// always was in `deskpost ready`. The full history is on securityGrantOf in
-// cmd/deskpost/ready.go. A FAIL is never filtered by state: a retraction counts from any
-// state.
+// is in `deskpost ready`, whose list carries the history of why each state is in or out. A
+// FAIL is never filtered by state: a retraction counts from any state.
 func SecurityPassStateStands(state string) bool {
 	switch state {
 	case "APPROVED", "COMMENTED":
@@ -101,6 +106,12 @@ func SecurityPassStateStands(state string) bool {
 	}
 	return false
 }
+
+// twoLaneFail is the refusal for a security fail whose body also carries a correctness verdict
+// line. The gate's correctness rule drops every security-marked body, so a clearance here would
+// drop the correctness half with it (#5092).
+const twoLaneFail = "`Security-Review: fail` also carries a correctness verdict line — a body that speaks for " +
+	"both lanes is not cleared by a security pass, because its correctness half would go unread"
 
 // SecurityBodyInput is everything EvaluateSecurityBodyClearance needs.
 type SecurityBodyInput struct {
@@ -130,11 +141,15 @@ func EvaluateSecurityBodyClearance(in SecurityBodyInput) BodyEditDecision {
 	dec := BodyEditDecision{Declared: d.Declared}
 	if !d.Declared {
 		dec.Reason = "the `Security-Review: fail` carries no `Blocked-On-Body:` line, so its basis may be code — " +
-			"an unmarked security fail is cleared only by a new commit"
+			"an unmarked security fail standing at head is not cleared at this head; deskflip needs a new commit"
 		return dec
 	}
 	if d.Problem != "" {
 		dec.Reason = d.Problem
+		return dec
+	}
+	if HasCorrectnessVerdictLine(in.FailBody) {
+		dec.Reason = twoLaneFail
 		return dec
 	}
 	head := strings.TrimSpace(in.Head)
@@ -181,6 +196,10 @@ func EvaluateSecurityBodyClearance(in SecurityBodyInput) BodyEditDecision {
 				dec.Reason = "a later `Security-Review: fail`: " + ld.Problem
 				return dec
 			}
+			if HasCorrectnessVerdictLine(r.Body) {
+				dec.Reason = "a later " + twoLaneFail
+				return dec
+			}
 			chain = append(chain, ld)
 			lastFailAt, lastFailRaw = at, strings.TrimSpace(r.SubmittedAt)
 		case HasSecurityReviewPass(r.Body):
@@ -190,6 +209,12 @@ func EvaluateSecurityBodyClearance(in SecurityBodyInput) BodyEditDecision {
 			at, perr := time.Parse(time.RFC3339, strings.TrimSpace(r.SubmittedAt))
 			if perr != nil || !at.After(lastFailAt) {
 				continue
+			}
+			if HasCorrectnessVerdictLine(r.Body) {
+				dec.Reason = "a `Security-Review: pass` at head " + short12(head) + " (submitted " +
+					strings.TrimSpace(r.SubmittedAt) + ") also carries a correctness verdict line — a body that " +
+					"speaks for both lanes never clears a security fail, because its correctness half would go unread"
+				return dec
 			}
 			if !SecurityPassStateStands(r.State) {
 				notStanding, sawNotStanding = r.State, true

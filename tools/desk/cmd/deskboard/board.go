@@ -806,8 +806,9 @@ type reviewState struct {
 // on the `after` list below as the board's ONLY actor control: the shared decision takes no
 // actor, so another account's pass must never reach it (pinned by TestSecBodyBoardStaysBlocked,
 // "pass from another account"). Each review reaches the decision with its review state, so
-// the board admits a pass only in the states the gate and `deskpost ready` admit
-// (deskkit.SecurityPassStateStands).
+// the board admits a pass only in the states deskkit.SecurityPassStateStands admits, the same
+// two `deskpost ready`'s own list holds. A fail or pass whose body also carries a correctness
+// verdict line refuses in the shared decision, so such a row stays blocking.
 func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
 	if !st.atHead || !st.blocking || st.externalPrereqDeclared {
 		return st

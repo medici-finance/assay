@@ -249,7 +249,7 @@ func TestSecClearanceHeadMove(t *testing.T) {
 }
 
 // REVIEW STATE. The clearing pass counts only in a state that carries a standing pass,
-// APPROVED or COMMENTED, the list `deskpost ready` reads for the same grant. Every other
+// APPROVED or COMMENTED, the same two states `deskpost ready`'s own list holds. Every other
 // state the forge reports refuses with the clearance's own reason, which names the state, so
 // the refusal is not the security-verdict reduction's (that one reads no state). The two
 // accepted states flip.
@@ -272,5 +272,34 @@ func TestSecFailPassStates(t *testing.T) {
 				t.Errorf("a pass in review state %s: the ready mutation never ran", st)
 			}
 		})
+	}
+}
+
+// secVariant returns another form of the line the lane reader accepts, built at runtime.
+func secVariant(line string) string {
+	m := strings.Repeat("*", 2)
+	return m + line + m
+}
+
+// TWO LANES IN ONE BODY. Rule 1 drops every security-marked body, so a marked fail or a
+// clearing pass that also carries a correctness verdict line must refuse in the clearance
+// itself, with its own reason, or the correctness half goes unread. Each form the lane
+// reader accepts, in the fail and in the pass.
+//
+// regression: #5092
+func TestSecFailTwoLaneBody(t *testing.T) {
+	for _, v := range []string{"Verdict: request-changes", "Verdict: approve"} {
+		for form, ln := range map[string]string{"plain": v, "variant": secVariant(v)} {
+			t.Run("fail/"+form+"/"+v, func(t *testing.T) {
+				s := secBodyStub(t)
+				s.reviews[0].Body += "\n" + ln
+				wantSecRefused(t, s, "a marked fail carrying "+v, "also carries a correctness verdict line")
+			})
+			t.Run("pass/"+form+"/"+v, func(t *testing.T) {
+				s := secBodyStub(t)
+				s.reviews[2].Body += "\n" + ln
+				wantSecRefused(t, s, "a clearing pass carrying "+v, "also carries a correctness verdict line")
+			})
+		}
 	}
 }
