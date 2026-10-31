@@ -4,9 +4,12 @@
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
 **Describes reference implementation:** `statusgen/briefevent.go` (validation, fact store,
-alias registry, historian adapter, export) and `statusgen/briefstage.go` (stage reducer).
+alias registry, historian adapter, export), `statusgen/briefstage.go` (stage reducer) and
+`statusgen/briefintervention.go` (wait, context and human-intervention records; projection
+profiles).
 **Schema:** [`schemas/brief-flow-event-v1.json`](../schemas/brief-flow-event-v1.json)
-**Acceptance runner:** `bash tests/brief-flow/07.sh <mode>`
+**Acceptance runners:** `bash tests/brief-flow/07.sh <mode>` (§1–§13) and
+`bash tests/brief-flow/17.sh <mode>` (§14–§18)
 
 ## 1. Scope
 
@@ -27,13 +30,18 @@ It specifies:
 - the board-historian adapter (§8);
 - the portable export and its manifest (§9);
 - report grouping and quantile rules (§10);
-- consumer compatibility and the owner dispositions (§11, §12).
+- consumer compatibility and the owner dispositions (§11, §12);
+- record kinds and optional measurement-context links (§14);
+- inter-stage wait receipts (§15);
+- the human-intervention record (§16);
+- intervention deduplication, coverage and the sinks a human-act record may never reach (§17);
+- the restricted and committed projection profiles and the publication policy (§18).
 
-It does **not** specify wait or intervention receipts, measurement-context links, a
-human-intervention record or report projection profiles. Those are later extensions of this
-envelope; §3.3 is how they arrive without breaking a v1 reader. It defines no service, no
-attempt lifecycle and no durable store: the export (§9) is the import/export format a durable
-store reads and writes.
+§14–§18 extend the envelope through §3.3: every earlier fact stays valid and means what it
+meant, and no milestone is added. They define no economics, adoption or acceptance evaluator:
+context links say where a figure lives, never the figure or a verdict. The contract defines no
+service, no attempt lifecycle and no durable store: the export (§9) is the import/export format
+a durable store reads and writes.
 
 ### 1.1 Terminology
 
@@ -181,7 +189,7 @@ revision = the row's commit sha, kind `status_observed`, subject = the row's `to
 The digest is `sha256:` + hex sha256 of the event's canonical JSON (sorted keys, no
 insignificant whitespace) **excluding the observation members**: `received_at`,
 `occurred_at`, `occurred_after`, `occurred_before`, `precision`, `source_authority`,
-`source_ref`, `coverage`, `import_run`, `status_from`. The digest is the fact's meaning;
+`source_ref`, `coverage`, `import_run`, `status_from`, `context` (§14.2). The digest is the fact's meaning;
 the excluded members describe one source's view of it.
 
 ### 5.3 Adding an observation
@@ -340,8 +348,8 @@ definition; a report built on this contract uses nearest rank and labels it.
 
 | Consumer | Status under this contract |
 |---|---|
-| Board historian (`statusgen/history.go`) | Format, encoder and single writer unchanged; read through §8 only. |
-| Historian replayer (`statusgen/backfill.go`) | Unchanged; its `{brief, to, sha}` key is the §8 fact-id input, so replayed and live rows meet as one fact. |
+| Board historian (`statusgen/history.go`) | Format, encoder and single writer unchanged; read through §8 only. Refuses, on read and on write, a line carrying a human-act or actor member (§17.3). |
+| Historian replayer (`statusgen/backfill.go`) | Its `{brief, to, sha}` key is the §8 fact-id input, so replayed and live rows meet as one fact. Refuses to write a human-act line (§17.3). |
 | Brief-flow metrics (`statusgen/briefflow.go`) | Unchanged; they keep reading the historian directly (see the §10 note). |
 | Run records (graph-execution/06) | Not landed. The role vocabulary agrees with its role list today; binding facts to run records waits for that owner. |
 | Workflow instances (graph-execution/09) | Not landed. Instance references are a later optional member, added through §3.3. |
@@ -361,7 +369,8 @@ A report built on this contract no longer assumes that:
 
 | Owner | Disposition |
 |---|---|
-| Board historian and replayer (`statusgen`) | **Extended**: read-only adapter, no format change. |
+| Board historian and replayer (`statusgen`) | **Extended**: read-only adapter, no format change; both writers and the reader refuse human-act lines (§17.3). |
+| Intervention sources (the console, forge and command-line tools that authenticate a human act) | **Wait**: no source emits §16 records yet. A source that does is the only party that may set `attribution.basis: authenticated_source`; this contract adds no publication policy for any source (§18.3). |
 | Brief-flow metrics (`statusgen`) | **Extended** by contract text (§10); code unchanged. |
 | Run-record contract (graph-execution/06) | **Wait**: not landed; role vocabulary aligned and checked by the acceptance runner. |
 | Instance contract (graph-execution/09) | **Wait**: not landed; no substitute instance or run schema is defined here. |
@@ -369,9 +378,237 @@ A report built on this contract no longer assumes that:
 
 ## 13. Conformance
 
-A conforming reader MUST implement §2–§6 and §8–§9 as written and MUST produce the §7 projection
-for the published fixtures. The reference implementation's acceptance runner,
-`bash tests/brief-flow/07.sh all`, checks identity, stage, compatibility, flow, role identity
-and mutation sensitivity against synthetic fixtures under
-`statusgen/testdata/brief-flow/contract/`, whose expected values are hand-written from this
-document, not generated by the code under test. Fixture success is not deployment evidence.
+A conforming reader MUST implement §2–§6, §8–§9 and §14–§17 as written and MUST produce the §7
+and §18 projections for the published fixtures. The reference implementation's acceptance
+runners check them against synthetic fixtures whose expected values are hand-written from this
+document, not generated by the code under test:
+
+- `bash tests/brief-flow/07.sh all` — identity, stage, compatibility, flow, role identity and
+  mutation sensitivity, over `statusgen/testdata/brief-flow/contract/`;
+- `bash tests/brief-flow/17.sh all` — compatibility of the extended schema, context,
+  intervention contract, deduplication, identity sinks, publication profile, end-to-end flow
+  and mutation sensitivity, over `statusgen/testdata/brief-flow/interventions/`.
+
+Both exit 0 on pass, 1 on fail and 2 on could-not-check; a missing fixture, test or
+prerequisite never passes. Fixture success is not deployment evidence.
+
+## 14. Record kinds and measurement context
+
+### 14.1 Record kinds
+
+The optional member `record` names the record kind. Absent, or `fact`, the line is a milestone
+fact exactly as §3 specifies; every earlier fact is unchanged and keeps its digest. The two
+spellings are one fact: `record: fact` is left out of the §5.2 digest input, so a fact written
+either way has the same digest and two such observations corroborate. Two further kinds share
+the envelope:
+
+| `record` | Meaning | Also REQUIRED |
+|---|---|---|
+| `wait` | One inter-stage wait receipt (§15). | `fact_id`, `brief_uuid`, `wait` (with `edge`, `started_at`), `received_at`, `coverage` |
+| `human_intervention` | One evidenced human act (§16). | `act_id`, `category`, `taxonomy`, `initiator_role`, `executor_role`, `outcome`, `occurred_at` |
+
+Neither later kind carries `milestone`; a record that does is refused. The milestone kinds stay
+the fourteen of §3.1 and the first milestones stay those of §7.1: a wait or an intervention
+never sets, moves or adds a milestone. A milestone-fact reader MUST refuse a `wait` or
+`human_intervention` record rather than read it as a fact, and a reader that predates `record`
+refuses one too, because the record lacks the `milestone` member it requires. The refusal may
+name the kind (a schema enum value) and nothing else.
+
+Every record kind runs the same checks in the same order: the person-identifier scan (§3.4,
+extended in §16.3), schema validation with redacted messages, then `must_understand` (§3.3).
+Each kind is deduplicated under the §5.3 rule, by `fact_id` for a wait and by `act_id` for an
+act (§17.1), with the digest computed by §5.2 over the record.
+
+### 14.2 Measurement context
+
+The optional member `context` links an observation to how it was measured. It is an
+**observation member** (§5.2): adding or correcting context never changes a fact's meaning or
+digest, and two observations of one fact that differ only in context corroborate.
+
+| Member | Meaning |
+|---|---|
+| `purpose` | `value` under a named `taxonomy`, with the taxonomy's `effective_revision`. |
+| `policy_revision` | The revision of the policy in force (gates, routing). |
+| `harness` | The agent harness or runner that executed the work. |
+| `build` | The tool build that measured or produced the observation. |
+| `model.requested`, `model.resolved`, `model.served` | The model as asked for, as resolved by configuration, and as actually served. Three distinct facts. |
+| `finding_ref`, `fix_ref` | Restricted references from a finding to the change that fixes it. |
+| `external[]` | `kind` (`quality`, `cost`, `adoption`), `source`, `ref`, `revision`: where an external figure lives. |
+
+Rules:
+
+- Every absent part is **unknown** and is rendered as the explicit `unknown`, never as a
+  default, a zero or a guess. Nothing is inferred: in particular requested, resolved and served
+  model are never filled in from one another.
+- Context is a link, never a measurement of its own. An `external` entry records where a
+  quality, cost or adoption figure lives; it carries no figure, no adoption claim and no
+  verdict, and nothing in this contract computes economics, human effort or acceptance from it.
+- Unknown members inside `context` follow §3.3: kept, round-tripped, and refused only when
+  listed in `must_understand`.
+
+## 15. Wait receipts
+
+A `wait` record measures one named wait between two pipeline stages of one brief.
+
+| `wait.edge` | Opens at | Closes at | Existing duration reused |
+|---|---|---|---|
+| `intake_dispatch` | the brief became ready to dispatch | a dispatch claim was acquired | none — new |
+| `dispatch_worker` | the dispatch claim | the draft pull request opened | none — new |
+| `worker_review` | the pull request opened | the first reviewer verdict | none — new |
+| `review_verify` | the implementation merged | its verification Evidence row landed | the flow-instruments report's `verification_time` (the `implemented` dwell closing into `verified` or `done`, from the board historian) measures the same interval at poll precision; a report MAY fall back to it, labelled, where no wait receipt exists |
+| `finding_remediation` | a finding was filed | the fixing change's Evidence row landed | none — new |
+
+`wait.start_fact` and `wait.end_fact` are restricted pointers to the facts that opened and
+closed the wait. An absent `wait.ended_at` is an **open** wait. `ended_at` MUST NOT precede
+`started_at`, and `received_at` MUST NOT precede `started_at`.
+
+Projection rules (§10 binds them; restated here for the edges):
+
+- A completed wait belongs to the window that contains its **exit**, at its full duration.
+- An open wait is reported as aging (`open`) when it started before the window's end, and is
+  never a completed duration.
+- Per edge the report carries `n`; `median_seconds` and `p85_seconds` follow §10 and are present
+  only when `n` > 0. An edge with no completed wait in the window has state `unknown` and **no
+  statistic**: it is never rendered as zero.
+- An edge's coverage is the weakest coverage among its waits (`observed` < `partial` <
+  `unknown`), and `unknown` when it has none. A held wait conflict (§5.3) is counted per edge in
+  `held` and lowers `observed` to `partial`; like a held act (§17.2), it is counted over the
+  whole source read, not windowed.
+
+## 16. Human-intervention record
+
+### 16.1 The act
+
+A `human_intervention` record is one evidenced human act or intent: a decision, a ruling or a
+console action. It is evidence that an act happened and what became of it, never a record of
+who performed it.
+
+| Member | Meaning |
+|---|---|
+| `act_id` | The act's stable id, assigned once at the source. A restricted pointer. |
+| `category` | The primary category under `taxonomy`: `decision` (a choice between options), `ruling` (a binding answer to a disputed or gated question), `console` (an operator action through a console) or `unclassified`. |
+| `taxonomy` | The category taxonomy version the classification was made under. |
+| `brief_uuids` / `scope` | Exactly one is present. `brief_uuids` lists the briefs the act is explicitly associated with (distinct, at least one). `scope: unallocated` is an act tied to no brief. |
+| `initiator_role`, `executor_role` | Roles only (§3.4). A human may initiate an act an app executes. |
+| `outcome` | `applied`, `rejected`, `failed`, `withdrawn`, `pending` or `unknown`. A failed act is still an act. |
+| `occurred_at`, `received_at` | When the act happened, and when the source's receipt reached the collector (optional; not before `occurred_at`). |
+| `submission` | Optional `submitted_at` and `channel` (`console`, `forge`, `cli`, `unknown`). |
+| `effects[]` | Restricted pointers (`ref`) to the effects correlated with the act, each with its own `outcome`. |
+| `attribution` | `basis` and an optional restricted `evidence_ref`. |
+| `source_authority`, `source_ref` | As §3.2; `source_ref` is a restricted pointer to the original receipt. |
+
+### 16.2 Qualification
+
+An act enters a **precise** category count only when it is qualified: `initiator_role` is
+`human`, `attribution.basis` is `authenticated_source` (the authorized source itself
+authenticated the act) and `category` is not `unclassified`. Every other act is counted as
+**unqualified** — visible, never placed in a precise category:
+
+- an act initiated by a non-human role, or by `unknown`;
+- an act whose basis is `on_behalf_of_metadata` — an app acting with a note naming a human is
+  not evidence that a human acted;
+- an act whose basis is `unknown` or absent;
+- an `unclassified` act.
+
+### 16.3 No person principal
+
+The record adds no person-principal member. The §3.4 scan applies to every record kind and,
+for every record kind (milestone facts included), also refuses a member named `approver`,
+`submitter`, `requester` or `decider`, or ending in `_approver` or `_submitter`. Verifying that a human acted stays with the
+source that authenticated the act; the record carries only the role classification and the
+basis. The original authentication evidence stays with that source's owner and is referenced,
+never copied.
+
+## 17. Deduplication, coverage and sinks
+
+### 17.1 Deduplication and roll-up
+
+Acts are keyed by `act_id` under the §5.3 rule:
+
+| Incoming | Result |
+|---|---|
+| New act id | `added` — one act. |
+| Known id, byte-identical (a transport retry) | `duplicate` — adds zero. |
+| Known id, same digest, different observation members (a mirror from another source, or another receipt time) | `corroborated` — adds zero; the preferred observation (§6: authority, then earliest `received_at`, then canonical bytes) is projected. |
+| Known id, different digest | **held conflict** — the act is excluded from every count and reported in `held`. |
+
+A deliberate resubmission is a new act with a new `act_id` and adds one.
+
+Counts are taken over acts whose `occurred_at` falls in the window `[from, to)`. They do not
+depend on alias spans (§4): an act names brief uuids, not aliases. An act linked to briefs A and
+B counts **once in each** brief's count and **once** in the fleet total, which is the distinct
+union of act ids. An unallocated act counts in the fleet total and its `unallocated` count, and
+in no brief's count.
+
+### 17.2 Coverage
+
+Intervention coverage is a property of the source read over the window: `observed`, `partial`
+or `unknown` (absent is `unknown`). With `unknown` coverage every intervention count — per
+brief and fleet — has state `unknown` and **no number**: missing input is never zero. A held
+conflict lowers `observed` to `partial`. `held` counts every held conflict in the source read,
+whatever its `occurred_at`, and is not windowed: `occurred_at` is an observation member, so the
+conflicting observations of a held act need not agree on it, and no window can be chosen for
+the act. A held conflict outside the window therefore still lowers the window's coverage. Every brief the report covers gets a block, so a brief
+with no acts (zero, observed) is distinguishable from one that was never read (unknown).
+
+### 17.3 Sinks a human-act record never reaches
+
+Real human-act records, their act, effect and source pointers, and attribution evidence belong
+only to the restricted profile (§18.1) and the operator's own stores. They never enter a
+git-tracked file: the board historian log, the generated board, findings or intake registers,
+fixtures, or a committed report. Fixtures carry synthetic records only, and a test that proves a
+person identifier is refused builds it in memory, never persisting or logging it.
+
+The board historian enforces this independently of the record code. Its reader, its writer and
+the historian replayer refuse any line that carries, at its top level, `record`, `act_id`,
+`category`, `taxonomy`, `brief_uuids`, `attribution`, `effects`, `submission`,
+`initiator_role` or `executor_role`; the refusal names no value. The historian's own row format
+is unchanged and carries none of them. The record code has no path to the historian's writer.
+
+## 18. Projection profiles
+
+### 18.1 Restricted profile
+
+The restricted profile (`brief-flow-restricted/v1`) is operator-only. It carries every act row
+(act id, brief, category, outcome, taxonomy, both roles, attribution basis, qualification,
+occurrence time, source pointer, effect count) and every wait row (fact id, brief, edge, times,
+start and end fact pointers, coverage), the intervention source's name, and the counts and
+statistics of §15 and §17 derived from them. It carries no `policy_revision`: it is not
+published, so no publication policy applies to it. A writer MUST refuse a destination inside a
+git work tree, on the same terms as the export (§9), and writes it owner-only.
+
+### 18.2 Committed profile
+
+The committed profile (`brief-flow-committed/v1`) is what may be committed to a repository. It
+is produced from the restricted profile by an **allowlist copy**: only members the allowlist
+names are copied, and nothing is produced by deleting known fields, so a member later added to
+the restricted side never reaches committed bytes unless the allowlist is changed to name it.
+The allowlist is:
+
+- `schema`, `event_schema`, `build`, `window.from`, `window.to`, `as_of`, `policy_revision`;
+- `interventions`: `state`, `coverage`, `reason`, `held`; per brief `brief`, `state`,
+  `coverage`, `counts[]` (`category`, `outcome`, `count`), `total`, `unqualified`; and `fleet`
+  with the same members plus `unallocated`;
+- `waits[]`: `edge`, `state`, `coverage`, `n`, `open`, `held`, `median_seconds`, `p85_seconds`.
+
+It carries no actor or role field, no act id, no source, effect, receipt or evidence pointer,
+no watermark and no input manifest. A writer MUST re-walk the exact bytes it is about to write
+against the allowlist and refuse any member it does not name, at any depth; the refusal shows
+the member's position, never its name. The restricted and committed profiles of one input carry
+the same numbers.
+
+### 18.3 Publication policy
+
+Intervention counts are published in the committed profile only when a **recorded publication
+policy** authorizes the intervention source for the audience `repository-reader` — everyone who
+can read the repository the profile is committed to. A policy names the audience, its revision
+and the authorized sources; its revision is carried as `policy_revision`. The committed
+profile's `policy_revision` is the revision of the policy that authorized publishing it, set when
+the committed profile is built and present only when that policy authorizes the source; it is
+never copied from the restricted input. A reader's or an operator's permission to read a source
+is not a publication policy.
+
+Without an applicable policy the `interventions` block is **held**: state `held` and a reason,
+no counts. Wait statistics still render, since they carry no act. This contract records no
+policy for any source. Individual ranking is outside its scope: no profile has a per-person
+member, and none can be derived from it.
