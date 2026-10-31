@@ -416,6 +416,11 @@ type CheckRun struct {
 	Conclusion  string // success | failure | neutral | ...
 	StartedAt   string // RFC3339, "" when the forge reported none
 	CompletedAt string // RFC3339, "" when the forge reported none
+	// AppSlug names the App that CREATED the run (GitHub: check_run.app.slug) — the
+	// producer, which a name alone never establishes: any principal that can create a
+	// check run may give it any name. "" when the forge reported none (GitLab jobs),
+	// which a consumer binding a verdict to its producer must treat as unbound.
+	AppSlug string
 }
 
 // checkRunID renders a forge's numeric run id as the interface's string ID.

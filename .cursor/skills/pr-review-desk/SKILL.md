@@ -747,6 +747,12 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   a local stub does not; when they disagree CI wins and the reviewer investigates *why*.
   **Stub-validation trap:** proving a script emits the right argv is NOT proving the tool accepts
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
+- **Brief lifecycle coverage.** Adopted means the base branch's required status checks include
+  `lifecycle-preflight`, the predicate `deskflip` reads. Where adopted, require the review kit's
+  CI-first lifecycle check (`review-prompt.md` §2) in the verdict before the ready-flip. Let
+  `deskflip` consume the current-head result; lifecycle classification and transition rules
+  belong to statusgen. Before adoption, record the coverage gap as a note that does not block
+  approval, and route gate provisioning to the desk rather than claiming the prevention is live.
 - **Prompt-audit (scoped) — on any PR touching a `**/SKILL.md`, a `**/references/*.md` file
   (a skill's own, a bundle-level reference, or a dispatched kit itself), or a `CLAUDE.md`.**
   Run the review kit's scoped prompt-audit clause (`review-prompt.md` §16, "Scoped

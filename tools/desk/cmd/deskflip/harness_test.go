@@ -534,6 +534,9 @@ func (s *stub) servedCheckRuns() map[string]any {
 			"name": e.Name, "status": e.Status, "conclusion": e.Conclusion,
 			"started_at": e.StartedAt, "completed_at": e.CompletedAt,
 		}
+		if e.AppSlug != "" {
+			item["app"] = map[string]any{"slug": e.AppSlug}
+		}
 		// An entry with no ID is served WITHOUT an id key at all, not with id 0 — a forge
 		// that reports no identifier is a real case, and the check-only-CR exemption's
 		// fail-closed handling of it ("" is unmatchable) is only exercised if the stub can
