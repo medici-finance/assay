@@ -80,8 +80,10 @@ func TestSecFailMarkedClears(t *testing.T) {
 	}
 }
 
-// The #5090 sequence, unmarked: two security fails, a correctness APPROVE and a COMMENTED
-// pass, all at one head. An unmarked fail's basis may be code, so it still refuses.
+// The #5090 sequence, unmarked, in its real six-review shape at one head: a security fail,
+// two correctness CRs, a second security fail, a documented body-edit APPROVE, and a
+// COMMENTED pass carrying no digest line. An unmarked fail's basis may be code, so it still
+// refuses.
 //
 // regression: #5092
 func TestSecFail5090Replay(t *testing.T) {
@@ -89,9 +91,11 @@ func TestSecFail5090Replay(t *testing.T) {
 	unmarked := "## Security review\n\nSecurity-Review: fail"
 	s.reviews = []reviewInfo{
 		secReview(t, "CHANGES_REQUESTED", unmarked, headSHA, "2026-01-01T00:00:00Z"),
-		secReview(t, "CHANGES_REQUESTED", unmarked, headSHA, "2026-01-01T00:01:00Z"),
-		citingApprove(t, "looks correct", secApproveAt),
-		secReview(t, "COMMENTED", secPassBody(bodyAfterEdit), headSHA, secPassAt),
+		secReview(t, "CHANGES_REQUESTED", bodyEditCRBody(), headSHA, "2026-01-01T00:01:00Z"),
+		secReview(t, "CHANGES_REQUESTED", bodyEditCRBody(), headSHA, "2026-01-01T00:02:00Z"),
+		secReview(t, "CHANGES_REQUESTED", unmarked, headSHA, "2026-01-01T00:03:00Z"),
+		citingApprove(t, bodyEditApproveBody(), secApproveAt),
+		secReview(t, "COMMENTED", "## Security review\n\nRe-read the PR.\n\nSecurity-Review: pass", headSHA, secPassAt),
 	}
 	wantSecRefused(t, s, "#5090 replay without the marker", "stands at the current head")
 }
@@ -170,6 +174,17 @@ func TestSecFailPassNotAtHead(t *testing.T) {
 	s := secBodyStub(t)
 	s.reviews[2] = secReview(t, "COMMENTED", secPassBody(bodyAfterEdit), otherHead, secPassAt)
 	wantSecRefused(t, s, "the pass is at another commit", "no `Security-Review: pass`")
+}
+
+// SAME REVIEWER. The only pass after the fail comes from another account: the clearance has
+// no pass to read, so the refusal names the missing pass. It must come from the clearance's
+// own actor filter, not the security-verdict reduction behind it, so the reason is pinned.
+//
+// regression: #5092
+func TestSecFailOtherActorPass(t *testing.T) {
+	s := secBodyStub(t)
+	s.reviews[2].User.Login = "someone-else"
+	wantSecRefused(t, s, "a pass from another account", "no `Security-Review: pass`")
 }
 
 // LANES. A fully documented correctness APPROVE never clears a marked security fail. Before

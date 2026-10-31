@@ -780,7 +780,8 @@ type reviewState struct {
 // APPROVE (suspectNoOp). It is a no-op on every other shape, and on a declared
 // external-prerequisite row (that class has its own surface).
 //
-// It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
+// It mirrors deskflip's gate rather than approximating it, with the one difference stated
+// below for the security lane: EVERY reviewer CR at head
 // must be cleared by the shared decision (one undeclared or failing CR keeps the row
 // suppressed), the candidate APPROVEs are the reviewer's, at head, correctness lane only,
 // the digest is checked against the body THIS sweep read, and "edited after the CR" is
@@ -797,6 +798,14 @@ type reviewState struct {
 // the COMMENTED pass, which reduceReviews never sees as decisive — the lift does not require
 // suspectNoOp; it requires instead, as rule 1 of the gate does, that the reviewer's last
 // correctness-lane APPROVED/CHANGES_REQUESTED is an APPROVED at head.
+//
+// DIFFERENCE FROM THE GATE, security lane. deskflip's securityBodyCRCleared also requires the
+// security-verdict reduction (securityVerdictStanding) to read a pass at head; the board has
+// no such check. The two agree on outcome, because when the shared decision clears, the
+// reviewer's last security verdict is that pass at head. But it leaves the reviewer filter
+// on the `after` list below as the board's ONLY actor control: the shared decision takes no
+// actor, so another account's pass must never reach it (pinned by TestSecBodyBoardStaysBlocked,
+// "pass from another account").
 func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
 	if !st.atHead || !st.blocking || st.externalPrereqDeclared {
 		return st

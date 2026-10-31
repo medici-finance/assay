@@ -25,6 +25,13 @@ func sbdSecPass(at string) review {
 		"Body-Reread-Digest: "+deskkit.PRBodyDigest(beBoardBodyAfter), at)
 }
 
+// sbdOtherPass is sbdSecPass posted by an account that is not the reviewer App.
+func sbdOtherPass(at string) review {
+	r := sbdSecPass(at)
+	r.User.Login = "someone-else"
+	return r
+}
+
 func sbdApprove(at string) review {
 	return beBoardReview("APPROVED", "Correctness: looks right.", at)
 }
@@ -66,6 +73,10 @@ func TestSecBodyBoardStaysBlocked(t *testing.T) {
 			sbdSecFail(false, "2026-07-14T18:20:00Z"), sbdSecPass("2026-07-14T18:24:55Z")},
 		// A fully documented correctness body-edit APPROVE never clears a security fail.
 		"correctness approve only": {sbdSecFail(true, "2026-07-14T18:03:22Z"), beBoardApprove()},
+		// The clearing pass must come from the same reviewer. The board has no standing
+		// security-verdict check behind its actor filter, so this case is its only pin.
+		"pass from another account": {sbdSecFail(true, "2026-07-14T18:03:22Z"), sbdApprove("2026-07-14T18:05:00Z"),
+			sbdOtherPass("2026-07-14T18:24:55Z")},
 	}
 	for name, reviews := range cases {
 		t.Run(name, func(t *testing.T) {
