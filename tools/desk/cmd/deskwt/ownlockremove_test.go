@@ -10,13 +10,17 @@ package main
 // held and the session could not release its own work.
 //
 // The fix: before anything is deleted, remove judges the lock. The caller's own session's lock
-// (or one whose session a STALE roster beacon proves gone; no beacon proves nothing) is retired
-// as the last step before the delete and restored if the delete fails; any other lock is
-// REFUSED with the tree untouched.
+// is retired as the last step before the delete (and restored if the delete fails) when the tree
+// holds no untracked content; any other lock is REFUSED with the tree untouched, whatever the
+// state of the owner's roster beacon: a beacon is stamped only when its session writes the
+// roster, so an old one is not proof the owner is gone. A dead session's tree is released by
+// `deskwt prune --reap-dead-sessions`.
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -105,7 +109,7 @@ func TestRemoveUnownedLockRefused(t *testing.T) {
 	assertLocked(t, work, home, true)
 }
 
-// The reviewed case: a lock held for a DIFFERENT session that has written no roster beacon,
+// A lock held for a DIFFERENT session that has written no roster beacon,
 // while the roster directory exists (another session's beacon is there, as on any desk machine)
 // and the tree holds an untracked file. A missing beacon is not proof the session is gone — a
 // Codex session following the end-of-PR recipe writes none — so this is refused with exit 5 and
@@ -132,19 +136,75 @@ func TestRemoveForeignNoBeaconRefused(t *testing.T) {
 	}
 }
 
-// The positive control for the refusal above: the same foreign lock whose session HAS a beacon
-// that went stale is positive proof of death, and is retired.
+// The security-reviewed case: a lock held for a DIFFERENT session whose beacon is 61 minutes old
+// (older than the 60-minute fresh window) while that session is alive: a process is running with
+// its cwd in the tree and the tree holds an untracked source file. A beacon is written only when
+// its session mutates the roster, so silence for an hour is normal for a working session; the
+// beacon is not evidence of death. Refused with exit 5, nothing deleted. Before the fix: rc=0,
+// tree, registration and the untracked file gone, the process left running in a deleted cwd.
 // regression: F-locked-remove
-func TestRemoveForeignStaleBeaconRetired(t *testing.T) {
+func TestRemoveForeignStaleBeaconLiveOwnerRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX sleep process")
+	}
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
-	home := lockedHome(t, "zzstalebeacon", "codex-gone-1")
-	plantBeacon(t, "codex-gone-1", time.Now().Add(-48*time.Hour))
+	home := lockedHome(t, "zzstalelive", "codex-live-2")
+	plantBeacon(t, "codex-live-2", time.Now().Add(-61*time.Minute))
+	untracked := filepath.Join(home, "src-in-progress.go")
+	writeFile(t, untracked, "package wip\n")
+
+	live := exec.Command("sleep", "120")
+	live.Dir = home
+	if err := live.Start(); err != nil {
+		t.Fatalf("start the live process in the tree: %v", err)
+	}
+	t.Cleanup(func() { _ = live.Process.Kill(); _ = live.Wait() })
 
 	rc, stderr := runCapErr(t, []string{"remove", home})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("remove of a live session's home with a 61-minute beacon rc=%d, want %d:\n%s", rc, deskkit.ExitRefused, stderr)
+	}
+	assertExists(t, untracked)
+	assertExists(t, filepath.Join(home, "README.md"))
+	assertLocked(t, work, home, true)
+	if !registered(t, work, home) {
+		t.Fatalf("the registration of a refused home was dropped")
+	}
+	if !strings.Contains(stderr, "prune --reap-dead-sessions") {
+		t.Fatalf("the refusal does not name the way out for a dead session:\n%s", stderr)
+	}
+}
+
+// The own-lock arm matches a self-asserted, inherited session id, so it does not delete untracked
+// content either: a never-added file in the caller's own locked home is refused (exit 5) with the
+// file, lock and registration intact. Once the file is moved away the same call succeeds.
+// regression: F-locked-remove
+func TestRemoveOwnLockedUntrackedRefused(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	t.Setenv("DESK_SESSION", "")
+	home := lockedHome(t, "ownuntracked", "test")
+	untracked := filepath.Join(home, "never-added.go")
+	writeFile(t, untracked, "package wip\n")
+
+	rc, stderr := runCapErr(t, []string{"remove", home})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("remove of an own locked home holding an untracked file rc=%d, want %d:\n%s", rc, deskkit.ExitRefused, stderr)
+	}
+	assertExists(t, untracked)
+	assertLocked(t, work, home, true)
+	if !registered(t, work, home) {
+		t.Fatalf("the registration of a refused home was dropped")
+	}
+
+	if err := os.Remove(untracked); err != nil {
+		t.Fatal(err)
+	}
+	rc, stderr = runCapErr(t, []string{"remove", home})
 	if rc != deskkit.ExitOK {
-		t.Fatalf("remove of a home whose owner's beacon is stale rc=%d, want 0:\n%s", rc, stderr)
+		t.Fatalf("remove after clearing the untracked file rc=%d, want 0:\n%s", rc, stderr)
 	}
 	assertDeregistered(t, work, home)
 }

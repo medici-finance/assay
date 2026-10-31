@@ -123,12 +123,16 @@ worktree locked for a session that has gone, and every later session that needs 
   sanctioned worktree locations, so a tree created by hand elsewhere (or by a managed-worktree
   mechanism that places it elsewhere) cannot be released by the session itself.
 - **Release it when the PR is pushed and the tree is clean:**
-  from inside the worktree, `deskwt remove "$(git rev-parse --show-toplevel)"`, under the
-  same `$DESK_SESSION`. `remove` refuses an uncommitted tracked change or an unpushed commit,
-  so a refusal means work would be lost: fix it, then re-run. It retires the lock only
-  when it is this session's own (or a roster beacon for its session has gone stale); a lock
-  held by any other session, including one with no roster beacon at all, is refused with
-  exit 5, and the tree is left as it was.
+  first run `git status --porcelain` and deal with every line it prints. Then, from inside the
+  worktree, `deskwt remove "$(git rev-parse --show-toplevel)"`, under the same
+  `$DESK_SESSION`. `remove` refuses an uncommitted tracked change or an unpushed commit, so a
+  refusal means work would be lost: fix it, then re-run. Its gates do not count ignored files,
+  which are deleted with the tree. For a locked tree it also refuses any untracked file (exit
+  5, nothing deleted), because a session id is self-asserted and can be inherited. It retires
+  the lock only when the lock is this session's own; a lock held by any other session is
+  refused with exit 5 and the tree is left as it was, whatever that session's roster beacon
+  says. A tree whose session has ended is released by `deskwt prune --reap-dead-sessions`, not
+  by `remove`.
 - **Not for dispatched workers.** An agent dispatched into a home the dispatcher made
   leaves that home to its dispatcher and to `deskwt prune`.
 

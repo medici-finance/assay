@@ -412,12 +412,14 @@ is checked out somewhere, or carries unpushed commits, is REFUSED, naming the wo
 the commit count.`
 
 	removeLong = `remove releases a LOCKED worktree only when the lock is the caller's own session's
-($DESK_SESSION, then $CLAUDE_SESSION_ID) or the roster POSITIVELY proves its session gone (a
-roster beacon for it that has gone stale): that lock is retired just before the delete and
-restored if the delete fails. Any other lock — another session's, including one with no
-roster beacon at all (a missing beacon is not proof the session is gone), one naming no
-session, git's "initializing" lock — is refused with exit 5 and the tree is left untouched; a
-clean, pushed tree of a dead session with no beacon is released by ` + "`deskwt prune --reap-dead-sessions`" + `
+($DESK_SESSION, then $CLAUDE_SESSION_ID) and the tree holds no untracked or uncommitted
+files: that lock is retired just before the delete and restored if the delete fails. The
+session id is self-asserted and inherited, so the own-lock arm also refuses a tree with
+never-added files (exit 5, nothing deleted). Any other lock — another session's, whatever
+its roster beacon says (a beacon is written only when its session updates the roster, so an
+old or missing one is not proof the session is gone), one naming no session, git's
+"initializing" lock — is refused with exit 5 and the tree is left untouched; a clean, pushed
+tree of a dead session is released by ` + "`deskwt prune --reap-dead-sessions`" + `
 instead. This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.

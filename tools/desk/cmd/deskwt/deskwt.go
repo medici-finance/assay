@@ -827,12 +827,14 @@ func runRemove(o removeOpts) (err error) {
 	// OWNER — judged BEFORE anything is deleted. git never prunes a locked registration, so
 	// deleting a locked tree stranded its registration (exit 6, branch still held) — and did
 	// so to a tree another live session had locked. A session's own end-of-PR remove of its
-	// own locked home is the normal case: the caller's own lock, or one whose session the
-	// roster proves gone is retired just before the delete; any other lock is refused with
-	// the tree untouched. The owner rule is the husk arm's, with one difference: this tree still
-	// holds content (untracked files the gates above do not count) and has no open-handle
-	// probe behind it, so a session with NO roster beacon is not "gone" here — only a STALE
-	// beacon is positive proof (huskLockOwner's positiveProof).
+	// own locked home is the normal case: the caller's OWN session's lock is retired just
+	// before the delete. Every other lock is refused with the tree untouched — including one
+	// whose roster beacon looks old: a beacon is stamped only when its session mutates the
+	// roster, so a long-quiet beacon is no evidence the owner is gone, and this tree still
+	// holds content (untracked files the gates above do not count) with no open-handle probe
+	// behind it. A dead session's tree goes through `deskwt prune --reap-dead-sessions`, which
+	// holds on untracked files. Because the session id is self-asserted and inherited, the
+	// own-lock arm also refuses a tree holding untracked content.
 	locked, lerr := guard.lockedWorktrees(dir)
 	if lerr != nil {
 		return lerr
@@ -840,9 +842,16 @@ func runRemove(o removeOpts) (err error) {
 	lockReason, isLocked := locked[rt]
 	lockNote := ""
 	if isLocked {
-		ok, why := huskLockOwner(guard, rt, lockReason, true)
+		ok, why := ownLockOwner(lockReason)
 		if !ok {
 			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
+		}
+		dirty, derr := wtRepo.DirtyPorcelain()
+		if derr != nil {
+			return deskkit.Unverifiable("cannot check "+rt+" for untracked files before retiring its lock", derr)
+		}
+		if strings.TrimSpace(dirty) != "" {
+			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first (git status --porcelain)")
 		}
 		lockNote = "; lock retired: " + why
 	}
@@ -1002,4 +1011,24 @@ func lockForSession(guard *pathGuard, dir, rt, session string) error {
 		return deskkit.Unverifiable("git worktree lock reported success but "+rt+" is not locked", nil)
 	}
 	return nil
+}
+
+// ownLockOwner decides whether `remove` may retire a live tree's lock: only when the lock is the
+// caller's own session's. It never retires git's in-flight "initializing" lock, nor a lock naming
+// no session, and it does not read the roster: a beacon's age says when its session last wrote
+// the roster, not whether the session is alive, so no beacon state makes another session's lock
+// the caller's to retire. The way out for a dead session's tree is `deskwt prune
+// --reap-dead-sessions`.
+func ownLockOwner(reason string) (bool, string) {
+	if strings.TrimSpace(reason) == gitInitLockReason {
+		return false, `it is git's in-flight "initializing" add lock — never retired`
+	}
+	sess := sessionFromLockReason(reason)
+	if sess == "" {
+		return false, "it names no session, so no owner can be matched"
+	}
+	if caller := resolveSession(""); caller == sess {
+		return true, "the caller is the locking session " + sess
+	}
+	return false, "it belongs to session " + sess + ", not the caller — a roster beacon is not proof that session is gone (a clean, pushed tree of a dead session is released by `deskwt prune --reap-dead-sessions`)"
 }
