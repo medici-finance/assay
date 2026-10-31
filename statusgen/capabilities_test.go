@@ -66,6 +66,15 @@ func TestStatusgenCapsTruth(t *testing.T) {
 	if code := refuseIfTreeTooNew([]string{root}, "dev", &diagnostic); code != 5 || !strings.Contains(diagnostic.String(), "unsupported required") {
 		t.Fatalf("consumer admitted unsupported record: %d %s", code, &diagnostic)
 	}
+	for _, extra := range [][]string{nil, {"--diff-base", "HEAD"}} {
+		args := append([]string{"--root", root, "--lint"}, extra...)
+		out, err := exec.Command(bin, args...).CombinedOutput()
+		exit, ok := err.(*exec.ExitError)
+		if !ok || exit.ExitCode() != statusgenExitUnsupportedCaps || !strings.Contains(string(out), "unsupported required") {
+			t.Fatalf("CLI admission %v: %v %s", extra, err, out)
+		}
+	}
+
 }
 
 // regression: #4531

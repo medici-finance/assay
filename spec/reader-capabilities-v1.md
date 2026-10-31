@@ -55,7 +55,10 @@ requires; the current tree preflight conservatively requires the complete envelo
 rather than dropping another operation's obligation when producing a narrower view.
 The key is allocated by this contract, not inserted into the operational corpus.
 Field presence is determined after the shared YAML decoder, so equivalent encoded key
-spellings cannot hide a mandatory envelope. Body prose and ordinary legacy records do not opt in. Record/schema generators remain
+spellings cannot hide a mandatory envelope. Body prose and ordinary legacy records do not opt in. Capability extraction leaves
+unrelated legacy risk metadata with its existing owner; opted-in envelopes retain the
+existing brief-field validation. Ordinary and differential lint both enforce capability
+admission before reading records. Record/schema generators remain
 with the subsequent milestone briefs; a legacy permissive parser is not a safe writer.
 
 ## Observation validity

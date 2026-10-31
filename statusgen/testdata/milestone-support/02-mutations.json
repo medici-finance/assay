@@ -153,6 +153,33 @@
       "module": "tools/desk",
       "package": "./internal/deskkit",
       "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "differential-admission",
+      "target": "statusgen/main.go",
+      "old": "if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {",
+      "new": "if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 && *diffBaseFlag == \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestStatusgenCapsTruth"
+    },
+    {
+      "name": "legacy-owner-separation",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "var fields map[string]any",
+      "new": "if _, err := briefdoc.ParseFields(block); err != nil { return empty, err }; var fields map[string]any",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "optin-policy-validation",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "if _, err := briefdoc.ParseFields(block); err != nil {",
+      "new": "if _, err := briefdoc.ParseFields(block); false && err != nil {",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
     }
   ]
 }

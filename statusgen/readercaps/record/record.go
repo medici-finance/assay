@@ -25,11 +25,6 @@ func Requirements(raw []byte) (readercaps.Requirements, error) {
 	if err != nil {
 		return empty, fmt.Errorf("unreadable requirements frontmatter: %w", err)
 	}
-	// ParseFields validates duplicates, multiple documents and invisible keys;
-	// this adapter does not invent a second YAML interpretation.
-	if _, err := briefdoc.ParseFields(block); err != nil {
-		return empty, err
-	}
 	var fields map[string]any
 	if err := yaml.Unmarshal([]byte(block), &fields); err != nil {
 		return empty, err
@@ -37,6 +32,12 @@ func Requirements(raw []byte) (readercaps.Requirements, error) {
 	value, present := fields["reader-requirements"]
 	if !present {
 		return empty, nil
+	}
+	// A capability check does not reclassify unrelated legacy risk metadata.
+	// Once a decoded envelope is present, retain the existing brief owner’s
+	// duplicate/document/key and policy validation before assessing it.
+	if _, err := briefdoc.ParseFields(block); err != nil {
+		return empty, err
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {

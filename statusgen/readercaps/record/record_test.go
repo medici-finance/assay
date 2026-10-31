@@ -8,7 +8,7 @@ import (
 
 // regression: #4531
 func TestRecordRequirements(t *testing.T) {
-	for _, raw := range []string{"# legacy\nreader-requirements is prose", "---\nstream: legacy\n---\nreader-requirements in body only"} {
+	for _, raw := range []string{"# legacy\nreader-requirements is prose", "---\nstream: legacy\n---\nreader-requirements in body only", "---\nwhy: 'The example says customer: yes in prose'\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\n"} {
 		r, err := Requirements([]byte(raw))
 		if err != nil || len(r.Required) != 0 {
 			t.Fatalf("legacy changed: %+v %v", r, err)
@@ -39,6 +39,8 @@ func TestRecordRequirements(t *testing.T) {
 	for _, bad := range []string{
 		"---\nreader-requirements: {schema: reader-requirements-v1, required: [{operation: syntax, schemas: [milestone-v1], ſchemas: [], semantics: []}]}\n---\n",
 		"---\nreader-requirements: {schema: reader-requirements-v1, required: [], REQUIRED: []}\n---\n",
+		"---\ngate: Humanish\nreader-requirements: {schema: reader-requirements-v1, required: []}\n---\n",
+		"---\nrisk: {regulatory: maybe, customer: no, irreversible: no, sensitive-data: no}\nreader-requirements: {schema: reader-requirements-v1, required: []}\n---\n",
 		"---\nreader-requirements: null\n---\n",
 		"---\nreader-requirements: {schema: reader-requirements-v1, required: [], unknown: []}\n---\n",
 		"---\nreader-requirements: {}\nreader-requirements: {}\n---\n",
