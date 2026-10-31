@@ -54,9 +54,16 @@ still needs its approved pinned agent/version/model, instructions and work input
 on the retained volume, a genuine cold-preparation identity, and a matching launch
 descriptor. The launcher's existing `desk-session --prepare` command creates the
 initial history only when none exists; it does not reset history. Its prepared
-state records the canonical descriptor's `launch_id` and `initialization_id`.
+state records `launch_id` (the SHA-256 of the canonical launch descriptor) and the
+descriptor's `initialization_id`. The descriptor has no `launch_id` member and
+`--prepare` does not print that hash; read it from `.assay-compat/state.json`.
 Use those same values in the operator profile and the workload's
 `ASSAY_COMPAT_LAUNCH_ID` and `ASSAY_COMPAT_INIT_ID`. Never substitute fixture hashes.
+
+Follow the [custodian preparation guide](../../../../docs/kubernetes-compatibility-preparation.md)
+for the approved-input inventory, descriptor creation, existing preparation command,
+readback and per-role profile/workload mapping. The guide starts inside an already
+authorized preparation context; it supplies no cluster or credential grant.
 
 A custodian must also supply each existing role-custodian group in `rbac.yaml` and
 qualify the explicit operator/TLS endpoint, static credential, effective access,

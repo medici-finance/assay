@@ -366,7 +366,7 @@ func containerAdmission(receiptPath, root, brief string) (containerAdmit, error)
 	if tree != r.Tree {
 		return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: the mounted root %s digests to %s, not the %s the host recorded at the open step. The container is not running the admitted home", root, tree, r.Tree)
 	}
-	cell := bracketReceipt{Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf}
+	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf}
 	return containerAdmit{attestation: line, tree: tree, cell: cell}, nil
 }
 
@@ -511,7 +511,7 @@ func writeContainerWitness(path, home, table string) error {
 // writes the receipt file only when the host derives an executing identity
 // for the home and the host check admits it, as version 1 for this home and
 // brief, or as version 2 with this home as its admitted deliverable home.
-func runOpenBracket(home, brief, out string, stdout, stderr io.Writer) int {
+func runOpenBracket(home, brief, out string, stdout, stderr io.Writer, historyOut ...string) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -567,6 +567,18 @@ func runOpenBracket(home, brief, out string, stdout, stderr io.Writer) int {
 		return refuse("%v", err)
 	}
 	opened := nowFunc().UTC().Format(time.RFC3339)
+	if len(historyOut) > 0 && historyOut[0] != "" {
+		binding, err := checkBinding(check)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		if canonicalPath(historyOut[0]) == canonicalPath(out) {
+			return refuse("history bundle and admission receipt need different output files")
+		}
+		if err := exportContainerHistory(home, historyOut[0], binding.Source); err != nil {
+			return refuse("%v", err)
+		}
+	}
 	quoted := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened +
 		`","runner":` + quoted(cell.Runner) + `,"runner_source":` + quoted(cell.RunnerSource) +

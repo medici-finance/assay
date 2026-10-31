@@ -221,7 +221,8 @@ func TestParseVisibility(t *testing.T) {
 	cases := map[string]Visibility{
 		"public":   VisibilityPublic,
 		"private":  VisibilityPrivate,
-		"internal": VisibilityUnknown, // org-visible is NOT private — fail closed, report drift
+		"internal": VisibilityInternal, // instance-visible, its own value — never private
+		"INTERNAL": VisibilityUnknown,
 		"Public":   VisibilityUnknown, // case-sensitive
 		"PRIVATE":  VisibilityUnknown,
 		"":         VisibilityUnknown,
@@ -284,7 +285,7 @@ func TestVisibilityDriftFailsClosedOnGaps(t *testing.T) {
 	observed := map[string]string{
 		"o/observed":   "private",
 		"o/unstated":   "private",
-		"o/weirdapi":   "internal",
+		"o/weirdapi":   "restricted",
 		"o/flippedto":  "public",
 		"o/not-in-set": "public",
 		// "o/missing" deliberately absent
@@ -462,5 +463,33 @@ func TestPatternMalformedEntriesRefuseTheWholeRoster(t *testing.T) {
 				t.Fatalf("no Problems recorded for a malformed pattern entry")
 			}
 		})
+	}
+}
+
+// TestDriftInternalVisibility — `internal` is a value the drift check understands: a
+// configured `:internal` matching a live internal read is clean, and any disagreement
+// with it in either direction is drift naming both values.
+//
+// regression: #4978
+func TestDriftInternalVisibility(t *testing.T) {
+	policy := map[string]repoPolicy{
+		"o/inner":    {Visibility: VisibilityInternal},
+		"o/wasinner": {Visibility: VisibilityInternal},
+		"o/nowinner": {Visibility: VisibilityPrivate},
+	}
+	observed := map[string]string{
+		"o/inner":    "internal",
+		"o/wasinner": "public",
+		"o/nowinner": "internal",
+	}
+	got := visibilityDriftAgainst(policy, observed)
+	if len(got) != 2 {
+		t.Fatalf("got %d drift lines, want 2: %v", len(got), got)
+	}
+	joined := strings.Join(got, "\n")
+	for _, want := range []string{"o/wasinner: DRIFT", "o/nowinner: DRIFT", "internal"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("drift report %q does not mention %q", joined, want)
+		}
 	}
 }

@@ -368,6 +368,49 @@ RISK-VALUE: DERIVED — `max-age-days = 45` @ freshness.yaml:48 — all eight en
 **VERIFY: FAIL** — row 3 checked-failed: the doc contains no measured RAM/boot figure and no quoted command output; the our-workload measurement is BLOCKED in the doc itself, tracked on medici-finance/assay#1834. Rows 1, 2, 4, 5 pass. Hold at implemented.
 
 Verification-Attestation: medici-finance/assay#4016 run=13b70d495f120b4c55953e7f2daabc822e563e7c7040a45865d7f412d5c5bbf0 source=05dc9fbc88f2b1b23cd78bebc8634c564327eca4 brief=docs/streams/harness-portability/brief-09-jcode-desk-harness-spike.md model=claude-opus-5-5 tier=strong
+### Non-implementer verifier re-run: 2026-10-30 (UTC), assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main 7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09
+
+Runner is not the implementer. Fresh dispatch: own detached temporary worktree at the merged head above, admitted by `deskdispatch --check-verifier` before any row (exit 0) and again after this Evidence edit, binding run 62a0239eec4a, source 7b0fa99b57c3, model claude-opus-5-5, tier strong. Offline envelope observed (`KUBECONFIG=/dev/null`; no third-party tool installed or run; no network write; forge reads only). Installed release tools only (statusgen and desk tools v1.0.66); nothing built from the tree. No PR, no push, no status flip. Window: 2026-10-30T00:43Z to 00:50Z (UTC), which is 2026-10-29 in the runner's local zone.
+
+Delivered code since the prior pass: `git diff --stat 05dc9fbc88f2..HEAD -- docs/research/jcode-desk-harness-capabilities.md freshness.yaml` printed nothing (exit 0). `git log` on both paths names d73d7c996 (PR #1814) as the newest commit. SHA-256s at this SHA: doc 86785cef4fa8, registry 227d07cccc36, the same bytes the 2026-10-22 pass checked.
+
+**Execution witness.** Written by `statusgen verifyrun --root <home> --brief docs/streams/harness-portability/brief-09-jcode-desk-harness-spike.md` (non-dry, exit 1, no forge token in its environment) at the SHA above; the table and its attestation line are the tool's own output, unedited. `statusgen verifyrun --check` on the brief reported 3 pass, 2 fail, 0 could-not-run/missing of 5 Verify rows. Rows 3 and 4 record exit 2 because their Command cells are prose a shell cannot parse; that exit is not the row's verdict. Their verdicts are in the hand table after the witness.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/research/jcode-desk-harness-capabilities.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -qiE -e absent -e workaround docs/research/jcode-desk-harness-capabilities.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(dereferencing) the measured RAM/boot figures in the doc are each backed by a named command whose output is quoted — a reader can re-run it` | fail exit=2 | sha256:4117c376c8f5 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(dereferencing) the doc records the exec-tier probe (3) and the prose-vs-discrete split (4) as explicit verdicts, not TODOs` | fail exit=2 | sha256:5d664ea9d853 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -q 'jcode-desk-harness-capabilities' freshness.yaml` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4931 run=62a0239eec4a7c995877aaf902c53a26baf44f9f341df841a54b0dc79cd5052e source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 brief=docs/streams/harness-portability/brief-09-jcode-desk-harness-spike.md model=claude-opus-5-5 tier=strong
+
+**Hand results for the prose rows** (checked by reading the whole doc, 331 lines, at the SHA above):
+
+- **Row 3** (2026-10-30): (dereferencing) the measured RAM/boot figures in the doc are each backed by a named command whose output is quoted — a reader can re-run it — expected every numeric claim cites its measurement command + output, not a vendor number; observed **FAIL.** The doc has no measured RAM or boot figure and quotes no command output. Section 6 gives the our-workload protocol as a command block still to run and marks those numbers "BLOCKED (needs live jcode)"; section 6 also states "no density number is asserted in this doc". Every RAM/boot number in the doc (27.8 MB, 167.1 MB, 386.6 MB, 140.0 MB, 117.0 MB, 2300.6 MB, 14.0 ms, 3436.9 ms, 882.8 ms and the rest of the section 6 table) is a labelled vendor self-benchmark, and the "~2.3x" claim is arithmetic on those vendor numbers. The Expect cell rules out vendor numbers
+- **Row 4** (2026-10-30): (dereferencing) the doc records the exec-tier probe (3) and the prose-vs-discrete split (4) as explicit verdicts, not TODOs — expected both questions answered with evidence, not left as TODOs; observed **PASS, with a caveat.** Section 4 answers exec-tier as "NO / per-session-only" from public docs (model chosen per session or per provider profile; no per-child model field documented on the swarm-spawn call), with a four-step probe design and a verdict rule. Section 5 names the intake-desk split across 13 loop steps, discrete versus LLM judgment, and states the split in prose under the table. A case-insensitive grep for TODO, TBD or FIXME in the doc exits 1 (no match). Caveat: the exec-tier answer is documentary, and the doc marks the live verdict BLOCKED
+
+Rows passed: 4 of 5 (rows 1, 2, 5 checked-clean by the witness; row 4 checked-clean by reading; row 3 checked-failed by reading).
+
+**Blocker.** Row 3 is tracked on medici-finance/assay#1834, read from the forge in this run: OPEN, labelled `help wanted`, last updated 2026-10-14, with no ruling or live result recorded since the 2026-10-22 pass. Its 2026-10-11 comment adds harness-portability/09 row 3 and names the three ways out: a recorded human-run live jcode result, a ruling that the spike informs and does not gate, or a re-baseline of the row. Not stale-shaped: the doc and registry are byte-identical to the delivering commit, and the gap is work the brief's tasks 1, 2 and 6 asked for. No new issue is filed.
+
+**Supplementary observation, no acceptance credit.** The freshness entry reads last-reviewed "2026-08-24" with max-age-days 45, so its deadline was 2026-10-08 and the doc is past it on this run's date. The freshness tool is not installed on this host and was not built here, so this is date arithmetic, not tool output. A re-review of the documentary verdicts is still owed.
+
+**Risk-bearing value enumeration.** Scope: the landed diff of commit d73d7c996 for this item (the capability-matrix doc and its freshness entry), plus the brief's Deliverables, which name two planned files and no constant. Unchanged since the delivering commit:
+
+- `max-age-days = 45` @ freshness.yaml:48. If wrong, the doc is re-reviewed too late or too early; an edit undoes it. Reversible operational knob.
+- `last-reviewed = "2026-08-24"` @ freshness.yaml:47. If wrong, the staleness clock starts on the wrong day; an edit undoes it. Reversible.
+- `upstreams = []` @ freshness.yaml:49. If wrong, upstream changes do not trigger a re-review; an edit undoes it. Reversible.
+- Doc claims "~2.3x" and "~14x headline" (sections 6 and 7): arithmetic on vendor figures (386.6 / 167.1 = 2.31; 386.6 / 27.8 = 13.9). Prose in a reversible doc; nothing binds to them.
+- Probe protocol count ("median of >=5 cold starts", section 6). Instruction for a future live run; reversible.
+
+Ranked: no entry is irreversible (risk: all "no", gate: model). The top entry is the staleness leash, because it decides when these third-party facts are re-checked.
+
+RISK-VALUE: DERIVED — `max-age-days = 45` @ freshness.yaml:48 — all eight entries in the same registry carry the same 45-day leash (lines 12, 34, 39, 48, 53, 62, 67, 72), and the registry comment added with this entry states the rule: third-party harness facts with no locally tracked upstream go stale on a clock. Reversible; this diff has no irreversible literal.
+
+**VERIFY: FAIL** — row 3 checked-failed: the doc contains no measured RAM/boot figure and no quoted command output; the our-workload measurement is BLOCKED in the doc itself, tracked on medici-finance/assay#1834. Rows 1, 2, 4, 5 pass. Hold at implemented.
+
+Verification-Attestation: medici-finance/assay#4931 run=62a0239eec4a7c995877aaf902c53a26baf44f9f341df841a54b0dc79cd5052e source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 brief=docs/streams/harness-portability/brief-09-jcode-desk-harness-spike.md model=claude-opus-5-5 tier=strong
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.
