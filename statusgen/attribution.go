@@ -892,11 +892,12 @@ func evidenceHistoryChecks(count int, check func(int) (bool, bool)) []evidenceHi
 // annotation there is a hard PROBLEM — exactly the enforcement the feature is for,
 // scoped to the window it can actually apply to.
 //
-// This mirrors witnessNotices' (main.go) own transition rule for the identical shape
-// ("a brief closed before the witness existed cannot have one, and hand-writing
-// witnesses into closed briefs to green the gate would manufacture exactly the
-// evidence the witness exists to replace") — NOT a blanket downgrade to NOTICE, which
-// the security lane's review explicitly named as a route that weakens the control.
+// This mirrors the execution-witness split: witnessAbsenceGateChecks (witnessgate.go)
+// makes a missing witness on a closure THIS branch makes a PROBLEM, while
+// witnessNotices (verifyrun.go) reports the inherited corpus as a NOTICE and never
+// asks for witnesses to be hand-written into closed briefs — NOT a blanket downgrade
+// to NOTICE, which the security lane's review explicitly named as a route that
+// weakens the control.
 const principalAttributionCutoverDate = "2026-09-17"
 
 // principalAttributionProblems is multi-principal/01's lint half (Task item 4): an
