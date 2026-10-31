@@ -9,7 +9,8 @@ import (
 const DiagnosticLimit = 2048
 
 // Diagnostic emits single-line ASCII text. Record values cannot inject terminal
-// controls or grow an audit row past its reader's line limit. It is idempotent.
+// controls or grow an audit row past its reader's line limit. Reapplying it to
+// truncated text preserves that bound but may extend the truncation marker.
 func Diagnostic(raw string) string {
 	const marker = "... [truncated]"
 	var out strings.Builder
