@@ -31,6 +31,10 @@ package deskkit
 //   - every security fail between the marked fail and that pass is itself marked and parses
 //     cleanly. A later UNMARKED fail blocks, whatever passes follow it at this head, because
 //     its basis may be code;
+//   - that pass was posted in a review STATE that carries a standing pass
+//     (SecurityPassStateStands: APPROVED or COMMENTED, the list `deskpost ready` reads for the
+//     same grant). A DISMISSED, PENDING or CHANGES_REQUESTED review carrying the marker does
+//     not stand, so it clears nothing;
 //   - the pass documents `Body-Reread-Digest:` equal to the digest of the live body the
 //     caller read at the gate;
 //   - the forge's own record of the body's last edit is LATER than the last fail in that
@@ -59,6 +63,7 @@ package deskkit
 // and the forge's body-edit record back it up; nothing here can verify it.
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -67,9 +72,34 @@ import (
 // the fail. The CALLER supplies only reviews from the reviewer identity that carry a
 // `Security-Review:` line, in the forge's ascending submission order.
 type SecurityVerdictReview struct {
-	Body        string
-	CommitID    string
+	Body     string
+	CommitID string
+	// State is the forge's review state (APPROVED, COMMENTED, CHANGES_REQUESTED, DISMISSED,
+	// PENDING). A pass counts only in a state SecurityPassStateStands admits; a fail counts
+	// in any state.
+	State       string
 	SubmittedAt string // RFC3339
+}
+
+// SecurityPassStateStands reports whether a `Security-Review: pass` posted in review STATE
+// state can stand as the security lane's pass. It is the ONE definition of that allow-list:
+// `deskpost ready` (securityGrantOf), deskflip's rule-2 clearance and deskboard's lift all
+// read it, so the ready gate and this clearance cannot disagree about which states grant.
+//
+// It is an allow-list, so a state the forge adds later grants nothing until someone decides
+// it should. APPROVED is the legacy shape (`deskpost review --verdict approve` with a
+// security body); COMMENTED is the shape `deskpost security-review --verdict pass` posts.
+// PENDING (an unsubmitted draft, visible only to its author) and DISMISSED (an approval a
+// maintainer dismissed) are excluded, and so is CHANGES_REQUESTED. The match is exact, as it
+// always was in `deskpost ready`. The full history is on securityGrantOf in
+// cmd/deskpost/ready.go. A FAIL is never filtered by state: a retraction counts from any
+// state.
+func SecurityPassStateStands(state string) bool {
+	switch state {
+	case "APPROVED", "COMMENTED":
+		return true
+	}
+	return false
 }
 
 // SecurityBodyInput is everything EvaluateSecurityBodyClearance needs.
@@ -121,12 +151,15 @@ func EvaluateSecurityBodyClearance(in SecurityBodyInput) BodyEditDecision {
 	chain := []BodyEditDeclaration{d}
 	lastFailRaw := strings.TrimSpace(in.FailSubmittedAt)
 	var pass *SecurityVerdictReview
+	// notStanding names the last head pass after the fail whose review state does not stand,
+	// so the refusal says why that pass did not count.
+	notStanding, sawNotStanding := "", false
 	for i := range in.Later {
 		r := in.Later[i]
 		switch {
 		case HasSecurityReviewFail(r.Body):
 			// A later fail undoes any pass before it, and must itself be clearable.
-			pass = nil
+			pass, notStanding, sawNotStanding = nil, "", false
 			at, perr := time.Parse(time.RFC3339, strings.TrimSpace(r.SubmittedAt))
 			if perr != nil {
 				dec.Reason = "a later `Security-Review: fail` has an unreadable submission time (" + r.SubmittedAt +
@@ -158,12 +191,20 @@ func EvaluateSecurityBodyClearance(in SecurityBodyInput) BodyEditDecision {
 			if perr != nil || !at.After(lastFailAt) {
 				continue
 			}
+			if !SecurityPassStateStands(r.State) {
+				notStanding, sawNotStanding = r.State, true
+				continue // a dismissed, pending or rejecting review is not a standing pass
+			}
 			pass = &in.Later[i]
 		}
 	}
 	if pass == nil {
 		dec.Reason = "no `Security-Review: pass` from the reviewer at head " + short12(head) +
 			" stands after the last security fail (" + lastFailRaw + ")"
+		if sawNotStanding {
+			dec.Reason += " — a pass at head in review state " + strconv.Quote(notStanding) + " does not stand; " +
+				"only APPROVED or COMMENTED carries a standing pass"
+		}
 		return dec
 	}
 	editedRaw := strings.TrimSpace(in.BodyEditedAt)

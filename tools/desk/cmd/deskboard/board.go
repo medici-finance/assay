@@ -805,7 +805,9 @@ type reviewState struct {
 // reviewer's last security verdict is that pass at head. But it leaves the reviewer filter
 // on the `after` list below as the board's ONLY actor control: the shared decision takes no
 // actor, so another account's pass must never reach it (pinned by TestSecBodyBoardStaysBlocked,
-// "pass from another account").
+// "pass from another account"). Each review reaches the decision with its review state, so
+// the board admits a pass only in the states the gate and `deskpost ready` admit
+// (deskkit.SecurityPassStateStands).
 func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
 	if !st.atHead || !st.blocking || st.externalPrereqDeclared {
 		return st
@@ -850,7 +852,8 @@ func applyBodyEditReverification(st reviewState, reviews []review, head, liveBod
 			var after []deskkit.SecurityVerdictReview
 			for _, r := range reviews[i+1:] {
 				if isReviewerBot(r.User.Login) && classifySecurityBody(r.Body) != secNone {
-					after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
+					after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, State: r.State,
+						SubmittedAt: r.SubmittedAt})
 				}
 			}
 			dec = deskkit.EvaluateSecurityBodyClearance(deskkit.SecurityBodyInput{

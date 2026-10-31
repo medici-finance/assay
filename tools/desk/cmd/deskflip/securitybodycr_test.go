@@ -247,3 +247,30 @@ func TestSecClearanceHeadMove(t *testing.T) {
 		t.Fatalf("at the head it was recorded at, the clearance stands in the security lane: %v", err)
 	}
 }
+
+// REVIEW STATE. The clearing pass counts only in a state that carries a standing pass,
+// APPROVED or COMMENTED, the list `deskpost ready` reads for the same grant. Every other
+// state the forge reports refuses with the clearance's own reason, which names the state, so
+// the refusal is not the security-verdict reduction's (that one reads no state). The two
+// accepted states flip.
+//
+// regression: #5092
+func TestSecFailPassStates(t *testing.T) {
+	for _, st := range []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", ""} {
+		t.Run("state="+st, func(t *testing.T) {
+			s := secBodyStub(t)
+			s.reviews[2].State = st
+			if !deskkit.SecurityPassStateStands(st) {
+				wantSecRefused(t, s, "a pass in review state "+st, "review state \""+st+"\" does not stand")
+				return
+			}
+			s.install(t)
+			if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+				t.Fatalf("a pass in review state %s: rc = %d, want %d", st, rc, deskkit.ExitOK)
+			}
+			if !s.flipped() {
+				t.Errorf("a pass in review state %s: the ready mutation never ran", st)
+			}
+		})
+	}
+}

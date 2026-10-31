@@ -4,6 +4,7 @@ package deskkit
 // accepting fixture clears; every refusal starts from it and breaks one clause of the ruling.
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -25,7 +26,7 @@ func scrFailBody(digestOf string) string {
 }
 
 func scrPass(body, commit, at string) SecurityVerdictReview {
-	return SecurityVerdictReview{Body: body, CommitID: commit, SubmittedAt: at}
+	return SecurityVerdictReview{Body: body, CommitID: commit, State: "COMMENTED", SubmittedAt: at}
 }
 
 func scrPassBody(live string) string {
@@ -153,4 +154,54 @@ func TestSecBodyRereadEqualsFail(t *testing.T) {
 	in := scrInput()
 	in.FailBody = scrFailBody(scrBodyAfter)
 	wantSCRRefused(t, in, "equals the digest a security fail recorded")
+}
+
+// scrForgeStates is every review state the forge reports, plus the empty state.
+var scrForgeStates = []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", ""}
+
+// The clearing pass counts only in a review state that carries a standing pass: APPROVED or
+// COMMENTED, the list `deskpost ready` reads for the same grant. Every other state refuses
+// with the clearance's own reason, naming the state.
+//
+// regression: #5092
+func TestSecBodyPassStates(t *testing.T) {
+	for _, st := range scrForgeStates {
+		t.Run("state="+st, func(t *testing.T) {
+			in := scrInput()
+			in.Later[0].State = st
+			if SecurityPassStateStands(st) {
+				if dec := EvaluateSecurityBodyClearance(in); !dec.Cleared {
+					t.Fatalf("a pass in state %q did not clear: %s", st, dec.Reason)
+				}
+				return
+			}
+			wantSCRRefused(t, in, "review state "+strconv.Quote(st)+" does not stand")
+		})
+	}
+}
+
+// The allow-list itself, exactly. `deskpost ready`, deskflip and deskboard all read it, so a
+// change here changes every surface at once and must be deliberate.
+//
+// regression: #5092
+func TestSecBodyPassStateList(t *testing.T) {
+	want := map[string]bool{"APPROVED": true, "COMMENTED": true}
+	for _, st := range append(scrForgeStates, "approved", " COMMENTED", "Commented") {
+		if got := SecurityPassStateStands(st); got != want[st] {
+			t.Errorf("SecurityPassStateStands(%q) = %v, want %v", st, got, want[st])
+		}
+	}
+}
+
+// A standing pass is not undone by a later pass in a state that does not stand.
+//
+// regression: #5092
+func TestSecBodyLaterDismissedPass(t *testing.T) {
+	in := scrInput()
+	late := scrPass(scrPassBody(scrBodyAfter), scrHead, "2026-01-01T00:30:00Z")
+	late.State = "DISMISSED"
+	in.Later = append(in.Later, late)
+	if dec := EvaluateSecurityBodyClearance(in); !dec.Cleared {
+		t.Fatalf("a standing pass followed by a dismissed one: %s", dec.Reason)
+	}
 }

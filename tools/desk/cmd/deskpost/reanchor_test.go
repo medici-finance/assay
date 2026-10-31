@@ -104,7 +104,7 @@ func reanchorSecurityReviews(passAt string) []reviewInfo {
 
 // reanchorCommentedSecurityReviews is reanchorSecurityReviews with the security pass carried on
 // a COMMENTED review — the shape `deskpost security-review --verdict pass` posts (the COMMENT
-// event; see securityPassStates). An APPROVED pass is dropped by the filter's APPROVED arm on
+// event; see deskkit.SecurityPassStateStands). An APPROVED pass is dropped by the filter's APPROVED arm on
 // its own, so only this shape pins the filter's security-pass arm.
 func reanchorCommentedSecurityReviews(passAt string) []reviewInfo {
 	return reanchorSecurityReviewsIn("COMMENTED", passAt)

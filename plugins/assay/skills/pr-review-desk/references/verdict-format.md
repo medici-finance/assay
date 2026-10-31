@@ -175,7 +175,8 @@ way:
    security lane's verdict and CI stays the gate's own check.
 
 `deskflip` clears the fail only when your pass is the last security verdict you posted at that
-head, its digest equals the live body's and differs from every fail's, and the forge records a
+head, it stands (a COMMENTED or APPROVED review; a dismissed or pending one clears nothing), its
+digest equals the live body's and differs from every fail's, and the forge records a
 body edit after the last fail. A later unmarked fail blocks again, and a clearance applies only
 at its own head: after any head move the fail stands until a pass at the new head.
 

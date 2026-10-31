@@ -684,3 +684,20 @@ func TestSecurityReviewRateLimitOmitsTheFallbackRecipe(t *testing.T) {
 			"fallbackRecipe. stderr:\n%s", needle, errBuf.String())
 	}
 }
+
+// THE ONE ALLOW-LIST (#5092). securityGrantOf reads deskkit.SecurityPassStateStands, the
+// list deskflip's rule-2 security clearance and deskboard's lift also read. This pins that
+// the ready gate's grant still follows it for every state the forge reports, and that the
+// list is still exactly APPROVED and COMMENTED, as it was when it lived here.
+//
+// regression: #5092
+func TestReadyPassStatesMatchDeskkit(t *testing.T) {
+	want := map[string]bool{"APPROVED": true, "COMMENTED": true}
+	for _, st := range []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", ""} {
+		r := reviewInfo{State: st, CommitID: "abc", Body: "## Security review\n\nSecurity-Review: pass"}
+		got := securityGrantOf(r) == secPass
+		if got != deskkit.SecurityPassStateStands(st) || got != want[st] {
+			t.Errorf("state %q: ready grants=%v, deskkit=%v, want %v", st, got, deskkit.SecurityPassStateStands(st), want[st])
+		}
+	}
+}

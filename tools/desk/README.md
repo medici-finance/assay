@@ -6931,7 +6931,10 @@ correctness CR either. The fail clears at the same head only when all of these h
 - the fail declares `Blocked-On-Body: <finding-id> <body-digest>`, read by the same parser as the
   correctness lane's. An unmarked fail is cleared only by a new commit;
 - the reviewer's last security verdict after the fail is a `Security-Review: pass` at the head,
-  carrying `Body-Reread-Digest: <digest>` equal to the live body's digest. Every security fail
+  carrying `Body-Reread-Digest: <digest>` equal to the live body's digest, on a review in a state
+  that carries a standing pass: APPROVED or COMMENTED, the same list `deskpost ready` reads
+  (`deskkit.SecurityPassStateStands`). A DISMISSED, PENDING or CHANGES_REQUESTED review carrying
+  the pass clears nothing. Every security fail
   between the two must be marked and at the head: a later unmarked fail blocks, and a later fail
   at another commit stands;
 - the forge records a body edit later than the last fail, and the re-read digest differs from

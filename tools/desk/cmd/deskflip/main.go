@@ -115,7 +115,9 @@ nothing is mutated:
                     never cleared by a correctness APPROVE. It clears at the same head only
                     when it also declares "Blocked-On-Body: <finding-id> <body-digest>", a
                     later "Security-Review: pass" from the same reviewer stands at that head
-                    carrying "Body-Reread-Digest: <digest>" EQUAL to the live body's, the
+                    (a COMMENTED or APPROVED review, as for deskpost ready; a DISMISSED or
+                    PENDING one clears nothing) carrying "Body-Reread-Digest: <digest>"
+                    EQUAL to the live body's, the
                     forge records a body edit LATER than the fail, and no later security
                     fail stands (a later unmarked fail blocks). An unmarked security fail
                     blocks as before; a security pass never clears a correctness CR.

@@ -1182,6 +1182,9 @@ func bodyEditCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo
 //   - a fail declaring `Blocked-On-Check:` / `External-Prereq-Only:` refuses: those classes
 //     are cleared by correctness APPROVEs, and a correctness approval never clears a security
 //     fail;
+//   - each later review is handed over WITH its review state, so the shared decision admits a
+//     pass only in a state deskkit.SecurityPassStateStands allows (the list `deskpost ready`
+//     reads for the same grant): a DISMISSED or PENDING pass clears nothing;
 //   - a marked fail clears only when the shared decision clears it AND the security lane's
 //     standing verdict at head (securityVerdictStanding, the reduction checkSecurityVerdict
 //     reads) is a pass. The decision walks only the reviews after this fail; the second check
@@ -1202,7 +1205,8 @@ func securityBodyCRCleared(reviewerLogin string, cr reviewInfo, later, reviews [
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) || !hasSecurityMarker(r.Body) {
 			continue
 		}
-		after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
+		after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, State: r.State,
+			SubmittedAt: r.SubmittedAt})
 	}
 	editedAt := ""
 	if live.EditedAt != nil {

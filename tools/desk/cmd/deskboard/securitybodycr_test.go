@@ -155,3 +155,29 @@ func TestSecBodyBoardActions(t *testing.T) {
 	}
 	t.Logf("unmarked twin: %s (%s)", unmarked.Action, unmarked.Note)
 }
+
+// REVIEW STATE. The board admits the clearing pass only in the states the gate and
+// `deskpost ready` admit, APPROVED or COMMENTED; every other state keeps the row blocking.
+//
+// regression: #5092
+func TestSecBodyBoardPassStates(t *testing.T) {
+	for _, st := range []string{"APPROVED", "COMMENTED", "CHANGES_REQUESTED", "DISMISSED", "PENDING", ""} {
+		t.Run("state="+st, func(t *testing.T) {
+			pass := sbdSecPass("2026-07-14T18:24:55Z")
+			pass.State = st
+			reviews := []review{sbdSecFail(true, "2026-07-14T18:03:22Z"), sbdApprove("2026-07-14T18:05:00Z"), pass}
+			got := beBoardReduce(reviews, beBoardBodyAfter)
+			if deskkit.SecurityPassStateStands(st) {
+				if !got.approved || got.blocking || !got.bodyEditReverified {
+					t.Fatalf("pass in state %s: approved=%v blocking=%v reverified=%v — want the lift", st,
+						got.approved, got.blocking, got.bodyEditReverified)
+				}
+				return
+			}
+			if got.approved || !got.blocking || got.bodyEditReverified {
+				t.Fatalf("pass in state %s: approved=%v blocking=%v reverified=%v — want the row to stay blocking", st,
+					got.approved, got.blocking, got.bodyEditReverified)
+			}
+		})
+	}
+}
