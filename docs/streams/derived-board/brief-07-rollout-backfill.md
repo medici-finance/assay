@@ -116,6 +116,40 @@ regression).
 This is an IMPLEMENTER run, not a verdict — the frontmatter gate is model, and the flip is
 the reviewer/verify-gate's per the Review section below.
 
+### Implementer run — this repo's slice (Task 1) — 2026-10-30, branch off main @ 57285f1a9
+
+**What this run covers.** Task 1 only, for this repo. Tasks 2-4 (each consumer repo,
+the private toolkit's overlay re-stage, retiring the historical fallback after every repo
+merges) are other checkouts and other PRs and remain owed. This repo is the SOURCE of the
+tooling, so it carries no root `.assay-versions` to re-pin (the pin files here are adopter
+fixtures); its workflow step and its drift reports already existed. What was wrong: the
+stream README still described the reconcile step as "staged, not applied" and the staged
+`assay-statusgen.reconcile.patch` was still committed, although the hourly `reconcile` job
+(trailer-only, read-scoped token, `schedule`) was promoted into
+`.github/workflows/assay-statusgen.yml` by a human push. Applying that patch now would add
+a second `--backfill` reconcile to the push-time job. This run retires the patch and fixes
+the README paragraph. Nothing in the generated Briefs table was hand-edited; this brief's
+row is derived from the PR carrying its `Brief:` trailer.
+
+**Verify rows, run offline against the head above.**
+
+| # | Result |
+|---|--------|
+| 1 | could-not-check as written: no root `.assay-versions` in the source repo (not an adopter) |
+| 2 | `statusgen --root . --lint` (v1.0.67): zero `ungenerated board` NOTICEs; one PROBLEM, `desktools-v2/65: ... --acceptance-forge is required` -- a could-not-check of human authority, because CI runs lint with `--acceptance-forge` and this offline run cannot reach the forge. Not a pass |
+| 3 | 36 of 43 stream dirs carry `board: generated`; the other seven (`decisions`, `deploys`, `issue-flow`, `verify-outcomes`, `witnesses`, `findings`, `requirements`) hold no stream README or no briefs table, so the row's equality does not hold as written |
+| 4 | `docs/streams/board-drift-2026-09-12.md` (70 table lines) and `board-drift-2026-09-16.md` (75) exist; a fresh report needs the forge, could-not-check offline |
+| 5, 6 | could-not-check: need an authenticated forge read; not run |
+| 7 | could-not-check: the other four stream-bearing repos are other checkouts, outside this run |
+| 8 | not applicable: this is the public repo, not the private toolkit |
+| 9 | `go test ./statusgen/ -run TestApplyReconcileWrites -v` (run in `statusgen/`): all five tests PASS, including the todo-to-implemented, done/verified-immutable and human-stamp-untouched cases |
+
+**Fail-first.** Not applicable: this diff carries no test, only docs, a changelog fragment and
+the removal of a stale patch file; the Verify-9 suite is unchanged and was re-run green.
+
+**Owed to a human.** Rows 5-6 need the forge; rows 1, 7 and Tasks 2-4 need the other
+checkouts. The brief therefore keeps its partial `delivery:` entries.
+
 ## Review
 Gate: model. Reviewer records verdict + date via the generated board.
 Reviewer question: open the drift report and pick three rows at random — does each
