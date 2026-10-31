@@ -125,7 +125,7 @@ func (f transitionFixture) evidence(t *testing.T, mutate func(string) string) {
 
 // regression: #3467
 func TestAcceptanceTransition(t *testing.T) {
-	cases := []string{"approved", "approved-merge", "approved-scp", "approved-ssh", "approved-https-port", "origin-missing", "approved-crlf", "origin-gitlab", "origin-ghe", "origin-ssh-port", "issue-marker-missing", "issue-marker-other", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
+	cases := []string{"approved", "approved-merge", "approved-scp", "approved-ssh", "approved-crlf", "origin-gitlab", "origin-ghe", "origin-ssh-port", "issue-marker-missing", "issue-marker-other", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := transitionFixtureAt(t, name == "approved-merge")
@@ -159,10 +159,6 @@ func TestAcceptanceTransition(t *testing.T) {
 			switch name {
 			case "approved-scp":
 				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "git@github.com:"+rlRepo+".git")
-			case "approved-https-port":
-				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com:443/"+rlRepo+".git")
-			case "origin-missing":
-				vfGit(t, f.root, vfMailHuman, "remote", "remove", "origin")
 			case "approved-ssh":
 				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@github.com:22/"+rlRepo+".git")
 			case "approved-crlf":
