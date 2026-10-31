@@ -147,8 +147,8 @@ stay held. No reply authorizes deployment, credentials or admission reopening.
 
 **Evidence available for the ruling:** implementation tests
 `TestCellFenceBoundary`, `TestIncarnationContractFields` and
-`TestCellCheckpointRoundTrip`, with committed negative mutations in
-`drainloop/testdata/effect_mutations.py`, exercise the pure contract and separately
+`TestCellCheckpointRoundTrip`, with committed negative mutation controls,
+exercise the pure contract and separately
 invoked fake effect boundary. They cover restored owner/generation under an old
 incarnation, stale tuple, absent protected current state, activation/key mismatch,
 retained pause/cancellation/unknown usage and all attempt phases. They do not
@@ -161,8 +161,8 @@ verification has not been performed and no Verify Evidence is recorded here.
 reservations/ownership/intent at the existing authority; implement real adapter
 conformance, concurrency/crash/restore/handback and brake/pacing tests; qualify
 credential cutover and all consumers. GE/19 owns real PostgreSQL rollback; GE/26
-owns launch enforcement. See `spec/operator-incarnation-v1.md` and
-`spec/cell-checkpoint-v1.md` for the preparation contracts.
+owns launch enforcement. The preparation includes the incarnation and checkpoint
+contracts described above; neither activates a runtime consumer.
 
 ## Read first
 
