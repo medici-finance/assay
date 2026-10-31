@@ -21,9 +21,6 @@ func Requirements(raw []byte) (readercaps.Requirements, error) {
 	if strings.TrimSpace(first) != "---" {
 		return empty, nil
 	}
-	if !strings.Contains(string(raw), "reader-requirements") {
-		return empty, nil
-	}
 	block, _, err := briefdoc.Split(string(raw))
 	if err != nil {
 		return empty, fmt.Errorf("unreadable requirements frontmatter: %w", err)

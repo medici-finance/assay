@@ -27,6 +27,7 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
+  - "statusgen/briefdoc/document.go and statusgen/brieffile.go: fixed-here (one shared wired schema registry for parser and advertisements)"
   - "statusgen/readercaps/: fixed-here (pure assessment/decoders, existing-codec record adapter and explicit filesystem adapter)"
   - "statusgen/briefschemaversions.go: fixed-here (truthful additive JSON discovery)"
   - "statusgen/main.go: fixed-here (existing version/discovery entrypoint reused and tested, unchanged)"
@@ -49,7 +50,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/readercaps/` (planned), `statusgen/briefschemaversions.go`, `statusgen/main.go`, `statusgen/versiongate.go`, `statusgen/capabilities_test.go` (planned), `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/internal/deskkit/capabilities_test.go` (planned), `tools/desk/cmd/deskboard/`, `tools/desk/go.mod`, `spec/reader-capabilities-v1.md` (planned), `schemas/reader-capabilities-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `spec/brief-v1.md`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-02.md` (planned), `statusgen/testdata/milestone-support/02-mutations.json` (planned), `statusgen/testdata/milestone-support/02-mutate.py` (planned), `statusgen/testdata/milestone-support/01-mutate.py` (existing bounded runner reused) — New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/briefdoc/document.go`, `statusgen/brieffile.go`, `statusgen/readercaps/spelling_test.go`, `statusgen/readercaps/tree/tree_test.go`, `statusgen/readercaps/` (planned), `statusgen/briefschemaversions.go`, `statusgen/main.go`, `statusgen/versiongate.go`, `statusgen/capabilities_test.go` (planned), `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/internal/deskkit/capabilities_test.go` (planned), `tools/desk/cmd/deskboard/`, `tools/desk/go.mod`, `spec/reader-capabilities-v1.md` (planned), `schemas/reader-capabilities-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `spec/brief-v1.md`, `docs/contracts.md`, `docs/library-first.md`, `changelog/milestone-support-02.md` (planned), `statusgen/testdata/milestone-support/02-mutations.json` (planned), `statusgen/testdata/milestone-support/02-mutate.py` (planned), `statusgen/testdata/milestone-support/01-mutate.py` (existing bounded runner reused) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -110,9 +111,9 @@ The following named tests, fixtures and executable mutation maps are FUTURE DELI
 
 | # | Class | Shell | Command | Expect |
 |---|---|---|---|---|
-| 1 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestReaderCapsCompat$' ./readercaps/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestReaderCapsCompat ' "$milestone_verify_out")` | exit 0 and named PASS; old peer plus new requirement refuses, no-requirement legacy operation succeeds; ignoring a required capability makes the case fail. |
+| 1 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v ./readercaps/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestReaderCapsCompat ' "$milestone_verify_out" && grep -q -- '--- PASS: TestRecordRequirements ' "$milestone_verify_out" && grep -q -- '--- PASS: TestReaderCapsSpelling ' "$milestone_verify_out" && grep -q -- '--- PASS: TestReaderCapsTree ' "$milestone_verify_out")` | exit 0 and named PASS; old peer plus new requirement refuses, no-requirement legacy operation succeeds; ignoring a required capability makes the case fail. |
 | 2 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestStatusgenCapsTruth$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestStatusgenCapsTruth ' "$milestone_verify_out")` | exit 0 and named PASS; actual version/discovery reports only wired support, unknown/stale data cannot look supported; planted unsupported advertisement fails. |
-| 3 | check:ci +flow +mutation | sh | `(cd tools/desk && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskCapsPreflight$' ./internal/deskkit/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestDeskCapsPreflight ' "$milestone_verify_out")` | exit 0 and named PASS; production gate invokes shared assessment and records zero downstream effects on incompatibility even with the outer check bypassed. |
+| 3 | check:ci +flow +mutation | sh | `(cd tools/desk && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskCapsPreflight$' ./internal/deskkit/... ./cmd/deskboard/... > "$milestone_verify_out" && test "$(grep -c -- '--- PASS: TestDeskCapsPreflight ' "$milestone_verify_out")" -eq 2)` | exit 0 and named PASS; production gate invokes shared assessment and records zero downstream effects on incompatibility even with the outer check bypassed. |
 
 ## Pre-mortem and dispatch check
 

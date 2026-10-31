@@ -40,6 +40,12 @@ type Risk struct{ Regulatory, Customer, Irreversible, SensitiveData bool }
 
 func UnreadableRisk() Risk { return Risk{true, true, true, true} }
 
+// SchemaVersions is the shared syntax registry used by the actual brief parser
+// and reader advertisements. Register a schema only with its production wiring;
+// syntax recognition grants no assessment, dispatch or acceptance support.
+// Callers receive their own slice and cannot alter another reader's declaration.
+func SchemaVersions() []string { return []string{"brief-v1", "brief-v2", "brief-v3"} }
+
 // riskKeys are the four risk questions in canonical order. They are the one
 // source every reader derives the risk-answer key set from.
 var riskKeys = [...]string{"regulatory", "customer", "irreversible", "sensitive-data"}

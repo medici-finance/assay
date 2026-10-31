@@ -48,6 +48,9 @@ import (
 // deskkit "unverifiable" code (6): the tool cannot soundly read this tree.
 const statusgenExitTreeTooNew = 6
 
+// statusgenExitUnsupportedCaps refuses known unsupported mandatory semantics.
+const statusgenExitUnsupportedCaps = 5
+
 // gateParseVersion parses a `vX.Y.Z` into a comparable tuple, ok=false for any
 // other shape (including "dev" / "" — an unstamped build, treated as latest by the
 // caller). A `+<build>` metadata suffix is accepted and the BASE is gated: a local
@@ -141,7 +144,7 @@ func refuseIfTreeTooNew(roots []string, version string, stderr io.Writer) int {
 	if result := capstree.Check(roots, statusgenReaderCaps()); result.State != readercaps.Supported {
 		fmt.Fprintln(stderr, "statusgen: reader capabilities:", result.Reason)
 		if result.State == readercaps.Unsupported {
-			return 5
+			return statusgenExitUnsupportedCaps
 		}
 		return statusgenExitTreeTooNew
 	}

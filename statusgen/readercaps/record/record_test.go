@@ -23,7 +23,22 @@ func TestRecordRequirements(t *testing.T) {
 	if got := readercaps.Assess(r, readercaps.Observation{State: readercaps.Current, Advertisement: peer}); got.State != readercaps.Unsupported {
 		t.Fatal(got)
 	}
+	for _, key := range []string{`"reader-\x72equirements"`, `"reader-\u0072equirements"`, "? \"reader-\\\n  requirements\"\n"} {
+		t.Run(key, func(t *testing.T) {
+			encoded := "---\n" + key + ": {schema: \"reader-\\x72equirements-v1\", required: [{operation: dispatch, schemas: [], semantics: [future-v9]}]}\n---\n"
+			required, err := Requirements([]byte(encoded))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := readercaps.Assess(required, readercaps.Observation{State: readercaps.Current, Advertisement: peer}); got.State != readercaps.Unsupported {
+				t.Fatalf("encoded field lost mandatory capability: %+v", got)
+			}
+		})
+	}
+
 	for _, bad := range []string{
+		"---\nreader-requirements: {schema: reader-requirements-v1, required: [{operation: syntax, schemas: [milestone-v1], ſchemas: [], semantics: []}]}\n---\n",
+		"---\nreader-requirements: {schema: reader-requirements-v1, required: [], REQUIRED: []}\n---\n",
 		"---\nreader-requirements: null\n---\n",
 		"---\nreader-requirements: {schema: reader-requirements-v1, required: [], unknown: []}\n---\n",
 		"---\nreader-requirements: {}\nreader-requirements: {}\n---\n",

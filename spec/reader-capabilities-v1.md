@@ -23,7 +23,8 @@ diagnostics and exit adaptation. No new module or process boundary is introduced
 [The JSON Schema](../schemas/reader-capabilities-v1.json) describes both envelopes.
 All named keys are required, objects are closed, and arrays must be explicit, including
 empty arrays. Missing/null lists are unknown, not empty. The pure decoders also reject
-duplicate JSON keys, duplicate operation names and duplicate features within a list.
+duplicate JSON keys and noncanonical field spellings (including case-folded aliases),
+duplicate operation names and duplicate features within a list.
 The schema describes structure; these cross-entry uniqueness rules require the decoder.
 Unknown envelope versions and malformed advertisements are could-not-check.
 
@@ -53,7 +54,8 @@ fenced-YAML key `reader-requirements`. Its entries name every operation the reco
 requires; the current tree preflight conservatively requires the complete envelope,
 rather than dropping another operation's obligation when producing a narrower view.
 The key is allocated by this contract, not inserted into the operational corpus.
-Body prose and ordinary legacy records do not opt in. Record/schema generators remain
+Field presence is determined after the shared YAML decoder, so equivalent encoded key
+spellings cannot hide a mandatory envelope. Body prose and ordinary legacy records do not opt in. Record/schema generators remain
 with the subsequent milestone briefs; a legacy permissive parser is not a safe writer.
 
 ## Observation validity
@@ -69,7 +71,7 @@ against source. Fixture advertisements prove negotiation behavior, never deploye
 ## Production integration and limits
 
 `statusgen --version --json` and `statusgen version --json` add `readerCapabilities` to
-the existing document. Its syntax list comes from recognized brief schemas. Bare version
+the existing document. Its syntax list comes from the shared briefdoc schema registry used by the production parser. Bare version
 output remains unchanged. `deskboard` adds the same JSON discovery forms without entering
 startup, credentials, telemetry or execution. Its adapter lists the legacy syntax it
 actually gates and its requirements preflight. Both advertise only legacy brief syntax

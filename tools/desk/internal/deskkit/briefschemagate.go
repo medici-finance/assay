@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/readercaps"
 	capstree "github.com/medici-finance/assay/statusgen/readercaps/tree"
 )
@@ -88,13 +89,6 @@ func RefuseIfTreeV2BelowV1(roots []string, version, tool string, stderr io.Write
 	}
 	for _, r := range roots {
 		if treeHasBriefV2(r) {
-			// Retain the legacy release-boundary diagnostic and exit, while the
-			// shared assessor owns interpretation of required support.
-			required := readercaps.Requirements{Schema: readercaps.RequirementsSchema,
-				Required: []readercaps.Operation{{Operation: "syntax", Schemas: []string{briefSchemaV2}, Semantics: []string{}}}}
-			if readercaps.Assess(required, readercaps.Observation{State: readercaps.Current, Advertisement: ReaderCapabilities(version, tool)}).State == readercaps.Supported {
-				continue
-			}
 			fmt.Fprintf(stderr, "%s: tree is brief-v2; this %s is %s; run assay:upgrade-assay\n", tool, tool, version)
 			return ExitUnverifiable
 		}
@@ -108,7 +102,7 @@ func ReaderCapabilities(version, tool string) readercaps.Advertisement {
 	if strings.TrimSpace(version) == "" {
 		version = "dev"
 	}
-	schemas := []string{"brief-v1", "brief-v2", "brief-v3"}
+	schemas := briefdoc.SchemaVersions()
 	if gateBelowV1(version) {
 		schemas = []string{"brief-v1"}
 	}

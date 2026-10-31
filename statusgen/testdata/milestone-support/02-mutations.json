@@ -90,6 +90,69 @@
       "module": "tools/desk",
       "package": "./cmd/deskboard",
       "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "canonical-field-spelling",
+      "target": "statusgen/readercaps/caps.go",
+      "old": "if !canonicalKey(name) {",
+      "new": "if false && !canonicalKey(name) {",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsSpelling"
+    },
+    {
+      "name": "decoded-record-presence",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "block, _, err := briefdoc.Split(string(raw))",
+      "new": "if !strings.Contains(string(raw), \"reader-requirements\") { return empty, nil }; block, _, err := briefdoc.Split(string(raw))",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "root-layout",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if !info.IsDir() {",
+      "new": "if false && !info.IsDir() {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "root-symlink",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "info, err := os.Lstat(dir)",
+      "new": "info, err := os.Stat(dir)",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "archive-coverage",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "[]string{\"streams\", \"archive\"}",
+      "new": "[]string{\"streams\"}",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "independent-legacy-refusal",
+      "target": "tools/desk/internal/deskkit/briefschemagate.go",
+      "old": "if treeHasBriefV2(r) {",
+      "new": "if false && treeHasBriefV2(r) {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRefuseIfTreeV2BelowV1"
+    },
+    {
+      "name": "shared-schema-advertisement",
+      "target": "tools/desk/internal/deskkit/briefschemagate.go",
+      "old": "schemas := briefdoc.SchemaVersions()",
+      "new": "schemas := []string{}; _ = briefdoc.SchemaVersions",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestDeskCapsPreflight"
     }
   ]
 }

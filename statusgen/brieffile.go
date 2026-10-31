@@ -329,11 +329,13 @@ var (
 	// binary parses and validates. Anything with the brief-v* prefix outside this
 	// set fails CLOSED (#271). Kept sorted for stable lint messages via
 	// recognizedBriefSchemaList.
-	recognizedBriefSchemas = map[string]bool{
-		briefSchemaCurrent: true, // brief-v1
-		briefSchemaV2:      true, // brief-v2 (derived-board)
-		briefSchemaV3:      true, // brief-v3 (brief-v2 + the withdrawn status keys)
-	}
+	recognizedBriefSchemas = func() map[string]bool {
+		schemas := map[string]bool{}
+		for _, schema := range briefdoc.SchemaVersions() {
+			schemas[schema] = true
+		}
+		return schemas
+	}()
 )
 
 // recognizedBriefSchemaList returns the recognized brief-schema-family versions,

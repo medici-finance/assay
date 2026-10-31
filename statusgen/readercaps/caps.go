@@ -126,6 +126,13 @@ func decode(raw []byte, target any) error {
 	return nil
 }
 
+// Wire fields are lowercase ASCII names. Reject alternate spellings before
+// encoding/json's case folding can overwrite a requirement. Unknown canonical
+// names still go through DisallowUnknownFields against the actual target type.
+func canonicalKey(name string) bool {
+	return name != "" && strings.IndexFunc(name, func(r rune) bool { return r < 'a' || r > 'z' }) < 0
+}
+
 func uniqueValue(d *json.Decoder) error {
 	t, err := d.Token()
 	if err != nil {
@@ -145,6 +152,9 @@ func uniqueValue(d *json.Decoder) error {
 			name, ok := key.(string)
 			if !ok || seen[name] {
 				return fmt.Errorf("duplicate or invalid JSON key %q", key)
+			}
+			if !canonicalKey(name) {
+				return fmt.Errorf("noncanonical JSON key %q", name)
 			}
 			seen[name] = true
 		}

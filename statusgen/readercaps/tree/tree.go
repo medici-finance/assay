@@ -21,11 +21,18 @@ func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
 	for _, root := range roots {
 		for _, base := range []string{"streams", "archive"} {
 			dir := filepath.Join(root, "docs", base)
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
+			info, err := os.Lstat(dir)
+			if os.IsNotExist(err) {
 				continue
 			}
+			if err != nil {
+				return readercaps.Result{State: readercaps.CouldNotCheck, Reason: err.Error()}
+			}
+			if !info.IsDir() {
+				return readercaps.Result{State: readercaps.CouldNotCheck, Reason: "requirements directory is not a regular directory: " + dir}
+			}
 			result := readercaps.Result{State: readercaps.Supported}
-			err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+			err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 				if err != nil {
 					return err
 				}

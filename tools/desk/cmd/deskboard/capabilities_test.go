@@ -38,7 +38,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("---\nstream: sample\nreader-requirements: {schema: reader-requirements-v1, required: [{operation: dispatch, schemas: [], semantics: [milestone-v1]}]}\n---\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("---\nstream: sample\n\"reader-\\x72equirements\": {schema: \"reader-\\x72equirements-v1\", required: [{operation: dispatch, schemas: [], semantics: [milestone-v1]}]}\n---\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	// Bypass the CLI/startup/outer guard. The real consuming boundary must
