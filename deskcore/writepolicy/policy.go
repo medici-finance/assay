@@ -86,6 +86,16 @@ func (c Classification) ID() string           { return c.id }
 func (c Classification) PathTokens() []string { return append([]string(nil), c.tokens...) }
 func (c Classification) Masked() string       { return c.masked }
 
+// ReadsAmbientForgeToken reports whether the classified command's text holds
+// a gh token-read trigger word anywhere (forgetoken.go: whole words `auth`,
+// `token`, `oauth_token`, `git-credential`, or `status` with `gh` outside a
+// listed read, seen through quotes, backslashes and escapes). Outside that listed read it does not parse the shell, so
+// prose naming a trigger word reports true. Whether that is refused is the
+// adapter's gate.
+func (c Classification) ReadsAmbientForgeToken() bool {
+	return forgeTokenRead(c.request.Target)
+}
+
 type PathRequest struct{ Input string }
 type PathState string
 

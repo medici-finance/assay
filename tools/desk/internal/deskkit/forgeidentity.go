@@ -183,6 +183,87 @@ func splitGitLabSessionEmails(raw string) []string {
 	return out
 }
 
+// parseGitLabRoleEmails parses ASSAY_GITLAB_ROLE_EMAILS (#4978): comma-separated
+// `role=email` entries binding a GitLab desk role to its own commit address. cfg must
+// already carry the parsed role bindings and session allowlist, because each entry is
+// checked against both:
+//
+//   - the role must be bound (ASSAY_TRUSTED_BOT_SLUGS) to a GitLab identity — a typo'd
+//     role, or a GitHub role, binds nothing;
+//   - the address must be one the commit-identity preflight already accepts (the
+//     service-account noreply shape, or an ASSAY_GITLAB_SESSION_EMAILS entry), so this key
+//     never widens what a GitLab commit may be authored as;
+//   - a role may be bound once, and an address may be bound to one GitLab ACCOUNT only —
+//     binding one address to two roles that are different accounts is the very defect this
+//     key exists to remove (two role names bound to the same account may share it).
+//
+// It returns (nil, "") when unset, and (nil, reason) on the first broken rule: the map is
+// all-or-nothing, so a half-valid value never stamps some roles and silently skips others.
+func parseGitLabRoleEmails(raw string, cfg Config) (map[string]string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, ""
+	}
+	out := map[string]string{}
+	owner := map[string]string{}   // address → role it is already bound to
+	account := map[string]string{} // address → account (slug:id) of that role
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		role, email, hasEq := strings.Cut(entry, "=")
+		role = strings.ToLower(strings.TrimSpace(role))
+		email = strings.ToLower(strings.TrimSpace(email))
+		if !hasEq || role == "" || email == "" {
+			return nil, fmt.Sprintf("%s: cannot parse entry %q — expected role=email", EnvGitLabRoleEmails, entry)
+		}
+		local, host, hasAt := strings.Cut(email, "@")
+		if !hasAt || local == "" || host == "" || strings.Contains(host, "@") || strings.ContainsAny(email, " \t") {
+			return nil, fmt.Sprintf("%s: entry %q: %q is not an email address", EnvGitLabRoleEmails, entry, email)
+		}
+		ident, bound := cfg.RoleBotIdentity(role)
+		if !bound || ident.Forge != ForgeGitLab {
+			return nil, fmt.Sprintf("%s: entry %q: role %q is not bound to a GitLab identity in %s",
+				EnvGitLabRoleEmails, entry, role, EnvTrustedBotSlugs)
+		}
+		if !gitlabServiceAccountRe.MatchString(email) && !containsString(cfg.GitLabSessionEmails, email) {
+			return nil, fmt.Sprintf("%s: entry %q: %q is neither the GitLab service-account noreply form "+
+				"(service_account_group_<group-id>_<suffix>@noreply.<host>) nor listed in %s, so the "+
+				"commit-identity preflight would refuse a worktree stamped with it",
+				EnvGitLabRoleEmails, entry, email, EnvGitLabSessionEmails)
+		}
+		if _, dup := out[role]; dup {
+			return nil, fmt.Sprintf("%s: role %q is bound more than once", EnvGitLabRoleEmails, role)
+		}
+		acct := fmt.Sprintf("%s:%d", ident.Slug, ident.ID)
+		if other, dup := owner[email]; dup && account[email] != acct {
+			return nil, fmt.Sprintf("%s: %q is bound to both role %q and role %q — one address on two roles "+
+				"commits both roles' work under one account", EnvGitLabRoleEmails, email, other, role)
+		}
+		out[role] = email
+		owner[email] = role
+		account[email] = acct
+	}
+	if len(out) == 0 {
+		return nil, ""
+	}
+	return out, ""
+}
+
+// gitLabRoleEmailsEcho renders ASSAY_GITLAB_ROLE_EMAILS for the effective-config echo:
+// the sorted `role=email` bindings, or the reason the value was not applied.
+func (c Config) gitLabRoleEmailsEcho() string {
+	if c.GitLabRoleEmailsProblem != "" {
+		return "(INVALID — not applied; every GitLab role refuses to stamp: " + c.GitLabRoleEmailsProblem + ")"
+	}
+	out := make([]string, 0, len(c.GitLabRoleEmails))
+	for r, e := range c.GitLabRoleEmails {
+		out = append(out, r+"="+e)
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
+}
+
 // GitLabSessionEmailAllowed reports whether email is an explicitly TRUSTED session /
 // implementer commit author on a GitLab worktree (#643) — i.e. it appears verbatim in
 // the ASSAY_GITLAB_SESSION_EMAILS allowlist. The comparison is case-insensitive because

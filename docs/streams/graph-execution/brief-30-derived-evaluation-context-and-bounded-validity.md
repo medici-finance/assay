@@ -170,6 +170,42 @@ Risk-bearing values (risk metadata present, irreversible: no; enumeration over t
 
 **VERIFY: PASS** — 5/5 rows pass in the container-netns admission bracket (bracket-digest verdict=match); each row's named mutation is killed (S1, supplemental). gate: model, risk all no, irreversible no.
 
+### Verification 2026-10-30 — merged main 011f14965ef2cf173ee6be4ec3d4f319bb55ccae (independent verifier)
+
+Subject: medici-finance/assay main at 011f14965ef2cf173ee6be4ec3d4f319bb55ccae. Environment: all five rows executed by statusgen verifyrun v1.0.67 inside a closed admission bracket, in a `--network none` container from image ghcr.io/medici-finance/verify-runner v1.0.67 (linux/amd64, go1.27.3), with the home mounted read-only; the darwin host cannot provide the unshare sandbox. Witness table below as written by the tool, bracket line included. No discarded or uncredited attempt in this run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextInputs$" ./domain/ > "$out" && grep -F -- "--- PASS: TestContextInputs " "$out")` | pass exit=0 sandbox=container-netns | sha256:56de9c5d614b | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextExpiry$" ./domain/ > "$out" && grep -F -- "--- PASS: TestContextExpiry " "$out")` | pass exit=0 sandbox=container-netns | sha256:59d39acae129 | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextAdmissionFlow$" ./domain/ > "$out" && grep -F -- "--- PASS: TestContextAdmissionFlow " "$out")` | pass exit=0 sandbox=container-netns | sha256:49071e6d9634 | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextMembership$" ./domain/ > "$out" && grep -F -- "--- PASS: TestContextMembership " "$out")` | pass exit=0 sandbox=container-netns | sha256:18efc50ed45b | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextSchema$" ./domain/ > "$out" && grep -F -- "--- PASS: TestContextSchema " "$out")` | pass exit=0 sandbox=container-netns | sha256:fad0048954dd | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8efeda67ba2e48ea5955b3b46beac792fba116f581ab6029ab97c0c654ca294d
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5066 run=a12a7ce7f5bf3dc21225835f4f7e3710e4759ca7a39e6ac8502b3d601ea32655 source=011f14965ef2cf173ee6be4ec3d4f319bb55ccae brief=docs/streams/graph-execution/brief-30-derived-evaluation-context-and-bounded-validity.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a12a7ce7f5bf3dc21225835f4f7e3710e4759ca7a39e6ac8502b3d601ea32655 source=011f14965ef2cf173ee6be4ec3d4f319bb55ccae tree=sha256:8efeda67ba2e48ea5955b3b46beac792fba116f581ab6029ab97c0c654ca294d witness=sha256:b4a5034f88f8972c275b1937a8298d02b9d58b506e270225447941037dca424e opened=2026-10-30T23:27:49Z closed=2026-10-30T23:28:43Z before=receipt after=check-verifier
+
+Supplemental host observations (no acceptance credit; diagnostic only, outside the bracket):
+
+| Probe | Command | Observed | Date | Runner |
+|---|---|---|---|---|
+| S1 mutation controls | `python3 -B -I statusgen/domain/mutate.py` (host go1.27.2 darwin/arm64, throwaway HOME and TMPDIR outside the home; the script copies its inputs to scratch) | exit 0; PASS unmutated snapshot; all 11 context mutations KILLED, each failing its named test: context-evaluator and context-currency-check and context-requires-set fail TestContextInputs (row 1); context-expiry, context-time-guard, context-bound-order, context-cached-cutoff and context-currency-key fail TestContextExpiry (row 2); context-authority fails TestContextAdmissionFlow (row 3); context-membership fails TestContextMembership (row 4); context-schema fails TestContextSchema (row 5); the 20 other /28 and /31 mutations also KILLED (31 of 31) | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (model verifier) (on-behalf-of human:ian) |
+| S2 declared docs | read of the merged tree | spec/evaluation-context-v1.md, schemas/evaluation-context-v1.json and the context fixture directory exist; docs/contracts.md line 168 and docs/lifecycle.md line 75 carry the contract, lifecycle lines 82 onward and spec lines 75-77 state /14 and /19 consumption; the planned changelog fragment is absent as a file because the release aggregation folded it into CHANGELOG.md line 107 | 2026-10-30 | assay-verifier-app[bot] @ 011f14965ef2 (model verifier) (on-behalf-of human:ian) |
+
+Note on row 3: its named mutation (treat a hit as authority) is planted in the test-local synthetic currentAuthority helper in statusgen/domain/context_test.go, which is what the brief asks for; the test also drives the real Assess and refuses a moved candidate. This package holds no production admission authority.
+
+Risk-bearing values (risk metadata present, irreversible: no; enumerated over statusgen/domain/context.go and the Deliverables, ranked by what a wrong value would release):
+
+- RISK-VALUE: DERIVED — expiry boundary `!now.Before(expiry)` (use at the expiry instant = reevaluate) @ statusgen/domain/context.go:246 — Task 2 and spec/evaluation-context-v1.md lines 60-64 require rejection at or after the earliest required expiry; the inclusive boundary is the conservative side, and it runs over both receipts, so a renewed grant cannot extend the cached bound.
+- RISK-VALUE: DERIVED — mandatory bound kinds `"lease"`, `"access"` @ statusgen/domain/context.go:170 (allowed kinds lease, access, evaluation @ :158) — the brief's why names lease and permission expiry as the stale-admission hazard; spec lines 38-40 make both mandatory and refuse an implied infinite expiry.
+- RISK-VALUE: DERIVED — cutoff ordering `!expiry.After(cutoff)` refuses @ statusgen/domain/context.go:165 and `now.Before(cutoff)` holds @ :241 — spec lines 39-40 and 60 state both; a bound at or before its own cutoff was never valid, and use earlier than the observation has no valid window.
+- RISK-VALUE: DERIVED — absent currency `c.AccessEpoch == 0 || c.Generation == 0` @ statusgen/domain/context.go:149 — Task 1 forbids unknown inputs claiming a complete context; 0 is the Go value of an absent field, so it cannot be a real epoch or generation.
+- RISK-VALUE: DERIVED — capability pin `len(c.Requires) != 1` with `"context@1"` @ statusgen/domain/context.go:105,109 and `ContextSchema = "evaluation-context-v1"` @ :14 — versioned contract; the Interface contract says future adapters refuse unsupported mandatory fields, and one known capability is the whole set this version defines.
+- Format checks ranked last, reversible by edit and redeploy, no derivation needed: evaluator policy digest length 64 @ statusgen/domain/context.go:131, `sha256:` prefix @ :79. The test-only timestamps and the mutation script's 30s and 60s timeouts are not production values.
+
+**VERIFY: PASS** — 5/5 rows pass in the container-netns admission bracket (bracket-digest verdict=match); each row's named mutation is killed (S1, supplemental). gate: model, risk all no, irreversible no.
+
 ## Review
 
 Gate: model; no live authority or data is changed. Confirm no second evaluator/cache owner.

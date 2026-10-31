@@ -359,10 +359,9 @@ The launch is `env -i` plus an explicit allowlist — the parent shell contribut
 default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
 `tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
 live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The last two
-rows, the cell database pointer, are the Go program's alone: they are present only when `cell.env`
-sets `CELL_DB_DSN`, no parity fixture sets it, and so the oracle's set and every parity plan are
-unchanged:
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The cell database pointer and GitLab endpoint rows are
+Go-only additions,
+present only when the cell declares them; parity fixtures do not configure them.
 
 | Variable | Value |
 |---|---|
@@ -388,6 +387,7 @@ unchanged:
 | LANG | passed through from the parent |
 | ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
 | PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
+| GITLAB_API_BASE | GitLab cells only: nonempty `cell.env` `GITLAB_API_BASE`, else its nonempty `FORGE_API_BASE`; inherited values and compiled defaults are excluded |
 
 A configured cell-owned provider adds its endpoint, token and model aliases to the final
 harness environment only, after the secret-free launch plan. Herdr/provider launches
@@ -1391,7 +1391,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `DESKD_APP_ID_VAR` | **github** — the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
 | `ORGS` | **github** — comma-separated orgs to mint one installation token each for |
 | `GITLAB_GROUP` | **gitlab** — the GitLab group this cell reads |
-| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`). On a GitLab cell, the base `cell.env` states (this key when set non-empty, else its `FORGE_API_BASE`) is exported as `GITLAB_API_BASE` into the claude and cursor role windows, over any the launching shell carried; cellctl's compiled `gitlab.com` fallback is never exported, so `desktoken` still refuses an unconfigured base. `FORGE_API_BASE` itself is not exported |
+| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`). On a GitLab cell, the base `cell.env` states (this key when set non-empty, else its `FORGE_API_BASE`) is exported as `GITLAB_API_BASE` into the claude and cursor role windows and Codex command subprocesses. Scrubbed launches compose the same cell-declared value. Host windows retain their existing inheritance policy when no base is declared; cellctl's compiled `gitlab.com` fallback is never exported, so `desktoken` still refuses an unconfigured base. `FORGE_API_BASE` itself is not exported. Codex command and scrubbed exports refuse unparseable URLs and URL userinfo, nonempty queries or fragments before producing arguments or plans, since these fields can carry credentials; refusals omit the URL. Existing host Claude/Cursor forwarding is unchanged. Changes to this credential destination require security review (#4845); inherited-value clearing, HTTPS enforcement and conflicting-key policy remain separate (#4855) |
 | `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
 | `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
@@ -2016,7 +2016,8 @@ sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in
 `containers/k8s/compatibility/`. The example pins the published v1.0.65 role images
 for `linux/amd64`, but is not deployable: agent, initialization and actual operator
-values need qualification. A missing or invalid explicit profile makes no API operation. There is no ambient context discovery,
+values need qualification. A missing or invalid explicit profile makes no API
+operation. There is no ambient context discovery,
 credential-plugin execution, proxy, insecure TLS or redirect fallback.
 
 Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
@@ -2040,6 +2041,13 @@ for the child so cell-scoped STOP and role/claim controls retain their owners; n
 plugin enable command or second agent invocation runs during boot. Explicit
 `desk-session --prepare` creates cold history only where no history exists.
 Ordinary boot never invents first-boot permission from absent history.
+
+The [custodian preparation guide](kubernetes-compatibility-preparation.md) gives
+the approved-input inventory, descriptor/preparation/readback commands and exact
+profile/workload mapping for all five roles. `launch_id` is the canonical
+descriptor hash retained in `.assay-compat/state.json`, not a descriptor field or
+the checksum of its pretty-printed JSON. Preparation and offline configuration
+checks do not authorize the live sequence below.
 
 For a prepared cell named `example`, the bounded sequence is:
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/medici-finance/assay/deskcore/writepolicy"
@@ -68,4 +69,31 @@ Write ONLY inside your own worktree (%s). Never write to the shared checkout via
 			home, tool, c.SharedRoot, target, home) +
 			"\n" + blockEvasionGuidance,
 	}
+}
+
+// deskSession reports whether the hook's OWN environment marks a desk session:
+// DESK_LOOP or DESK_SESSION non-empty. The core reads no environment, so this
+// gate is the adapter's (docs/write-policy.md, "Core and adapters").
+func deskSession() bool {
+	return os.Getenv("DESK_LOOP") != "" || os.Getenv("DESK_SESSION") != ""
+}
+
+// ambientTokenRefusal refuses a Bash command that runs the gh CLI's token read
+// (#4821); run calls it only in a desk session, so outside one the hook stays
+// silent. call is the call's one classification (classifyCall), shared with
+// the path policy. The decision is writepolicy's trigger-word match on the raw
+// command text: a trigger word anywhere refuses, whatever surrounds it.
+func ambientTokenRefusal(call *classifiedCall) (Verdict, bool) {
+	if !call.cl.ReadsAmbientForgeToken() {
+		return Verdict{}, false
+	}
+	return Verdict{
+		Block: true,
+		Reason: fmt.Sprintf(`writeguard: BLOCKED — ambient forge credential read.
+This Bash call's text holds a word of the gh CLI's token read (`+"`gh auth token`"+`, or gh asked to print its stored token): auth, token, oauth_token, git-credential, or gh together with status unless every command is a listed read (git status, gh pr view, list or checks, gh run view or list, gh issue view or list, piped to grep, head, tail or wc), anywhere in the text, quoted or not. Outside that list the guard does not parse the shell, so prose naming one of those words is refused too. If the words are prose (a commit message, a PR body or comment, a search pattern), write the text to a file and pass -F <file> / --body-file <file> / a pattern file:
+  %s
+The gh CLI's stored login belongs to whichever account last authenticated on this machine, not to this session's role identity. A desk session (DESK_LOOP or DESK_SESSION is set) never reads or uses it, not even for a read-only call.
+The ONLY sanctioned credential path is your role's minted token: desktoken <role>. It prints the path of a token file; pass that file's contents as GH_TOKEN to the one command that needs it, and never print or export the token.
+If the mint fails or comes back empty, STOP and report it. Do not fall back to the stored login, another account, or another way of reading the same token: a block is a stop signal, and substitution is an escalation-worthy policy violation.`, call.target),
+	}, true
 }

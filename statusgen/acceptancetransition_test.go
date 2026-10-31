@@ -20,6 +20,11 @@ func transitionFixtureAt(t *testing.T, merge ...bool) transitionFixture {
 
 func contextFixture(t *testing.T, merge []bool, edit func(string, string) string) transitionFixture {
 	t.Helper()
+	return contextHistoryFixture(t, merge, edit, nil)
+}
+
+func contextHistoryFixture(t *testing.T, merge []bool, edit func(string, string) string, historyEdit func(string) string) transitionFixture {
+	t.Helper()
 	change := func(stage, body string) string {
 		if edit != nil {
 			return edit(stage, body)
@@ -63,6 +68,9 @@ func contextFixture(t *testing.T, merge []bool, edit func(string, string) string
 	delivery := vfRev(t, root, "HEAD")
 	history := "Historical result: row 2 failed; retained for diagnosis.\n"
 	body = strings.Replace(body, "## Evidence\n", "## Evidence\n"+history, 1)
+	if historyEdit != nil {
+		body = historyEdit(body)
+	}
 	if e = os.WriteFile(path, []byte(body), 0644); e != nil {
 		t.Fatal(e)
 	}

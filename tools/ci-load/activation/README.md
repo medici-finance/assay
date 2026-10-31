@@ -147,6 +147,11 @@ not have to rediscover them.
    assumption converts a green gate into an unexplained red. The prerequisite is a one-job
    probe that actually executes on `ubuntu-latest` in this repository.
 
+   *Update (#3939):* that prerequisite has since been met. `ci.yml`'s `scope` job and its
+   required `build-test` job run on `ubuntu-latest` and execute on every pull request, and
+   `changelog-check.yml` moved to `ubuntu-latest` in the #3939 fix. The `statusgen-board`
+   lint job is still on the self-hosted pool.
+
 2. **A `paths:` filter on `verify-gate-open.yml`.** It runs on every push to `main` with no
    filter, and its input is `statusgen --root . --verify-issues` over `docs/streams/**` plus
    the existing issue markers — so a `main` push touching only Go code cannot make a brief

@@ -69,6 +69,7 @@
     "ASSAY_DETERMINISTIC_GATE_PATTERNS",
     "ASSAY_FORMER_HUMAN_LOGIN_MAP",
     "ASSAY_GITLAB_DISPLAY_NAMES",
+    "ASSAY_GITLAB_ROLE_EMAILS",
     "ASSAY_GITLAB_SESSION_EMAILS",
     "ASSAY_HOME_REPO",
     "ASSAY_HUMAN_LOGIN_MAP",
@@ -98,7 +99,7 @@
     "ASSAY_BLESS_LOGIN": "ada:1001",
     "ASSAY_TRUSTED_LOGINS": "ada:1001,shared-agent:100002,unpinned-human,ops-bot:5005",
     "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003,worker=example-worker-app:4004",
-    "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/untriggered:no-ci:private,example-org/open:ci:public,example-org/unstated,pattern-org/*",
+    "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/untriggered:no-ci:private,example-org/open:ci:public,example-org/inner:ci:internal,example-org/unstated,pattern-org/*",
     "ASSAY_HUMAN_LOGIN_MAP": "ada-display:ada",
     "ASSAY_ASSERTED_HUMANS": "ops-bot:5005"
   },
@@ -299,6 +300,13 @@
       "allowed": true,
       "ciRequired": true,
       "visibility": "public"
+    },
+    {
+      "why": "internal visibility is honoured when stated and is its OWN value, never read as private (it is instance-visible, so it risk-classes and takes the public form like public)",
+      "repo": "example-org/inner",
+      "allowed": true,
+      "ciRequired": true,
+      "visibility": "internal"
     },
     {
       "why": "UNSTATED policy takes the fail-closed defaults: CI REQUIRED, visibility UNKNOWN. Mutations M11/M12 flipped exactly these two and survived the old suite",

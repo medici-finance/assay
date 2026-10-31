@@ -59,6 +59,7 @@ func main() {
 		representedPRs = liveRepresentedPRs
 		// The briefs-authoring exemption's file transport (#1339), wired beside it for the same reason.
 		representedPRFiles = liveRepresentedPRFiles
+		representedPRBatchFiles = liveRepresentedPRBatchFiles
 		return run(os.Args[1:])
 	}))
 }

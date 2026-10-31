@@ -542,6 +542,14 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the scope-skip and matrix-leg guards read ci.yml, so every ci.yml change must run them",
 		},
 		{
+			test:   "tools/desk/internal/deskkit/labelcancel_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{".github/workflows"},
+			runInvokes: deskShardInvokes,
+			why:        "the label-cancel guard reads every workflow, so any workflow change must run it (#3939)",
+		},
+		{
 			test:   "tools/desk/internal/regression/manifest_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
 			prJob: deskFloorJob, pushJob: deskFloorJob,
