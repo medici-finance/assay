@@ -332,13 +332,13 @@ func TestRemoveOwnLockedSubmoduleEditRefused(t *testing.T) {
 
 	sub := filepath.Join(t.TempDir(), "sub")
 	mustGit(t, "", "init", "-q", "-b", "main", sub)
-	mustGit(t, sub, "config", "user.email", "t@e.st")
+	mustGit(t, sub, "config", "user.email", "t@example.com")
 	mustGit(t, sub, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(sub, "lib.go"), "package lib\n")
 	mustGit(t, sub, "add", "lib.go")
 	mustGit(t, sub, "commit", "-q", "-m", "lib")
 	mustGit(t, home, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "vendor")
-	mustGit(t, home, "-c", "user.email=t@e.st", "-c", "user.name=Test", "commit", "-q", "-m", "add the submodule")
+	mustGit(t, home, "-c", "user.email=t@example.com", "-c", "user.name=Test", "commit", "-q", "-m", "add the submodule")
 	mustGit(t, home, "push", "-q", "-u", "origin", "HEAD")
 
 	writeFile(t, filepath.Join(home, "vendor", "lib.go"), "package lib // edited\n")
