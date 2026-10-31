@@ -145,13 +145,15 @@ release. Local root-owned tool installation remains a separate operator act.
 ## Validation
 
 ```sh
-python3 -B -m unittest discover -s tools/release -p images_test.py -v
+python3 -B -m unittest tools.release.images_test tools.release.ci_step_test -v
 sh containers/scripts/layer-secret-scan.test.sh
 sh containers/scripts/layer-secret-scan.mutate.sh
 ```
 
 The image-producer tests use fake Docker and check real metadata and artifact
-bytes without registry access. The scan suites separately prove real-key and
+bytes without registry access. `ci_step_test` checks, from outside that suite, that
+CI still runs it on the `rest` shard, fails the shard when it fails and stops
+it within 15 minutes. The scan suites separately prove real-key and
 hidden-layer detection, fail-closed errors and exact-label precision. The
 complete release workflow must still be exercised after maintainer promotion.
 

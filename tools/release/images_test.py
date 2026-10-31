@@ -1,4 +1,5 @@
 """Offline release-producer tests; fake Docker, real artifact bytes and manifests."""
+from collections import Counter
 import copy
 import fnmatch
 import hashlib
@@ -48,6 +49,35 @@ def workflow_steps(block):
     return dict(re.findall(r'(?ms)^      - name: ([^\n]+)\n(.*?)(?=^      - |\Z)', block))
 
 
+# The release jobs that build and publish run on fixed, reviewed labels; the
+# general CI pipeline (ci.yml) runs on GENERAL_CI_RUNNER and must never be one.
+RELEASE_RUNNERS = {'artifacts': 'medici-builder-release',
+                   'release': 'medici-builder-public-release'}
+GENERAL_CI_RUNNER = 'medici-builder-public'
+
+
+def job_runner(block):
+    """The job's runner label, or None unless it is ONE literal job-level label."""
+    bindings = re.findall(r'(?m)^( *)runs-on:(.*)$', block)
+    if len(bindings) != 1 or bindings[0][0] != '    ':
+        return None
+    label = bindings[0][1].strip()
+    return label if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', label) else None
+
+
+def runner_binding_problems(text):
+    """Each privileged release job names its own fixed label, never an expression."""
+    jobs = workflow_jobs(text)
+    problems = []
+    for name, label in RELEASE_RUNNERS.items():
+        block = jobs.get(name, '')
+        if re.search(r'(?m)^ *runs-on:.*\$\{\{', block):
+            problems.append(name + ' must not select its runner through an expression')
+        if job_runner(block) != label:
+            problems.append(name + ' must bind exactly the fixed runner label ' + label)
+    return problems
+
+
 def publication_problems(text):
     """Check the approval boundary and the order of externally visible writes."""
     blocks = workflow_jobs(text)
@@ -63,7 +93,7 @@ def publication_problems(text):
     needs = {item.strip() for item in match.group(1).split(',')} if match else set()
     if not {'resolve', 'guard', 'test', 'artifacts', 'runner-arm64'} <= needs:
         problems.append('publication must wait for all preparation gates')
-    if 'runs-on: medici-builder-public-release' not in publisher:
+    if job_runner(publisher) != RELEASE_RUNNERS['release']:
         problems.append('publisher needs the dedicated Docker-capable release runner')
     for permission in ('contents', 'packages'):
         if not re.search(r'^      ' + permission + r': write$', publisher, re.M):
@@ -109,6 +139,108 @@ def publication_problems(text):
         if value not in publisher:
             problems.append('missing publication guard: ' + value)
     return problems
+
+
+MUTATION_REPORTS = {
+    'internal/deskkit/mutations.json': 'bodycheck.report',
+    'cmd/desksourceguard/mutations.json': 'desksourceguard.report',
+    'internal/loopengine/mutations.json': 'loopengine-dedupe.report',
+    'internal/loopengine/mutations-retry.json': 'loopengine-retry.report',
+    'cmd/reviewloop/mutations.json': 'reviewloop.report',
+    'cmd/deskclose/mutations.json': 'deskclose.report',
+    'cmd/deskmerge/mutations.json': 'deskmerge.${MUHAR_SHARD%%/*}.report',
+}
+DESKMERGE = 'cmd/deskmerge/mutations.json'
+
+
+def mutation_routing_problems(text):
+    """Expand the release test matrix and bind each mutation harness to its report.
+
+    muhar still owns baselines, controls and per-mutant verdicts. This checks
+    that scheduling neither omits nor duplicates a full harness or a deskmerge
+    shard, that every scheduled harness uploads its report, and that each
+    harness keeps its verdict gate and report name.
+    """
+    test = workflow_jobs(text).get('test', '')
+    problems = []
+    matrix = re.findall(r'(?m)^          - leg: (\S+)(?:\n            shard: (\S+))?', test)
+    if not matrix or len(matrix) != len(set(matrix)):
+        problems.append('test matrix must contain unique leg/shard entries')
+    if 'fail-fast: false' not in test:
+        problems.append('all matrix verdicts must run without fail-fast cancellation')
+    steps = workflow_steps(test)
+    upload = steps.get('Upload captured mutation reports (tool-validation pack)', '')
+    upload_legs = set(re.findall(r"matrix\.leg == '([^']+)'", upload))
+    if 'if-no-files-found: error' not in upload or 'strategy.job-index' not in upload:
+        problems.append('each mutation leg must upload its reports without collision or omission')
+    actual = Counter()
+    for name, step in steps.items():
+        specs = re.findall(r'-spec ([a-zA-Z0-9_./-]+\.json)', step)
+        if not specs:
+            continue
+        if len(specs) != 1 or specs[0] not in MUTATION_REPORTS:
+            problems.append('unknown or ambiguous mutation harness: ' + name)
+            continue
+        spec = specs[0]
+        match = re.search(r"(?m)^        if: matrix\.leg == '([^']+)'$", step)
+        if not match:
+            problems.append('mutation harness has no single explicit matrix leg: ' + spec)
+            continue
+        leg = match.group(1)
+        if leg not in upload_legs:
+            problems.append('mutation harness report is not uploaded: ' + spec)
+        if ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate'" not in step
+                or 'set -euo pipefail' not in step or 'go run ./cmd/muhar -j 0 ' not in step):
+            problems.append('mutation verdict gate changed: ' + spec)
+        if ('${RUNNER_TEMP}/tv-reports/' + MUTATION_REPORTS[spec] + '"') not in step:
+            problems.append('mutation report identity changed: ' + spec)
+        for entry, shard in matrix:
+            if entry != leg:
+                continue
+            if spec == DESKMERGE:
+                if (shard not in ('0/3', '1/3', '2/3')
+                        or '-shard "$MUHAR_SHARD"' not in step
+                        or 'MUHAR_SHARD: ${{ matrix.shard }}' not in step):
+                    problems.append('deskmerge must retain its exact three shards')
+                    continue
+                actual['deskmerge.' + shard[0] + '.report'] += 1
+            else:
+                if shard or re.search(r'report=\$\(go run[^\n]*-shard ', step):
+                    problems.append('full mutation harness unexpectedly sharded: ' + spec)
+                actual[MUTATION_REPORTS[spec]] += 1
+    expected = Counter(report for spec, report in MUTATION_REPORTS.items() if spec != DESKMERGE)
+    expected.update('deskmerge.' + str(i) + '.report' for i in range(3))
+    if actual != expected:
+        problems.append('matrix must execute every full harness and deskmerge shard exactly once')
+    return problems
+
+
+def native_transport_problems(text):
+    """runner-arm64 reads every build artifact and fails on an empty upload."""
+    native = workflow_jobs(text).get('runner-arm64', '')
+    problems = []
+    downloads = [step for step in re.findall(r'(?ms)^      - (.*?)(?=^      - |\Z)', native)
+                 if step.startswith('uses: actions/download-artifact@')]
+    if not any(re.search(r'(?m)^          pattern: release-build-\*$', step)
+               and re.search(r'(?m)^          merge-multiple: true$', step) for step in downloads):
+        problems.append('runner-arm64 must download every release-build-* artifact, merged')
+    upload = workflow_steps(native).get('Upload checked native arm64 image', '')
+    if not re.search(r'(?m)^          if-no-files-found: error$', upload):
+        problems.append('the native arm64 upload must fail when it finds no files')
+    return problems
+
+
+def ci_contract_step(text):
+    return workflow_steps(workflow_jobs(text).get('build-test-shard', '')).get(
+        'Test release image contract', '')
+
+
+def mutate_job(text, job, old, new):
+    """Replace OLD with NEW inside one job only; refuse an ambiguous target."""
+    block = workflow_jobs(text)[job]
+    if text.count(block) != 1 or block.count(old) != 1:
+        raise AssertionError('control target is not unique: ' + job + ': ' + old)
+    return text.replace(block, block.replace(old, new, 1), 1)
 
 
 class ImagesTest(unittest.TestCase):
@@ -699,6 +831,95 @@ if args[:2] == ['image', 'inspect']:
                 self.assertNotIn('BINFMT_IMAGE', text)
                 self.assertNotIn('--privileged', text)
 
+    # regression: #5091
+    def test_mutation_matrix_preserves_all_harnesses_and_reports(self):
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            with self.subTest(path=path):
+                self.assertEqual(mutation_routing_problems((HERE.parents[1] / path).read_text()), [])
+
+    # regression: #5091
+    def test_mutation_routing_omission_and_duplication_controls(self):
+        main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
+        self.assertEqual(mutation_routing_problems(main), [])
+        bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        mutants = {
+            'missing-light-leg': ('          - leg: muhar-light\n', ''),
+            'duplicate-light-leg': ('          - leg: muhar-light\n',
+                                    '          - leg: muhar-light\n          - leg: muhar-light\n'),
+            'missing-deskmerge-shard': ('          - leg: deskmerge\n            shard: 2/3\n', ''),
+            'changed-shard-count': ('            shard: 2/3\n', '            shard: 2/4\n'),
+            'fail-fast': ('      fail-fast: false\n', '      fail-fast: true\n'),
+            'missing-light-upload': ("matrix.leg == 'muhar-light' || ", ''),
+            'upload-name-collision': ('tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}',
+                                      'tv-reports-${{ matrix.leg }}'),
+            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-light'", "'statusgen'")),
+            'missing-caught-gate': ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<\"$report\"; then\n"
+                                    "            echo \"::error::a bodycheck",
+                                    "grep -qE 'Totals:' <<<\"$report\"; then\n"
+                                    "            echo \"::error::a bodycheck"),
+            'renamed-report': ('/tv-reports/bodycheck.report', '/tv-reports/other.report'),
+        }
+        for name, (old, new) in mutants.items():
+            with self.subTest(name=name):
+                self.assertEqual(main.count(old), 1, 'control target is not unique')
+                mutant = main.replace(old, new, 1)
+                self.assertTrue(mutation_routing_problems(mutant), 'routing control survived')
+
+    # regression: #5091
+    def test_release_runners_fixed(self):
+        root = HERE.parents[1]
+        ci = workflow_jobs((root / '.github/workflows/ci.yml').read_text())
+        # The planted label is the one general CI really runs on.
+        self.assertEqual(job_runner(ci['build-test-shard']), GENERAL_CI_RUNNER)
+        self.assertNotIn(GENERAL_CI_RUNNER, RELEASE_RUNNERS.values())
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (root / path).read_text()
+            with self.subTest(path=path):
+                self.assertEqual(runner_binding_problems(text), [])
+        text = (root / '.github/workflows/release.yml').read_text()
+        for job, label in RELEASE_RUNNERS.items():
+            line = '    runs-on: ' + label + '\n'
+            for name, new in {
+                'general-ci': '    runs-on: ' + GENERAL_CI_RUNNER + '\n',
+                'expression': "    runs-on: ${{ vars.RELEASE_RUNNER || '" + label + "' }}\n",
+                'label-list': '    runs-on: [' + label + ', ' + GENERAL_CI_RUNNER + ']\n',
+                'shadowed': '    runs-on: ' + GENERAL_CI_RUNNER + '\n    # runs-on: ' + label + '\n',
+            }.items():
+                with self.subTest(job=job, plant=name):
+                    self.assertTrue(runner_binding_problems(mutate_job(text, job, line, new)))
+        # A general-CI publisher also fails the publication gate on its own.
+        self.assertTrue(publication_problems(mutate_job(
+            text, 'release', '    runs-on: medici-builder-public-release\n',
+            '    runs-on: ' + GENERAL_CI_RUNNER + '\n')))
+
+    # regression: #5091
+    def test_native_transport_held(self):
+        root = HERE.parents[1]
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            with self.subTest(path=path):
+                self.assertEqual(native_transport_problems((root / path).read_text()), [])
+        text = (root / '.github/workflows/release.yml').read_text()
+        for name, (old, new) in {
+            'not-merged': ('          merge-multiple: true\n', ''),
+            'merge-off': ('          merge-multiple: true\n', '          merge-multiple: false\n'),
+            'one-platform': ('          pattern: release-build-*\n', '          pattern: release-build-common\n'),
+            'empty-upload-passes': ('          if-no-files-found: error\n', '          if-no-files-found: warn\n'),
+            'empty-upload-default': ('          if-no-files-found: error\n', ''),
+        }.items():
+            with self.subTest(name=name):
+                self.assertTrue(native_transport_problems(mutate_job(text, 'runner-arm64', old, new)))
+
+    # regression: #5091 — the CI step must also run the suite that checks the
+    # step from outside this file (tools/release/ci_step_test.py).
+    def test_ci_runs_step_suite(self):
+        text = (HERE.parents[1] / '.github/workflows/ci.yml').read_text()
+        step = ci_contract_step(text)
+        self.assertRegex(step, r'(?m)^        run: python3 -B -m unittest [^\n]*'
+                               r'(?<![\w.])tools\.release\.ci_step_test(?![\w.])')
+        dropped = text.replace(' tools.release.ci_step_test', '', 1)
+        self.assertNotEqual(dropped, text)
+        self.assertNotRegex(ci_contract_step(dropped), r'tools\.release\.ci_step_test')
+
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
         main = (root / '.github/workflows/release.yml').read_text()
@@ -730,6 +951,14 @@ if args[:2] == ['image', 'inspect']:
                                              '- name: Create GitHub release and upload assets\n        if: true', 1),
             'dry-run-ref-check': main.replace("- name: Validate and checksum the published image references\n        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
                                                '- name: Validate and checksum the published image references\n        if: true', 1),
+            # regression: #5091 — the publisher runner is one exact job-level label.
+            'publisher-general-ci': main.replace('    runs-on: medici-builder-public-release\n',
+                                                 '    runs-on: medici-builder-public\n', 1),
+            'publisher-label-suffix': main.replace('    runs-on: medici-builder-public-release\n',
+                                                   '    runs-on: medici-builder-public-release-shared\n', 1),
+            'publisher-label-shadowed': main.replace('    runs-on: medici-builder-public-release\n',
+                                                     '    runs-on: medici-builder-public\n'
+                                                     '    # runs-on: medici-builder-public-release\n', 1),
         }
         for name, mutant in mutants.items():
             with self.subTest(name=name):
