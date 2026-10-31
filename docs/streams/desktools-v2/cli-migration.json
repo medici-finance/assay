@@ -163,11 +163,6 @@
     },
     {
       "class": "library",
-      "pattern": "tools/evidence-automerge/merge_clean.py",
-      "reason": "internal protected-merge helper called by the main-only Evidence workflow; no shebang, main guard, argument parser or independent operator command"
-    },
-    {
-      "class": "library",
       "pattern": "tools/changelog/reconcile.py",
       "reason": "internal classification library loaded by the existing check.sh entrypoint; no shebang, main guard, argument parser or independent operator command (#2686)"
     },
