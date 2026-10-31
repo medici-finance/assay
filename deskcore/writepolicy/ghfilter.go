@@ -9,12 +9,13 @@ import "strings"
 // lists. Selection and formatting filters stay allowed, whatever they spell in
 // a string, a field or a jq variable of their own.
 //
-// The text is read as shell words with their quotes and backslashes removed, not
-// parsed as a program: a flag in any word counts, in any command, as long as a
-// gh word is somewhere in the text. A quoted word that could hold a command is
-// read again, as are command substitutions. Text the reader does not model can
-// leave it out of step with the shell, so resync reads the text again without what
-// came before.
+// The reader tries to read the text as shell words, taking out the quotes and
+// backslashes the shell removes, without parsing it as a program: a flag it finds in
+// a word counts, in any command, as long as a gh word is somewhere in the text. It
+// tries to read again a quoted word that could hold a command, and a command
+// substitution. Text the reader does not model can leave it out of step with the
+// shell, so resync reads the text again without what came before. These attempts do
+// not always succeed.
 // docs/write-policy.md states the limits.
 //
 // Cost: one pass for the gh word, at most ghFilterDepth+1 passes over any byte in
@@ -148,8 +149,7 @@ func (g *ghFilterScan) commands(s string, p int, stop ghStop, d int) int {
 	return min(p, len(s))
 }
 
-// redirection steps past a redirection at p and its target, which is never a
-// flag or a filter; a target in quotes can still hold a command (a here-string).
+// redirection tries to step past a redirection at p and its target; a target in quotes can still hold a command (a here-string).
 // A process substitution is left to the caller as a command list. The operator's
 // `-` (`<<-`) and `!` are part of it. Only zsh reads a `!` that way: with a blank
 // after it, the next word is a target there and an ordinary word elsewhere, so it
@@ -227,7 +227,7 @@ func ghFilterFlag(word string) (at int, flag bool) {
 var ghStandIns = strings.NewReplacer(string(rune(ghExpansion)), "", string(rune(ghDollarQuote)), "")
 
 // filterFlag reads the word as a filter flag. A stand-in is taken to give nothing,
-// so an expansion beside the flag does not hide it. value is what the word gives
+// so the flag is read with it removed. value is what the word gives
 // the filter, stand-ins kept, and strs whether its strings count as strings; next
 // is set when the value is the next word.
 func (w ghWord) filterFlag() (value string, strs, next, flag bool) {
@@ -282,7 +282,7 @@ func (w ghWord) namesDescriptor(s string) bool {
 }
 
 // braceFlag reports whether a brace expansion could produce a filter flag. The
-// expansion is not worked out, so this fails closed on any that could.
+// expansion is not worked out, so this refuses one it finds that could.
 func (w ghWord) braceFlag() bool {
 	t := ghStandIns.Replace(w.text)
 	if !w.brace || t == "" || t[0] != '-' && t[0] != '{' {

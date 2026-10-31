@@ -331,8 +331,8 @@ func TestGhFilterScanWorkBounded(t *testing.T) {
 
 // regression: #5078
 func TestGhFilterBudgetFailClosed(t *testing.T) {
-	// Text that spends the budget is judged whole, with no string taken as one, so
-	// padding hides nothing, and the cost is a false refusal only on such text.
+	// Text that spends the budget is judged whole, with no string taken as one. These
+	// rows show that judgment; the cost is a false refusal on such text.
 	pad := "gh " + strings.Repeat(`\ `, 200000)
 	for _, tail := range []string{"\n# it's\ngh api x --jq '.a|env'", ` --jq 'env.X'`, ` --jq '"env"'`} {
 		start := time.Now()
@@ -729,8 +729,8 @@ func TestGhFilterWordsLikeShell(t *testing.T) {
 
 // regression: #5078
 func TestGhFilterBracesFailClosed(t *testing.T) {
-	// The expansion is not worked out: a word that could produce the flag, and any
-	// filter value holding one, is refused whatever it expands to.
+	// The expansion is not worked out: these rows' words that could produce the flag,
+	// and their filter values holding one, are refused whatever they expand to.
 	long, short := "--jq", "-q"
 	for _, line := range []string{
 		"gh api x {" + long + ",.a}",

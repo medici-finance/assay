@@ -195,20 +195,21 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 
 ## gh output filter check
 
-In a desk session (the same two variables as above) a Bash call is refused when its
-text holds the word `gh` and a `--jq` or `-q` filter, written out in the call, that
-reads beyond the JSON output. The list of what counts is in the code
+In a desk session (the same two variables as above) a Bash call is refused when the
+check finds in its text the word `gh` and a `--jq` or `-q` filter, written out in the
+call, that reads beyond the JSON output. The list of what counts is in the code
 (`deskcore/writepolicy/ghfilter.go`, `Classification.ReadsOutsideGhOutput`). Ordinary
 selection and formatting filters keep working. The check runs on any gh command.
 
-The text is read as shell words with the quotes and backslashes those shells remove
-taken out, so quoting does not hide a flag or its value, and the redirection operators
-those shells have are skipped between them. Where the shells disagree on a word, it is
-refused if either reading reads beyond the output.
+The reader tries to read the text as shell words the way those shells do. It tries to
+take out the quotes and backslashes they remove and to step past redirections between
+a flag and its value. Where the shells read a word differently, it tries to judge each
+reading. These attempts do not always succeed, so text it gets wrong can still pass.
+
 A string inside a filter is only taken as a string when the flag and the value are
-plainly quoted. A quoted word that could hold a command is read again, and so is a
-substituted command. What the shell expands in a filter is not filter text. A brace
-expansion in a flag or a value is refused without being worked out.
+plainly quoted. The reader tries to read again a quoted word that could hold a command,
+and a substituted command. What the shell expands in a filter is not filter text. A brace
+expansion it finds in a flag or a value is refused without being worked out.
 
 Text the reader does not model can put it out of step with the shell. To recover, it
 reads the text again, under a budget. A call that spends the budget is judged whole,
@@ -223,8 +224,8 @@ settings. These are out of scope:
 - A flag, a filter or the gh word that the shell computes, decodes from an escape or
   matches against files, including one assembled from a variable.
 - Words changed by the session's shell settings, aliases or functions from outside the call.
-- Text the reader does not follow, which can still hide a filter, even one written out
-  in the call.
+- Text the reader does not follow or reads wrongly, which can still hide a filter, even
+  one written out in the call.
 
 The check reads words without parsing the shell or tying a flag to its command. That has
 two costs. Some text that is not a gh filter is refused, and the refusal names the way
