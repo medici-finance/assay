@@ -141,3 +141,8 @@ contracts remain. Authoring /09 did not activate a profile, and neither does str
 activation under amendment 27, which takes effect on the maintainer's merge of
 [PR #4349](https://github.com/medici-finance/assay/pull/4349); /09's individual human
 decision and qualification requirements remain.
+
+
+## Desk-instance amendment — 25 October 2026
+
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.

@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the concrete issuer and caller mapping, entitlement and revocation bounds, and effective private-data isolation from the demonstrated design. Do not infer approval of a later draft authentication mechanism from an older architecture merge."
 issues: []
 schema: brief-v2
-version: 3
+version: 5
 id: 16d1b169-2541-4b85-90cc-d0d42945e86c
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -41,6 +41,9 @@ consumers:
 ---
 
 # Brief 03 — Qualify mounted cell API authorization and privacy
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -98,6 +101,10 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 - Preserve the single R2 PostgreSQL runtime, R3 isolation, R4 role authority and R6 forge mirror. A service, terminal, restored file or cached result grants no authority.
 - Keep this stream parked until admitted. Stop at implemented; independent verification, human acceptance and operational cutover remain distinct.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 
 1. Compose the actual served mux using 02 and the existing forge-neutral/40 capability/admission interfaces. Bind caller class server-side, cell/audience, provider/repository scope, access epoch, expiry and revocation. Resolve any inconsistency between the ratified mTLS/signed-token requirements and a later issuer proposal before implementing that branch; do not add a new login scheme by convenience.
@@ -109,6 +116,8 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 4. Exercise store admission with ingress deliberately bypassed, and existing executor authority with client checks bypassed. Prove operator terminal/log outputs are unavailable to external/agent callers and scrubbed before serving. Quarantine free-text requests unless the existing contained-reader and answer-only effect boundary are qualified; do not add a second comms ingress. Preserve rate limits and bounded request/reply audit digests without credentials.
 
 5. Document the explicit exposure profile, chosen revocation contract and remaining gates; no real credential provisioning or listener deployment. Keep each negative control re-runnable against the real production composition.
+
+- **Instance amendment:** Apply existing cell/role authorization before instance joins/counts/events and bind targeted plans/streams to instance/generation. Possession of another instance name or same role cannot widen caller scope or reveal foreign-cell state. Preserve read/status/plan-only exposure, no API apply, and operator/compatibility log custody restrictions.
 
 ## Interface and acceptance contract
 
@@ -150,6 +159,7 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 3 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestCellLowerBounds$' ./internal/cellapi/... > "$o" && grep -F -- '--- PASS: TestCellLowerBounds ' "$o")` | exit 0; named PASS. Bypassed ingress still meets store admission and separate executor role/epoch checks. Agent direct human-act calls, unsanitized terminal output and unavailable reader are refused. |
 | 4 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/03 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers require review. |
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellapi/... -run '^TestDeskInstanceAuth$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceAuth ' "$o")` | Named test executes (zero matching tests is not a pass); With UI bypassed, wrong cell/instance scope and stale generation reveal no object/count/log data or lifecycle authority. Mutation: authorize only from the descriptive name makes the test fail. |
 
 ## Threat model and detection
 

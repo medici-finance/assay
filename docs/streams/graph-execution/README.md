@@ -401,3 +401,7 @@ is not widened. graph-execution/02 stays held until /33 lands, read as /33 reach
 the hold note is in brief 02's `## Review` section. /33 is a Wave 0 item with no open
 dependency, because /02 and /09's deliverables are already on main; it is a new prerequisite of
 /14, which binds the re-pinned pattern at dispatch.
+
+## Desk-instance amendment — 25 October 2026
+
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.

@@ -250,3 +250,8 @@ inputs, including held/unknown sources, while claims and final checks stay indep
 Retain existing adopter cutover and drain/reconcile/fence ownership; do not revive withdrawn
 policy/core briefs or infer adoption from approved architecture. The efficiency spec's
 ranked provider-cost model is an estimate to qualify, not a new activation/cost guarantee.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+The instance delta extends existing R2/R3 owners before managed multi-instance activation. graph-execution/16 and /26 provide approximate role pacing and exact instance ownership; /27 binds standing clients; desk-containers/33 adds desired population and naming, then /18–19 and /28–29 consume it. R7 contract/projection work may proceed against that versioned interface without activating apply or requiring workflow adoption. Existing package gates and active-work approvals retain their scope. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

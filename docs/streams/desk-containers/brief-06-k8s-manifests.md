@@ -303,3 +303,8 @@ Risk-bearing values. The gate is model; the risk answers are present and all "no
 
 Gate: model, unchanged risk answers: generic offline templates only, no custody redesign.
 Review all structured negative controls and the honest compatibility/managed distinction.
+
+
+## Managed instance follow-on — 25 October 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) retains this compatibility delivery and its one-role workload/PVC Evidence. desk-containers/28, consuming /33 and agent-execution/09, owns managed instance rendering and separate workspaces. Increasing replicas over the compatibility role volume is not a multi-instance implementation; no existing Task/Verify/version/Evidence is changed here.

@@ -8,7 +8,7 @@ why: >-
   Working out the cause took a process listing and the source code every time. `doctor` runs
   every known check at once, names the cause in operator terms, and offers each safe fix in
   one plan the operator confirms at the terminal.
-wave: 12
+wave: 13
 depends: ["desk-containers/15", "desk-containers/18", "desk-containers/20", "desk-containers/23"]
 unblocks: ["desk-containers/24"]
 effort: M
@@ -16,7 +16,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
@@ -36,6 +36,9 @@ consumers:
 ---
 
 # Brief 21 — `cellctl doctor <cell>`
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 files:
@@ -64,10 +67,16 @@ facts:
 - Every fix calls an existing verb or #2880's functions; doctor adds no new mutation of its own.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 1. Implement the finding catalogue over `cellop.Inventory`.
 2. Implement bare `doctor` as read-only, and the `doctor --apply` interactive path.
 3. Docs (catalogue with codes and fixes); changelog fragment.
+
+- **Instance amendment:** Diagnose instance-specific lease/workspace/UID and desired-population drift plus partial replacement and pacing/backoff observations. Plans bind instance/generation and desired revision; never repair a paused peer by starting it, reclaim another instance or reset a role budget. Retain existing independent precondition remeasurement and plan protections.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -81,6 +90,7 @@ facts:
 | 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorEmitsCellOpV1' -count=1 -v` | `--- PASS` — `doctor --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/21` | exit 0 — the `consumers:` routing holds against the branch diff |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDoctorDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDoctorDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Stale repair intent cannot stop a replacement or resume a paused peer; pacing backoff shows the estimated work/target and freshness rather than an exact reserved-slot claim. Mutation: address repairs by role only makes the test fail. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

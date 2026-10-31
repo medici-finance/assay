@@ -180,3 +180,7 @@ Use inherited workload/measurement contracts; before exposure the human owner se
 any missing deployment targets and the supported client-version window. Readiness,
 recovery, effects and acceptance remain separate facts. New human decisions default to
 `none`; the private source's former destination choice is already answered by #3669.
+
+## Desk-instance amendment — 25 October 2026
+
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs without changing lifecycle status or completed Evidence. R2/R3 exact instance ownership and approximate role pacing → standing clients (graph-execution/27) → desired-population adapter (desk-containers/33) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.
