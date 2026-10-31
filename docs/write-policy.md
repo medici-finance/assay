@@ -138,6 +138,27 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
 
+## gh output filter check
+
+In a desk session (the same two variables as above) a Bash call is refused when its
+text holds the word `gh` and a literal `--jq` or `-q` filter that reads beyond the JSON
+output. The list of what counts is in the code (`deskcore/writepolicy/ghfilter.go`,
+`Classification.ReadsOutsideGhOutput`). Ordinary selection and formatting filters
+keep working. The check runs on any gh command.
+
+**Limit: this is not a complete control.** It reads only literal filter text in the
+call, against that list, which was checked on gh 2.102.0 alone. A read with no filter
+and printing a variable with a plain shell command are out of scope, as are other
+commands in the call and other gh flags. A filter that is not literal in the call is
+not read. Like the check above, it does not parse the shell, so some text that is not
+a gh filter is refused; the refusal names the way through.
+
+| # | Verify | Method | Expected |
+|---|---|---|---|
+| 1 | Core: refused and allowed rows, and work bounded on long inputs | `cd deskcore && go test ./writepolicy/ -run 'TestGhFilter' -count=1` | PASS |
+| 2 | Hook: refused in a desk session, ordinary filters allowed, silent outside one | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookGhFilter' -count=1` | PASS |
+| 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/gh-filter-unmatched' -count=1` | PASS (mutant caught) |
+
 ## Consumers and migration
 
 | Consumer | Disposition / owner | Retirement proof |

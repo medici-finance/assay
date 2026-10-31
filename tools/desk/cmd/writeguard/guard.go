@@ -97,3 +97,21 @@ The ONLY sanctioned credential path is your role's minted token: desktoken <role
 If the mint fails or comes back empty, STOP and report it. Do not fall back to the stored login, another account, or another way of reading the same token: a block is a stop signal, and substitution is an escalation-worthy policy violation.`, call.target),
 	}, true
 }
+
+// ghFilterRefusal refuses a Bash command whose gh --jq / -q filter reads beyond
+// the JSON output (#5078); like ambientTokenRefusal, run calls it only in a desk
+// session. The decision is writepolicy's, over the call's one classification.
+func ghFilterRefusal(call *classifiedCall) (Verdict, bool) {
+	if !call.cl.ReadsOutsideGhOutput() {
+		return Verdict{}, false
+	}
+	return Verdict{
+		Block: true,
+		Reason: fmt.Sprintf(`writeguard: BLOCKED — gh output filter reads beyond the JSON output.
+This Bash call's --jq or -q filter names env, $ENV, now, localtime or strflocaltime:
+  %s
+Filters that select or format the command's JSON are not refused.
+If the name is only data, quote it as a string or a quoted key. The guard does not parse the shell, so a -q on another command beside gh counts as well: use that command's long flag.`, call.target) +
+			"\n" + blockEvasionGuidance,
+	}, true
+}
