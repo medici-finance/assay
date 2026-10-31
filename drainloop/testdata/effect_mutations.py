@@ -48,6 +48,19 @@ mutations = [
     ("outbox-falls-back", "engine.go", "if c.RequireHandoff {",
      "if false && c.RequireHandoff {", "TestOutboxRequiredNoFallback"),
 ]
+# GE/16 preparation: pure record/schema assertions only, not runtime activation.
+mutations += [
+    ("incarnation-ignored", "incarnation.go", "owned.IncarnationID != current.ID",
+     "false", "TestCellFenceBoundary"),
+    ("activation-unchecked", "incarnation.go", "active.Paused || active.StopReceipt == \"\"",
+     "false", "TestCellFenceBoundary"),
+    ("owner-generation-ignored", "incarnation.go", "if presented != owned {",
+     "if false {", "TestCellFenceBoundary"),
+    ("contract-field-drift", "../spec/operator-incarnation-v1.md", "- `KeyRef` —",
+     "- `OldKeyRef` —", "TestIncarnationContractFields"),
+    ("checkpoint-stop-lost", "ownership.go", '`json:"stopped"`',
+     '`json:"stop_discarded"`', "TestCellCheckpointRoundTrip"),
+]
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}

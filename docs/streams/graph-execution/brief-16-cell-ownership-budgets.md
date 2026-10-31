@@ -58,6 +58,8 @@ id: db922112-28f0-44c0-b120-9d6c4f56e103
 
 ## Context
 
+Schema/test preparation (2026-10-31) additionally declares `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py` and `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md`. These are partial preparation; all original delivery obligations remain.
+
 files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned), `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned) — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned).
 
 facts: 04 owns basic effect receipts and reconcile-before-retry. This extension adds ownership/budgets without replacing that protocol or widening the six-method Loop interface.
@@ -67,6 +69,89 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 ## Human decision
 
 Decision-trigger: spec. At implementation pickup, prepare concrete policy choices and negative-path evidence, then file a self-contained decision issue. No response permits no activation; schema/test work may proceed within the declared scope.
+
+### Schema/test preparation — 2026-10-31
+
+This preparation adds passive record contracts, an operator-current-value read port
+and offline negative fixtures. It does not deliver this brief. The existing Task,
+Verify rows 1–11, Evidence, dependencies and human activation gate remain owed.
+No generated board status or lifecycle completion is changed.
+
+#### Human decision block — pending; no option enacted
+
+**Decision:** approve a bounded first Kubernetes operator profile for subsequent
+implementation and qualification of ownership, budgets and restoration fencing.
+A response authorizes only the selected design scope; activation still requires
+the existing separate human gate and consumer qualification. No response leaves
+mutation admission paused. Scope is one Cell execution/publisher group; automatic
+multi-host recovery and R3 repository assignment remain excluded.
+
+1. **Incarnation custody and rotation.** Recommend protected operator-control state
+   on a dedicated persistent volume outside PostgreSQL/CNPG backup and PITR, mounted
+   only by the trusted operator and qualified role executors; mutation is restricted
+   to the operator, with signing material unavailable to model/runner containers.
+   The profile must pin its Kubernetes namespace, execution-group identity, volume,
+   access identities and key reference before implementation activation. Reconstruct,
+   PITR rollback and transfer each rotate identity AND key, even if restored SQL
+   matches an old generation. Alternative: a separately qualified external secret
+   authority with equivalent non-restorable-current semantics. A Git revision or
+   restored database value is never current authority. This choice creates no
+   Kubernetes resources or credentials.
+2. **Reopen procedure.** Recommend operator-confirmed whole-group stop plus old
+   socket/capability invalidation and independent credential revocation/restriction
+   (or expiry), followed by external reconciliation, rotation and fresh executors.
+   Persist a scoped stop-confirmation reference and the new activation binding.
+   Unknown stop, incomplete credential inventory, missing operator state or a
+   mismatched activation remains paused. Alternative: require full manual teardown
+   and reconciliation on every transfer until the automated group-stop boundary is
+   qualified. Neither permits an SQL lease or process list to stand in for fencing.
+3. **Budget and runner boundary.** Recommend no conservative fallback for unavailable
+   brakes: hold until authoritative usage/reservations are recovered or a separately
+   authorized reset is recorded. Keep account/provider/unit/window balances separate,
+   with configured operator headroom and outstanding unknown reservations charged.
+   All preparation, summary, failed, fallback and verification attempts charge
+   original work; pricing/model identities remain references. Only a request-limiting
+   runner may claim a hard per-request cap; launch-only control must reserve a proven
+   request upper bound or hold. Alternative: a separately reviewed per-profile
+   conservative upper bound, never an assumed zero or cross-provider fallback.
+   Synthetic fixture values (100 units, 10 headroom, 30 reserved) are not live policy.
+4. **Unknown effects and handback.** Recommend retain old ownership restrictions and
+   unknown-effect reservations until authoritative reconciliation and independently
+   fenced old writers permit transfer. Providers lacking enforceable dedupe/fencing
+   or confirmed old-writer stop stay held for authorized resolution. Alternative:
+   support those providers in report-only mode with no mutating cohort. Neither
+   claims exactly-once or releases unknown usage because a process restarted.
+5. **Pacing boundary.** Retain the already accepted brake/pacing distinction: unknown
+   brakes hold; effect-class pacing re-derives shared window intents/receipts on every
+   admission, read-class seeds retained shared state, with only one recorded unseeded
+   reset per window/scope/incarnation. Missing/second reset exhausts that window.
+   No relaxing alternative is proposed under this gate.
+
+**Exact response:** select custody option 1A (operator-control volume) or 1B
+(external authority); reopen 2A (qualified group boundary) or 2B (manual teardown);
+budget 3A (hold) or 3B (reviewed upper bound); provider 4A (fenced only) or 4B
+(report-only unsupported providers). Confirm 5 unchanged and name the operator
+accountable for the concrete profile. An unselected or ambiguous item stays held.
+This is a design ruling, not permission to deploy, provision credentials or reopen.
+
+**Evidence available for the ruling:** implementation tests
+`TestCellFenceBoundary`, `TestIncarnationContractFields` and
+`TestCellCheckpointRoundTrip`, with committed negative mutations in
+`drainloop/testdata/effect_mutations.py`, exercise the pure contract and separately
+invoked fake effect boundary. They cover restored owner/generation under an old
+incarnation, stale tuple, absent protected current state, activation/key mismatch,
+retained pause/cancellation/unknown usage and all attempt phases. They do not
+qualify Kubernetes containment, signature custody, real provider enforcement,
+atomic reservations, concurrent owners or PostgreSQL rollback. Those checks remain
+could-not-check in this preparation and required before activation. Independent
+verification has not been performed and no Verify Evidence is recorded here.
+
+**Remaining delivery:** complete Task 1–5 and all original Verify rows; couple
+reservations/ownership/intent at the existing authority; implement real adapter
+conformance, concurrency/crash/restore/handback and brake/pacing tests; qualify
+credential cutover and all consumers. GE/19 owns real PostgreSQL rollback; GE/26
+owns launch enforcement. See `spec/operator-incarnation-v1.md` and
+`spec/cell-checkpoint-v1.md` for the preparation contracts.
 
 ## Read first
 

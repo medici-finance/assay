@@ -205,3 +205,19 @@ drainloop is homed inside `medici-finance/assay` and released under that repo's 
 binary release, so a consumer pins the umbrella version (never a `drainloop/vX`). If independent
 versioning or heavy external adoption ever appears, the promotion trigger is to move it to its
 own repository with its own release tags — a later call recorded in the convergence plan.
+
+## GE/16 preparation: passive records only
+
+The ownership, budget and operator-incarnation records in `ownership.go`,
+`budget.go` and `incarnation.go` prepare the
+[incarnation](../spec/operator-incarnation-v1.md) and
+[checkpoint](../spec/cell-checkpoint-v1.md) contracts. They are not connected to
+Config, Run, the effect path or an ownership store. MatchCellFence compares
+records; its success is not authority, signature verification, current durable
+ownership or a provider fence. No IncarnationSource adapter is installed.
+
+The named schema tests and selected mutations in `testdata/effect_mutations.py`
+use synthetic state and a fake boundary. They do not complete GE/16 or qualify
+durable reservation/concurrency, real restart/rollback, credential cutover,
+Kubernetes containment or brake/pacing enforcement. All existing GE/16 Task and
+Verify obligations remain pending for implementation and independent verification.
