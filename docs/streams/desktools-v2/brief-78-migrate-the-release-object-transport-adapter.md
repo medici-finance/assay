@@ -39,7 +39,7 @@ consumers:
 
 ## Context
 
-- `tools/release/transport.py` is a maintained workflow entrypoint at `caf3ef11d9a387218d0128ba90210ea55b30f9b3`: Python argparse; upload/download, nine required coordinate/path flags and three download proof flags.
+- `tools/release/transport.py` (future: re-landed with the release object handoff, which #5089 reverted) was a maintained workflow entrypoint at `caf3ef11d9a387218d0128ba90210ea55b30f9b3`: Python argparse; upload/download, nine required coordinate/path flags and three download proof flags.
 - The existing checker refuses a shipped launcher hidden by a library exclusion. This
   authoring gives it a real pending owner; no checker or ownership budget is changed.
 - `/16` supplies the reference adapter; `/46` owns the existing release command migration,

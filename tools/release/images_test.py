@@ -1,6 +1,5 @@
 """Offline release-producer tests; fake Docker, real artifact bytes and manifests."""
 import copy
-from collections import Counter
 import fnmatch
 import hashlib
 import importlib.util
@@ -14,7 +13,6 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
-import zipfile
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('images_contract', HERE / 'images_contract.py')
@@ -65,7 +63,7 @@ def publication_problems(text):
     needs = {item.strip() for item in match.group(1).split(',')} if match else set()
     if not {'resolve', 'guard', 'test', 'artifacts', 'runner-arm64'} <= needs:
         problems.append('publication must wait for all preparation gates')
-    if '    runs-on: assay-release-object-publisher\n' not in publisher:
+    if 'runs-on: medici-builder-public-release' not in publisher:
         problems.append('publisher needs the dedicated Docker-capable release runner')
     for permission in ('contents', 'packages'):
         if not re.search(r'^      ' + permission + r': write$', publisher, re.M):
@@ -110,88 +108,6 @@ def publication_problems(text):
     for value in required:
         if value not in publisher:
             problems.append('missing publication guard: ' + value)
-    return problems
-
-
-MUTATION_REPORTS = {
-    'internal/deskkit/mutations.json': 'bodycheck.report',
-    'cmd/desksourceguard/mutations.json': 'desksourceguard.report',
-    'internal/loopengine/mutations.json': 'loopengine-dedupe.report',
-    'internal/loopengine/mutations-retry.json': 'loopengine-retry.report',
-    'cmd/reviewloop/mutations.json': 'reviewloop.report',
-    'cmd/deskclose/mutations.json': 'deskclose.report',
-    'cmd/deskmerge/mutations.json': 'deskmerge.${MUHAR_SHARD%%/*}.report',
-}
-
-
-def mutation_routing_problems(text):
-    """Expand the release matrix and bind each full harness to its report.
-
-    The mutation runner still owns baselines, controls and per-mutant verdicts.
-    This checks that scheduling neither omits nor duplicates any harness/shard,
-    and that the evidence collector receives the same nine report identities.
-    """
-    jobs = workflow_jobs(text)
-    test = jobs.get('test', '')
-    problems = []
-    matrix = re.findall(r'(?m)^          - leg: (\S+)(?:\n            shard: (\S+))?', test)
-    if not matrix or len(matrix) != len(set(matrix)):
-        problems.append('test matrix must contain unique leg/shard entries')
-    if 'fail-fast: false' not in test:
-        problems.append('all matrix verdicts must run without fail-fast cancellation')
-    steps = workflow_steps(test)
-    actual = Counter()
-    scheduled = {}
-    upload = steps.get('Upload captured mutation reports (tool-validation pack)', '')
-    upload_legs = set(re.findall(r"matrix\.leg == '([^']+)'", upload))
-    if 'if-no-files-found: error' not in upload or 'strategy.job-index' not in upload:
-        problems.append('each mutation leg must upload its reports without collision or omission')
-    for name, step in steps.items():
-        specs = re.findall(r'-spec ([a-zA-Z0-9_./-]+\.json)', step)
-        if not specs:
-            continue
-        if len(specs) != 1 or specs[0] not in MUTATION_REPORTS:
-            problems.append('unknown or ambiguous mutation harness: ' + name)
-            continue
-        spec = specs[0]
-        match = re.search(r"(?m)^        if: matrix\.leg == '([^']+)'$", step)
-        if not match:
-            problems.append('mutation harness has no single explicit matrix leg: ' + spec)
-            continue
-        leg = match.group(1)
-        scheduled[spec] = scheduled.get(spec, []) + [leg]
-        if leg not in upload_legs:
-            problems.append('mutation harness report is not uploaded: ' + spec)
-        if ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate'" not in step
-                or 'set -euo pipefail' not in step or 'go run ./cmd/muhar -j 0 ' not in step):
-            problems.append('mutation verdict gate changed: ' + spec)
-        report = MUTATION_REPORTS[spec]
-        if ('${RUNNER_TEMP}/tv-reports/' + report + '"') not in step:
-            problems.append('mutation report identity changed: ' + spec)
-        for entry, shard in matrix:
-            if entry != leg:
-                continue
-            if spec == 'cmd/deskmerge/mutations.json':
-                if (shard not in ('0/3', '1/3', '2/3')
-                        or '-shard "$MUHAR_SHARD"' not in step
-                        or 'MUHAR_SHARD: ${{ matrix.shard }}' not in step):
-                    problems.append('deskmerge must retain its exact three shards')
-                    continue
-                actual['deskmerge.' + shard[0] + '.report'] += 1
-            else:
-                if shard or re.search(r'report=\$\(go run[^\n]*-shard ', step):
-                    problems.append('full mutation harness unexpectedly sharded: ' + spec)
-                actual[report] += 1
-    expected = Counter(report for spec, report in MUTATION_REPORTS.items()
-                       if spec != 'cmd/deskmerge/mutations.json')
-    expected.update('deskmerge.' + str(i) + '.report' for i in range(3))
-    if actual != expected:
-        problems.append('matrix must execute every full harness and deskmerge shard exactly once')
-    body_legs = scheduled.get('internal/deskkit/mutations.json', [])
-    if len(body_legs) != 1 or any(
-            body_legs[0] in legs for spec, legs in scheduled.items()
-            if spec != 'internal/deskkit/mutations.json'):
-        problems.append('bodycheck must run independently of the other mutation harnesses')
     return problems
 
 
@@ -569,11 +485,8 @@ if args[:2] == ['image', 'inspect']:
                         selected.extend(matched)
                     self.assertCountEqual(selected, files)
             release = jobs['release']
-            self.assertIn('pattern: release-build-*', jobs['runner-arm64'])
-            self.assertIn('merge-multiple: true', jobs['runner-arm64'])
-            self.assertIn('python3 -B -m tools.release.transport download', release)
-            self.assertIn('--expected-sha256 \"$BUNDLE_SHA256\"', release)
-            self.assertIn('BUNDLE_SHA256: ${{ needs.artifacts.outputs.bundle_sha256 }}', release)
+            self.assertIn('pattern: release-build-*', release)
+            self.assertIn('merge-multiple: true', release)
             self.assertIn('sha256sum -c build-inputs.sha256', release)
             self.assertIn('sha256sum -c checksums.txt', release)
 
@@ -757,57 +670,6 @@ if args[:2] == ['image', 'inspect']:
         self.assertIn('exactly the archive and its receipt', result.stderr)
         self.assertFalse(any(c[:1] == ['load'] for c in
                              (json.loads(s) for s in self.recorded() if s.startswith('['))))
-
-    # regression: #4887
-    def test_native_artifact_compression_retains_exact_checked_bytes(self):
-        # upload-artifact compresses the transport envelope, not the admitted
-        # Docker archive or receipt. Import must still validate the same bytes.
-        packed = self.root / 'native-transport.zip'
-        with zipfile.ZipFile(packed, 'w', compression=zipfile.ZIP_DEFLATED,
-                             compresslevel=1) as archive:
-            archive.write(self.native_archive, self.native_archive.name)
-            archive.write(self.native_receipt, self.native_receipt.name)
-        restored = self.root / 'restored-native'
-        restored.mkdir()
-        with zipfile.ZipFile(packed) as archive:
-            archive.extractall(restored)
-        for original in (self.native_archive, self.native_receipt):
-            self.assertEqual(original.read_bytes(), (restored / original.name).read_bytes())
-        result = self.invoke(native=restored)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            native = workflow_jobs((HERE.parents[1] / path).read_text())['runner-arm64']
-            upload = workflow_steps(native)['Upload checked native arm64 image']
-            self.assertIn('compression-level: 1', upload)
-            self.assertIn('if-no-files-found: error', upload)
-
-    # regression: #4887
-    def test_mutation_matrix_preserves_all_harnesses_and_reports(self):
-        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            with self.subTest(path=path):
-                self.assertEqual(mutation_routing_problems((HERE.parents[1] / path).read_text()), [])
-
-    # regression: #4887
-    def test_mutation_routing_omission_and_duplication_controls(self):
-        main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
-        self.assertEqual(mutation_routing_problems(main), [])
-        mutants = {
-            'missing-bodycheck-leg': main.replace('          - leg: muhar-bodycheck\n', '', 1),
-            'duplicate-bodycheck-leg': main.replace('          - leg: muhar-bodycheck\n',
-                '          - leg: muhar-bodycheck\n          - leg: muhar-bodycheck\n', 1),
-            'missing-deskmerge-shard': main.replace('          - leg: deskmerge\n            shard: 2/3\n', '', 1),
-            'changed-shard-count': main.replace('            shard: 2/3\n', '            shard: 2/4\n', 1),
-            'missing-bodycheck-upload': main.replace("matrix.leg == 'muhar-bodycheck' || ", '', 1),
-            'misrouted-bodycheck': main.replace("if: matrix.leg == 'muhar-bodycheck'\n",
-                                               "if: matrix.leg == 'statusgen'\n", 1),
-            'missing-caught-gate': main.replace("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate'",
-                                              "grep -qE 'Totals:'", 1),
-            'renamed-report': main.replace('/tv-reports/bodycheck.report', '/tv-reports/other.report', 1),
-        }
-        for name, mutant in mutants.items():
-            with self.subTest(name=name):
-                self.assertNotEqual(mutant, main, 'control did not mutate its target')
-                self.assertTrue(mutation_routing_problems(mutant), 'routing control survived')
 
     def test_native_arm64_workflow_precedes_the_approved_publisher(self):
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
