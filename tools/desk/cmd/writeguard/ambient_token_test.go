@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -697,6 +699,65 @@ func TestHookWordBreak(t *testing.T) {
 			requireAmbientRefusal(t, v, err, cmd)
 		})
 	}
+}
+
+// regression: #5046
+func TestHookStatusWordsReadLikeTheShell(t *testing.T) {
+	// Through run(): every word over quote bytes and a flag's or a value's bytes. A
+	// real shell reads the word, and that reading alone decides the verdict.
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("could not check: sh is not on PATH: %v", err)
+	}
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "worker-desk", "fixture-session")
+	for _, row := range []struct{ word, line string }{
+		{"-n", "gh pr list --json status | grep -v %s 5"},
+		{"-n", "gh pr list --json status | head %s 5"},
+		{"-l", "gh pr list --json status | wc %s"},
+		{".a", "gh pr view 1 --json status --jq %s"},
+	} {
+		allowed, refused := 0, 0
+		for _, w := range hookQuoteMixes(row.word) {
+			out, err := exec.Command(sh, "-c", "printf %s "+w).Output()
+			if err != nil {
+				continue // an open quote: the shell parses no command
+			}
+			cmd := fmt.Sprintf(row.line, w)
+			if string(out) == row.word {
+				allowed++
+				ambientAllowed(t, wt, cmd)
+				continue
+			}
+			refused++
+			v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+			requireAmbientRefusal(t, v, err, cmd)
+		}
+		if allowed == 0 || refused == 0 {
+			t.Errorf("%q: %d allowed, %d refused, so this row proves nothing", row.line, allowed, refused)
+		}
+	}
+}
+
+// hookQuoteMixes: the word's bytes in order, with up to three quote bytes placed
+// around and between them.
+func hookQuoteMixes(word string) []string {
+	mixes := map[string]bool{word: true}
+	for range 3 {
+		for m := range mixes {
+			for i := 0; i <= len(m); i++ {
+				mixes[m[:i]+`'`+m[i:]] = true
+				mixes[m[:i]+`"`+m[i:]] = true
+			}
+		}
+	}
+	sorted := make([]string, 0, len(mixes))
+	for m := range mixes {
+		sorted = append(sorted, m)
+	}
+	sort.Strings(sorted)
+	return sorted
 }
 
 // regression: #5046

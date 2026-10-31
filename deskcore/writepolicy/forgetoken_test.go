@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -888,6 +889,7 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		"gh pr list --json status | grep ^a",
 		"gh pr list --json status | grep a#",
 		"F=$(desktoken worker); gh pr view 1 --json status",
+		"X=$(desktoken worker); gh pr view 1 --json status",
 		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
 		`git status && T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
 		`GH_TOKEN=$(cat "$(desktoken worker --repo o/n)") gh pr view 1 --json status`,
@@ -1010,6 +1012,150 @@ func TestForgeStatusFilterOperandQuotes(t *testing.T) {
 		if forgeTokenRead(cmd) {
 			t.Errorf("%q: must clear", cmd)
 		}
+	}
+}
+
+// forgeShellRead has a shell print each word and returns what it read. The words
+// must have balanced quotes and no blank, so the script stays one word per line.
+func forgeShellRead(t *testing.T, shell []string, words []string) []string {
+	t.Helper()
+	var script strings.Builder
+	for _, w := range words {
+		fmt.Fprintf(&script, "printf '[%%s]\\n' %s\n", w)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "read.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, forgeShell(t, shell[0]), append(append([]string{}, shell[1:]...), path)...)
+	cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+	out, err := cmd.CombinedOutput()
+	got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if err != nil || len(got) != len(words) {
+		t.Fatalf("%v gave %d lines for %d words (run error: %v)", shell, len(got), len(words), err)
+	}
+	for i, g := range got {
+		got[i] = strings.TrimSuffix(strings.TrimPrefix(g, "["), "]")
+	}
+	return got
+}
+
+// forgeBalanced keeps the words a shell parses as one word.
+func forgeBalanced(words []string) []string {
+	kept := []string{}
+	for _, w := range words {
+		if !forgeQuotedBlank(w) {
+			kept = append(kept, w)
+		}
+	}
+	return kept
+}
+
+// forgeShells: the shells a command may run under, with extended globbing on and with
+// the zsh option that changes how a quote is read.
+var forgeShells = [][]string{{"sh"}, {"bash"}, {"bash", "-O", "extglob"}, {"zsh", "-f"}, {"zsh", "-f", "-o", "extendedglob"}, {"zsh", "-f", "-o", "rcquotes"}}
+
+// regression: #5046
+func TestForgeStatusWordsReadLikeTheShell(t *testing.T) {
+	// Every word over quote bytes and a flag's or a value's bytes, in every mix. A
+	// real shell reads the word, and that reading alone says whether the line clears,
+	// so the matcher must see the word the program receives.
+	rows := []struct {
+		alphabet, line string
+		max            int
+		clears         *regexp.Regexp
+	}{
+		{`'"-n`, "gh pr list --json status | grep -v %s 5", 6, regexp.MustCompile(`^-n+$`)},
+		{`'"-n`, "git status; gh pr list | grep -v %s 5", 6, regexp.MustCompile(`^-n+$`)},
+		{`'"-n`, "gh pr list --json status | head %s 5", 6, regexp.MustCompile(`^-n$`)},
+		{`'"-n`, "gh pr list --json status | tail %s 5", 6, regexp.MustCompile(`^-n$`)},
+		{`'"-l`, "gh pr list --json status | wc %s", 6, regexp.MustCompile(`^-l+$`)},
+		{`'"5`, "gh pr list --json status | head -n %s", 6, regexp.MustCompile(`^5+$`)},
+		{`'".a`, "gh pr view 1 --json status --jq %s", 6, regexp.MustCompile(`^(\.a+)+$`)},
+		{`'".a`, "gh pr view 1 --json status --jq=%s", 6, regexp.MustCompile(`^(\.a+)+$`)},
+		{`'"-q.a`, "gh pr view 1 --json status %s", 5, regexp.MustCompile(`^([.aq][-.aq]*|-a|-q(\.[aq]+)+)$`)},
+	}
+	for _, shell := range forgeShells {
+		t.Run(strings.Join(shell, " "), func(t *testing.T) {
+			for _, row := range rows {
+				words := forgeBalanced(forgeWords(row.alphabet, row.max))
+				nested, cleared := 0, 0
+				for i, r := range forgeShellRead(t, shell, words) {
+					line := fmt.Sprintf(row.line, words[i])
+					if got := !forgeTokenRead(line); got != row.clears.MatchString(r) {
+						t.Errorf("%q: cleared=%v, and the shell reads the word as %q", line, got, r)
+					} else if got {
+						cleared++
+					}
+					if strings.ContainsAny(r, `'"`) {
+						nested++
+					}
+				}
+				if nested == 0 || cleared == 0 {
+					t.Errorf("%q: %d words keep a quote, %d lines clear, so this row proves nothing", row.line, nested, cleared)
+				}
+			}
+		})
+	}
+}
+
+// regression: #5046
+func TestForgeStatusClearedFiltersOpenNoFile(t *testing.T) {
+	// Every cleared filter line from a grid of quote and operand mixes runs for real
+	// in an empty directory with no input. A filter that takes a word as a file says
+	// so on stderr, and no such line may clear.
+	words := forgeBalanced(forgeWords(`'"-n5`, 4))
+	last := []string{"", "5", "a", "'5'", "''"}
+	var script strings.Builder
+	cleared := []string{}
+	for _, name := range []string{"grep", "head", "tail", "wc"} {
+		for _, w := range words {
+			for _, l := range last {
+				line := name + " " + w + " " + l
+				if forgeTokenRead("gh pr list --json status | " + line) {
+					continue
+				}
+				fmt.Fprintf(&script, "printf '@%d\\n'; %s </dev/null\n", len(cleared), line)
+				cleared = append(cleared, line)
+			}
+		}
+	}
+	if len(cleared) == 0 {
+		t.Fatal("no line clears, so this proves nothing")
+	}
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty")
+	if err := os.Mkdir(empty, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "run.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, forgeShell(t, "sh"), path)
+	cmd.Dir, cmd.Env = empty, []string{"HOME=" + empty, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+	out, _ := cmd.CombinedOutput() // a filter's non-zero exit is ordinary here
+	if ctx.Err() != nil {
+		t.Fatalf("the run timed out at %d lines", len(cleared))
+	}
+	current := ""
+	seen := 0
+	for _, l := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(l, "@"):
+			current = strings.TrimPrefix(l, "@")
+			seen++
+		case strings.Contains(l, "No such file"), strings.Contains(l, "cannot open"):
+			t.Errorf("line %s of the grid opened a file: %s", current, l)
+		}
+	}
+	if seen != len(cleared) {
+		t.Errorf("ran %d of %d lines", seen, len(cleared))
 	}
 }
 
@@ -1143,7 +1289,7 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, shell := range [][]string{{"sh"}, {"bash"}, {"bash", "-O", "extglob"}, {"zsh", "-f"}, {"zsh", "-f", "-o", "extendedglob"}} {
+	for _, shell := range forgeShells {
 		t.Run(strings.Join(shell, " "), func(t *testing.T) {
 			bin := forgeShell(t, shell[0])
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1153,7 +1299,7 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 			out, err := cmd.CombinedOutput()
 			got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
 			for i, w := range cleared {
-				if want := forgeDropQuotes.Replace(w); i >= len(got) || got[i] != want {
+				if want := forgeUnquote(w); i >= len(got) || got[i] != want {
 					t.Errorf("%q: %v does not read this word back unchanged (run error: %v)", w, shell, err)
 					break
 				}

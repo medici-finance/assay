@@ -114,7 +114,6 @@ var forgeFilters = map[string]struct {
 }
 
 var (
-	forgeDropQuotes = strings.NewReplacer(`"`, "", "'", "")
 	// forgeRoleEnv: the role credential for one command, from the file variable the
 	// role mint assigned earlier in the same text (forgeListedReads checks that).
 	forgeRoleEnv = regexp.MustCompile(`^GH_TOKEN=\$\(cat "\$(TF?)"\)[ \t]+`)
@@ -181,17 +180,23 @@ func forgeListedReads(s string) bool {
 	return true
 }
 
-// forgeQuotedBlank reports whether a quote in c is left open or holds a blank.
-// c holds no backslash here, so every quote byte opens or closes a span. Words are
+// forgeQuotedBlank reports whether a quote in c is left open or holds a blank, or
+// whether a single-quoted span closes against another `'`, which zsh's RC_QUOTES reads
+// as a literal quote in the span.
+// c holds no backslash here, so a quote byte opens or closes a span unless it sits
+// inside a span of the other kind, where it is a literal byte. Words are
 // split on blanks without modeling quotes, so `grep "x -A" 123` would otherwise
 // read as a flag and a count where the shell sees a pattern and a file.
 func forgeQuotedBlank(c string) bool {
 	var open rune
-	for _, r := range c {
+	for i, r := range c {
 		switch {
 		case open == 0 && (r == '"' || r == '\''):
 			open = r
 		case r == open:
+			if r == '\'' && strings.HasPrefix(c[i+1:], "'") {
+				return true
+			}
 			open = 0
 		case open != 0 && (r == ' ' || r == '\t'):
 			return true
@@ -206,7 +211,7 @@ func forgeQuotedBlank(c string) bool {
 // is checked wherever it sits, so a value position cannot hide a flag.
 func forgeGhArgs(args []string) bool {
 	for i := 0; i < len(args); i++ {
-		a := forgeDropQuotes.Replace(args[i])
+		a := forgeUnquote(args[i])
 		name, val, hasVal := strings.Cut(a, "=")
 		if len(a) > 2 && a[0] == '-' && a[1] != '-' && forgeGhChecked[a[:2]] != nil {
 			name, val, hasVal = a[:2], strings.TrimPrefix(a[2:], "="), true
@@ -222,7 +227,7 @@ func forgeGhArgs(args []string) bool {
 				if i++; i == len(args) {
 					return false
 				}
-				val = forgeDropQuotes.Replace(args[i])
+				val = forgeUnquote(args[i])
 			}
 			if !re.MatchString(val) {
 				return false
@@ -237,9 +242,9 @@ func forgeGhArgs(args []string) bool {
 }
 
 // forgeFilterArgs reports whether name is a listed filter and args stay inside
-// its flags and operand count. A word forgeUnquotedExpands flags refuses. Quotes
-// are dropped next, so `"-r"` reads as a flag, and a glob byte refuses, quoted or
-// not, since it may expand to more operands. A number
+// its flags and operand count. A word forgeUnquotedExpands flags refuses. The word
+// is read next as the shell reads it (forgeUnquote), so `"-r"` reads as a flag, and
+// a glob byte refuses, quoted or not, since it may expand to more operands. A number
 // is a count only straight after a flag that takes one (`head -n 5`, `grep -A 3`);
 // anywhere else it is an operand, since `head 123` opens a file named 123.
 func forgeFilterArgs(name string, args []string) bool {
@@ -252,7 +257,7 @@ func forgeFilterArgs(name string, args []string) bool {
 		if forgeUnquotedExpands(a) {
 			return false
 		}
-		a = forgeDropQuotes.Replace(a)
+		a = forgeUnquote(a)
 		switch {
 		case strings.ContainsAny(a, "*?[]{}~"):
 			return false
@@ -276,8 +281,9 @@ func forgeFilterArgs(name string, args []string) bool {
 
 // forgeUnquotedExpands reports whether a word holds `^` or `#` outside quotes, the
 // glob bytes of a shell's extended globbing, which would widen a word to file names.
-// The word holds no backslash and no quoted blank here (forgeListedReads), so every
-// quote byte opens or closes a span, and each span ends inside this word.
+// The word holds no backslash and no quoted blank here (forgeListedReads), so a
+// quote byte opens or closes a span unless it sits inside one of the other kind, and
+// each span ends inside this word.
 func forgeUnquotedExpands(a string) bool {
 	var open rune
 	for _, r := range a {
@@ -291,6 +297,26 @@ func forgeUnquotedExpands(a string) bool {
 		}
 	}
 	return false
+}
+
+// forgeUnquote reads a word as the shell does: a quote outside a span opens one, the
+// same quote closes it, and a quote of the other kind inside a span stays in the
+// word. Every matcher check on a word reads this value, since it is what the program
+// receives. The word holds no backslash here (forgeListedReads).
+func forgeUnquote(a string) string {
+	var open byte
+	b := make([]byte, 0, len(a))
+	for i := 0; i < len(a); i++ {
+		switch c := a[i]; {
+		case open == 0 && (c == '"' || c == '\''):
+			open = c
+		case c == open:
+			open = 0
+		default:
+			b = append(b, c)
+		}
+	}
+	return string(b)
 }
 
 const forgeDigits = "0123456789"

@@ -107,14 +107,17 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `git status`; `gh pr view`, `list` or `checks`; `gh run view` or `list`;
   `gh issue view` or `list`, with flags from a closed list, so no `--web` or
   `--template`; `--jq` and `-q` take only a literal field path such as `.status` or
-  `.a.b`, and `-R` takes only OWNER/REPO; a quoted blank refuses; `grep`,
+  `.a.b`, and `-R` takes only OWNER/REPO; a quoted blank or a single-quoted span closing against another `'` refuses; each word is read as
+  the shell reads it, so a quote byte inside a span of the other kind stays in the word;
+  `grep`,
   `head`, `tail` or `wc` with no file operand, no glob byte and no `^` or `#`
   outside quotes, where a number is an operand unless
   it follows a flag that takes a count (`head 123` opens a file, `head -n 5` does not);
   the role mint assigned to `GH_TOKEN`, `T` or `TF`, and a `GH_TOKEN=$(cat "$T")` or
   `GH_TOKEN=$(cat "$TF")` prefix, which clears only when a mint of that same variable
   comes earlier in the text, after nothing but `;` or a newline, before `;`, a newline
-  or `&&`, and with no `#` before it. So
+  or `&&`, and with no `#` before it. Use `&&` after the mint: with `;` or a newline, a
+  mint that fails still runs `gh`, with an empty `GH_TOKEN`. So
   `gh run view 1 --json status,conclusion`, `gh pr checks 1 | grep status` and
   `git status --short && gh pr view 1` run, while `gh "$s" status "$f"`,
   `gh au status "$f"` and `git status && gh issue mine` refuse: a computed word
@@ -148,6 +151,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
   `gh pr list --json status --jq '.[0].status'` (only literal field paths clear), `gh pr view 1 --json status --template x` (off the closed flag list),
   `gh issue list --search "a b" --json status` and
   `gh pr checks 1 | grep 'a b status'` (a quoted blank),
+  `grep 'a''b'` beside the pair (a single-quoted span closing against another `'`),
   `gh pr list --json status | grep ^a` and `grep a#` beside it (`^` or `#` outside
   quotes on a filter operand; `grep '^a'` clears),
   `F=$(desktoken worker); gh pr view 1 --json status` (the mint under another name),
@@ -185,7 +189,7 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 6 | Shapes a shell lexer could misplace (heredoc delimiters, `((`, `$((`, `$[`, `${…}`, `name[…]`, substitutions, backquotes, process substitution, unclosed spans, quote forms) refused with a trigger word and allowed without, and the message idioms refused when they name one, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeArithHeredoc\|TestForgeShiftSiblings\|TestUnmodeled\|TestForgeReviewShapes\|TestForgeIdiomOutcomes' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestAmbientTokenArithHeredoc\|TestAmbientTokenSubstHeredoc\|TestHookUnmodeled\|TestHookReviewShapes\|TestHookIdiomOutcomes' -count=1` | PASS |
 | 7 | One test per class the latest reviews found (word span, command prefix, dynamic arity, clobber operator, string run as a command, pass-through), each red on the earlier shell-model scan, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordSpan\|TestForgeCommandPrefix\|TestForgeDynamicArity\|TestForgeClobberOperator\|TestForgeStringToCommand\|TestForgePassThrough' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookReviewClasses' -count=1` | PASS |
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
-| 9 | `gh` and `status` clear only as listed reads: those reads allowed, on their own or with the role mint and a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs, flags off the closed list, anything but a literal field path for `--jq`, a quoted blank, a number that opens a file and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals\|TestForgeStatusJqFieldPathsOnly\|TestForgeStatusQuotedBlank\|TestForgeStatusGhArgsClosed\|TestForgeStatusExpansionBesideRead\|TestForgeStatusWebValueForms\|TestForgeStatusFilterNumbers\|TestForgeStatusClearedWordsSurviveExpansion\|TestForgeStatusFilterOperandQuotes\|TestForgeStatusClosedSets\|TestForgeStatusPrefixNeedsMint\|TestForgeStatusPrefixFormsRunTheMint' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads' -count=1` | PASS |
+| 9 | `gh` and `status` clear only as listed reads: those reads allowed, on their own or with the role mint and a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs, flags off the closed list, anything but a literal field path for `--jq`, a quoted blank, a number that opens a file and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals\|TestForgeStatusJqFieldPathsOnly\|TestForgeStatusQuotedBlank\|TestForgeStatusGhArgsClosed\|TestForgeStatusExpansionBesideRead\|TestForgeStatusWebValueForms\|TestForgeStatusFilterNumbers\|TestForgeStatusClearedWordsSurviveExpansion\|TestForgeStatusFilterOperandQuotes\|TestForgeStatusWordsReadLikeTheShell\|TestForgeStatusClearedFiltersOpenNoFile\|TestForgeStatusClosedSets\|TestForgeStatusPrefixNeedsMint\|TestForgeStatusPrefixFormsRunTheMint' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads\|TestHookStatusWordsReadLikeTheShell' -count=1` | PASS |
 
 ## Consumers and migration
 
