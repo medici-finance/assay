@@ -132,10 +132,11 @@ var (
 // `git status`, a forgeGhReads pair, a forgeFilters filter, or the role mint,
 // spelled literally. It decides only for the `status` and `gh` pair, and anything
 // else refuses, as that pair did before #5046: a computed word, an alias, another
-// program, a wrapper, a redirection. Quotes are not modeled, and they cannot hide
-// a command: a shell ends a command only at a byte split on here, so every command
+// program, a wrapper, a redirection. Quotes play no part in the split, so they cannot
+// hide a command: a shell ends a command only at a byte split on here, so every command
 // it runs starts a piece checked here. A quoted separator costs a false refusal,
 // and so does a quoted blank (forgeQuotedBlank), which words here would misread.
+// Inside a piece, each word is read as the shell reads it (forgeUnquote).
 // A GH_TOKEN prefix clears only after a mint of its variable that is sure to run:
 // one no earlier `#` could comment out and no separator could skip or fork.
 func forgeListedReads(s string) bool {

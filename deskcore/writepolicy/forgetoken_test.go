@@ -777,6 +777,48 @@ func TestForgeStatusExpansionBesideRead(t *testing.T) {
 }
 
 // regression: #5046
+func TestForgeStatusQuotedSeparators(t *testing.T) {
+	// The split ignores quotes. A separator inside a span still splits, leaving a
+	// quote open, so it refuses; a split that honoured quotes would clear these.
+	var rows []string
+	for _, q := range []string{"'", `"`} {
+		for _, sep := range []string{";", "&", "|", "\n"} {
+			word := q + "a" + sep + "b" + q
+			rows = append(rows,
+				"git status "+word+"; gh pr view 1",
+				"gh pr list --json status | grep "+word,
+			)
+		}
+	}
+	// A quote byte inside a span of the other kind does not close it, so a split
+	// that misread one would take the command between these two words as quoted.
+	forgeRefuseAll(t, append(rows,
+		`git status "'"; x; "'"; gh pr view 1`,
+		`git status '"'; x; '"'; gh pr view 1`,
+	))
+}
+
+// regression: #5046
+func TestForgeStatusBlankForms(t *testing.T) {
+	// A tab breaks words on a listed read, so it cannot hide a file operand, and
+	// the prefix needs a blank: with none, the shell reads `gh` into the value.
+	forgeRefuseAll(t, []string{
+		"gh pr list --json status | grep x\ty",
+		"gh pr list --json status | head\ty",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T")gh pr view 1 --json status`,
+	})
+	for _, cmd := range []string{
+		"gh pr list --json status | grep -v\tx",
+		"T=$(desktoken worker); GH_TOKEN=$(cat \"$T\")\tgh pr view 1 --json status",
+		`gh pr list --json status | grep "a""b"`,
+	} {
+		if forgeWithin(t, cmd, 2*time.Second) {
+			t.Errorf("%q: must stay allowed", cmd)
+		}
+	}
+}
+
+// regression: #5046
 func TestForgeStatusGhArgsClosed(t *testing.T) {
 	// Every word on a listed gh read is on the list: no unknown flag, no host.
 	forgeRefuseAll(t, []string{
@@ -885,6 +927,8 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		"gh pr view 1 --json status --template x",
 		`gh issue list --search "a b" --json status`,
 		"gh pr checks 1 | grep 'a b status'",
+		"gh pr list --json status | grep 'a;b'",
+		`gh pr list --json status --search "it's"`,
 		"gh pr list --search is:open --json status",
 		"gh pr list -L5 --json status",
 		"gh pr list --json status | grep ^a",
