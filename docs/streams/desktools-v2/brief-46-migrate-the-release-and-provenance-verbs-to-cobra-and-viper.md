@@ -118,5 +118,44 @@ Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's s
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 5` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 5` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 5` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-46.json` | pass exit=0 | sha256:e8629fac92b5 | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskrelease/... ./cmd/deskrebaseline/... ./cmd/deskmanifest/... ./cmd/deskprovenance/... ./cmd/deskpins/...` | pass exit=0 | sha256:e5fd64e0e1c0 | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/46 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:cd934883d0fc | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:dc3f54bd891f | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:f164ff219c2c | 2026-10-31 | assay-verifier-app[bot] @ a288c581d4e1 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5085 run=5e1e65757243147186a1e70902e400303acaa5956855b957624b83e6b106678b source=a288c581d4e1f86f3b7679f3528492bf52456654 brief=docs/streams/desktools-v2/brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Observed output for each row, at a288c581d4e1. The command for each row is the one in the witness table above.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | Verify row 1 | exit 0; TestCLIHelpOffline PASS in every package; root and nested help and version with zero effects and zero config reads | exit 0; 5 of 5 packages PASS, 25 subtests pass, 0 fail. The command passes. The nested-help obligation does not hold for one verb: the deskrelease test removes every form starting with cut from the shared help forms, so cut -h and cut --help are outside this row, and S1 shows them refused | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 | exit 0; TestCLIConfigFlow PASS in every package | exit 0; 5 of 5 packages PASS, 15 subtests pass, 0 fail | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 | exit 0; TestCLILegacyForms PASS in every package | exit 0; 5 of 5 packages PASS, 23 subtests pass, 0 fail | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | Verify row 4 | exit 0; Totals line with N equal to the spec's mutation count | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; "Totals: 17 caught, 0 NOT CAUGHT, 0 could-not-mutate."; the spec holds 17 mutations | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | Verify row 5 | exit 0; existing tests still pass | exit 0; ok for all 5 packages | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | Verify row 6 | exit 0; owned packages compile for Windows | exit 0; no output from go vet | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | Verify row 7 | exit 0; TestCLIOwnerMigrated PASS | exit 0; "--- PASS: TestCLIOwnerMigrated (10.47s)" | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 8 | Verify row 8 | exit 0; every floor seed passes | exit 0; "seed passes=26" | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 9 | Verify row 9 | exit 0; no declared consumer routing disproved by the change | exit 0; "consumers: no brief files in the diff against a288c581d4e1f86f3b7679f3528492bf52456654 — nothing to corroborate". The row is vacuous on merged main; S2 is the run that judged the claims | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S1 | Supplemental, no acceptance credit: deskrelease built from this source outside the home, run with a throwaway HOME, as cut --help and cut -h, then help cut and --help | Task 2 and the CLI contract: verb help forms exit 0 before any config read, lock or effect | cut --help and cut -h: exit 5, 0 bytes on stdout, the config echo on stderr, "deskrelease: refused: unrecognised flag" for --help, and new files audit.jsonl and audit.lock under the throwaway HOME, with config absent, disabling and malformed. help cut and --help: exit 0, no new files | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S2 | Supplemental, no acceptance credit: statusgen --consumers --root . --brief desktools-v2/46 --base 02d17896bad026f191583de4100e783e89c01c33 --delivery 3f2b1fc589b4b7c6854a9cf84cb6745d4117c717 | exit 0; no claim disproved at the delivering merge | exit 0; "summary: 20 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing". The tool's limit applies: an omitted consumer is invisible to it | 2026-10-31 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+The old parsers are gone from the five non-test sources: a search for flag.NewFlagSet, the flag import and flag.Parse finds none. Cut keeps its own parseCutArgs as its one parser, behind DisableFlagParsing.
+
+The refusal is deliberate. PR medici-finance/assay#4793 declares it as Desk-decided item 3, and the README states it. The base refused these forms with exit 5 and an audit row, and the security review required either a recorded driver ruling or that refusal; the worker restored the refusal. The correctness review recorded that it departs from the brief's wording and needs the driver's acceptance. The PR carries no human comment or ruling, and neither this brief nor the CLI contract was amended. A human merged the PR, and this verifier does not read that merge as the acceptance the review asked for.
+
+RISK-VALUE: DERIVED — UsageExit (deskrelease) = cli.ExitUsage = 2 @ tools/desk/cmd/deskrelease/main.go:250, tools/desk/internal/cli/cli.go:20 — the pre-migration dispatcher returned 2 for an unknown subcommand.
+RISK-VALUE: DERIVED — UsageExit (deskpins, deskrebaseline) = deskkit.ExitRefused = 5 @ tools/desk/cmd/deskpins/main.go:129, tools/desk/cmd/deskrebaseline/main.go:195, tools/desk/internal/deskkit/exitcodes.go:51 — both pre-migration parsers returned ExitRefused on a bad command line.
+RISK-VALUE: DERIVED — UsageExit (deskmanifest, deskprovenance) = 2 @ tools/desk/cmd/deskmanifest/lint.go:21, tools/desk/cmd/deskprovenance/main.go:198 — both pre-migration parsers returned 2 on a bad command line.
+
+**VERIFY: FAIL** — all 9 Verify commands exit 0, but the row 1 and Task 2 nested-help obligation fails for deskrelease: cut --help and cut -h exit 5, read config and write an audit row. Either the driver accepts this and amends the brief and contract, or the code changes.
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
