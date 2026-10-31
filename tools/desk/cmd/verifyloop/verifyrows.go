@@ -42,7 +42,8 @@ func (r verifyRow) runnerExecuted() bool {
 // located by header NAME (#, class, command), never position — mirroring row-classes.md and
 // the statusgen parser — so inserting a Class column disturbs nothing. A table with no
 // `Class` column is legacy: every row defaults to `check`. Rows whose `#` cell is not an
-// integer are outside verdict-v1; the scheduling reader retains exact suffixed IDs.
+// integer are outside verdict-v1; the scheduling reader retains exact suffixed
+// IDs and letter-led labels (deskkit.ParseVerifyRowID).
 func parseVerifyRows(briefContent string) []verifyRow {
 	// Preserve the exact historical Atoi execution contract, independently of the
 	// stricter canonical identities required before scheduling can reuse observations.
