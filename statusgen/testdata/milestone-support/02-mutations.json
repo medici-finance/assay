@@ -1,0 +1,311 @@
+{
+  "schema": "readercaps-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/02-mutate.py",
+  "cases": [
+    {
+      "name": "required-feature",
+      "target": "statusgen/readercaps/caps.go",
+      "old": "if !contains(pair.have, feature) {",
+      "new": "if false && !contains(pair.have, feature) {",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsCompat"
+    },
+    {
+      "name": "stale-observation",
+      "target": "statusgen/readercaps/caps.go",
+      "old": "if peer.State != Current {",
+      "new": "if false && peer.State != Current {",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsCompat"
+    },
+    {
+      "name": "unsupported-discovery",
+      "target": "statusgen/briefschemaversions.go",
+      "old": "schemas = append(schemas, schema)",
+      "new": "schemas = append(schemas, schema, \"milestone-v1\")",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestStatusgenCapsTruth"
+    },
+    {
+      "name": "statusgen-consumer",
+      "target": "statusgen/versiongate.go",
+      "old": "result.State != readercaps.Supported {",
+      "new": "false && result.State != readercaps.Supported {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestStatusgenCapsTruth"
+    },
+    {
+      "name": "desk-consumer",
+      "target": "tools/desk/internal/deskkit/briefschemagate.go",
+      "old": "result.State != readercaps.Supported {",
+      "new": "false && result.State != readercaps.Supported {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "lower-boundary",
+      "target": "tools/desk/cmd/deskboard/main.go",
+      "old": "\"deskboard\", stderr); code != 0 {",
+      "new": "\"deskboard\", stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "record-obligation",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "return readercaps.DecodeRequirements(encoded)",
+      "new": "_ = encoded; return empty, nil",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "schema-version",
+      "target": "schemas/reader-capabilities-v1.json",
+      "old": "\"const\": \"reader-requirements-v1\"",
+      "new": "\"const\": \"reader-requirements-v99\"",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestReaderCapsSchema"
+    },
+    {
+      "name": "second-effect-import",
+      "target": "statusgen/readercaps/planted.go",
+      "plant": "package readercaps\nimport _ \"os/exec\"\n",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsBoundary"
+    },
+    {
+      "name": "configured-root-boundary",
+      "target": "tools/desk/cmd/deskboard/roots.go",
+      "old": "result.State != readercaps.Supported {",
+      "new": "false && result.State != readercaps.Supported {",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "canonical-field-spelling",
+      "target": "statusgen/readercaps/caps.go",
+      "old": "if !canonicalKey(name) {",
+      "new": "if false && !canonicalKey(name) {",
+      "module": "statusgen",
+      "package": "./readercaps",
+      "test": "TestReaderCapsSpelling"
+    },
+    {
+      "name": "decoded-record-presence",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "block, _, err := briefdoc.Split(string(raw))",
+      "new": "if !strings.Contains(string(raw), \"reader-requirements\") { return empty, nil }; block, _, err := briefdoc.Split(string(raw))",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "root-layout",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if !info.IsDir() {",
+      "new": "if false && !info.IsDir() {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "root-symlink",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "info, err := os.Lstat(dir)",
+      "new": "info, err := os.Stat(dir)",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "archive-coverage",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "[]string{\"streams\", \"archive\"}",
+      "new": "[]string{\"streams\"}",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "independent-legacy-refusal",
+      "target": "tools/desk/internal/deskkit/briefschemagate.go",
+      "old": "if treeHasBriefV2(r) {",
+      "new": "if false && treeHasBriefV2(r) {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRefuseIfTreeV2BelowV1"
+    },
+    {
+      "name": "shared-schema-advertisement",
+      "target": "tools/desk/internal/deskkit/briefschemagate.go",
+      "old": "schemas := briefdoc.SchemaVersions()",
+      "new": "schemas := []string{}; _ = briefdoc.SchemaVersions",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "differential-admission",
+      "target": "statusgen/main.go",
+      "old": "if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {",
+      "new": "if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 && *diffBaseFlag == \"\" {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestStatusgenCapsTruth"
+    },
+    {
+      "name": "legacy-owner-separation",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "fields, err := briefdoc.ParseMapping(block)",
+      "new": "if _, err := briefdoc.ParseFields(block); err != nil { return empty, err }; fields, err := briefdoc.ParseMapping(block)",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "optin-policy-validation",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "if _, err := briefdoc.ParseFields(block); err != nil {",
+      "new": "if _, err := briefdoc.ParseFields(block); false && err != nil {",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "independent-stamp-body",
+      "target": "tools/desk/cmd/deskevidence/principalstamp.go",
+      "old": "if _, closed := briefBodyStart(lines); !closed && hasEvidenceHeading(lines) {",
+      "new": "if _, closed := briefBodyStart(lines); false && !closed && hasEvidenceHeading(lines) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestPrincipalStampReadsBodyNotFrontmatter"
+    },
+    {
+      "name": "evidence-preflight",
+      "target": "tools/desk/cmd/deskevidence/writeflow.go",
+      "old": "\"deskevidence\", &diagnostic); code != 0 {",
+      "new": "\"deskevidence\", &diagnostic); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "mapping-document-count",
+      "target": "statusgen/briefdoc/document.go",
+      "old": "if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {",
+      "new": "if err := dec.Decode(&extra); false && !errors.Is(err, io.EOF) {",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "mapping-key-characters",
+      "target": "statusgen/briefdoc/document.go",
+      "old": "if found, ok := invisibleKey(map[string]interface{}(values)); ok {",
+      "new": "if found, ok := invisibleKey(map[string]interface{}(values)); false && ok {",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "mapping-error-is-not-absence",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "fields, err := briefdoc.ParseMapping(block)\n\tif err != nil {\n\t\treturn empty, err\n\t}",
+      "new": "fields, err := briefdoc.ParseMapping(block)\n\tif err != nil {\n\t\treturn empty, nil\n\t}",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "canonical-record-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if !recordParts(parts) {",
+      "new": "if false && !recordParts(parts) {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "reserved-register-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if registerNames[entry.Name()] {",
+      "new": "if false && registerNames[entry.Name()] {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "self-declared-register-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if briefdoc.IsRegisterIndex(raw) {",
+      "new": "if false && briefdoc.IsRegisterIndex(raw) {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "depth-one-link-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if len(parts) == 2 && parts[1] == \"done\" || recordParts(parts) {",
+      "new": "if len(parts) == 1 || len(parts) == 2 && parts[1] == \"done\" || recordParts(parts) {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "marker-does-not-hide-stream",
+      "target": "statusgen/briefdoc/registers.go",
+      "old": "return yaml.Unmarshal([]byte(block), &fields) != nil",
+      "new": "return yaml.Unmarshal([]byte(block), &fields) == nil",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "evidence-refusal-audit",
+      "target": "tools/desk/cmd/deskevidence/writeflow.go",
+      "old": "defer func() { ac.finalize(err) }()",
+      "new": "defer func() { if err == nil || !strings.Contains(err.Error(), \"reader capabilities:\") { ac.finalize(err) } }()",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "deskclaim-preflight",
+      "target": "tools/desk/cmd/deskclaim/main.go",
+      "old": "\"deskclaim\", os.Stderr); code != 0 {",
+      "new": "\"deskclaim\", os.Stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskclaim",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "deskpr-preflight",
+      "target": "tools/desk/cmd/deskpr/main.go",
+      "old": "\"deskpr\", os.Stderr); code != 0 {",
+      "new": "\"deskpr\", os.Stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskpr",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "evidence-audit-reason",
+      "target": "tools/desk/cmd/deskevidence/writeflow.go",
+      "old": "detail := strings.TrimSpace(diagnostic.String())",
+      "new": "detail := strings.TrimSpace(diagnostic.String()); if i := strings.LastIndex(detail, \": \"); i >= 0 { detail = detail[:i] }",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    }
+  ]
+}

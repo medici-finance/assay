@@ -1,0 +1,6 @@
+- Add one shared reader capability contract, truthful JSON discovery, and requirements refusal in the existing statusgen and desk schema preflights. Milestone runtime and rollout remain separately scoped.
+- Preserve mandatory capability declarations across YAML decoding and reject alternate JSON field spellings; retain independent legacy refusals and qualify both desk preflight boundaries.
+- Keep capability extraction separate from legacy risk classification and enforce the same admission boundary in ordinary and differential lint.
+- Qualify Evidence landing at both boundaries: unreadable capability records stop before writes, and the independent stamp guard remains covered below preflight.
+- Decide capability absence only after the shared structural YAML checks; preserve separate risk-policy ownership and scan canonical record locations.
+- Reuse shared register classification, ignore non-record depth-one links, and retain the Evidence refusal audit trail inside its existing lock.

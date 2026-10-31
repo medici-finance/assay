@@ -89,3 +89,11 @@ scope or prerequisite additions require a decision, not automatic bulk adoption.
 The pilot MUST check independent outcomes sharing one wave, one outcome spanning waves,
 cross-root references, parked dependencies, missing coverage, archived identities and
 legacy streams unchanged. The milestone contract's §9 cases also apply.
+
+## Allocated requirements envelope
+
+[reader-capabilities-v1](reader-capabilities-v1.md) allocates the top-level
+`reader-requirements` envelope and implements its pure assessment and named tree
+preflights. No operational stream opts in through this change. This does not make
+old binaries safe: coordinated readers, operation support and adoption qualification
+remain prerequisites for operational milestone declarations under §5.
