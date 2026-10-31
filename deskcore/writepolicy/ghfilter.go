@@ -6,8 +6,9 @@ import "strings"
 //
 // ghFilterReads reports whether a Bash command's text holds gh and a --jq / -q
 // filter, written out in the call, that names one of the names jqNameReads
-// lists. Selection and formatting filters stay allowed, whatever they spell in
-// a string, a field or a jq variable of their own.
+// lists. Selection and formatting filters are meant to stay allowed, whatever they
+// spell in a field or a jq variable of their own, or in a string the reader takes as
+// one.
 //
 // The reader tries to read the text as shell words, taking out the quotes and
 // backslashes the shell removes, without parsing it as a program: a flag it finds in
@@ -42,7 +43,7 @@ const (
 	// the shells drop and others keep. A name right after it is read both ways.
 	ghDollarQuote = 1
 	// ghReadAgainWork and ghReadAgainFloor set the budget for reading text again,
-	// in bytes: multiples of the text's length, and enough for any short call.
+	// in bytes: multiples of the text's length, with a floor.
 	ghReadAgainWork  = 8
 	ghReadAgainFloor = 1 << 16
 )
@@ -253,7 +254,8 @@ func (w ghWord) filterFlag() (value string, strs, next, flag bool) {
 	return "", false, false, true
 }
 
-// ghWord is one shell word with its quotes and backslashes removed.
+// ghWord is the reader's take on one shell word, with the quotes and backslashes it
+// removes taken out.
 type ghWord struct {
 	text   string
 	end    int  // offset just past the word
@@ -401,8 +403,8 @@ func shellExpands(s string, p int) bool {
 
 // expansion writes the stand-in for the expansion at p and returns the offset
 // past it. What the shell would compute is not filter text, but commands
-// substituted there still run, so they are read as commands. dq says whether it
-// sits in double quotes.
+// substituted there still run, so the reader tries to read them as commands. dq says
+// whether it sits in double quotes.
 func (g *ghFilterScan) expansion(b *strings.Builder, s string, p int, dq bool, d int) int {
 	b.WriteByte(ghExpansion)
 	switch {
@@ -430,7 +432,7 @@ func (g *ghFilterScan) expansion(b *strings.Builder, s string, p int, dq bool, d
 	return q
 }
 
-// parameter steps past a ${…} body, reading any command substituted inside it. A
+// parameter steps past a ${…} body, trying to read a command substituted inside it. A
 // brace in quotes does not close it; in double quotes a single quote is plain text.
 func (g *ghFilterScan) parameter(s string, p int, dq bool, d int) int {
 	inner := false

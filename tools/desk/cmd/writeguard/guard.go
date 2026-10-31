@@ -99,8 +99,9 @@ If the mint fails or comes back empty, STOP and report it. Do not fall back to t
 }
 
 // ghFilterRefusal refuses a Bash command whose gh --jq / -q filter reads beyond
-// the JSON output (#5078); like ambientTokenRefusal, run calls it only in a desk
-// session. The decision is writepolicy's, over the call's one classification.
+// the JSON output (#5078; docs/write-policy.md states the limits); like
+// ambientTokenRefusal, run calls it only in a desk session. The decision is
+// writepolicy's, over the call's one classification.
 func ghFilterRefusal(call *classifiedCall) (Verdict, bool) {
 	if !call.cl.ReadsOutsideGhOutput() {
 		return Verdict{}, false

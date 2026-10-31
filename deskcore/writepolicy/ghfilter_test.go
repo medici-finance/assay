@@ -62,7 +62,7 @@ func TestGhFilterReadsRefused(t *testing.T) {
 		`bash -c 'gh api x --jq "env.X"'`,
 		`bash -c "gh api x --jq \"env.X\""`,
 		`bash -c "gh api x --jq '\"a\"|env'"`,
-		// Beside other commands, and on any gh path.
+		// Beside other commands, and on gh paths.
 		`/usr/local/bin/gh api x --jq env.X`,
 		`A=1 gh api x --jq env.X | cat`,
 		`gh api x 2>&1 --jq env.X`,
@@ -332,7 +332,7 @@ func TestGhFilterScanWorkBounded(t *testing.T) {
 // regression: #5078
 func TestGhFilterBudgetFailClosed(t *testing.T) {
 	// Text that spends the budget is judged whole, with no string taken as one. These
-	// rows show that judgment; the cost is a false refusal on such text.
+	// rows show that judgment; a false refusal on such text is one cost of it.
 	pad := "gh " + strings.Repeat(`\ `, 200000)
 	for _, tail := range []string{"\n# it's\ngh api x --jq '.a|env'", ` --jq 'env.X'`, ` --jq '"env"'`} {
 		start := time.Now()
@@ -347,7 +347,7 @@ func TestGhFilterBudgetFailClosed(t *testing.T) {
 		t.Errorf("padding then an ordinary filter: holds no name, must stay allowed")
 	}
 	if ghFilterReads(`gh api x --jq '"env"'`) {
-		t.Errorf("a short call never spends the budget, so its string keeps its credit")
+		t.Errorf("this short call should not spend the budget, so its string keeps its credit")
 	}
 }
 
@@ -373,7 +373,8 @@ func TestGhFilterExpansionsNotRead(t *testing.T) {
 		if n == "ENV" {
 			continue
 		}
-		// A command substituted anywhere still runs, so its own filter is read.
+		// A substituted command still runs, so the reader tries to read its own filter.
+		// These rows show that in the forms they list.
 		for _, form := range []string{`echo "$(gh api x --jq %s.X)"`, `echo $(gh api x --jq %s.X)`, "echo `gh api x --jq %s.X`", `echo "${a:-$(gh api x --jq %s.X)}"`, `gh api x --jq "$(gh api y --jq %s.X)"`} {
 			line := fmt.Sprintf(form, n)
 			if !ghFilterClassified(line) {
@@ -632,7 +633,8 @@ func ghFilterRows() []ghFilterRow {
 		add("gh api x %s", ghFilterMixes(f+"env", 2), reads, nil, false)
 		add("gh api x %s", ghFilterMixes(f+".a", 2), nil, clears, false)
 	}
-	// A value in any quoting, after a flag in a sample of the closed quotings.
+	// A value in the quoting ghFilterMixes places, after a flag in a sample of the
+	// closed quotings.
 	var forms []string
 	for _, f := range []string{"--jq", "-q"} {
 		for i, m := range ghFilterQuoted(f) {
