@@ -1,5 +1,8 @@
 # Assay’s future architecture
 
+> **Proposed delta, 25 October 2026:** [desk instances and rolling replacement](30-desk-instances-and-rolling-replacement.md) amends worker/review singleton assumptions below. Historical approval and deployment claims are unchanged; the delta requires its own review.
+
+
 **Status: future architecture we are moving towards. Updated 21 October 2026; includes the requested extensible JSON amendment.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
 
 The target starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
@@ -310,6 +313,16 @@ never a closed breaker; `tools/desk/cmd/deskfile/deskfile.go:267` new-issue cap)
 amendment relaxes no brake. Relaxing one is a separate human decision, recorded by the
 maintainer and naming its compensating bound; nothing here makes that decision.
 
+**Desk work target clarification — 26 October 2026.** The aggregate number of active
+worker/review tasks is an approximate instantaneous occupancy gauge used for refill pacing,
+not a hard budget or authority boundary. Desks may temporarily over/undershoot and correct
+as observations refresh and tasks finish. No centralized role-capacity mutex, leased slot,
+serialized count-and-reserve or per-launch exact global read is required. This gauge has
+no cumulative window/reset allowance; do not repurpose the effect-class count rules below
+into an exact role-slot allocator. Item claims, instance ownership, uncertain effects and
+independent recursive-launch/time/cost/resource/write safety brakes remain unchanged.
+See [the instance contract](30-desk-instances-and-rolling-replacement.md#work-assignment-and-capacity).
+
 **Pacing counts are best effort.** A pacing count only shapes the throughput of
 operations that are already authorized and already bounded by the brakes, for example
 poll cadence, launch pacing, provider read-refresh rate limits
@@ -568,3 +581,8 @@ Delivery reuses desk-tools/39–45 and /51, graph-execution/27, desktools-v2's e
 query/custody boundaries and forge-neutral/37–43. Existing adopter role cutovers qualify
 same-input prose/discrete parity. The ranked request model and A11–A12 acceptance live in
 the efficiency spec; this pointer grants no new activation or revision-bound approval.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Worker and review roles support multiple automatically named desk instances under the existing runtime. R2 owns instance/generation records and approximate role work target; R3 owns instance process/workspace lifecycle. R4 role authority is unchanged. Qualified replacement starts a successor after the predecessor stops admission, while the predecessor drains; exclusive work claims and outstanding-effect reconciliation remain mandatory. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

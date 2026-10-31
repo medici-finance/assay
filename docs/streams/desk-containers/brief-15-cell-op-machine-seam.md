@@ -14,7 +14,7 @@ why: >-
   deferred until it does.
 wave: 7
 depends: []
-unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/28", "cell-api/01", "desk-containers/31"]
+unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/28", "cell-api/01", "desk-containers/31", "desk-containers/33"]
 effort: M
 gate: human
 design: DR-cell-op-contract
@@ -178,3 +178,8 @@ Risk-bearing values (frontmatter risk: all no, irreversible: no; enumerated over
 
 ## Review
 Gate: human (see gate-why). The reviewer answers both core-system questions honestly: the single control between a desk and a state change it starts is NONE beyond the operator's account today (stated in the SPOF line and the spec); rows 3, 4 and 7 prove the lower layers (re-measure and atomic consume) against races, and are not presented as authorization.
+
+
+## Desk-instance follow-on — 25 October 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) adds new configuration/result/convergence behaviour through **desk-containers/33**, consuming this completed singleton delivery. Existing Task, Verify, version and Evidence are unchanged; they do not establish multi-instance qualification. /33 owns required reader negotiation, desired paused-population preservation and per-instance identity. This is routing only, not a reopening or delivery claim.
