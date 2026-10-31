@@ -144,13 +144,13 @@ _Next-up: 20 of 54 eligible — 34 held back (span-of-control cap 20). Overflow 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (12 for the desk · 45 for the driver · 47 for workers · 18 for an operator · 44 runner-pending — of 174 total; 7 could-not-check)
+## Awaiting verification / review (12 for the desk · 46 for the driver · 47 for workers · 18 for an operator · 43 runner-pending — of 174 total; 7 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-### Awaiting human gate (45)
+### Awaiting human gate (46)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -172,6 +172,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 04 | implemented | 3000 | 2 | — | driver | human action, cite #1175 | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3000 | 4 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | verification-handoff | 03 [exec:strong] | implemented | 2530 | 3 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
+| desktools-v2 | 46 [exec:strong] | implemented | 2500 | 3 | — | driver | human action, cite medici-finance/assay#2111 | — | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | driver | resolve the recorded blocker before sign-off: hold (check-definition), cite medici-finance/assay#1281 | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | iso-9001 | 08 [exec:strong] | implemented | 2500 | 3 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
@@ -275,7 +276,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 | desktools-v2 | 72 | implemented | 1000 | 0 | — | operator | environment blocker, cite #4327 | — | — |
 
-### Runner-pending (44)
+### Runner-pending (43)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -303,7 +304,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 06 [exec:strong] | verified | 3500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ bed1a31ba875 (claude-opus-5-5) | — |
 | build-less-brittle | 14 [exec:strong] | verified | 3000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-26 assay-verifier-app[bot] @ e07782de22a5 (forge-identity) | — |
 | statusgen | 19 [exec:strong] | verified | 3000 | 4 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| desktools-v2 | 46 [exec:strong] | implemented | 2500 | 3 | — | verify runner | none | — | — |
 | statusgen | 20 [exec:strong] | verified | 2500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
 | measured-status | 04 [exec:strong] | verified | 2010 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
 | contributor-trust | 04 [exec:strong] | verified | 2000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ b1d3c0a44a01 (forge-identity) | — |
