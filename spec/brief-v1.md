@@ -784,3 +784,11 @@ A conforming linter MUST:
 Items 5, 7, and 10 are the clauses where the reference implementation is presently
 non-conforming. They are stated as MUSTs because the specification governs; they are
 labelled here so an adopter is not surprised by a green lint that did not check them.
+
+## Allocated reader negotiation contract
+
+[reader-capabilities-v1](reader-capabilities-v1.md) defines the versioned advertisement
+and `reader-requirements` envelope used by the shared preflight. JSON version discovery
+adds `readerCapabilities`; the existing fields and bare version output are unchanged.
+This does not allocate brief-v4, add milestone-start keys to legacy schemas, or enable
+prefixed operational writing. The §3.7–3.8 rollout holds remain in force.

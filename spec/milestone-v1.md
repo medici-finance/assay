@@ -322,3 +322,11 @@ Open implementation decisions: exact capability-negotiation envelope and release
 allocation; acceptance-receipt adapter to existing decision/evidence records; eligible pilot
 and its outcome-specific acceptance authority. These need concrete decisions before rollout;
 they do not prevent reviewing this proposed semantic contract.
+
+## Reader negotiation implementation boundary
+
+The envelope/stream opt-in allocation from §10 is now defined by
+[reader-capabilities-v1](reader-capabilities-v1.md). The shared pure assessment and
+named legacy consumer preflights do not implement milestone loading, assessment,
+dispatch or acceptance. Those capabilities remain unadvertised. Operational milestone
+declarations and adoption remain held until coordinated readers are qualified.

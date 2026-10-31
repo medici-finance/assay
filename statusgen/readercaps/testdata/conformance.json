@@ -1,0 +1,471 @@
+[
+  {
+    "Name": "legacy",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": []
+    },
+    "Observation": "missing",
+    "Want": "supported"
+  },
+  {
+    "Name": "wired-preflight",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "supported"
+  },
+  {
+    "Name": "old-reader-new-record",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "unsupported"
+  },
+  {
+    "Name": "schema-not-semantic-support",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v2"
+          ],
+          "semantics": [
+            "unknown-v1"
+          ]
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "unsupported"
+  },
+  {
+    "Name": "unknown-schema",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v99"
+          ],
+          "semantics": []
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "unsupported"
+  },
+  {
+    "Name": "unknown-required",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        },
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "unknown-v1"
+          ]
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "unsupported"
+  },
+  {
+    "Name": "scoped-operation",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        },
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "acceptance",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "unsupported"
+  },
+  {
+    "Name": "explicit-support",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        },
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Observation": "current",
+    "Want": "supported"
+  },
+  {
+    "Name": "stale",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        },
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": []
+        }
+      ]
+    },
+    "Observation": "stale",
+    "Want": "could-not-check"
+  },
+  {
+    "Name": "missing",
+    "Advertisement": {
+      "schema": "reader-capabilities-v1",
+      "provider": "example-reader",
+      "version": "v99.0.0",
+      "operations": [
+        {
+          "operation": "syntax",
+          "schemas": [
+            "brief-v1",
+            "brief-v2",
+            "brief-v3"
+          ],
+          "semantics": []
+        },
+        {
+          "operation": "preflight",
+          "schemas": [
+            "reader-requirements-v1"
+          ],
+          "semantics": [
+            "required-semantics-v1"
+          ]
+        },
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": [
+            "milestone-acceptance-v1"
+          ]
+        }
+      ]
+    },
+    "Requirements": {
+      "schema": "reader-requirements-v1",
+      "required": [
+        {
+          "operation": "dispatch",
+          "schemas": [
+            "milestone-v1"
+          ],
+          "semantics": []
+        }
+      ]
+    },
+    "Observation": "missing",
+    "Want": "could-not-check"
+  }
+]
