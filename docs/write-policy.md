@@ -193,6 +193,51 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 | 8 | A backslash sequence read both ways: a line continuation a shell drops at the end of its input (the last body line of a quoted heredoc fed to it), and an escape decoding to a blank or a newline at a word's end or start, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeWordBreak' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookWordBreak' -count=1` | PASS |
 | 9 | `gh` and `status` clear only as listed reads: those reads allowed, on their own or with the role mint and a command-scoped `GH_TOKEN`; computed words, gh aliases, other programs, flags off the closed list, anything but a literal field path for `--jq`, a quoted blank, a number that opens a file and every literal `gh auth` form refused, at the core and at the hook | `cd deskcore && go test ./writepolicy/ -run 'TestForgeStatusComputedForms\|TestForgeStatusAliasForms\|TestForgeStatusOtherCommands\|TestForgeStatusReadsAllowed\|TestForgeStatusKeepsAuthForms\|TestForgeStatusRetainedRefusals\|TestForgeStatusJqFieldPathsOnly\|TestForgeStatusQuotedBlank\|TestForgeStatusGhArgsClosed\|TestForgeStatusExpansionBesideRead\|TestForgeStatusQuotedSeparators\|TestForgeStatusBlankForms\|TestForgeStatusWebValueForms\|TestForgeStatusFilterNumbers\|TestForgeStatusClearedWordsSurviveExpansion\|TestForgeStatusFilterOperandQuotes\|TestForgeStatusWordsReadLikeTheShell\|TestForgeStatusClearedFiltersOpenNoFile\|TestForgeStatusClosedSets\|TestForgeStatusPrefixNeedsMint\|TestForgeStatusPrefixFormsRunTheMint' -count=1`; `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookStatusReads\|TestHookStatusWordsReadLikeTheShell' -count=1` | PASS |
 
+## gh output filter check
+
+In a desk session (the same two variables as above) a Bash call is refused when the
+check finds in its text the word `gh` and a `--jq` or `-q` filter, written out in the
+call, that reads beyond the JSON output. The list of what counts is in the code
+(`deskcore/writepolicy/ghfilter.go`, `Classification.ReadsOutsideGhOutput`). Ordinary
+selection and formatting filters keep working. The check runs on any gh command.
+
+The reader tries to read the text as shell words the way those shells do. It tries to
+take out the quotes and backslashes they remove and to step past redirections between
+a flag and its value. Where the shells read a word differently, it tries to judge each
+reading. These attempts do not always succeed, so text it gets wrong can still pass.
+
+A string inside a filter is only taken as a string when the flag and the value are
+plainly quoted. The reader tries to read again a quoted word that could hold a command,
+and a substituted command. What the shell expands in a filter is not filter text. A
+brace expansion it finds in a flag or a value is refused without being worked out.
+
+Text the reader does not model can put it out of step with the shell. To recover, it
+reads the text again, under a budget. A call that spends the budget is judged whole,
+with no string taken as a string.
+
+**Limit: this is not a complete control.** It reads against that list, which was
+checked on gh 2.102.0 alone, and on `sh`, `dash`, `bash` and `zsh` with their usual
+settings. These are out of scope:
+
+- A read with no filter, and printing a variable with a plain shell command.
+- Other commands in the call, and other gh flags.
+- A flag, a filter or the gh word that the shell computes, decodes from an escape or
+  matches against files, including one assembled from a variable.
+- Words changed by the session's shell settings, aliases or functions from outside the call.
+- Text the reader does not follow or reads wrongly, which can still hide a filter, even
+  one written out in the call.
+
+The check reads words without parsing the shell or tying a flag to its command. That has
+two costs. Some text that is not a gh filter is refused, and the refusal names the way
+through. Some text the shell reads differently is silently missed, and nothing reports
+that.
+
+| # | Verify | Method | Expected |
+|---|---|---|---|
+| 1 | Core: refused and allowed rows, generated words checked against real shells, and work bounded on long inputs | `cd deskcore && go test ./writepolicy/ -run 'TestGhFilter' -count=1` | PASS |
+| 2 | Hook: refused in a desk session, generated words, ordinary filters allowed, silent outside one | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookGhFilter' -count=1` | PASS |
+| 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/gh-filter-unmatched' -count=1` | PASS (mutant caught) |
+
 ## Consumers and migration
 
 | Consumer | Disposition / owner | Retirement proof |
