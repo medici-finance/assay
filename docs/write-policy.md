@@ -141,22 +141,35 @@ as the only sanctioned path and says a failed or empty mint is a stop to report.
 ## gh output filter check
 
 In a desk session (the same two variables as above) a Bash call is refused when its
-text holds the word `gh` and a literal `--jq` or `-q` filter that reads beyond the JSON
-output. The list of what counts is in the code (`deskcore/writepolicy/ghfilter.go`,
-`Classification.ReadsOutsideGhOutput`). Ordinary selection and formatting filters
-keep working. The check runs on any gh command.
+text holds the word `gh` and a `--jq` or `-q` filter, written out in the call, that
+reads beyond the JSON output. The list of what counts is in the code
+(`deskcore/writepolicy/ghfilter.go`, `Classification.ReadsOutsideGhOutput`). Ordinary
+selection and formatting filters keep working. The check runs on any gh command.
 
-**Limit: this is not a complete control.** It reads only literal filter text in the
-call, against that list, which was checked on gh 2.102.0 alone. A read with no filter
-and printing a variable with a plain shell command are out of scope, as are other
-commands in the call and other gh flags. A filter that is not literal in the call is
-not read. Like the check above, it does not parse the shell, so some text that is not
-a gh filter is refused; the refusal names the way through.
+The text is read as shell words with their quotes and backslashes removed, so a flag
+and its value count however they are quoted, with any redirections between them skipped.
+A string inside a filter is only taken as a string when the flag and the value are
+plainly quoted. A quoted word that could hold a command is read again, and so is a
+substituted command. What the shell expands in a filter is not filter text. A brace
+expansion in a flag or a value is refused without being worked out.
+
+**Limit: this is not a complete control.** It reads against that list, which was
+checked on gh 2.102.0 alone, and on `sh`, `dash`, `bash` and `zsh` with their usual
+settings. These are out of scope:
+
+- A read with no filter, and printing a variable with a plain shell command.
+- Other commands in the call, and other gh flags.
+- A flag, a filter or the gh word that the shell computes, decodes from an escape or
+  matches against files, including one assembled from a variable.
+- Words changed by the session's shell settings, aliases or functions from outside the call.
+
+The check reads words without parsing the shell or tying a flag to its command, so some
+text that is not a gh filter is refused; the refusal names the way through.
 
 | # | Verify | Method | Expected |
 |---|---|---|---|
-| 1 | Core: refused and allowed rows, and work bounded on long inputs | `cd deskcore && go test ./writepolicy/ -run 'TestGhFilter' -count=1` | PASS |
-| 2 | Hook: refused in a desk session, ordinary filters allowed, silent outside one | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookGhFilter' -count=1` | PASS |
+| 1 | Core: refused and allowed rows, generated words checked against real shells, and work bounded on long inputs | `cd deskcore && go test ./writepolicy/ -run 'TestGhFilter' -count=1` | PASS |
+| 2 | Hook: refused in a desk session, generated words, ordinary filters allowed, silent outside one | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestHookGhFilter' -count=1` | PASS |
 | 3 | Positive control: a matcher that never fires is caught | `cd tools/desk && go test ./cmd/writeguard/ -run 'TestWriteHookParity/production-mutations/gh-filter-unmatched' -count=1` | PASS (mutant caught) |
 
 ## Consumers and migration

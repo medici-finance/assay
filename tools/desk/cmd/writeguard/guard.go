@@ -111,7 +111,7 @@ func ghFilterRefusal(call *classifiedCall) (Verdict, bool) {
 This Bash call's --jq or -q filter names env, $ENV, now, localtime or strflocaltime:
   %s
 Filters that select or format the command's JSON are not refused.
-If the name is only data, quote it as a string or a quoted key. The guard does not parse the shell, so a -q on another command beside gh counts as well: use that command's long flag.`, call.target) +
-			"\n" + blockEvasionGuidance,
+If the name is only data, quote it as a string or a quoted key. A brace expansion in the flag or the filter counts too: write the words out. The guard does not tie a flag to its command, so a -q on another command beside gh counts as well: use that command's long flag.
+Otherwise this is a stop: if the session needs what the filter would read, report that. Do not respell the filter or swap the command for another way of reading the same value.`, call.target),
 	}, true
 }

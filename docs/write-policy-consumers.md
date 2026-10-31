@@ -99,8 +99,8 @@ These identify source contracts, not published versions or qualified deployments
   `ReadsAmbientForgeToken()` reports whether a classified Bash command's text holds
   a gh token-read trigger word anywhere (no shell parse); the hook adapter gates the refusal on its own
   environment ([write-policy.md](write-policy.md#ambient-forge-credential-refusal)).
-  `ReadsOutsideGhOutput()` reports whether that text holds gh and a literal output
-  filter that reads beyond the JSON output, gated the same way
+  `ReadsOutsideGhOutput()` reports whether that text holds gh and an output filter,
+  written out in the call, that reads beyond the JSON output, within the stated limits and gated the same way
   ([write-policy.md](write-policy.md#gh-output-filter-check)).
 - `Evaluate(Evaluation) Outcome` accepts that classification and its matching ID,
   policy roots, path/claim/context/callout observations. It returns `allow`, `deny`
