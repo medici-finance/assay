@@ -115,7 +115,11 @@ func TestDeskCapsPreflight(t *testing.T) {
 				if err := os.Rename(dir, moved); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Symlink(moved, dir); err != nil {
+				linkTarget := moved
+				if place == "inside-symlink" {
+					linkTarget = "../../target-records"
+				}
+				if err := os.Symlink(linkTarget, dir); err != nil {
 					t.Skip(err)
 				}
 				want = deskkit.ExitUnverifiable

@@ -1,14 +1,14 @@
 {
   "test": "go test ./cmd/deskevidence/... -count=1",
   "control": {
-    "name": "CONTROL \u2014 remove the append-only shrink guard entirely (a whole-file PUT that reverts rows ships as success)",
+    "name": "CONTROL — remove the append-only shrink guard entirely (a whole-file PUT that reverts rows ships as success)",
     "file": "cmd/deskevidence/deskevidence.go",
     "old": "\tif appendOnly && !*allowShrink && remoteExists {",
     "new": "\tif false && appendOnly && !*allowShrink && remoteExists {"
   },
   "mutations": [
     {
-      "name": "the --root join becomes a no-op (a repo-relative --evidence-file is read from the process cwd, not the --root checkout \u2014 #1709 defeated)",
+      "name": "the --root join becomes a no-op (a repo-relative --evidence-file is read from the process cwd, not the --root checkout — #1709 defeated)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "capstree.ReadRecord(evidenceRoot, evidenceRepoPath,",
       "new": "capstree.ReadRecord(\"\", evidenceRepoPath,"
@@ -20,49 +20,49 @@
       "new": "\t\tif false && filepath.IsAbs(evidenceRepoPath) {"
     },
     {
-      "name": "disarm the shrink comparison (a commit with FEWER rows than the remote is no longer refused \u2014 unattributable row deletion ships)",
+      "name": "disarm the shrink comparison (a commit with FEWER rows than the remote is no longer refused — unattributable row deletion ships)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tif newRows < remoteRows {",
       "new": "\t\tif false && newRows < remoteRows {"
     },
     {
-      "name": "scan the whole merged file instead of the bytes this landing adds (a brief already carrying a secret-shaped run can never receive an Evidence append again \u2014 #901/#966/#1161 re-opened)",
+      "name": "scan the whole merged file instead of the bytes this landing adds (a brief already carrying a secret-shaped run can never receive an Evidence append again — #901/#966/#1161 re-opened)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tscanTarget = addedLines(remoteContent, commitContent)",
       "new": "\t\tscanTarget = commitContent"
     },
     {
-      "name": "addedLines stops subtracting the lines the branch already carries (every line of the commit is scanned as new \u2014 a Verify row's own quoted run re-refuses forever, #1161)",
+      "name": "addedLines stops subtracting the lines the branch already carries (every line of the commit is scanned as new — a Verify row's own quoted run re-refuses forever, #1161)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tif present[ln] {",
       "new": "\t\tif false && present[ln] {"
     },
     {
-      "name": "drop the origin from a scan refusal (the operator is back to isolating by hand which line tripped it \u2014 #1161 ask 3)",
+      "name": "drop the origin from a scan refusal (the operator is back to isolating by hand which line tripped it — #1161 ask 3)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\treturn withAddedOrigin(berr, scanTarget, localContent)",
       "new": "\t\treturn berr"
     },
     {
-      "name": "drop the pre-existing notice (a brief carrying a secret-shaped run lands silently; nothing tells the operator the scan saw it and where \u2014 #1161 ask 3)",
+      "name": "drop the pre-existing notice (a brief carrying a secret-shaped run lands silently; nothing tells the operator the scan saw it and where — #1161 ask 3)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tpreexistingNotice(stderr, targetRepoPath, remoteContent)",
       "new": "\t\t_ = remoteContent"
     },
     {
-      "name": "drop the row-scope rebase (a stale local README landing reverts every foreign row again \u2014 the whole class this guard exists to close)",
+      "name": "drop the row-scope rebase (a stale local README landing reverts every foreign row again — the whole class this guard exists to close)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tcommitContent = rebased",
       "new": "\t\t_ = rebased"
     },
     {
-      "name": "unwire the row-scope write-op second layer at its only call site (a table change between the pre-check and the write is overwritten \u2014 the layer behind the single point of failure is gone)",
+      "name": "unwire the row-scope write-op second layer at its only call site (a table change between the pre-check and the write is overwritten — the layer behind the single point of failure is gone)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\tif len(rowScopeRows) > 0 {",
       "new": "\tif false && len(rowScopeRows) > 0 {"
     },
     {
-      "name": "drop the write's ExpectedSHA precondition (a table change after the write-time re-check is overwritten by the backend's own fetch-and-PUT \u2014 the race is narrowed, not closed)",
+      "name": "drop the write's ExpectedSHA precondition (a table change after the write-time re-check is overwritten by the backend's own fetch-and-PUT — the race is narrowed, not closed)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tExpectedSHA: rowScopeSHA,",
       "new": "\t\tExpectedSHA: \"\","
@@ -74,13 +74,13 @@
       "new": "remoteExists && false && rowScopeMalformed(targetRepoPath, remoteContent) {"
     },
     {
-      "name": "drop the named-row-absent-from-remote refusal (contract item 4 \u2014 the missing key indexes line 0)",
+      "name": "drop the named-row-absent-from-remote refusal (contract item 4 — the missing key indexes line 0)",
       "file": "internal/deskkit/briefstable.go",
       "old": "\t\tif _, ok := rt.Keyed[r]; !ok {",
       "new": "\t\tif _, ok := rt.Keyed[r]; false && !ok {"
     },
     {
-      "name": "drop the named-row-absent-from-local refusal (contract item 4 \u2014 local line 0 is spliced into the row)",
+      "name": "drop the named-row-absent-from-local refusal (contract item 4 — local line 0 is spliced into the row)",
       "file": "internal/deskkit/briefstable.go",
       "old": "\t\tif _, ok := lt.Keyed[r]; !ok {",
       "new": "\t\tif _, ok := lt.Keyed[r]; false && !ok {"
@@ -128,7 +128,7 @@
       "new": "\tif false && !bytes.Equal(expected, commitContent) {"
     },
     {
-      "name": "drop the closed-default-branch lane's ExpectedSHA precondition (landEvidenceAsChange's side-branch write is cut from a table that already moved, and the backend's own pre-write probe only ever compares the write to itself \u2014 the round-2 race the direct-write fix left open)",
+      "name": "drop the closed-default-branch lane's ExpectedSHA precondition (landEvidenceAsChange's side-branch write is cut from a table that already moved, and the backend's own pre-write probe only ever compares the write to itself — the round-2 race the direct-write fix left open)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: rowScopeSHA,\n\t})",
       "new": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: \"\",\n\t})"
@@ -164,13 +164,13 @@
       "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n"
     },
     {
-      "name": "mint above the command-line refusals (a call refused on its arguments alone spends a token mint \u2014 on GitLab, a credential rotation)",
+      "name": "mint above the command-line refusals (a call refused on its arguments alone spends a token mint — on GitLab, a credential rotation)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\tac.repo = repoSlug\n",
       "new": "\tac.repo = repoSlug\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn merr\n\t}\n"
     },
     {
-      "name": "decision-gate hold not consulted on a landing (the network layer of lifecycle-v1 \u00a74.5 is skipped; a bot-written ruling link lands a status move)",
+      "name": "decision-gate hold not consulted on a landing (the network layer of lifecycle-v1 §4.5 is skipped; a bot-written ruling link lands a status move)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\tif len(gateRefused) > 0 {",
       "new": "\tif false && len(gateRefused) > 0 {"
@@ -320,7 +320,7 @@
       "new": "if terr := error(nil); terr != nil {"
     },
     {
-      "name": "branch board stages a link or submodule as a plain file (the forge serves a link as its target's bytes or as nothing, which the board reads as an unreadable record) \u2014 S-2266-7",
+      "name": "branch board stages a link or submodule as a plain file (the forge serves a link as its target's bytes or as nothing, which the board reads as an unreadable record) — S-2266-7",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "\t\tif fc.Kind != deskkit.FileKindRegular {",
       "new": "\t\tif false {"
@@ -350,19 +350,19 @@
       "new": "if isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {"
     },
     {
-      "name": "decision-gate stage writes the target through a link in the landing home (the staged bytes reach whatever the link names) \u2014 S-2266-7",
+      "name": "decision-gate stage writes the target through a link in the landing home (the staged bytes reach whatever the link names) — S-2266-7",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "if lerr := refuseLinkedHomePath(root, targetRepoPath); lerr != nil {",
       "new": "if lerr := refuseLinkedHomePath(root, targetRepoPath); false && lerr != nil {"
     },
     {
-      "name": "branch board staged through a link in the landing home (the branch's bytes reach whatever the link names) \u2014 S-2266-7",
+      "name": "branch board staged through a link in the landing home (the branch's bytes reach whatever the link names) — S-2266-7",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "\t\tif lerr := refuseLinkedHomePath(root, e.Path); lerr != nil {",
       "new": "\t\tif lerr := refuseLinkedHomePath(root, e.Path); false && lerr != nil {"
     },
     {
-      "name": "decision-gate base replaces a link or submodule in the home's HEAD with a plain blob (the base is not the tree the board reads) \u2014 S-2266-7",
+      "name": "decision-gate base replaces a link or submodule in the home's HEAD with a plain blob (the base is not the tree the board reads) — S-2266-7",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "if err := headEntriesPlain(git, head, p); err != nil {",
       "new": "if err := headEntriesPlain(git, head, p); false && err != nil {"
@@ -398,31 +398,31 @@
       "new": "\tpos := len(text)\n"
     },
     {
-      "name": "the landing takes a target the forge served without proof as the branch's copy (an over-limit brief or board arrives empty: the merge strips the frontmatter and the judge compares against nothing) \u2014 S-2266-8",
+      "name": "the landing takes a target the forge served without proof as the branch's copy (an over-limit brief or board arrives empty: the merge strips the frontmatter and the judge compares against nothing) — S-2266-8",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tif kerr := plainFileRead(cur, fr, targetRepoPath, branch, \"the landing's target\", false); kerr != nil {",
       "new": "\t\tif kerr := plainFileRead(cur, fr, targetRepoPath, branch, \"the landing's target\", false); false && kerr != nil {"
     },
     {
-      "name": "the row-scope write-time re-fetch rebases onto a table the forge served without proof \u2014 S-2266-8",
+      "name": "the row-scope write-time re-fetch rebases onto a table the forge served without proof — S-2266-8",
       "file": "cmd/deskevidence/rowscope.go",
       "old": "\tif kerr := plainFileRead(fresh, fr, targetRepoPath, branch, \"the row-scope write-time re-check\", false); kerr != nil {",
       "new": "\tif kerr := plainFileRead(fresh, fr, targetRepoPath, branch, \"the row-scope write-time re-check\", false); false && kerr != nil {"
     },
     {
-      "name": "a verified outcome's closure matches a link served as its target's bytes \u2014 S-2266-8",
+      "name": "a verified outcome's closure matches a link served as its target's bytes — S-2266-8",
       "file": "cmd/deskevidence/outcome.go",
       "old": "\t\t\tif kerr := plainFileRead(remote, repo, rel, branch, \"the verified outcome's landed closure\", true); kerr != nil {",
       "new": "\t\t\tif kerr := plainFileRead(remote, repo, rel, branch, \"the verified outcome's landed closure\", true); false && kerr != nil {"
     },
     {
-      "name": "a receipt's brief hash is checked against a brief served without its content (the hash of nothing matches) \u2014 S-2266-8",
+      "name": "a receipt's brief hash is checked against a brief served without its content (the hash of nothing matches) — S-2266-8",
       "file": "cmd/deskevidence/receiptvalidate.go",
       "old": "\tif kerr := plainFileRead(cur, fr, briefPath, branch, \"the receipt's brief revision\", true); kerr != nil {",
       "new": "\tif kerr := plainFileRead(cur, fr, briefPath, branch, \"the receipt's brief revision\", true); false && kerr != nil {"
     },
     {
-      "name": "every read the forge did not type is taken as a plain file, on the main landing lane too \u2014 S-2266-8",
+      "name": "every read the forge did not type is taken as a plain file, on the main landing lane too — S-2266-8",
       "file": "cmd/deskevidence/plainread.go",
       "old": "(untypedOK && fc.Kind == \"\")",
       "new": "fc.Kind == \"\""
