@@ -2,12 +2,15 @@ package gitcore
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 // originMain is where a landed checkout records its repository's main.
@@ -17,6 +20,8 @@ const originMain = plumbing.ReferenceName("refs/remotes/origin/main")
 // disposable directory. Only the new repository's HEAD/index/worktree are written.
 // Its object alternate retains the original commit objects and their real history;
 // no synthetic commit, copied identity configuration, network or credential is used.
+// Only the source origin's repository URL survives, with URL credentials, query and
+// fragment removed. Approval readers still require their explicit network opt-in.
 // The caller owns dest and its cleanup. Missing history fails rather than falling
 // back to the source home's (deliberately frozen) HEAD.
 //
@@ -71,6 +76,34 @@ func CheckoutLocalCommit(source, dest, commit, baseline string) error {
 	r, err := Open(dest)
 	if err != nil {
 		return err
+	}
+	// Preserve repository authority for every consumer of this history snapshot.
+	// Never copy the source config: helpers, headers, hooks and identity stay home.
+	cfg, err := src.repo.Config()
+	if err != nil {
+		return err
+	}
+	if origin := cfg.Remotes["origin"]; origin != nil && len(origin.URLs) > 0 {
+		raw := origin.URLs[0]
+		if strings.Contains(raw, "://") {
+			u, err := url.Parse(raw)
+			if err != nil {
+				return fmt.Errorf("gitcore: cannot parse checkout origin")
+			}
+			u.User, u.RawQuery, u.Fragment = nil, "", ""
+			raw = u.String()
+		} else if strings.Contains(raw, "@") {
+			// Use the existing git URL parser for scp-style SSH coordinates.
+			ep, err := transport.NewEndpoint(raw)
+			if err != nil {
+				return fmt.Errorf("gitcore: cannot parse checkout origin")
+			}
+			ep.User, ep.Password = "", ""
+			raw = ep.String()
+		}
+		if _, err := r.repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{raw}}); err != nil {
+			return err
+		}
 	}
 	if _, err := r.repo.CommitObject(plumbing.NewHash(commit)); err != nil {
 		return fmt.Errorf("gitcore: landed commit unavailable locally; fetch the target branch before publishing: %w", err)

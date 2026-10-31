@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 type transitionFixture struct {
@@ -123,7 +125,7 @@ func (f transitionFixture) evidence(t *testing.T, mutate func(string) string) {
 
 // regression: #3467
 func TestAcceptanceTransition(t *testing.T) {
-	cases := []string{"approved", "approved-merge", "approved-scp", "approved-ssh", "approved-crlf", "origin-gitlab", "origin-ghe", "origin-ssh-port", "issue-marker-missing", "issue-marker-other", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
+	cases := []string{"approved", "approved-merge", "approved-scp", "approved-ssh", "approved-https-port", "origin-missing", "approved-crlf", "origin-gitlab", "origin-ghe", "origin-ssh-port", "issue-marker-missing", "issue-marker-other", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := transitionFixtureAt(t, name == "approved-merge")
@@ -157,6 +159,10 @@ func TestAcceptanceTransition(t *testing.T) {
 			switch name {
 			case "approved-scp":
 				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "git@github.com:"+rlRepo+".git")
+			case "approved-https-port":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com:443/"+rlRepo+".git")
+			case "origin-missing":
+				vfGit(t, f.root, vfMailHuman, "remote", "remove", "origin")
 			case "approved-ssh":
 				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@github.com:22/"+rlRepo+".git")
 			case "approved-crlf":
@@ -380,6 +386,63 @@ func TestTransitionRootPaths(t *testing.T) {
 			code, out, diag := captureVerifyclosure(t, []string{"--root", root, "--brief", "vf/01", "--acceptance-forge"})
 			if code != 0 {
 				t.Fatalf("relative-root closure: %d %s %s", code, out, diag)
+			}
+		})
+	}
+}
+
+// regression: #4823
+func TestSnapshotApprovalContext(t *testing.T) {
+	for _, mode := range []string{"approved", "offline", "absent", "bot", "edited", "foreign", "missing", "other-repo"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com:443/"+rlRepo+".git")
+			switch mode {
+			case "foreign":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://gitlab.example/"+rlRepo+".git")
+			case "missing":
+				vfGit(t, f.root, vfMailHuman, "remote", "remove", "origin")
+			case "other-repo":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com/other/project.git")
+			case "absent":
+				f.forge.commentStatus = 404
+			case "bot":
+				f.forge.commentBody = rlCommentJSONWith(vfRunner, "Bot", rlRepo, rlIssue, f.payload, rlPosted, rlPosted)
+			case "edited":
+				f.forge.commentBody = strings.Replace(f.forge.commentBody, `"updated_at":"`+rlPosted, `"updated_at":"2026-10-01T10:00:00Z`, 1)
+			}
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatal(err)
+			}
+			// Offline must never invoke the approval reader, even though origin survives.
+			if mode == "offline" {
+				transitionForge = false
+				transitionClient = func() *ghClient { t.Fatal("offline approval read"); return nil }
+			}
+			resetReadMemo()
+			path := vfBrief(snapshot)
+			verify, evidence, err := briefSections(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			findings, why := closureWitnesses(verify, evidence, path)
+			accepted := why == "" && len(findings) == 3
+			for _, finding := range findings {
+				accepted = accepted && closureSatisfied(finding)
+			}
+			if accepted != (mode == "approved") {
+				t.Fatalf("snapshot closure accepted=%v: %s", accepted, why)
+			}
+			streams, _, err := loadStreams(snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if problems := protectedClosureProblems(streams); (len(problems) == 0) != (mode == "approved") {
+				t.Fatalf("snapshot lint: %v", problems)
 			}
 		})
 	}

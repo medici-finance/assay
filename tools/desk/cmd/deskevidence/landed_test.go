@@ -511,3 +511,35 @@ func TestLandedFetchRefusals(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4823
+func TestLandedApprovalContext(t *testing.T) {
+	for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
+		t.Run(filepath.Ext(target), func(t *testing.T) {
+			f, _ := setupFake(t)
+			root, _, head, _ := landedFixture(t, false)
+			const origin = "https://github.com:443/example-org/tracker.git"
+			flGit(t, root, "remote", "add", "origin", origin)
+			flGit(t, root, "config", "http.extraHeader", "fixture-secret-header")
+			f.commitSHAs = map[string]string{"main": head}
+			record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
+			landed, _, cleanup, err := landedClosureTree(root, target, nil, record, false, f, crossRepo, "main", deskkit.VerifierReceipt{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cleanup()
+			repo, err := gitcore.Open(landed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := repo.RemoteURL("origin")
+			if err != nil || got != origin {
+				t.Fatalf("closure %s lost repository authority: origin=%q err=%v", target, got, err)
+			}
+			config, err := os.ReadFile(filepath.Join(landed, ".git", "config"))
+			if err != nil || strings.Contains(string(config), "fixture-secret") {
+				t.Fatal("source credentials copied")
+			}
+		})
+	}
+}
