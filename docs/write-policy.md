@@ -208,8 +208,8 @@ reading. These attempts do not always succeed, so text it gets wrong can still p
 
 A string inside a filter is only taken as a string when the flag and the value are
 plainly quoted. The reader tries to read again a quoted word that could hold a command,
-and a substituted command. What the shell expands in a filter is not filter text. A brace
-expansion it finds in a flag or a value is refused without being worked out.
+and a substituted command. What the shell expands in a filter is not filter text. A
+brace expansion it finds in a flag or a value is refused without being worked out.
 
 Text the reader does not model can put it out of step with the shell. To recover, it
 reads the text again, under a budget. A call that spends the budget is judged whole,

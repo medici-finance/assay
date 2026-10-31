@@ -149,7 +149,8 @@ func (g *ghFilterScan) commands(s string, p int, stop ghStop, d int) int {
 	return min(p, len(s))
 }
 
-// redirection tries to step past a redirection at p and its target; a target in quotes can still hold a command (a here-string).
+// redirection tries to step past a redirection at p and its target; a target in
+// quotes can still hold a command (a here-string).
 // A process substitution is left to the caller as a command list. The operator's
 // `-` (`<<-`) and `!` are part of it. Only zsh reads a `!` that way: with a blank
 // after it, the next word is a target there and an ordinary word elsewhere, so it
@@ -227,8 +228,8 @@ func ghFilterFlag(word string) (at int, flag bool) {
 var ghStandIns = strings.NewReplacer(string(rune(ghExpansion)), "", string(rune(ghDollarQuote)), "")
 
 // filterFlag reads the word as a filter flag. A stand-in is taken to give nothing,
-// so the flag is read with it removed. value is what the word gives
-// the filter, stand-ins kept, and strs whether its strings count as strings; next
+// so the flag is read with it removed. value is what the word gives the filter,
+// stand-ins kept, and strs whether its strings count as strings; next
 // is set when the value is the next word.
 func (w ghWord) filterFlag() (value string, strs, next, flag bool) {
 	bare := ghStandIns.Replace(w.text)
