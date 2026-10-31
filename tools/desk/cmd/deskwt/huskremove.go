@@ -224,7 +224,7 @@ func huskLockOwner(guard *pathGuard, rt, reason string, positiveProof bool) (boo
 	}
 	if positiveProof {
 		if ev, _ := readSessionBeacon(rosterBeaconDir(), sess, time.Now()); ev == beaconAbsent {
-			return false, "the owner is not the caller and has no roster beacon — a missing beacon is not proof session " + sess + " is gone"
+			return false, "the owner is not the caller and has no roster beacon — a missing beacon is not proof session " + sess + " is gone (a clean, pushed tree of a dead session is released by `deskwt prune --reap-dead-sessions`)"
 		}
 	}
 	mt, haveMtime := guard.lockFileMtimes()[rt]

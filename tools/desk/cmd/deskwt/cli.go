@@ -416,7 +416,9 @@ the commit count.`
 roster beacon for it that has gone stale): that lock is retired just before the delete and
 restored if the delete fails. Any other lock — another session's, including one with no
 roster beacon at all (a missing beacon is not proof the session is gone), one naming no
-session, git's "initializing" lock — is refused with exit 5 and the tree is left untouched. This is the end-of-PR step for a session that made its own home:
+session, git's "initializing" lock — is refused with exit 5 and the tree is left untouched; a
+clean, pushed tree of a dead session with no beacon is released by ` + "`deskwt prune --reap-dead-sessions`" + `
+instead. This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.
 
