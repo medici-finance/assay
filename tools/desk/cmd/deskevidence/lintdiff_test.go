@@ -24,7 +24,7 @@ func stubStatusgenLint(t *testing.T, before, after []string) {
 	t.Helper()
 	old := statusgenLintFn
 	calls := 0
-	statusgenLintFn = func(root string) ([]string, error) {
+	statusgenLintFn = func(root string, options childOptions) ([]string, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -48,7 +48,7 @@ func TestLintDiffAtIntroducedOnly(t *testing.T) {
 	stubStatusgenLint(t, []string{preexisting}, []string{preexisting, introducedOne})
 
 	root := t.TempDir()
-	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"))
+	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"), childOptions{})
 	if err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestLintDiffAtCleanTreeIntroducesNothing(t *testing.T) {
 	stubStatusgenLint(t, same, same)
 
 	root := t.TempDir()
-	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"))
+	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"), childOptions{})
 	if err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestLintDiffAtRestoresOriginalFile(t *testing.T) {
 		t.Fatalf("write original: %v", err)
 	}
 
-	if _, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n")); err != nil {
+	if _, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n"), childOptions{}); err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
 
@@ -119,7 +119,7 @@ func TestLintDiffAtRestoresOriginalFileOnRefusal(t *testing.T) {
 		t.Fatalf("write original: %v", err)
 	}
 
-	introduced, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n"))
+	introduced, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n"), childOptions{})
 	if err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestLintDiffAtRemovesNewlyCreatedFile(t *testing.T) {
 	root := t.TempDir()
 	rel := "docs/streams/x/new-brief.md"
 
-	if _, err := lintDiffAt(root, rel, []byte("brand new content\n")); err != nil {
+	if _, err := lintDiffAt(root, rel, []byte("brand new content\n"), childOptions{}); err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
 
@@ -161,12 +161,12 @@ func TestLintDiffAtRemovesNewlyCreatedFile(t *testing.T) {
 func TestLintDiffAtBeforeLintErrorPropagatesWithoutStaging(t *testing.T) {
 	old := statusgenLintFn
 	wantErr := deskkit.Unverifiable("statusgen is not on PATH", nil)
-	statusgenLintFn = func(string) ([]string, error) { return nil, wantErr }
+	statusgenLintFn = func(string, childOptions) ([]string, error) { return nil, wantErr }
 	t.Cleanup(func() { statusgenLintFn = old })
 
 	root := t.TempDir()
 	rel := "docs/streams/x/brief.md"
-	_, err := lintDiffAt(root, rel, []byte("content\n"))
+	_, err := lintDiffAt(root, rel, []byte("content\n"), childOptions{})
 	if err != wantErr {
 		t.Fatalf("lintDiffAt error = %v, want the before-lint error propagated unchanged", err)
 	}
@@ -200,7 +200,7 @@ func fakeStatusgenOnPath(t *testing.T, script string) {
 // rule.
 func TestStatusgenLintAtNotOnPathIsUnverifiable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // a PATH with nothing on it
-	_, err := statusgenLintAt(t.TempDir())
+	_, err := statusgenLintAt(t.TempDir(), childOptions{})
 	if err == nil {
 		t.Fatal("statusgenLintAt with no statusgen on PATH returned nil error — want could-not-check")
 	}
@@ -220,7 +220,7 @@ echo "NOTICE: some notice, not a problem"
 echo "PROBLEM: docs/streams/y/brief.md: second problem"
 exit 1`)
 
-	got, err := statusgenLintAt(t.TempDir())
+	got, err := statusgenLintAt(t.TempDir(), childOptions{})
 	if err != nil {
 		t.Fatalf("statusgenLintAt: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestStatusgenLintAtCleanExitNoProblems(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "LINT: PASS"
 exit 0`)
 
-	got, err := statusgenLintAt(t.TempDir())
+	got, err := statusgenLintAt(t.TempDir(), childOptions{})
 	if err != nil {
 		t.Fatalf("statusgenLintAt: %v", err)
 	}
@@ -291,7 +291,7 @@ exit 1`,
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeStatusgenOnPath(t, tc.script)
-			got, err := statusgenLintAt(t.TempDir())
+			got, err := statusgenLintAt(t.TempDir(), childOptions{})
 			if err == nil {
 				t.Fatalf("statusgenLintAt on a structural failure returned (problems=%v, nil err) — "+
 					"want could-not-check; a nonzero exit with no PROBLEM lines must not fold into a clean report", got)
@@ -328,7 +328,7 @@ func TestStatusgenLintAtRealBinaryStructuralFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "x", "brief-01.md"), []byte("body\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	got, err := statusgenLintAt(root)
+	got, err := statusgenLintAt(root, childOptions{})
 	if err == nil {
 		t.Fatalf("statusgenLintAt against the real statusgen on an incomplete root returned (problems=%v, nil err) — "+
 			"want could-not-check", got)
@@ -359,7 +359,7 @@ func TestStatusgenLintAtPassesRootAndNeutralCwd(t *testing.T) {
 echo "CWD: $(pwd -P)" >> `+report+`
 exit 0`)
 
-	if _, err := statusgenLintAt(target); err != nil {
+	if _, err := statusgenLintAt(target, childOptions{}); err != nil {
 		t.Fatalf("statusgenLintAt: %v", err)
 	}
 	out, rerr := os.ReadFile(report)

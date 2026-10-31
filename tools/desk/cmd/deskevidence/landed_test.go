@@ -131,12 +131,12 @@ func TestLandedHistory(t *testing.T) {
 					if flGit(t, landed, "rev-parse", "refs/remotes/origin/main") != flGit(t, root, "rev-parse", "refs/remotes/origin/main") {
 						t.Fatal("landed lint baseline differs from fetched main")
 					}
-					old, err := statusgenLintAt(root)
+					old, err := statusgenLintAt(root, childOptions{})
 					if baseline == "old" && (err != nil || len(old) == 0) {
 						t.Fatalf("frozen history should fail attribution, problems=%v err=%v", old, err)
 					}
 					verifiedClosureCheckFn = verifiedClosureCheckAt
-					err = guardVerifiedOutcomes(root, landed, target, nil, record, f, deskkit.ForgeRepo{}, head)
+					err = guardVerifiedOutcomes(root, landed, target, nil, record, f, deskkit.ForgeRepo{}, head, childOptions{})
 					if wrong {
 						if err == nil {
 							t.Fatal("worker-authored closure accepted")
@@ -145,11 +145,11 @@ func TestLandedHistory(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						introduced, err := lintDiffAt(landed, target, record)
+						introduced, err := lintDiffAt(landed, target, record, childOptions{})
 						if err != nil || len(introduced) != 0 {
 							t.Fatalf("lint diff=%v err=%v", introduced, err)
 						}
-						if err := gateVerifiedSidecarLanding(target, landed, nil, record, false); err != nil {
+						if err := gateVerifiedSidecarLanding(target, landed, nil, record, false, childOptions{}); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -277,19 +277,19 @@ func TestLandedRouting(t *testing.T) {
 				}
 				return landed, head, func() { cleaned = true }, nil
 			}
-			outcomeGuardFn = func(r, l, target string, before, after []byte, fg deskkit.Forge, fr deskkit.ForgeRepo, ref string) error {
+			outcomeGuardFn = func(r, l, target string, before, after []byte, fg deskkit.Forge, fr deskkit.ForgeRepo, ref string, options childOptions) error {
 				if r != root || l != landed || ref != head {
 					t.Fatal("closure guard lost source/landed separation")
 				}
 				return nil
 			}
-			lintDiffFn = func(r, target string, content []byte) ([]string, error) {
+			lintDiffFn = func(r, target string, content []byte, options childOptions) ([]string, error) {
 				if r != landed {
 					t.Fatal("lint staged on frozen home")
 				}
 				return nil, nil
 			}
-			verifiedClosureCheckFn = func(r, brief string) (closureVerdict, string, error) {
+			verifiedClosureCheckFn = func(r, brief string, options childOptions) (closureVerdict, string, error) {
 				if r != landed {
 					t.Fatal("sidecar gate used frozen home")
 				}

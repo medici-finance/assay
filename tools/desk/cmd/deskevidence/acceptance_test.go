@@ -17,25 +17,22 @@ func TestAcceptanceChildPermission(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TRANSITION_ARGV_LOG", log)
-	old := acceptanceForge
-	t.Cleanup(func() { acceptanceForge = old })
 	calls := []struct {
 		name string
-		run  func()
+		run  func(childOptions)
 	}{
-		{"closure", func() { verifiedClosureCheckAt(dir, "vf/01") }},
-		{"outcome", func() { checkVerifiedClosure(dir, "vf/01") }},
-		{"lint", func() { statusgenLintAt(dir) }},
-		{"flip", func() { statusgenVerifyFlip(dir, "vf/01", "abc", "verifier", true) }},
+		{"closure", func(options childOptions) { verifiedClosureCheckAt(dir, "vf/01", options) }},
+		{"outcome", func(options childOptions) { checkVerifiedClosure(dir, "vf/01", options) }},
+		{"lint", func(options childOptions) { statusgenLintAt(dir, options) }},
+		{"flip", func(options childOptions) { statusgenVerifyFlip(dir, "vf/01", "abc", "verifier", true, options) }},
 	}
 	for _, enabled := range []bool{false, true} {
 		for _, c := range calls {
 			t.Run(c.name+map[bool]string{false: "-offline", true: "-opted-in"}[enabled], func(t *testing.T) {
-				acceptanceForge = enabled
 				if err := os.WriteFile(log, nil, 0600); err != nil {
 					t.Fatal(err)
 				}
-				c.run()
+				c.run(childOptions{acceptanceForge: enabled})
 				raw, err := os.ReadFile(log)
 				if err != nil {
 					t.Fatal(err)

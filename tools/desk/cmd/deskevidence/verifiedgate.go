@@ -103,7 +103,7 @@ var verifiedClosureCheckFn = verifiedClosureCheckAt
 //   - exit 2, or a run that could not start → closureCouldNotErr with an
 //     Unverifiable error (could-not-check; refuses the landing rather than trust
 //     an un-evaluable answer).
-func verifiedClosureCheckAt(root, briefKey string) (closureVerdict, string, error) {
+func verifiedClosureCheckAt(root, briefKey string, options childOptions) (closureVerdict, string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable(
 			"statusgen is not on PATH — cannot check whether "+briefKey+" presents a lint-valid verified closure before landing its verified sidecar row", err)
@@ -112,7 +112,7 @@ func verifiedClosureCheckAt(root, briefKey string) (closureVerdict, string, erro
 	if aerr != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable("cannot resolve an absolute path for the landing root "+root, aerr)
 	}
-	cmd := exec.Command("statusgen", acceptanceArgs("verifyclosure", "--root", absRoot, "--brief", briefKey)...)
+	cmd := exec.Command("statusgen", options.args("verifyclosure", "--root", absRoot, "--brief", briefKey)...)
 	cmd.Dir = os.TempDir()
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -149,13 +149,13 @@ func verifiedClosureCheckAt(root, briefKey string) (closureVerdict, string, erro
 // adds no `verified` rows (a pure `verify-fail` append never reaches statusgen).
 // The FIRST not-accepted brief refuses the whole landing; a could-not-check on any
 // brief refuses it as Unverifiable.
-func gateVerifiedSidecarLanding(targetRepoPath, lintRoot string, remoteContent, commitContent []byte, remoteExists bool) error {
+func gateVerifiedSidecarLanding(targetRepoPath, lintRoot string, remoteContent, commitContent []byte, remoteExists bool, options childOptions) error {
 	if !isVerifyOutcomesSidecar(targetRepoPath) {
 		return nil
 	}
 	briefs := verifiedBriefsAdded(remoteContent, commitContent, remoteExists)
 	for _, brief := range briefs {
-		verdict, reason, err := verifiedClosureCheckFn(lintRoot, brief)
+		verdict, reason, err := verifiedClosureCheckFn(lintRoot, brief, options)
 		if err != nil {
 			return err
 		}

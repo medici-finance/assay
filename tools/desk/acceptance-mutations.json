@@ -1,10 +1,29 @@
 {
-  "test": "go test ./cmd/deskevidence -run '^TestAcceptanceChildPermission$' -count=1 -timeout 60s",
+  "test": "go test ./cmd/deskevidence -run '^(TestAcceptanceChildPermission|TestAcceptanceIsolation)$' -count=1 -timeout 60s",
   "control": {
     "name": "explicit approval-read permission not forwarded",
     "file": "cmd/deskevidence/main.go",
-    "old": "if acceptanceForge {",
-    "new": "if false && acceptanceForge {"
+    "old": "if o.acceptanceForge {",
+    "new": "if false && o.acceptanceForge {"
   },
-  "mutations": []
+  "mutations": [
+    {
+      "name": "force optional read permission into offline children",
+      "file": "cmd/deskevidence/main.go",
+      "old": "if o.acceptanceForge {",
+      "new": "if true || o.acceptanceForge {"
+    },
+    {
+      "name": "drop parsed invocation permission",
+      "file": "cmd/deskevidence/main.go",
+      "old": "options.acceptanceForge = true",
+      "new": "options.acceptanceForge = false"
+    },
+    {
+      "name": "drop outward invocation option binding",
+      "file": "cmd/deskevidence/writeflow.go",
+      "old": "&auditCtx{verb: \"commit\", options: options}",
+      "new": "&auditCtx{verb: \"commit\"}"
+    }
+  ]
 }

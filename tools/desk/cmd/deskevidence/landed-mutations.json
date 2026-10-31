@@ -4,8 +4,8 @@
   "control": {
     "name": "frozen attribution history",
     "file": "cmd/deskevidence/outcome.go",
-    "old": "problems, err := statusgenLintFn(landedRoot)",
-    "new": "problems, err := statusgenLintFn(root)"
+    "old": "problems, err := statusgenLintFn(landedRoot, options)",
+    "new": "problems, err := statusgenLintFn(root, options)"
   },
   "mutations": [
     {

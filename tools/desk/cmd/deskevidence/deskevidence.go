@@ -643,10 +643,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if landedHead != "" {
 		closureRef = landedHead
 	}
-	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, remoteContent, commitContent, fg, fr, closureRef); err != nil {
+	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, remoteContent, commitContent, fg, fr, closureRef, ac.options); err != nil {
 		return err
 	}
-	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
+	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent, ac.options)
 	if lerr != nil {
 		return lerr
 	}
@@ -684,7 +684,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// verified outcome the tree does not back; review then refuses that mismatch, so this refuses
 	// it at the source instead. Runs on the SAME lintRoot the PROBLEM-diff guard just used, and
 	// like it before the dry-run stop and the write budget. `verify-fail` rows are never gated.
-	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, remoteContent, commitContent, remoteExists); verr != nil {
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, remoteContent, commitContent, remoteExists, ac.options); verr != nil {
 		return verr
 	}
 
@@ -986,6 +986,7 @@ func addedLines(older, newer []byte) []byte {
 // auditCtx accumulates fields for the ONE audit line per invocation.
 // finalize is deferred so exactly one line is written.
 type auditCtx struct {
+	options       childOptions
 	attestation   string
 	verb          string
 	repo          string

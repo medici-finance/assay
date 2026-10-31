@@ -13,7 +13,7 @@ func TestVerifiedOutcomeGateBeforeWrite(t *testing.T) {
 	for _, dry := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "dry-run"}[dry], func(t *testing.T) {
 			f, _ := setupFake(t)
-			outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+			outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string, childOptions) error {
 				return deskkit.Refused("closure still implemented")
 			}
 			file := "docs/streams/verify-outcomes.jsonl"
@@ -37,7 +37,7 @@ func TestVerifiedOutcomeRealStatusgen(t *testing.T) {
 	landedStatusgenOnPath(t)
 	root, _, head, files := landedFixture(t, false)
 	flGit(t, root, "checkout", "-q", "-f", "--detach", head)
-	file, err := checkVerifiedClosure(root, "vf/01")
+	file, err := checkVerifiedClosure(root, "vf/01", childOptions{})
 	if err != nil || file != "docs/streams/vf/brief-01-check.md" {
 		t.Fatalf("file=%q error=%v", file, err)
 	}
@@ -45,7 +45,7 @@ func TestVerifiedOutcomeRealStatusgen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, board), []byte(strings.Replace(files[board], "| verified |", "| implemented |", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, err = checkVerifiedClosure(root, "vf/01")
+	_, err = checkVerifiedClosure(root, "vf/01", childOptions{})
 	var de *deskkit.DeskError
 	if !asDeskError(err, &de) || de.Code != deskkit.ExitRefused {
 		t.Fatalf("expected refused closure, got %v", err)
@@ -94,19 +94,19 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 			}
 			oldCheck, oldLint := closureCheckFn, statusgenLintFn
 			t.Cleanup(func() { closureCheckFn = oldCheck; statusgenLintFn = oldLint })
-			closureCheckFn = func(string, string) (string, error) {
+			closureCheckFn = func(string, string, childOptions) (string, error) {
 				if tc.closureErr {
 					return "", deskkit.Refused("not verified")
 				}
 				return brief, nil
 			}
-			statusgenLintFn = func(string) ([]string, error) {
+			statusgenLintFn = func(string, childOptions) ([]string, error) {
 				if tc.lintRed {
 					return []string{"PROBLEM: bad closure"}, nil
 				}
 				return nil, nil
 			}
-			err := guardVerifiedOutcomes(root, root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
+			err := guardVerifiedOutcomes(root, root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main", childOptions{})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error=%v wantErr=%v", err, tc.wantErr)
 			}
@@ -126,7 +126,7 @@ if [ "$arg" = "--check-attribution" ]; then
 fi
 done
 echo '{"key":"vf/01","file":"docs/streams/vf/brief-01-check.md"}'`)
-	_, err := checkVerifiedClosure(t.TempDir(), "vf/01")
+	_, err := checkVerifiedClosure(t.TempDir(), "vf/01", childOptions{})
 	var de *deskkit.DeskError
 	if !asDeskError(err, &de) || de.Code != deskkit.ExitUnverifiable {
 		t.Fatalf("old capability did not fail closed: %v", err)

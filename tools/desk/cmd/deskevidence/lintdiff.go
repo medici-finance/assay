@@ -65,8 +65,8 @@ var statusgenLintFn = statusgenLintAt
 // discipline --root's own #1709 fix established for deskevidence: a tool that leaves a
 // worktree silently different from what a human or another session expects has already
 // caused one class of main-red.
-func lintDiffAt(root, targetRepoPath string, newContent []byte) (introduced []string, err error) {
-	before, err := statusgenLintFn(root)
+func lintDiffAt(root, targetRepoPath string, newContent []byte, options childOptions) (introduced []string, err error) {
+	before, err := statusgenLintFn(root, options)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte) (introduced []st
 		}
 	}()
 
-	after, aerr := statusgenLintFn(root)
+	after, aerr := statusgenLintFn(root, options)
 	if aerr != nil {
 		return nil, aerr
 	}
@@ -135,11 +135,11 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte) (introduced []st
 //     invocation verify-desk's own skill documents) would sail EVERY landing through,
 //     including the sibling-path bug this guard exists to catch. Reporting it Unverifiable
 //     makes cmdEvidence refuse the landing (exit 6) rather than trust an un-evaluable lint.
-func statusgenLintAt(root string) ([]string, error) {
+func statusgenLintAt(root string, options childOptions) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot check this landing for introduced PROBLEMs", err)
 	}
-	cmd := exec.Command("statusgen", acceptanceArgs("--root", root, "--lint")...)
+	cmd := exec.Command("statusgen", options.args("--root", root, "--lint")...)
 	cmd.Dir = os.TempDir()
 	out, cerr := cmd.CombinedOutput()
 	exitedNonZero := false
