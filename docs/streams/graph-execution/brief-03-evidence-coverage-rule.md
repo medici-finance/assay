@@ -1106,3 +1106,9 @@ Gate: model (from frontmatter). Reviewer records verdict + date in the stream RE
 Reviewer question: name one input state in which coverage reports `released` while a
 mandatory claim has no passing result at the item's revision. If one exists, the rule is
 not deterministic and the brief is bounced.
+
+### Accepted residual: board-bookkeeping exemption from witness invalidation
+Ruling: https://github.com/medici-finance/assay/issues/2339#issuecomment-6454859047 — maintainer decision A, accepted residual.
+- Residual: `isBoardBookkeepingPath` (in `statusgen/evaluation/coverage.go`) exempts `STATUS.md` and paths under `docs/streams/` from staling a witness. This is kept as is; no code change.
+- Consequence: a Verify row that reads `docs/streams` content (for example a lint run) can keep a reused PASS after an outcome-changing edit made only under `docs/streams/`.
+- Rule: a brief whose rows depend on such an artifact declares it in `files:`, which makes an edit to it invalidate the affected witness.
