@@ -22,6 +22,12 @@ reviewable artifact, not a run.
 
 ## Contents
 
+- `lifecycle-preflight.yml` — prospective delivery admission using statusgen's
+  existing lifecycle rules, built from the trusted base. **Staged, not live**;
+  see [the activation and required-check runsheet](../../docs/lifecycle-preflight.md).
+  Source merge, maintainer promotion, required-check configuration and consumer
+  tool deployment are separate steps. No path filter may hide a code-only delivery.
+
 - `verify-gate-close.yml` — live workflow twin with the board-writer
   Environment restriction, byte-identical to its live counterpart, enforced by
   `declared-changes.json`.

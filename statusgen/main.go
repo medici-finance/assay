@@ -1298,6 +1298,10 @@ func (b *budgetFlags) Set(v string) error {
 var statusgenVersion = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "lifecycle-preflight" {
+		exitProcess(runLifecyclePreflight(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// The check:ci network-off sandbox re-executes statusgen as its in-namespace
 	// helper (netns.go, issue #1925). Dispatched first: it brings loopback up,
 	// proves isolation and execs the row — or refuses — and never returns.
@@ -1643,7 +1647,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, lifecycle-preflight, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			exitProcess(2)
 		}

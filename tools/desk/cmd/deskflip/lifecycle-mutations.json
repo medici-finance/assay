@@ -1,0 +1,77 @@
+{
+  "test": "go test ./cmd/deskflip -run 'TestLifecycle|TestDelivery' -count=1 -timeout 90s",
+  "control": {
+    "name": "CONTROL: exempt every lifecycle declaration",
+    "file": "cmd/deskflip/lifecycle.go",
+    "old": "\tif !lifecycleDelivery(body) {",
+    "new": "\tif true || !lifecycleDelivery(body) {"
+  },
+  "mutations": [
+    {
+      "name": "an approved delivery with no lifecycle check is admitted",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\treturn false, deskkit.Unverifiable(fmt.Sprintf(\"condition %s: delivering PR has no successful %s check run at %s%s; an absent or previous-head result is not a pass\", condLifecyclePreflight, condLifecyclePreflight, short(head), note), nil)",
+      "new": "\t_ = note\n\treturn true, nil"
+    },
+    {
+      "name": "a skipped lifecycle check grants delivery readiness",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "!strings.EqualFold(c.Conclusion, \"success\") {",
+      "new": "!strings.EqualFold(c.Conclusion, \"success\") && !strings.EqualFold(c.Conclusion, \"skipped\") {"
+    },
+    {
+      "name": "a successful lifecycle check predating the live declaration is accepted",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "err != nil || startErr != nil || started.Before(edited)",
+      "new": "err != nil || startErr != nil || (false && started.Before(edited))"
+    },
+    {
+      "name": "F3: the condition binds in a repository that has not adopted the check",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\tif err != nil || !adopted {\n\t\treturn false, err\n\t}",
+      "new": "\tif err != nil || (!adopted && false) {\n\t\treturn false, err\n\t}"
+    },
+    {
+      "name": "F3: an unreadable required set reads as not adopted",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\tif err != nil {\n\t\treturn false, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\"condition %s: cannot read the base branch's",
+      "new": "\tif err != nil {\n\t\treturn false, nil\n\t}\n\tif false {\n\t\treturn false, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\"condition %s: cannot read the base branch's"
+    },
+    {
+      "name": "S1: a commit status is accepted as a lifecycle run",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\t\tif c.Name == \"\" {\n\t\t\tsawStatus = true",
+      "new": "\t\tif c.Name == \"\" {\n\t\t\tc.Name, c.Status, c.Conclusion, c.AppSlug = condLifecyclePreflight, \"completed\", c.State, lifecycleProducerApp\n\t\t}\n\t\tif false {\n\t\t\tsawStatus = true"
+    },
+    {
+      "name": "S1: a check run from any App is accepted",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\t\tif c.AppSlug != lifecycleProducerApp {",
+      "new": "\t\tif false && c.AppSlug != lifecycleProducerApp {"
+    },
+    {
+      "name": "S1: a PR that edits a workflow vouches for itself",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\t\tif lifecycleWorkflowPath(f.Path) || lifecycleWorkflowPath(f.PreviousFilename) {",
+      "new": "\t\tif lifecycleWorkflowPath(f.Path) && false {"
+    },
+    {
+      "name": "S1: a renamed-away workflow is missed",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\t\tif lifecycleWorkflowPath(f.Path) || lifecycleWorkflowPath(f.PreviousFilename) {",
+      "new": "\t\tif lifecycleWorkflowPath(f.Path) {"
+    },
+    {
+      "name": "F6: the body-change arm is dropped",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif body2 != pr.Body && (lifecycleDelivery(pr.Body) || lifecycleDelivery(body2)) {",
+      "new": "\tif false && body2 != pr.Body && (lifecycleDelivery(pr.Body) || lifecycleDelivery(body2)) {"
+    },
+    {
+      "name": "the producer App is dropped from the forge read",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\t\t\tAppSlug: c.App.Slug,\n",
+      "new": "\t\t\t\tAppSlug: \"github-actions\",\n"
+    }
+  ]
+}
