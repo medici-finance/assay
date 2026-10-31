@@ -720,15 +720,18 @@ func TestHookStatusReads(t *testing.T) {
 		`GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
 		`GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
 		`T=$(desktoken --no-rotate worker --repo x/y 2>/dev/null); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		"gh pr list --json status | grep '^a'",
 	} {
 		ambientAllowed(t, wt, cmd)
 	}
 	for _, cmd := range []string{
 		`gh "$s" status -t`,
-		"gh pr view 1 --json status --jq env.HOME",
-		"gh pr view 1 --json status -qenv.HOME",
-		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq env.HOME`,
+		"gh pr view 1 --json status --jq x.y",
+		"gh pr view 1 --json status -qx.y",
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq x.y`,
 		"gh pr view 1 --json status --template x",
+		"gh pr list --json status | grep ^a",
+		"PATH=$(desktoken worker); gh pr view 1 --json status",
 		`git status; gh pr list | grep "x -A" 123`,
 		`gh "$s" status --show-token`,
 		`gh "$s" status -at`,

@@ -611,7 +611,7 @@ func TestForgeStatusOtherCommands(t *testing.T) {
 		"gh pr view 1 --json status | head hosts.yml",
 		"gh pr view 1 --json status | tail -f hosts.yml",
 		"gh pr view 1 --json status | wc hosts.yml",
-		"gh pr view 1 --json status | jq env",
+		"gh pr view 1 --json status | jq x",
 		"gh pr view 1 --json status > x",
 		"gh pr view 1 --json status < x",
 		"PAGER=x gh pr view 1 --json status",
@@ -667,7 +667,7 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 		"gh run list --json status -q=.a.status",
 		"gh run list --json status -q.a.status",
 		"gh run view 1 --json status --jq .jobs.status",
-		"gh pr view 1 --json status --jq .env.HOME",
+		"gh pr view 1 --json status --jq .a.b",
 		"gh issue list --repo x/y --json status",
 		"gh issue list -R=x/y --json status",
 		"gh issue list -Rx/y --json status",
@@ -690,24 +690,24 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 func TestForgeStatusJqFieldPathsOnly(t *testing.T) {
 	// Only literal field paths clear, in every spelling of the flag.
 	forgeRefuseAll(t, []string{
-		"gh pr view 1 --json status --jq env",
-		"gh pr view 1 --json status --jq env.HOME",
-		`gh pr view 1 --json status --jq "env.HOME"`,
-		`gh pr view 1 --json status --jq 'env.HOME'`,
-		`gh pr view 1 --json status "--jq" env.HOME`,
-		"gh pr view 1 --json status --jq=env.HOME",
-		`gh pr view 1 --json status "--jq=env.HOME"`,
-		`gh pr view 1 --json status --jq="env.HOME"`,
-		"gh pr view 1 --json status -q env.HOME",
-		`gh pr view 1 --json status "-q" env.HOME`,
-		"gh pr view 1 --json status -qenv.HOME",
-		"gh pr view 1 --json status -q=env.HOME",
-		`gh pr view 1 --json status -q"env.HOME"`,
-		"gh run list --json status --jq env.HOME",
-		"gh issue list --json status -q env",
-		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq env.HOME`,
-		"gh pr view 1 --json status --jq .a --jq env.HOME",
-		"gh pr view 1 --search --jq env.HOME status",
+		"gh pr view 1 --json status --jq x",
+		"gh pr view 1 --json status --jq x.y",
+		`gh pr view 1 --json status --jq "x.y"`,
+		`gh pr view 1 --json status --jq 'x.y'`,
+		`gh pr view 1 --json status "--jq" x.y`,
+		"gh pr view 1 --json status --jq=x.y",
+		`gh pr view 1 --json status "--jq=x.y"`,
+		`gh pr view 1 --json status --jq="x.y"`,
+		"gh pr view 1 --json status -q x.y",
+		`gh pr view 1 --json status "-q" x.y`,
+		"gh pr view 1 --json status -qx.y",
+		"gh pr view 1 --json status -q=x.y",
+		`gh pr view 1 --json status -q"x.y"`,
+		"gh run list --json status --jq x.y",
+		"gh issue list --json status -q x",
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq x.y`,
+		"gh pr view 1 --json status --jq .a --jq x.y",
+		"gh pr view 1 --search --jq x.y status",
 		"gh pr view 1 --json status --jq",
 		"gh pr view 1 --json status -q",
 		"gh pr view 1 --json status --jq .",
@@ -728,8 +728,8 @@ func TestForgeStatusJqFieldPathsOnly(t *testing.T) {
 		"gh pr view 1 --json status -tx",
 		"gh pr view 1 --json status -t=x",
 		`gh run view 1 --json status -t '{{.status}}'`,
-		"gh pr view 1 --json status -cq env.HOME",
-		"gh pr list --json status -Lq env.HOME",
+		"gh pr view 1 --json status -cq x.y",
+		"gh pr list --json status -Lq x.y",
 		"gh pr list --json status -L5",
 	})
 }
@@ -747,11 +747,11 @@ func TestForgeStatusQuotedBlank(t *testing.T) {
 		rows = append(rows, pre+f)
 	}
 	forgeRefuseAll(t, append(rows,
-		`gh pr view 1 --search "x --search" --jq env.HOME --json status`,
-		`gh pr view 1 "x --json" --jq env.HOME status`,
+		`gh pr view 1 --search "x --search" --jq x.y --json status`,
+		`gh pr view 1 "x --json" --jq x.y status`,
 		`gh issue list --search "a b" --json status`,
 		`gh pr view 1 --json status --jq ".a .b"`,
-		`gh pr view 1 --json status --jq" "env.HOME`,
+		`gh pr view 1 --json status --jq" "x.y`,
 		`gh pr view "1 --json status`,
 		`git status "a b" && gh pr view 1`,
 	))
@@ -884,7 +884,78 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		"gh pr checks 1 | grep 'a b status'",
 		"gh pr list --search is:open --json status",
 		"gh pr list -L5 --json status",
+		"gh pr list --json status | grep ^a",
+		"gh pr list --json status | grep a#",
+		"F=$(desktoken worker); gh pr view 1 --json status",
 	})
+}
+
+// regression: #5046
+func TestForgeStatusFilterOperandQuotes(t *testing.T) {
+	// `^` and `#` refuse outside a quoted span and clear inside one. `=` clears
+	// either way: a shell's `=` expansion gives one word at most, the grep pattern.
+	forgeRefuseAll(t, []string{
+		"gh pr list --json status | grep ^a",
+		"gh pr list --json status | grep -v ^a",
+		"gh pr list --json status | grep a#",
+		"gh pr list --json status | grep ^'a'",
+		"gh pr list --json status | grep 'a'^a",
+		`gh pr list --json status | grep "a"#`,
+		"gh pr list --json status | grep '^a'#",
+		`gh pr list --json status | grep '"'^a`,
+		`gh pr list --json status | grep "'"^a`,
+	})
+	for _, cmd := range []string{
+		"gh pr list --json status | grep '^a'",
+		`gh pr list --json status | grep "^a"`,
+		"gh pr list --json status | grep 'a#'",
+		`gh pr list --json status | grep "a#"`,
+		"gh pr list --json status | grep '^'a",
+		"gh pr list --json status | grep a'#'",
+		"gh pr list --json status | grep =a",
+		"gh pr list --json status | grep a=0",
+		`gh pr list --json status | grep '"^a'`,
+		`gh pr list --json status | grep "'^a"`,
+		"gh pr list --json status | grep -v '^a'",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: must clear", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusClosedSets(t *testing.T) {
+	// Each closed set, walked byte by byte, so one more byte in a set goes red.
+	for _, b := range "*?[]{}~" {
+		forgeRefuseAll(t, []string{
+			fmt.Sprintf("gh pr list --json status | grep a%c", b),
+			fmt.Sprintf("gh pr list --json status | grep '%ca'", b),
+		})
+	}
+	for filter, flags := range map[string]string{"grep": "AaBCEFHchilnoqsvwx", "head": "nc", "tail": "nc", "wc": "lwcm"} {
+		for b := 'A'; b <= 'z'; b++ {
+			if (b <= 'Z' || b >= 'a') && !strings.ContainsRune(flags, b) {
+				forgeRefuseAll(t, []string{fmt.Sprintf("gh pr list --json status | %s -%c", filter, b)})
+			}
+		}
+	}
+	forgeRefuseAll(t, []string{
+		"gh pr list --repo a:b/c --json status",
+		"gh pr list --repo a/b:c --json status",
+		"gh pr list -R a:b/c --json status",
+		"PATH=$(desktoken worker); gh pr view 1 --json status",
+		"HOME=$(desktoken worker); gh pr view 1 --json status",
+		"BASH_ENV=$(desktoken worker); gh pr view 1 --json status",
+		"GH_HOST=$(desktoken worker); gh pr view 1 --json status",
+		"XT=$(desktoken worker); gh pr view 1 --json status",
+		"XGH_TOKEN=$(desktoken worker); gh pr view 1 --json status",
+	})
+	for _, name := range []string{"GH_TOKEN", "T", "TF"} {
+		if cmd := name + "=$(desktoken worker); gh pr view 1 --json status"; forgeTokenRead(cmd) {
+			t.Errorf("%q: the role mint must clear", cmd)
+		}
+	}
 }
 
 // forgeWords lists every string over alphabet up to length max.
@@ -932,6 +1003,7 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 		}
 	}
 	checked := []string{"--jq %s", "--jq=%s", "-q %s", "-q%s", "-q=%s"}
+	filters := []string{"| grep %s", "| grep -v %s", "| head %s", "| wc %s"}
 	templates := append([]string{"--repo %s", "--repo=%s", "-R %s", "-R%s", "--search %s", "--search=%s", "%s"}, checked...)
 	type batch struct {
 		templates []string
@@ -941,6 +1013,10 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 	for _, b := range []batch{
 		{templates, forgeWords(`.[]*?{}~,-/=^#!%a0_@`, 3)},
 		{checked, forgeWords(".[]a0", 6)},
+		// No `=` here: zsh turns a word starting `=` into one path or stops, so it
+		// reads back changed by design, and stays one word (TestForgeStatusFilterOperandQuotes).
+		{filters, forgeWords(`.[]*?{}~,-/^#!%a0_@`, 3)},
+		{filters, []string{"'^a'", `"a#"`, "'^'a", "a'#'", "'=a'", "a'^'0"}},
 		{templates, []string{"{a,0}", "a{0,a}", ".a{,0}", "a/a{,0}", "'.a'", `".a"`, "'a'/'a'", "a/a*", "a/a?", "a/a[0]", "a/a{,0}"}},
 	} {
 		for _, tmpl := range b.templates {
@@ -950,7 +1026,7 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 					continue
 				}
 				for _, w := range strings.Fields(args) {
-					if !seen[w] {
+					if w != "|" && w != "grep" && w != "head" && w != "wc" && !seen[w] {
 						seen[w] = true
 						cleared = append(cleared, w)
 					}
@@ -958,7 +1034,7 @@ func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
 			}
 		}
 	}
-	for _, w := range []string{".a", ".a.a", "a/a", "--jq=.a", "-q.a"} {
+	for _, w := range []string{".a", ".a.a", "a/a", "--jq=.a", "-q.a", "'^a'", `"a#"`} {
 		if !seen[w] {
 			t.Errorf("%q: this literal word must clear, or the check below proves nothing", w)
 		}

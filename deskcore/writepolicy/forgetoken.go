@@ -117,8 +117,9 @@ var (
 	forgeDropQuotes = strings.NewReplacer(`"`, "", "'", "")
 	// forgeRoleEnv: the role credential for one command, from a file variable.
 	forgeRoleEnv = regexp.MustCompile(`^GH_TOKEN=\$\(cat "\$[A-Za-z_][A-Za-z0-9_]*"\)[ \t]+`)
-	// forgeRoleMint: the sanctioned mint, assigned to a variable.
-	forgeRoleMint = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=\$\(desktoken( [-A-Za-z0-9_ ./]+)?( 2>/dev/null)?\)$`)
+	// forgeRoleMint: the sanctioned mint, assigned to GH_TOKEN or to the file variable
+	// forgeRoleEnv reads, and to no name that a shell or gh gives a meaning.
+	forgeRoleMint = regexp.MustCompile(`^(GH_TOKEN|TF?)=\$\(desktoken( [-A-Za-z0-9_ ./]+)?( 2>/dev/null)?\)$`)
 )
 
 // forgeListedReads reports whether every command in s is one listed read:
@@ -207,8 +208,9 @@ func forgeGhArgs(args []string) bool {
 }
 
 // forgeFilterArgs reports whether name is a listed filter and args stay inside
-// its flags and operand count. Quotes are dropped first, so `"-r"` reads as a
-// flag, and a glob byte refuses, since it may expand to more operands. A number
+// its flags and operand count. A word forgeUnquotedExpands flags refuses. Quotes
+// are dropped next, so `"-r"` reads as a flag, and a glob byte refuses, quoted or
+// not, since it may expand to more operands. A number
 // is a count only straight after a flag that takes one (`head -n 5`, `grep -A 3`);
 // anywhere else it is an operand, since `head 123` opens a file named 123.
 func forgeFilterArgs(name string, args []string) bool {
@@ -218,6 +220,9 @@ func forgeFilterArgs(name string, args []string) bool {
 	}
 	operands, value := 0, false
 	for _, a := range args {
+		if forgeUnquotedExpands(a) {
+			return false
+		}
 		a = forgeDropQuotes.Replace(a)
 		switch {
 		case strings.ContainsAny(a, "*?[]{}~"):
@@ -238,6 +243,25 @@ func forgeFilterArgs(name string, args []string) bool {
 		}
 	}
 	return !value && operands <= flt.operands
+}
+
+// forgeUnquotedExpands reports whether a word holds `^` or `#` outside quotes, the
+// glob bytes of a shell's extended globbing, which would widen a word to file names.
+// The word holds no backslash and no quoted blank here (forgeListedReads), so every
+// quote byte opens or closes a span, and each span ends inside this word.
+func forgeUnquotedExpands(a string) bool {
+	var open rune
+	for _, r := range a {
+		switch {
+		case open == 0 && (r == '"' || r == '\''):
+			open = r
+		case r == open:
+			open = 0
+		case open == 0 && strings.ContainsRune("^#", r):
+			return true
+		}
+	}
+	return false
 }
 
 const forgeDigits = "0123456789"
