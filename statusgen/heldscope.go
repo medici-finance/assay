@@ -176,6 +176,21 @@ import (
 //     wording and any independent hold remain read. The source locator is
 //     syntax, not proof that the derivation or its claimed value is correct.
 //
+//  6. Recounted prose (#4721). A line outside every table — prose, with no pipe
+//     and no HTML table tag — may name a state word without recording a hold.
+//     Exactly three shapes are excused (heldRecounted), each on the lower-case
+//     occurrence alone and each anchored to its context: a zero tally closing
+//     its clause with no row before it ("obligations 0; could-not-check 0."),
+//     a sentence on a line that names a mutation and no offline reason, where
+//     the mutation "rounds could-not-check to pass" and no row is named outside
+//     that mutation's own parentheses, and a flip hold of an earlier entry
+//     ("the earlier PASS ... but its board flip was held on #4536.") whose
+//     tracker ends the sentence, on a line naming no row, no verified flip and
+//     nothing still in force. Prose stays read for everything else, so a
+//     labelled disposition, a row, a reason, a capital marker or a zero
+//     followed by a noun still holds. Table lines are read under rules 1 to 5,
+//     never excused by this rule.
+//
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
 type heldLineRead struct {
@@ -1895,6 +1910,126 @@ func heldRiskDefinition(clean string, h []int) bool {
 	}
 	for _, span := range spans {
 		if span[0] <= h[0] && h[1] <= span[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// Recounted prose (rule 6, #4721).
+//
+// Prose that only recounts a state word is not a disposition: a tally that
+// closes on a zero, a sentence about what a mutation does, a past flip hold
+// of an earlier entry cited by its tracker. Each of the three shapes below is
+// a closed excuse written to fail closed, like the negation rule it sits
+// beside: it applies to the LOWER-CASE occurrence alone (a capital HELD or
+// COULD-NOT-CHECK is the disposition token a verifier writes, and Held or
+// Could-Not-Check is not on any list), and leaves every other occurrence on
+// the line to the rules that already read it. Each shape is the one #4721
+// quotes, anchored to the context that makes it a recount; nothing wider.
+//
+//   - Zero tally: the state word is followed by a bare 0 that ends its clause
+//     (";", ",", ")", a sentence stop or the end of the line), optionally after
+//     a colon, and what precedes the word is the start of the line, a clause
+//     break (";", ",", "(") or a tally label ("accounting:", "summary:"). A noun
+//     after the zero ("could-not-check 0 clusters reachable"), a row anywhere
+//     before the word ("row 3, could-not-check 0.") or a ratio on the line that
+//     did not pass everything it counts ("1 of 2 rows passed") is not a tally.
+//   - Mutation sentence: "rounds could-not-check to pass", exactly, on a line
+//     that names a mutation or mutant and gives no offline or no-runner reason.
+//     Inside parentheses the parenthesis is the mutation's description: it
+//     closes straight after "to pass" and names no row ("row 2 (new adapter
+//     rounds could-not-check to pass)"). Outside parentheses the line names no
+//     row at all. Another verb, tense or target is read.
+//   - Past flip hold: "flip was held on <tracker ref>" or "flip had been held on
+//     <tracker ref>", where the tracker is #N or owner/repo#N and ends the
+//     sentence (an optional ")" then a full stop, or the end of the line); the
+//     sentence recounts an earlier entry ("earlier", "previous", "prior"); and
+//     the line names no row, no verified flip and nothing that still, remains
+//     or continues. A present-tense flip hold, one that names no tracker, or
+//     one that goes on past its tracker with a reason or a further clause is
+//     read.
+var (
+	heldTallyAfterRe  = regexp.MustCompile(`^[ \t]*:?[ \t]*0[ \t]*(?:[;,)]|\.(?:[ \t]|$)|$)`)
+	heldTallyBeforeRe = regexp.MustCompile(`(?i)(?:^|[;,(]|\b(?:accounting|summary|totals?|counts?|tally):)[ \t]*$`)
+	heldRoundBeforeRe = regexp.MustCompile(`\brounds[ \t]+$`)
+	heldRoundAfterRe  = regexp.MustCompile(`^[ \t]+to[ \t]+pass\b`)
+	heldRoundCloseRe  = regexp.MustCompile(`^[ \t]+to[ \t]+pass[ \t]*\)`)
+	heldMutationRe    = regexp.MustCompile(`(?i)\b(?:mutations?|mutants?)\b`)
+	heldOfflineRe     = regexp.MustCompile(`(?i)\b(?:offline|absent|unavailable|unreachable|no[ \t]+(?:runners?|clusters?|hosts?))\b`)
+	heldFlipBeforeRe  = regexp.MustCompile(`(?i)\bflip[ \t]+(?:was|had[ \t]+been)[ \t]+$`)
+	heldFlipAfterRe   = regexp.MustCompile(`^[ \t]+on[ \t]+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*\)?(?:\.(?:[ \t]|$)|[ \t]*$)`)
+	heldEarlierRe     = regexp.MustCompile(`(?i)\b(?:earlier|previous|prior)\b`)
+	heldVerifiedRe    = regexp.MustCompile(`(?i)\bverified\b`)
+	heldStillRe       = regexp.MustCompile(`(?i)\b(?:still|remains?|continues?)\b`)
+	heldSentenceRe    = regexp.MustCompile(`[.!?][ \t]+`)
+	// heldRowRefRe is a row reference ("row 3", "Row 3's", "rows 2 and 4").
+	heldRowRefRe = regexp.MustCompile(`(?i)\brows?[ \t]+#?[0-9]`)
+	// heldRatioRe is a ratio on the line ("1 of 2 rows passed", "3/4").
+	heldRatioRe = regexp.MustCompile(`(?i)\b(\d+)(?:[ \t]+of[ \t]+|/)(\d+)\b`)
+)
+
+// heldRecounted reports whether the prose occurrence at clean[h[0]:h[1]] is one
+// of the three recounted shapes above (rule 6, #4721). The caller passes only
+// lines outside every table, with no struck span.
+func heldRecounted(clean string, h []int) bool {
+	word, before, after := clean[h[0]:h[1]], clean[:h[0]], clean[h[1]:]
+	if word != "held" && word != "could-not-check" {
+		return false // a capital or mixed-case occurrence is read
+	}
+	if heldTallyAfterRe.MatchString(after) && heldTallyBeforeRe.MatchString(before) &&
+		!heldRowRefRe.MatchString(before) && !heldShortRatio(clean) {
+		return true
+	}
+	if word == "could-not-check" {
+		return heldMutationSentence(clean, before, after)
+	}
+	return heldPastFlip(clean, before, after)
+}
+
+// heldMutationSentence is rule 6's mutation shape: "rounds could-not-check to
+// pass" describing a named mutation, never a run (see the comment above).
+func heldMutationSentence(clean, before, after string) bool {
+	if !heldRoundBeforeRe.MatchString(before) || !heldRoundAfterRe.MatchString(after) {
+		return false
+	}
+	if !heldMutationRe.MatchString(clean) {
+		return false // no mutation named: the sentence may describe the run itself
+	}
+	if heldOfflineRe.MatchString(clean) {
+		return false // an offline or no-runner reason: a real hold, recounted as a rounding
+	}
+	if open := strings.LastIndexByte(before, '('); open >= 0 && !strings.Contains(before[open:], ")") {
+		return heldRoundCloseRe.MatchString(after) && !heldRowRefRe.MatchString(before[open:])
+	}
+	return !heldRowRefRe.MatchString(clean)
+}
+
+// heldPastFlip is rule 6's flip shape: an earlier entry's flip hold, cited by a
+// tracker that ends its sentence (see the comment above).
+func heldPastFlip(clean, before, after string) bool {
+	if !heldFlipBeforeRe.MatchString(before) || !heldFlipAfterRe.MatchString(after) {
+		return false
+	}
+	if heldStillRe.MatchString(clean) {
+		return false // the line says the hold is still in force
+	}
+	if heldRowRefRe.MatchString(clean) || heldVerifiedRe.MatchString(clean) {
+		return false // a row's or a verified flip: this entry's own hold
+	}
+	sentence := before
+	if s := heldSentenceRe.FindAllStringIndex(before, -1); s != nil {
+		sentence = before[s[len(s)-1][1]:]
+	}
+	return heldEarlierRe.MatchString(sentence)
+}
+
+// heldShortRatio reports whether clean carries a ratio that did not pass
+// everything it counts ("1 of 2 rows passed", "3/4", "0 of 0"): beside one, a
+// zero tally after the state word is no evidence that nothing is held.
+func heldShortRatio(clean string) bool {
+	for _, m := range heldRatioRe.FindAllStringSubmatch(clean, -1) {
+		if !heldDetailCounts(m[1:]) {
 			return true
 		}
 	}
