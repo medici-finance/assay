@@ -297,6 +297,15 @@
       "module": "tools/desk",
       "package": "./cmd/deskpr",
       "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "evidence-audit-reason",
+      "target": "tools/desk/cmd/deskevidence/writeflow.go",
+      "old": "detail := strings.TrimSpace(diagnostic.String())",
+      "new": "detail := strings.TrimSpace(diagnostic.String()); if i := strings.LastIndex(detail, \": \"); i >= 0 { detail = detail[:i] }",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
     }
   ]
 }

@@ -11,9 +11,10 @@ func TestDeskCapsPreflight(t *testing.T) {
 	for name, tc := range map[string]struct {
 		content string
 		want    int
+		why     string
 	}{
-		"unclosed":    {"---\nschema: brief-v1\n## Evidence\n| 1 | unresolved |\n", deskkit.ExitUnverifiable},
-		"unsupported": {"---\n\"reader-\\x72equirements\": {schema: \"reader-\\x72equirements-v1\", required: [{operation: acceptance, schemas: [], semantics: [future-v1]}]}\n---\n## Evidence\n", deskkit.ExitRefused},
+		"unclosed":    {"---\nschema: brief-v1\n## Evidence\n| 1 | unresolved |\n", deskkit.ExitUnverifiable, "unterminated frontmatter"},
+		"unsupported": {"---\n\"reader-\\x72equirements\": {schema: \"reader-\\x72equirements-v1\", required: [{operation: acceptance, schemas: [], semantics: [future-v1]}]}\n---\n## Evidence\n", deskkit.ExitRefused, "unsupported required operation: acceptance"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := setupStamp(t, true)
@@ -31,7 +32,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 			if tc.want == deskkit.ExitUnverifiable {
 				wantResult = deskkit.ResultUnverifiable
 			}
-			if row.Tool != "deskevidence" || row.Verb != "commit" || row.Result != wantResult || !strings.Contains(row.Detail, "reader capabilities:") || !strings.Contains(row.Detail, stampBrief) {
+			if row.Tool != "deskevidence" || row.Verb != "commit" || row.Result != wantResult || !strings.Contains(row.Detail, "reader capabilities:") || !strings.Contains(row.Detail, stampBrief) || !strings.Contains(row.Detail, tc.why) {
 				t.Fatalf("preflight refusal audit lost context: %+v", row)
 			}
 			if f.putCalls != 0 {
