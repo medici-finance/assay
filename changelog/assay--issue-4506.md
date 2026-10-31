@@ -1,0 +1,2 @@
+### Added
+- New brief graph-execution/34 plans a workflow-pattern schema amendment: a signal input with a liveness check, decision options with a recommended default, a closed containment list, signal classes and eight lint rules. Admission fails closed: when any effect is reachable from the signal input, every class must declare which triggers and refs it admits. Brief 08 now depends on it, and its containment and filing steps become human decisions with no effects. No role gains a new permission.
