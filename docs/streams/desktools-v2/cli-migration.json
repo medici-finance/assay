@@ -395,6 +395,21 @@
       "pattern": "deskd/internal/humanid/mutate-policy.py",
       "class": "test",
       "reason": "offline mutation qualification of startup identity invariants with automatic source restoration; never an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/transport_test.py",
+      "reason": "offline release handoff integrity/refusal fixtures required by CI; never an operator entrypoint (#4887)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/transport_workflow_test.py",
+      "reason": "offline release routing, rerun, credential and CI-wiring contracts required by CI; never an operator entrypoint (#4887)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/transport_mutation.py",
+      "reason": "offline planted release handoff defects in disposable copies; required CI validation utility, never an operator entrypoint (#4887)"
     }
   ],
   "entrypoints": [
@@ -2864,6 +2879,42 @@
       "owner": "desk-containers/31",
       "state": "exempt",
       "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
+    },
+    {
+      "executable": "transport.py",
+      "path": "tools/release/transport.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "release-workflow-only runtime adapter, invoked by active and staged release.yml; not a host operator command",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "tools/release/transport_workflow_test.py",
+        "docs/release-object-handoff.md"
+      ],
+      "parser": "Python argparse; upload/download, nine required coordinate/path flags and three download proof flags",
+      "complexity": "complex",
+      "basis": "existing fixed workflow adapter at caf3ef11d9a387218d0128ba90210ea55b30f9b3; two verbs and twelve coordinate/path/proof flags",
+      "owner": "desktools-v2/78",
+      "state": "pending"
+    },
+    {
+      "executable": "install-object-client.sh",
+      "path": "tools/release/install-object-client.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "release-workflow-only runtime adapter, invoked by active and staged release.yml; not a host operator command",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "tools/release/transport_workflow_test.py",
+        "docs/release-object-handoff.md"
+      ],
+      "parser": "bash; one required job-local destination positional argument, no flags",
+      "complexity": "simple",
+      "basis": "existing fixed workflow adapter at caf3ef11d9a387218d0128ba90210ea55b30f9b3; one required positional destination, no flags",
+      "owner": "desktools-v2/79",
+      "state": "pending"
     }
   ]
 }

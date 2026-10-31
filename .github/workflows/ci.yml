@@ -201,7 +201,11 @@ jobs:
 
       - name: Test release image contract
         if: matrix.shard == 'rest'
-        run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest tools.release.images_test tools.release.transport_test tools.release.transport_workflow_test -v
+          python3 -B -m tools.release.transport_mutation --out "$RUNNER_TEMP/release-transport-mutations"
 
       # The witness skew tests (statusgen/36 Verify rows 5 and 6) compare against
       # a real prior release binary and FAIL when SG_OLD_BIN is unset. The
