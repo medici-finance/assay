@@ -316,7 +316,11 @@ and advertisements, with one three-state assessment. Its JSON decoders preserve
 unknown required features and reject malformed/duplicate declarations.
 `briefdoc` also owns the shared register roster, register marker and existing stream YAML
 fields; both stream discovery and capability scope use those declarations. The tree
-adapter excludes non-record registers and depth-one symlinks without following them.
+adapter excludes register indices and ignores discovery-level links, while still checking
+brief records beside an ignored index. Explicit Evidence source reads use the same
+record checker through the filesystem adapter, rooted in the admitted receipt, independent
+of discovery paths. Remote and final write bytes are separately admitted. Diagnostics
+are bounded/escaped in the shared result; authority and effects stay with the host.
 Evidence commit capability refusal is adapted inside its existing audit lock, before
 landing reads or credentials; refusal still appends one audit row.
 

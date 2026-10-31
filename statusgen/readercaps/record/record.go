@@ -44,3 +44,12 @@ func Requirements(raw []byte) (readercaps.Requirements, error) {
 	}
 	return readercaps.DecodeRequirements(encoded)
 }
+
+// Check admits the actual supplied record bytes independently of discovery.
+func Check(raw []byte, reader readercaps.Advertisement) readercaps.Result {
+	required, err := Requirements(raw)
+	if err != nil {
+		return readercaps.Result{State: readercaps.CouldNotCheck, Reason: readercaps.Diagnostic(err.Error())}
+	}
+	return readercaps.Assess(required, readercaps.Observation{State: readercaps.Current, Advertisement: reader})
+}

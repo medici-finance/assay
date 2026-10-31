@@ -114,11 +114,7 @@ func runOutward(args []string) (err error) {
 	// inside the existing audit window: a refused attempt still leaves one row.
 	var diagnostic strings.Builder
 	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", &diagnostic); code != 0 {
-		detail := strings.TrimSpace(diagnostic.String())
-		if code == deskkit.ExitRefused {
-			return deskkit.Refused(detail)
-		}
-		return deskkit.Unverifiable(detail, nil)
+		return capabilityError(code, diagnostic.String())
 	}
 	return cmdEvidence(args, ac)
 }

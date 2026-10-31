@@ -26,7 +26,9 @@ func recordParts(parts []string) bool {
 // Check reads requirements on stream indices and brief records, including the
 // archive. Missing stream directories are legitimate legacy roots; an unreadable
 // directory/file is unknown, never evidence that it declares no requirement.
-func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
+func Check(roots []string, reader readercaps.Advertisement) (result readercaps.Result) {
+	defer func() { result.Reason = readercaps.Diagnostic(result.Reason) }()
+	skipIndex := map[string]bool{}
 	registerNames := briefdoc.ReservedRegisterNames()
 	for _, root := range roots {
 		for _, base := range []string{"streams", "archive"} {
@@ -60,7 +62,7 @@ func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
 				if entry.IsDir() {
 					if len(parts) == 1 && rel != "." {
 						if registerNames[entry.Name()] {
-							return fs.SkipDir
+							skipIndex[filepath.Join(path, "README.md")] = true
 						}
 						readme := filepath.Join(path, "README.md")
 						if info, err := os.Lstat(readme); err == nil && info.Mode().IsRegular() {
@@ -69,7 +71,7 @@ func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
 								return err
 							}
 							if briefdoc.IsRegisterIndex(raw) {
-								return fs.SkipDir
+								skipIndex[readme] = true
 							}
 						}
 					}
@@ -78,18 +80,14 @@ func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
 					}
 					return fs.SkipDir
 				}
-				if !recordParts(parts) {
+				if !recordParts(parts) || skipIndex[path] {
 					return nil
 				}
 				raw, err := os.ReadFile(path)
 				if err != nil {
 					return err
 				}
-				required, err := record.Requirements(raw)
-				if err != nil {
-					return fmt.Errorf("%s: %w", path, err)
-				}
-				result = readercaps.Assess(required, readercaps.Observation{State: readercaps.Current, Advertisement: reader})
+				result = record.Check(raw, reader)
 				if result.State != readercaps.Supported {
 					result.Reason = path + ": " + result.Reason
 					return fs.SkipAll

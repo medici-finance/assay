@@ -4,3 +4,4 @@
 - Qualify Evidence landing at both boundaries: unreadable capability records stop before writes, and the independent stamp guard remains covered below preflight.
 - Decide capability absence only after the shared structural YAML checks; preserve separate risk-policy ownership and scan canonical record locations.
 - Reuse shared register classification, ignore non-record depth-one links, and retain the Evidence refusal audit trail inside its existing lock.
+- Qualify single-reader exemptions by module-relative path, bound/escape capability diagnostics, and admit named Evidence records and final bytes against the receipt-derived root.

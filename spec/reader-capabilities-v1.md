@@ -90,7 +90,10 @@ through the shared tree adapter before their consumers proceed. Canonical stream
 brief records under docs/streams and docs/archive are examined: `<stream>/README.md`,
 `<stream>/brief-*.md` and `<stream>/done/brief-*.md`. Prose/example subdirectories are not
 operational records. Reserved register directories and self-declaring register indices
-use the shared briefdoc recognition owner and are excluded. Stream discovery ignores
+use the shared briefdoc recognition owner and their indices are excluded. This never
+excludes brief records beside those indices. Briefs are checked even where the legacy
+loader skips a self-declared register or a malformed briefs table; a directory cannot
+hide a requirement-bearing brief by making its index unreadable. Stream discovery ignores
 depth-one symlinks; this adapter does too. Symlinked configured roots and canonical
 record paths remain could-not-check. Only the exact decoded `reader-requirements` key opts in; an ordinary
 case-variant key is not an alias, while structurally unreadable keys refuse before lookup.
@@ -99,9 +102,27 @@ Unknown required semantics map to refusal (5); unreadable/malformed requirements
 unterminated actual record now stops at capability preflight with could-not-check (6),
 before the Evidence caller reaches its existing stamp refusal (5). The stamp guard is
 unchanged and independently tested below preflight; both paths permit no forge writes.
-Evidence commit preflight runs inside the existing audit lock before landing reads,
-credentials or effects. Both malformed and unsupported refusals write exactly one
-existing audit row with result, record path and reason; they do not bypass the audit trail.
+Evidence startup preflight runs inside the existing audit lock before landing reads,
+credentials or effects. Both malformed and unsupported refusals append one existing audit
+row with result, record path and reason when the sink is writable. An append failure is
+reported explicitly on stderr; it cannot be reported as a recorded row.
+
+Discovery scope never substitutes for admission of a record named by a caller. After
+existing credential/receipt admission, Evidence reads repo-relative source bytes through
+`tree.ReadRecord` using `receipt.EvidenceRoot`, including when no `--root` was supplied.
+A missing version-2 admitted root is could-not-check. Named records are checked regardless
+of filename or discovery scope; observed symlink components refuse. The opened root
+contains the read and root/file identity changes while opening refuse. Absolute Evidence
+fragments keep their separate existing rules and must remain outside the admitted root.
+The fetched target is checked before merging, and the exact final bytes are checked
+independently immediately before either forge write path. A late mutation cannot reuse
+an earlier capability verdict.
+
+`Result.Reason` and host capability diagnostics are single-line printable ASCII, at most
+2048 bytes. Control/non-ASCII runes are escaped; truncation is visible. This changes only
+display text: capability identifiers remain exact during assessment. Record-derived
+refusals cannot inject raw terminal controls or exceed the audit reader's line cap; the
+CLI regression requires a following ordinary landing to succeed.
 
 Canonical archived indices and done/archive briefs deliberately retain structural
 admission even where the legacy board loader would skip malformed frozen content.
@@ -127,6 +148,10 @@ production tests are TestReaderCapsCompat, TestStatusgenCapsTruth and
 TestDeskCapsPreflight (deskkit, deskboard, deskevidence, deskclaim and deskpr). TestReaderCapsSchema checks the shape
 artifact with the existing validator; decoder tests cover stricter duplicate rules.
 TestReaderCapsBoundary checks direct production imports and the compiled dependency closure.
+The single-reader guard uses module-relative paths and has an explicit basename-collision
+control. Evidence CLI cases cover oversized/control-bearing diagnostics, a following write,
+named/skipped locations, admitted-root selection, remote requirements, and final bytes
+changed after upper admission.
 The executable controls live in `statusgen/testdata/milestone-support/02-mutations.json`.
 Each named behavior must pass unmodified and fail under its plausible mutation.
 These tests are author validation, not independent post-merge Evidence or acceptance.

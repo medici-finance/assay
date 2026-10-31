@@ -127,3 +127,20 @@ func TestReaderCapsBoundary(t *testing.T) {
 		}
 	}
 }
+
+// regression: #4947
+func TestReaderCapsDiagnostic(t *testing.T) {
+	raw := "operation: bad\x1b[31m\nline\r\u202e" + strings.Repeat("x", 3*readercaps.DiagnosticLimit)
+	got := readercaps.Diagnostic(raw)
+	if len(got) > readercaps.DiagnosticLimit || !strings.Contains(got, "[truncated]") {
+		t.Fatalf("diagnostic bound failed: %d bytes", len(got))
+	}
+	for _, b := range []byte(got) {
+		if b < 0x20 || b > 0x7e {
+			t.Fatal("diagnostic retained a non-printable/non-ASCII byte")
+		}
+	}
+	if !strings.HasPrefix(got, "operation: bad") || readercaps.Diagnostic(got) != got {
+		t.Fatal("safe diagnosis lost context or is not idempotent")
+	}
+}

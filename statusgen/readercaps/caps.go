@@ -193,7 +193,8 @@ func contains(list []string, wanted string) bool {
 
 // Assess uses exact declared schema/semantic versions. It never infers support
 // from a build version, parser permissiveness or another operation's support.
-func Assess(required Requirements, peer Observation) Result {
+func Assess(required Requirements, peer Observation) (result Result) {
+	defer func() { result.Reason = Diagnostic(result.Reason) }()
 	if err := required.Validate(); err != nil {
 		return Result{CouldNotCheck, err.Error()}
 	}

@@ -92,11 +92,14 @@ func TestReaderCapsTree(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(raw), 0644); err != nil {
 					t.Fatal(err)
 				}
+				if got := Check([]string{root}, reader); got.State != readercaps.Supported {
+					t.Fatal("register index treated as a stream:", got)
+				}
 				if err := os.WriteFile(filepath.Join(dir, "brief-99-example.md"), []byte(requirement), 0644); err != nil {
 					t.Fatal(err)
 				}
-				if got := Check([]string{root}, reader); got.State != readercaps.Supported {
-					t.Fatal("register treated as a stream:", got)
+				if got := Check([]string{root}, reader); got.State != readercaps.Unsupported {
+					t.Fatal("register index hid a brief requirement:", got)
 				}
 			})
 		}

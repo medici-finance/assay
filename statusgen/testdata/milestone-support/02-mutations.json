@@ -229,7 +229,7 @@
     {
       "name": "canonical-record-scope",
       "target": "statusgen/readercaps/tree/tree.go",
-      "old": "if !recordParts(parts) {",
+      "old": "if !recordParts(parts) || skipIndex[path] {",
       "new": "if false && !recordParts(parts) {",
       "module": "statusgen",
       "package": "./readercaps/tree",
@@ -300,9 +300,126 @@
     },
     {
       "name": "evidence-audit-reason",
-      "target": "tools/desk/cmd/deskevidence/writeflow.go",
-      "old": "detail := strings.TrimSpace(diagnostic.String())",
-      "new": "detail := strings.TrimSpace(diagnostic.String()); if i := strings.LastIndex(detail, \": \"); i >= 0 { detail = detail[:i] }",
+      "target": "tools/desk/cmd/deskevidence/capabilities.go",
+      "old": "detail := readercaps.Diagnostic(strings.TrimPrefix(strings.TrimSpace(reason), toolName+\": \"))",
+      "new": "detail := readercaps.Diagnostic(strings.TrimPrefix(strings.TrimSpace(reason), toolName+\": \")); if i := strings.LastIndex(detail, \": \"); i >= 0 { detail = detail[:i] }",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "guard-qualified-paths",
+      "target": "statusgen/verifyoutcomes_singlereader_test.go",
+      "old": "filepath.ToSlash(rel)",
+      "new": "filepath.Base(rel)",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestVerifyOutcomesSingleReaderPaths"
+    },
+    {
+      "name": "guard-basename-collision",
+      "target": "statusgen/registers.go",
+      "old": "package main",
+      "new": "package main\n\n// verify-outcomes",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestVerifyOutcomesSingleReader"
+    },
+    {
+      "name": "diagnostic-size-bound",
+      "target": "statusgen/readercaps/diagnostic.go",
+      "old": "if out.Len()+len(part) > DiagnosticLimit-len(marker) {",
+      "new": "if false && out.Len()+len(part) > DiagnosticLimit-len(marker) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "diagnostic-controls",
+      "target": "statusgen/readercaps/diagnostic.go",
+      "old": "if r < 0x20 || r > 0x7e {",
+      "new": "if r > 0x7e {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "named-record-assessment",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "return readercaps.Assess(required, readercaps.Observation{State: readercaps.Current, Advertisement: reader})",
+      "new": "_ = required; return readercaps.Result{State: readercaps.Supported}",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "named-admitted-root",
+      "target": "tools/desk/cmd/deskevidence/deskevidence.go",
+      "old": "capstree.ReadRecord(evidenceRoot, evidenceRepoPath,",
+      "new": "capstree.ReadRecord(*root, evidenceRepoPath,",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "named-symlink-admission",
+      "target": "statusgen/readercaps/tree/record.go",
+      "old": "info, err = os.Lstat(current)",
+      "new": "info, err = os.Stat(current)",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "remote-record-admission",
+      "target": "tools/desk/cmd/deskevidence/deskevidence.go",
+      "old": "if err := requireRecordCapabilities(remoteContent, targetRepoPath+\" on \"+branch); err != nil {",
+      "new": "if err := error(nil); err != nil {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "final-record-admission",
+      "target": "tools/desk/cmd/deskevidence/deskevidence.go",
+      "old": "if err := requireRecordCapabilities(commitContent, targetRepoPath); err != nil {",
+      "new": "if err := error(nil); err != nil {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "missing-admitted-root",
+      "target": "tools/desk/cmd/deskevidence/deskevidence.go",
+      "old": "if receipt.Binding.Version == 2 && strings.TrimSpace(evidenceRoot) == \"\" {",
+      "new": "if false && receipt.Binding.Version == 2 && strings.TrimSpace(evidenceRoot) == \"\" {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "reserved-index-hides-no-brief",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if registerNames[entry.Name()] {",
+      "new": "if registerNames[entry.Name()] { return fs.SkipDir;",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "declared-index-hides-no-brief",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if briefdoc.IsRegisterIndex(raw) {",
+      "new": "if briefdoc.IsRegisterIndex(raw) { return fs.SkipDir;",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "audit-append-failure-visible",
+      "target": "tools/desk/cmd/deskevidence/deskevidence.go",
+      "old": "fmt.Fprintln(stderr, \"deskevidence: could-not-check audit append: \"+readercaps.Diagnostic(err.Error()))",
+      "new": "_ = err",
       "module": "tools/desk",
       "package": "./cmd/deskevidence",
       "test": "TestDeskCapsPreflight"
