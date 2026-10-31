@@ -890,6 +890,10 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		"F=$(desktoken worker); gh pr view 1 --json status",
 		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
 		`git status && T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`GH_TOKEN=$(cat "$(desktoken worker --repo o/n)") gh pr view 1 --json status`,
+		`GH_TOKEN="$(cat "$(desktoken worker --repo o/n)")" gh pr view 1 --json status`,
+		`tokfile="$(desktoken "$role" --repo "$repo")"; GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`,
+		"if ! tokfile=\"$(desktoken \"$role\" --repo \"$repo\")\"; then\n  false\nelse\n  GH_TOKEN=\"$(cat \"$tokfile\")\" gh issue list -R \"$repo\" --limit 1 --json status\nfi",
 	})
 }
 
