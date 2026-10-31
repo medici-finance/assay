@@ -86,7 +86,19 @@ the existing separate human gate and consumer qualification. No response leaves
 mutation admission paused. Scope is one Cell execution/publisher group; automatic
 multi-host recovery and R3 repository assignment remain excluded.
 
-1. **Incarnation custody and rotation.** Recommend protected operator-control state
+Choose one response:
+
+1. **Approve the recommended bounded design profile:** custody 1A, reopen 2A,
+   budget 3A, provider 4A, and pacing rule 5 unchanged, as detailed below. This
+   approves subsequent implementation/qualification only, never live activation.
+2. **Hold:** leave all policy choices pending and affected mutation admission paused.
+3. **Approve a narrower or explicit alternative design:** name the selected dimensions
+   and restrictions below; every unspecified dimension stays held. This also grants
+   no deployment, credential provisioning or reopening authority.
+
+Default if no answer: none — blocks until answered; keep all policy choices pending and mutation admission paused; schema/test preparation alone may proceed.
+
+**Dimension 1 — Incarnation custody and rotation (1A / 1B).** Recommend protected operator-control state
    on a dedicated persistent volume outside PostgreSQL/CNPG backup and PITR, mounted
    only by the trusted operator and qualified role executors; mutation is restricted
    to the operator, with signing material unavailable to model/runner containers.
@@ -97,7 +109,7 @@ multi-host recovery and R3 repository assignment remain excluded.
    authority with equivalent non-restorable-current semantics. A Git revision or
    restored database value is never current authority. This choice creates no
    Kubernetes resources or credentials.
-2. **Reopen procedure.** Recommend operator-confirmed whole-group stop plus old
+**Dimension 2 — Reopen procedure (2A / 2B).** Recommend operator-confirmed whole-group stop plus old
    socket/capability invalidation and independent credential revocation/restriction
    (or expiry), followed by external reconciliation, rotation and fresh executors.
    Persist a scoped stop-confirmation reference and the new activation binding.
@@ -105,7 +117,7 @@ multi-host recovery and R3 repository assignment remain excluded.
    mismatched activation remains paused. Alternative: require full manual teardown
    and reconciliation on every transfer until the automated group-stop boundary is
    qualified. Neither permits an SQL lease or process list to stand in for fencing.
-3. **Budget and runner boundary.** Recommend no conservative fallback for unavailable
+**Dimension 3 — Budget and runner boundary (3A / 3B).** Recommend no conservative fallback for unavailable
    brakes: hold until authoritative usage/reservations are recovered or a separately
    authorized reset is recorded. Keep account/provider/unit/window balances separate,
    with configured operator headroom and outstanding unknown reservations charged.
@@ -115,24 +127,23 @@ multi-host recovery and R3 repository assignment remain excluded.
    request upper bound or hold. Alternative: a separately reviewed per-profile
    conservative upper bound, never an assumed zero or cross-provider fallback.
    Synthetic fixture values (100 units, 10 headroom, 30 reserved) are not live policy.
-4. **Unknown effects and handback.** Recommend retain old ownership restrictions and
+**Dimension 4 — Unknown effects and handback (4A / 4B).** Recommend retain old ownership restrictions and
    unknown-effect reservations until authoritative reconciliation and independently
    fenced old writers permit transfer. Providers lacking enforceable dedupe/fencing
    or confirmed old-writer stop stay held for authorized resolution. Alternative:
    support those providers in report-only mode with no mutating cohort. Neither
    claims exactly-once or releases unknown usage because a process restarted.
-5. **Pacing boundary.** Retain the already accepted brake/pacing distinction: unknown
+**Dimension 5 — Pacing boundary (unchanged).** Retain the already accepted brake/pacing distinction: unknown
    brakes hold; effect-class pacing re-derives shared window intents/receipts on every
    admission, read-class seeds retained shared state, with only one recorded unseeded
    reset per window/scope/incarnation. Missing/second reset exhausts that window.
    No relaxing alternative is proposed under this gate.
 
-**Exact response:** select custody option 1A (operator-control volume) or 1B
-(external authority); reopen 2A (qualified group boundary) or 2B (manual teardown);
-budget 3A (hold) or 3B (reviewed upper bound); provider 4A (fenced only) or 4B
-(report-only unsupported providers). Confirm 5 unchanged and name the operator
-accountable for the concrete profile. An unselected or ambiguous item stays held.
-This is a design ruling, not permission to deploy, provision credentials or reopen.
+**Exact response:** reply `1` to approve only the recommended bounded design
+(1A/2A/3A/4A + 5 unchanged), `2` to hold, or `3` followed by the explicit
+alternative selections/narrowed scope and rationale. For either approval, name
+the operator accountable for the concrete profile. Missing or ambiguous selections
+stay held. No reply authorizes deployment, credentials or admission reopening.
 
 **Evidence available for the ruling:** implementation tests
 `TestCellFenceBoundary`, `TestIncarnationContractFields` and
