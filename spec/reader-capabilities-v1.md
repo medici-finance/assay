@@ -89,13 +89,24 @@ The existing statusgen tree/version gate and deskkit's schema gate call the same
 through the shared tree adapter before their consumers proceed. Canonical stream indices and
 brief records under docs/streams and docs/archive are examined: `<stream>/README.md`,
 `<stream>/brief-*.md` and `<stream>/done/brief-*.md`. Prose/example subdirectories are not
-operational records. Only the exact decoded `reader-requirements` key opts in; an ordinary
+operational records. Reserved register directories and self-declaring register indices
+use the shared briefdoc recognition owner and are excluded. Stream discovery ignores
+depth-one symlinks; this adapter does too. Symlinked configured roots and canonical
+record paths remain could-not-check. Only the exact decoded `reader-requirements` key opts in; an ordinary
 case-variant key is not an alias, while structurally unreadable keys refuse before lookup.
 Unknown required semantics map to refusal (5); unreadable/malformed requirements map to could-not-check
 (6). The historic no-new-requirements release gate retains its exits and diagnostics. An
 unterminated actual record now stops at capability preflight with could-not-check (6),
 before the Evidence caller reaches its existing stamp refusal (5). The stamp guard is
-unchanged and independently tested below preflight; both paths permit no writes.
+unchanged and independently tested below preflight; both paths permit no forge writes.
+Evidence commit preflight runs inside the existing audit lock before landing reads,
+credentials or effects. Both malformed and unsupported refusals write exactly one
+existing audit row with result, record path and reason; they do not bypass the audit trail.
+
+Canonical archived indices and done/archive briefs deliberately retain structural
+admission even where the legacy board loader would skip malformed frozen content.
+Unterminated fences, invalid YAML, multiple documents and invisible keys hold the
+whole tree until repaired; the /14 rollout must measure adopter archives before re-pinning.
 The existing deskboard, deskpr, deskclaim and deskevidence calls retain their own
 execution/identity/subject checks. The deskboard consuming-boundary test bypasses the
 outer startup/guard and still observes zero dispatch/output effects on incompatibility.
@@ -113,7 +124,7 @@ newbrief authoring (/04), milestone acceptance, or release/adoption (/14).
 
 `readercaps/testdata/conformance.json` is shared positive/negative wire data. The named
 production tests are TestReaderCapsCompat, TestStatusgenCapsTruth and
-TestDeskCapsPreflight (both deskkit and deskboard). TestReaderCapsSchema checks the shape
+TestDeskCapsPreflight (deskkit, deskboard and deskevidence). TestReaderCapsSchema checks the shape
 artifact with the existing validator; decoder tests cover stricter duplicate rules.
 TestReaderCapsBoundary checks direct production imports and the compiled dependency closure.
 The executable controls live in `statusgen/testdata/milestone-support/02-mutations.json`.

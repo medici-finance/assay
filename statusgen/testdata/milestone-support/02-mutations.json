@@ -192,9 +192,9 @@
     },
     {
       "name": "evidence-preflight",
-      "target": "tools/desk/cmd/deskevidence/main.go",
-      "old": "\"deskevidence\", os.Stderr); code != 0 {",
-      "new": "\"deskevidence\", os.Stderr); false && code != 0 {",
+      "target": "tools/desk/cmd/deskevidence/writeflow.go",
+      "old": "\"deskevidence\", &diagnostic); code != 0 {",
+      "new": "\"deskevidence\", &diagnostic); false && code != 0 {",
       "module": "tools/desk",
       "package": "./cmd/deskevidence",
       "test": "TestDeskCapsPreflight"
@@ -234,6 +234,51 @@
       "module": "statusgen",
       "package": "./readercaps/tree",
       "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "reserved-register-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if registerNames[entry.Name()] {",
+      "new": "if false && registerNames[entry.Name()] {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "self-declared-register-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if briefdoc.IsRegisterIndex(raw) {",
+      "new": "if false && briefdoc.IsRegisterIndex(raw) {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "depth-one-link-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if len(parts) == 2 && parts[1] == \"done\" || recordParts(parts) {",
+      "new": "if len(parts) == 1 || len(parts) == 2 && parts[1] == \"done\" || recordParts(parts) {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "marker-does-not-hide-stream",
+      "target": "statusgen/briefdoc/registers.go",
+      "old": "return yaml.Unmarshal([]byte(block), &fields) != nil",
+      "new": "return yaml.Unmarshal([]byte(block), &fields) == nil",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
+    },
+    {
+      "name": "evidence-refusal-audit",
+      "target": "tools/desk/cmd/deskevidence/writeflow.go",
+      "old": "defer func() { ac.finalize(err) }()",
+      "new": "defer func() { if err == nil || !strings.Contains(err.Error(), \"reader capabilities:\") { ac.finalize(err) } }()",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
     }
   ]
 }

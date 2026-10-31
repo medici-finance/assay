@@ -77,6 +77,67 @@ func TestReaderCapsTree(t *testing.T) {
 			}
 		})
 	}
+	for _, base := range []string{"streams", "archive"} {
+		for _, name := range []string{"intake", "requirements", "custom-register"} {
+			t.Run(base+"-register-"+name, func(t *testing.T) {
+				root := t.TempDir()
+				dir := filepath.Join(root, "docs", base, name)
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				raw := "---\nAn ordinary register index.\n"
+				if name == "custom-register" {
+					raw += "It is a register, not a stream.\n"
+				}
+				if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(raw), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "brief-99-example.md"), []byte(requirement), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if got := Check([]string{root}, reader); got.State != readercaps.Supported {
+					t.Fatal("register treated as a stream:", got)
+				}
+			})
+		}
+	}
+	t.Run("marker-cannot-hide-stream", func(t *testing.T) {
+		root := t.TempDir()
+		dir := filepath.Join(root, "docs", "streams", "example")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(requirement+"It is a register, not a stream.\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if got := Check([]string{root}, reader); got.State != readercaps.Unsupported {
+			t.Fatal("valid stream requirements hidden by prose:", got)
+		}
+	})
+	for _, kind := range []string{"directory", "markdown"} {
+		t.Run("non-record-link-"+kind, func(t *testing.T) {
+			root := t.TempDir()
+			base := filepath.Join(root, "docs", "streams")
+			if err := os.MkdirAll(base, 0755); err != nil {
+				t.Fatal(err)
+			}
+			target := t.TempDir()
+			name := "linked-dir"
+			if kind == "markdown" {
+				target = filepath.Join(target, "note.md")
+				name = "note.md"
+				if err := os.WriteFile(target, []byte("---\nProse.\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(target, filepath.Join(base, name)); err != nil {
+				t.Skip(err)
+			}
+			if got := Check([]string{root}, reader); got.State != readercaps.Supported {
+				t.Fatal("ignored depth-one link became a record:", got)
+			}
+		})
+	}
 	for _, kind := range []string{"symlink", "broken-symlink", "file"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()

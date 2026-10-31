@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/readercaps/record"
 )
@@ -26,6 +27,7 @@ func recordParts(parts []string) bool {
 // archive. Missing stream directories are legitimate legacy roots; an unreadable
 // directory/file is unknown, never evidence that it declares no requirement.
 func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
+	registerNames := briefdoc.ReservedRegisterNames()
 	for _, root := range roots {
 		for _, base := range []string{"streams", "archive"} {
 			dir := filepath.Join(root, "docs", base)
@@ -50,12 +52,27 @@ func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
 				}
 				parts := strings.Split(filepath.ToSlash(rel), "/")
 				if entry.Type()&os.ModeSymlink != 0 {
-					if len(parts) == 1 || len(parts) == 2 && parts[1] == "done" || recordParts(parts) {
+					if len(parts) == 2 && parts[1] == "done" || recordParts(parts) {
 						return fmt.Errorf("cannot establish requirements through symlink: %s", path)
 					}
 					return nil
 				}
 				if entry.IsDir() {
+					if len(parts) == 1 && rel != "." {
+						if registerNames[entry.Name()] {
+							return fs.SkipDir
+						}
+						readme := filepath.Join(path, "README.md")
+						if info, err := os.Lstat(readme); err == nil && info.Mode().IsRegular() {
+							raw, err := os.ReadFile(readme)
+							if err != nil {
+								return err
+							}
+							if briefdoc.IsRegisterIndex(raw) {
+								return fs.SkipDir
+							}
+						}
+					}
 					if rel == "." || len(parts) == 1 || len(parts) == 2 && parts[1] == "done" {
 						return nil
 					}

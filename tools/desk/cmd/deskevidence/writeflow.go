@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -93,6 +94,9 @@ func (l *auditLock) release() {
 // the critical section, which is the specific window #227 is about. Do not reorder.
 func runOutward(args []string) (err error) {
 	ac := &auditCtx{verb: "commit"}
+	if len(args) > 0 {
+		ac.repo = args[0]
+	}
 
 	lock, lerr := acquireAuditLock()
 	if lerr != nil {
@@ -106,5 +110,15 @@ func runOutward(args []string) (err error) {
 	defer lock.release()
 	defer func() { ac.finalize(err) }()
 
+	// Capability admission is before landing reads, credentials and effects, but
+	// inside the existing audit window: a refused attempt still leaves one row.
+	var diagnostic strings.Builder
+	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", &diagnostic); code != 0 {
+		detail := strings.TrimSpace(diagnostic.String())
+		if code == deskkit.ExitRefused {
+			return deskkit.Refused(detail)
+		}
+		return deskkit.Unverifiable(detail, nil)
+	}
 	return cmdEvidence(args, ac)
 }
