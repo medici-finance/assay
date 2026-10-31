@@ -311,7 +311,18 @@ still yours to post, as an ordinary clause-13 finding.
   (`Blocked-On-Check:`), external-prerequisite (`External-Prereq-Only:`) and documented body-edit
   (`Blocked-On-Body:`). Each is claimed on a correctness rejection and cleared by a correctness
   APPROVE, and their forms are carried on the correctness lane. A security verdict is `pass` or
-  `fail`, never an APPROVE, and claims none of them.
+  `fail`, never an APPROVE, and claims none of them: a correctness APPROVE never clears your
+  fail, and your pass never clears a correctness CR.
+- **A security fail whose ONLY basis is the PR body.** It carries its own marker. When the
+  whole fail rests on the PR body and no code at head would change, add
+  `Blocked-On-Body: <finding-id> <64-hex digest of the body as you read it>` to the
+  `Security-Review: fail`. Never mark a fail that rests on any code, config or check. After the
+  body is edited, re-read it via the API and post `Security-Review: pass` at the same head
+  carrying `Body-Reread-Digest: <64-hex digest of the live body>`. `deskflip` clears the fail only
+  when that pass is your last security verdict at the head, its digest matches the live body
+  and differs from the fail's, and the forge records a body edit after the fail. An unmarked
+  fail is cleared only by a new commit. The gate cannot check that the marker is true; that is
+  your claim.
 <!-- lane:security:end -->
 - Cite sops material, never quote it. When a finding is about an encrypted file, name it by
   `path:line` and describe it in words: the `sops` footer, its `mac` or `lastmodified` field,

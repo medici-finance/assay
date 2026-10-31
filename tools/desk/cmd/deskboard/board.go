@@ -764,18 +764,21 @@ type reviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	externalPrereqDeclared bool
-	// bodyEditReverified is true when a row reduceReviews marked suspectNoOp was LIFTED by
+	// bodyEditReverified is true when a row reduceReviews marked blocking was LIFTED by
 	// applyBodyEditReverification: every standing CR at head declared the documented body-edit
 	// re-verification class and a later correctness APPROVE documents and verifies it against
 	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
-	// reviewer-approved gate runs). The row then reads approved at head and flows through the
-	// ordinary CI / mergeability / security arms; this flag only annotates its note.
+	// reviewer-approved gate runs), or, for a `Security-Review: fail`, the security lane's
+	// marked clearance holds (deskkit.EvaluateSecurityBodyClearance, #5092). The row then
+	// reads approved at head and flows through the ordinary CI / mergeability / security
+	// arms; this flag only annotates its note.
 	bodyEditReverified bool
 }
 
 // applyBodyEditReverification applies the ruled documented body-edit re-verification class
-// to a reduction that suppressed a same-head APPROVE (suspectNoOp). It is a no-op on every
-// other shape, and on a declared external-prerequisite row (that class has its own surface).
+// to a reduction that reads BLOCKING at head — most often one that suppressed a same-head
+// APPROVE (suspectNoOp). It is a no-op on every other shape, and on a declared
+// external-prerequisite row (that class has its own surface).
 //
 // It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
 // must be cleared by the shared decision (one undeclared or failing CR keeps the row
@@ -785,20 +788,41 @@ type reviewState struct {
 // edited — keeps the row suppressed). When it lifts, the effective
 // verdict becomes the governing same-head APPROVE — the ruling's "the same-head APPROVE
 // stands" — and CI green stays the board's own CI verdict, never the citation's.
+//
+// A `Security-Review: fail` CR at head is routed to the SECURITY lane's decision instead
+// (deskkit.EvaluateSecurityBodyClearance, the one deskflip's securityBodyCRCleared runs,
+// #5092): it is cleared only by the reviewer's later security-marked reviews, never by a
+// correctness APPROVE, and a correctness CR is never cleared by a security pass. Because a
+// marked security fail can be the LAST decisive review at head — APPROVE, then the fail, then
+// the COMMENTED pass, which reduceReviews never sees as decisive — the lift does not require
+// suspectNoOp; it requires instead, as rule 1 of the gate does, that the reviewer's last
+// correctness-lane APPROVED/CHANGES_REQUESTED is an APPROVED at head.
 func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
-	if !st.atHead || !st.blocking || !st.suspectNoOp || st.externalPrereqDeclared {
+	if !st.atHead || !st.blocking || st.externalPrereqDeclared {
 		return st
 	}
-	var crs []review
+	var crs []int
 	var approves []deskkit.BodyEditApprove
 	var lastApprove string
-	for _, r := range reviews {
-		if !isReviewerBot(r.User.Login) || !sameHead(r.CommitID, head) {
+	lastCorrectness := ""
+	for i, r := range reviews {
+		if !isReviewerBot(r.User.Login) {
+			continue
+		}
+		correctnessDecisive := classifySecurityBody(r.Body) == secNone &&
+			(r.State == "APPROVED" || r.State == "CHANGES_REQUESTED")
+		if correctnessDecisive {
+			lastCorrectness = ""
+			if sameHead(r.CommitID, head) {
+				lastCorrectness = r.State
+			}
+		}
+		if !sameHead(r.CommitID, head) {
 			continue
 		}
 		switch r.State {
 		case "CHANGES_REQUESTED":
-			crs = append(crs, r)
+			crs = append(crs, i)
 		case "APPROVED":
 			if classifySecurityBody(r.Body) != secNone {
 				continue
@@ -807,14 +831,29 @@ func applyBodyEditReverification(st reviewState, reviews []review, head, liveBod
 			lastApprove = r.SubmittedAt
 		}
 	}
-	if len(crs) == 0 || len(approves) == 0 {
+	if len(crs) == 0 || lastCorrectness != "APPROVED" {
 		return st
 	}
-	for _, cr := range crs {
-		dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
-			CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
-			BodyEditedAt: bodyEditedAt,
-		})
+	for _, i := range crs {
+		cr := reviews[i]
+		var dec deskkit.BodyEditDecision
+		if hasSecurityFailLine(cr.Body) {
+			var after []deskkit.SecurityVerdictReview
+			for _, r := range reviews[i+1:] {
+				if isReviewerBot(r.User.Login) && classifySecurityBody(r.Body) != secNone {
+					after = append(after, deskkit.SecurityVerdictReview{Body: r.Body, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
+				}
+			}
+			dec = deskkit.EvaluateSecurityBodyClearance(deskkit.SecurityBodyInput{
+				FailBody: cr.Body, FailSubmittedAt: cr.SubmittedAt, Head: head, Later: after, LiveBody: liveBody,
+				BodyEditedAt: bodyEditedAt,
+			})
+		} else {
+			dec = deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+				CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
+				BodyEditedAt: bodyEditedAt,
+			})
+		}
 		if !dec.Cleared {
 			return st
 		}

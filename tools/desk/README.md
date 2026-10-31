@@ -6921,6 +6921,30 @@ Whether CI is green stays `checks-green`'s decision; the citation never substitu
 the board, an admitted row reads approved at head (with the class named in its note) instead of
 `SUSPECT-APPROVAL`; every near-miss keeps the `SUSPECT-APPROVAL` suppression.
 
+**The third exemption: the marked security fail.** Rule 2 routes a CR carrying
+`Security-Review: fail` to the security lane first, so neither exemption above ever clears it: a
+correctness APPROVE never clears a security fail, and a security fail carrying
+`Blocked-On-Check:` / `External-Prereq-Only:` always refuses. A security pass never clears a
+correctness CR either. The fail clears at the same head only when all of these hold
+(`internal/deskkit/securitybodycr.go`, shared by `deskflip` and `deskboard`):
+
+- the fail declares `Blocked-On-Body: <finding-id> <body-digest>`, read by the same parser as the
+  correctness lane's. An unmarked fail is cleared only by a new commit;
+- the reviewer's last security verdict after the fail is a `Security-Review: pass` at the head,
+  carrying `Body-Reread-Digest: <digest>` equal to the live body's digest. Every security fail
+  between the two must be marked and at the head: a later unmarked fail blocks, and a later fail
+  at another commit stands;
+- the forge records a body edit later than the last fail, and the re-read digest differs from
+  every fail's recorded digest;
+- the security lane's own standing verdict at head (the `security-verdict` reduction) is a pass,
+  so the two conditions agree. A clearance applies only at its own head: after a
+  content-preserving head move the fail stands until a pass at the new head.
+
+The gate cannot check that the marker is true, that the fail's whole basis was the PR body. That
+is the reviewer's claim; the later pass and the forge's body-edit record back it up. On the board,
+the lift no longer requires the suppressed-approve shape (the fail can be the last decisive
+review), only that the reviewer's last correctness verdict at head is an APPROVED.
+
 **An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
 Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that
 the review lane is finished and only a merge is outstanding. On a PR that is no longer a
