@@ -121,7 +121,7 @@ jobs:
           exit "$fail"
 
   # ── The mutation gate the release already runs ──────────────────────────────
-  # The same muhar sweeps release.yml's `muhar-light` leg AND its `deskmerge` legs run:
+  # The same muhar sweeps release.yml's `muhar-light`, `muhar-bodycheck` and `deskmerge` legs run:
   # each spec mutates a guard's refusals and requires the suite to CATCH every one. This
   # proves the baseline checks are load-bearing — a green test run only shows the guards
   # behave as written; a surviving mutation shows one would not fire.

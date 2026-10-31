@@ -29,11 +29,12 @@ name: release
 # recursion guard never applies. (It still suppresses a second, duplicate run of
 # this workflow when the tag lands — which is exactly what we want.)
 #
-# WHERE THIS RUNS — a self-hosted runner labelled `medici-builder-release`, a
-# DEDICATED release-only label, separate from the label the general CI pipeline
-# uses. Binary/test jobs use that label; the single approved publisher uses
-# the dedicated daemonful `medici-builder-public-release` label. The release
-# pipeline never shares runners with general CI. (PREREQUISITE — a repo-admin act:
+# WHERE THIS RUNS — binary/test jobs keep their dedicated release-only pool.
+# The object producer and approved publisher use fixed, reviewed labels
+# `assay-release-object-builder` and `assay-release-object-publisher`; repository
+# variables cannot redirect either privileged job. Both pools must be dedicated,
+# ephemeral and separate from general CI. Provision and qualify them BEFORE
+# merging: merge activates this routing. (PREREQUISITE — a repo-admin act:
 # a runner registered with the `medici-builder-release` label must exist before
 # a release can run.) Go is installed BY HAND from go.dev/dl (NOT
 # actions/setup-go): that runner does not reach GitHub's release-asset CDN
@@ -84,7 +85,8 @@ name: release
 #     No job registers emulation or changes the runner's protected mounts. The runner's
 #     reference pins the image index digest. The other eight images stay
 #     linux/amd64.
-#     One release Environment approval covers this entire publication sequence.
+#     The release Environment approval covers this publication sequence. The
+#     protected object producer has its own environment approval requirements.
 
 on:
   push:
@@ -96,7 +98,7 @@ on:
         required: true
         type: string
       dry_run:
-        description: "Validate, test and build binaries/images. Cuts no tag and publishes no release or images; temporary CI artifacts pass build inputs between jobs."
+        description: "Validate, test and build binaries/images. Cuts no tag and publishes no release or images; GitHub artifacts and checked object handoffs pass inputs between jobs. Protected producer credentials are still required."
         required: false
         default: false
         type: boolean
@@ -496,7 +498,8 @@ jobs:
   # sit behind the full suite.
   #   statusgen    — statusgen test/vet + the three named gate bars
   #   desk-tools   — desk-tools test/vet
-  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
+  #   muhar-bodycheck — the complete bodycheck mutation sweep, on its own runner
+  #   muhar-light  — the five other mutation sweeps (desksourceguard,
   #                  loopengine ×2, reviewloop, deskclose)
   #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
   #                  three legs via muhar's `-shard i/n` (each leg runs the
@@ -521,6 +524,7 @@ jobs:
           - leg: desk-tools
           - leg: drainloop
           - leg: qualgen
+          - leg: muhar-bodycheck
           - leg: muhar-light
           - leg: deskmerge
             shard: 0/3
@@ -671,7 +675,7 @@ jobs:
       # positive control, same per-mutation verdicts in the same order, same
       # totals line. Only the wall time moves.
       - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
-        if: matrix.leg == 'muhar-light'
+        if: matrix.leg == 'muhar-bodycheck'
         run: |
           set -euo pipefail
           cd tools/desk
@@ -853,13 +857,13 @@ jobs:
       # reports so the `release` job can assemble the pack from them WITHOUT
       # re-running any mutation (a second sweep would double a long CPU-bound
       # step and create two verdicts that could disagree). Only the legs that run
-      # mutation sweeps produce reports: muhar-light (six specs) and the three
+      # mutation sweeps produce reports: muhar-bodycheck (one), muhar-light (five), and the three
       # deskmerge shards (one shard report each). Each leg uploads its own reports
       # under a name unique to the leg (job index), and the release job merges
       # them. `if-no-files-found: error` makes a leg that was expected to capture
       # but produced nothing fail loudly rather than ship a quietly smaller pack.
       - name: Upload captured mutation reports (tool-validation pack)
-        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
+        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}
@@ -875,7 +879,8 @@ jobs:
     # nothing would validate nothing. So the checkout / Go install / build /
     # checksum steps run unconditionally. This job has no publishing step or
     # repository write permission; release publication follows the image gate.
-    runs-on: medici-builder-release
+    runs-on: assay-release-object-builder
+    environment: release-object-store-producer
     permissions:
       contents: read
       # Read prior-run artifacts and the producing job log receipt.
@@ -889,6 +894,10 @@ jobs:
       CGO_ENABLED: "0"
     outputs:
       source_sha: ${{ steps.capture.outputs.source_sha }}
+      bundle_sha256: ${{ steps.object-store.outputs.bundle_sha256 }}
+      manifest_sha256: ${{ steps.object-store.outputs.manifest_sha256 }}
+      bundle_bytes: ${{ steps.object-store.outputs.bundle_bytes }}
+      handoff_attempt: ${{ steps.object-store.outputs.handoff_attempt }}
     steps:
       # persist-credentials:false (H2) — do NOT leave the contents:write token in
       # .git/config while `go build` compiles arbitrary repo code below. The tag
@@ -1387,7 +1396,7 @@ jobs:
           cat checksums.txt
 
       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
-      # the `test` job captured (muhar-light's six + the three deskmerge shards),
+      # the `test` job captured (six full harnesses + the three deskmerge shards),
       # merged into one directory. merge-multiple flattens every tv-reports-*
       # artifact into ${RUNNER_TEMP}/tv-reports.
       - name: Download captured mutation reports (tool-validation pack)
@@ -1473,6 +1482,35 @@ jobs:
           cp "$NOTES_PATH" release-highlights.md
           sha256sum prepared-source.tar.gz image-bugs-gc-linux-amd64 release-highlights.md checksums.txt > build-inputs.sha256
           if [ -f release-source.bundle ]; then sha256sum release-source.bundle >> build-inputs.sha256; fi
+
+      - name: Install checksum-pinned release object client
+        run: bash tools/release/install-object-client.sh "$RUNNER_TEMP/release-aws"
+
+      # Hosted native ARM64 keeps the GitHub artifacts below. The in-cluster
+      # publisher uses the exact checked object handoff, without a fallback.
+      - name: Store checked release inputs for the in-cluster publisher
+        id: object-store
+        env:
+          RELEASE_OBJECT_ENDPOINT: ${{ secrets.RELEASE_OBJECT_ENDPOINT }}
+          RELEASE_OBJECT_BUCKET: ${{ secrets.RELEASE_OBJECT_BUCKET }}
+          RELEASE_OBJECT_REGION: ${{ secrets.RELEASE_OBJECT_REGION }}
+          RELEASE_OBJECT_ACCESS_KEY_ID: ${{ secrets.RELEASE_OBJECT_ACCESS_KEY_ID }}
+          RELEASE_OBJECT_SECRET_ACCESS_KEY: ${{ secrets.RELEASE_OBJECT_SECRET_ACCESS_KEY }}
+          RELEASE_OBJECT_SESSION_TOKEN: ${{ secrets.RELEASE_OBJECT_SESSION_TOKEN }}
+          RELEASE_OBJECT_CA_BUNDLE: ${{ secrets.RELEASE_OBJECT_CA_BUNDLE }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_RUN: ${{ github.run_id }}
+          RELEASE_ATTEMPT: ${{ github.run_attempt }}
+          BASE_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ steps.capture.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python3 -B -m tools.release.transport upload \
+            --repository "$REPOSITORY" --run "$RELEASE_RUN" --attempt "$RELEASE_ATTEMPT" \
+            --base "$BASE_SHA" --source "$SOURCE_SHA" --tag "$RELEASE_TAG" \
+            --root "$GITHUB_WORKSPACE" --bundle "$RUNNER_TEMP/release-handoff.tar.gz" \
+            --aws "$RUNNER_TEMP/release-aws/bin/aws"
 
       # Independent platform artifacts let download-artifact transfer up to six
       # platforms concurrently. Store the already-gzipped suites without another
@@ -1615,14 +1653,16 @@ jobs:
           name: release-runner-arm64
           retention-days: 7
           if-no-files-found: error
-          compression-level: 0
+          # Compress only the artifact envelope. Download restores the exact
+          # checked Docker archive and receipt; admission hashes stay unchanged.
+          compression-level: 1
           path: |
             ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.tar
             ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.json
 
   release:
     needs: [resolve, guard, test, artifacts, runner-arm64]
-    runs-on: medici-builder-public-release
+    runs-on: assay-release-object-publisher
     # One approval covers every publication write: images first, then tag/assets.
     environment: release
     concurrency:
@@ -1642,11 +1682,38 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: release-build-*
-          merge-multiple: true
-          path: .
+      - name: Install checksum-pinned release object client
+        run: bash tools/release/install-object-client.sh "$RUNNER_TEMP/release-aws"
+
+      - name: Fetch checked release inputs from the object store
+        timeout-minutes: 15
+        env:
+          RELEASE_OBJECT_ENDPOINT: ${{ secrets.RELEASE_OBJECT_ENDPOINT }}
+          RELEASE_OBJECT_BUCKET: ${{ secrets.RELEASE_OBJECT_BUCKET }}
+          RELEASE_OBJECT_REGION: ${{ secrets.RELEASE_OBJECT_REGION }}
+          RELEASE_OBJECT_ACCESS_KEY_ID: ${{ secrets.RELEASE_OBJECT_ACCESS_KEY_ID }}
+          RELEASE_OBJECT_SECRET_ACCESS_KEY: ${{ secrets.RELEASE_OBJECT_SECRET_ACCESS_KEY }}
+          RELEASE_OBJECT_SESSION_TOKEN: ${{ secrets.RELEASE_OBJECT_SESSION_TOKEN }}
+          RELEASE_OBJECT_CA_BUNDLE: ${{ secrets.RELEASE_OBJECT_CA_BUNDLE }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_RUN: ${{ github.run_id }}
+          RELEASE_ATTEMPT: ${{ needs.artifacts.outputs.handoff_attempt }}
+          BASE_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}
+          BUNDLE_SHA256: ${{ needs.artifacts.outputs.bundle_sha256 }}
+          MANIFEST_SHA256: ${{ needs.artifacts.outputs.manifest_sha256 }}
+          BUNDLE_BYTES: ${{ needs.artifacts.outputs.bundle_bytes }}
+        run: |
+          set -euo pipefail
+          python3 -B -m tools.release.transport download \
+            --repository "$REPOSITORY" --run "$RELEASE_RUN" --attempt "$RELEASE_ATTEMPT" \
+            --base "$BASE_SHA" --source "$SOURCE_SHA" --tag "$RELEASE_TAG" \
+            --root "$GITHUB_WORKSPACE" --bundle "$RUNNER_TEMP/release-handoff.tar.gz" \
+            --aws "$RUNNER_TEMP/release-aws/bin/aws" \
+            --expected-sha256 "$BUNDLE_SHA256" --expected-manifest-sha256 "$MANIFEST_SHA256" \
+            --expected-bytes "$BUNDLE_BYTES"
+
       - name: Restore the prepared source and verify release artifacts
         env:
           SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}
