@@ -1,6 +1,11 @@
 package writepolicy
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -657,11 +662,11 @@ func TestForgeStatusReadsAllowed(t *testing.T) {
 		"gh run list --json status,name",
 		"gh pr view 1 --json status --jq .status",
 		`gh pr view 1 --json status --jq ".status"`,
-		"gh pr list --json status --jq=.[0].name",
-		"gh pr list --json status -q .[].name",
-		"gh run list --json status -q=.[0].status",
-		"gh run list --json status -q.[0].status",
-		"gh run view 1 --json status --jq .jobs[0].status",
+		"gh pr list --json status --jq=.a.name",
+		"gh pr list --json status -q .a.name",
+		"gh run list --json status -q=.a.status",
+		"gh run list --json status -q.a.status",
+		"gh run view 1 --json status --jq .jobs.status",
 		"gh pr view 1 --json status --jq .env.HOME",
 		"gh issue list --repo x/y --json status",
 		"gh issue list -R=x/y --json status",
@@ -710,6 +715,11 @@ func TestForgeStatusJqFieldPathsOnly(t *testing.T) {
 		"gh pr view 1 --json status --jq .a+.b",
 		"gh pr view 1 --json status --jq length",
 		"gh pr view 1 --json status --jq .a-b",
+		"gh pr list --json status --jq=.[0].name",
+		"gh pr list --json status -q .[0].name",
+		"gh run list --json status -q=.[0].status",
+		"gh run list --json status -q.[0].status",
+		"gh run view 1 --json status --jq .jobs[0].status",
 		`gh pr view 1 --json status --jq ""`,
 		"gh pr view 1 --json status --jq=",
 		"gh pr view 1 --json status --template x",
@@ -868,10 +878,123 @@ func TestForgeStatusRetainedRefusals(t *testing.T) {
 		"gh pr checks 1 | grep -3A 2 status",
 		"gh run view 1 --json status --jq '.status | ascii_upcase'",
 		"gh run view 1 --json status --jq length",
+		"gh pr list --json status --jq '.[0].status'",
 		"gh pr view 1 --json status --template x",
 		`gh issue list --search "a b" --json status`,
 		"gh pr checks 1 | grep 'a b status'",
 		"gh pr list --search is:open --json status",
 		"gh pr list -L5 --json status",
 	})
+}
+
+// forgeWords lists every string over alphabet up to length max.
+func forgeWords(alphabet string, max int) []string {
+	words, last := []string{}, []string{""}
+	for n := 0; n < max; n++ {
+		var next []string
+		for _, w := range last {
+			for _, r := range alphabet {
+				next = append(next, w+string(r))
+			}
+		}
+		words, last = append(words, next...), next
+	}
+	return words
+}
+
+// regression: #5046
+func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
+	// A word that clears must read the same after a real shell has expanded it,
+	// or the guard has checked a word gh never receives. This does not list the
+	// spellings to refuse: it tries every short word over the bytes shells expand,
+	// keeps those the matcher clears, and has each shell expand them beside files
+	// any pattern among them could match.
+	dir := t.TempDir()
+	plant := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "a"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a/a", "a/0", "a/a0"} {
+		plant(name)
+	}
+	for _, s := range forgeWords("a0_.-", 3) {
+		if s == "a" || s == "." || s == ".." {
+			continue
+		}
+		plant(s)
+		for _, prefix := range []string{"--jq=", "-q", "-q=", "--repo=", "-R", "--search="} {
+			plant(prefix + s)
+		}
+	}
+	checked := []string{"--jq %s", "--jq=%s", "-q %s", "-q%s", "-q=%s"}
+	templates := append([]string{"--repo %s", "--repo=%s", "-R %s", "-R%s", "--search %s", "--search=%s", "%s"}, checked...)
+	type batch struct {
+		templates []string
+		values    []string
+	}
+	cleared, seen := []string{}, map[string]bool{}
+	for _, b := range []batch{
+		{templates, forgeWords(`.[]*?{}~,-/=^#!%a0_@`, 3)},
+		{checked, forgeWords(".[]a0", 6)},
+		{templates, []string{"{a,0}", "a{0,a}", ".a{,0}", "a/a{,0}", "'.a'", `".a"`, "'a'/'a'", "a/a*", "a/a?", "a/a[0]", "a/a{,0}"}},
+	} {
+		for _, tmpl := range b.templates {
+			for _, v := range b.values {
+				args := fmt.Sprintf(tmpl, v)
+				if forgeTokenRead("gh pr view 1 --json status " + args) {
+					continue
+				}
+				for _, w := range strings.Fields(args) {
+					if !seen[w] {
+						seen[w] = true
+						cleared = append(cleared, w)
+					}
+				}
+			}
+		}
+	}
+	for _, w := range []string{".a", ".a.a", "a/a", "--jq=.a", "-q.a"} {
+		if !seen[w] {
+			t.Errorf("%q: this literal word must clear, or the check below proves nothing", w)
+		}
+	}
+	var script strings.Builder
+	for _, w := range cleared {
+		fmt.Fprintf(&script, "printf '%%s\\n' %s\n", w)
+	}
+	path := filepath.Join(t.TempDir(), "words.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ran := 0
+	for _, shell := range [][]string{{"sh"}, {"bash"}, {"bash", "-O", "extglob"}, {"zsh", "-f"}, {"zsh", "-f", "-o", "extendedglob"}} {
+		bin, err := exec.LookPath(shell[0])
+		if err != nil {
+			continue
+		}
+		ran++
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, bin, append(append([]string{}, shell[1:]...), path)...)
+		cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+		out, err := cmd.CombinedOutput()
+		got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+		for i, w := range cleared {
+			if want := forgeDropQuotes.Replace(w); i >= len(got) || got[i] != want {
+				t.Errorf("%q: %v does not read this word back unchanged (run error: %v)", w, shell, err)
+				break
+			}
+		}
+		if err != nil || len(got) != len(cleared) {
+			t.Errorf("%q: %v gave %d lines for %d words (run error: %v)", shell[0], shell, len(got), len(cleared), err)
+		}
+	}
+	if ran == 0 {
+		t.Skip("could not check: no shell on PATH")
+	}
 }

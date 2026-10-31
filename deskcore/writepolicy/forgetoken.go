@@ -84,14 +84,16 @@ var forgeGhFlags = func() map[string]bool {
 
 // forgeGhChecked: the flags whose value must match a pattern, in any spelling
 // (`--jq x`, `--jq=x`, `-q x`, `-q=x`, `-qx`). A jq value clears only as a literal
-// field path (`.status`, `.[0].name`); a repo clears only as OWNER/REPO, no host.
+// field path (`.status`, `.a.b`); a repo clears only as OWNER/REPO, no host. Every
+// byte these patterns and forgeGhWord accept reads the same before and after shell
+// expansion, so the value checked here is the value gh receives.
 var forgeGhChecked = map[string]*regexp.Regexp{
 	"--jq": forgeFieldPath, "-q": forgeFieldPath,
 	"--repo": forgeOwnerRepo, "-R": forgeOwnerRepo,
 }
 
 var (
-	forgeFieldPath = regexp.MustCompile(`^(\.[A-Za-z_][A-Za-z0-9_]*|\.?\[[0-9]*\])+$`)
+	forgeFieldPath = regexp.MustCompile(`^(\.[A-Za-z_][A-Za-z0-9_]*)+$`)
 	forgeOwnerRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 	// forgeGhWord: any other word on a listed read, so no URL naming another host.
 	forgeGhWord = regexp.MustCompile(`^[A-Za-z0-9._,/@-]+$`)
