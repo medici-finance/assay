@@ -728,8 +728,8 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 75 Build the shared forge library and make the desk verbs thin wrappers — todo (wave 2)
 - 76 Move statusgen's git launches to go-git and ratchet git launches down — todo (wave 1)
 - 77 Retire the deskread bridge for statusgen's forge calls — todo (wave 8)
-- 78 Migrate the release object transport adapter to the shared CLI contract — todo (wave 4)
-- 79 Migrate the release object client bootstrap to the shared CLI contract — todo (wave 4)
+- 78 Migrate the release object transport adapter to the shared CLI contract — blocked (wave 4)
+- 79 Migrate the release object client bootstrap to the shared CLI contract — blocked (wave 4)
 
 ### forge-gitlab (6 open)
 
