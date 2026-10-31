@@ -411,7 +411,27 @@ upstream (or --base) lacks is RECLAIMED — deleted and recreated — with an au
 is checked out somewhere, or carries unpushed commits, is REFUSED, naming the worktree path or
 the commit count.`
 
-	removeLong = `remove also clears a registration whose worktree has NO git link left — an empty-directory
+	removeLong = `remove releases a LOCKED worktree only when the lock is the caller's own session's
+($DESK_SESSION, then $CLAUDE_SESSION_ID) and the tree holds no untracked or uncommitted
+files: that lock is retired just before the delete and restored if the delete fails. The
+session id is self-asserted and inherited, so the own-lock arm also refuses a tree whose
+"git status --porcelain" lists anything (untracked files, a modified submodule, a nested
+repository), naming the rows (exit 5, nothing deleted). What git ignores is NOT listed and is
+deleted with the tree: ignored files, a directory that ignores itself, a tracked edit
+hidden with skip-worktree, and any worktree nested under an ignored path (its own lock is
+not judged; a locked one keeps its registration and branch held). An inherited
+$DESK_SESSION passes the session match; the loss is then limited to what that status
+cannot see. Any other lock on the target — another session's, whatever
+its roster beacon says (a beacon is written only when its session updates the roster, so an
+old or missing one is not proof the session is gone), one naming no session, git's
+"initializing" lock — is refused with exit 5 and the tree is left untouched; a clean, pushed
+tree of a dead session is reaped by ` + "`deskwt prune --reap-dead-sessions`" + ` instead, once the tree
+has been idle past --min-idle (1h by default; run it with --dry-run first, it sweeps every
+ownerless tree). This is the end-of-PR step for a session that made its own home:
+` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
+pushed and the tree is clean.
+
+remove also clears a registration whose worktree has NO git link left — an empty-directory
 husk, or a directory already gone — which the gates above cannot open (they exited 6 and left
 the branch registered forever). It does so only when the directory holds nothing, no process
 holds it open (lsof — without root it sees only the caller's own processes; unavailable = could-not-check, refuse), the admin HEAD is recoverable
