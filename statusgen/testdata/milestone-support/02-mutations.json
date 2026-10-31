@@ -180,6 +180,24 @@
       "module": "statusgen",
       "package": "./readercaps/record",
       "test": "TestRecordRequirements"
+    },
+    {
+      "name": "independent-stamp-body",
+      "target": "tools/desk/cmd/deskevidence/principalstamp.go",
+      "old": "if _, closed := briefBodyStart(lines); !closed && hasEvidenceHeading(lines) {",
+      "new": "if _, closed := briefBodyStart(lines); false && !closed && hasEvidenceHeading(lines) {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestPrincipalStampReadsBodyNotFrontmatter"
+    },
+    {
+      "name": "evidence-preflight",
+      "target": "tools/desk/cmd/deskevidence/main.go",
+      "old": "\"deskevidence\", os.Stderr); code != 0 {",
+      "new": "\"deskevidence\", os.Stderr); false && code != 0 {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestDeskCapsPreflight"
     }
   ]
 }
