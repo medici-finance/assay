@@ -745,6 +745,7 @@ func TestForgeStatusQuotedBlank(t *testing.T) {
 	for _, f := range []string{
 		`grep "x -A" 123`, `grep 'x -B' 123`, `grep "x "-C 123`, `grep -v "nomatch -A" 456`,
 		`grep "x	-A" 123`, `grep "x -A"`, `grep 'a b'`, `head "-n 5"`, `grep "x`,
+		`grep 'a''b'`, `grep -v ''''a`,
 	} {
 		rows = append(rows, pre+f)
 	}

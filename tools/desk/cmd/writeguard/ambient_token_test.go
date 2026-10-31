@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -743,21 +742,23 @@ func TestHookStatusWordsReadLikeTheShell(t *testing.T) {
 // hookQuoteMixes: the word's bytes in order, with up to three quote bytes placed
 // around and between them.
 func hookQuoteMixes(word string) []string {
-	mixes := map[string]bool{word: true}
-	for range 3 {
-		for m := range mixes {
+	mixes := []string{word}
+	seen := map[string]bool{word: true}
+	for from, n := 0, 0; n < 3; n++ {
+		end := len(mixes)
+		for _, m := range mixes[from:end] {
 			for i := 0; i <= len(m); i++ {
-				mixes[m[:i]+`'`+m[i:]] = true
-				mixes[m[:i]+`"`+m[i:]] = true
+				for _, q := range []string{`'`, `"`} {
+					if w := m[:i] + q + m[i:]; !seen[w] {
+						seen[w] = true
+						mixes = append(mixes, w)
+					}
+				}
 			}
 		}
+		from = end
 	}
-	sorted := make([]string, 0, len(mixes))
-	for m := range mixes {
-		sorted = append(sorted, m)
-	}
-	sort.Strings(sorted)
-	return sorted
+	return mixes
 }
 
 // regression: #5046
@@ -797,6 +798,7 @@ func TestHookStatusReads(t *testing.T) {
 		"git status # ; T=$(desktoken worker)\nGH_TOKEN=$(cat \"$T\") gh pr view 1 --json status",
 		"gh pr view 1 --json status --template x",
 		"gh pr list --json status | grep ^a",
+		"gh pr list --json status | grep 'a''b'",
 		`GH_TOKEN=$(cat "$(desktoken worker --repo o/n)") gh pr view 1 --json status`,
 		`GH_TOKEN="$(cat "$(desktoken worker --repo o/n)")" gh pr view 1 --json status`,
 		`tokfile="$(desktoken "$role" --repo "$repo")"; GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`,
