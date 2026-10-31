@@ -415,6 +415,21 @@ func decodeSingle(block string) (map[string]interface{}, error) {
 	return values, nil
 }
 
+// ParseMapping validates frontmatter structure without applying admission policy.
+// Exactly one mapping is decoded; duplicate keys and invisible key characters
+// at any depth refuse. Callers may only decide field absence after this succeeds.
+// Risk, gate and routing policy remain in ParseFields and their existing callers.
+func ParseMapping(block string) (map[string]interface{}, error) {
+	values, err := decodeSingle(block)
+	if err != nil {
+		return nil, err
+	}
+	if found, ok := invisibleKey(values); ok {
+		return nil, fmt.Errorf("frontmatter key %q contains an invisible character", found)
+	}
+	return values, nil
+}
+
 // ParseFields decodes real YAML, rejects duplicate keys and invalid risk answers.
 // A risk answer is read only from the top-level risk mapping; a risk-answer key
 // anywhere else, a second YAML document in the block, or a mapping key at any
@@ -426,12 +441,9 @@ func decodeSingle(block string) (map[string]interface{}, error) {
 // risk-bearing.
 func ParseFields(block string) (Fields, error) {
 	f := Fields{Values: map[string]string{}}
-	values, err := decodeSingle(block)
+	values, err := ParseMapping(block)
 	if err != nil {
 		return f, err
-	}
-	if found, ok := invisibleKey(map[string]interface{}(values)); ok {
-		return f, fmt.Errorf("frontmatter key %q contains an invisible character", found)
 	}
 	for k, v := range values {
 		if decoratedPolicyKey(k) {

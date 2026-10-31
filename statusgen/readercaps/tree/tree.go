@@ -14,6 +14,14 @@ import (
 	"github.com/medici-finance/assay/statusgen/readercaps/record"
 )
 
+// recordParts follows the existing canonical reader layout: each stream's
+// index and direct briefs, plus its done briefs, under active or archived roots.
+// Prose/example subdirectories are not alternative sources of operational records.
+func recordParts(parts []string) bool {
+	brief := strings.HasPrefix(parts[len(parts)-1], "brief-") && strings.HasSuffix(parts[len(parts)-1], ".md")
+	return len(parts) == 2 && (parts[1] == "README.md" || brief) || len(parts) == 3 && parts[1] == "done" && brief
+}
+
 // Check reads requirements on stream indices and brief records, including the
 // archive. Missing stream directories are legitimate legacy roots; an unreadable
 // directory/file is unknown, never evidence that it declares no requirement.
@@ -36,10 +44,24 @@ func Check(roots []string, reader readercaps.Advertisement) readercaps.Result {
 				if err != nil {
 					return err
 				}
-				if entry.Type()&os.ModeSymlink != 0 {
-					return fmt.Errorf("cannot establish requirements through symlink: %s", path)
+				rel, err := filepath.Rel(dir, path)
+				if err != nil {
+					return err
 				}
-				if entry.IsDir() || !(entry.Name() == "README.md" || strings.HasPrefix(entry.Name(), "brief-") && strings.HasSuffix(entry.Name(), ".md")) {
+				parts := strings.Split(filepath.ToSlash(rel), "/")
+				if entry.Type()&os.ModeSymlink != 0 {
+					if len(parts) == 1 || len(parts) == 2 && parts[1] == "done" || recordParts(parts) {
+						return fmt.Errorf("cannot establish requirements through symlink: %s", path)
+					}
+					return nil
+				}
+				if entry.IsDir() {
+					if rel == "." || len(parts) == 1 || len(parts) == 2 && parts[1] == "done" {
+						return nil
+					}
+					return fs.SkipDir
+				}
+				if !recordParts(parts) {
 					return nil
 				}
 				raw, err := os.ReadFile(path)

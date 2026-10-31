@@ -9,7 +9,6 @@ import (
 
 	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/readercaps"
-	"gopkg.in/yaml.v3"
 )
 
 // Requirements returns an explicit empty requirement for a legacy document.
@@ -25,8 +24,8 @@ func Requirements(raw []byte) (readercaps.Requirements, error) {
 	if err != nil {
 		return empty, fmt.Errorf("unreadable requirements frontmatter: %w", err)
 	}
-	var fields map[string]any
-	if err := yaml.Unmarshal([]byte(block), &fields); err != nil {
+	fields, err := briefdoc.ParseMapping(block)
+	if err != nil {
 		return empty, err
 	}
 	value, present := fields["reader-requirements"]

@@ -166,8 +166,8 @@
     {
       "name": "legacy-owner-separation",
       "target": "statusgen/readercaps/record/record.go",
-      "old": "var fields map[string]any",
-      "new": "if _, err := briefdoc.ParseFields(block); err != nil { return empty, err }; var fields map[string]any",
+      "old": "fields, err := briefdoc.ParseMapping(block)",
+      "new": "if _, err := briefdoc.ParseFields(block); err != nil { return empty, err }; fields, err := briefdoc.ParseMapping(block)",
       "module": "statusgen",
       "package": "./readercaps/record",
       "test": "TestRecordRequirements"
@@ -198,6 +198,42 @@
       "module": "tools/desk",
       "package": "./cmd/deskevidence",
       "test": "TestDeskCapsPreflight"
+    },
+    {
+      "name": "mapping-document-count",
+      "target": "statusgen/briefdoc/document.go",
+      "old": "if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {",
+      "new": "if err := dec.Decode(&extra); false && !errors.Is(err, io.EOF) {",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "mapping-key-characters",
+      "target": "statusgen/briefdoc/document.go",
+      "old": "if found, ok := invisibleKey(values); ok {",
+      "new": "if found, ok := invisibleKey(values); false && ok {",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "mapping-error-is-not-absence",
+      "target": "statusgen/readercaps/record/record.go",
+      "old": "fields, err := briefdoc.ParseMapping(block)\n\tif err != nil {\n\t\treturn empty, err\n\t}",
+      "new": "fields, err := briefdoc.ParseMapping(block)\n\tif err != nil {\n\t\treturn empty, nil\n\t}",
+      "module": "statusgen",
+      "package": "./readercaps/record",
+      "test": "TestRecordRequirements"
+    },
+    {
+      "name": "canonical-record-scope",
+      "target": "statusgen/readercaps/tree/tree.go",
+      "old": "if !recordParts(parts) {",
+      "new": "if false && !recordParts(parts) {",
+      "module": "statusgen",
+      "package": "./readercaps/tree",
+      "test": "TestReaderCapsTree"
     }
   ]
 }

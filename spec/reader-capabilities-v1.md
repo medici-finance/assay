@@ -55,9 +55,12 @@ requires; the current tree preflight conservatively requires the complete envelo
 rather than dropping another operation's obligation when producing a narrower view.
 The key is allocated by this contract, not inserted into the operational corpus.
 Field presence is determined after the shared YAML decoder, so equivalent encoded key
-spellings cannot hide a mandatory envelope. Body prose and ordinary legacy records do not opt in. Capability extraction leaves
-unrelated legacy risk metadata with its existing owner; opted-in envelopes retain the
-existing brief-field validation. Ordinary and differential lint both enforce capability
+spellings cannot hide a mandatory envelope. Body prose and ordinary legacy records do
+not opt in. Capability extraction leaves unrelated legacy risk metadata with its existing owner. The shared structural decoder
+validates document count, duplicate keys and key characters before any presence decision,
+including records with no requirements; malformed structure is could-not-check. Thus
+previously tolerated multi-document or invisible-key records are deliberately held.
+Opted-in envelopes retain the existing brief-field validation. Ordinary and differential lint both enforce capability
 admission before reading records. Record/schema generators remain
 with the subsequent milestone briefs; a legacy permissive parser is not a safe writer.
 
@@ -83,10 +86,16 @@ Neither advertises prefixed operational references, milestones, assessment, disp
 authoring or acceptance. A public workref parser is not an operational writer.
 
 The existing statusgen tree/version gate and deskkit's schema gate call the same core
-through the shared tree adapter before their consumers proceed. Stream indices and
-brief records under docs/streams and docs/archive are examined. Unknown required
-semantics map to refusal (5); unreadable/malformed requirements map to could-not-check
-(6). The historic no-new-requirements version gate retains its exits and diagnostics.
+through the shared tree adapter before their consumers proceed. Canonical stream indices and
+brief records under docs/streams and docs/archive are examined: `<stream>/README.md`,
+`<stream>/brief-*.md` and `<stream>/done/brief-*.md`. Prose/example subdirectories are not
+operational records. Only the exact decoded `reader-requirements` key opts in; an ordinary
+case-variant key is not an alias, while structurally unreadable keys refuse before lookup.
+Unknown required semantics map to refusal (5); unreadable/malformed requirements map to could-not-check
+(6). The historic no-new-requirements release gate retains its exits and diagnostics. An
+unterminated actual record now stops at capability preflight with could-not-check (6),
+before the Evidence caller reaches its existing stamp refusal (5). The stamp guard is
+unchanged and independently tested below preflight; both paths permit no writes.
 The existing deskboard, deskpr, deskclaim and deskevidence calls retain their own
 execution/identity/subject checks. The deskboard consuming-boundary test bypasses the
 outer startup/guard and still observes zero dispatch/output effects on incompatibility.

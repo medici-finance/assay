@@ -314,7 +314,8 @@ follow-ups /02, /03, /04, /08, /09 and /12. No operational new grammar is advert
 `statusgen/readercaps` is the pure owner of supplied operation-scoped requirements
 and advertisements, with one three-state assessment. Its JSON decoders preserve
 unknown required features and reject malformed/duplicate declarations.
-`readercaps/record` reuses briefdoc and the existing YAML codec; `readercaps/tree` is
+`readercaps/record` decides presence only after `briefdoc.ParseMapping` validates one
+document and its keys, then retains `ParseFields` policy validation for opted-in records; `readercaps/tree` is
 the explicitly effectful filesystem adapter. Neither is imported by the pure core.
 Statusgen discovery and the existing desk schema gate call the shared implementation
 in process. No credential, current-subject or authority boundary moves.

@@ -33,6 +33,36 @@ func TestReaderCapsTree(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// Only stream indices and direct/done brief records belong to this reader.
+			for _, sub := range []string{"examples", "done"} {
+				child := filepath.Join(dir, sub)
+				if err := os.MkdirAll(child, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(child, "README.md"), []byte("---\nProse introduced by a horizontal rule.\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if got := Check([]string{root}, reader); got.State != readercaps.Supported {
+					t.Fatal("non-record README stopped a legacy tree:", got)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(dir, "examples", "brief-99-example.md"), []byte(requirement), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := Check([]string{root}, reader); got.State != readercaps.Supported {
+				t.Fatal("example document became an operational record:", got)
+			}
+			archived := filepath.Join(dir, "done", "brief-01-example.md")
+			if err := os.WriteFile(archived, []byte(requirement), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := Check([]string{root}, reader); got.State != readercaps.Unsupported {
+				t.Fatal("done brief omitted from admission:", got)
+			}
+			if err := os.Remove(archived); err != nil {
+				t.Fatal(err)
+			}
+
 			if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(requirement), 0644); err != nil {
 				t.Fatal(err)
 			}

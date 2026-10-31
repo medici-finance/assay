@@ -36,6 +36,18 @@ func TestRecordRequirements(t *testing.T) {
 		})
 	}
 
+	// Structural validity is established before deciding a record is legacy.
+	for _, bad := range []string{
+		"---\nstream: sample\n...\nreader-requirements: {schema: reader-requirements-v1, required: []}\n---\n",
+		"---\nstream: sample\n--- {reader-requirements: {schema: reader-requirements-v1, required: []}}\n---\n",
+		"---\nreader\u200b-requirements: {schema: reader-requirements-v1, required: []}\n---\n",
+		"---\nreader-requirements\u00a0: {schema: reader-requirements-v1, required: []}\n---\n",
+	} {
+		if _, err := Requirements([]byte(bad)); err == nil {
+			t.Errorf("structurally unreadable record became legacy: %q", bad)
+		}
+	}
+
 	for _, bad := range []string{
 		"---\nreader-requirements: {schema: reader-requirements-v1, required: [{operation: syntax, schemas: [milestone-v1], ſchemas: [], semantics: []}]}\n---\n",
 		"---\nreader-requirements: {schema: reader-requirements-v1, required: [], REQUIRED: []}\n---\n",
