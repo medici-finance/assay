@@ -419,8 +419,9 @@ never-added files (exit 5, nothing deleted). Any other lock — another session'
 its roster beacon says (a beacon is written only when its session updates the roster, so an
 old or missing one is not proof the session is gone), one naming no session, git's
 "initializing" lock — is refused with exit 5 and the tree is left untouched; a clean, pushed
-tree of a dead session is released by ` + "`deskwt prune --reap-dead-sessions`" + `
-instead. This is the end-of-PR step for a session that made its own home:
+tree of a dead session is reaped by ` + "`deskwt prune --reap-dead-sessions`" + ` instead, once the tree
+has been idle past --min-idle (1h by default; run it with --dry-run first, it sweeps every
+ownerless tree). This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.
 

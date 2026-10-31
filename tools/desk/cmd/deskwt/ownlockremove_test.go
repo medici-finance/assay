@@ -13,7 +13,7 @@ package main
 // is retired as the last step before the delete (and restored if the delete fails) when the tree
 // holds no untracked content; any other lock is REFUSED with the tree untouched, whatever the
 // state of the owner's roster beacon: a beacon is stamped only when its session writes the
-// roster, so an old one is not proof the owner is gone. A dead session's tree is released by
+// roster, so an old one is not proof the owner is gone. A dead session's tree is reaped by
 // `deskwt prune --reap-dead-sessions`.
 
 import (

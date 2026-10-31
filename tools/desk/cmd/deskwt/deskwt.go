@@ -1030,5 +1030,5 @@ func ownLockOwner(reason string) (bool, string) {
 	if caller := resolveSession(""); caller == sess {
 		return true, "the caller is the locking session " + sess
 	}
-	return false, "it belongs to session " + sess + ", not the caller — a roster beacon is not proof that session is gone (a clean, pushed tree of a dead session is released by `deskwt prune --reap-dead-sessions`)"
+	return false, "it belongs to session " + sess + ", not the caller — a roster beacon is not proof that session is gone (a clean, pushed tree of a dead session is reaped by `deskwt prune --reap-dead-sessions` once it has been idle past --min-idle, 1h by default; try --dry-run first, it sweeps every ownerless tree)"
 }

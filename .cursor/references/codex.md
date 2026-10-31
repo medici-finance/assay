@@ -131,8 +131,9 @@ worktree locked for a session that has gone, and every later session that needs 
   5, nothing deleted), because a session id is self-asserted and can be inherited. It retires
   the lock only when the lock is this session's own; a lock held by any other session is
   refused with exit 5 and the tree is left as it was, whatever that session's roster beacon
-  says. A tree whose session has ended is released by `deskwt prune --reap-dead-sessions`, not
-  by `remove`.
+  says. A tree whose session has ended is reaped by `deskwt prune --reap-dead-sessions`, not by
+  `remove`: only once it has been idle past `--min-idle` (1h by default), and it sweeps every
+  ownerless clean, pushed tree, so run it with `--dry-run` first.
 - **Not for dispatched workers.** An agent dispatched into a home the dispatcher made
   leaves that home to its dispatcher and to `deskwt prune`.
 
