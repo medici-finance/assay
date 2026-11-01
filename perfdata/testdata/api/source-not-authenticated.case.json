@@ -1,0 +1,22 @@
+{
+  "description": "The batch's source must equal the source bound to the caller's credential.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "b33c8a0dca6af36f371bce457501a7c266cd9a2e18bb814df916d63d067ebf31",
+    "committed": false,
+    "status": "rejected",
+    "reason": "source-not-authenticated",
+    "results": []
+  }
+}

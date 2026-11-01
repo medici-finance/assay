@@ -1,0 +1,178 @@
+{
+  "$comment": "A transport batch of stored performance-event-v1 lines, and (under $defs/receipt) the collector's performance-receipt-v1 answer. Each events[] item is a stored event exactly as spooled; the receiver re-validates it with the event schema and the canonical Go validator. Admission rules (source binding, consent revision, allowed profile, replay horizon, duplicate and conflict handling, committed-only acknowledgement) are normative in spec/performance-event-v1.md and pinned by perfdata/testdata/api.",
+  "$defs": {
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "batchDigest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "committed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "enum": [
+            "schema",
+            "bounds",
+            "source-not-authenticated",
+            "consent-revision",
+            "profile-not-allowed",
+            "commit-failed",
+            "none-admitted"
+          ],
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "enum": [
+                  "schema",
+                  "unsupported",
+                  "privacy",
+                  "measurement",
+                  "bounds"
+                ],
+                "type": "string"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^src-[a-z2-7]{26}-e[1-9][0-9]{0,9}-s[1-9][0-9]{0,19}$",
+                "type": "string"
+              },
+              "index": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "acknowledged",
+                  "duplicate",
+                  "conflicting",
+                  "rejected",
+                  "outside-horizon",
+                  "retry"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "const": "performance-receipt-v1"
+        },
+        "status": {
+          "enum": [
+            "committed",
+            "partial",
+            "rejected",
+            "retry"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "batchDigest",
+        "committed",
+        "results",
+        "schema",
+        "status"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "enum": [
+            "schema",
+            "unsupported",
+            "privacy",
+            "measurement",
+            "bounds"
+          ],
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^src-[a-z2-7]{26}-e[1-9][0-9]{0,9}-s[1-9][0-9]{0,19}$",
+          "type": "string"
+        },
+        "index": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "acknowledged",
+            "duplicate",
+            "conflicting",
+            "rejected",
+            "outside-horizon",
+            "retry"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/medici-finance/assay/schemas/performance-batch-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "consentRevision": {
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$",
+      "type": "string"
+    },
+    "events": {
+      "items": {
+        "$ref": "performance-event-v1.json"
+      },
+      "maxItems": 500,
+      "minItems": 1,
+      "type": "array"
+    },
+    "profile": {
+      "enum": [
+        "tool",
+        "workflow"
+      ],
+      "type": "string"
+    },
+    "schema": {
+      "const": "performance-batch-v1"
+    },
+    "source": {
+      "pattern": "^src-[a-z2-7]{26}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "consentRevision",
+    "events",
+    "profile",
+    "schema",
+    "source"
+  ],
+  "title": "performance-batch-v1",
+  "type": "object"
+}

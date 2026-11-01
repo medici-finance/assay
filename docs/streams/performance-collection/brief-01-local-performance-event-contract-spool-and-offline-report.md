@@ -11,6 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Correlated operational measurements and their access/retention boundary require review of the implemented field policy and isolation; tests do not authorize live collection."
 decision-trigger: spec
 issues: []
+decision-issue: 5171
 schema: brief-v2
 version: 5
 id: 1f12e2ac-a0b9-4881-a452-4be522f432ad
@@ -33,30 +34,30 @@ domain: complicated
 outcome: none
 consumers:
   - "perfrec/: out-of-scope (desktools-v2/61 owns the existing local recorder; this brief defines the separate correlated collection contract)"
-  - "perfdata/go.mod: follow-up performance-collection/01"
-  - "perfdata/event.go: follow-up performance-collection/01"
-  - "perfdata/event_test.go: follow-up performance-collection/01"
-  - "perfdata/consent.go: follow-up performance-collection/01"
-  - "perfdata/local/: follow-up performance-collection/01"
-  - "perfdata/report/: follow-up performance-collection/01"
-  - "perfdata/cmd/perfdata/: follow-up performance-collection/01"
-  - "perfdata/testdata/: follow-up performance-collection/01"
-  - "spec/performance-event-v1.md: follow-up performance-collection/01"
-  - "schemas/performance-event-v1.json: follow-up performance-collection/01"
-  - "schemas/performance-batch-v1.json: follow-up performance-collection/01"
-  - "docs/telemetry.md: follow-up performance-collection/01"
-  - "docs/performance-collection.md: follow-up performance-collection/01"
-  - "docs/contracts.md: follow-up performance-collection/01"
-  - "docs/proposals/non-ci-architecture/11-target-architecture.md: follow-up performance-collection/01"
-  - "docs/proposals/non-ci-architecture/14-storage-forge-graph.md: follow-up performance-collection/01"
-  - "docs/proposals/non-ci-architecture/16-delivery-sequence.md: follow-up performance-collection/01"
-  - "docs/streams/continuing-operations/proposed-briefs.md: follow-up performance-collection/01"
+  - "perfdata/go.mod: fixed-here"
+  - "perfdata/event.go: fixed-here"
+  - "perfdata/event_test.go: fixed-here"
+  - "perfdata/consent.go: fixed-here"
+  - "perfdata/local/: fixed-here"
+  - "perfdata/report/: fixed-here"
+  - "perfdata/cmd/perfdata/: fixed-here"
+  - "perfdata/testdata/: fixed-here"
+  - "spec/performance-event-v1.md: fixed-here"
+  - "schemas/performance-event-v1.json: fixed-here"
+  - "schemas/performance-batch-v1.json: fixed-here"
+  - "docs/telemetry.md: fixed-here"
+  - "docs/performance-collection.md: fixed-here"
+  - "docs/contracts.md: fixed-here"
+  - "docs/proposals/non-ci-architecture/11-target-architecture.md: fixed-here"
+  - "docs/proposals/non-ci-architecture/14-storage-forge-graph.md: fixed-here"
+  - "docs/proposals/non-ci-architecture/16-delivery-sequence.md: fixed-here"
+  - "docs/streams/continuing-operations/proposed-briefs.md: fixed-here"
   - "statusgen/telemetry.go: out-of-scope (legacy counts-only endpoint and schema remain unchanged)"
   - "loopadmin/runner/client.go: follow-up performance-collection/02"
   - "perfdata/postgres/: follow-up performance-collection/03"
   - "perfdata/ingest/: follow-up performance-collection/04"
   - "perfdata/upload/: follow-up performance-collection/05"
-  - "perfdata/phasecost_test.go: follow-up performance-collection/01"
+  - "perfdata/phasecost_test.go: fixed-here"
 ---
 
 # Brief 01 — Local performance event contract, spool and offline report

@@ -1,0 +1,22 @@
+{
+  "description": "A profile the collector policy does not admit is rejected whole.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "workflow"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "53476a8eb1a40dc6f9391ae7697097a5f41033083402472809a216d941a8b9d9",
+    "committed": false,
+    "status": "rejected",
+    "reason": "profile-not-allowed",
+    "results": []
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "description": "A malformed (non-canonical) event and an event claiming another source are refused by class; the valid event commits.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "7430f625da1c929c67873bcada97122d6d41e9d9508f4ab00a4cb10270a976de",
+    "committed": true,
+    "status": "partial",
+    "results": [
+      {
+        "index": 0,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s1",
+        "status": "acknowledged",
+        "digest": "617645c982bd3168421139014fe76e3315cf1c7c2b2981588ea2b18636ec3145"
+      },
+      {
+        "index": 1,
+        "status": "rejected",
+        "class": "schema"
+      },
+      {
+        "index": 2,
+        "id": "src-bbbbbbbbbbbbbbbbbbbbbbbbbb-e1-s4",
+        "status": "rejected",
+        "class": "privacy",
+        "digest": "46bbf8d0703854c7bf4f08a4a44f56b8e3aab691ff9fa5be2d732b29f969f4e1"
+      }
+    ]
+  }
+}

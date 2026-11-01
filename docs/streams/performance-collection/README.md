@@ -220,7 +220,7 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Local performance event contract, spool and offline report](brief-01-local-performance-event-contract-spool-and-offline-report.md) | 0 | L | todo | — | — |
+| 01 | [Local performance event contract, spool and offline report](brief-01-local-performance-event-contract-spool-and-offline-report.md) | 0 | L | blocked | — | — |
 | 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 4 | L | todo | — | — |
 | 03 | [Separate TimescaleDB performance database and storage adapter](brief-03-separate-timescaledb-performance-database-and-storage-adapter.md) | 1 | L | todo | — | — |
 | 04 | [Authenticated performance ingestion API](brief-04-authenticated-performance-ingestion-api.md) | 2 | L | todo | — | — |

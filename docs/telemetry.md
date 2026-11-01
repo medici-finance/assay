@@ -12,6 +12,10 @@ the promise underneath all of it.
 
 ## The promise
 
+This promise covers the `telemetry-v1` payload described in this document. The separate,
+pseudonymous local `performance-event-v1` record class has its own rules. They are summarized in
+[Local performance-event-v1 records](#local-performance-event-v1-records--1-november-2026) below.
+
 - **Off by default.** No flag, no environment variable, no ping. Installing or
   running `statusgen` sends nothing.
 - **Counts only, never content.** A payload is integer tallies keyed by a fixed
@@ -437,3 +441,28 @@ provider attempts/cost. Optional opaque diagnostic links can use only a separate
 service protocol/transport with workflow consent at both ends; a selected profile alone never
 adds headers or forwards raw work/session/agent locators. Shared refresh cost is counted once,
 missing server measurements remain unknown, and process CPU cannot be duplicated per handler.
+
+## Local performance-event-v1 records — 1 November 2026
+
+`ASSAY_TELEMETRY=1` **together with an explicitly selected profile** (`--profile tool|workflow`
+or `ASSAY_PERFDATA_PROFILE`) now also gates a second record class: pseudonymous local
+`performance-event-v1` records written by `perfdata record` into
+`<state>/performance-events/`. The anonymized, counts-only promise at the top of this document
+applies to `telemetry-v1` only. It does not describe these records.
+
+- **Not anonymous.** A random source identity links every record of one source. Under the
+  workflow profile, work, session and agent locators are replaced by random aliases scoped to a
+  source epoch. The alias map stays local and is never part of a record, preview or batch.
+- **Still off by default.** `ASSAY_TELEMETRY=1` alone selects no profile and arms nothing, so
+  existing telemetry-v1 or perf-v1 opt-ins do not become consent to this class. With collection
+  off, nothing is created.
+- **Local only.** No sender, listener or database exists. Retention is the selected policy's age
+  cap (initially seven UTC days) and its required byte cap. Every retirement is recorded as
+  unsent loss.
+- **Fields.** Only the closed field set in [the specification](../spec/performance-event-v1.md)
+  is written. Raw argv, paths, titles, bodies, raw errors, credentials and transcripts are never
+  written.
+
+The telemetry-v1 endpoint, its two switches and its schema are unchanged. Build, consent, loss
+envelope and retention details are in [local performance collection](performance-collection.md).
+Human acceptance of the field allowlist, loss envelope and writer overhead is pending.
