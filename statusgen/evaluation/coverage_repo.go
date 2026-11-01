@@ -119,6 +119,10 @@ type evalCtx struct {
 	forge  Forge
 	// goFloors is CoverageInput.GoFloors (readset.go).
 	goFloors GoFloorSource
+	// readSetDeadline is CoverageInput.ReadSetDeadline, and rsSorted holds
+	// each revision's file listing sorted for presence lookups (readset.go).
+	readSetDeadline func() string
+	rsSorted        map[string][]string
 }
 
 func newEvalCtx(repo Repo, maxLanding int) *evalCtx {

@@ -483,16 +483,17 @@ func readSetPathOK(p string) bool {
 }
 
 // readSet is a counted read set, its paths with the exempt ones subtracted.
+// Each kind of entry is a set, so a path recorded twice is judged once.
 type readSet struct {
 	files   map[string]bool // read and stat entries
 	all     map[string]bool // every read and stat path, exempt ones included (the floor's comparison)
-	lists   []string
-	absent  []string
-	dirs    []string
+	lists   map[string]bool
+	absent  map[string]bool
+	dirs    map[string]bool
 	history bool
 	goRuns  []string
-	paths   int // non-exempt path entries
-	exempt  int // recorded path entries subtracted as bookkeeping
+	paths   int // distinct non-exempt path entries
+	exempt  int // distinct recorded path entries subtracted as bookkeeping
 }
 
 // exempt reports whether a change to repo path p can never stale a witness of
@@ -522,6 +523,9 @@ func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *rea
 	if o == nil || !o.Found || ReadSetDigest(o.Content) != digest {
 		return nil, ReasonReadSetUnreadable
 	}
+	if why := x.readSetOverdue(); why != "" {
+		return nil, ReasonReadSetBounds + " (" + reasonText(why) + ")"
+	}
 	h, entries, err := ParseReadSet(o.Content)
 	if err != nil {
 		return nil, ""
@@ -541,8 +545,13 @@ func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *rea
 	if d, _, ok := ReadSetToken(o.IntroRunner); !ok || d != digest {
 		return nil, ""
 	}
-	rs = &readSet{files: map[string]bool{}, all: map[string]bool{}}
+	rs = &readSet{files: map[string]bool{}, all: map[string]bool{}, lists: map[string]bool{}, absent: map[string]bool{}, dirs: map[string]bool{}}
+	seen := map[string]bool{}
 	for _, e := range entries {
+		if seen[e] {
+			continue // a repeated entry is judged once
+		}
+		seen[e] = true
 		kind, p, _ := strings.Cut(e, " ")
 		switch kind {
 		case EntryHistory:
@@ -563,11 +572,11 @@ func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *rea
 		case EntryRead, EntryStat:
 			rs.files[p] = true
 		case EntryList:
-			rs.lists = append(rs.lists, p)
+			rs.lists[p] = true
 		case EntryAbsent:
-			rs.absent = append(rs.absent, p)
+			rs.absent[p] = true
 		case EntryDir:
-			rs.dirs = append(rs.dirs, p)
+			rs.dirs[p] = true
 		}
 	}
 	if rs.paths == 0 {
@@ -593,17 +602,6 @@ func underDir(d, p string) (child string, ok bool) {
 	}
 	child, _, _ = strings.Cut(rest, "/")
 	return child, child != ""
-}
-
-// childNames lists directory d's direct children in a file listing.
-func childNames(files []string, d string) map[string]bool {
-	out := map[string]bool{}
-	for _, f := range files {
-		if c, ok := underDir(d, f); ok {
-			out[c] = true
-		}
-	}
-	return out
 }
 
 // contentAttrs are the attributes that change what a checkout of a path
@@ -665,6 +663,9 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 	}
 	attrsTouched := false
 	for _, p := range changed {
+		if why := x.readSetOverdue(); why != "" {
+			return revisionUnestablished, ReasonReadSetBounds + " (" + reasonText(why) + ")", true
+		}
 		if pathpkg.Base(p) == ".gitattributes" {
 			attrsTouched = true
 		}
@@ -706,26 +707,42 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 // directory recorded present is gone. unread is set instead when a tree
 // listing the answer needs could not be read: a failed listing is never
 // read as "unchanged" or "gone".
+//
+// Its work follows p's depth, never the read set's size or the tree's: only
+// p's own ancestors are looked up in the read set, and a directory's entry is
+// found in a revision's listing by binary search (sortedFiles), the listing
+// sorted once per revision and evaluation.
 func (rs *readSet) stale(x *evalCtx, p, w, t string) (why, unread string) {
 	if rs.files[p] {
 		return "the row read or stat-ed it", ""
 	}
-	for _, a := range rs.absent {
-		if p == a || strings.HasPrefix(p, a+"/") {
+	// p's ancestors, outermost first: "." then each directory above p.
+	ancestors := []string{"."}
+	for i := 0; i < len(p); i++ {
+		if p[i] == '/' {
+			ancestors = append(ancestors, p[:i])
+		}
+	}
+	for _, a := range append(ancestors[1:], p) {
+		if rs.absent[a] {
 			return "the row looked up " + a + " and found it absent", ""
 		}
 	}
 	listing := func(rev string) ([]string, string) {
-		files := x.treeFilesAt(rev)
+		files := x.sortedFiles(rev)
 		if files == nil {
 			return nil, "the tree at " + rev[:min(len(rev), TreeSHALen)] + " could not be listed, so whether a recorded directory changed under " + p + " cannot be established"
 		}
 		return files, ""
 	}
-	for _, d := range rs.lists {
-		c, ok := underDir(d, p)
-		if !ok {
+	for _, d := range ancestors {
+		if !rs.lists[d] {
 			continue
+		}
+		c, _ := underDir(d, p)
+		entry := c
+		if d != "." {
+			entry = d + "/" + c
 		}
 		wf, bad := listing(w)
 		if bad != "" {
@@ -735,23 +752,61 @@ func (rs *readSet) stale(x *evalCtx, p, w, t string) (why, unread string) {
 		if bad != "" {
 			return "", bad
 		}
-		if childNames(wf, d)[c] != childNames(tf, d)[c] {
+		if holds(wf, entry) != holds(tf, entry) {
 			return "the row listed the directory " + d + ", whose entry " + c + " was added or removed", ""
 		}
 	}
-	for _, d := range rs.dirs {
-		if _, ok := underDir(d, p); !ok {
+	for _, d := range ancestors {
+		if !rs.dirs[d] {
 			continue
 		}
 		tf, bad := listing(t)
 		if bad != "" {
 			return "", bad
 		}
-		if len(childNames(tf, d)) == 0 {
+		if d == "." && len(tf) == 0 || d != "." && !holds(tf, d) {
 			return "the row stat-ed the directory " + d + ", which no longer exists", ""
 		}
 	}
 	return "", ""
+}
+
+// readSetOverdue is why the caller's read-set time limit has run out
+// (CoverageInput.ReadSetDeadline), or "".
+func (x *evalCtx) readSetOverdue() string {
+	if x.readSetDeadline == nil {
+		return ""
+	}
+	return x.readSetDeadline()
+}
+
+// sortedFiles is rev's file listing sorted, sorted once per revision in an
+// evaluation; nil when the listing could not be read.
+func (x *evalCtx) sortedFiles(rev string) []string {
+	if got, ok := x.rsSorted[rev]; ok {
+		return got
+	}
+	files := x.treeFilesAt(rev)
+	if files != nil && !sort.StringsAreSorted(files) {
+		files = append([]string(nil), files...)
+		sort.Strings(files)
+	}
+	if x.rsSorted == nil {
+		x.rsSorted = map[string][]string{}
+	}
+	x.rsSorted[rev] = files
+	return files
+}
+
+// holds reports whether a sorted file listing holds path e as a file or as a
+// directory with a file below it.
+func holds(sorted []string, e string) bool {
+	i := sort.SearchStrings(sorted, e)
+	if i < len(sorted) && sorted[i] == e {
+		return true
+	}
+	j := sort.SearchStrings(sorted, e+"/")
+	return j < len(sorted) && strings.HasPrefix(sorted[j], e+"/")
 }
 
 // attrsChanged compares the content attributes of every recorded file at w
@@ -761,6 +816,9 @@ func (x *evalCtx) attrsChanged(rs *readSet, w, t string) (path, why string) {
 	wr, ok := x.repo.(WitnessRepo)
 	if !ok {
 		return "", "a .gitattributes file changed and this repository reader cannot resolve attributes, so whether the recorded paths still check out the same cannot be established"
+	}
+	if why := x.readSetOverdue(); why != "" {
+		return "", ReasonReadSetBounds + " (" + reasonText(why) + ")"
 	}
 	paths := make([]string, 0, len(rs.files))
 	for p := range rs.files {

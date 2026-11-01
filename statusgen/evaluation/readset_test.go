@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -41,10 +42,15 @@ type rsFx struct {
 	floors  GoFloorMap
 	src     GoFloorSource     // when set, used in place of floors
 	repoFor func(rsRepo) Repo // when set, wraps the repository the claim reads
-	W, E, T string
-	digest  string
-	runner  string
-	content []byte
+	// deadline is CoverageInput.ReadSetDeadline (nil: no time limit).
+	deadline func() string
+	// verbatim writes the entries as given, unsorted and repeated, the way
+	// a file not made by FormatReadSet may hold them.
+	verbatim bool
+	W, E, T  string
+	digest   string
+	runner   string
+	content  []byte
 }
 
 func newRsFx(t *testing.T) *rsFx {
@@ -89,6 +95,9 @@ func (fx *rsFx) build() {
 		fx.header(&h)
 	}
 	fx.content = FormatReadSet(h, fx.entries)
+	if fx.verbatim {
+		fx.content = []byte(string(FormatReadSet(h, nil)) + strings.Join(fx.entries, "\n") + "\n")
+	}
 	fx.digest = ReadSetDigest(fx.content)
 	treeE := cloneTree(fx.tree)
 	treeE[ReadSetPath("docs/streams/s", fx.digest)] = fakeEntry{"100644", string(fx.content)}
@@ -137,7 +146,7 @@ func (fx *rsFx) claimAt(rev string) Claim {
 	}
 	w := Witness{Command: cmd, State: StatePass, Tree: tree, Runner: runner, Result: "pass", ReadSet: o}
 	b := BriefObservation{ID: rsBriefID, BriefRel: rsBrief, VerifyRows: []VerifyRow{rsRow()}, Witnesses: map[string][]Witness{"1": {w}}}
-	in := CoverageInput{Revision: rev, Briefs: []BriefObservation{b}, GoFloors: fx.floors}
+	in := CoverageInput{Revision: rev, Briefs: []BriefObservation{b}, GoFloors: fx.floors, ReadSetDeadline: fx.deadline}
 	if fx.src != nil {
 		in.GoFloors = fx.src
 	}
@@ -649,5 +658,129 @@ func TestReadSetBoundsCouldNotCheck(t *testing.T) {
 	}
 	if got := reasonText("plain é text"); got != "plain é text" {
 		t.Errorf("reasonText changed ordinary text: %q", got)
+	}
+}
+
+// rsTimeLimit is the reason a test's read-set deadline gives once past it.
+const rsTimeLimit = "the evaluation's read-set work already used its time limit of 2m0s"
+
+// tickingDeadline is a ReadSetDeadline within its limit for the first trip-1
+// reads and past it from the trip-th on (trip 0 never trips), with the number
+// of reads so far.
+func tickingDeadline(trip int) (func() string, *int) {
+	n := new(int)
+	return func() string {
+		*n++
+		if trip > 0 && *n >= trip {
+			return rsTimeLimit
+		}
+		return ""
+	}, n
+}
+
+// regression: #2026
+// TestCoverageReadSetDeadline — a judgement reads the caller's time limit
+// (CoverageInput.ReadSetDeadline) before it starts, before each changed path
+// it compares and before the attribute check: past it the claim is
+// could-not-check with the limit named, never today's scope and never a
+// release.
+func TestCoverageReadSetDeadline(t *testing.T) {
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	fx := newRsFx(t)
+	fx.deadline = func() string { return rsTimeLimit }
+	wantResult(t, "past the limit from the start", fx.item(market), ResultCouldNotCheck, ReasonReadSetBounds, "time limit of 2m0s")
+
+	// Thirty unread paths change: within the limit the claim is released;
+	// tripping at the third read falls inside the changed-path loop.
+	var many []func(map[string]fakeEntry, map[string][]string)
+	for i := 0; i < 30; i++ {
+		many = append(many, edit(fmt.Sprintf("other/f%02d.txt", i), "x\n"))
+	}
+	paths := newRsFx(t)
+	var reads *int
+	paths.deadline, reads = tickingDeadline(0)
+	wantReleased(t, "thirty unread paths within the limit", paths.item(edits(many...)))
+	if *reads < 30 {
+		t.Errorf("the judgement read the limit %d times for thirty changed paths, want once per path", *reads)
+	}
+	paths.deadline, _ = tickingDeadline(3)
+	wantResult(t, "past the limit among the changed paths", paths.claimAt(paths.T), ResultCouldNotCheck, ReasonReadSetBounds, "time limit")
+
+	// A .gitattributes change: the last read is the one before the attribute
+	// check, one more than three changed paths without it read.
+	plain := newRsFx(t)
+	var plainReads *int
+	plain.deadline, plainReads = tickingDeadline(0)
+	wantReleased(t, "three unread paths within the limit", plain.item(edits(
+		edit(".claude-plugin/marketplace.json", "{\"v\":2}\n"),
+		edit(".assay-surfaces", "surface-2\n"),
+		edit("other/z.txt", "x\n"),
+	)))
+	attrs := newRsFx(t)
+	attrs.deadline, reads = tickingDeadline(0)
+	wantReleased(t, "attributes change within the limit", attrs.item(unreadOnly))
+	if *reads != *plainReads+1 {
+		t.Errorf("the judgement read the limit %d times with a .gitattributes change and %d without, want one more read before the attribute check", *reads, *plainReads)
+	}
+	attrs.deadline, _ = tickingDeadline(*reads)
+	wantResult(t, "past the limit at the attribute check", attrs.claimAt(attrs.T), ResultCouldNotCheck, ReasonReadSetBounds, "time limit")
+}
+
+// listCount is rsRepo counting its tree listings.
+type listCount struct {
+	rsRepo
+	n *int
+}
+
+func (l listCount) TreeFiles(rev string) []string {
+	*l.n++
+	return l.rsRepo.TreeFiles(rev)
+}
+
+// regression: #2026
+// TestCoverageReadSetRepeats — a judgement's work follows the changed paths'
+// depth, never the read set's size or the tree's: a read set repeating its
+// list, dir and absent entries thousands of times, over a tree of a thousand
+// files, lists each revision as often as a read set naming each once; and
+// repeated go-run entries are one invocation, asked of the floor once.
+func TestCoverageReadSetRepeats(t *testing.T) {
+	changes := edits(
+		edit("tools/x/gen/f0001.txt", "y\n"), edit("tools/x/gen/f0002.txt", "y\n"),
+		edit("tools/x/gen/f0003.txt", "y\n"), edit("tools/x/gen/f0004.txt", "y\n"),
+	)
+	listings := func(repeat int) int {
+		fx := newRsFx(t)
+		for i := 0; i < 1000; i++ {
+			fx.tree[fmt.Sprintf("tools/x/gen/f%04d.txt", i)] = fakeEntry{"100644", "x\n"}
+		}
+		for i := 0; i < repeat; i++ {
+			fx.entries = append(fx.entries, "list tools/x", "list tools/x/gen", "dir tools/x/gen", "absent tools/x/gen/none")
+		}
+		for i := 0; i < 2000; i++ {
+			fx.entries = append(fx.entries, fmt.Sprintf("list tools/q%04d", i))
+		}
+		fx.verbatim = true
+		n := 0
+		fx.repoFor = func(r rsRepo) Repo { return listCount{r, &n} }
+		wantReleased(t, fmt.Sprintf("%d repeats", repeat), fx.item(changes))
+		return n
+	}
+	once, repeated := listings(1), listings(2000)
+	t.Logf("tree listings: %d for entries named once, %d for entries repeated 2000 times", once, repeated)
+	if repeated != once || once > 4 {
+		t.Errorf("entries repeated 2000 times listed the trees %d times and named once %d: want the same few", repeated, once)
+	}
+
+	goRun := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./..."}})
+	fx := newRsFx(t)
+	fx.verbatim = true
+	for i := 0; i <= 2*maxFloorRuns; i++ {
+		fx.entries = append(fx.entries, goRun)
+	}
+	src := &countingFloors{floor: GoFloor{Files: []string{"tools/x/go.mod", "tools/x/a.go"}}}
+	fx.src = src
+	wantReleased(t, "a go-run entry repeated", fx.item(unreadOnly))
+	if len(src.asked) != 1 {
+		t.Errorf("the floor was asked %d times for one repeated go-run entry, want once", len(src.asked))
 	}
 }

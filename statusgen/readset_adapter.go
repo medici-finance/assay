@@ -72,6 +72,11 @@ type readSetSource struct {
 	wanted   map[string]map[string]bool
 	files    map[string]readSetRead
 	observed int64
+	// deadline is when the evaluation's read-set work must stop
+	// (observeEvalTime after the source was made), and now the clock it is
+	// read against (time.Now; a test injects its own).
+	deadline time.Time
+	now      func() time.Time
 }
 
 // readSetRead is one read-set file read: its content, whether it was found,
@@ -82,14 +87,33 @@ type readSetRead struct {
 	problem string
 }
 
-// observeEvalBytes bounds, across one evaluation, the bytes the read-set
+// observeEvalBytes bounds, across one evaluation, the BYTES the read-set
 // observations read and parse together, whatever the number of briefs, rows
 // or touching commits: every brief's history (its distinct versions, sized
 // before any is read, charged again for each brief even when briefs share
 // versions), the row keys each touching commit compares, and the read-set
 // content each token row hands the library to digest and parse. Past it an
-// observation is refused, which the library judges could-not-check.
+// observation is refused, which the library judges could-not-check. It
+// bounds bytes, not time: observeEvalTime bounds time.
 var observeEvalBytes int64 = 256 << 20
+
+// observeEvalTime is the one wall-clock limit on an evaluation's read-set
+// work, counted from the moment the evaluation's source is made: every git
+// process the observations start, every commit of every history walk, and
+// every read set the library judges and every changed path it compares one on
+// is checked against it first (overdue, and the library's ReadSetDeadline).
+// Past it an observation is refused and a judgement stops, each could-not-check
+// with this limit named, never today's scope and never a release. The go
+// floor keeps its own budgets (floorEvalRuns, floorEvalBudget).
+const observeEvalTime = 2 * time.Minute
+
+// overdue is why the evaluation's read-set time has run out, or "".
+func (s *readSetSource) overdue() string {
+	if s.now().After(s.deadline) {
+		return fmt.Sprintf("the evaluation's read-set work already used its time limit of %s", observeEvalTime)
+	}
+	return ""
+}
 
 // charge takes n bytes from the evaluation's observation budget, or returns
 // the refusal when they do not fit; a refused charge takes nothing.
@@ -110,7 +134,7 @@ type introRow struct {
 
 func newReadSetSource(root string) *readSetSource {
 	return &readSetSource{root: root, exports: map[string]string{}, failed: map[string]string{}, intro: map[string]map[string]introRow{}, introWhy: map[string]string{}, floors: map[string]evaluation.GoFloor{},
-		wanted: map[string]map[string]bool{}, files: map[string]readSetRead{}}
+		wanted: map[string]map[string]bool{}, files: map[string]readSetRead{}, deadline: time.Now().Add(observeEvalTime), now: time.Now}
 }
 
 // close removes every exported tree and the floor runs' scratch directory.
@@ -132,7 +156,7 @@ func (s *readSetSource) close() {
 }
 
 // observeBrief fills w.ReadSet for every witness of one brief whose Runner
-// cell carries a `reads sha256:` token (observe), in row order. It first
+// cell carries a `reads sha256:` token, in row order (observeRows). It first
 // names the brief's token row keys, so the history walk keeps those keys
 // only.
 func (s *readSetSource) observeBrief(briefPath, briefRel string, witnesses map[string][]evaluation.Witness) {
@@ -150,54 +174,110 @@ func (s *readSetSource) observeBrief(briefPath, briefRel string, witnesses map[s
 		s.wanted[briefRel] = wanted
 	}
 	slices.Sort(ids)
+	var rows []tokenRow
 	for _, id := range ids {
 		ws := witnesses[id]
 		for i := range ws {
-			s.observe(briefPath, briefRel, id, &ws[i])
+			rows = append(rows, tokenRow{id, &ws[i]})
 		}
 	}
+	s.observeRows(briefPath, briefRel, rows)
 }
 
-// observe fills w.ReadSet for a witness whose Runner cell carries a
-// `reads sha256:` token. briefPath is the brief file on disk, briefRel its
-// repository path, rowID/date the witness's `#` and Date cells. Nothing it
-// reads is unbounded: the read-set file is read only when it is a regular
-// file within readSetMaxBytes, once per path, and each row's content is
-// charged to the evaluation's budget (readSet); the introduction's history is
-// read within its caps and that budget (introductions), and the file's
-// existence at the introduction commit is a batch check that reads no
-// content. A refusal is the observation's Problem, which the library judges
-// could-not-check. A brief observed row by row, not through observeBrief,
-// keeps the key of the first row observed; a later row's introduction is then
-// not found, so its read set is ignored, never bound.
+// tokenRow is one witness of a brief and its row's `#` cell.
+type tokenRow struct {
+	id string
+	w  *evaluation.Witness
+}
+
+// observe is observeRows for one witness. A brief observed row by row, not
+// through observeBrief, keeps the key of the first row observed; a later
+// row's introduction is then not found, so its read set is ignored, never
+// bound.
 func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation.Witness) {
-	digest, _, ok := evaluation.ReadSetToken(w.Runner)
-	if !ok || digest == "" {
+	s.observeRows(briefPath, briefRel, []tokenRow{{rowID, w}})
+}
+
+// observeRows fills w.ReadSet for each of a brief's witnesses whose Runner
+// cell carries a `reads sha256:` token. briefPath is the brief file on disk,
+// briefRel its repository path. Its BYTES are bounded: a read-set file is
+// read only when it is a regular file within readSetMaxBytes, once per path,
+// and each row's content is charged to the evaluation's budget (readSet); the
+// introduction's history is read within its caps and that budget
+// (introductions). Its TIME follows briefs, not rows: the history is walked
+// once per brief, and only when some row's read-set file exists (a row
+// without one is could-not-check whatever its introduction); the file's
+// existence at each row's introduction commit is ONE batch check for the
+// brief, reading no content; and each step first asks overdue. A refusal is
+// the observation's Problem, which the library judges could-not-check.
+func (s *readSetSource) observeRows(briefPath, briefRel string, rows []tokenRow) {
+	type pending struct {
+		o      *evaluation.ReadSetObservation
+		key    string
+		digest string
+		file   string
+	}
+	var todo []pending
+	present := false
+	for _, r := range rows {
+		digest, _, ok := evaluation.ReadSetToken(r.w.Runner)
+		if !ok || digest == "" {
+			continue
+		}
+		o := &evaluation.ReadSetObservation{}
+		r.w.ReadSet = o
+		key := evaluation.WitnessRowKey(r.id, r.w.Command, r.w.Date, r.w.Runner)
+		if s.wanted[briefRel] == nil {
+			s.wanted[briefRel] = map[string]bool{key: true}
+		}
+		file := filepath.Join(filepath.Dir(briefPath), evaluation.ReadSetDir, digest)
+		if _, err := os.Lstat(file); err == nil {
+			present = true
+		}
+		todo = append(todo, pending{o, key, digest, file})
+	}
+	var intro map[string]introRow
+	problem := ""
+	if present {
+		intro, problem = s.introductions(briefRel)
+	}
+	var specs []string
+	specOf := map[*evaluation.ReadSetObservation]string{}
+	for _, f := range todo {
+		if why := s.overdue(); why != "" {
+			f.o.Problem = why
+			continue
+		}
+		f.o.Content, f.o.Found, f.o.Problem = s.readSet(f.file)
+		if f.o.Problem != "" || !f.o.Found {
+			continue
+		}
+		if problem != "" {
+			f.o.Problem = problem
+			continue
+		}
+		in, ok := intro[f.key]
+		if !ok {
+			continue
+		}
+		f.o.IntroFound, f.o.IntroRunner = true, in.runner
+		spec := in.commit + ":" + evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(briefRel)), f.digest)
+		specOf[f.o] = spec
+		specs = append(specs, spec)
+	}
+	if len(specs) == 0 {
 		return
 	}
-	o := &evaluation.ReadSetObservation{}
-	w.ReadSet = o
-	key := evaluation.WitnessRowKey(rowID, w.Command, w.Date, w.Runner)
-	if s.wanted[briefRel] == nil {
-		s.wanted[briefRel] = map[string]bool{key: true}
-	}
-	o.Content, o.Found, o.Problem = s.readSet(filepath.Join(filepath.Dir(briefPath), evaluation.ReadSetDir, digest))
-	if o.Problem != "" {
+	if why := s.overdue(); why != "" {
+		for o := range specOf {
+			o.Problem = why
+		}
 		return
 	}
-	intro, problem := s.introductions(briefRel)
-	if problem != "" {
-		o.Problem = problem
-		return
+	sizes, ok := coverageRepo{root: s.root}.ObjectSizes(specs)
+	for o, spec := range specOf {
+		o.IntroFile = ok && sizes[spec].Type == "blob"
 	}
-	in, found := intro[key]
-	if !found {
-		return
-	}
-	o.IntroFound, o.IntroRunner = true, in.runner
-	spec := in.commit + ":" + evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(briefRel)), digest)
-	sizes, ok := coverageRepo{root: s.root}.ObjectSizes([]string{spec})
-	o.IntroFile = ok && sizes[spec].Type == "blob"
 }
 
 // readSetMaxBytes caps one read-set file; introMaxBlobBytes one historic
@@ -296,6 +376,10 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 	}
 	none := map[string]introRow{}
 	s.intro[briefRel] = none
+	if why := s.overdue(); why != "" {
+		s.introWhy[briefRel] = why
+		return none, why
+	}
 	read := gitCoreFor(s.root)
 	if read.err != nil || read.native != "" {
 		return none, ""
@@ -305,12 +389,20 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 		parents      []string
 	}
 	var touches []touch
+	late := ""
 	err := read.repo.PathHistory("HEAD", read.prefix+briefRel, func(pc gitcore.PathCommit) bool {
+		if late = s.overdue(); late != "" {
+			return false // a walk cut short binds nothing: the brief is refused
+		}
 		if pc.PathID != "" && !slices.Contains(pc.ParentPathIDs, pc.PathID) {
 			touches = append(touches, touch{pc.Hash, pc.PathID, pc.ParentPathIDs})
 		}
 		return true
 	})
+	if late != "" {
+		s.introWhy[briefRel] = late
+		return none, late
+	}
 	if err != nil {
 		return none, ""
 	}
@@ -329,6 +421,10 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 		}
 	}
 	repo := coverageRepo{root: s.root}
+	if why := s.overdue(); why != "" {
+		s.introWhy[briefRel] = why
+		return none, why
+	}
 	sizes, ok := repo.ObjectSizes(blobs)
 	if !ok {
 		return none, ""
@@ -349,6 +445,10 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 		}
 	}
 	if why := s.charge(total); why != "" {
+		s.introWhy[briefRel] = why
+		return none, why
+	}
+	if why := s.overdue(); why != "" {
 		s.introWhy[briefRel] = why
 		return none, why
 	}

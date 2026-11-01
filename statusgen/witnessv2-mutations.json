@@ -570,6 +570,72 @@
    "file": "readset_adapter.go",
    "old": "\tif _, ok := inRoots(roots, real); !ok {",
    "new": "\tif _, ok := inRoots(roots, real); false && !ok {"
+  },
+  {
+   "name": "time: the observations' clock never compared with the limit (review S16, f-observe-wall-uncharged)",
+   "file": "readset_adapter.go",
+   "old": "\tif s.now().After(s.deadline) {",
+   "new": "\tif false && s.now().After(s.deadline) {"
+  },
+  {
+   "name": "time: a history walk not cut short at the limit (review f-observe-wall-uncharged)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif late = s.overdue(); late != \"\" {",
+   "new": "\t\tif late = \"\"; late != \"\" {"
+  },
+  {
+   "name": "time: a token row observed past the limit (review S16)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif why := s.overdue(); why != \"\" {\n\t\t\tf.o.Problem = why",
+   "new": "\t\tif why := \"\"; why != \"\" {\n\t\t\tf.o.Problem = why"
+  },
+  {
+   "name": "time: the brief's batch check started past the limit (review S16)",
+   "file": "readset_adapter.go",
+   "old": "\tif why := s.overdue(); why != \"\" {\n\t\tfor o := range specOf {",
+   "new": "\tif why := \"\"; why != \"\" {\n\t\tfor o := range specOf {"
+  },
+  {
+   "name": "processes: a batch check started for every token row (review S16)",
+   "file": "readset_adapter.go",
+   "old": "\t\tspecs = append(specs, spec)\n",
+   "new": "\t\tspecs = append(specs, spec)\n\t\tcoverageRepo{root: s.root}.ObjectSizes([]string{spec})\n"
+  },
+  {
+   "name": "processes: the history walked when no row's read-set file exists (review f-observe-wall-uncharged)",
+   "file": "readset_adapter.go",
+   "old": "\tif present {\n",
+   "new": "\tif present || true {\n"
+  },
+  {
+   "name": "time: a judgement never reads the caller's limit (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tif x.readSetDeadline == nil {\n\t\treturn \"\"",
+   "new": "\tif true {\n\t\treturn \"\""
+  },
+  {
+   "name": "time: a changed path compared past the limit (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tfor _, p := range changed {\n\t\tif why := x.readSetOverdue(); why != \"\" {",
+   "new": "\tfor _, p := range changed {\n\t\tif why := \"\"; why != \"\" {"
+  },
+  {
+   "name": "time: the attribute check run past the limit (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tif why := x.readSetOverdue(); why != \"\" {\n\t\treturn \"\", ReasonReadSetBounds",
+   "new": "\tif why := \"\"; why != \"\" {\n\t\treturn \"\", ReasonReadSetBounds"
+  },
+  {
+   "name": "work: a revision's listing read again for every directory lookup (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\tif got, ok := x.rsSorted[rev]; ok {",
+   "new": "\tif got, ok := x.rsSorted[rev]; false && ok {"
+  },
+  {
+   "name": "work: a repeated go-run entry counted once per repeat (review S17)",
+   "file": "evaluation/readset.go",
+   "old": "\t\tif seen[e] {\n\t\t\tcontinue // a repeated entry is judged once",
+   "new": "\t\tif false && seen[e] {\n\t\t\tcontinue // a repeated entry is judged once"
   }
  ]
 }

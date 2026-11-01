@@ -214,6 +214,12 @@ type CoverageInput struct {
 	// A read set with such an entry and no floor here (nil, or an unanswered
 	// entry) is could-not-check, never narrowed.
 	GoFloors GoFloorSource
+	// ReadSetDeadline is the caller's per-evaluation time limit on read-set
+	// work: it returns why the limit has run out, or "" while time is left.
+	// The library asks it before judging each read set, before each changed
+	// path a counted set is compared on and before each attribute read; past
+	// it the claim is could-not-check with that reason. nil is no limit.
+	ReadSetDeadline func() string
 }
 
 // EvaluateCoverage computes the coverage verdict of every observed brief,
@@ -226,6 +232,7 @@ func EvaluateCoverage(in CoverageInput, repo Repo) map[string]Coverage {
 	x := newEvalCtx(repo, in.MaxLandingCandidates)
 	x.policy, x.forge = in.WitnessPolicy, in.Forge
 	x.goFloors = in.GoFloors
+	x.readSetDeadline = in.ReadSetDeadline
 	x.prefetchV2Records(in)
 	out := map[string]Coverage{}
 	for _, b := range in.Briefs {

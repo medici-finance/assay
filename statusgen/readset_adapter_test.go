@@ -1058,7 +1058,7 @@ func TestCoverageObserveBudgetIntroTouches(t *testing.T) {
 	wide := historicRows(1000, 20000, 0)
 	const briefRel = "docs/streams/s/brief-01-x.md"
 	root := t.TempDir()
-	writes(briefRel, head)(t, root)
+	writes(briefRel, head, "docs/streams/s/reads/"+digest, "x\n")(t, root)
 	mustGitInit(t, root)
 	var commits []map[string]int
 	for i := 0; i < touches; i++ {
@@ -1107,6 +1107,7 @@ func TestCoverageObserveBudgetSharedHistory(t *testing.T) {
 	for i := 0; i < briefs; i++ {
 		writes(rel(i), head)(t, root)
 	}
+	writes("docs/streams/s/reads/"+digest, "x\n")(t, root) // the walk runs only for a row whose file exists
 	mustGitInit(t, root)
 	var commits []map[string]int
 	for v := 0; v <= versions; v++ {
@@ -1167,7 +1168,7 @@ func TestCoverageObserveBudgetTouchCompares(t *testing.T) {
 	}{{4, false}, {200, true}} {
 		root := t.TempDir()
 		const briefRel = "docs/streams/s/brief-01-x.md"
-		writes(briefRel, head)(t, root)
+		writes(briefRel, head, "docs/streams/s/reads/"+digest, "x\n")(t, root)
 		mustGitInit(t, root)
 		var commits []map[string]int
 		for i := 0; i < c.touches; i++ {

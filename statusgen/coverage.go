@@ -188,6 +188,7 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 	}
 	if opts.readSets != nil {
 		in.GoFloors = opts.readSets
+		in.ReadSetDeadline = opts.readSets.overdue
 		defer opts.readSets.close()
 	}
 	var repo evaluation.Repo
