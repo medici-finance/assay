@@ -1,0 +1,131 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIRoutingMutations|TestAdapterMissingGo)$' ./cmd/deskchangelog/ ./internal/clicontract/",
+  "control": {
+    "name": "CONTROL — a parse failure exits with the wrong code (usage exit 2 becomes 3)",
+    "file": "cmd/deskchangelog/main.go",
+    "old": "UsageExit:       cli.ExitUsage,",
+    "new": "UsageExit:       3,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after an environment read: the environment is consulted while the tree is built, so every help and version form reads ASSAY_TRUSTED_LOGINS first",
+      "file": "cmd/deskchangelog/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_, _ = lookupEnv(\"ASSAY_TRUSTED_LOGINS\")\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "a setting gains an undeclared source (--credits also reads DESKCHANGELOG_CREDITS from the environment)",
+      "file": "cmd/deskchangelog/main.go",
+      "old": "Key: \"credits\", Kind: cli.String, Flag: \"credits\",",
+      "new": "Key: \"credits\", Kind: cli.String, Flag: \"credits\", Env: []string{\"DESKCHANGELOG_CREDITS\"},"
+    },
+    {
+      "name": "a setting gains an undeclared source (the BASE_SHA binding also reads DESKCHANGELOG_BASE_SHA first)",
+      "file": "cmd/deskchangelog/check.go",
+      "old": "env(\"base-sha\", \"BASE_SHA\",",
+      "new": "env(\"base-sha\", \"DESKCHANGELOG_BASE_SHA\","
+    },
+    {
+      "name": "one legacy flag form dropped (aggregate.py's --credits is renamed --credit-map, so the release workflow's spelling no longer parses)",
+      "file": "cmd/deskchangelog/main.go",
+      "old": "Flag: \"credits\"",
+      "new": "Flag: \"credit-map\""
+    },
+    {
+      "name": "one legacy flag form dropped (check's --reconcile, the adapter's only flag, is renamed --reconcile-all)",
+      "file": "cmd/deskchangelog/check.go",
+      "old": "Flag: \"reconcile\"",
+      "new": "Flag: \"reconcile-all\""
+    },
+    {
+      "name": "a refusal leaves the domain check (a malformed release tag is no longer refused)",
+      "file": "cmd/deskchangelog/specheader.go",
+      "old": "if !releaseTagRe.MatchString(tag) {",
+      "new": "if false && !releaseTagRe.MatchString(tag) {"
+    },
+    {
+      "name": "a refusal leaves the domain check (a spec header naming another version passes)",
+      "file": "cmd/deskchangelog/specheader.go",
+      "old": "if have != tag {",
+      "new": "if false && have != tag {"
+    },
+    {
+      "name": "a refusal leaves the domain check (the gate runs without BASE_SHA/HEAD_SHA)",
+      "file": "cmd/deskchangelog/check.go",
+      "old": "if req.val == \"\" {",
+      "new": "if false && req.val == \"\" {"
+    },
+    {
+      "name": "a refusal leaves the domain check (highlights over no fragments prints an empty section instead of refusing)",
+      "file": "cmd/deskchangelog/aggregate.go",
+      "old": "if total == 0 {\n\t\tfmt.Fprint(stderr, refuseEmptyMsg)\n\t\treturn 2\n\t}\n\tfmt.Fprint(stdout",
+      "new": "if false && total == 0 {\n\t\tfmt.Fprint(stderr, refuseEmptyMsg)\n\t\treturn 2\n\t}\n\tfmt.Fprint(stdout"
+    },
+    {
+      "name": "a refusal leaves the domain check (the lint passes a ROOT with no docs/streams)",
+      "file": "cmd/deskchangelog/lintdecision.go",
+      "old": "if st, err := os.Stat(streams); err != nil || !st.IsDir() {",
+      "new": "if st, err := os.Stat(streams); false && (err != nil || !st.IsDir()) {"
+    },
+    {
+      "name": "the classifier stops failing closed (no roster configured at all credits every login)",
+      "file": "cmd/deskchangelog/credit.go",
+      "old": "if logins == \"\" && slugs == \"\" && humans == \"\" {",
+      "new": "if false && logins == \"\" && slugs == \"\" && humans == \"\" {"
+    },
+    {
+      "name": "the port-target exemption is removed (every Go row this owner's scripts name counts again, so the real registry goes over budget)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\tif portTarget(e, targets) {\n",
+      "new": "\t\t\tif false && portTarget(e, targets) {\n"
+    },
+    {
+      "name": "a complex Go row is exempted as a port target",
+      "file": "internal/clicontract/validate.go",
+      "old": " && e.Complexity == \"simple\" && targets",
+      "new": " && targets"
+    },
+    {
+      "name": "a target named only by ANOTHER owner's rows is exempted (the owner half of the pair is dropped)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\tt[[2]string{e.Owner, e.MigratedTo}] = true\n",
+      "new": "\t\t\tfor _, x := range entries {\n\t\t\t\tt[[2]string{x.Owner, e.MigratedTo}] = true\n\t\t\t}\n"
+    },
+    {
+      "name": "any simple migrated Go row is exempted, named in migrated_to or not",
+      "file": "internal/clicontract/validate.go",
+      "old": " && e.Complexity == \"simple\" && targets[[2]string{e.Owner, e.Path}]",
+      "new": " && e.Complexity == \"simple\""
+    },
+    {
+      "name": "a not-yet-migrated Go row is exempted as a port target",
+      "file": "internal/clicontract/validate.go",
+      "old": "e.Kind == \"go\" && e.State == StateMigrated && ",
+      "new": "e.Kind == \"go\" && "
+    },
+    {
+      "name": "a script row named in migrated_to is exempted as a port target",
+      "file": "internal/clicontract/validate.go",
+      "old": "return e.Kind == \"go\" && e.State",
+      "new": "return e.State"
+    },
+    {
+      "name": "the budget limit loosens by one row (six simple rows pass)",
+      "file": "internal/clicontract/validate.go",
+      "old": "|| simple > MaxSimple {",
+      "new": "|| simple > MaxSimple+1 {"
+    },
+    {
+      "name": "the credit adapter answers skip:unknown when no deskchangelog can be found (a missing tool passes for a credit decision)",
+      "file": "../changelog/credit-identity.sh",
+      "old": "    echo \"       Install the desk-tools release, or run from an assay checkout with Go installed.\" >&2\n    exit 127\n",
+      "new": "    echo \"       Install the desk-tools release, or run from an assay checkout with Go installed.\" >&2\n    echo skip:unknown\n    exit 0\n"
+    },
+    {
+      "name": "the credit adapter exits 0 when building deskchangelog fails",
+      "file": "../changelog/credit-identity.sh",
+      "old": "failed; nothing was checked\" >&2\n    exit 127\n",
+      "new": "failed; nothing was checked\" >&2\n    exit 0\n"
+    }
+  ]
+}

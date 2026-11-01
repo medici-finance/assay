@@ -167,4 +167,5 @@ At each `vX.Y.Z` cut the release workflow:
    commit, so the next cycle starts empty.
 
 The engine and its offline tests live under `tools/changelog/`
-(`aggregate.py`, `check.sh`, and their `*_test.sh`).
+(`aggregate.py`, `check.sh`, and their `*_test.sh`); both are adapters onto the
+`deskchangelog` Go command in `tools/desk/cmd/deskchangelog`.

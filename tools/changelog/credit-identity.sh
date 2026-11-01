@@ -1,145 +1,48 @@
 #!/usr/bin/env bash
-# credit-identity.sh — is this pull-request author somebody the release notes
-# should THANK, and did they ask not to be?
+# tools/changelog/credit-identity.sh — is this pull-request author somebody the release
+# notes should thank? A transparent adapter: it runs
 #
-# The FORGE half of external-contributor credit (contributor-trust/09) is the
-# release workflow step: it reads a pull request's author login and body with
-# `gh`, asks this script the two questions below, and writes the credits map
-# that `aggregate.py highlights --credits` reads. This script itself makes NO
-# network call and reads NO file but the body file it is handed, so the offline
-# aggregate suite can exercise it directly.
+#   deskchangelog credit-identity classify -- <login> [<body-file>]
 #
-#   credit-identity.sh classify <login> [<body-file>]
+# (any other first argument: `deskchangelog credit-identity -- <args>`, the usage line and
+# `skip:unknown`), so every argument stays an operand, and exits with its status: 0
+# always, as before — one word on stdout: credit, skip:roster, skip:bot, skip:opt-out or
+# skip:unknown. 127 when no deskchangelog can be found or built (callers already map a
+# failure to skip:unknown).
 #
-# prints exactly one word on stdout and always exits 0:
+# The classifier — the roster it reads (ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS,
+# ASSAY_HUMAN_LOGIN_MAP), the bot shapes and the `<!-- changelog-credit: no -->` opt-out
+# marker — lives in tools/desk/cmd/deskchangelog (desktools-v2/52);
+# `deskchangelog credit-identity classify --help` documents it.
 #
-#   credit         an identity the operator's roster does NOT list, with no
-#                  opt-out marker in the body: thank them.
-#   skip:opt-out   the body carries the documented opt-out marker on a line of
-#                  its own.
-#   skip:roster    the roster already lists this identity — a maintainer, a
-#                  mapped human, or a role automation account. The credit exists
-#                  to name somebody the project does not already list.
-#   skip:unknown   the question could not be answered: an empty login, or an
-#                  UNCONFIGURED roster (with no roster there is no "external",
-#                  so everybody would be thanked). Silence is the fail-closed
-#                  direction here — a wrong name in a published release is worse
-#                  than a missing one, and no release is ever refused for want
-#                  of a credit.
-#
-# THE ROSTER IT READS is the operator's existing one, by its existing variable
-# names — never a second roster invented for this one feature:
-#
-#   ASSAY_TRUSTED_LOGINS     comma-separated `login[:id]`
-#   ASSAY_TRUSTED_BOT_SLUGS  comma-separated `[role=]slug[:id]`
-#   ASSAY_HUMAN_LOGIN_MAP    comma-separated `name:login`
-#
-# INTERIM. This is a small local reader of those three variables, not the
-# identity resolver contributor-trust/02 introduces. When 02 lands, this script
-# is replaced by a call into that single resolver and deleted; the questions it
-# answers, its output vocabulary and its callers do not change.
-set -uo pipefail
+# Which deskchangelog runs: the one on PATH (desk-tools release archive), else one built
+# from this checkout's tools/desk into a temporary directory removed afterwards.
+set -euo pipefail
 
-# The documented opt-out: this marker on a line of its own in the pull-request
-# body suppresses the credit for that pull request. Documented in
-# changelog/README.md and tools/changelog/README.md.
-OPT_OUT_MARKER='<!-- changelog-credit: no -->'
-
-usage() {
-  echo "usage: credit-identity.sh classify <login> [<body-file>]" >&2
-}
-
-# lowercase, trimmed
-norm() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
-}
-
-# Split a comma-separated roster value into one entry per line. The trailing
-# newline is load-bearing: without it `read` drops the LAST entry, which for a
-# single-entry roster is every entry.
-entries() {
-  printf '%s\n' "${1:-}" | tr ',' '\n'
-}
-
-classify() {
-  local login="${1:-}" body_file="${2:-}"
-  local l
-  l="$(norm "$login")"
-  [ -n "$l" ] || { echo "skip:unknown"; return 0; }
-
-  # Unset roster: nobody is knowably internal, so nobody is credited.
-  if [ -z "${ASSAY_TRUSTED_LOGINS:-}" ] \
-     && [ -z "${ASSAY_TRUSTED_BOT_SLUGS:-}" ] \
-     && [ -z "${ASSAY_HUMAN_LOGIN_MAP:-}" ]; then
-    echo "skip:unknown"
-    return 0
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+desk_dir="$(cd "$here/.." && pwd)/desk"
+if command -v deskchangelog >/dev/null 2>&1; then
+  bin=deskchangelog
+else
+  if ! command -v go >/dev/null 2>&1 || [ ! -d "$desk_dir/cmd/deskchangelog" ]; then
+    echo "error: deskchangelog is not on PATH, and it cannot be built here (needs go and ${desk_dir}/cmd/deskchangelog)." >&2
+    echo "       Install the desk-tools release, or run from an assay checkout with Go installed." >&2
+    exit 127
   fi
-
-  # The opt-out is read BEFORE the roster: an author who asked not to be thanked
-  # is not thanked, whatever the roster says about them.
-  if [ -n "$body_file" ] && [ -f "$body_file" ]; then
-    # Fixed-string, whole-line match after trimming trailing carriage returns —
-    # the marker must be on a line of its own, not buried in prose.
-    if tr -d '\r' < "$body_file" | grep -qxF "$OPT_OUT_MARKER"; then
-      echo "skip:opt-out"
-      return 0
-    fi
+  build_dir="$(mktemp -d "${TMPDIR:-/tmp}/deskchangelog.XXXXXX")"
+  trap 'rm -rf "$build_dir"' EXIT
+  if ! go -C "$desk_dir" build -buildvcs=false -o "$build_dir/deskchangelog" ./cmd/deskchangelog; then
+    echo "error: building deskchangelog from ${desk_dir} failed; nothing was checked" >&2
+    exit 127
   fi
-
-  local e v
-  # ASSAY_TRUSTED_LOGINS — `login[:id]`, the login is the first field.
-  while IFS= read -r e; do
-    v="$(norm "${e%%:*}")"
-    [ -n "$v" ] || continue
-    if [ "$v" = "$l" ]; then echo "skip:roster"; return 0; fi
-  done < <(entries "${ASSAY_TRUSTED_LOGINS:-}")
-
-  # ASSAY_HUMAN_LOGIN_MAP — `name:login`, the login is the LAST field.
-  while IFS= read -r e; do
-    case "$e" in *:*) ;; *) continue ;; esac
-    v="$(norm "${e##*:}")"
-    [ -n "$v" ] || continue
-    if [ "$v" = "$l" ]; then echo "skip:roster"; return 0; fi
-  done < <(entries "${ASSAY_HUMAN_LOGIN_MAP:-}")
-
-  # ASSAY_TRUSTED_BOT_SLUGS — `[role=]slug[:id]`. An App authors under
-  # `<slug>[bot]` (REST) or `app/<slug>`, so compare against the bare slug with
-  # either rendering stripped.
-  # A GitHub App is never an external contributor: credits thank PEOPLE. Any
-  # `<slug>[bot]` / `app/<slug>` login is skipped whether or not the roster
-  # variable happens to list it — the v1.0.7 dry-run (run 34762678347) ran
-  # against a repo whose ASSAY_TRUSTED_BOT_SLUGS carried only the reviewer, and
-  # every other house App came out `credit`. The roster still decides for
-  # human logins; this rule only closes the bot half fail-safe.
-  local bare="$l"
-  case "$bare" in
-    *'[bot]') echo "skip:bot"; return 0 ;;
-    app/*)    echo "skip:bot"; return 0 ;;
-  esac
-  while IFS= read -r e; do
-    e="${e#*=}"           # drop any `role=` prefix
-    v="$(norm "${e%%:*}")" # drop any `:id` suffix
-    [ -n "$v" ] || continue
-    if [ "$v" = "$bare" ] || [ "$v" = "$l" ]; then echo "skip:roster"; return 0; fi
-  done < <(entries "${ASSAY_TRUSTED_BOT_SLUGS:-}")
-
-  echo "credit"
-}
-
-main() {
-  [ $# -ge 1 ] || { usage; echo "skip:unknown"; return 0; }
-  case "$1" in
-    classify)
-      shift
-      [ $# -ge 1 ] || { usage; echo "skip:unknown"; return 0; }
-      classify "${1:-}" "${2:-}"
-      ;;
-    *)
-      usage
-      echo "skip:unknown"
-      ;;
-  esac
-  return 0
-}
-
-main "$@"
+  bin="$build_dir/deskchangelog"
+fi
+if [ "${1:-}" = classify ]; then
+  shift
+  set -- classify -- "$@"
+else
+  set -- -- "$@"
+fi
+rc=0
+"$bin" credit-identity "$@" || rc=$?
+exit "$rc"

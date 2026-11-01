@@ -235,6 +235,13 @@ func TestCLIRoutingMutations(t *testing.T) {
 		t.Fatalf("owner brief %s: %v", victimOwner, err)
 	}
 	complexOwner := rowFor(t, ref, "statusgen").Owner
+	// A real port target: a simple migrated Go row its own owner's scripts name.
+	const targetPath = "tools/desk/cmd/deskchangelog"
+	portOwner := rowFor(t, ref, targetPath).Owner
+	if rowFor(t, ref, "tools/changelog/check.sh").MigratedTo != targetPath || rowFor(t, ref, "tools/changelog/check.sh").Owner != portOwner {
+		t.Fatalf("%s is not named by its own owner's script rows; the exemption cases below test nothing", targetPath)
+	}
+	fullOwner := ownerAtBudget(t, ref, portOwner)
 
 	type mutation struct {
 		name  string
@@ -282,6 +289,25 @@ func TestCLIRoutingMutations(t *testing.T) {
 				}
 			},
 			want: "owner " + victimOwner + " over budget"},
+		// The port-target exemption: each of these must stay over budget.
+		{name: "six-scripts-plus-target",
+			edit: func(r *Registry) { anyPendingScript(t, r, portOwner).Owner = portOwner },
+			want: "owner " + portOwner + " over budget"},
+		{name: "unrelated-go-row",
+			edit: func(r *Registry) { unnamedGoRow(t, r, portOwner).Owner = portOwner },
+			want: "owner " + portOwner + " over budget"},
+		{name: "target-named-by-other-owner",
+			edit: func(r *Registry) { rowFor(t, r, targetPath).Owner = fullOwner },
+			want: "owner " + fullOwner + " over budget"},
+		{name: "complex-port-target",
+			edit: func(r *Registry) { rowFor(t, r, targetPath).Complexity = "complex" },
+			want: "owner " + portOwner + " over budget"},
+		{name: "pending-port-target",
+			edit: func(r *Registry) { rowFor(t, r, targetPath).State = StatePending },
+			want: "owner " + portOwner + " over budget"},
+		{name: "script-port-target",
+			edit: func(r *Registry) { rowFor(t, r, targetPath).Kind = "script" },
+			want: "owner " + portOwner + " over budget"},
 		{name: "complex-row-shares-owner",
 			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskaudit").Owner = complexOwner },
 			want: "owner " + complexOwner + " over budget"},
@@ -370,6 +396,78 @@ func TestCLIRoutingMutations(t *testing.T) {
 			t.Fatalf("planted %s; want a problem containing %q, got:\n  %s", c.name, c.want, strings.Join(problems, "\n  "))
 		})
 	}
+}
+
+// ownerRows is the budget-counted rows (pending, migrated or retired) of owner o, or of
+// every owner when o is empty.
+func ownerRows(r *Registry, o string) []*Entry {
+	var es []*Entry
+	for i := range r.Entrypoints {
+		e := &r.Entrypoints[i]
+		if e.Owner != "" && (o == "" || e.Owner == o) && (e.State == StatePending || e.State == StateMigrated || e.State == StateRetired) {
+			es = append(es, e)
+		}
+	}
+	return es
+}
+
+// ownerAtBudget is an owner other than skip whose counted rows are exactly MaxSimple simple
+// pending scripts, so no exemption applies to any of them.
+func ownerAtBudget(t *testing.T, r *Registry, skip string) string {
+	t.Helper()
+	n, bad := map[string]int{}, map[string]bool{}
+	var order []string
+	for _, e := range ownerRows(r, "") {
+		if e.Owner == skip {
+			continue
+		}
+		if _, ok := n[e.Owner]; !ok {
+			order = append(order, e.Owner)
+		}
+		n[e.Owner]++
+		if e.Kind != "script" || e.State != StatePending || e.Complexity != "simple" {
+			bad[e.Owner] = true
+		}
+	}
+	for _, o := range order {
+		if !bad[o] && n[o] == MaxSimple {
+			return o
+		}
+	}
+	t.Fatalf("no owner holds exactly %d simple pending scripts", MaxSimple)
+	return ""
+}
+
+// anyPendingScript is a simple pending script row owned by someone other than o.
+func anyPendingScript(t *testing.T, r *Registry, o string) *Entry {
+	t.Helper()
+	for i := range r.Entrypoints {
+		e := &r.Entrypoints[i]
+		if e.Kind == "script" && e.State == StatePending && e.Complexity == "simple" && e.Owner != o {
+			return e
+		}
+	}
+	t.Fatal("registry has no simple pending script row")
+	return nil
+}
+
+// unnamedGoRow is a simple migrated Go row of another owner that no row names in migrated_to.
+func unnamedGoRow(t *testing.T, r *Registry, o string) *Entry {
+	t.Helper()
+	named := map[string]bool{}
+	for _, e := range r.Entrypoints {
+		if e.MigratedTo != "" {
+			named[e.MigratedTo] = true
+		}
+	}
+	for i := range r.Entrypoints {
+		e := &r.Entrypoints[i]
+		if e.Kind == "go" && e.State == StateMigrated && e.Complexity == "simple" && e.Owner != o && !named[e.Path] {
+			return e
+		}
+	}
+	t.Fatal("registry has no unnamed simple migrated Go row")
+	return nil
 }
 
 func rowFor(t *testing.T, r *Registry, p string) *Entry {

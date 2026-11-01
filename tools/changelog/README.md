@@ -16,9 +16,14 @@ Everything else in the rework is **live on the branch** and needs no activation:
 - `CHANGELOG.md` — header prose rewritten for the fragment convention, and the
   `## Unreleased` section emptied to its pointer note (no bullets — see "Cutover"
   below);
-- `tools/changelog/aggregate.py` + `tools/changelog/check.sh` — the engines the
+- `tools/changelog/aggregate.py` + `tools/changelog/check.sh` — the entrypoints the
   two workflows call, with offline unit tests (`aggregate_test.sh`,
-  `check_test.sh`) and their fail-first stubs under `testdata/`;
+  `check_test.sh`) and their fail-first stubs under `testdata/`. Both are now thin
+  adapters onto the `deskchangelog` Go command (`tools/desk/cmd/deskchangelog`:
+  verbs `aggregate`, `check`, `credit-identity`, `check-spec-header`,
+  `lint-decision-defaults`). An adapter runs `deskchangelog` from `PATH`, else
+  builds it from `tools/desk` with the Go toolchain, and exits 127 when neither is
+  available. The call forms and exit codes are unchanged;
 - `plugins/assay/skills/worker-desk/SKILL.md` — the worker clause, now naming the
   `changelog/<slug>.md` fragment path.
 
@@ -304,7 +309,8 @@ It is read before the roster, so an author who asked not to be named is not
 named whatever the roster says. It is documented for contributors in
 `changelog/README.md`, "Credit in the release notes".
 
-> **Interim.** `credit-identity.sh` is a small local reader of those three
+> **Interim.** `credit-identity.sh` (an adapter onto `deskchangelog
+> credit-identity`) is a small local reader of those three
 > variables, not an identity resolver of its own. `contributor-trust/02`
 > introduces the single resolver this question should be asked through; when it
 > lands, this script is replaced by a call into it and deleted. The questions,

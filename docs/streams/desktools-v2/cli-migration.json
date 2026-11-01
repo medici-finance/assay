@@ -783,6 +783,25 @@
       "state": "migrated"
     },
     {
+      "executable": "deskchangelog",
+      "path": "tools/desk/cmd/deskchangelog",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/changelog/aggregate.py",
+        "tools/changelog/check.sh",
+        "tools/changelog/credit-identity.sh",
+        "tools/lint-human-decision-defaults.sh",
+        "tools/release/check-spec-header-version.sh"
+      ],
+      "parser": "Cobra via tools/desk/internal/cli",
+      "complexity": "simple",
+      "basis": "~1600 LOC, 8 verbs, 2 flags (desktools-v2/52)",
+      "owner": "desktools-v2/52",
+      "state": "migrated"
+    },
+    {
       "executable": "deskclaim",
       "path": "tools/desk/cmd/deskclaim",
       "kind": "go",
@@ -2508,9 +2527,10 @@
       ],
       "parser": "Python sys.argv",
       "complexity": "simple",
-      "basis": "562 lines at 3ad1ad83c871",
+      "basis": "562 lines at 3ad1ad83c871; 63-line adapter onto deskchangelog unreleased-bullets/highlights/roll/credits after desktools-v2/52",
       "owner": "desktools-v2/52",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskchangelog"
     },
     {
       "executable": "check.sh",
@@ -2524,9 +2544,10 @@
       ],
       "parser": "bash positional arguments",
       "complexity": "simple",
-      "basis": "246 lines at 3ad1ad83c871",
+      "basis": "246 lines at 3ad1ad83c871; 46-line adapter onto deskchangelog check after desktools-v2/52",
       "owner": "desktools-v2/52",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskchangelog"
     },
     {
       "executable": "credit-identity.sh",
@@ -2540,9 +2561,10 @@
       ],
       "parser": "bash manual flag loop",
       "complexity": "simple",
-      "basis": "145 lines at 3ad1ad83c871",
+      "basis": "145 lines at 3ad1ad83c871; 48-line adapter onto deskchangelog credit-identity classify after desktools-v2/52",
       "owner": "desktools-v2/52",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskchangelog"
     },
     {
       "executable": "pathsemantics.py",
@@ -2701,9 +2723,10 @@
       ],
       "parser": "bash positional arguments",
       "complexity": "simple",
-      "basis": "143 lines at 3ad1ad83c871",
+      "basis": "143 lines at 3ad1ad83c871; 42-line adapter onto deskchangelog lint-decision-defaults after desktools-v2/52",
       "owner": "desktools-v2/52",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskchangelog"
     },
     {
       "executable": "check-spec-header-version.sh",
@@ -2719,9 +2742,10 @@
       ],
       "parser": "bash positional arguments",
       "complexity": "simple",
-      "basis": "74 lines at 3ad1ad83c871",
+      "basis": "74 lines at 3ad1ad83c871; 40-line adapter onto deskchangelog check-spec-header after desktools-v2/52",
       "owner": "desktools-v2/52",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskchangelog"
     },
     {
       "executable": "stamp-spec-header-version.sh",

@@ -242,6 +242,7 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 		ownerIDs = append(ownerIDs, o)
 	}
 	sort.Strings(ownerIDs)
+	targets := portTargets(reg.Entrypoints)
 	for _, o := range ownerIDs {
 		es := owners[o]
 		b, err := LoadBrief(fsys, o)
@@ -257,6 +258,9 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 		}
 		simple, complex := 0, 0
 		for _, e := range es {
+			if portTarget(e, targets) {
+				continue
+			}
 			if e.Complexity == "complex" {
 				complex++
 			} else {
@@ -270,6 +274,26 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 	}
 	sort.Strings(problems)
 	return problems
+}
+
+// portTargets is every (owner, path) pair that a row of that owner names in migrated_to.
+func portTargets(entries []Entry) map[[2]string]bool {
+	t := map[[2]string]bool{}
+	for _, e := range entries {
+		if e.Owner != "" && e.MigratedTo != "" {
+			t[[2]string{e.Owner, e.MigratedTo}] = true
+		}
+	}
+	return t
+}
+
+// portTarget reports whether e is the Go entrypoint its own owner's port lands in: a
+// simple, migrated Go row that at least one row with the SAME owner names in migrated_to.
+// Such a row is the destination of rows already counted against that owner, not a further
+// entrypoint to route, so it carries no budget of its own. A complex row, a row named only
+// by another owner's rows, and a Go row no same-owner row names all still count.
+func portTarget(e *Entry, targets map[[2]string]bool) bool {
+	return e.Kind == "go" && e.State == StateMigrated && e.Complexity == "simple" && targets[[2]string{e.Owner, e.Path}]
 }
 
 func rowPaths(es []*Entry) string {

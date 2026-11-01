@@ -22,9 +22,12 @@ is kept honest by `TestBriefV1SchemaCoverage` and `statusgen conform`.
   rewritten). Fails closed with exit 2, writing nothing, on a malformed tag,
   an unreadable file, a missing header line, or a header line with no token.
 - `check-spec-header-version.sh <vX.Y.Z> [spec-file]` — the proof. Exit 0 on a
-  match, 1 on a mismatch, 2 when it cannot check.
+  match, 1 on a mismatch, 2 when it cannot check. It is an adapter onto
+  `deskchangelog check-spec-header` (`tools/desk/cmd/deskchangelog`), run from
+  `PATH` or built from `tools/desk`; without either it exits 127.
 - `stamp-spec-header-version.test.sh` and `check-spec-header-version.test.sh` —
-  offline suites, bash + grep + awk only. Run them directly:
+  offline suites in bash + grep + awk; they drive the check through its adapter,
+  so they also need `deskchangelog` on `PATH` or a Go toolchain. Run them directly:
 
   ```
   bash tools/release/stamp-spec-header-version.test.sh
