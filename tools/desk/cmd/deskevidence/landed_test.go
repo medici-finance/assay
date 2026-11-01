@@ -543,3 +543,40 @@ func TestLandedApprovalContext(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4823 C2
+func TestLandedOriginErrors(t *testing.T) {
+	landedStatusgenOnPath(t)
+	for _, mode := range []string{"push-rewrite", "malformed"} {
+		for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
+			t.Run(mode+filepath.Ext(target), func(t *testing.T) {
+				f, _ := setupFake(t)
+				root, _, head, files := landedFixture(t, false)
+				origin := "https://github.com:443/example-org/tracker.git"
+				if mode == "malformed" {
+					origin = "ssh://git@github.com:o/r.git"
+				}
+				flGit(t, root, "remote", "add", "origin", origin)
+				if mode == "push-rewrite" {
+					flGit(t, root, "config", "url.ssh://git@github.com:.pushInsteadOf", "https://github.com/")
+				}
+				f.commitSHAs = map[string]string{"main": head}
+				for p, b := range files {
+					f.setFile(p, b)
+				}
+				record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
+				landed, _, cleanup, err := landedClosureTree(root, target, nil, record, false, f, crossRepo, "main", deskkit.VerifierReceipt{})
+				if err != nil {
+					t.Fatalf("unrelated closure blocked by origin: %v", err)
+				}
+				defer cleanup()
+				if _, err := checkVerifiedClosure(landed, "vf/01"); err != nil {
+					t.Fatal(err)
+				}
+				if problems, err := statusgenLintAt(landed); err != nil || len(problems) > 0 {
+					t.Fatalf("unrelated closure lint=%v err=%v", problems, err)
+				}
+			})
+		}
+	}
+}

@@ -1,6 +1,6 @@
 # Closure Approval Context Implementation Plan
 
-> **For executors:** Follow the approved Assay issue and the repository execution and review procedure. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For executors:** Follow the approved Assay issue and the repository execution and review procedure. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Preserve repository authority metadata in immutable closure checkouts without granting forge-read permission.
 
@@ -45,10 +45,25 @@ Continue at source 6152bbf. Read AGENTS.md, implementation-pickup.md, go-enginee
 - [x] Reproduce origin loss in two closure destinations before implementation.
 - [x] Assert preserved origin and source immutability through the shared closure owner.
 - [x] Exercise :443, foreign, missing, offline, edited, bot and unapproved approval cases plus all four child opt-in routes.
-- [x] Run bounded targeted tests, security diff review, weight/test ledger, then publish one draft issue PR (publication pending).
+- [x] Run bounded targeted tests, security diff review, weight/test ledger, then publish one draft issue PR #5109.
 
 ## Validation record
 
 Pre-fix source: 6152bbf. The shared-checkout planted caller and both landed outcome destinations failed with `remote not found`; the actual protected snapshot closure failed with `approval requires a github.com origin`. After repair, all three regressions pass. The existing protected transition matrix passes; the snapshot matrix covers explicit HTTPS port and missing origin and passes approved, offline, absent, bot, edited, foreign, missing and other-repository cases. All four child permission routes pass. Immutable history, same/cross-repository landing routes and refusal tests pass.
 
 Security review: inspected the changed source and authority consumers. Only URL metadata is persisted in the new repository; URL credentials/query/fragment, source headers/helpers/hooks/identity are excluded. No production approval logic or forge-read permission changes. All provenance checks continue in their existing owner; offline explicitly asserts the approval reader cannot run. Live infrastructure and independent Verify acceptance were not exercised.
+
+
+## Review pickup at 22413f2a9
+
+Continue on the same PR for review findings C1 (effective-origin scope/list semantics) and C2 (optional metadata failure). Confirmed against the owner: repository Config excludes worktree/global scopes; fetchConfig already corrects pushInsteadOf-only decoding. The prior direct Config call is retired, using the existing config codec and normalization owner. Supported ordered scopes include system/global repository and enabled worktree config. Include directives, dynamic overrides, ambiguous rewrite declarations, multiple fetch URLs and unreadable/invalid origin metadata are withheld; the approval consumer retains could-not-check. No native process is added to the library.
+
+- [x] Reproduce C1 with linked homes whose shared origin names another host/repository, list reset, push-only and multi-valued cases.
+- [x] Reproduce C2 with pushInsteadOf-only and malformed/unreadable metadata at the checkout and both closure destinations.
+- [x] Share fetch normalization, qualify supported scope/reset/rewrite semantics, preserve sanitization and demonstrate approval consumers hold unavailable context.
+- [ ] Push a follow-up, respond by finding ID, refresh the PR body/workpad and own bounded CI watch.
+
+
+Review validation: the new config matrix failed at the exact reviewed source 22413f2a9 for both differing linked origins, local reset, push-only, multiple URLs, push-only rewrite corruption, invalid/unreadable metadata and global scope cases. Snapshot consumer tests failed when malformed metadata aborted history or push-only/multiple origins reached approval. Both unrelated closure destinations failed on malformed metadata. After the scope/normalization repair those groups pass.
+
+The URL reset alone was insufficient for command-priority injection: the positive control proves native Git replaces the reset under both GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS, and each actual closure consumer reached the forbidden approval-reader seam before the added refusal. The shared OriginConfigInjected profile now refuses at acceptanceTransition before its origin read; both controls pass. This additional trust-boundary guard is recorded as R-approval-origin-config in docs/contracts.md. why-add: higher-priority injected config cannot be removed by writing a local URL reset; explicit consumer refusal is required. No native process is added to the canonical library path.

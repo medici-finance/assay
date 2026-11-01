@@ -673,7 +673,8 @@ func List(opts ListOpts) ([]*plumbing.Reference, error) {
 // silently return the WRONG (or empty) value for exactly that case, so `config --get
 // user.email` and `config --list -z` stay on the git binary — see brief-03's PR body for the
 // full note. remote.origin.url is the one config key this package DOES read (via RemoteURL,
-// below): remotes are never worktree-scoped in this house's actual usage.
+// below). Those APIs remain repository-local; closure metadata uses its bounded
+// scope adapter rather than treating this local read as effective configuration.
 
 // ErrNotRepository is wrapped by Toplevel when no ancestor holds a repository-shaped .git
 // entry, so a caller can tell "outside any checkout" from "found a .git that is invalid".

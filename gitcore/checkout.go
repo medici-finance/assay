@@ -2,7 +2,6 @@ package gitcore
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 // originMain is where a landed checkout records its repository's main.
@@ -79,32 +77,16 @@ func CheckoutLocalCommit(source, dest, commit, baseline string) error {
 	}
 	// Preserve repository authority for every consumer of this history snapshot.
 	// Never copy the source config: helpers, headers, hooks and identity stay home.
-	cfg, err := src.repo.Config()
-	if err != nil {
+	// A reset also masks an inherited global origin when metadata is unavailable.
+	// Without it, omitting a local remote could expose another scope's authority.
+	urls := []string{""}
+	if origin := src.snapshotOrigin(); origin != "" {
+		urls = append(urls, origin)
+	}
+	if _, err := r.repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: urls}); err != nil {
 		return err
 	}
-	if origin := cfg.Remotes["origin"]; origin != nil && len(origin.URLs) > 0 {
-		raw := origin.URLs[0]
-		if strings.Contains(raw, "://") {
-			u, err := url.Parse(raw)
-			if err != nil {
-				return fmt.Errorf("gitcore: cannot parse checkout origin")
-			}
-			u.User, u.RawQuery, u.Fragment = nil, "", ""
-			raw = u.String()
-		} else if strings.Contains(raw, "@") {
-			// Use the existing git URL parser for scp-style SSH coordinates.
-			ep, err := transport.NewEndpoint(raw)
-			if err != nil {
-				return fmt.Errorf("gitcore: cannot parse checkout origin")
-			}
-			ep.User, ep.Password = "", ""
-			raw = ep.String()
-		}
-		if _, err := r.repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{raw}}); err != nil {
-			return err
-		}
-	}
+
 	if _, err := r.repo.CommitObject(plumbing.NewHash(commit)); err != nil {
 		return fmt.Errorf("gitcore: landed commit unavailable locally; fetch the target branch before publishing: %w", err)
 	}

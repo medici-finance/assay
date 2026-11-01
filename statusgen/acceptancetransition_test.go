@@ -443,3 +443,83 @@ func TestSnapshotApprovalContext(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4823 C1 C2
+func TestSnapshotOriginFailures(t *testing.T) {
+	for _, mode := range []string{"malformed", "push-only", "multiple"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			switch mode {
+			case "malformed":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@github.com:o/r.git")
+			case "push-only":
+				vfGit(t, f.root, vfMailHuman, "config", "--unset-all", "remote.origin.url")
+				vfGit(t, f.root, vfMailHuman, "config", "remote.origin.pushurl", "https://github.com/"+rlRepo+".git")
+			case "multiple":
+				vfGit(t, f.root, vfMailHuman, "config", "--add", "remote.origin.url", "https://github.com/other/project.git")
+			}
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatalf("metadata blocked history: %v", err)
+			}
+			transitionClient = func() *ghClient { t.Fatal("unavailable authority reached approval read"); return nil }
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(snapshot))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, why := closureWitnesses(verify, evidence, vfBrief(snapshot))
+			if !strings.Contains(why, "could-not-check repository authority") {
+				t.Fatalf("authority consumer did not hold: %s", why)
+			}
+		})
+	}
+}
+
+// regression: #4823 C1
+func TestSnapshotInjectedOrigin(t *testing.T) {
+	for _, mode := range []string{"count", "parameters"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com/foreign/project.git")
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			approved := "https://github.com/" + rlRepo + ".git"
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			if mode == "count" {
+				t.Setenv("GIT_CONFIG_COUNT", "2")
+				t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+				t.Setenv("GIT_CONFIG_VALUE_0", "")
+				t.Setenv("GIT_CONFIG_KEY_1", "remote.origin.url")
+				t.Setenv("GIT_CONFIG_VALUE_1", approved)
+			} else {
+				t.Setenv("GIT_CONFIG_PARAMETERS", "'remote.origin.url=' 'remote.origin.url="+approved+"'")
+			}
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatal(err)
+			}
+			// Positive control: native config injection overrides the snapshot reset,
+			// so withholding metadata alone cannot protect this actual consumer.
+			native, err := historyGit(snapshot, "remote", "get-url", "origin").Output()
+			if err != nil || strings.TrimSpace(string(native)) != approved {
+				t.Fatalf("injection control=%q %v", native, err)
+			}
+			transitionClient = func() *ghClient { t.Fatal("injected foreign authority reached approval reader"); return nil }
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(snapshot))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, why := closureWitnesses(verify, evidence, vfBrief(snapshot))
+			if !strings.Contains(why, "could-not-check repository authority") {
+				t.Fatalf("injected authority did not hold: %s", why)
+			}
+		})
+	}
+}
