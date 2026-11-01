@@ -40,7 +40,7 @@ consumers:
   - "tools/desk/internal/deskkit/custody.go (the file-identity custody check, moved from cellctl, shared by cellctl and deskdispatch): fixed-here"
   - "tools/desk/cmd/deskdispatch/prompt.go (reads the key, verifies the digest, quotes the file after the class kit): fixed-here"
   - "tools/desk/internal/deskkit/dispatchrecord.go:115 DispatchKits() (the parser reads this existing kit vocabulary; it is not redefined): out-of-scope (read, not changed)"
-  - "tools/desk/internal/deskkit/dispatchrecord.go:124 DispatchRecord and ValidateDispatchRecord (gains the nullable `dispatch_instructions_sha256` field, 64 lowercase hex, never a path; a `released` line leaves it null): fixed-here"
+  - "tools/desk/internal/deskkit/dispatchrecord.go (DispatchRecord and ValidateDispatchRecord, line 124 at authoring; gains the nullable `dispatch_instructions_sha256` field, 64 lowercase hex, never a path; a `released` line leaves it null): fixed-here"
   - "tools/desk/cmd/deskdispatch/dispatchrecord.go buildDispatchRecord (sets the digest on a `dispatched` line): fixed-here"
   - "tools/desk/README.md §The dispatch record (the key list gains `dispatch_instructions_sha256`): fixed-here"
   - "tools/desk/cmd/deskclaim-ref/claim.go (writes `released` lines): out-of-scope (a released line leaves the new field null, the Go zero value, so the writer is unchanged; row 9b proves the validator refuses a released line that sets it)"
