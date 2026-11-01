@@ -53,7 +53,9 @@ clear     remove the named entries (all when none is named) and their binaries.
 
 Shims point at a hotfix only from the next ` + "`cellctl desk`/`cellctl up`" + `; a retired entry is inert
 before that, because shim generation and deskboot's binary-pin step both refuse it.
-cellctl and deskboot are never hotfix targets. Not supported on Windows.
+cellctl and deskboot are never hotfix targets. statusgen is built from its own module over its
+own pin line and is installed on its own (` + "`cellctl hotfix install statusgen`" + `), never in one
+call with desk tools. Not supported on Windows.
 `
 
 // hotfixCmd is the hotfix verb. Its words are an opaque argv the verb parses itself (like
@@ -268,6 +270,10 @@ func hotfixInstall(args []string, stdout, stderr io.Writer) int {
 			return hotfixExitRefused
 		}
 	}
+	if hasStatusgen(o.tools) && len(o.tools) > 1 {
+		fmt.Fprintf(stderr, "cellctl: hotfix install: statusgen is installed on its own: it is built from its own module over its own pin line; run `cellctl hotfix install statusgen` and the desk tools as two installs\n")
+		return hotfixExitRefused
+	}
 	if !deskkit.IsFullSHA(o.source) {
 		fmt.Fprintf(stderr, "cellctl: hotfix install: --source %q is not a 40-hex lowercase commit\n", o.source)
 		return hotfixExitRefused
@@ -293,14 +299,15 @@ func hotfixInstall(args []string, stdout, stderr io.Writer) int {
 	}
 	cwd, _ := os.Getwd()
 	pinRoot := deskkit.NearestPinRoot(cwd)
-	pinTag, _, found := deskkit.DeskToolsReleasePin(pinRoot, runtime.GOOS+"-"+runtime.GOARCH)
+	pinName := hotfixPinName(o.tools[0])
+	pinTag, found := deskkit.HotfixToolPin(pinRoot, o.tools[0], runtime.GOOS+"-"+runtime.GOARCH)
 	if !found {
-		fmt.Fprintf(stderr, "cellctl: hotfix install: could-not-check: no desk-tools pin in a .assay-versions at or above %s\n", cwd)
+		fmt.Fprintf(stderr, "cellctl: hotfix install: could-not-check: no %s pin in a .assay-versions at or above %s\n", pinName, cwd)
 		return hotfixExitUnknown
 	}
 	pin := bareReleaseTag(pinTag)
 	if !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(pin) {
-		fmt.Fprintf(stderr, "cellctl: hotfix install: the desk-tools pin %q is not a bare vX.Y.Z release\n", pinTag)
+		fmt.Fprintf(stderr, "cellctl: hotfix install: the %s pin %q is not a bare vX.Y.Z release\n", pinName, pinTag)
 		return hotfixExitRefused
 	}
 	if err := forge.CheckSourceOnMain(o.source); err != nil {
@@ -366,6 +373,25 @@ func hotfixInstall(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// hasStatusgen reports whether tools names statusgen.
+func hasStatusgen(tools []string) bool {
+	for _, t := range tools {
+		if t == deskkit.StatusgenArtifact {
+			return true
+		}
+	}
+	return false
+}
+
+// hotfixPinName names the pin line a hotfix of tool is built over: statusgen's own, else
+// desk-tools'.
+func hotfixPinName(tool string) string {
+	if tool == deskkit.StatusgenArtifact {
+		return deskkit.StatusgenArtifact
+	}
+	return deskkit.DeskToolsArtifact
+}
+
 // bareReleaseTag strips an `<artifact>/` prefix: `desk-tools/v1.0.41` → `v1.0.41`.
 func bareReleaseTag(t string) string {
 	if i := strings.LastIndex(t, "/"); i >= 0 {
@@ -410,9 +436,10 @@ type hotfixBuilt struct {
 // hotfixBuildSpec is one `go build` the install verb runs: everything the build reads is here.
 type hotfixBuildSpec struct {
 	Go      string
-	Dir     string // the cloned tools/desk module
+	Dir     string // the cloned module: tools/desk, or statusgen for a statusgen hotfix
 	Out     string // the output directory
 	Tools   []string
+	Pkgs    []string // the packages built, relative to Dir: ./cmd/<tool>, or . for statusgen
 	Ldflags string
 	Env     []string
 	Inv     hotfixInvoker
@@ -457,11 +484,25 @@ func buildHotfix(o hotfixInstallOpts, inv hotfixInvoker, pin string, stderr io.W
 	if err != nil || strings.TrimSpace(string(head)) != o.source {
 		return b, hotfixFail(hotfixExitRefused, "the clone's HEAD %q is not the source %s", strings.TrimSpace(string(head)), o.source)
 	}
-	mod := filepath.Join(src, "tools", "desk")
+	// statusgen is its own module at the repository root's statusgen/ and builds as `.`, the
+	// release workflow's own statusgen build; every other tool is a tools/desk/cmd/<tool>.
+	sg := hasStatusgen(o.tools)
+	mod, modRel := filepath.Join(src, "tools", "desk"), "tools/desk"
+	var pkgs []string
+	if sg {
+		mod, modRel, pkgs = filepath.Join(src, "statusgen"), "statusgen", []string{"."}
+		if st, err := os.Stat(filepath.Join(mod, "go.mod")); err != nil || !st.Mode().IsRegular() {
+			return b, hotfixFail(hotfixExitRefused, "the source %s has no statusgen module (statusgen/go.mod)", o.source[:12])
+		}
+	}
 	for _, tool := range o.tools {
+		if sg {
+			continue
+		}
 		if st, err := os.Stat(filepath.Join(mod, "cmd", tool)); err != nil || !st.IsDir() {
 			return b, hotfixFail(hotfixExitRefused, "the source %s has no desk tool %s (tools/desk/cmd/%s)", o.source[:12], tool, tool)
 		}
+		pkgs = append(pkgs, "./cmd/"+tool)
 	}
 	rel, err := os.ReadFile(filepath.Join(src, ".github", "workflows", "release.yml"))
 	if err != nil {
@@ -490,26 +531,40 @@ func buildHotfix(o hotfixInstallOpts, inv hotfixInvoker, pin string, stderr io.W
 		return b, hotfixFail(hotfixExitRefused, "go version %s is not the source's release GO_VERSION %s", have, b.goVersion)
 	}
 	if b.goSum, err = deskkit.FileSHA256(filepath.Join(mod, "go.sum")); err != nil {
-		return b, hotfixFail(hotfixExitRefused, "the source's tools/desk/go.sum: %v", err)
+		return b, hotfixFail(hotfixExitRefused, "the source's %s/go.sum: %v", modRel, err)
 	}
 	now := hotfixClock().UTC().Truncate(time.Second)
 	b.builtAt = now.Format(time.RFC3339)
 	b.expires = now.Add(o.ttl).Format(time.RFC3339)
 	tag := deskkit.HotfixTag(pin, o.source)
-	const pkg = "github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	ldflags := strings.Join([]string{
-		"-X " + pkg + ".SourceSHA=" + o.source[:12],
-		"-X " + pkg + ".BuiltAt=" + b.builtAt,
-		"-X " + pkg + ".ReleaseTag=" + tag,
-		"-X " + pkg + ".HotfixExpires=" + b.expires,
-		"-X main.cellctlVersion=" + tag,
-	}, " ")
+	ldflags := hotfixLdflags(sg, o.source, tag, b.builtAt, b.expires)
 	b.out = filepath.Join(tmp, "out")
-	spec := hotfixBuildSpec{Go: goBin, Dir: mod, Out: b.out, Tools: o.tools, Ldflags: ldflags, Env: env, Inv: inv}
+	spec := hotfixBuildSpec{Go: goBin, Dir: mod, Out: b.out, Tools: o.tools, Pkgs: pkgs, Ldflags: ldflags, Env: env, Inv: inv}
 	if err := hotfixRunBuild(spec); err != nil {
 		return b, hotfixFail(hotfixExitRefused, "build: %v", err)
 	}
 	return b, nil
+}
+
+// hotfixLdflags is the release workflow's -X set with the hotfix values: deskkit's stamp vars
+// (and cellctl's version) for a desk tool; statusgen's own version var plus its own hotfix
+// expiry and build time, which live in statusgen's main package (it does not import deskkit).
+func hotfixLdflags(statusgen bool, source, tag, builtAt, expires string) string {
+	if statusgen {
+		return strings.Join([]string{
+			"-X main.statusgenVersion=" + tag,
+			"-X main.statusgenBuiltAt=" + builtAt,
+			"-X main.statusgenHotfixExpires=" + expires,
+		}, " ")
+	}
+	const pkg = "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	return strings.Join([]string{
+		"-X " + pkg + ".SourceSHA=" + source[:12],
+		"-X " + pkg + ".BuiltAt=" + builtAt,
+		"-X " + pkg + ".ReleaseTag=" + tag,
+		"-X " + pkg + ".HotfixExpires=" + expires,
+		"-X main.cellctlVersion=" + tag,
+	}, " ")
 }
 
 // hotfixBuildEnv is the build's environment, set from scratch: nothing the caller exports
@@ -550,9 +605,7 @@ func realHotfixRunBuild(s hotfixBuildSpec) error {
 		// is false, so a release build never compiles a seam into a hotfix.
 		args = append(args, "-tags", "hotfixseam")
 	}
-	for _, t := range s.Tools {
-		args = append(args, "./cmd/"+t)
-	}
+	args = append(args, s.Pkgs...)
 	out, err := hotfixRun(s.Inv, s.Dir, s.Env, s.Go, args...)
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
@@ -698,8 +751,7 @@ func hotfixOverlayTools(overlay string) []string {
 func hotfixStatus(stdout, stderr io.Writer) int {
 	overlay := deskkit.HotfixOverlayDir()
 	cwd, _ := os.Getwd()
-	pinTag, _, _ := deskkit.DeskToolsReleasePin(deskkit.NearestPinRoot(cwd), runtime.GOOS+"-"+runtime.GOARCH)
-	pin := bareReleaseTag(pinTag)
+	pinRoot := deskkit.NearestPinRoot(cwd)
 	tools := hotfixOverlayTools(overlay)
 	if len(tools) == 0 {
 		fmt.Fprintf(stdout, "hotfix status: no hotfix in %s\n", overlay)
@@ -707,7 +759,8 @@ func hotfixStatus(stdout, stderr io.Writer) int {
 	}
 	owner, now, code := hotfixOwner(), hotfixClock(), 0
 	for _, tool := range tools {
-		e, err := deskkit.ValidateHotfix(overlay, tool, pin, now, owner)
+		pinTag, _ := deskkit.HotfixToolPin(pinRoot, tool, runtime.GOOS+"-"+runtime.GOARCH)
+		e, err := deskkit.ValidateHotfix(overlay, tool, bareReleaseTag(pinTag), now, owner)
 		if errors.Is(err, deskkit.ErrNoHotfix) {
 			continue
 		}

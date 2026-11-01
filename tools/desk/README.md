@@ -3751,6 +3751,19 @@ record format, or the hotfix machinery itself is refused as `hotfix-ineligible`.
 `deskboot` are never hotfix targets: they install, select and refuse hotfixes, so they always
 run the pinned release's code. The overlay is not supported on Windows.
 
+**`statusgen` is hotfixed on its own.** `statusgen` is released and pinned apart from the desk
+tools (its own `statusgen` line in `.assay-versions`), so `cellctl hotfix install statusgen`
+takes no other tool in the same call (a mixed install is refused). Its hotfix is built from the
+`statusgen` module at the commit, stamped `<statusgen pin>+hotfix-<sha12>`, and every layer
+below compares it against the `statusgen` pin line, never the `desk-tools` one: moving
+`statusgen`'s pin retires it, moving `desk-tools`' pin does not. A checkout with no `statusgen`
+line cannot prove such a hotfix and refuses it; unlike the desk tools, `statusgen`'s own check
+never falls back to asking the pinned install for its `--version`, so outside a checkout that
+pins it a `statusgen` hotfix is could-not-check. `statusgen` is its own Go module, so it carries
+its own copy of the layer-2 start-up check (`statusgen/hotfixself.go`); a parity test holds its
+ruled values, phrases and paths equal to the desk tools' copy, and both copies are on the
+`hotfix-ineligible` list.
+
 **Four layers, each deciding on its own signal.**
 
 | Layer | Where | What it does |

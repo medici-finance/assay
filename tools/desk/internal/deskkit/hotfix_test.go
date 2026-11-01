@@ -97,6 +97,9 @@ func TestHotfixIneligibleMatch(t *testing.T) {
 		"schemas/brief-v2.json":                    "schemas/",
 		"tools/desk/internal/deskkit/rosteracl.go": "tools/desk/internal/deskkit/rosteracl.go",
 		"tools/desk/internal/deskkit/version.go":   "tools/desk/internal/deskkit/version.go",
+		"statusgen/hotfixself.go":                  "statusgen/hotfixself.go",
+		"statusgen/versiongate.go":                 "statusgen/versiongate.go",
+		"statusgen/main.go":                        "",
 		"tools/desk/cmd/deskpr/main.go":            "",
 		"migrationsX/a":                            "",
 	} {
@@ -621,5 +624,37 @@ func TestHotfixForge(t *testing.T) {
 	dead := HotfixForge{BaseURL: "http://127.0.0.1:1", Repo: HotfixRepoSlug}
 	if err := dead.CheckSourceOnMain(sha); HotfixCodeOf(err) != 6 {
 		t.Fatalf("unreachable: %v", err)
+	}
+}
+
+// regression: #4405
+// TestHotfixToolPin: a statusgen hotfix is built over and checked against statusgen's own pin
+// line (bare, else this platform's), never the desk-tools line; every other tool reads the
+// desk-tools line. A malformed winning line, or no line, is not-found (could-not-check).
+func TestHotfixToolPin(t *testing.T) {
+	sum := strings.Repeat("a", 64)
+	for _, tc := range []struct {
+		name, body, tool, platform, want string
+		found                            bool
+	}{
+		{"desk tool reads desk-tools", "desk-tools v1.0.41 " + sum + "\nstatusgen v1.0.40 " + sum + "\n", "deskpr", "darwin-arm64", "v1.0.41", true},
+		{"statusgen reads its bare line", "desk-tools v1.0.41 " + sum + "\nstatusgen v1.0.40 " + sum + "\n", "statusgen", "darwin-arm64", "v1.0.40", true},
+		{"statusgen platform line", "desk-tools v1.0.41 " + sum + "\nstatusgen-darwin-arm64 v1.0.39 " + sum + "\n", "statusgen", "darwin-arm64", "v1.0.39", true},
+		{"statusgen windows exe line", "statusgen-windows-amd64.exe v1.0.38 " + sum + "\n", "statusgen", "windows-amd64", "v1.0.38", true},
+		{"statusgen other platform only", "desk-tools v1.0.41 " + sum + "\nstatusgen-linux-arm64 v1.0.39 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
+		{"statusgen never reads desk-tools", "desk-tools v1.0.41 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
+		{"malformed bare line is not skipped", "statusgen v1.0.40\nstatusgen-darwin-arm64 v1.0.39 " + sum + "\n", "statusgen", "darwin-arm64", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := t.TempDir()
+			hfWriteFile(t, filepath.Join(d, AssayVersionsFile), tc.body)
+			got, found := HotfixToolPin(d, tc.tool, tc.platform)
+			if got != tc.want || found != tc.found {
+				t.Fatalf("HotfixToolPin(%s, %s) = %q, %v; want %q, %v", tc.tool, tc.platform, got, found, tc.want, tc.found)
+			}
+		})
+	}
+	if _, found := HotfixToolPin("", "statusgen", "darwin-arm64"); found {
+		t.Fatal("an empty dir resolves a statusgen pin")
 	}
 }

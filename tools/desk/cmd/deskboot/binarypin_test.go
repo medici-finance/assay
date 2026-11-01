@@ -376,3 +376,28 @@ func TestDeskbootHotfixReaders(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4405
+// TestBinaryPinStatusgen: a statusgen hotfix is checked against statusgen's own pin line, never
+// the desk-tools line: over a statusgen pin that matches it runs (while desk-tools sits at
+// another pin); once the statusgen line moves it is refused as outlived, and with no statusgen
+// line at all it is could-not-check. The `all pinned` line keeps naming the desk-tools pin.
+func TestBinaryPinStatusgen(t *testing.T) {
+	sum := " 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	f := newPinFixture(t, pinNow)
+	writePins(t, f.root, "desk-tools "+pinNow+sum+"statusgen "+pinBase+sum)
+	f.hotfixShim(t, "statusgen", nil)
+	f.pinnedShim(t, "deskboard")
+	lines, hot, err := f.check()
+	if err != nil || !hot || len(lines) != 1 || !strings.Contains(lines[0], "running hotfix statusgen v1.0.41+hotfix-0123456789ab over pin v1.0.41") {
+		t.Fatalf("statusgen over its own pin = %q hot=%v err=%v", lines, hot, err)
+	}
+
+	writePins(t, f.root, "desk-tools "+pinBase+sum+"statusgen "+pinNow+sum)
+	_, _, err = f.check()
+	wantPinRefusal(t, err, deskkit.HotfixReasonOutlived, "statusgen")
+
+	writePins(t, f.root, "desk-tools "+pinBase+sum)
+	_, _, err = f.check()
+	wantPinRefusal(t, err, deskkit.HotfixReasonNoPin, "statusgen")
+}

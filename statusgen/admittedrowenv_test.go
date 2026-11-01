@@ -132,8 +132,11 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway) and the
 // forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
 // which start no Verify row, and only ever removes CELLCTL_GH_AMBIENT and adds
-// a placeholder for an unset token family).
-var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard"}
+// a placeholder for an unset token family) and the hotfix self-check's environment
+// (sgFallbackEnv: it only reaches the pinned install replacing a refused hotfix, which
+// starts no Verify row, and only ever removes
+// DESK_HOTFIX_FALLBACK).
+var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard", "sgFallbackEnv"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
 var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
