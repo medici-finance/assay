@@ -24,9 +24,10 @@ verify-runner entry in the unchanged release record is a separate image.
 
 The image must contain `/usr/local/bin/desk-session` and its image-owned Python
 launcher. The existing credential preflight runs first. Preinstall the approved
-pinned Claude-compatible package, role instructions and work inputs on each retained
-volume, then explicitly prepare cold history with `desk-session --prepare` before
-first boot. Normal boot never installs packages or creates missing history.
+pinned Claude-compatible package and work inputs on each retained volume. Use the
+role instructions baked into `/opt/assay/plugin/skills/<role>/SKILL.md`, or explicitly
+select approved custom instructions. Then prepare cold history through the bounded
+helper described below before first boot. Normal boot never installs packages or creates missing history.
 
 The operator's profile and mounted launch descriptor must have the same canonical
 launch digest. `cellctl check` is offline and makes no API call. The checked profile
@@ -50,9 +51,9 @@ PVC retention supplies only the filesystem part.
 ## Remaining preparation and qualification
 
 Publication supplies the image pins, not the operator's launch facts. Each role
-still needs its approved pinned agent/version/model, instructions and work inputs
-on the retained volume, a genuine cold-preparation identity, and a matching launch
-descriptor. The launcher's existing `desk-session --prepare` command creates the
+still needs its approved pinned agent/version/model and work inputs on the retained
+volume, baked or explicitly selected custom role instructions, a genuine
+cold-preparation identity, and a matching launch descriptor. The launcher's existing `desk-session --prepare` command creates the
 initial history only when none exists; it does not reset history. Its prepared
 state records `launch_id` (the SHA-256 of the canonical launch descriptor) and the
 descriptor's `initialization_id`. The descriptor has no `launch_id` member and
@@ -61,8 +62,9 @@ Use those same values in the operator profile and the workload's
 `ASSAY_COMPAT_LAUNCH_ID` and `ASSAY_COMPAT_INIT_ID`. Never substitute fixture hashes.
 
 Follow the [custodian preparation guide](../../../../docs/kubernetes-compatibility-preparation.md)
-for the approved-input inventory, descriptor creation, existing preparation command,
-readback and per-role profile/workload mapping. The guide starts inside an already
+for the approved-input inventory, bounded Claude preparation helper and per-role
+profile/workload mapping. The helper generates both binding identities and reads
+them back through the existing image-owned launcher; no manual hashes are needed. The guide starts inside an already
 authorized preparation context; it supplies no cluster or credential grant.
 
 A custodian must also supply each existing role-custodian group in `rbac.yaml` and

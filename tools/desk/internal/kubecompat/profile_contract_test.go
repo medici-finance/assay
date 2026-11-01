@@ -2,6 +2,7 @@ package kubecompat
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -10,7 +11,27 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
+
+// regression: #4772
+func TestKubeCompatPreparation(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal("could-not-check: Python required for cold-preparation flow")
+	}
+	path, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "containers", "k8s", "compatibility", "prepare.test.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, python, path)
+	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1", "KUBECONFIG=/dev/null")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cold-preparation flow failed: %v\n%s", err, out)
+	}
+}
 
 func schemaKeys(t *testing.T, node map[string]any, typ reflect.Type) {
 	t.Helper()
