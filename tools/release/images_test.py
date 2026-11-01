@@ -173,15 +173,20 @@ def run_script(text, entries, job, step):
         return ''
     if not workflow_keys.SCALAR.fullmatch(runs[0].value):
         return runs[0].value
+    return live_lines(scalar_body(text, runs[0]))
+
+
+def scalar_body(text, entry):
+    """The body of ENTRY's `|` or `>` block scalar: the lines the reader skipped."""
     lines = text.splitlines(True)
-    head = workflow_keys.ENTRY.fullmatch(lines[runs[0].line - 1].rstrip('\n'))
+    head = workflow_keys.ENTRY.fullmatch(lines[entry.line - 1].rstrip('\n'))
     depth = len(head.group(1)) + len(head.group(2) or '')
     body = []
-    for line in lines[runs[0].line:]:
+    for line in lines[entry.line:]:
         if line.strip() and len(line) - len(line.lstrip(' ')) <= depth:
             break
         body.append(line)
-    return live_lines(''.join(body))
+    return ''.join(body)
 
 
 def environment_name(entries, job):
@@ -200,7 +205,9 @@ def permission_problems(entries):
     """The workflow grants only `contents: read`, and only `release` writes.
 
     Read from workflow_keys entries: a grant kept in a comment counts as
-    absent, and a trailing comment never hides a grant's value.
+    absent, and a trailing comment never hides a grant's value. A grant in a
+    spelling the reader does not accept is not an entry, so publication_problems
+    refuses each such line in every job through workflow_keys.unread_problems.
     """
     problems = []
     top = [(entry.key, unquoted(entry.value).lower()) for entry in entries if entry.path == ('permissions',)]
@@ -255,7 +262,10 @@ def publication_problems(text):
     Every setting here is read from workflow_keys entries, never from job text,
     so a line inside a run script or a `with` block scalar never counts as a
     step, a key or a value. The script checks look for fixed lines in one
-    named step's run script, outside its comment lines.
+    named step's run script, outside its comment lines. It also applies
+    publisher_step_problems and transfer_problems, and refuses an unread line
+    at top level, in a publishing job, among any job's own keys, or under any
+    job's permissions or environment.
     """
     entries, unread = workflow_keys.read(text)
     problems = permission_problems(entries)
@@ -277,6 +287,8 @@ def publication_problems(text):
         problems.append('images and validated references must precede tag and release writes')
     problems += workflow_keys.unread_problems(unread, *TEST_DEPENDENTS)
     problems += tolerance_problems(entries)
+    problems += publisher_step_problems(entries)
+    problems += [problem for problem in transfer_problems(text) if problem not in problems]
     for name, guard in {
         'Create and push the dispatched tag': "github.event_name == 'workflow_dispatch' && !inputs.dry_run",
         'Create GitHub release and upload assets': "${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
@@ -317,6 +329,8 @@ MUTATION_REPORTS = {
 }
 DESKMERGE = 'cmd/deskmerge/mutations.json'
 UPLOAD = 'Upload captured mutation reports (tool-validation pack)'
+REPORT_INPUTS = ('if-no-files-found', 'name', 'path', 'retention-days')
+REPORT_PATH = '${{ runner.temp }}/tv-reports/'
 TEST_DEPENDENTS = ('artifacts', 'runner-arm64', 'release')
 # The only publishing-path steps whose failure may be tolerated: the optional
 # release Go cache, which readers accept only from a successful main dispatch.
@@ -474,9 +488,11 @@ def mutation_routing_problems(text):
     earlier step of the job writes to GITHUB_ENV or GITHUB_PATH, so a step
     that changes the environment the harness steps inherit is not refused
     here. Settings are read with workflow_keys, so a setting kept only in a
-    comment counts as absent, and any line at top level or in the test or
-    publishing jobs written in a form the reader does not accept is refused
-    instead of being skipped.
+    comment counts as absent, and any line at top level, in the test or
+    publishing jobs, among any job's own keys or under any job's permissions
+    or environment, written in a form the reader does not accept, is refused
+    instead of being skipped. The report upload holds exactly REPORT_INPUTS
+    and sends REPORT_PATH.
     """
     entries, unread = workflow_keys.read(text)
     problems = workflow_keys.unread_problems(unread, 'test', *TEST_DEPENDENTS)
@@ -526,6 +542,10 @@ def mutation_routing_problems(text):
             or step_setting(entries, 'test', UPLOAD, 'name', ('with',))
             != ['tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}']):
         problems.append('each mutation leg must upload its reports without collision or omission')
+    reports = [step for name, step in step_entries(entries, 'test') if name == UPLOAD]
+    if len(reports) != 1 or sorted(with_inputs(reports[0], 'test')) != list(REPORT_INPUTS) \
+            or own_setting(reports[0], 'test', 'path', ('with',)) != [REPORT_PATH]:
+        problems.append('the report upload must send exactly the reports directory')
     actual = Counter()
     for name, step in steps.items():
         specs = re.findall(r'-spec ([a-zA-Z0-9_./-]+\.json)', step)
@@ -571,21 +591,181 @@ def mutation_routing_problems(text):
 def native_transport_problems(text):
     """runner-arm64 reads every build artifact and fails on an empty upload.
 
-    Both are read from workflow_keys entries: the download is a step that uses
+    Both are read from workflow_keys entries: a download is a step that uses
     actions/download-artifact, and its `with` settings are its own keys, so a
     line in a block scalar body or under another key never stands in for one.
+    Every download step in the job must read all release-build-* artifacts,
+    merged, into the job's input directory, with no other input, and there
+    must be at least one. The native image's upload holds exactly
+    UPLOAD_INPUTS, under its own artifact name and uncompressed.
     """
     entries, unread = workflow_keys.read(text)
     problems = workflow_keys.unread_problems(unread, 'runner-arm64')
     downloads = [step for name, step in step_entries(entries, 'runner-arm64')
                  if uses_action(step, 'runner-arm64', 'actions/download-artifact')]
-    if not any(own_setting(step, 'runner-arm64', 'pattern', ('with',)) == ['release-build-*']
-               and own_setting(step, 'runner-arm64', 'merge-multiple', ('with',)) == ['true']
-               for step in downloads):
+    wanted = dict(BUILD_DOWNLOAD, path='${{ runner.temp }}/release-input')
+    if not downloads or any(with_inputs(step, 'runner-arm64') != wanted for step in downloads):
         problems.insert(0, 'runner-arm64 must download every release-build-* artifact, merged')
     if step_setting(entries, 'runner-arm64', 'Upload checked native arm64 image',
                     'if-no-files-found', ('with',)) != ['error']:
         problems.append('the native arm64 upload must fail when it finds no files')
+    native = [step for name, step in step_entries(entries, 'runner-arm64')
+              if name == 'Upload checked native arm64 image']
+    if len(native) != 1 or not upload_held(native[0], 'runner-arm64', 'release-runner-arm64', None):
+        problems.append('the native arm64 upload must hold exactly its own artifact')
+    return problems
+
+
+# The artifacts job's uploads, one per platform, that the release job merges
+# back into one directory; each holds exactly UPLOAD_INPUTS.
+PLATFORM_UPLOADS = ('darwin-arm64', 'darwin-amd64', 'linux-amd64', 'linux-arm64',
+                    'windows-amd64', 'windows-arm64', 'common')
+PLATFORM_STEP = 'Upload prepared release artifacts (%s)'
+UPLOAD_INPUTS = ('compression-level', 'if-no-files-found', 'name', 'path', 'retention-days')
+BUILD_DOWNLOAD = {'pattern': 'release-build-*', 'merge-multiple': 'true'}
+NATIVE_DOWNLOAD = 'Download checked native arm64 image'
+
+
+def with_inputs(step, job):
+    """STEP's `with` inputs as {key: value}, from its own entries."""
+    return {entry.key: entry.value for entry in step if entry.path == ('jobs', job, 'steps', 'with')}
+
+
+def upload_held(step, job, name, empty='error'):
+    """Whether upload STEP sends artifact NAME uncompressed, keeps it seven days,
+    holds no other input and, unless EMPTY is None, fails on no files."""
+    inputs = with_inputs(step, job)
+    return (uses_action(step, job, 'actions/upload-artifact') and sorted(inputs) == list(UPLOAD_INPUTS)
+            and inputs['name'] == name and inputs['compression-level'] == '0'
+            and inputs['if-no-files-found'] == (empty or inputs['if-no-files-found'])
+            and inputs['retention-days'] == '7')
+
+
+def upload_patterns(text, step, job):
+    """The path patterns of upload STEP, from its one `path` input: the value,
+    or each live line of its block scalar. [] unless it has one `path`."""
+    paths = [entry for entry in step if entry.path == ('jobs', job, 'steps', 'with') and entry.key == 'path']
+    if len(paths) != 1:
+        return []
+    if not workflow_keys.SCALAR.fullmatch(paths[0].value):
+        return [paths[0].value]
+    return [line.strip() for line in live_lines(scalar_body(text, paths[0])).splitlines() if line.strip()]
+
+
+def platform_uploads(text):
+    """{artifact name: path patterns} for each platform upload of the artifacts job."""
+    entries = workflow_keys.read(text)[0]
+    found = {}
+    for name, step in step_entries(entries, 'artifacts'):
+        for platform in PLATFORM_UPLOADS:
+            if name == PLATFORM_STEP % platform:
+                found[with_inputs(step, 'artifacts').get('name')] = upload_patterns(text, step, 'artifacts')
+    return found
+
+
+def transfer_problems(text):
+    """The build artifacts reach the publisher whole, read as keys.
+
+    Each platform in PLATFORM_UPLOADS has one step in `artifacts`, named for
+    it, whose upload holds exactly UPLOAD_INPUTS under its own artifact name,
+    uncompressed and failing when it finds no files. No other step in any job
+    uploads under the release-build- prefix the publisher merges. Every
+    download step in `release` but the native image's reads all
+    release-build-* artifacts, merged, into the workspace, with no other
+    input, and there is at least one; the native image's download reads only
+    its own artifact into its own directory. Every value comes from the
+    step's own `with` entries, so a comment or a block scalar body holding the
+    expected text never stands in for one.
+    """
+    entries, unread = workflow_keys.read(text)
+    problems = workflow_keys.unread_problems(unread, *TEST_DEPENDENTS)
+    platform = {PLATFORM_STEP % name: 'release-build-' + name for name in PLATFORM_UPLOADS}
+    steps = step_entries(entries, 'artifacts')
+    for name, artifact in platform.items():
+        found = [step for found, step in steps if found == name]
+        if len(found) != 1 or not upload_held(found[0], 'artifacts', artifact):
+            problems.append('the %s upload must send it whole, uncompressed, failing on no files' % artifact)
+    for job in [entry.key for entry in entries if entry.path == ('jobs',)]:
+        for name, step in step_entries(entries, job):
+            if unquoted(with_inputs(step, job).get('name', '')).startswith('release-build-') \
+                    and (job != 'artifacts' or name not in platform):
+                problems.append('only the platform uploads may name a release-build- artifact: %s: %s'
+                                % (job, name or 'unnamed step'))
+    builds = 0
+    for name, step in step_entries(entries, 'release'):
+        if not uses_action(step, 'release', 'actions/download-artifact'):
+            continue
+        if name == NATIVE_DOWNLOAD:
+            if with_inputs(step, 'release') != {'name': 'release-runner-arm64', 'path': NATIVE_IN}:
+                problems.append('the native arm64 download must read only its own artifact')
+            continue
+        builds += 1
+        if with_inputs(step, 'release') != dict(BUILD_DOWNLOAD, path='.'):
+            problems.append('every release build download must read all release-build-* artifacts, '
+                            'merged, and nothing else')
+    if not builds:
+        problems.append('the release must download the build artifacts')
+    return problems
+
+
+# The conditions on publishing-job steps, keyed by job and step name, or for an
+# unnamed step by the action it uses. Every other step in a publishing job runs
+# unconditionally, so `if: false` on a build or check step is refused.
+PUBLISHING = "${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}"
+STEP_CONDITIONS = {
+    ('artifacts', 'Package release Go cache'):
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run",
+    ('artifacts', 'Save release Go cache'): "steps.release-cache-pack.outcome == 'success'",
+    ('artifacts', 'Record release cache receipt'): "steps.release-cache-save.outcome == 'success'",
+    ('release', 'Validate and checksum the published image references'): PUBLISHING,
+    ('release', 'actions/upload-artifact'): PUBLISHING,
+    ('release', 'Dry run — stop before tagging and publishing'):
+        "github.event_name == 'workflow_dispatch' && inputs.dry_run",
+    ('release', 'List the release assets to attest'): PUBLISHING,
+    ('release', 'actions/attest-build-provenance'): PUBLISHING,
+    ('release', 'Stage and check a Sigstore bundle beside every release asset'): PUBLISHING,
+    ('release', 'Create and push the dispatched tag'): "github.event_name == 'workflow_dispatch' && !inputs.dry_run",
+    ('release', 'Create GitHub release and upload assets'): PUBLISHING,
+}
+# Each publishing job's own environment, as (lower-case key, value) pairs.
+JOB_ENV = {'artifacts': [('cgo_enabled', '"0"')], 'runner-arm64': [], 'release': []}
+
+
+def step_label(name, step, job):
+    """STEP's name, or for an unnamed step the action it uses."""
+    uses = own_setting(step, job, 'uses')
+    if name or len(uses) != 1:
+        return name or 'unnamed step'
+    return unquoted(uses[0]).lower().split('@')[0]
+
+
+def publisher_step_problems(entries):
+    """No publishing job changes whether, how or where its steps run.
+
+    Refused: `defaults` at the top level or on a publishing job, `shell` or
+    `working-directory` on any step of one, a job environment other than
+    JOB_ENV, and a step condition other than the one STEP_CONDITIONS pins
+    (none, for a step it does not list).
+    """
+    problems = []
+    if any(not entry.path and entry.key == 'defaults' for entry in entries):
+        problems.append('the workflow must not set step defaults')
+    for job in TEST_DEPENDENTS:
+        where = ('jobs', job)
+        if any(entry.path == where and entry.key == 'defaults' for entry in entries):
+            problems.append(job + ' must not set step defaults')
+        if any(entry.path == where + ('steps',) and entry.key in ('shell', 'working-directory')
+               for entry in entries):
+            problems.append(job + ' must run its steps in the default shell and directory')
+        declared = [entry.value for entry in entries if entry.path == where and entry.key == 'env']
+        env = [(entry.key, entry.value) for entry in entries if entry.path == where + ('env',)]
+        if declared != ([''] if JOB_ENV[job] else []) or env != JOB_ENV[job]:
+            problems.append(job + ' must set exactly its pinned job environment')
+        for name, step in step_entries(entries, job):
+            label = step_label(name, step, job)
+            pinned = STEP_CONDITIONS.get((job, label))
+            if own_setting(step, job, 'if') != ([pinned] if pinned else []):
+                problems.append('a publishing step must keep its pinned condition: %s: %s' % (job, label))
     return problems
 
 
@@ -1037,10 +1217,12 @@ if args[:2] == ['image', 'inspect']:
                   'image-bugs-gc-linux-amd64', 'prepared-source.tar.gz',
                   'build-inputs.sha256', 'release-highlights.md']
         for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
-            jobs = workflow_jobs((root / path).read_text())
-            uploads = re.findall(
-                r'(?ms)^      - name: Upload prepared release artifacts[^\n]*\n'
-                r'(.*?)(?=^      - |\Z)', jobs['artifacts'])
+            text = (root / path).read_text()
+            jobs = workflow_jobs(text)
+            # Names, inputs and patterns come from the reader's keys; the
+            # transfer settings are held by transfer_problems.
+            self.assertEqual(transfer_problems(text), [])
+            uploads = platform_uploads(text)
             self.assertEqual(len(uploads), 7)
             for with_bundle in [False, True]:
                 with self.subTest(path=path, with_bundle=with_bundle):
@@ -1056,20 +1238,14 @@ if args[:2] == ['image', 'inspect']:
                         expected['release-build-' + platform] = names
                     files = [name for names in expected.values() for name in names]
                     selected = []
-                    for upload in uploads:
-                        name = re.search(r'^          name: (.+)$', upload, re.M).group(1)
+                    for name, patterns in uploads.items():
                         self.assertIn(name, expected)
-                        self.assertIn('compression-level: 0', upload)
-                        self.assertIn('if-no-files-found: error', upload)
-                        patterns = re.findall(r'^            (.+)$', upload, re.M)
                         matched = [f for f in files if any(fnmatch.fnmatchcase(f, p) for p in patterns)]
                         self.assertCountEqual(matched, expected[name])
                         self.assertFalse(any(fnmatch.fnmatchcase('go-cache.tar', p) for p in patterns))
                         selected.extend(matched)
                     self.assertCountEqual(selected, files)
-            release = jobs['release']
-            self.assertIn('pattern: release-build-*', release)
-            self.assertIn('merge-multiple: true', release)
+            release = live_lines(jobs['release'])
             self.assertIn('sha256sum -c build-inputs.sha256', release)
             self.assertIn('sha256sum -c checksums.txt', release)
 
@@ -1780,6 +1956,170 @@ if args[:2] == ['image', 'inspect']:
                     found = guard(mutate_job(text, job, old, new))
                     for problem in problems:
                         self.assertIn(problem, found)
+
+    def mutate_step(self, text, job, name, old, new):
+        """Replace OLD with NEW inside JOB's one step NAME only."""
+        step = workflow_steps(workflow_jobs(text)[job])[name]
+        self.assertTrue(step, 'control target is not unique: ' + name)
+        self.assertEqual(text.count(step), 1, 'control target is not unique: ' + name)
+        self.assertEqual(step.count(old), 1, 'control target is not unique: ' + old)
+        return text.replace(step, step.replace(old, new, 1), 1)
+
+    # regression: #5091 — an unread line among any job's own keys, or under its
+    # permissions or environment, is refused, in jobs no guard names too.
+    def test_unread_grants_in_every_job(self):
+        grant = '    permissions:\n      contents: read\n'
+        plants = {
+            'job-permissions-quoted-key': ('guard', grant, '    "permissions":\n      contents: write\n',
+                                           '"permissions":'),
+            'job-permissions-spaced-key': ('resolve', '    permissions:\n', '    permissions :\n      packages: write\n',
+                                           'permissions :'),
+            'job-permissions-flow-mapping': ('changelog-roll', '    permissions:\n',
+                                             '    permissions: {contents: write}\n', 'permissions: {contents: write}'),
+            'grant-quoted-key': ('guard', grant, '    permissions:\n      "contents": write\n', '"contents": write'),
+            'grant-block-scalar': ('guard', grant, '    permissions:\n      contents: >-\n        write\n',
+                                   'contents: >-'),
+            'environment-quoted-key': ('guard', grant, "    'environment': release\n" + grant,
+                                       "'environment': release"),
+            'environment-flow-mapping': ('changelog-roll', '    environment: board-writer\n',
+                                         '    environment: {name: release}\n', 'environment: {name: release}'),
+            'environment-name-quoted-key': ('resolve', '    permissions:\n',
+                                            '    environment:\n      "name": release\n    permissions:\n',
+                                            '"name": release'),
+            'new-job-quoted-grant': (None, '', '  extra:\n    runs-on: medici-builder-release\n'
+                                     '    "permissions": write-all\n', '"permissions": write-all'),
+        }
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            self.assertEqual(workflow_keys.read(text)[1], [], 'the workflow holds unread lines')
+            self.assertEqual(publication_problems(text), [])
+            for name, (job, old, new, line) in plants.items():
+                with self.subTest(path=path, plant=name):
+                    found = publication_problems(plant(text, job, old, new))
+                    self.assertTrue(any(found_line.endswith(UNREAD + line) for found_line in found), found)
+
+    # regression: #5091 — upload and download settings read as keys, never as
+    # text: a comment holding the expected setting never stands in for it.
+    def test_transfers_read_as_keys(self):
+        darwin = 'Upload prepared release artifacts (darwin-arm64)'
+        common = 'Upload prepared release artifacts (common)'
+        whole = 'the release-build-darwin-arm64 upload must send it whole, uncompressed, failing on no files'
+        merged = 'every release build download must read all release-build-* artifacts, merged, and nothing else'
+        native_in = 'runner-arm64 must download every release-build-* artifact, merged'
+        native_out = 'the native arm64 upload must hold exactly its own artifact'
+        reports = 'the report upload must send exactly the reports directory'
+        level = '          compression-level: 0\n'
+        empty = '          if-no-files-found: error\n'
+        pattern = '          pattern: release-build-*\n'
+        merge = '          merge-multiple: true\n'
+        extra = ('      - name: Upload more release files\n'
+                 '        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n'
+                 '        with:\n          name: release-build-extra\n          path: extra.bin\n')
+        native = '      - name: Build and check native arm64 verify-runner\n'
+        full = ('      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n'
+                '        with:\n' + pattern + merge + '          path: ${{ runner.temp }}/release-input\n')
+        steps = {
+            'upload-level-trailing-comment': (
+                'artifacts', darwin, level, '          compression-level: 6 # compression-level: 0\n', whole),
+            'upload-level-next-line-comment': (
+                'artifacts', darwin, level, '          compression-level: 9\n          # compression-level: 0\n', whole),
+            'upload-empty-trailing-comment': (
+                'artifacts', darwin, empty, '          if-no-files-found: warn # if-no-files-found: error\n', whole),
+            'upload-empty-next-line-comment': (
+                'artifacts', darwin, empty, '          if-no-files-found: ignore\n          # if-no-files-found: error\n',
+                whole),
+            'upload-extra-input': ('artifacts', darwin, level, level + '          overwrite: true\n', whole),
+            'native-upload-extra-input': (
+                'runner-arm64', 'Upload checked native arm64 image', level, level + '          overwrite: true\n',
+                native_out),
+            'native-download-extra-input': (
+                'release', 'Download checked native arm64 image', '          path: ' + NATIVE_IN + '\n',
+                '          path: ' + NATIVE_IN + '\n          pattern: release-*\n',
+                'the native arm64 download must read only its own artifact'),
+            'report-upload-path-widened': (
+                'test', UPLOAD, '          path: ${{ runner.temp }}/tv-reports/\n', '          path: ${{ runner.temp }}/\n',
+                reports),
+            'report-upload-extra-input': (
+                'test', UPLOAD, '          retention-days: 7\n', '          retention-days: 7\n          overwrite: true\n',
+                reports),
+        }
+        jobs = {
+            'download-merge-trailing-comment': ('release', merge, '          merge-multiple: false # merge-multiple: true\n',
+                                                merged),
+            'download-pattern-next-line-comment': (
+                'release', pattern, '          pattern: release-build-common\n          # pattern: release-build-*\n',
+                merged),
+            'download-extra-input': ('release', pattern, pattern + '          name: release-build-common\n', merged),
+            'native-download-sibling-input': ('runner-arm64', pattern, pattern + '          name: release-build-common\n',
+                                              native_in),
+            'native-download-stand-in': ('runner-arm64', pattern + merge,
+                                         '          pattern: release-build-common\n' + merge, native_in),
+            'second-release-build-upload': ('artifacts', '      - name: ' + common + '\n',
+                                            extra + '      - name: ' + common + '\n',
+                                            'only the platform uploads may name a release-build- artifact: '
+                                            'artifacts: Upload more release files'),
+        }
+        guards = (publication_problems, native_transport_problems, mutation_routing_problems)
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            for guard in guards:
+                self.assertEqual(guard(text), [])
+            for name, (job, step, old, new, problem) in steps.items():
+                with self.subTest(path=path, plant=name):
+                    mutant = self.mutate_step(text, job, step, old, new)
+                    self.assertIn(problem, [line for guard in guards for line in guard(mutant)])
+            for name, (job, old, new, problem) in jobs.items():
+                with self.subTest(path=path, plant=name):
+                    mutant = mutate_job(text, job, old, new)
+                    if name == 'native-download-stand-in':
+                        mutant = mutate_job(mutant, job, native, full + native)
+                    self.assertIn(problem, [line for guard in guards for line in guard(mutant)])
+
+    # regression: #5091 — a publishing job never changes whether, how or where
+    # its steps run.
+    def test_publisher_steps_run_as_written(self):
+        build = '      - name: Build, verify and publish the release images\n'
+        restore = '      - name: Restore the prepared source and verify release artifacts\n'
+        native = '      - name: Build and check native arm64 verify-runner\n'
+        preflight = '      - name: Preflight — required tooling\n'
+        receipt = "        if: steps.release-cache-save.outcome == 'success'\n"
+        condition = 'a publishing step must keep its pinned condition: '
+        plants = {
+            'build-step-skipped': ('release', build, build + '        if: false\n',
+                                   condition + 'release: Build, verify and publish the release images'),
+            'verify-step-skipped': ('release', restore, restore + "        if: ${{ github.event_name == 'never' }}\n",
+                                    condition + 'release: Restore the prepared source and verify release artifacts'),
+            'native-step-skipped': ('runner-arm64', native, native + '        if: ${{ false }}\n',
+                                    condition + 'runner-arm64: Build and check native arm64 verify-runner'),
+            'receipt-condition-widened': ('artifacts', receipt, '        if: always()\n',
+                                          condition + 'artifacts: Record release cache receipt'),
+            'step-shell': ('artifacts', preflight, preflight + "        shell: bash -c 'exit 0' {0}\n",
+                           'artifacts must run its steps in the default shell and directory'),
+            'step-directory': ('release', build, build + '        working-directory: tools\n',
+                               'release must run its steps in the default shell and directory'),
+            'job-defaults': ('release', '    runs-on: medici-builder-public-release\n',
+                             '    runs-on: medici-builder-public-release\n    defaults:\n      run:\n'
+                             '        working-directory: tools\n', 'release must not set step defaults'),
+            'job-env-added': ('runner-arm64', '    runs-on: ubuntu-24.04-arm\n',
+                              '    runs-on: ubuntu-24.04-arm\n    env:\n      GOTOOLCHAIN: local\n',
+                              'runner-arm64 must set exactly its pinned job environment'),
+            'job-env-extended': ('artifacts', '      CGO_ENABLED: "0"\n', '      CGO_ENABLED: "0"\n      GOTOOLCHAIN: local\n',
+                                 'artifacts must set exactly its pinned job environment'),
+            'job-env-expression': ('release', '    runs-on: medici-builder-public-release\n',
+                                   '    runs-on: medici-builder-public-release\n    env: ${{ fromJSON(vars.RELEASE_ENV) }}\n',
+                                   'release must set exactly its pinned job environment'),
+        }
+        top = '\njobs:\n'
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            self.assertEqual(publication_problems(text), [])
+            for name, (job, old, new, problem) in plants.items():
+                with self.subTest(path=path, plant=name):
+                    self.assertIn(problem, publication_problems(mutate_job(text, job, old, new)))
+            with self.subTest(path=path, plant='workflow-defaults'):
+                self.assertEqual(text.count(top), 1, 'control target is not unique')
+                mutant = text.replace(top, '\ndefaults:\n  run:\n    working-directory: tools\n' + top, 1)
+                self.assertIn('the workflow must not set step defaults', publication_problems(mutant))
 
     def test_wrong_seed_version_stops_before_registry_contact(self):
         (self.root / 'plugins/assay/.claude-plugin/plugin.json').write_text('{"version":"9.9.9"}')

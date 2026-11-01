@@ -4,8 +4,9 @@ images_test.py cannot prove that CI runs it: if the step stopped running that
 suite, its own checks would never execute. This module reads ci.yml directly,
 through the strict reader in workflow_keys.py, and requires the step to run
 images_test (and this module), to fail its shard when the tests fail, and to
-stop at a fixed deadline. A line at top level or in the job that the reader
-does not accept is refused, so another spelling of a setting cannot stand in
+stop at a fixed deadline. A line the reader does not accept is refused when it
+sits at top level, in the job, among any job's own keys, or under any job's
+permissions or environment, so another spelling of a setting cannot stand in
 for the one checked. Offline; reads only workflow text.
 
 Two runners execute it. The step itself runs it on the rest shard. The Go
@@ -104,9 +105,10 @@ def step_keys(entries):
 def step_problems(text):
     """Why the release contract step would not run, fail closed, or finish.
 
-    Settings are read with workflow_keys: a line at top level or in the job
-    written in a form that reader does not accept is refused, so no other
-    spelling of a setting can stand in for the one checked here.
+    Settings are read with workflow_keys: a line written in a form that
+    reader does not accept is refused at top level, in the job, among any
+    job's own keys and under any job's permissions or environment, so no
+    other spelling of a setting can stand in for the one checked here.
     """
     entries, unread = workflow_keys.read(text)
     step = step_keys(entries)
@@ -316,6 +318,35 @@ class ReleaseContractStepTest(unittest.TestCase):
         }.items():
             with self.subTest(name=name):
                 self.assertTrue(read('a:\n' + line + '\n')[1], name)
+
+    # regression: #5091 — an unread line among any job's own keys, or under its
+    # permissions or environment, is refused, in jobs other than JOB too.
+    def test_unread_grants_in_every_job(self):
+        text = CI.read_text()
+        self.assertEqual(workflow_keys.read(text)[1], [], 'ci.yml holds unread lines')
+        self.assertEqual(step_problems(text), [])
+        unread = 'is not in the plain form this check reads: '
+        plants = {
+            'job-permissions-quoted-key': ('scope', '    runs-on: ubuntu-latest\n',
+                                           '    runs-on: ubuntu-latest\n    "permissions": write-all\n',
+                                           '"permissions": write-all'),
+            'grant-quoted-key': ('skillslint', '    needs: scope\n',
+                                 '    needs: scope\n    permissions:\n      "contents": write\n',
+                                 '"contents": write'),
+            'environment-flow-mapping': ('cursor-generated', '    needs: scope\n',
+                                         '    needs: scope\n    environment: {name: release}\n',
+                                         'environment: {name: release}'),
+            'environment-name-spaced-key': ('harnesslint', '  harnesslint:\n',
+                                            '  harnesslint:\n    environment:\n      name : release\n',
+                                            'name : release'),
+        }
+        for name, (job, old, new, line) in plants.items():
+            with self.subTest(name=name):
+                scope = old + job_block(text, job) if old.startswith('  ' + job) else job_block(text, job)
+                self.assertEqual(text.count(scope), 1, 'control scope is not unique')
+                self.assertEqual(scope.count(old), 1, 'control target is not unique')
+                problems = step_problems(text.replace(scope, scope.replace(old, new, 1), 1))
+                self.assertTrue(any(found.endswith(unread + line) for found in problems), problems)
 
     # regression: #5091
     def test_backstop_discovers_all(self):

@@ -114,12 +114,23 @@ def scalar_allowed(path, key):
     return (path[-1:] == ('steps',) and key == 'run') or path[-2:] == ('steps', 'with')
 
 
+GRANTS = ('permissions', 'environment')
+
+
 def unread_problems(unread, *jobs):
     """One problem per unread line among the top-level keys, the keys directly
-    under any of them (each job's name, for one), or anywhere in one of JOBS."""
+    under any of them (each job's name, for one), anywhere in one of JOBS, and,
+    in every job, among the job's own keys or under its GRANTS.
+
+    The last rule holds in jobs no guard names: an unread line among a job's
+    keys can be a write grant or an environment in another spelling (a quoted
+    key, say), and so can an unread line under its `permissions` or
+    `environment`, so neither is ever skipped.
+    """
     problems = []
     for path, number, line in unread:
-        if len(path) < 2 or (path[0] == 'jobs' and path[1] in jobs):
+        if len(path) < 2 or (path[0] == 'jobs' and (
+                path[1] in jobs or len(path) == 2 or path[2] in GRANTS)):
             problems.append('line %d is not in the plain form this check reads: %s'
                             % (number, line.strip()))
     return problems
