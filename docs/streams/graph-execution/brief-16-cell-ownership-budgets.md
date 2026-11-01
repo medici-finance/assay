@@ -49,7 +49,7 @@ consumers:
 - 'tools/desk: follow-up graph-execution/14'
 - 'workflow/store: follow-up graph-execution/19'
 - 'workflow/controller: follow-up graph-execution/21'
-- 'spec/operator-incarnation-v1.md: follow-up graph-execution/16 (this brief; flips to fixed-here when the implementation edits the path)'
+- 'spec/operator-incarnation-v1.md: fixed-here (record contract landed by the 2026-10-31 schema/test preparation; enforcement remains owed)'
 - 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
 version: 7
 id: db922112-28f0-44c0-b120-9d6c4f56e103
@@ -59,9 +59,9 @@ id: db922112-28f0-44c0-b120-9d6c4f56e103
 
 ## Context
 
-Schema/test preparation (2026-10-31) additionally declares `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py` and `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md`. These are partial preparation; all original delivery obligations remain.
+Schema/test preparation (2026-10-31) added `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py` and `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` to the `files:` line below. These are partial preparation; all original delivery obligations remain.
 
-files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned), `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned) — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned).
+files: `drainloop/ownership.go`, `drainloop/ownership_test.go` (planned), `drainloop/budget.go`, `drainloop/budget_test.go` (planned), `drainloop/restore_test.go`, `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md`, `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`, `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py`, `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`.
 
 facts: 04 owns basic effect receipts and reconcile-before-retry. This extension adds ownership/budgets without replacing that protocol or widening the six-method Loop interface.
 
@@ -110,6 +110,13 @@ Default if no answer: none — blocks until answered; keep all policy choices pe
    authority with equivalent non-restorable-current semantics. A Git revision or
    restored database value is never current authority. This choice creates no
    Kubernetes resources or credentials.
+   Two points stay open for the person answering; this block recommends neither:
+   (a) whether qualified role executors may read the signing material on the
+   volume they mount, or only the operator may, given that an executor able to
+   read the key can mint what it is meant to check; (b) whether snapshots and
+   cluster backups of the volume itself are excluded from restore, so that
+   restoring database and volume together cannot make an old incarnation look
+   current (the non-restorable-current semantics the alternative names).
 **Dimension 2 — Reopen procedure (2A / 2B).** Recommend operator-confirmed whole-group stop plus old
    socket/capability invalidation and independent credential revocation/restriction
    (or expiry), followed by external reconciliation, rotation and fresh executors.
@@ -140,19 +147,23 @@ Default if no answer: none — blocks until answered; keep all policy choices pe
    reset per window/scope/incarnation. Missing/second reset exhausts that window.
    No relaxing alternative is proposed under this gate.
 
-**Exact response:** reply `1` to approve only the recommended bounded design
-(1A/2A/3A/4A + 5 unchanged), `2` to hold, or `3` followed by the explicit
-alternative selections/narrowed scope and rationale. For either approval, name
-the operator accountable for the concrete profile. Missing or ambiguous selections
+**Exact response:** name this brief in the reply. Reply `graph-execution/16: 1`
+to approve only the recommended bounded design (1A/2A/3A/4A + 5 unchanged),
+`graph-execution/16: 2` to hold, or `graph-execution/16: 3` followed by the
+explicit alternative selections/narrowed scope and rationale. A bare option
+number does not name the brief and is not recorded as a ruling. For either
+approval, name the operator accountable for the concrete profile and answer the
+two open Dimension 1 points. Missing or ambiguous selections
 stay held. No reply authorizes deployment, credentials or admission reopening.
 
 **Evidence available for the ruling:** implementation tests
-`TestCellFenceBoundary`, `TestIncarnationContractFields` and
-`TestCellCheckpointRoundTrip`, with committed negative mutation controls,
-exercise the pure contract and separately
-invoked fake effect boundary. They cover restored owner/generation under an old
-incarnation, stale tuple, absent protected current state, activation/key mismatch,
-retained pause/cancellation/unknown usage and all attempt phases. They do not
+`TestCellFenceBoundary`, `TestIncarnationContractFields`,
+`TestCellCheckpointRoundTrip` and `TestCheckpointAbsentFieldsHeld`, with a
+committed negative mutation control per guard, exercise the pure contract and
+separately invoked fake effect boundary. They cover restored owner/generation
+under an old incarnation, stale tuple, absent or unsupported protected current
+state, activation/key mismatch, contract wire names, refusal of a checkpoint with
+any field absent, retained pause/cancellation/unknown usage and all attempt phases. They do not
 qualify Kubernetes containment, signature custody, real provider enforcement,
 atomic reservations, concurrent owners or PostgreSQL rollback. Those checks remain
 could-not-check in this preparation and required before activation. Independent

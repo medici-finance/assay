@@ -7,7 +7,8 @@ installed. A passing record comparison is not effect authorization.
 ## Record fields
 
 The ordered field inventory below is checked against the exported Go type
-`drainloop.OperatorIncarnation`. JSON names are stable wire names.
+`drainloop.OperatorIncarnation`: field order, Go field name and JSON wire name.
+JSON names are stable wire names, and the `Schema` line states the exact value.
 
 <!-- incarnation-fields:begin -->
 - `Schema` — `schema`; exactly `operator-incarnation/v1`.
@@ -68,11 +69,16 @@ contract without importing drainloop. This preparation changes no consumer behav
 restored old owner and generation are refused when protected current incarnation
 differs, and the valid current tuple reaches exactly one fake effect. Missing
 source, incarnation, activation, stop confirmation, pause, stale generation,
-wrong cell/owner/backend and key mismatch are negative controls.
+wrong cell/owner/backend and key mismatch are negative controls. Each guard of
+`MatchCellFence` also has a one-field case that keeps every other record
+consistent: unsupported current schema; empty current cell, ID or key reference;
+an owned cell that differs from the current one while the presented tuple equals
+the owned one; and empty owned owner, generation or backend.
 
-`TestIncarnationContractFields` dereferences the field inventory in both
-directions. The committed incarnation mutations in
-`drainloop/testdata/effect_mutations.py` must fail named runtime assertions.
+`TestIncarnationContractFields` compares the field inventory with the exported
+type in both directions, Go names and wire names together. The committed
+incarnation mutations in `drainloop/testdata/effect_mutations.py`, one per guard
+plus wire-name drift, must fail named runtime assertions.
 
 These are implementation tests of a pure record contract. They do not satisfy the
 whole GE/16 Verify table, prove real provider fencing or qualify PostgreSQL rollback,

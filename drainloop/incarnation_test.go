@@ -56,6 +56,13 @@ func cellFenceFixture() fixtureBoundary {
 	}
 }
 
+// setCurrent edits the protected current record the fixture source returns.
+func setCurrent(p *fixtureBoundary, edit func(*OperatorIncarnation)) {
+	current := p.source.(fixtureSource).current
+	edit(&current)
+	p.source = fixtureSource{current: current}
+}
+
 // regression: F-ge16-schema
 func TestCellFenceBoundary(t *testing.T) {
 	cases := []struct {
@@ -84,6 +91,35 @@ func TestCellFenceBoundary(t *testing.T) {
 		{"missing-activation", func(p *fixtureBoundary, _ *CellOwnership) { p.active = CellActivation{} }},
 		{"paused", func(p *fixtureBoundary, _ *CellOwnership) { p.active.Paused = true }},
 		{"unconfirmed-stop", func(p *fixtureBoundary, _ *CellOwnership) { p.active.StopReceipt = "" }},
+		// Each case below breaks exactly one guard and keeps every other record
+		// consistent with it, so no neighbouring guard refuses on its behalf.
+		{"unsupported-schema", func(p *fixtureBoundary, _ *CellOwnership) {
+			setCurrent(p, func(c *OperatorIncarnation) { c.Schema = "operator-incarnation/v0" })
+		}},
+		{"empty-current-cell", func(p *fixtureBoundary, cap *CellOwnership) {
+			setCurrent(p, func(c *OperatorIncarnation) { c.CellID = "" })
+			p.owned.CellID, cap.CellID = "", ""
+		}},
+		{"empty-current-id", func(p *fixtureBoundary, cap *CellOwnership) {
+			setCurrent(p, func(c *OperatorIncarnation) { c.ID = "" })
+			p.active.IncarnationID, p.owned.IncarnationID, cap.IncarnationID = "", "", ""
+		}},
+		{"empty-current-key", func(p *fixtureBoundary, _ *CellOwnership) {
+			setCurrent(p, func(c *OperatorIncarnation) { c.KeyRef = "" })
+			p.active.KeyRef = ""
+		}},
+		{"owned-cell-not-current", func(p *fixtureBoundary, cap *CellOwnership) {
+			p.owned.CellID, cap.CellID = "other-cell", "other-cell"
+		}},
+		{"empty-owner", func(p *fixtureBoundary, cap *CellOwnership) {
+			p.owned.OwnerID, cap.OwnerID = "", ""
+		}},
+		{"empty-generation", func(p *fixtureBoundary, cap *CellOwnership) {
+			p.owned.Generation, cap.Generation = "", ""
+		}},
+		{"empty-backend", func(p *fixtureBoundary, cap *CellOwnership) {
+			p.owned.Backend, cap.Backend = "", ""
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -107,6 +143,7 @@ func TestIncarnationContractFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Each inventory line reads "- `GoName` — `wire_name`; ...".
 	var names []string
 	inFields := false
 	for _, line := range strings.Split(string(body), "\n") {
@@ -119,7 +156,14 @@ func TestIncarnationContractFields(t *testing.T) {
 			break
 		}
 		if inFields && strings.HasPrefix(line, "- `") {
-			names = append(names, strings.Split(line, "`")[1])
+			parts := strings.Split(line, "`")
+			if len(parts) < 4 {
+				t.Fatalf("inventory line names no wire name: %q", line)
+			}
+			names = append(names, parts[1]+"="+parts[3])
+			if parts[1] == "Schema" && !strings.Contains(line, "`"+IncarnationSchema+"`") {
+				t.Fatalf("inventory Schema line does not state %q: %q", IncarnationSchema, line)
+			}
 		}
 	}
 	typ := reflect.TypeOf(OperatorIncarnation{})
@@ -127,7 +171,8 @@ func TestIncarnationContractFields(t *testing.T) {
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		if field.IsExported() {
-			exported = append(exported, field.Name)
+			wire, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+			exported = append(exported, field.Name+"="+wire)
 		}
 	}
 	if !reflect.DeepEqual(names, exported) {

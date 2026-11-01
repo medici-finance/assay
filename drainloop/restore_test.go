@@ -1,10 +1,11 @@
 package drainloop
 
 import (
-	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -14,10 +15,8 @@ func readCellFixture(t *testing.T) CellCheckpoint {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var state CellCheckpoint
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&state); err != nil {
+	state, err := DecodeCellCheckpoint(body)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return state
@@ -26,12 +25,15 @@ func readCellFixture(t *testing.T) CellCheckpoint {
 // regression: F-ge16-schema
 func TestCellCheckpointRoundTrip(t *testing.T) {
 	state := readCellFixture(t)
+	if state.Schema != CellCheckpointSchema {
+		t.Fatalf("fixture schema %q, want %q", state.Schema, CellCheckpointSchema)
+	}
 	body, err := json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var restored CellCheckpoint
-	if err := json.Unmarshal(body, &restored); err != nil {
+	restored, err := DecodeCellCheckpoint(body)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(state, restored) {
@@ -41,10 +43,14 @@ func TestCellCheckpointRoundTrip(t *testing.T) {
 		len(restored.OverrideRefs) != 1 || len(restored.PendingEffects) != 1 {
 		t.Fatal("stop/cancellation/override/unknown effect lost")
 	}
-	if len(restored.Budget.Balances) != 2 ||
-		restored.Budget.Balances[0].Unit == restored.Budget.Balances[1].Unit ||
-		restored.Budget.Balances[1].Consumed != nil {
+	balances := restored.Budget.Balances
+	if len(balances) != 2 || balances[0].Unit == balances[1].Unit ||
+		balances[1].Consumed != nil {
 		t.Fatal("quota units merged or unknown usage became zero")
+	}
+	if balances[0].WindowStart == balances[1].WindowStart &&
+		balances[0].WindowEnd == balances[1].WindowEnd {
+		t.Fatal("fixture windows are not distinct")
 	}
 	if len(restored.Budget.Reservations) != 1 ||
 		!restored.Budget.Reservations[0].Unknown ||
@@ -72,5 +78,82 @@ func TestCellCheckpointRoundTrip(t *testing.T) {
 	p.owned = restored.Ownership
 	if err := p.apply(restored.Ownership); err == nil || p.effects != 0 {
 		t.Fatal("restored paused state admitted an effect")
+	}
+}
+
+// eachKey calls visit once per object key at every depth of node, with that key
+// removed from the shared tree; the key is restored before the next visit.
+func eachKey(node any, path string, visit func(string)) {
+	switch n := node.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(n))
+		for key := range n {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			child := n[key]
+			delete(n, key)
+			visit(path + "." + key)
+			n[key] = child
+			eachKey(child, path+"."+key, visit)
+		}
+	case []any:
+		for i, child := range n {
+			eachKey(child, fmt.Sprintf("%s[%d]", path, i), visit)
+		}
+	}
+}
+
+// regression: F-ge16-schema
+func TestCheckpointAbsentFieldsHeld(t *testing.T) {
+	body, err := os.ReadFile("testdata/cell-checkpoint.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeCellCheckpoint(body); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+	var tree any
+	if err := json.Unmarshal(body, &tree); err != nil {
+		t.Fatal(err)
+	}
+	removed := 0
+	eachKey(tree, "checkpoint", func(path string) {
+		removed++
+		edited, err := json.Marshal(tree)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := DecodeCellCheckpoint(edited); err == nil {
+			t.Errorf("absent %s decoded without error", path)
+		}
+	})
+	// Every field of every record in the fixture, nested ones included.
+	if removed < 100 {
+		t.Fatalf("walked %d keys; the fixture walk did not reach every record", removed)
+	}
+	refused := map[string]func(map[string]any){
+		"unsupported schema": func(m map[string]any) { m["schema"] = "cell-checkpoint/v0" },
+		"null activation":    func(m map[string]any) { m["activation"] = nil },
+		"null effect list":   func(m map[string]any) { m["pending_effects"] = nil },
+		"unknown field":      func(m map[string]any) { m["paused_hint"] = false },
+	}
+	for name, edit := range refused {
+		var m map[string]any
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Fatal(err)
+		}
+		edit(m)
+		edited, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := DecodeCellCheckpoint(edited); err == nil {
+			t.Errorf("%s decoded without error", name)
+		}
+	}
+	if _, err := DecodeCellCheckpoint(append(body, []byte(" {}")...)); err == nil {
+		t.Error("trailing data decoded without error")
 	}
 }

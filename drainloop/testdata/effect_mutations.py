@@ -61,6 +61,48 @@ mutations += [
     ("checkpoint-stop-lost", "ownership.go", '`json:"stopped"`',
      '`json:"stop_discarded"`', "TestCellCheckpointRoundTrip"),
 ]
+# GE/16 preparation, review round 1: one mutant per MatchCellFence guard, the
+# wire names, the fixture's schema and windows, and the strict checkpoint decoder.
+mutations += [
+    ("schema-unchecked", "incarnation.go", "current.Schema != IncarnationSchema",
+     "false", "TestCellFenceBoundary"),
+    ("current-cell-empty-ok", "incarnation.go", 'current.CellID == ""',
+     "false", "TestCellFenceBoundary"),
+    ("current-id-empty-ok", "incarnation.go", 'current.ID == ""',
+     "false", "TestCellFenceBoundary"),
+    ("current-key-empty-ok", "incarnation.go", 'current.KeyRef == ""',
+     "false", "TestCellFenceBoundary"),
+    ("pause-ignored", "incarnation.go", "active.Paused ||",
+     "false ||", "TestCellFenceBoundary"),
+    ("stop-receipt-ignored", "incarnation.go", 'active.StopReceipt == ""',
+     "false", "TestCellFenceBoundary"),
+    ("activation-id-ignored", "incarnation.go", "active.IncarnationID != current.ID",
+     "false", "TestCellFenceBoundary"),
+    ("activation-key-ignored", "incarnation.go", "active.KeyRef != current.KeyRef",
+     "false", "TestCellFenceBoundary"),
+    ("owned-cell-ignored", "incarnation.go", "owned.CellID != current.CellID",
+     "false", "TestCellFenceBoundary"),
+    ("owner-empty-ok", "incarnation.go", 'owned.OwnerID == ""',
+     "false", "TestCellFenceBoundary"),
+    ("generation-empty-ok", "incarnation.go", 'owned.Generation == ""',
+     "false", "TestCellFenceBoundary"),
+    ("backend-empty-ok", "incarnation.go", 'owned.Backend == ""',
+     "false", "TestCellFenceBoundary"),
+    ("key-wire-name-drift", "incarnation.go", 'KeyRef string `json:"key_ref"`',
+     'KeyRef string `json:"key"`', "TestIncarnationContractFields"),
+    ("schema-wire-name-drift", "incarnation.go", 'Schema string `json:"schema"`',
+     'Schema string `json:"kind"`', "TestIncarnationContractFields"),
+    ("fixture-schema-drift", "testdata/cell-checkpoint.json", '"schema": "cell-checkpoint/v1"',
+     '"schema": "cell-checkpoint/v0"', "TestCellCheckpointRoundTrip"),
+    ("fixture-windows-merged", "testdata/cell-checkpoint.json",
+     '"window_end": "2026-11-01T00:00:00Z"', '"window_end": "2026-10-01T01:00:00Z"',
+     "TestCellCheckpointRoundTrip"),
+    ("absent-field-accepted", "ownership.go",
+     'return fmt.Errorf("%s.%s: field absent", path, name)', "continue",
+     "TestCheckpointAbsentFieldsHeld"),
+    ("checkpoint-schema-unchecked", "ownership.go", "state.Schema != CellCheckpointSchema",
+     "false", "TestCheckpointAbsentFieldsHeld"),
+]
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}

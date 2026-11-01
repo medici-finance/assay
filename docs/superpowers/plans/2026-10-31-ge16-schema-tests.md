@@ -92,12 +92,25 @@ documentation and changelog fragment.
 - [x] Preserve original Task/Verify/Evidence/dependency obligations.
 - [x] Prepare bounded custody/rotation, reopen, budget, provider and pacing choices.
 - [x] Commit decision-ready preparation; dispatcher filed decision issue #5111 through centralized ensure at spec. The issue remains pending, not approved.
-- [ ] Publish draft with supported issue linkage, implementation tests and mutation results.
-- [ ] Hand off exact PR/head and unresolved runtime obligations without a lifecycle change.
+- [x] Publish draft with supported issue linkage, implementation tests and mutation results.
+- [x] Hand off exact PR/head and unresolved runtime obligations without a lifecycle change.
+
+### Task 4: Review round 1
+
+**Files:** Task 1 and 2 files; the GE/16 decision block; this plan.
+
+- [x] Reply form names the brief (`graph-execution/16: <option>`), matching the decision gate.
+- [x] One consistent single-field negative case and one committed mutant per `MatchCellFence` guard.
+- [x] Contract test compares wire names and the stated schema; fixture schema and distinct windows asserted.
+- [x] `DecodeCellCheckpoint` refuses absent, unknown and unsupported-schema records; absent hold flags never read as not held.
+- [x] Dimension 1 open points (executor key read access, volume snapshot restore) recorded as open, not decided.
+- [ ] Workflow path trigger for `spec/**` and the out-of-checkout spec read: linked follow-up, needs workflow scope.
 
 ## Local permission checkpoint
 
 The first shell write created no source files: `zsh:1: can't create temp file
-for here document: operation not permitted`. The dispatcher identified the OS
-sandbox denial and authorized the supported permission escalation for the same
-command; the same write then succeeded. No desk guard refusal was bypassed.
+for here document: operation not permitted`, an OS sandbox denial. The same
+command was then re-run with a permission escalation and succeeded. Which session
+or person approved that escalation is not recorded: the earlier text said only
+"the dispatcher", and this plan does not identify it further. No desk guard
+refusal was bypassed.
