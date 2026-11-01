@@ -3,8 +3,8 @@ brief: assay:assay:desk-containers:31
 title: Operate trusted compatibility Kubernetes desks through cellctl
 why: Operators need interactive agents with retained files in Kubernetes without first replacing desk scheduling, verification or the whole managed runtime. The existing package opens shells; this bounded compatibility path starts the actual configured agents and makes reconnect and controlled stop explicit.
 wave: 8
-depends: ["desk-containers/06", "desk-containers/15"]
-unblocks: ["desk-containers/32"]
+depends: ["desk-containers/06", "desk-containers/15", "desktools-v2/16"]
+unblocks: ["desk-containers/32", "desktools-v2/17"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -217,6 +217,12 @@ is inferred from code completion, a merge, a Running Pod or a local bookkeeping 
 - Observations: the existing cell-op-v1 result/plan plus operator receipts at run/kubecompat/<role>.json. The qualified profile publishes no new work/claim authority.
 - Qualification handoff: actual candidate image digest, rendered component, explicit config, initialized-volume provenance, fake transport cases and exact cold/start/attach/detach/status/stop/new-start CLI sequence. All named new paths and tests below are deliverables, not already-run evidence.
 
+The source-mounted preparation CLI is routed as `pending` under this brief in the
+existing CLI migration registry. It is an operator entrypoint, not a test or an image-only
+launcher exemption. Its argparse parser has not been migrated; the existing
+`desktools-v2/16` reference and `desktools-v2/17` final gate retain that obligation.
+This checkpoint does not claim shared-parser qualification.
+
 ## Verify
 
 Every named test must execute and emit its named PASS; a go test invocation matching no test is not evidence. The delivery inputs in row 7 come from the actual merged implementation PR that carries genuine candidate pins and closes the required acceptance, and its actual first parent, never a moving main or this authoring change. A source-checkpoint PR merged while those requirements remain held is not that delivery: the later final delivery PR must carry the remaining pins and acceptance, and provide its immutable merge SHA and first parent for row 7. Until then this brief remains blocked.
@@ -231,6 +237,7 @@ Every named test must execute and emit its named PASS; a go test invocation matc
 | 6 | check:ci +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./cmd/cellctl -run '^TestKubeCompatParity$' > "$o" && grep -F -- '--- PASS: TestKubeCompatParity ' "$o")` | exit 0, named PASS; non-selected k8s/house/container/scrubbed routing and current cell-op JSON/plan/confirmation contract remain unchanged; docs examples replay against the fake production transport |
 | 7 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/31 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the actual immutable implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved, and resolve unchecked required consumers rather than treating them as PASS |
 | 8 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./internal/kubecompat -run '^TestKubeCompatPreparation$' > "$o" && grep -F -- '--- PASS: TestKubeCompatPreparation ' "$o")` | exit 0, named PASS; all five cold-preparation handoffs use the actual launcher and canonical retained state without invoking an agent/model; plan writes nothing; readback reproduces unused prepared bindings without writes/children and refuses changed inputs/foreign state; package/version, preparer identity, missing inputs, existing descriptor/history and concurrent preparation refuse; bypassing the read-only default or version check fails |
+| 9 | check:ci +dereference | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./internal/clicontract -run '^TestCLIInventory$' > "$o" && grep -F -- '--- PASS: TestCLIInventory ' "$o")` | exit 0, named PASS; the preparation operator entrypoint has an explicit pending route, real owner and reference/final-gate links; no scanner exception or parser-migration claim |
 
 ## Definition of Done
 

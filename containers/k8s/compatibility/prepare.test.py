@@ -130,6 +130,8 @@ class Preparation(unittest.TestCase):
         path.write_text(json.dumps(state))
         with self.assertRaises(prepare.Error):
             self.run_prepare(args)
+        state.update(state='prepared', pod_uid='')
+        path.write_text(json.dumps(state))
         history.rename(self.work / 'saved-history')
         history.symlink_to(self.work / 'saved-history')
         with self.assertRaises(prepare.Error):
@@ -163,6 +165,33 @@ class Preparation(unittest.TestCase):
             with self.assertRaises(prepare.Error):
                 self.run_prepare(self.args())
             self.assertFalse((self.work / 'compat-launch.json').exists())
+
+    def test_history_created_while_acquiring_lock_is_held(self):
+        history = self.work / '.assay-compat'
+
+        def acquire_with_predecessor(fd, operation):
+            # Deterministically put another actor's history between the first
+            # cold check and the check after successful lock acquisition.
+            history.mkdir()
+            (history / 'custody-marker').write_text('unknown predecessor')
+
+        with patch.object(prepare.fcntl, 'flock', side_effect=acquire_with_predecessor), \
+             patch.object(prepare.subprocess, 'run', side_effect=AssertionError('child started after history appeared')):
+            with self.assertRaisesRegex(prepare.Error, 'history exists'):
+                self.run_prepare(self.args())
+        self.assertFalse((self.work / 'compat-launch.json').exists())
+        self.assertEqual((history / 'custody-marker').read_text(), 'unknown predecessor')
+
+    def test_linked_retained_work_directory_is_held_without_writes(self):
+        link = self.work / 'linked-work'
+        link.symlink_to(self.work, target_is_directory=True)
+        args = self.args()
+        args.work = str(link)
+        before = sorted(self.work.iterdir())
+        with patch.object(prepare.subprocess, 'run', side_effect=AssertionError('child started through linked work')):
+            with self.assertRaisesRegex(prepare.Error, 'explicit retained work directory required'):
+                self.run_prepare(args)
+        self.assertEqual(sorted(self.work.iterdir()), before)
 
     def test_floating_package_or_model_is_not_a_pin(self):
         for field, value in [('agent_version', 'latest'), ('agent_version', '^2.1.228'),

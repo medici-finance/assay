@@ -2864,6 +2864,25 @@
       "owner": "desk-containers/31",
       "state": "exempt",
       "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
+    },
+    {
+      "executable": "prepare.py",
+      "path": "containers/k8s/compatibility/prepare.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "source-mounted operator preparation adapter; not included in the published role images",
+      "consumers": [
+        "docs/kubernetes-compatibility-preparation.md",
+        "containers/k8s/components/compatibility-cellctl/README.md",
+        "containers/k8s/compatibility/prepare.test.py",
+        "tools/desk/internal/kubecompat/profile_contract_test.go",
+        "docs/streams/desk-containers/brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md"
+      ],
+      "parser": "Python argparse; 11 options including mutually exclusive prepare/readback modes",
+      "complexity": "simple",
+      "basis": "169 lines at a504b956; bounded cold-volume preparation; no runtime or work authority",
+      "owner": "desk-containers/31",
+      "state": "pending"
     }
   ]
 }
