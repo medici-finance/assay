@@ -19,6 +19,7 @@ pin does not read those.
 import importlib.util
 from pathlib import Path
 import re
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -170,11 +171,11 @@ def backstop_problems(text):
 class ReleaseContractStepTest(unittest.TestCase):
     # regression: #5091
     def test_ci_step_runs_bounded(self):
-        self.assertEqual(step_problems(CI.read_text()), [])
+        self.assertEqual(step_problems(workflow_keys.load(CI)), [])
 
     # regression: #5091
     def test_ci_step_controls(self):
-        text = CI.read_text()
+        text = workflow_keys.load(CI)
         self.assertEqual(step_problems(text), [], 'controls need a healthy step to mutate')
         step = step_block(job_block(text, JOB), STEP)
         run = re.search(r'(?m)^        run: .*$', step).group(0)
@@ -225,7 +226,7 @@ class ReleaseContractStepTest(unittest.TestCase):
 
     # regression: #5091
     def test_ci_step_other_spellings(self):
-        text = CI.read_text()
+        text = workflow_keys.load(CI)
         self.assertEqual(step_problems(text), [])
         job = job_block(text, JOB)
         step = step_block(job, STEP)
@@ -268,7 +269,7 @@ class ReleaseContractStepTest(unittest.TestCase):
 
     # regression: #5091 — settings the step or job could inherit or change.
     def test_ci_step_settings_closed(self):
-        text = CI.read_text()
+        text = workflow_keys.load(CI)
         self.assertEqual(step_problems(text), [])
         job = job_block(text, JOB)
         step = step_block(job, STEP)
@@ -317,10 +318,65 @@ class ReleaseContractStepTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertTrue(read('a:\n' + line + '\n')[1], name)
 
+    # regression: #5091 — the reader nests a line where YAML nests it, or
+    # refuses it: a sequence item is a dash and exactly one space, every item
+    # of one sequence sits in one column, two past the key that holds it, and
+    # an item's keys sit two past its dash. A step therefore ends where YAML
+    # ends it, and no spacing hides one step inside another.
+    def test_reader_nests_by_dash_column(self):
+        read = workflow_keys.read
+        entries, unread = read('steps:\n  - a: b\n    with:\n      c: d\n  - e: f\n    with:\n      - g\n'
+                               'k:\n  - l\n  - m\n')
+        self.assertEqual(unread, [])
+        self.assertEqual([(e.path, e.key, e.item) for e in entries],
+                         [((), 'steps', False), (('steps',), 'a', True), (('steps',), 'with', False),
+                          (('steps', 'with'), 'c', False), (('steps',), 'e', True), (('steps',), 'with', False),
+                          ((), 'k', False)])
+        head = 'steps:\n  - a: b\n    with:\n      c: d\n'
+        for name, (text, line) in {
+            'two-spaces-after-dash': (head + '  -  e: f\n', 5),
+            'three-spaces-after-dash': (head + '  -   e: f\n', 5),
+            'tab-after-dash': (head + '  -\te: f\n', 5),
+            'two-spaces-plain-item': ('k:\n  -  l\n', 2),
+            'bare-dash': ('k:\n  -\n', 2),
+            'dash-then-comment': ('k:\n  - # c\n', 2),
+            'nested-sequence': ('k:\n  - - l\n', 2),
+            'dash-item': ('k:\n  - -\n', 2),
+            'explicit-key-item': ('k:\n  - ?\n', 2),
+            'explicit-key-text': ('k:\n  - ? l\n', 2),
+            'dash-flow-item': ('k: [-]\n', 1),
+            'question-flow-item': ('k: [l, ?]\n', 1),
+            'item-under-valueless-key-column': (head + '    - e: f\n', 5),
+            'item-under-mapping': (head + '      - e: f\n', 5),
+            'item-under-value': (head + '        - e: f\n', 5),
+            'item-column-drift-out': (head + ' - e: f\n', 5),
+            'item-column-drift-in': (head + '   - e: f\n', 5),
+            'item-at-key-column': ('steps:\n- a: b\n', 2),
+            'item-at-root': ('- a: b\n', 1),
+            'item-key-past-column': ('steps:\n  - a: b\n     c: d\n', 3),
+            'item-key-short-of-column': ('steps:\n  - a: b\n   c: d\n', 3),
+            'key-after-plain-item': ('k:\n  - l\n    m: n\n', 3),
+            'key-beside-items': ('k:\n  - l\n  m: n\n', 3),
+            'item-beside-keys': ('k:\n  m: n\n  - l\n', 3),
+            'mapping-column-drift': ('k:\n    m: n\n  o: p\n', 3),
+        }.items():
+            with self.subTest(name=name):
+                self.assertIn(line, [number for path, number, found in read(text)[1]], read(text))
+
+    # regression: #5091 — a carriage return in ci.yml on disk is refused:
+    # workflow_keys.load keeps it for the reader to see.
+    def test_carriage_return_in_ci_on_disk(self):
+        text = workflow_keys.load(CI)
+        self.assertEqual(step_problems(text), [])
+        with tempfile.TemporaryDirectory() as temp:
+            disk = Path(temp) / 'ci.yml'
+            disk.write_bytes(text.replace('\n', '\r\n').encode())
+            self.assertTrue(any('U+000D in: ' in found for found in step_problems(workflow_keys.load(disk))))
+
     # regression: #5091 — an unread line among any job's own keys, or under its
     # permissions or environment, is refused, in jobs other than JOB too.
     def test_unread_grants_in_every_job(self):
-        text = CI.read_text()
+        text = workflow_keys.load(CI)
         self.assertEqual(workflow_keys.read(text)[1], [], 'ci.yml holds unread lines')
         self.assertEqual(step_problems(text), [])
         unread = 'is not in the plain form this check reads: '
@@ -350,7 +406,7 @@ class ReleaseContractStepTest(unittest.TestCase):
     # read exactly as written is refused wherever it sits, in any job's steps
     # too, so no escape or folded scalar decodes to a value the check refuses.
     def test_closed_reader_in_every_job(self):
-        text = CI.read_text()
+        text = workflow_keys.load(CI)
         self.assertEqual(step_problems(text), [])
         unread = 'is not in the plain form this check reads: '
         checkout = '      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n'
@@ -378,7 +434,7 @@ class ReleaseContractStepTest(unittest.TestCase):
 
     # regression: #5091
     def test_backstop_discovers_all(self):
-        text = BACKSTOP.read_text()
+        text = workflow_keys.load(BACKSTOP)
         self.assertEqual(backstop_problems(text), [])
         self.assertEqual(text.count(BACKSTOP_RUN), 1, 'control target is not unique')
         for name, new in {

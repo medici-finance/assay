@@ -236,21 +236,24 @@ RELEASE_ORDER = ('Restore the prepared source and verify release artifacts',
                  'Dry run — stop before tagging and publishing',
                  'Create and push the dispatched tag',
                  'Create GitHub release and upload assets')
-# Lines each named release step's run script must hold outside its comment lines.
+# Lines each named release step's run script must hold outside its comment
+# lines, each as a whole line: a check followed by `|| true`, or any other text
+# on its line, does not count.
 RELEASE_SCRIPTS = {
     'Restore the prepared source and verify release artifacts': (
         'sha256sum -c build-inputs.sha256', 'git checkout --detach "$SOURCE_SHA"', 'sha256sum -c checksums.txt'),
     'Build, verify and publish the release images': (
         'from tools.release.images import build_images',
         "build_images(Path.cwd(), os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],",
-        "publish=os.environ['DRY_RUN'] != 'true'",
-        "native=os.environ['NATIVE']",
+        "os.environ['INPUT'], os.environ['OUTPUT'], publish=os.environ['DRY_RUN'] != 'true',",
+        "native=os.environ['NATIVE'])",
         "trap 'rm -rf \"$DOCKER_CONFIG\" \"$SOURCE\"' EXIT"),
     'Validate and checksum the published image references': (
         'from tools.release.images_contract import RUNNER_PLATFORM, validate',
-        'runner_platforms=(RUNNER_PLATFORM,)',
+        'runner_platforms=(RUNNER_PLATFORM,))',
         'sha256sum release-images.json verify-runner-image.txt >> checksums.txt'),
-    'List the release assets to attest': ('release-images.json verify-runner-image.txt checksums.txt; do',),
+    'List the release assets to attest': (
+        'cursor-bundle.tar.gz sbom.spdx.json release-images.json verify-runner-image.txt checksums.txt; do',),
 }
 NATIVE_IN = '${{ runner.temp }}/release-native-arm64-in'
 # The jobs that check out the repository and must not leave the token in .git.
@@ -263,8 +266,10 @@ def publication_problems(text):
     Every setting here is read from workflow_keys entries, never from job text,
     so a line inside a run script or a `with` block scalar never counts as a
     step, a key or a value. The script checks look for fixed lines in one
-    named step's run script, outside its comment lines, so the same text in
-    another key or another step does not count. It also applies
+    named step's run script, outside its comment lines, each as a whole line,
+    so the same text in another key, another step or beside other text on its
+    line does not count. A job that calls another workflow (a job-level
+    `uses`) is refused: its steps are not in this file to read. It also applies
     publisher_step_problems and transfer_problems, and refuses every unread
     line in the file, wherever it sits.
     """
@@ -311,8 +316,11 @@ def publication_problems(text):
     if len(native) != 1 or native[0].value != NATIVE_IN \
             or text.splitlines()[native[0].line - 1].strip() != 'NATIVE: ' + NATIVE_IN:
         problems.append('the image build must read the native arm64 directory')
+    for job in jobs:
+        if any(entry.path == ('jobs', job) and entry.key == 'uses' for entry in entries):
+            problems.append('every job must run its own steps, never call another workflow: ' + job)
     for step, lines in RELEASE_SCRIPTS.items():
-        script = run_script(text, entries, 'release', step)
+        script = [line.strip() for line in run_script(text, entries, 'release', step).splitlines()]
         for value in lines:
             if value not in script:
                 problems.append('missing publication guard: ' + value)
@@ -629,6 +637,20 @@ NATIVE_DOWNLOAD = 'Download checked native arm64 image'
 # The native image upload's path lines: the archive and its receipt, nothing else.
 NATIVE_UPLOAD_PATHS = ('${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.tar',
                        '${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.json')
+# Each platform upload's path lines, whole and in order: no added pattern, no
+# exclusion, and no expression that could evaluate to either.
+TOOLS = ('statusgen-%s', 'qualgen-%s', 'desk-tools-%s.tar.gz')
+PLATFORM_PATHS = {
+    'darwin-arm64': tuple(name % 'darwin-arm64' for name in TOOLS),
+    'darwin-amd64': tuple(name % 'darwin-amd64' for name in TOOLS),
+    'linux-amd64': tuple(name % 'linux-amd64' for name in TOOLS),
+    'linux-arm64': ('statusgen-linux-arm64',),
+    'windows-amd64': ('statusgen-windows-amd64.exe', 'qualgen-windows-amd64.exe', 'desk-tools-windows-amd64.tar.gz'),
+    'windows-arm64': ('statusgen-windows-arm64.exe', 'qualgen-windows-arm64.exe', 'desk-tools-windows-arm64.tar.gz'),
+    'common': ('cursor-bundle.tar.gz', 'checksums.txt', 'sbom.spdx.json', 'tool-validation-*.json',
+               'tool-validation-*.md', 'image-bugs-gc-linux-amd64', 'prepared-source.tar.gz',
+               'build-inputs.sha256', 'release-source.bundle', 'release-highlights.md'),
+}
 
 
 def with_inputs(step, job):
@@ -685,8 +707,9 @@ def transfer_problems(text):
 
     Each platform in PLATFORM_UPLOADS has one step in `artifacts`, named for
     it, whose upload holds exactly UPLOAD_INPUTS under its own artifact name,
-    uncompressed, failing when it finds no files, and with no `!` exclusion
-    line in its path. No other step in any job has a `with` `name` that can
+    uncompressed, failing when it finds no files, and with exactly its
+    PLATFORM_PATHS lines in its path (so no `!` exclusion line, no added
+    pattern and no expression in place of a name). No other step in any job has a `with` `name` that can
     start with the release-build- prefix the publisher merges (see
     may_name_build): a fixed name under it, or an expression after fixed
     text that is still a start of it, is refused. Every
@@ -703,8 +726,10 @@ def transfer_problems(text):
     steps = step_entries(entries, 'artifacts')
     for name, artifact in platform.items():
         found = [step for found, step in steps if found == name]
+        patterns = upload_patterns(text, found[0], 'artifacts') if len(found) == 1 else []
         if len(found) != 1 or not upload_held(found[0], 'artifacts', artifact) \
-                or any(pattern.startswith('!') for pattern in upload_patterns(text, found[0], 'artifacts')):
+                or any(pattern.startswith('!') for pattern in patterns) \
+                or patterns != list(PLATFORM_PATHS[artifact[len(BUILD_PREFIX):]]):
             problems.append('the %s upload must send it whole, uncompressed, failing on no files' % artifact)
     for job in [entry.key for entry in entries if entry.path == ('jobs',)]:
         for name, step in step_entries(entries, job):
@@ -1213,7 +1238,7 @@ if args[:2] == ['image', 'inspect']:
         root = HERE.parents[1]
         for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
             with self.subTest(path=path):
-                main = (root / path).read_text()
+                main = workflow_keys.load(root / path)
                 self.assertEqual(publication_problems(main), [])
                 blocks = workflow_jobs(main)
                 self.assertNotIn('images', blocks)
@@ -1238,7 +1263,7 @@ if args[:2] == ['image', 'inspect']:
                   'image-bugs-gc-linux-amd64', 'prepared-source.tar.gz',
                   'build-inputs.sha256', 'release-highlights.md']
         for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
-            text = (root / path).read_text()
+            text = workflow_keys.load(root / path)
             # Names, inputs, patterns and the restore step's run script come
             # from the reader's keys; the transfer settings are held by
             # transfer_problems.
@@ -1276,7 +1301,7 @@ if args[:2] == ['image', 'inspect']:
     def test_runner_statusgen_assets_flow_through_the_release(self):
         root = HERE.parents[1]
         for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
-            jobs = workflow_jobs((root / path).read_text())
+            jobs = workflow_jobs(workflow_keys.load(root / path))
             steps = workflow_steps(jobs['artifacts'])
             published = workflow_steps(jobs['release'])
             for asset in ['statusgen-linux-amd64', 'statusgen-linux-arm64']:
@@ -1455,7 +1480,7 @@ if args[:2] == ['image', 'inspect']:
     def test_native_arm64_workflow_precedes_the_approved_publisher(self):
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
             with self.subTest(path=path):
-                text = (HERE.parents[1] / path).read_text()
+                text = workflow_keys.load(HERE.parents[1] / path)
                 jobs = workflow_jobs(text)
                 native = jobs['runner-arm64']
                 self.assertIn('runs-on: ubuntu-24.04-arm', native)
@@ -1484,11 +1509,11 @@ if args[:2] == ['image', 'inspect']:
     def test_mutation_matrix_preserves_all_harnesses_and_reports(self):
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
             with self.subTest(path=path):
-                self.assertEqual(mutation_routing_problems((HERE.parents[1] / path).read_text()), [])
+                self.assertEqual(mutation_routing_problems(workflow_keys.load(HERE.parents[1] / path)), [])
 
     # regression: #5091
     def test_mutation_routing_omission_and_duplication_controls(self):
-        main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
+        main = workflow_keys.load(HERE.parents[1] / '.github/workflows/release.yml')
         self.assertEqual(mutation_routing_problems(main), [])
         bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
         once = 'matrix must execute every full harness and deskmerge shard exactly once'
@@ -1583,7 +1608,7 @@ if args[:2] == ['image', 'inspect']:
                                       'release must not run past a failed test job'),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(mutation_routing_problems(text), [])
             for name, (job, old, new, problem) in plants.items():
                 with self.subTest(path=path, plant=name):
@@ -1592,7 +1617,7 @@ if args[:2] == ['image', 'inspect']:
     # regression: #5091
     def test_routing_other_spellings(self):
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(mutation_routing_problems(text), [])
             for name, (job, old, new, problem) in SPELLING_PLANTS.items():
                 with self.subTest(path=path, plant=name):
@@ -1602,15 +1627,15 @@ if args[:2] == ['image', 'inspect']:
     # regression: #5091
     def test_release_runners_fixed(self):
         root = HERE.parents[1]
-        ci = workflow_jobs((root / '.github/workflows/ci.yml').read_text())
+        ci = workflow_jobs(workflow_keys.load(root / '.github/workflows/ci.yml'))
         # The planted label is the one general CI really runs on.
         self.assertEqual(job_runner(ci['build-test-shard']), GENERAL_CI_RUNNER)
         self.assertNotIn(GENERAL_CI_RUNNER, RELEASE_RUNNERS.values())
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (root / path).read_text()
+            text = workflow_keys.load(root / path)
             with self.subTest(path=path):
                 self.assertEqual(runner_binding_problems(text), [])
-        text = (root / '.github/workflows/release.yml').read_text()
+        text = workflow_keys.load(root / '.github/workflows/release.yml')
         for job, label in RELEASE_RUNNERS.items():
             line = '    runs-on: ' + label + '\n'
             for name, new in {
@@ -1633,8 +1658,8 @@ if args[:2] == ['image', 'inspect']:
         root = HERE.parents[1]
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
             with self.subTest(path=path):
-                self.assertEqual(native_transport_problems((root / path).read_text()), [])
-        text = (root / '.github/workflows/release.yml').read_text()
+                self.assertEqual(native_transport_problems(workflow_keys.load(root / path)), [])
+        text = workflow_keys.load(root / '.github/workflows/release.yml')
         for name, (old, new) in {
             'not-merged': ('          merge-multiple: true\n', ''),
             'merge-off': ('          merge-multiple: true\n', '          merge-multiple: false\n'),
@@ -1672,7 +1697,7 @@ if args[:2] == ['image', 'inspect']:
                                step + 'artifacts: Preflight — required tooling'),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             for name, (job, old, new, problem) in plants.items():
                 with self.subTest(path=path, plant=name):
@@ -1691,7 +1716,7 @@ if args[:2] == ['image', 'inspect']:
         scalar = UNREAD + 'name: |'
         cover = '      - name: Report leg\n        run: echo done\n    name: |\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             harness = re.search(r'(?ms)^      - name: Gate bar — mutate every desksourceguard.*?^          fi\n',
                                 text).group(0)
             weak_harness = harness.replace('            exit 1\n', '            exit 0\n')
@@ -1735,7 +1760,7 @@ if args[:2] == ['image', 'inspect']:
         problem = 'the workflow environment must hold only GO_VERSION'
         top = '  GO_VERSION: "1.27.3"\n\njobs:\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(text.count(top), 1, 'control target is not unique')
             with self.subTest(path=path, plant='test-job-env'):
                 self.assertIn('the test job must not set its own environment', mutation_routing_problems(
@@ -1753,7 +1778,7 @@ if args[:2] == ['image', 'inspect']:
     # regression: #5091 — the CI step must also run the suite that checks the
     # step from outside this file (tools/release/ci_step_test.py).
     def test_ci_runs_step_suite(self):
-        text = (HERE.parents[1] / '.github/workflows/ci.yml').read_text()
+        text = workflow_keys.load(HERE.parents[1] / '.github/workflows/ci.yml')
         step = ci_contract_step(text)
         self.assertRegex(step, r'(?m)^        run: python3 -B -m unittest [^\n]*'
                                r'(?<![\w.])tools\.release\.ci_step_test(?![\w.])')
@@ -1763,7 +1788,7 @@ if args[:2] == ['image', 'inspect']:
 
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]
-        main = (root / '.github/workflows/release.yml').read_text()
+        main = workflow_keys.load(root / '.github/workflows/release.yml')
         self.assertEqual(publication_problems(main), [])
         mutants = {
             'default-write': main.replace('\npermissions:\n  contents: read\n',
@@ -1830,7 +1855,7 @@ if args[:2] == ['image', 'inspect']:
                     'save-renamed-away': 'Save release Go cache (v2)',
                     'save-name-moved': 'Save release Go cache'}
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             for name, edits in plants.items():
                 with self.subTest(path=path, plant=name):
@@ -1849,7 +1874,7 @@ if args[:2] == ['image', 'inspect']:
                    + dry + '\n          ORDER\n')
         refs = '          path: ${{ runner.temp }}/release-image-refs\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             moved = move_step(move_step(text, 'release', validate, release), 'release', dry, release)
             self.assertIn(order, publication_problems(moved))
@@ -1896,7 +1921,7 @@ if args[:2] == ['image', 'inspect']:
                 'missing publication guard: ' + checkout.strip()),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             for name, (job, old, new, problem) in plants.items():
                 with self.subTest(path=path, plant=name):
@@ -1925,7 +1950,7 @@ if args[:2] == ['image', 'inspect']:
                                     '    permissions:\n', 'exactly one release-approved job must own publication'),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             self.assertEqual(text.count(top), 1, 'control target is not unique')
             for name, (job, old, new, problem) in plants.items():
@@ -1971,7 +1996,7 @@ if args[:2] == ['image', 'inspect']:
                 '        env:\n          pattern: release-build-*\n          merge-multiple: true\n', [merged]),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             for name, (guard, job, old, new, problems) in plants.items():
                 with self.subTest(path=path, plant=name):
                     self.assertEqual(guard(text), [])
@@ -2012,7 +2037,7 @@ if args[:2] == ['image', 'inspect']:
                                      '    "permissions": write-all\n', '"permissions": write-all'),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(workflow_keys.read(text)[1], [], 'the workflow holds unread lines')
             self.assertEqual(publication_problems(text), [])
             for name, (job, old, new, line) in plants.items():
@@ -2083,7 +2108,7 @@ if args[:2] == ['image', 'inspect']:
         }
         guards = (publication_problems, native_transport_problems, mutation_routing_problems)
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             for guard in guards:
                 self.assertEqual(guard(text), [])
             for name, (job, step, old, new, problem) in steps.items():
@@ -2143,7 +2168,7 @@ if args[:2] == ['image', 'inspect']:
                                       '           qualgen-darwin-arm64\n', 'qualgen-darwin-arm64'),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(workflow_keys.read(text)[1], [], 'the workflow holds unread lines')
             self.assertEqual(publication_problems(text), [])
             for name, (job, old, new, line) in plants.items():
@@ -2161,6 +2186,73 @@ if args[:2] == ['image', 'inspect']:
                     found = publication_problems(mutant)
                     self.assertTrue(any(UNREAD + 'U+%04X in: ' % ord(char) in found_line for found_line in found),
                                     found)
+
+    # regression: #5091 — a step ends where YAML ends it, at the next dash in
+    # its sequence's column. A sequence item with any spacing after its dash
+    # but one space, or a dash out of its sequence's column, is refused: the
+    # reader would otherwise nest the next step under the previous step's
+    # `with`, where no guard reads it as a step.
+    def test_step_ends_at_its_dash_column(self):
+        after = '          fetch-depth: 0\n'
+
+        def steps(dash, indent):
+            return {
+                'upload-in-unguarded-job': (
+                    'changelog-roll', dash + 'uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9\n'
+                    + indent + 'with:\n' + indent + '  name: release-build-extra\n' + indent + '  path: extra.bin\n',
+                    'only the platform uploads may name a release-build- artifact: changelog-roll: unnamed step'),
+                'checkout-keeping-token': (
+                    'release', dash + 'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n'
+                    + indent + 'with:\n' + indent + '  persist-credentials: true\n',
+                    'release must check out with persist-credentials: false'),
+                'download-of-another-artifact': (
+                    'release', dash + 'uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333\n'
+                    + indent + 'with:\n' + indent + '  name: notes\n' + indent + '  path: notes\n',
+                    'every release build download must read all release-build-* artifacts, merged, and nothing else'),
+                'tolerated-step': (
+                    'release', dash + 'name: Extra notes\n' + indent + 'if: always()\n'
+                    + indent + 'continue-on-error: true\n' + indent + 'run: echo notes\n',
+                    'a publishing step must not tolerate failure: release: Extra notes'),
+            }
+        guards = (publication_problems, native_transport_problems, mutation_routing_problems)
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = workflow_keys.load(HERE.parents[1] / path)
+            for guard in guards:
+                self.assertEqual(guard(text), [])
+            # One space after the dash, in the steps' column: read as a step,
+            # so the guard refuses what the step does.
+            for name, (job, new, problem) in steps('      - ', '        ').items():
+                with self.subTest(path=path, plant=name, dash='one-space'):
+                    self.assertIn(problem, publication_problems(mutate_job(text, job, after, after + new)))
+            for spacing, (dash, indent) in {
+                    'two-spaces': ('      -  ', '         '), 'three-spaces': ('      -   ', '          '),
+                    'outdented-column': ('    - ', '      '), 'column-under-with': ('        - ', '          '),
+                    'column-under-input': ('          - ', '            ')}.items():
+                for name, (job, new, problem) in steps(dash, indent).items():
+                    with self.subTest(path=path, plant=name, dash=spacing):
+                        mutant = mutate_job(text, job, after, after + new)
+                        for guard in guards:
+                            found = guard(mutant)
+                            self.assertTrue(any(line.endswith(UNREAD + new.splitlines()[0].strip())
+                                                for line in found), (guard.__name__, found))
+
+    # regression: #5091 — a carriage return in a workflow file on disk is
+    # refused: workflow_keys.load keeps it, where reading the file as text
+    # would turn it into a line break before the reader saw it.
+    def test_carriage_return_refused_on_disk(self):
+        level = '          compression-level: 0\n'
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = workflow_keys.load(HERE.parents[1] / path)
+            self.assertIn(level, text, 'control target moved')
+            for name, mutant in {
+                    'every-line-crlf': text.replace('\n', '\r\n'),
+                    'one-line-crlf': text.replace(level, level[:-1] + '\r\n', 1),
+                    'bare-cr-before-comment': text.replace(level, level[:-1] + '\r          # note\n', 1)}.items():
+                with self.subTest(path=path, plant=name):
+                    disk = self.root / 'release.yml'
+                    disk.write_bytes(mutant.encode())
+                    found = publication_problems(workflow_keys.load(disk))
+                    self.assertTrue(any(UNREAD + 'U+000D in: ' in line for line in found), found)
 
     # regression: #5091 — an upload in any job whose name is not a fixed
     # literal outside the release-build- prefix is refused: a block scalar
@@ -2192,7 +2284,7 @@ if args[:2] == ['image', 'inspect']:
                              UNREAD + 'name: |'),
         }
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             for name, ((job, step), before, problem) in plants.items():
                 with self.subTest(path=path, plant=name):
@@ -2211,7 +2303,7 @@ if args[:2] == ['image', 'inspect']:
         restore = 'Restore the prepared source and verify release artifacts'
         source = '          SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             for check in ('sha256sum -c build-inputs.sha256', 'sha256sum -c checksums.txt'):
                 line = '          ' + check + '\n'
@@ -2227,6 +2319,11 @@ if args[:2] == ['image', 'inspect']:
                         self.assertIn('missing publication guard: ' + check, publication_problems(mutant))
                         self.assertNotIn(check, run_script(mutant, workflow_keys.read(mutant)[0],
                                                            'release', restore))
+                for name, new in {'tolerated': '          ' + check + ' || true\n',
+                                  'no-op-command': '          : ' + check + '\n'}.items():
+                    with self.subTest(path=path, check=check, plant=name):
+                        mutant = self.mutate_step(text, 'release', restore, line, new)
+                        self.assertIn('missing publication guard: ' + check, publication_problems(mutant))
                 with self.subTest(path=path, check=check, plant='moved-to-another-step'):
                     mutant = self.mutate_step(text, 'release', restore, line, '')
                     mutant = self.mutate_step(mutant, 'release', 'Build, verify and publish the release images',
@@ -2241,7 +2338,7 @@ if args[:2] == ['image', 'inspect']:
         held = 'the native arm64 upload must hold exactly its own artifact'
         receipt = '            ${{ runner.temp }}/release-native-arm64/verify-runner-linux-arm64.json\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(native_transport_problems(text), [])
             for name, new in {'widened': '            ${{ runner.temp }}/\n',
                               'extra-line': receipt + '            ${{ runner.temp }}/release-input/checksums.txt\n',
@@ -2258,13 +2355,56 @@ if args[:2] == ['image', 'inspect']:
         whole = 'the release-build-darwin-arm64 upload must send it whole, uncompressed, failing on no files'
         last = '            desk-tools-darwin-arm64.tar.gz\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(transfer_problems(text), [])
             for name, new in {'exclude-one': last + '            !qualgen-darwin-arm64\n',
                               'exclude-glob': last + '            !**/desk-tools-*\n',
                               'exclude-first': '            !statusgen-*\n' + last}.items():
                 with self.subTest(path=path, plant=name):
                     self.assertIn(whole, publication_problems(self.mutate_step(text, 'artifacts', darwin, last, new)))
+
+    # regression: #5091 — each platform upload's path holds exactly its own
+    # lines, so no added pattern, and no expression that could evaluate to an
+    # exclusion or another pattern, joins the artifact the publisher merges.
+    def test_platform_upload_path_pinned(self):
+        for platform, last, first in (
+                ('darwin-arm64', 'desk-tools-darwin-arm64.tar.gz', 'statusgen-darwin-arm64'),
+                ('linux-arm64', 'statusgen-linux-arm64', 'statusgen-linux-arm64'),
+                ('common', 'release-highlights.md', 'cursor-bundle.tar.gz')):
+            step = PLATFORM_STEP % platform
+            whole = 'the release-build-%s upload must send it whole, uncompressed, failing on no files' % platform
+            last, first = '            %s\n' % last, '            %s\n' % first
+            for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+                text = workflow_keys.load(HERE.parents[1] / path)
+                self.assertEqual(transfer_problems(text), [])
+                plants = {'expression-line': last + '            ${{ vars.EXTRA_PATTERN }}\n',
+                          'added-literal': last + '            notes.txt\n',
+                          'added-glob': last + '            extra/**\n',
+                          'line-dropped': ''}
+                if first != last:
+                    plants['reordered'] = None
+                for name, new in plants.items():
+                    with self.subTest(path=path, platform=platform, plant=name):
+                        if new is None:
+                            mutant = self.mutate_step(text, 'artifacts', step, first, '')
+                            mutant = self.mutate_step(mutant, 'artifacts', step, last, last + first)
+                        else:
+                            mutant = self.mutate_step(text, 'artifacts', step, last, new)
+                        self.assertIn(whole, publication_problems(mutant))
+
+    # regression: #5091 — a job that calls another workflow is refused: its
+    # steps are in another file, so no guard here reads them.
+    def test_no_job_calls_another_workflow(self):
+        called = ('  extra:\n    needs: [resolve]\n'
+                  '    uses: example/workflows/.github/workflows/build.yml@' + 'b' * 40 + '\n'
+                  '    with:\n      label: extra\n')
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = workflow_keys.load(HERE.parents[1] / path)
+            self.assertEqual(publication_problems(text), [])
+            with self.subTest(path=path):
+                found = publication_problems(plant(text, None, '', called))
+                self.assertIn('every job must run its own steps, never call another workflow: extra', found)
+                self.assertFalse([line for line in found if UNREAD in line], found)
 
     # regression: #5091 — a publishing job never changes whether, how or where
     # its steps run.
@@ -2302,7 +2442,7 @@ if args[:2] == ['image', 'inspect']:
         }
         top = '\njobs:\n'
         for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
-            text = (HERE.parents[1] / path).read_text()
+            text = workflow_keys.load(HERE.parents[1] / path)
             self.assertEqual(publication_problems(text), [])
             for name, (job, old, new, problem) in plants.items():
                 with self.subTest(path=path, plant=name):
@@ -2320,7 +2460,7 @@ if args[:2] == ['image', 'inspect']:
     def test_normalized_versions_share_the_image_publish_lock(self):
         import re
         root = HERE.parents[1]
-        main = (root / 'ci/staged-workflows/release.yml').read_text()
+        main = workflow_keys.load(root / 'ci/staged-workflows/release.yml')
         # Execute the real resolver's dispatch branch, without forge contact.
         block = main.split('      - name: Resolve the release tag\n', 1)[1]
         lines = block.split('        run: |\n', 1)[1].splitlines()
