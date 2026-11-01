@@ -34,7 +34,7 @@ sources:
   - "The standard-side reading, second half: what a certified adopter actually needs from a tool is a statement of intended use and limitations, immutable versioned releases whose version is reported into every record, a published defect process including notification of defects that could have produced wrong past results, a support and lifecycle policy, exportable human-readable records, and an explicit statement of non-determinism where a model is in the loop. This page states which of those exist here and which do not."
   - "2026-10-26 pickup @ 8663d6a: docs/iso9001-mapping.md §8.4 / 8.6 and .github/workflows/release.yml now describe SLSA/Sigstore provenance for published assets; pre-change releases remain sha256-only. Correct the obsolete absence below without strengthening the claim or changing any Verify command."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — `docs/what-assay-is-and-is-not.md` (planned) does not exist; the honest framing lives only inside `docs/evidence-bundle.md`."
-version: 2
+version: 3
 id: 92e336c2-c5a9-408f-bc82-3c32b1472b18
 ---
 
@@ -119,16 +119,16 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `test -f docs/what-assay-is-and-is-not.md` | exit 0 — **DEREFERENCE, inverts**: the page does not exist at authoring (2026-08-25 @ `6871a3b`) |
-| 2 | `git grep -nF 'not an audit opinion' -- docs/evidence-bundle.md` | exit 0 — **DEREFERENCE**: the source sentence this page extracts still stands where it was, so the extraction did not silently relocate the only copy |
+| 1 | `test -f docs/what-assay-is-and-is-not.md && git grep -nF '# What Assay is and is not' -- docs/what-assay-is-and-is-not.md` | exit 0 — **DEREFERENCE, inverts**: the page does not exist at authoring (2026-08-25 @ `6871a3b`) |
+| 2 | `git grep -nF 'audit opinion' -- docs/what-assay-is-and-is-not.md && git grep -nF 'not an audit opinion' -- docs/evidence-bundle.md` | exit 0 — **DEREFERENCE**: the source sentence this page extracts still stands where it was, so the extraction did not silently relocate the only copy |
 | 3 | `git grep -cE -e 'certif' -e 'audit opinion' -- docs/what-assay-is-and-is-not.md` | exit 0; a non-zero count — the plain no is on the page, in those words |
 | 4 | `git grep -cE -e 'attestation' -e 'sha256' -- docs/what-assay-is-and-is-not.md` | exit 0; a non-zero count — the provenance and checksum boundary is stated explicitly rather than left for a reader to infer |
 | 5 | `git grep -nF 'not measured from ground truth' -- docs/what-assay-is-and-is-not.md` | exit 0 — the determinism and derivation position is stated in the corpus's own existing words |
-| 6 | `git grep -n 'what-assay-is-and-is-not' -- README.md docs/evidence-bundle.md docs/iso9001-mapping.md` | exit 0, at least two hits — the page is reachable from the surfaces a reader actually starts on |
-| 7 | `test -f docs/records-and-retention.md` | exit 0 — **DEREFERENCE**: iso-9001/05 has landed, so the can-cite list is not naming an artifact that does not exist. If this row is red, stop: the dependency did not land |
-| 8 | `git grep -n 'tool-validation' -- .github/workflows/release.yml` | exit 0 — **DEREFERENCE**: iso-9001/01 has landed, so the tool-validation pack the page tells an adopter to ask for is really emitted |
-| 9 | `git grep -n 'authorized-by' -- .github/workflows/release.yml` | exit 0 — **DEREFERENCE**: iso-9001/04 has landed, so the authorizer record the page cites really reaches the release |
-| 10 | `cd statusgen && go run . --root .. --lint` | exit 0 — the tree lints clean, including the link check over every path this page cites; a can-cite entry naming a file that does not exist fails here |
+| 6 | `set -- $(git grep -l 'what-assay-is-and-is-not' -- README.md docs/evidence-bundle.md docs/iso9001-mapping.md) && printf '%s\n' "$@" && test $# -ge 2` | exit 0, at least two hits — the page is reachable from the surfaces a reader actually starts on |
+| 7 | `git grep -nF '](records-and-retention.md)' -- docs/what-assay-is-and-is-not.md && test -f docs/records-and-retention.md` | exit 0 — **DEREFERENCE**: iso-9001/05 has landed, so the can-cite list is not naming an artifact that does not exist. If this row is red, stop: the dependency did not land |
+| 8 | `git grep -nF 'Tool-validation pack' -- docs/what-assay-is-and-is-not.md && git grep -n 'tool-validation' -- .github/workflows/release.yml` | exit 0 — **DEREFERENCE**: iso-9001/01 has landed, so the tool-validation pack the page tells an adopter to ask for is really emitted |
+| 9 | `git grep -nF 'authorized-by' -- docs/what-assay-is-and-is-not.md && git grep -n 'authorized-by' -- .github/workflows/release.yml` | exit 0 — **DEREFERENCE**: iso-9001/04 has landed, so the authorizer record the page cites really reaches the release |
+| 10 | `test -f docs/what-assay-is-and-is-not.md && cd statusgen && go run . --root .. --lint --acceptance-forge` | exit 0 — the tree lints clean, including the link check over every path this page cites; a can-cite entry naming a file that does not exist fails here |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
