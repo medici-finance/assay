@@ -10,8 +10,9 @@ variables, the ci-config-project runbook, and token custody.
 
 1. **§0 tier ladder** — decide what the edition you run can claim, before provisioning.
 2. **§2 provisioning** — a human runs `tools/create-fleet-gitlab.sh`: the service accounts (the
-   automation principals of the two-principals prerequisite), the protected `main`, and the desk
-   labels (the GitLab form of the `create-labels` primitive).
+   automation principals of the two-principals prerequisite), the protected `main`, the desk
+   labels (the GitLab form of the `create-labels` primitive), and the §2c board-push credential
+   where the forge can mint a project access token.
 3. **The shared half, from [`docs/adopting-assay.md`](adopting-assay.md)** — the turnkey
    `assay:install` skill on Claude Code, or its CORE primitives by hand. It needs **no `gh` and no
    `glab`**: the pinned binaries are fetched over plain HTTPS and sha256-verified against
@@ -19,7 +20,8 @@ variables, the ci-config-project runbook, and token custody.
    skill's *CORE primitives per forge* table names which primitives are forge-neutral and how the
    rest are expressed here.
 4. **§2a runner, §2c `STATUSGEN_PUSH_TOKEN`, §2e `STATUSGEN_ROSTER_ENV`** — the human acts the
-   scaffolded `.gitlab-ci.yml` needs before its first pipeline can prove anything.
+   scaffolded `.gitlab-ci.yml` needs before its first pipeline can prove anything. §2c is a
+   by-hand step only where step 2 could not mint the token; its summary says so by name.
 
 `glab` is an optional convenience CLI for a human's own reads. No install step in either file
 requires it. The one tool here that drives `glab` is the later PAT renewal (§2g), a human-run
@@ -263,7 +265,7 @@ defaults to `https://gitlab.com` (point it at your self-managed instance otherwi
 `--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below (give
 `--avatars-dir` or `--no-avatars`, not both); `--tier` and the `--status-check-*` pair are §2b's.
 Flags take `--flag value` or `--flag=value`; an unknown flag or a bad value (a `--tier` outside
-free/premium/ultimate, a `--pat-expiry-days` that is not a whole number of days, 1 or more, a
+free/premium/ultimate, a `--pat-expiry-days` that is not a whole number of days from 1 to 365, a
 plain-http `--gitlab-url` off loopback) exits 2 before anything is read or sent. Run
 `tools/create-fleet-gitlab.sh --help` for the full reference.
 
@@ -461,6 +463,17 @@ already-correct rule is a no-op, a force-push-only difference is a `PATCH`, and 
 delete-and-recreate is unavoidable a refused re-create immediately re-applies the rule that
 was read. It then reads all three fields back and prints them, so a wrong rule (a repair at
 `merge_access_level=30` lets every Developer bot merge) is visible at provisioning time.
+Both reads classify **every** push entry on its own, as a role, user, group or deploy-key entry
+(a deploy-key or group entry carries an `access_level` too, and is never read as a role grant).
+A rule with a second entry is never taken as already correct. The read-back prints every entry
+as `push_entries=`, and any entry outside the intended set (the board-writer's user entry where
+the Premium form named it, otherwise a role entry at `0`) is a recorded failure. So is a
+read-back without that per-user entry: a forge has been seen to answer the per-user write 201
+and then not hold the entry. Where a delete-and-recreate would be needed but the existing rule
+holds an entry a restore cannot reproduce exactly (a group, a deploy key, an entry the run cannot
+classify, or several role entries on the free-tier form), the step deletes nothing, leaves that
+rule in place and records a failure naming the entries: set the rule by hand under **Settings >
+Repository > Protected branches** and re-run to confirm.
 On some self-managed instances the intended "push = No one" fields do not stick and
 read-back stays Maintainer (`40`); treat **that printed read-back** as the live control,
 not the script's request body. Approval settings are read back the same way, because on
@@ -585,6 +598,34 @@ one here.
 
 ## 2c. Board-push credential — `STATUSGEN_PUSH_TOKEN`
 
+**Provisioned by §2 where the forge allows it.** With `--project`, `deskfleet provision` and
+`deskgitlab create` (the script) mint this credential as the last project step: a project access
+token named `assay-statusgen-push`, scope `write_repository` only, role Maintainer, expiring
+after `--pat-expiry-days`, stored as the masked **and** protected variable below and read back
+by those two flags. The value is never printed or written to disk. The step:
+
+- is a no-op when the variable already exists (a fresh token is a rotation, not a
+  re-provision), and a recorded failure when that existing variable is not both masked and
+  protected;
+- never uses a role-fleet token in its place. Where the forge refuses to mint a project access
+  token, it records a failure naming the manual step and the refusal's cause (a 403 or 404 means
+  this forge or tier has none, as on gitlab.com Free; a 400 or 401 is a request or credential
+  problem): do the rest of this section by hand;
+- reports a token it minted but could not store by name and id, and does not revoke it.
+  Revoke it under **Settings > Access tokens**: a re-run after that failure mints another token
+  of the same name;
+- leaves the board-writer at Developer and does not change who may push `main`. When the
+  read-back push rule admits no Maintainer it prints a NOTICE: the regen push will be refused
+  (`scope`) and the board regenerates through a human-merged MR. The rule this step writes
+  admits no role, so on a provisioned project this NOTICE is the expected state on every run,
+  not a fault. Widening that rule is a human decision;
+- does not renew the token. It expires after `--pat-expiry-days` (default 7, at most 365), after
+  which the regen push fails, and a re-run is a no-op while the variable exists. To rotate:
+  revoke the old token under **Settings > Access tokens**, delete the variable under **Settings
+  > CI/CD > Variables**, and re-run, or do this section by hand. A longer lifetime for this token
+  is a larger `--pat-expiry-days` on the run that mints it; that flag also sets the expiry of any
+  role tokens the same run mints.
+
 The scaffolded `statusgen-regen` job (`.gitlab-ci.yml`, generated by `statusgen init --forge
 gitlab`) cannot push the regenerated `STATUS.md` with the job's own `CI_JOB_TOKEN` — GitLab's
 default job token has no push scope. The job needs a **separate** masked **and protected**
@@ -658,6 +699,18 @@ answers a refused push with one message for invalid, expired and under-scoped to
 alike, so a refused push is classified by asking about the token again. A token holding
 only `write_repository` may be refused the self-introspection read itself; the job then
 prints a could-not-check NOTICE and the dry-run push is the check.
+
+**The runner's job-token header.** A runner's checkout can store the CI job token in git
+config as an `http.<url>.extraheader` Authorization header. git sends a configured header
+instead of asking any credential helper, so without a reset the board push would
+authenticate as the job token and GitLab would refuse it with a 403. For each board push
+(the dry run included) the job lists every `http.extraheader` and `http.<url>.extraheader`
+key by NAME and passes `-c <name>=` for each. An empty value empties git's header list for
+that one push, and command-line config is read after every config file, so the reset
+covers local, global, system and environment config alike. No config file is edited, so
+the job's other git calls still use the runner's credential, and no header value is ever
+printed. If git cannot list the keys, the job prints a could-not-check NOTICE and pushes
+anyway; a refused push is then classified as above.
 
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
@@ -981,6 +1034,9 @@ comment for the full endpoint list):
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
 | Require all threads resolved before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_all_discussions_are_resolved: true` — the merge-hold marker thread's server-side half (§0.1); Free tier, read back the same way as the pipeline flag above |
 | Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
+| Check for the board-push variable | `GET api/v4/projects/:id/variables/STATUSGEN_PUSH_TOKEN` | 404 means "not set yet"; an existing one is a no-op, checked for `masked` and `protected` |
+| Mint the board-push token | `POST api/v4/projects/:id/access_tokens` | `name: assay-statusgen-push`, `scopes: [write_repository]`, `access_level: 40`, `expires_at` = today + `--pat-expiry-days`; a refusal is a recorded failure naming the §2c manual step |
+| Store the board-push token | `POST api/v4/projects/:id/variables` | `key: STATUSGEN_PUSH_TOKEN`, `masked: true`, `protected: true`; read back by `GET` on the same variable |
 
 Every endpoint above is reachable at the **Premium** tier — nothing the script calls
 requires Ultimate.

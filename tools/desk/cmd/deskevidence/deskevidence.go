@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/readercaps"
+	capstree "github.com/medici-finance/assay/statusgen/readercaps/tree"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -329,6 +331,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 
 	evidenceRoot := receipt.EvidenceRoot(*root)
+	if receipt.Binding.Version == 2 && strings.TrimSpace(evidenceRoot) == "" {
+		return deskkit.Unverifiable("admission supplied no Evidence read root", nil)
+	}
 
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
@@ -347,15 +352,33 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 				return deskkit.Refused("refused: --evidence-file must be a repo-relative path when --root is set, " +
 					"or a --brief-path fragment outside --root; got absolute " + evidenceRepoPath)
 			}
-		} else {
-			localReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)
 		}
 	}
+	if !filepath.IsAbs(evidenceRepoPath) && evidenceRoot != "" {
+		localReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)
+	}
+	if filepath.IsAbs(evidenceRepoPath) && evidenceRoot != "" && pathWithin(evidenceRoot, evidenceRepoPath) {
+		return deskkit.Refused("refused: an absolute fragment must be outside the admitted Evidence root")
+	}
 
-	// Read the local evidence file.
-	localContent, rerr := os.ReadFile(localReadPath)
-	if rerr != nil {
-		return deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
+	// Name-addressed reads admit the actual bytes from the receipt's read root,
+	// independently of discovery scope. Absolute fragments retain their separate path.
+	var localContent []byte
+	var rerr error
+	if !filepath.IsAbs(evidenceRepoPath) {
+		var result readercaps.Result
+		localContent, result = capstree.ReadRecord(evidenceRoot, evidenceRepoPath, deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), toolName))
+		if err := capabilityResultError(result); err != nil {
+			return err
+		}
+	} else {
+		localContent, rerr = os.ReadFile(localReadPath)
+		if rerr != nil {
+			return deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
+		}
+		if err := requireRecordCapabilities(localContent, localReadPath); err != nil {
+			return err
+		}
 	}
 	// The general per-file cap is sized for a brief file — a few KB. #1338's raised override
 	// for the verify-outcomes aggregate sidecar is RETIRED (#882): that file's
@@ -426,6 +449,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		remoteContent, remoteExists = cur.Content, cur.Exists
 		remoteSHA = cur.SHA
+	}
+
+	if err := requireRecordCapabilities(remoteContent, targetRepoPath+" on "+branch); err != nil {
+		return err
 	}
 
 	// Resolve the content to commit: with --brief-path, merge the new evidence into the brief's
@@ -634,7 +661,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// A verified outcome certifies already committed Evidence. Its attribution and
 	// closure checks must read that exact landed history, never the admitted home's
 	// intentionally older HEAD. Admission above remains against the original home.
-	landedRoot, landedHead, cleanup, err := landedClosureFn(lintRoot, targetRepoPath, remoteContent, commitContent, remoteExists, fg, fr, branch)
+	landedRoot, landedHead, cleanup, err := landedClosureFn(lintRoot, targetRepoPath, remoteContent, commitContent, remoteExists, fg, fr, branch, receipt)
 	if err != nil {
 		return err
 	}
@@ -745,6 +772,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		rowScopeSHA = sha
 	}
 
+	if err := requireRecordCapabilities(commitContent, targetRepoPath); err != nil {
+		return err
+	}
+
 	// Write the Evidence row through the resolved forge, as the verifier App.
 	writeInput := deskkit.WriteFileInput{
 		File:        targetRepoPath,
@@ -818,6 +849,10 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
+	}
+
+	if err := requireRecordCapabilities(content, target); err != nil {
+		return err
 	}
 
 	res, werr := fg.WriteFile(fr, deskkit.WriteFileInput{
@@ -999,7 +1034,7 @@ func (a *auditCtx) log(result, detail string) {
 	if a.attestation != "" {
 		detail += " " + a.attestation
 	}
-	_ = deskkit.Log(deskkit.Entry{
+	if err := deskkit.Log(deskkit.Entry{
 		Tool:       toolName,
 		Verb:       a.verb,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
@@ -1007,7 +1042,9 @@ func (a *auditCtx) log(result, detail string) {
 		Repo:       a.repo,
 		Result:     result,
 		Detail:     detail,
-	})
+	}); err != nil {
+		fmt.Fprintln(stderr, "deskevidence: could-not-check audit append: "+readercaps.Diagnostic(err.Error()))
+	}
 }
 
 func (a *auditCtx) finalize(err error) {

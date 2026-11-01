@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -113,7 +115,7 @@ func TestLandedHistory(t *testing.T) {
 						f.setFile(p, b)
 					}
 					record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
-					landed, got, cleanup, err := landedClosureTree(root, target, nil, record, false, f, deskkit.ForgeRepo{}, "main")
+					landed, got, cleanup, err := landedClosureTree(root, target, nil, record, false, f, deskkit.ForgeRepo{}, "main", deskkit.VerifierReceipt{})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -228,7 +230,7 @@ func TestLandedRefusals(t *testing.T) {
 			if mode == "plain-outcome" {
 				record = []byte("{\"brief\":\"vf/01\",\"outcome\":\"blocked\"}\n")
 			}
-			got, pinned, cleanup, err := landedClosureTree(root, "docs/streams/verify-outcomes.jsonl", nil, record, false, f, deskkit.ForgeRepo{}, "main")
+			got, pinned, cleanup, err := landedClosureTree(root, "docs/streams/verify-outcomes.jsonl", nil, record, false, f, deskkit.ForgeRepo{}, "main", deskkit.VerifierReceipt{})
 			defer cleanup()
 			if mode == "plain-outcome" {
 				if err != nil || got != root || pinned != "" || f.getCommitCalls != 0 {
@@ -269,7 +271,7 @@ func TestLandedRouting(t *testing.T) {
 				args = []string{"example-org/tracker", "main", "--root", root, "--evidence-file", target}
 			}
 			cleaned := false
-			landedClosureFn = func(r, target string, before, after []byte, exists bool, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string) (string, string, func(), error) {
+			landedClosureFn = func(r, target string, before, after []byte, exists bool, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string, _ deskkit.VerifierReceipt) (string, string, func(), error) {
 				if r != root {
 					t.Fatalf("admission root changed: %s", r)
 				}
@@ -304,6 +306,207 @@ func TestLandedRouting(t *testing.T) {
 			}
 			if !cleaned || len(f.writes) != 1 || f.writes[0].ExpectedHead != head {
 				t.Fatalf("write lost exact head or cleanup: %+v", f.writes)
+			}
+		})
+	}
+}
+
+// crossLandedFixture builds the cross-repository read root: a private tracking
+// clone holding only the admitted commit, whose origin/main is another
+// repository's unrelated history. The landed commits live only on the forge
+// repository and its branch. present also copies the landed objects in, the
+// way a hand refresh would, without moving any ref.
+func crossLandedFixture(t *testing.T, branch string, present bool) (forge, root, source, head string, files map[string]string) {
+	t.Helper()
+	forge, source, head, files = landedFixture(t, false)
+	if branch != "main" {
+		flGit(t, forge, "branch", "-f", branch, head)
+		flGit(t, forge, "branch", "-f", "main", source)
+	}
+	flGit(t, forge, "branch", "-f", "admitted", source)
+	root = t.TempDir()
+	flGit(t, root, "init", "-q", "-b", "main")
+	flGit(t, root, "config", "commit.gpgsign", "false")
+	flGit(t, root, "config", "user.name", "fixture")
+	flGit(t, root, "config", "user.email", "fixture@example.invalid")
+	flGit(t, root, "commit", "-q", "--allow-empty", "-m", "another repository's main")
+	flGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	flGit(t, root, "fetch", "-q", forge, "refs/heads/admitted:refs/heads/admitted")
+	flGit(t, root, "checkout", "-q", "--detach", source)
+	if present {
+		flGit(t, root, "fetch", "-q", forge, "refs/heads/"+branch+":refs/scratch/landed")
+		flGit(t, root, "update-ref", "-d", "refs/scratch/landed")
+	}
+	for p, b := range files {
+		if err := os.WriteFile(filepath.Join(root, p), []byte(b), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return forge, root, source, head, files
+}
+
+// landedForgeFetch serves the closure's fetch from a local repository through
+// the same in-process gitcore fetch, recording what was asked.
+func landedForgeFetch(t *testing.T, forge string, calls *[]string) {
+	t.Helper()
+	old := landedFetchFn
+	landedFetchFn = func(root, repo string, specs []string) error {
+		if repo != "example-org/tracker" {
+			t.Fatalf("fetch named %s", repo)
+		}
+		*calls = append(*calls, specs...)
+		r, err := gitcore.Open(root)
+		if err != nil {
+			return err
+		}
+		return r.Fetch(gitcore.FetchOpts{URL: forge, RefSpecs: specs})
+	}
+	t.Cleanup(func() { landedFetchFn = old })
+}
+
+var crossReceipt = deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Version: 2}}
+var crossRepo = deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
+
+// A cross-repository verified closure reads the landed repository's own main,
+// never the read root's origin/main, and leaves that ref where admission put it.
+// regression: #5008
+func TestLandedCrossRepo(t *testing.T) {
+	landedStatusgenOnPath(t)
+	for _, branch := range []string{"main", "verify"} {
+		for _, present := range []bool{false, true} {
+			t.Run(branch+map[bool]string{false: "/absent", true: "/present"}[present], func(t *testing.T) {
+				f, _ := setupFake(t)
+				for _, line := range strings.Split(fixtureRoster, "\n") {
+					if key, value, ok := strings.Cut(line, "="); ok && strings.HasPrefix(key, "ASSAY_") {
+						t.Setenv(key, value)
+					}
+				}
+				forge, root, source, head, files := crossLandedFixture(t, branch, present)
+				homeMain := flGit(t, root, "rev-parse", "refs/remotes/origin/main")
+				f.commitSHAs = map[string]string{branch: head}
+				for p, b := range files {
+					f.setFile(p, b)
+				}
+				var calls []string
+				landedForgeFetch(t, forge, &calls)
+				target := "docs/streams/verify-outcomes/vf/01-test.json"
+				record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
+				// The read root alone cannot place the landed commit in main's history.
+				if _, _, _, err := landedClosureTree(root, target, nil, record, false, f, crossRepo, branch, deskkit.VerifierReceipt{}); err == nil {
+					t.Fatal("home origin/main accepted as the landed baseline")
+				}
+				landed, got, cleanup, err := landedClosureTree(root, target, nil, record, false, f, crossRepo, branch, crossReceipt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer cleanup()
+				if got != head || flGit(t, landed, "rev-parse", "HEAD") != head {
+					t.Fatal("closure did not check out the exact landed commit")
+				}
+				if flGit(t, landed, "rev-parse", "refs/remotes/origin/main") != flGit(t, forge, "rev-parse", "refs/heads/main") {
+					t.Fatal("landed baseline is not the landed repository's main")
+				}
+				if flGit(t, root, "rev-parse", "refs/remotes/origin/main") != homeMain || flGit(t, root, "rev-parse", "HEAD") != source {
+					t.Fatal("read root's admitted refs moved")
+				}
+				for _, spec := range calls {
+					if _, dst, _ := strings.Cut(spec, ":"); !strings.HasPrefix(dst, landedFetchRefs) {
+						t.Fatalf("fetch wrote outside its private namespace: %s", spec)
+					}
+				}
+				verifiedClosureCheckFn = verifiedClosureCheckAt
+				if err := guardVerifiedOutcomes(root, landed, target, nil, record, f, crossRepo, head); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+// Both command routes reach the fetched closure for a cross-repository receipt.
+// regression: #5008
+func TestLandedCrossRepoRoutes(t *testing.T) {
+	landedStatusgenOnPath(t)
+	for _, direct := range []bool{false, true} {
+		t.Run(map[bool]string{false: "record", true: "direct-record"}[direct], func(t *testing.T) {
+			f, errbuf := setupFake(t)
+			for _, line := range strings.Split(fixtureRoster, "\n") {
+				if key, value, ok := strings.Cut(line, "="); ok && strings.HasPrefix(key, "ASSAY_") {
+					t.Setenv(key, value)
+				}
+			}
+			forge, root, source, head, files := crossLandedFixture(t, "main", false)
+			f.commitSHAs = map[string]string{"main": head}
+			for p, b := range files {
+				f.setFile(p, b)
+			}
+			var calls []string
+			landedForgeFetch(t, forge, &calls)
+			old := verifierEvidenceAdmissionFn
+			verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
+				r := stubAdmittedReceipt(target)
+				r.Binding.Version, r.BriefRoot = 2, root
+				return r, nil
+			}
+			t.Cleanup(func() { verifierEvidenceAdmissionFn = old })
+			landedClosureFn = landedClosureTree
+			outcomeGuardFn = guardVerifiedOutcomes
+			raw := "{\"ts\":\"2026-09-22T02:00:00Z\",\"brief\":\"vf/01\",\"outcome\":\"verified\",\"rows_passed\":1,\"rows_total\":1,\"sha\":\"" + source + "\"}\n"
+			recordFile := writeRepoFile(t, "record.json", raw)
+			args := []string{"example-org/tracker", "main", "--root", root, "--outcome-record", recordFile}
+			if direct {
+				rel := "docs/streams/verify-outcomes/vf/01-direct.json"
+				recordFile = filepath.Join(root, rel)
+				if err := os.MkdirAll(filepath.Dir(recordFile), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(recordFile, []byte(raw), 0644); err != nil {
+					t.Fatal(err)
+				}
+				args = []string{"example-org/tracker", "main", "--root", root, "--evidence-file", rel}
+			}
+			if code := run(args); code != 0 || len(f.writes) != 1 || f.writes[0].ExpectedHead != head {
+				t.Fatalf("exit=%d writes=%+v: %s", code, f.writes, errbuf.String())
+			}
+			if len(calls) == 0 {
+				t.Fatal("route did not fetch the landed repository's main")
+			}
+		})
+	}
+}
+
+// regression: #5008
+func TestLandedFetchRefusals(t *testing.T) {
+	for _, mode := range []string{"bad-branch", "fetch-fails", "not-cross-repo"} {
+		t.Run(mode, func(t *testing.T) {
+			branch, receipt := "verify", crossReceipt
+			fetched := false
+			old := landedFetchFn
+			landedFetchFn = func(string, string, []string) error {
+				fetched = true
+				return errors.New("fixture forge unreachable")
+			}
+			t.Cleanup(func() { landedFetchFn = old })
+			switch mode {
+			case "bad-branch":
+				branch = "x..y"
+			case "not-cross-repo":
+				receipt = deskkit.VerifierReceipt{}
+			}
+			ref, err := landedBaseline(t.TempDir(), receipt, crossRepo, branch)
+			switch mode {
+			case "bad-branch":
+				if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || fetched {
+					t.Fatalf("invalid branch reached the fetch: %v", err)
+				}
+			case "fetch-fails":
+				if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable || ref != "" {
+					t.Fatalf("failed fetch read as a baseline: %q %v", ref, err)
+				}
+			case "not-cross-repo":
+				if err != nil || fetched || ref != "refs/remotes/origin/main" {
+					t.Fatalf("same-repository baseline changed: %q %v", ref, err)
+				}
 			}
 		})
 	}

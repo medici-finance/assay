@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|ProtectedRecordRun|ProtectedRecordRefusal|ProtectedRecordCredit|ExpectOnlyTransition|ExpectTransitionExecution|ExpectTransitionRefusals|ExpectScopeExecution)$' -count=1 -timeout 240s",
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|ProtectedRecordRun|ProtectedRecordRefusal|ProtectedRecordCredit|ExpectOnlyTransition|ExpectTransitionExecution|ExpectTransitionRefusals|ExpectScopeExecution|TransitionDeliveredPlaceholder)$' -count=1 -timeout 240s",
   "control": {
     "name": "approval payload binding removed",
     "file": "acceptancetransition.go",
@@ -108,6 +108,48 @@
       "file": "acceptancetransition.go",
       "old": "if !matched || len(ids) == 0 || strings.Join(ids, \",\") != rawIDs {",
       "new": "if !matched || len(ids) == 0 {"
+    },
+    {
+      "name": "placeholder exception accepts substantive delivered Evidence",
+      "file": "acceptancetransition.go",
+      "old": "if strings.TrimSpace(delivered) != placeholder {",
+      "new": "if false && strings.TrimSpace(delivered) != placeholder {"
+    },
+    {
+      "name": "placeholder quotation identity omitted",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if true {"
+    },
+    {
+      "name": "amendment historical Evidence equality omitted",
+      "file": "acceptancetransition.go",
+      "old": "if e != nil || atAmendment != historical {",
+      "new": "_ = atAmendment\n\tif e != nil {"
+    },
+    {
+      "name": "current historical Evidence prefix omitted",
+      "file": "acceptancetransition.go",
+      "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {",
+      "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {"
+    },
+    {
+      "name": "placeholder quotation requirement omitted",
+      "file": "acceptancetransition.go",
+      "old": "if !strings.HasPrefix(line, \">\") {",
+      "new": "if false && !strings.HasPrefix(line, \">\") {"
+    },
+    {
+      "name": "placeholder exact quotation widened to containment",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if strings.Contains(line, placeholder) {"
+    },
+    {
+      "name": "placeholder exact quotation widened to suffix",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if strings.HasSuffix(line, placeholder) {"
     }
   ]
 }

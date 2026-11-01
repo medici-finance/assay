@@ -151,6 +151,83 @@ context cannot change normal output/exit. Old privacy defaults remain binding ou
 ## Evidence
 
 <!-- Independent verifier records actual subject revision, environment, command, exit, named result and date. No implementation is claimed by this authoring change. -->
+Post-merge verification of statusgen/26 at merged main 7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 by a non-implementer verifier: runner assay-verifier-app[bot], model claude-opus-5-5, strong tier, admitted by pre-work attestation medici-finance/assay#4925. Deliveries checked: PR #3759 (merge 44829891e8f7) and its follow-up PR #4541 (merge 5a4a3edda5c8). Installed statusgen v1.0.66 throughout; no locally built binary.
+
+Rows 1-3 (check:ci) ran network-off inside the closed admission bracket: host open-bracket, then statusgen verifyrun --sandbox=container-netns in the v1.0.66 verify-runner image (digest on the Container-Image line) started with --network none, read-only source mounts and no forge credential, then host close-bracket. statusgen verifyrun --bracket-digest on the closed witness reported verdict=match. The closed witness bytes follow unedited.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > "$out" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:b9cf22a002bb | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > "$out" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:0058b1f42b83 | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > "$out" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' "$out")` | pass exit=0 sandbox=container-netns | sha256:b93ca06372ef | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8a4ed420c7b398b85b7db0f4180194627b6e1f6af13556ea76863e4d1edf28e8
+Container-Image: sha256:29494cbeca300a29295a2eeed7398500675cb63c7911d660a08c899e8584d175
+Verification-Attestation: medici-finance/assay#4925 run=455cd3e05088a0908863bb859d8ddc1d5b90d4096b10483e39493602cd3e58dc source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=455cd3e05088a0908863bb859d8ddc1d5b90d4096b10483e39493602cd3e58dc source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 tree=sha256:8a4ed420c7b398b85b7db0f4180194627b6e1f6af13556ea76863e4d1edf28e8 witness=sha256:3f90f2fab37387245bb455638c58083e790a6da83d7623f41526f208fc5d5503 opened=2026-10-30T00:40:11Z closed=2026-10-30T00:47:57Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `statusgen --root . --consumers --brief statusgen/26` | fail exit=2 | sha256:a25a511b904d | 2026-10-30 | assay-verifier-app[bot] @ 7b0fa99b57c3 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4925 run=455cd3e05088a0908863bb859d8ddc1d5b90d4096b10483e39493602cd3e58dc source=7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09 brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+
+Row 4 (check) ran on the host through statusgen verifyrun --rows 4 with no forge token in its environment; the witness above is its own output. The selections are disjoint: rows 1-3 in the container bracket, row 4 on the host.
+
+Row 4 observed result: exit 2, which is statusgen's could-not-check exit for --consumers, not an observed routing failure. Reproduced on a clean tree at the same commit with the base at HEAD, the command prints: "statusgen: --consumers: COULD-NOT-CHECK: assay:assay:statusgen:26 is not in the diff against 7b0fa99b57c3866c6d12d1cb2cebe0247e12ff09, and the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery. No routing claim was corroborated and none was disproved." The installed lint flags the same row: "Verify row 4 [consumer-delivery-range] consumer command has no explicit --base (the default becomes HEAD on merged main); post-merge consumer checks must name --brief and pin both --delivery and its first-parent --base." The row as authored cannot discharge its obligation after merge. This is a check-definition defect of the class tracked in #4560. Needed: a reviewed amendment of row 4 that keeps --brief and the corroboration obligation and pins --delivery plus its first-parent --base, then a fresh verifier dispatch. Next actor: the brief author.
+
+Supplemental host probes. They earn no acceptance credit, discharge no Verify row, and are recorded only to locate the blocker:
+
+- S1, observed 2026-10-30 by assay-verifier-app[bot] on the host: `statusgen --root . --consumers --brief statusgen/26 --delivery 5a4a3edda5c801b72e4e40bd17d68bfc6f946550 --base 4264d1027198b8f257a95e1630f07cac358fcd6f` exited 0 with summary 12 corroborated, 0 disproved; the 3 remaining entries are the brief's declared out-of-scope claims, left to review.
+- S2, observed 2026-10-30 by assay-verifier-app[bot] on the host: `statusgen --root . --consumers --brief statusgen/26 --delivery 44829891e8f74b1520b64f4180910d96e17be96a --base 205c8b46a6b467f4693fc1d5e1152cf2690d9ab5` exited 0 with summary 6 corroborated, 0 disproved; 2 out-of-scope entries left to review.
+
+Risk-bearing values. Brief risk metadata is present and every field is no; the item is not irreversible. Enumerated anyway over the literals the delivery introduces in statusgen/perfrecord.go and statusgen/bench/perfworkload.sh. The highest-ranked is the phase roster, because records written under a wrong roster stay wrong for deskperf readers. It is still reversible by an edit and a release. The timeouts and sample count are reversible operational knobs, ranked last, with no derivation needed.
+
+RISK-VALUE: DERIVED — perfV3Phases = {"discover","parse","evaluate","render","write","deskread"} @ statusgen/perfrecord.go:257 — matches the brief's Interface contract (discovery/load, parse, evaluation, rendering, and the deskread child) and the "Phase roster" in docs/telemetry.md line 341 element for element.
+RISK-VALUE: DERIVED — perfToolName = "statusgen" @ statusgen/perfrecord.go:51 — the record's tool field, a constant rather than argv[0] (comment at statusgen/perfrecord.go:50), so a renamed or wrapped binary still emits records under the tool name the brief names.
+RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ statusgen/perfrecord.go:432, cmd.WaitDelay = time.Second @ statusgen/perfrecord.go:436, bench SAMPLES default 20 @ statusgen/bench/perfworkload.sh:13, go test -timeout=240s @ statusgen/bench/perfworkload.sh:16 — reversible operational knobs; ranked last and out of scope for derivation by design.
+
+Accounting: 4 rows total. 3 passed (rows 1, 2, 3). 0 failed obligations. 1 could-not-check (row 4: exit 2, COULD-NOT-CHECK, check-definition, #4560). No could-not-check result is counted as a pass.
+
+**VERIFY: BLOCKED** — rows 1-3 pass in the admitted container bracket; row 4 exit 2 is could-not-check (consumers row lacks a --delivery/--base pin on merged main; check-definition, #4560). No acceptance obligation was observed to fail.
+
+Re-verification of statusgen/26 at merged main 2a3b4be189484335a8592a80d619011d350a74c7 by a non-implementer verifier: runner assay-verifier-app[bot], model claude-opus-5-5, strong tier, admitted by pre-work attestation medici-finance/assay#5099. Installed statusgen v1.0.67 throughout; no locally built binary.
+
+Rows 1-3 (check:ci) ran network-off inside the closed admission bracket: host open-bracket, then statusgen verifyrun --sandbox=container-netns in the v1.0.67 verify-runner image (release reference checked against checksums.txt; digest on the Container-Image line) started with --network none, a read-only source mount and no forge credential, then host close-bracket. statusgen verifyrun --bracket-digest on the closed witness reported verdict=match. The closed witness bytes follow unedited.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > "$out" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:5f1dafdba11d | 2026-10-31 | assay-verifier-app[bot] @ 2a3b4be18948 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > "$out" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:e6c07eafcb3f | 2026-10-31 | assay-verifier-app[bot] @ 2a3b4be18948 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > "$out" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' "$out")` | pass exit=0 sandbox=container-netns | sha256:adcd754edba1 | 2026-10-31 | assay-verifier-app[bot] @ 2a3b4be18948 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:c09fa1c5ee2cb408a1192399fb9f6dd4c108843f9a2400453ef776287339bae5
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5099 run=f692700c5286303453331846bd8a695651b6c4f3be520e3f226d57e9cb96856f source=2a3b4be189484335a8592a80d619011d350a74c7 brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=f692700c5286303453331846bd8a695651b6c4f3be520e3f226d57e9cb96856f source=2a3b4be189484335a8592a80d619011d350a74c7 tree=sha256:c09fa1c5ee2cb408a1192399fb9f6dd4c108843f9a2400453ef776287339bae5 witness=sha256:267ff3b7590d068040c2f3610c86273fac48371f4f82861fdfb1f90b8e497e68 opened=2026-10-31T22:45:38Z closed=2026-10-31T22:51:27Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `statusgen --root . --consumers --brief statusgen/26` | fail exit=2 | sha256:5bd3fafe3496 | 2026-10-31 | assay-verifier-app[bot] @ 2a3b4be18948 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5099 run=f692700c5286303453331846bd8a695651b6c4f3be520e3f226d57e9cb96856f source=2a3b4be189484335a8592a80d619011d350a74c7 brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+
+Row 4 (check) ran on the host through statusgen verifyrun --rows 4 with no forge token in its environment, on a clean home at the attested source; the witness above is its own output. The selections are disjoint: rows 1-3 in the container bracket, row 4 on the host.
+
+Row 4 observed result: exit 2, which is statusgen's could-not-check exit for --consumers, not an observed routing failure. The command prints: "statusgen: --consumers: COULD-NOT-CHECK: assay:assay:statusgen:26 is not in the diff against 2a3b4be189484335a8592a80d619011d350a74c7, and the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery. No routing claim was corroborated and none was disproved." The installed lint flags the same row: "Verify row 4 [consumer-delivery-range] consumer command has no explicit --base (the default becomes HEAD on merged main); post-merge consumer checks must name --brief and pin both". The row is unchanged since the earlier verification above, so the same check-definition defect stands (class tracked in #4560). Needed: a reviewed amendment of row 4 that keeps --brief and the corroboration obligation and pins --delivery plus its first-parent --base, then a fresh verifier dispatch. Next actor: the brief author.
+
+Discarded attempt, disclosed. An earlier host run of row 4 in this same dispatch reported exit 0, witness sha256:2a66cfa49e5a, and it is discarded with no acceptance credit. It ran with this run's uncommitted Evidence edit in the home, which put the brief itself in the working-tree diff. A plain re-run in that dirty state printed "summary: 0 corroborated, 0 disproved, 15 unchecked", so the zero exit corroborated nothing and did not meet the row's Expect. The home was restored to the attested source and row 4 re-run clean, giving the witness above. The defect this exposes: an Evidence edit alone can turn this row's exit 2 into exit 0 with nothing corroborated, so any witness of this row taken after the Evidence edit reads as a pass. Rows 1-3 ran before that edit and the bracket closed before it.
+
+Supplemental host probes. They earn no acceptance credit, discharge no Verify row, and are recorded only to locate the blocker:
+
+- S1, observed 2026-10-31 by assay-verifier-app[bot] on the host, clean home: `statusgen --root . --consumers --brief statusgen/26 --delivery 5a4a3edda5c801b72e4e40bd17d68bfc6f946550 --base 4264d1027198b8f257a95e1630f07cac358fcd6f` exited 0 with summary 12 corroborated, 0 disproved, 3 unchecked.
+- S2, observed 2026-10-31 by assay-verifier-app[bot] on the host, clean home: `statusgen --root . --consumers --brief statusgen/26 --delivery 44829891e8f74b1520b64f4180910d96e17be96a --base 205c8b46a6b467f4693fc1d5e1152cf2690d9ab5` exited 0 with summary 6 corroborated, 0 disproved, 2 unchecked.
+
+Risk-bearing values. Brief risk metadata is present and every field is no; the item is not irreversible. Enumerated anyway over the literals the delivery introduces in statusgen/perfrecord.go and statusgen/bench/perfworkload.sh. Those two files have not changed since the earlier verification above. The highest-ranked is the phase roster, because records written under a wrong roster stay wrong for deskperf readers; it is still reversible by an edit and a release. The timeouts and sample count are reversible operational knobs, ranked last, with no derivation needed.
+
+RISK-VALUE: DERIVED — perfV3Phases = {"discover","parse","evaluate","render","write","deskread"} @ statusgen/perfrecord.go:257 — covers the brief's Interface contract (discovery/load, parse, evaluation, rendering, and the deskread child), plus the write phase, and is the roster docs/telemetry.md documents.
+RISK-VALUE: DERIVED — perfToolName = "statusgen" @ statusgen/perfrecord.go:51 — the record's tool field, a constant rather than argv[0], so a renamed or wrapped binary still emits records under the tool name the brief names.
+RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ statusgen/perfrecord.go:432, cmd.WaitDelay = time.Second @ statusgen/perfrecord.go:436, bench SAMPLES default 20 @ statusgen/bench/perfworkload.sh:13, go test -timeout=240s @ statusgen/bench/perfworkload.sh:16 — reversible operational knobs; ranked last and out of scope for derivation by design.
+
+Accounting: 4 rows total. 3 passed (rows 1, 2, 3). 0 failed obligations. 1 could-not-check (row 4: exit 2, COULD-NOT-CHECK, check-definition, #4560). No could-not-check result is counted as a pass.
+
+**VERIFY: BLOCKED** — rows 1-3 pass in the admitted container bracket at 2a3b4be18948; row 4 exit 2 is could-not-check (consumers row lacks a --delivery/--base pin on merged main; check-definition, #4560). No acceptance obligation was observed to fail.
 
 ## Review
 

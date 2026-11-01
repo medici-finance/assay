@@ -264,7 +264,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := json.Unmarshal(commitContent, &outcome); err != nil {
 		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
 	}
-	landedRoot, landedHead, cleanup, err := landedClosureFn(evidenceRoot, targetRepoPath, nil, commitContent, false, fg, fr, branch)
+	landedRoot, landedHead, cleanup, err := landedClosureFn(evidenceRoot, targetRepoPath, nil, commitContent, false, fg, fr, branch, receipt)
 	if err != nil {
 		return err
 	}

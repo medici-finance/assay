@@ -262,6 +262,21 @@ func isAlnumByte(c byte) bool {
 var secReviewPass = regexp.MustCompile(`(?i)^[ \t]*Security-Review:[ \t]*pass[ \t\r]*$`)
 var secReviewFail = regexp.MustCompile(`(?i)^[ \t]*Security-Review:[ \t]*fail[ \t\r]*$`)
 
+// HasCorrectnessVerdictLine reports whether body carries a correctness verdict line
+// (`Verdict: approve|request-changes`), read as the lane classifier reads it
+// (bodycheck.CorrectnessVerdictLine, fenced lines skipped). It is a copy of
+// that reader, not a call to it, because bodycheck is internal to cmd/deskpost; a test in
+// cmd/deskpost pins the two to the same answer.
+//
+// The security-lane clearance (EvaluateSecurityBodyClearance) refuses on it: a body that
+// speaks for both lanes is one a security pass must never clear, and one that must never
+// clear a fail (#5092).
+func HasCorrectnessVerdictLine(body string) bool {
+	return HasVerdictMarkerLine(body, correctnessVerdict, SkipFenced)
+}
+
+var correctnessVerdict = regexp.MustCompile(`(?i)^[ \t]*Verdict:[ \t]*(approve|request-changes)[ \t\r]*$`)
+
 var correctnessApprove = regexp.MustCompile(`(?i)^[ \t]*Verdict:[ \t]*approve[ \t\r]*$`)
 var correctnessRequestChanges = regexp.MustCompile(`(?i)^[ \t]*Verdict:[ \t]*request-changes[ \t\r]*$`)
 

@@ -141,6 +141,78 @@ No confidence threshold exists in the code: no probability cutoff literal appear
 
 **Remaining for the human gate:** the sign-off itself; the real per-category policy values (ceilings, readiness-fail ceilings, fact and advice age) when a category is admitted; acceptance of, or a rationale for, the two named-not-derived bounds.
 
+### Verification — graph-execution/13 — container-netns re-run of rows 1-3, 2026-10-30
+
+**VERIFY: BLOCKED** — rows 1 to 3 pass network-off in a closed bracket at 0006683ef1c8, but no fail-first witness can be produced on the installed v1.0.67, and all three rows are risk-bearing under `regulatory: yes`. Evidence only: the brief is `gate: human`, no status changes here and no model signs it off. Blocker and test-strength finding: #5048. This supersedes the could-not-run table and the blocked marker above for the network-off witness only.
+
+Envelope: runner image ghcr.io/medici-finance/verify-runner:v1.0.67 at the digest in the witness (amd64 under an arm64 host), `--network none`, read-only root, tmpfs /tmp, read-only source mount, `GOPROXY=off`, statusgen v1.0.67, go1.27.3 linux/amd64. Verifier: claude-opus-5-5, tier strong, a non-implementer.
+
+Witness (closed bracket, `verdict=match`):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmission" ./...` | pass exit=0 sandbox=container-netns | sha256:4ebca3cc5c90 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmissionConfidenceCannotAuthorize" ./...` | pass exit=0 sandbox=container-netns | sha256:ec1910e8a605 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmissionRiskInputUnion" ./...` | pass exit=0 sandbox=container-netns | sha256:f05ed626d5eb | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:43331633ff79d183de9bb98544ed3f7f2af71a445a0b56b4bfb723059587daa8
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5040 run=c558c5a1c7063d103f3f034186b38f018f85d5f4beb397e75c663d888bcfd5ce source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e brief=docs/streams/graph-execution/brief-13-agentic-admission.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c558c5a1c7063d103f3f034186b38f018f85d5f4beb397e75c663d888bcfd5ce source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e tree=sha256:43331633ff79d183de9bb98544ed3f7f2af71a445a0b56b4bfb723059587daa8 witness=sha256:e6d03e9b07c21b5995f11354dff14010e758a5b6df448f31bca10bc0e0d843a7 opened=2026-10-30T22:00:55Z closed=2026-10-30T22:13:21Z before=receipt after=check-verifier
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmission" ./...` | exit 0; PASS for TestAgenticAdmission tests; owning package has no no-tests marker | exit 0 in the witness above. Reading aid, supplemental copy of the same tree: 8 top-level PASS, 77 PASS lines in all, 0 FAIL, internal/deskkit prints `ok` | 2026-10-30 | claude-opus-5-5 verifier |
+| 2 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmissionConfidenceCannotAuthorize" ./...` | exit 0; PASS for the named test; owning package has no no-tests marker | exit 0 in the witness above. Supplemental copy: named test PASS, internal/deskkit prints `ok` | 2026-10-30 | claude-opus-5-5 verifier |
+| 3 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmissionRiskInputUnion" ./...` | exit 0; PASS for the named test; owning package has no no-tests marker | exit 0 in the witness above. Supplemental copy: named test PASS, internal/deskkit prints `ok` | 2026-10-30 | claude-opus-5-5 verifier |
+
+The witness records exit codes and output hashes, not the PASS lines. The `Observed` details come from a separate supplemental run on a scratch copy of the source in the same envelope. They read the Expect column and carry no acceptance credit.
+
+**Uncovered obligation: fail-first (rows 1, 2 and 3).** On v1.0.67 the host prints `flag provided but not defined: -history-pack`. The container, given the base 1f41825862a8 (parent of the delivering commit 1c437b26d45e), prints `statusgen verifyrun: --fail-first: --base "1f41825862a8551837e024a15902eabdbfa08e4e" names no commit in this clone`. That attempt wrote no witness and is not credited. v1.0.68 carries the flag. Needed: host tools and a qualified runner image at v1.0.68, then a fresh dispatch. Next actor: the desk (#5048).
+
+**Supplemental probes, no acceptance credit.** All ran on scratch copies in the same envelope, with the selector narrowed to internal/deskkit.
+
+| Probe | Selector | Result | Date | Runner |
+|-------|----------|--------|------|--------|
+| advice replaces the cap | row 2 | exit 1, admission_test.go:349 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| advice widens at p of 0.95 or more | row 2 | exit 1, admission_test.go:349 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| union drops brief gates | row 3 | exit 1, admission_test.go:418 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| union drops disposition gates | row 3 | exit 1, admission_test.go:419 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| readiness ceiling floor removed | row 1 | exit 1, admission_test.go:285 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| human floor loses deploy | row 1 | exit 1, admission_test.go:161 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| map: bounded to low | rows 1 and 3 | exit 1, admission_test.go:470 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| map: supervised to low | rows 1 and 3 | exit 1, admission_test.go:477 | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| map: blocked to low | row 3 | **exit 0, survives** | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| map: blocked to low | row 1 | exit 1, admission_test.go:696, a side effect of a partial fixture | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| map: human-led to low | rows 1 and 3 | **exit 0, survives** | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+| map: discovery-only to low | row 1 | **exit 0, survives** | 2026-10-30 | claude-opus-5-5 verifier @ 0006683ef1c8 |
+
+**Finding.** The human-led, discovery-only and blocked map values are not pinned as values. admission_test.go lines 194 and 419 compare against `DispositionRiskInput(d)`, the function under test. Production holds the ruled value, so this is a missing pin, not a wrong value, and the evaluator has no production caller yet. It is not recorded as a failed row: every row's Expect holds, and "non-discriminating" in docs/verify-row-strength.md means green at base and at head, which was not observed. The human gate should weigh it (#5048; it needs its own issue, because this session's filing budget ran out).
+
+**Base run disclosure.** A hand run of the rows at the base exited 1 with `[setup failed]`: `open /go/pkg/mod/cache/download/github.com/go-git/go-git/v5/@v/v5.19.2.lock: read-only file system`. That is the envelope, not the change, so it is no evidence of discrimination. A v1.0.68 fail-first run could report the base `unproven` for the same reason unless the base's modules resolve offline.
+
+**Risk-bearing values (`regulatory: yes`)**, ranked. All are in tools/desk/internal/deskkit/admission.go unless named otherwise, and none changed since 1c437b26d45e. All are reversible by an edit while the evaluator is inactive; the ranking is by what a wrong value would permit once it is consulted.
+
+- RISK-VALUE: DERIVED — dispositionRiskInput[AdmitHumanLed] = "human" @ admission.go:129 — the brief's Human decision says everything other than bounded and supervised maps to human; DR-graph-exec-13 records the same. Not pinned by a literal test.
+- RISK-VALUE: DERIVED — dispositionRiskInput[AdmitDiscoveryOnly] = "human" @ admission.go:130 — same derivation. Not pinned by a literal test.
+- RISK-VALUE: DERIVED — dispositionRiskInput[AdmitBlocked] = "human" @ admission.go:131 — same derivation. Not pinned by a literal test.
+- RISK-VALUE: DERIVED — DispositionRiskInput fallback = "human" @ admission.go:140 — an unknown disposition takes the most gated verdict, which fails closed and matches "everything else".
+- RISK-VALUE: DERIVED — dispositionRiskInput[AdmitBoundedAgentWork] = "standard" @ admission.go:127 — the brief's Human decision and DR-graph-exec-13.
+- RISK-VALUE: DERIVED — dispositionRiskInput[AdmitSupervisedAgent] = "elevated" @ admission.go:128 — the brief's Human decision and DR-graph-exec-13.
+- RISK-VALUE: DERIVED — humanFloorOperations = {"merge","release","deploy"} @ admission.go:416 — the brief's "preserve human merge/release floors"; DR-graph-exec-13 states all three are never an agent operation.
+- RISK-VALUE: DERIVED — readiness ceiling floor, ceil.rank() < AdmitHumanLed.rank() @ admission.go:474 — the brief's "each one caps at human-led", with validation refusing any agent lane.
+- RISK-VALUE: DERIVED — riskVerdicts = {"low","standard","elevated","human"} @ admission.go:844 — the verdict vocabulary the shipped workflow patterns are keyed on.
+- RISK-VALUE: NAMED, NOT DERIVED — admissionMaxSubject = 256 @ admission.go:332 — spec and schema state it with no rationale; it fails closed.
+- RISK-VALUE: NAMED, NOT DERIVED — admissionMaxOperations = 16 @ admission.go:333 — as above.
+- RISK-VALUE: NAMED, NOT DERIVED — admissionMaxFacts = 32 @ admission.go:334 — as above.
+- RISK-VALUE: NAMED, NOT DERIVED — admissionMaxAdvice = 16 @ admission.go:335 — as above.
+- RISK-VALUE: NAMED, NOT DERIVED — admissionMaxPatternLen = 1<<20 @ admission.go:336 — as above.
+- RISK-VALUE: NAMED, NOT DERIVED — reasonTokenRE 64-character cap = {0,63} @ admission.go:343 — no stated rationale.
+- RISK-VALUE: NAMED, NOT DERIVED — maxFactAge and maxAdviceAge = "24h0m0s" @ testdata/admission/policy.json:59 — a fixture example; the code requires only a positive value, and the owner has not adopted real values.
+
+No confidence threshold literal exists in the evaluator.
+
+**Remaining for the human gate:** the decision on #2034, which is still open; the owner's policy values; a view on the unpinned map entries and the named-not-derived bounds. The owed fail-first witness comes first.
+
 ## Review
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

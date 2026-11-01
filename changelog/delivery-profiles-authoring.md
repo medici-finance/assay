@@ -1,1 +1,0 @@
-- Plan staged deliveries with explicit real, simulated and absent components, scoped acceptance, and fresh evidence when replacing a fake with a real service.

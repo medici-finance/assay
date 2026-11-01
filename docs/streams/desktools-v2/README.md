@@ -105,7 +105,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 45 | [Migrate the board reader verbs to Cobra and Viper](brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 47 | [Migrate the small admin verbs to Cobra and Viper](brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 48 | [Migrate the small standalone module CLIs to Cobra and Viper](brief-48-migrate-the-small-standalone-module-clis-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 49 | [Migrate the harness and version guard CLIs to Cobra and Viper](brief-49-migrate-the-harness-and-version-guard-clis-to-cobra-and-viper.md) | 3 | L | todo | — | — |
@@ -137,6 +137,8 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
 | 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
 | 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
+| 78 | [Migrate the release object transport adapter to the shared CLI contract](brief-78-migrate-the-release-object-transport-adapter.md) | 4 | M | blocked | — | — |
+| 79 | [Migrate the release object client bootstrap to the shared CLI contract](brief-79-migrate-the-release-object-client-bootstrap.md) | 4 | S | blocked | — | — |
 | 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -235,6 +237,25 @@ requires its top-level PASS line; missing selections and failures are red. The
 fixtures use local git repositories, local HTTP servers and fake CLI executables.
 
 ## Cobra/Viper migration track
+
+### Release workflow adapter ownership — PR #4939, reverted by #5089
+
+PR #4939 added an executable object handoff and a pinned-client bootstrap to the release
+workflow, and authored [brief 78](brief-78-migrate-the-release-object-transport-adapter.md)
+and [brief 79](brief-79-migrate-the-release-object-client-bootstrap.md) to own their CLI
+ports. Issue #5089 reverts that handoff: releases are back on the runner labels and GitHub
+artifact path of v1.0.68, `tools/release/transport.py` (future: re-landed with the handoff) and
+`tools/release/install-object-client.sh` (future: re-landed with the handoff) are no longer
+in the tree, and `cli-migration.json` no longer carries their pending rows.
+
+Both briefs stay on the board, `blocked`, with their /16, /46 and /17 edges unchanged.
+They are `gate: human`, so dropping or withdrawing them is a guarded move that needs a
+recorded human ruling on a decision issue (lifecycle-v1 §4.5); `blocked` only keeps them
+out of dispatch while the code they would port is absent. A PR that re-lands the handoff
+re-adds the pending rows and returns them to `todo`; otherwise a human ruling withdraws
+them, and that change also removes them from /17's `depends:`, since an edge into a
+withdrawn brief is never satisfied.
+
 
 - **Wave 1 — /15:** shared command/configuration adapter and conformance fixtures, complete
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.

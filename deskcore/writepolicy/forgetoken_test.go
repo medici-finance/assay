@@ -1,6 +1,12 @@
 package writepolicy
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -482,8 +488,6 @@ func TestForgeMentionsRefused(t *testing.T) {
 		"mkdir -p auth",
 		"gh auth status",
 		"gh pr view token",
-		"gh run list --json status,name",
-		"git status && gh pr view 1",
 	})
 }
 
@@ -509,4 +513,856 @@ func TestForgeNoTriggerAllowed(t *testing.T) {
 			t.Errorf("%q: no trigger word, so it must stay allowed", cmd)
 		}
 	}
+}
+
+// regression: #5046
+func TestForgeStatusComputedForms(t *testing.T) {
+	// A computed word after gh could be anything, with or without a print flag.
+	forgeRefuseAll(t, []string{
+		`gh "$s" status "$f"`,
+		`gh "$s" status -aat`,
+		`gh "$s" status -aaat`,
+		`gh "$s" status -t`,
+		`gh "$s" status -at`,
+		`gh "$s" status -ta`,
+		`gh "$s" status -t=1`,
+		`gh "$s" status --show-token`,
+		`gh "$s" status --show-token=true`,
+		`gh "$s" status --hostname example.com -t`,
+		`gh "$s" status "-t"`,
+		`gh "$s" status -"t"`,
+		`gh "$s" status $'-\x74'`,
+		`gh "$s" status --show-tok\en`,
+		"gh \"$s\" status \\\n  -t",
+		`f=-t; gh "$s" status $f`,
+		`f=--show-token; gh "$s" status "$f"`,
+		`gh "$s" status`,
+		`gh $s status`,
+		`gh ${s} status`,
+		"gh `x` status",
+		`gh $(x) status`,
+		`gh "$s" "$u"; git status`,
+		`gh "$s" view 1 --json status`,
+		`gh pr "$v" --json status`,
+		`gh pr"$x" view --json status`,
+		`g=gh; $g "$s" status "$f"`,
+		`/usr/local/bin/gh "$s" status -t`,
+		`T=$(gh "$s" status -t)`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh "$s" status -t`,
+		"bash <<'E'\ngh \"$s\" status -t\nE",
+		`printf 'gh "$s" status -t' | sh`,
+	})
+}
+
+// regression: #5046
+func TestForgeStatusAliasForms(t *testing.T) {
+	// A literal word after gh may be an alias, and a pair under a command may
+	// be too (`gh issue mine`). Only the listed pairs cannot be one.
+	forgeRefuseAll(t, []string{
+		`gh au status "$f"`,
+		`gh au status -aat`,
+		`gh au status -t`,
+		`gh au status --show-token`,
+		`gh au status`,
+		`gh au -at status`,
+		`gh au "$f" status`,
+		`gh au "$x" "$f"; git status`,
+		`echo status; gh au "$x" "$f"`,
+		`g=gh; $g au status "$f"`,
+		`gh pr view 1 --json status; "$g" au status "$f"`,
+		"gh au status -at",
+		"git status && gh au",
+		"git status && gh issue mine",
+		"gh pr mine --json status",
+		"gh run mine; git status",
+		"gh status",
+		"gh pr; git status",
+		`gh "pr view" 1 --json status`,
+		`gh pr\ view 1 --json status`,
+		`gh p\x72 view 1 --json status`,
+		"gh pr{,x} view 1 --json status",
+		"GH pr view 1 --json status",
+		"gh api repos/x/y --json status",
+		"gh alias set au x; git status",
+		"gh extension exec x; git status",
+		`gh config get "$k"; git status`,
+	})
+}
+
+// regression: #5046
+func TestForgeStatusOtherCommands(t *testing.T) {
+	// Beside a listed read, anything that could print the credential another
+	// way still refuses.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --json status; ./x.sh",
+		"gh pr view 1 --json status && ./x.sh",
+		"gh pr view 1 --json status & ./x.sh",
+		"gh pr view 1 --json status; sh x.sh",
+		"gh pr view 1 --json status | sh",
+		`eval "$c"; git status; gh pr view 1`,
+		"bash -c 'gh pr view 1 --json status'",
+		"cat ~/.config/gh/hosts.yml; gh pr view 1 --json status",
+		"security find-generic-password; gh pr view 1 --json status",
+		"gh pr view 1 --json status | grep -r x",
+		"gh pr view 1 --json status | grep x hosts.yml",
+		`gh pr view 1 --json status | grep "-rx"`,
+		"gh pr view 1 --json status | grep -f hosts.yml",
+		"gh pr view 1 --json status | grep --include=x y",
+		"gh pr view 1 --json status | grep h*",
+		"gh pr view 1 --json status | head hosts.yml",
+		"gh pr view 1 --json status | tail -f hosts.yml",
+		"gh pr view 1 --json status | wc hosts.yml",
+		"gh pr view 1 --json status | jq x",
+		"gh pr view 1 --json status > x",
+		"gh pr view 1 --json status < x",
+		"PAGER=x gh pr view 1 --json status",
+		"GH_DEBUG=api gh pr view 1 --json status",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$(x)") gh pr view 1 --json status`,
+		`T=$(desktoken worker); GH_TOKEN=$(x) gh pr view 1 --json status`,
+		`T=$(desktoken worker); PAGER=$(cat "$T") gh pr view 1 --json status`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") "$g" pr view 1 --json status; gh pr view 1`,
+		"gh pr view 1 --web --json status",
+		`gh pr view 1 "--web" --json status`,
+		"gh pr view 1 -w; git status",
+		"gh issue list -cw; git status",
+		"T=$(desktokenx); gh pr view 1 --json status",
+		"T=$(desktoken $(x)); gh pr view 1 --json status",
+		"T=$(desktoken x > y); gh pr view 1 --json status",
+		"git -c core.pager=x status; gh pr view 1",
+		"git log; gh pr view 1 --json status",
+		"gh pr view 1 --json status \\\n; x",
+		"gh\rpr view 1 --json status",
+		"gh pr view `x` --json status",
+		`gh pr view 1 \--web --json status`,
+		"gh pr view 1 (x) --json status",
+		"(gh pr view 1 --json status)",
+		"gh pr view 1 --json status\n./x.sh",
+		`GH_DEBUG=$(cat "$T") gh pr view 1 --json status`,
+		"gh pr checks 1 --json status | tail -f",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusReadsAllowed(t *testing.T) {
+	// `status` as gh output or another command's word is not the credential
+	// read, on its own or with the role mint and a command-scoped GH_TOKEN.
+	for _, cmd := range []string{
+		"git status --short && gh pr view 1 --json state",
+		"gh run view 1 --json status,conclusion",
+		"gh pr checks 1 | grep status",
+		`gh issue list -R x/y --search "status"`,
+		"gh pr view 1 --json statusCheckRollup",
+		"gh api repos/x/y/commits/abc/status",
+		"git status -sb",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") git status --short && gh pr view 1 --json state`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh issue list -R x/y --search "status"`,
+		`T=$(desktoken --no-rotate worker --repo x/y 2>/dev/null); GH_TOKEN=$(cat "$T") gh run view 1 --json status,conclusion`,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr checks 1 | grep status`,
+		"git status && gh pr view 1",
+		"gh run list --json status,name",
+		"gh pr view 1 --json status --jq .status",
+		`gh pr view 1 --json status --jq ".status"`,
+		"gh pr list --json status --jq=.a.name",
+		"gh pr list --json status -q .a.name",
+		"gh run list --json status -q=.a.status",
+		"gh run list --json status -q.a.status",
+		"gh run view 1 --json status --jq .jobs.status",
+		"gh pr view 1 --json status --jq .a.b",
+		"gh issue list --repo x/y --json status",
+		"gh issue list -R=x/y --json status",
+		"gh issue list -Rx/y --json status",
+		"gh run list --status completed --limit=5 -L 3 --json status",
+		"gh run view 1 --log-failed --json status",
+		"gh pr list --assignee @me --state=open --json status",
+		"gh pr checks 1 | grep -A3 status",
+		"gh pr checks 1 | grep -A 3 -i status | head -n 5 | wc -l",
+		"gh pr checks 1 | tail -5 | grep status",
+		"gh pr list -s open; git status --porcelain",
+		"gh issue view 1 --json state; git status",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: a listed read must stay allowed", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusJqFieldPathsOnly(t *testing.T) {
+	// Only literal field paths clear, in every spelling of the flag.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --json status --jq x",
+		"gh pr view 1 --json status --jq x.y",
+		`gh pr view 1 --json status --jq "x.y"`,
+		`gh pr view 1 --json status --jq 'x.y'`,
+		`gh pr view 1 --json status "--jq" x.y`,
+		"gh pr view 1 --json status --jq=x.y",
+		`gh pr view 1 --json status "--jq=x.y"`,
+		`gh pr view 1 --json status --jq="x.y"`,
+		"gh pr view 1 --json status -q x.y",
+		`gh pr view 1 --json status "-q" x.y`,
+		"gh pr view 1 --json status -qx.y",
+		"gh pr view 1 --json status -q=x.y",
+		`gh pr view 1 --json status -q"x.y"`,
+		"gh run list --json status --jq x.y",
+		"gh issue list --json status -q x",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status --jq x.y`,
+		"gh pr view 1 --json status --jq .a --jq x.y",
+		"gh pr view 1 --search --jq x.y status",
+		"gh pr view 1 --json status --jq",
+		"gh pr view 1 --json status -q",
+		"gh pr view 1 --json status --jq .",
+		"gh pr view 1 --json status --jq .a,.b",
+		"gh pr view 1 --json status --jq .a+.b",
+		"gh pr view 1 --json status --jq length",
+		"gh pr view 1 --json status --jq .a-b",
+		"gh pr list --json status --jq=.[0].name",
+		"gh pr list --json status -q .[0].name",
+		"gh run list --json status -q=.[0].status",
+		"gh run list --json status -q.[0].status",
+		"gh run view 1 --json status --jq .jobs[0].status",
+		`gh pr view 1 --json status --jq ""`,
+		"gh pr view 1 --json status --jq=",
+		"gh pr view 1 --json status --template x",
+		"gh pr view 1 --json status --template=x",
+		"gh pr view 1 --json status -t x",
+		"gh pr view 1 --json status -tx",
+		"gh pr view 1 --json status -t=x",
+		`gh run view 1 --json status -t '{{.status}}'`,
+		"gh pr view 1 --json status -cq x.y",
+		"gh pr list --json status -Lq x.y",
+		"gh pr list --json status -L5",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusQuotedBlank(t *testing.T) {
+	// A quoted blank is one word to the shell and several here, so it refuses,
+	// on a filter and on a gh read alike.
+	const pre = "git status; gh pr list | "
+	var rows []string
+	for _, f := range []string{
+		`grep "x -A" 123`, `grep 'x -B' 123`, `grep "x "-C 123`, `grep -v "nomatch -A" 456`,
+		`grep "x	-A" 123`, `grep "x -A"`, `grep 'a b'`, `head "-n 5"`, `grep "x`,
+		`grep 'a''b'`, `grep -v ''''a`,
+	} {
+		rows = append(rows, pre+f)
+	}
+	forgeRefuseAll(t, append(rows,
+		`gh pr view 1 --search "x --search" --jq x.y --json status`,
+		`gh pr view 1 "x --json" --jq x.y status`,
+		`gh issue list --search "a b" --json status`,
+		`gh pr view 1 --json status --jq ".a .b"`,
+		`gh pr view 1 --json status --jq" "x.y`,
+		`gh pr view "1 --json status`,
+		`git status "a b" && gh pr view 1`,
+	))
+}
+
+// regression: #5046
+func TestForgeStatusExpansionBesideRead(t *testing.T) {
+	// git status and a filter take free arguments, so an expansion, a substitution
+	// or a redirection there refuses on its bytes, and a newline ends a command.
+	forgeRefuseAll(t, []string{
+		`git status $x; gh pr view 1`,
+		`git status "$x"; gh pr view 1`,
+		"git status `x`; gh pr view 1",
+		`git status \x; gh pr view 1`,
+		`git status (x); gh pr view 1`,
+		`git status >x; gh pr view 1`,
+		`git status <x; gh pr view 1`,
+		"git status -s\n./x.sh\ngh pr view 1",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusQuotedSeparators(t *testing.T) {
+	// The split ignores quotes. A separator inside a span still splits, leaving a
+	// quote open, so it refuses; a split that honoured quotes would clear these.
+	var rows []string
+	for _, q := range []string{"'", `"`} {
+		for _, sep := range []string{";", "&", "|", "\n"} {
+			word := q + "a" + sep + "b" + q
+			rows = append(rows,
+				"git status "+word+"; gh pr view 1",
+				"gh pr list --json status | grep "+word,
+			)
+		}
+	}
+	// A quote byte inside a span of the other kind does not close it, so a split
+	// that misread one would take the command between these two words as quoted.
+	forgeRefuseAll(t, append(rows,
+		`git status "'"; x; "'"; gh pr view 1`,
+		`git status '"'; x; '"'; gh pr view 1`,
+	))
+}
+
+// regression: #5046
+func TestForgeStatusBlankForms(t *testing.T) {
+	// A tab breaks words on a listed read, so it cannot hide a file operand, and
+	// the prefix needs a blank: with none, the shell reads `gh` into the value.
+	forgeRefuseAll(t, []string{
+		"gh pr list --json status | grep x\ty",
+		"gh pr list --json status | head\ty",
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$T")gh pr view 1 --json status`,
+	})
+	for _, cmd := range []string{
+		"gh pr list --json status | grep -v\tx",
+		"T=$(desktoken worker); GH_TOKEN=$(cat \"$T\")\tgh pr view 1 --json status",
+		`gh pr list --json status | grep "a""b"`,
+	} {
+		if forgeWithin(t, cmd, 2*time.Second) {
+			t.Errorf("%q: must stay allowed", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusGhArgsClosed(t *testing.T) {
+	// Every word on a listed gh read is on the list: no unknown flag, no host.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --json status --unknown",
+		"gh pr view 1 --json status --unknown=x",
+		"gh pr view 1 --json status -x",
+		"gh pr view 1 --json status --",
+		"gh pr view 1 --json status -",
+		"gh pr view https://example.com/x/y/pull/1 --json status",
+		"gh issue list -R example.com/x/y --json status",
+		"gh issue list --repo=example.com/x/y --json status",
+		"gh issue list -Rexample.com/x/y --json status",
+		"gh issue list -R x --json status",
+		"gh issue list -R --json status",
+		"gh pr list --search is:open --json status",
+		"gh pr list --search=is:open --json status",
+		"gh pr list --state= --json status",
+		`gh pr view "" --json status`,
+		"gh pr view 1 h* --json status",
+		"gh pr view ~x --json status",
+		"gh pr view 1 --json status --help",
+		"gh run list -w x --json status",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusWebValueForms(t *testing.T) {
+	// A bool flag takes `=value`, and gh still opens the browser program.
+	forgeRefuseAll(t, []string{
+		"gh pr view 1 --web=true --json status",
+		"gh pr view 1 --web=1 --json status",
+		"gh pr view 1 --web=false --json status",
+		"gh pr view 1 --web= --json status",
+		`gh pr view 1 "--web=true" --json status`,
+		`gh pr view 1 '--web=true' --json status`,
+		`gh pr view 1 --web="true" --json status`,
+		`gh pr view 1 "--web"=true --json status`,
+		`gh pr view 1 --we"b=true" --json status`,
+		"gh run view 1 --web=true --json status",
+		"gh pr checks 1 --web=true | grep status",
+		"gh issue list --web=true; git status",
+		"gh pr view 1 -w=true --json status",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusFilterNumbers(t *testing.T) {
+	// A number is a count only straight after a flag that takes one. Anywhere
+	// else it is a file operand: `head 123` opens a file named 123.
+	const pre = "git status; gh pr list | "
+	var refused []string
+	for _, f := range []string{
+		"head 123", "tail 123", "wc 123", "wc -l 123", `head "123"`, `head ""`,
+		"grep status 123", "grep 123 456", `grep "" 123`, "grep -A 3 status 123", "grep -3 status 123",
+		"head -n 5 123", "head -n5 123", "head -5 123", "tail -n 5 123", "tail -5 123", "head -c 5 123",
+		"head -n", "grep -A", "head -n x", `head -n ""`, "head -n -c 5", "grep -A -i 3",
+		"head -5c 123", "tail -5c 123", "head -5n 123", "head -n5c", "head -nc 5",
+		"grep -3A 2 status", "grep -A3i status",
+	} {
+		refused = append(refused, pre+f)
+	}
+	forgeRefuseAll(t, refused)
+	for _, f := range []string{
+		"head -n 5", "head -n5", "head -5", "head -c 5", `head -n "5"`, "tail -n 5", "tail -5", "tail -c 5",
+		"grep -A 3 status", "grep -A3 status", "grep -iA 3 status", "grep -B 2 -C 3 status", "grep -C3 status",
+		"grep -3 status", "grep -c status", "grep -n status", "grep 123", "wc -l", "wc",
+	} {
+		if forgeTokenRead(pre + f) {
+			t.Errorf("%q: a listed read must stay allowed", pre+f)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusKeepsAuthForms(t *testing.T) {
+	// The clearing never reaches the literal words: every gh auth form still
+	// refuses, whichever way status appears beside it.
+	forgeRefuseAll(t, []string{
+		"gh auth status",
+		"gh auth status -a",
+		"gh auth status --hostname example.com",
+		"gh auth status -t",
+		"git status && gh auth token",
+		"gh run view 1 --json status; gh auth status --show-token",
+		"gh pr checks 1 | grep status; gh config get oauth_token",
+		"gh pr view auth --json status",
+	})
+}
+
+// regression: #5046
+func TestForgeStatusRetainedRefusals(t *testing.T) {
+	// False refusals this design keeps, each named in docs/write-policy.md. Each
+	// one can run as a listed read, as a file-backed body, or in two calls.
+	forgeRefuseAll(t, []string{
+		"git status && gh pr create -t title",
+		"gh status",
+		"gh api repos/x/y/pulls | grep status",
+		"cd x && gh pr view 1 --json status",
+		`[ "$n" -lt 5 ] && gh run view 1 --json status`,
+		`gh run view "$id" --json status`,
+		"gh pr list --json status | head -5c",
+		"gh pr checks 1 | grep -3A 2 status",
+		"gh run view 1 --json status --jq '.status | ascii_upcase'",
+		"gh run view 1 --json status --jq length",
+		"gh pr list --json status --jq '.[0].status'",
+		"gh pr view 1 --json status --template x",
+		`gh issue list --search "a b" --json status`,
+		"gh pr checks 1 | grep 'a b status'",
+		"gh pr list --json status | grep 'a;b'",
+		`gh pr list --json status --search "it's"`,
+		"gh pr list --search is:open --json status",
+		"gh pr list -L5 --json status",
+		"gh pr list --json status | grep ^a",
+		"gh pr list --json status | grep a#",
+		"F=$(desktoken worker); gh pr view 1 --json status",
+		"X=$(desktoken worker); gh pr view 1 --json status",
+		`GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`git status && T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`GH_TOKEN=$(cat "$(desktoken worker --repo o/n)") gh pr view 1 --json status`,
+		`GH_TOKEN="$(cat "$(desktoken worker --repo o/n)")" gh pr view 1 --json status`,
+		`tokfile="$(desktoken "$role" --repo "$repo")"; GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json status`,
+		"if ! tokfile=\"$(desktoken \"$role\" --repo \"$repo\")\"; then\n  false\nelse\n  GH_TOKEN=\"$(cat \"$tokfile\")\" gh issue list -R \"$repo\" --limit 1 --json status\nfi",
+	})
+}
+
+// forgePrefixForms: spellings of the role mint then a GH_TOKEN prefix that clear.
+var forgePrefixForms = []string{
+	`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	"T=$(desktoken worker)\nGH_TOKEN=$(cat \"$T\") gh pr view 1 --json status",
+	`T=$(desktoken worker) && GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	`TF=$(desktoken worker); GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+	`git status; T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	`T=$(desktoken worker); git status; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+	`T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr list --json status; GH_TOKEN=$(cat "$T") gh pr view 1`,
+	`T=$(desktoken worker); TF=$(desktoken worker); GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+}
+
+// regression: #5046
+func TestForgeStatusPrefixNeedsMint(t *testing.T) {
+	// The prefix clears only after a mint of the same variable that is sure to run
+	// in this shell before it. A later mint, another variable, or a mint a separator
+	// or a comment could skip or fork, does not count.
+	const read = `GH_TOKEN=$(cat "$T") gh pr view 1 --json status`
+	forgeRefuseAll(t, []string{
+		read,
+		`GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+		read + "; T=$(desktoken worker)",
+		`TF=$(desktoken worker); ` + read,
+		`T=$(desktoken worker); GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+		`T=$(desktoken worker) | ` + read,
+		`T=$(desktoken worker) & ` + read,
+		`T=$(desktoken worker) &; ` + read,
+		`T=$(desktoken worker) || ` + read,
+		"T=$(desktoken worker) |\n" + read,
+		`git status || T=$(desktoken worker); ` + read,
+		`git status && T=$(desktoken worker); ` + read,
+		`git status | T=$(desktoken worker); ` + read,
+		`git status & T=$(desktoken worker); ` + read,
+		"git status &&\nT=$(desktoken worker); " + read,
+		"git status |\nT=$(desktoken worker); " + read,
+		"git status # ; T=$(desktoken worker)\n" + read,
+		"git status #\nT=$(desktoken worker); " + read,
+	})
+	// A closed set of names on both sides, each name on both sides of one command.
+	for _, name := range []string{"X", "TFF", "TT", "t", "T0", "GH_TOKEN", "PATH"} {
+		forgeRefuseAll(t, []string{fmt.Sprintf(`%[1]s=$(desktoken worker); GH_TOKEN=$(cat "$%[1]s") gh pr view 1 --json status`, name)})
+	}
+	forgeRefuseAll(t, []string{"TFF=$(desktoken worker); gh pr view 1 --json status"})
+	for _, cmd := range forgePrefixForms {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: must clear", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusPrefixFormsRunTheMint(t *testing.T) {
+	// Every form that clears reads the file the mint just assigned, in a real shell,
+	// whatever the variable held before it ran.
+	dir := t.TempDir()
+	file := filepath.Join(dir, "minted")
+	for name, body := range map[string]string{
+		"minted":    "",
+		"desktoken": "#!/bin/sh\nprintf '%s\\n' '" + file + "'\n",
+		"gh":        "#!/bin/sh\n",
+		"git":       "#!/bin/sh\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, shell := range [][]string{{"sh"}, {"bash"}, {"zsh", "-f"}} {
+		t.Run(strings.Join(shell, " "), func(t *testing.T) {
+			bin := forgeShell(t, shell[0])
+			for _, form := range forgePrefixForms {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, bin, append(append([]string{}, shell[1:]...), "-c", form)...)
+				cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "PATH=" + dir + ":" + os.Getenv("PATH"), "T=held-before", "TF=held-before"}
+				if out, err := cmd.CombinedOutput(); err != nil || len(out) != 0 {
+					t.Errorf("%q under %v: output %q, run error %v", form, shell, out, err)
+				}
+			}
+		})
+	}
+}
+
+// regression: #5046
+func TestForgeStatusFilterOperandQuotes(t *testing.T) {
+	// `^` and `#` refuse outside a quoted span and clear inside one. `=` clears
+	// either way: a shell's `=` expansion gives one word at most, the grep pattern.
+	forgeRefuseAll(t, []string{
+		"gh pr list --json status | grep ^a",
+		"gh pr list --json status | grep -v ^a",
+		"gh pr list --json status | grep a#",
+		"gh pr list --json status | grep ^'a'",
+		"gh pr list --json status | grep 'a'^a",
+		`gh pr list --json status | grep "a"#`,
+		"gh pr list --json status | grep '^a'#",
+		`gh pr list --json status | grep '"'^a`,
+		`gh pr list --json status | grep "'"^a`,
+	})
+	for _, cmd := range []string{
+		"gh pr list --json status | grep '^a'",
+		`gh pr list --json status | grep "^a"`,
+		"gh pr list --json status | grep 'a#'",
+		`gh pr list --json status | grep "a#"`,
+		"gh pr list --json status | grep '^'a",
+		"gh pr list --json status | grep a'#'",
+		"gh pr list --json status | grep =a",
+		"gh pr list --json status | grep a=0",
+		`gh pr list --json status | grep '"^a'`,
+		`gh pr list --json status | grep "'^a"`,
+		"gh pr list --json status | grep -v '^a'",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: must clear", cmd)
+		}
+	}
+}
+
+// forgeShellRead has a shell print each word and returns what it read. The words
+// must have balanced quotes and no blank, so the script stays one word per line.
+func forgeShellRead(t *testing.T, shell []string, words []string) []string {
+	t.Helper()
+	var script strings.Builder
+	for _, w := range words {
+		fmt.Fprintf(&script, "printf '[%%s]\\n' %s\n", w)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "read.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, forgeShell(t, shell[0]), append(append([]string{}, shell[1:]...), path)...)
+	cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+	out, err := cmd.CombinedOutput()
+	got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if err != nil || len(got) != len(words) {
+		t.Fatalf("%v gave %d lines for %d words (run error: %v)", shell, len(got), len(words), err)
+	}
+	for i, g := range got {
+		got[i] = strings.TrimSuffix(strings.TrimPrefix(g, "["), "]")
+	}
+	return got
+}
+
+// forgeBalanced keeps the words a shell parses as one word.
+func forgeBalanced(words []string) []string {
+	kept := []string{}
+	for _, w := range words {
+		if !forgeQuotedBlank(w) {
+			kept = append(kept, w)
+		}
+	}
+	return kept
+}
+
+// forgeShells: the shells a command may run under, with extended globbing on and with
+// the zsh option that changes how a quote is read.
+var forgeShells = [][]string{{"sh"}, {"bash"}, {"bash", "-O", "extglob"}, {"zsh", "-f"}, {"zsh", "-f", "-o", "extendedglob"}, {"zsh", "-f", "-o", "rcquotes"}}
+
+// regression: #5046
+func TestForgeStatusWordsReadLikeTheShell(t *testing.T) {
+	// Every word over quote bytes and a flag's or a value's bytes, in every mix. A
+	// real shell reads the word, and that reading alone says whether the line clears,
+	// so the matcher must see the word the program receives.
+	rows := []struct {
+		alphabet, line string
+		max            int
+		clears         *regexp.Regexp
+	}{
+		{`'"-n`, "gh pr list --json status | grep -v %s 5", 6, regexp.MustCompile(`^-n+$`)},
+		{`'"-n`, "git status; gh pr list | grep -v %s 5", 6, regexp.MustCompile(`^-n+$`)},
+		{`'"-n`, "gh pr list --json status | head %s 5", 6, regexp.MustCompile(`^-n$`)},
+		{`'"-n`, "gh pr list --json status | tail %s 5", 6, regexp.MustCompile(`^-n$`)},
+		{`'"-l`, "gh pr list --json status | wc %s", 6, regexp.MustCompile(`^-l+$`)},
+		{`'"5`, "gh pr list --json status | head -n %s", 6, regexp.MustCompile(`^5+$`)},
+		{`'".a`, "gh pr view 1 --json status --jq %s", 6, regexp.MustCompile(`^(\.a+)+$`)},
+		{`'".a`, "gh pr view 1 --json status --jq=%s", 6, regexp.MustCompile(`^(\.a+)+$`)},
+		{`'"-q.a`, "gh pr view 1 --json status %s", 5, regexp.MustCompile(`^([.aq][-.aq]*|-a|-q(\.[aq]+)+)$`)},
+	}
+	for _, shell := range forgeShells {
+		t.Run(strings.Join(shell, " "), func(t *testing.T) {
+			for _, row := range rows {
+				words := forgeBalanced(forgeWords(row.alphabet, row.max))
+				nested, cleared := 0, 0
+				for i, r := range forgeShellRead(t, shell, words) {
+					line := fmt.Sprintf(row.line, words[i])
+					if got := !forgeTokenRead(line); got != row.clears.MatchString(r) {
+						t.Errorf("%q: cleared=%v, and the shell reads the word as %q", line, got, r)
+					} else if got {
+						cleared++
+					}
+					if strings.ContainsAny(r, `'"`) {
+						nested++
+					}
+				}
+				if nested == 0 || cleared == 0 {
+					t.Errorf("%q: %d words keep a quote, %d lines clear, so this row proves nothing", row.line, nested, cleared)
+				}
+			}
+		})
+	}
+}
+
+// regression: #5046
+func TestForgeStatusClearedFiltersOpenNoFile(t *testing.T) {
+	// Every cleared filter line from a grid of quote and operand mixes runs for real
+	// in an empty directory with no input. A filter that takes a word as a file says
+	// so on stderr, and no such line may clear.
+	words := forgeBalanced(forgeWords(`'"-n5`, 4))
+	last := []string{"", "5", "a", "'5'", "''"}
+	var script strings.Builder
+	cleared := []string{}
+	for _, name := range []string{"grep", "head", "tail", "wc"} {
+		for _, w := range words {
+			for _, l := range last {
+				line := name + " " + w + " " + l
+				if forgeTokenRead("gh pr list --json status | " + line) {
+					continue
+				}
+				fmt.Fprintf(&script, "printf '@%d\\n'; %s </dev/null\n", len(cleared), line)
+				cleared = append(cleared, line)
+			}
+		}
+	}
+	if len(cleared) == 0 {
+		t.Fatal("no line clears, so this proves nothing")
+	}
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty")
+	if err := os.Mkdir(empty, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "run.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, forgeShell(t, "sh"), path)
+	cmd.Dir, cmd.Env = empty, []string{"HOME=" + empty, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+	out, _ := cmd.CombinedOutput() // a filter's non-zero exit is ordinary here
+	if ctx.Err() != nil {
+		t.Fatalf("the run timed out at %d lines", len(cleared))
+	}
+	current := ""
+	seen := 0
+	for _, l := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(l, "@"):
+			current = strings.TrimPrefix(l, "@")
+			seen++
+		case strings.Contains(l, "No such file"), strings.Contains(l, "cannot open"):
+			t.Errorf("line %s of the grid opened a file: %s", current, l)
+		}
+	}
+	if seen != len(cleared) {
+		t.Errorf("ran %d of %d lines", seen, len(cleared))
+	}
+}
+
+// regression: #5046
+func TestForgeStatusClosedSets(t *testing.T) {
+	// Each closed set, walked byte by byte, so one more byte in a set goes red.
+	for _, b := range "*?[]{}~" {
+		forgeRefuseAll(t, []string{
+			fmt.Sprintf("gh pr list --json status | grep a%c", b),
+			fmt.Sprintf("gh pr list --json status | grep '%ca'", b),
+		})
+	}
+	for filter, flags := range map[string]string{"grep": "AaBCEFHchilnoqsvwx", "head": "nc", "tail": "nc", "wc": "lwcm"} {
+		for b := 'A'; b <= 'z'; b++ {
+			if (b <= 'Z' || b >= 'a') && !strings.ContainsRune(flags, b) {
+				forgeRefuseAll(t, []string{fmt.Sprintf("gh pr list --json status | %s -%c", filter, b)})
+			}
+		}
+	}
+	// Rows, so this holds on a machine without the shell the read-back test needs.
+	for _, b := range "*?[]{}~^#=!%:+" {
+		forgeRefuseAll(t, []string{fmt.Sprintf("gh pr list --json status a%c", b)})
+	}
+	forgeRefuseAll(t, []string{
+		"gh pr list --json status | wc -5",
+		"gh pr list --json status | wc -l5",
+		"T=$(desktoken --repo=x/y worker); gh pr view 1 --json status",
+		"gh pr list --repo a:b/c --json status",
+		"gh pr list --repo a/b:c --json status",
+		"gh pr list -R a:b/c --json status",
+		"PATH=$(desktoken worker); gh pr view 1 --json status",
+		"HOME=$(desktoken worker); gh pr view 1 --json status",
+		"BASH_ENV=$(desktoken worker); gh pr view 1 --json status",
+		"GH_HOST=$(desktoken worker); gh pr view 1 --json status",
+		"XT=$(desktoken worker); gh pr view 1 --json status",
+		"XGH_TOKEN=$(desktoken worker); gh pr view 1 --json status",
+	})
+	for _, name := range []string{"GH_TOKEN", "T", "TF"} {
+		if cmd := name + "=$(desktoken worker); gh pr view 1 --json status"; forgeTokenRead(cmd) {
+			t.Errorf("%q: the role mint must clear", cmd)
+		}
+	}
+}
+
+// forgeWords lists every string over alphabet up to length max.
+func forgeWords(alphabet string, max int) []string {
+	words, last := []string{}, []string{""}
+	for n := 0; n < max; n++ {
+		var next []string
+		for _, w := range last {
+			for _, r := range alphabet {
+				next = append(next, w+string(r))
+			}
+		}
+		words, last = append(words, next...), next
+	}
+	return words
+}
+
+// regression: #5046
+func TestForgeStatusClearedWordsSurviveExpansion(t *testing.T) {
+	// A word that clears must read the same after a real shell has expanded it,
+	// or the guard has checked a word gh never receives. This does not list the
+	// spellings to refuse: it tries every short word over the bytes shells expand,
+	// keeps those the matcher clears, and has each shell expand them beside files
+	// any pattern among them could match.
+	dir := t.TempDir()
+	plant := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "a"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a/a", "a/0", "a/a0"} {
+		plant(name)
+	}
+	for _, s := range forgeWords("a0_.-", 3) {
+		if s == "a" || s == "." || s == ".." {
+			continue
+		}
+		plant(s)
+		for _, prefix := range []string{"--jq=", "-q", "-q=", "--repo=", "-R", "--search="} {
+			plant(prefix + s)
+		}
+	}
+	checked := []string{"--jq %s", "--jq=%s", "-q %s", "-q%s", "-q=%s"}
+	filters := []string{"| grep %s", "| grep -v %s", "| head %s", "| wc %s"}
+	templates := append([]string{"--repo %s", "--repo=%s", "-R %s", "-R%s", "--search %s", "--search=%s", "%s"}, checked...)
+	type batch struct {
+		templates []string
+		values    []string
+	}
+	cleared, seen := []string{}, map[string]bool{}
+	for _, b := range []batch{
+		{templates, forgeWords(`.[]*?{}~,-/=^#!%a0_@`, 3)},
+		{checked, forgeWords(".[]a0", 6)},
+		// No `=` here: zsh turns a word starting `=` into one path or stops, so it
+		// reads back changed by design, and stays one word (TestForgeStatusFilterOperandQuotes).
+		{filters, forgeWords(`.[]*?{}~,-/^#!%a0_@`, 3)},
+		{filters, []string{"'^a'", `"a#"`, "'^'a", "a'#'", "'=a'", "a'^'0"}},
+		{templates, []string{"{a,0}", "a{0,a}", ".a{,0}", "a/a{,0}", "'.a'", `".a"`, "'a'/'a'", "a/a*", "a/a?", "a/a[0]", "a/a{,0}"}},
+	} {
+		for _, tmpl := range b.templates {
+			for _, v := range b.values {
+				args := fmt.Sprintf(tmpl, v)
+				if forgeTokenRead("gh pr view 1 --json status " + args) {
+					continue
+				}
+				for _, w := range strings.Fields(args) {
+					if w != "|" && w != "grep" && w != "head" && w != "wc" && !seen[w] {
+						seen[w] = true
+						cleared = append(cleared, w)
+					}
+				}
+			}
+		}
+	}
+	for _, w := range []string{".a", ".a.a", "a/a", "--jq=.a", "-q.a", "'^a'", `"a#"`} {
+		if !seen[w] {
+			t.Errorf("%q: this literal word must clear, or the check below proves nothing", w)
+		}
+	}
+	var script strings.Builder
+	for _, w := range cleared {
+		fmt.Fprintf(&script, "printf '%%s\\n' %s\n", w)
+	}
+	path := filepath.Join(t.TempDir(), "words.sh")
+	if err := os.WriteFile(path, []byte(script.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, shell := range forgeShells {
+		t.Run(strings.Join(shell, " "), func(t *testing.T) {
+			bin := forgeShell(t, shell[0])
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, bin, append(append([]string{}, shell[1:]...), path)...)
+			cmd.Dir, cmd.Env = dir, []string{"HOME=" + dir, "LC_ALL=C", "PATH=" + os.Getenv("PATH")}
+			out, err := cmd.CombinedOutput()
+			got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+			for i, w := range cleared {
+				if want := forgeUnquote(w); i >= len(got) || got[i] != want {
+					t.Errorf("%q: %v does not read this word back unchanged (run error: %v)", w, shell, err)
+					break
+				}
+			}
+			if err != nil || len(got) != len(cleared) {
+				t.Errorf("%q: %v gave %d lines for %d words (run error: %v)", shell[0], shell, len(got), len(cleared), err)
+			}
+		})
+	}
+}
+
+// forgeShell finds a shell, or skips the subtest by name, so a shell this machine
+// lacks reads as SKIP in the test output and never as a pass.
+func forgeShell(t *testing.T, name string) string {
+	t.Helper()
+	bin, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("could not check: %s is not on PATH", name)
+	}
+	return bin
 }
