@@ -1,2 +1,2 @@
 ### Fixed
-- `statusgen verifyrun` accepts a relative `--brief` path: the acceptance transition resolves it against the working directory before binding the approval payload, so the documented `--brief docs/streams/<stream>/brief-NN-….md` form verifies instead of refusing with `cannot resolve brief path`.
+- The `statusgen verifyrun` acceptance transition resolves `--brief` through symlinks using its raw spelling, aligning the containment check with the path the run reads for relative and absolute paths.

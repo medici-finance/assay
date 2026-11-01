@@ -223,11 +223,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if e != nil {
 		return fail("cannot resolve canonical repository path")
 	}
-	absolutePath, e := filepath.Abs(path)
-	if e != nil {
-		return fail("cannot resolve absolute brief path")
-	}
-	canonicalPath, e := filepath.EvalSymlinks(absolutePath)
+	canonicalPath, e := filepath.EvalSymlinks(path)
 	if e != nil {
 		return fail("cannot resolve canonical brief path")
 	}
