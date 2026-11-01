@@ -1,0 +1,2 @@
+### Changed
+- The statusgen brief 18 verification rows (the placeholder gate-mismatch notice for `--scan-issues`) now run as written on merged main. Row 4 runs the four selector groups that cover every scan test instead of the whole statusgen package, which needs a prior-release binary only CI supplies. Row 7 pins the delivering commit and its first parent, so the consumers check no longer depends on what `origin/main` happens to be.
