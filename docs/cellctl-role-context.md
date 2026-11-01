@@ -258,7 +258,7 @@ passes through: a role without the key launches without `ASSAY_DISPATCH_INSTRUCT
 role gets its own cell's directory. A dry run prints the value:
 
 ```
-[dry-run] env ASSAY_DISPATCH_INSTRUCTIONS=review=/srv/cells/example/review-dispatch.md@sha256:02ba343b5ca1b37d93ae722b823a7bb33128cdc878153ba0c51542c0dc64127d (role-context dispatch_instructions)
+[dry-run] env ASSAY_DISPATCH_INSTRUCTIONS=review=/srv/cell-a/review-dispatch.md@sha256:02ba343b5ca1b37d93ae722b823a7bb33128cdc878153ba0c51542c0dc64127d (role-context dispatch_instructions)
 ```
 
 `deskdispatch` reads the value on every dispatch. When it names the run's kit, deskdispatch checks

@@ -53,7 +53,7 @@ func DispatchInstructionPathCarriable(path string) error {
 func FormatDispatchInstructions(entries []DispatchInstruction) string {
 	parts := make([]string, 0, len(entries))
 	for _, e := range entries {
-		parts = append(parts, e.Kit+"="+e.Path+dispatchInstructionsDigestSep+e.SHA256)
+		parts = append(parts, fmt.Sprintf("%s=%s%s%s", e.Kit, e.Path, dispatchInstructionsDigestSep, e.SHA256))
 	}
 	return strings.Join(parts, ",")
 }
