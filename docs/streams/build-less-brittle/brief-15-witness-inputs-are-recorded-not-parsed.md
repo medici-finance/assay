@@ -22,6 +22,7 @@ gate-why: >-
 decision-trigger: creation
 decision-issue: 4512
 ruling: "https://github.com/medici-finance/assay/issues/4512#issuecomment-6420851894"
+design: DR-witness-read-sets
 issues: [2026]
 regression-of: medici-finance/assay#2304
 schema: brief-v2
@@ -40,14 +41,14 @@ exec-tier-why: "(a) the recording mechanism and its completeness rule are not pr
 domain: complicated
 outcome: none
 consumers:
-  - "statusgen/verifyrun.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/coverage.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/autoflip.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/reconcilefold.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/evaluation/coverage.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/evaluation/coverage_api.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "statusgen/verifyrun.go: fixed-here"
+  - "statusgen/coverage.go: fixed-here"
+  - "statusgen/autoflip.go: fixed-here"
+  - "statusgen/reconcilefold.go: fixed-here"
+  - "statusgen/evaluation/coverage.go: fixed-here"
+  - "statusgen/evaluation/coverage_api.go: fixed-here"
   - "tools/desk/cmd/deskevidence/main.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "docs/contracts.md: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "docs/contracts.md: fixed-here"
   - "statusgen/domain/assess.go: out-of-scope (a fourth library entry, imported only by tests; it passes its own coverage input, and the library's go-run rule in Task step 6 makes it fail closed without an edit)"
   - "statusgen/evaluation/coverage_inputs.go: out-of-scope (the command-text parser stays until the measurement in Task step 10 shows it releases nothing on its own; its retirement is a later brief)"
 ---

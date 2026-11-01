@@ -1,0 +1,7 @@
+### Added
+- Coverage judges a witness's recorded read set: a `(reads sha256:<hex>)` token in the Runner cell names a `reads/<hex>` file next to the brief, honoured only when it arrived in the same commit as its row, and a change to a path outside that set no longer holds the claim. Any recorded go build must also cover a compile-input floor that statusgen computes with `go list -deps -test` over the witness tree, so a recorder that misses a compiled file still fails closed. A read set evaluated with no floor is could-not-check.
+- `verifyrun` writes a read-set token on every executed row. This release ships no recorder, so the token is always `(reads could-not-check: …)` and no read-set file is written. Off Linux the reason is `recorder is Linux-only (<os>)`.
+
+### Changed
+- `deskevidence` refuses, before any forge call, to land a row that names a read-set file, because its one-file write cannot commit the row and the file together. A row whose file is absent or carries another digest gets a refusal that says so.
+- A brief's own new read-set files named by its Evidence no longer mark `verifyrun`'s tree `+dirty`. Read-set files of other briefs still do.

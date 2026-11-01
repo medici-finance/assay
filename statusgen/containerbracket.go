@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/attestation"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // The container bracket (desktools-v2/71). A runner inside a --network none
@@ -700,7 +701,10 @@ func containerRowRunnerProblem(rows []string, want string) string {
 		if cells == nil {
 			return fmt.Sprintf("the container table carries a row that is not a witness row: %q", row)
 		}
-		if cell := strings.TrimSpace(cells[witnessCellRunner]); cell != want {
+		// The row's read-set token is the container's own record of what that
+		// row read (build-less-brittle/15); the host derives no such token, so
+		// the cell compares without it and must match byte for byte otherwise.
+		if cell := evaluation.StripReadSetToken(strings.TrimSpace(cells[witnessCellRunner])); cell != want {
 			return fmt.Sprintf("row %s's Runner cell %q is not the cell the host derived and recorded at the open step, %q", strings.TrimSpace(cells[0]), cell, want)
 		}
 	}
