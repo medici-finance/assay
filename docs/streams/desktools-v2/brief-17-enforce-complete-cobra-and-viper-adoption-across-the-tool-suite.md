@@ -9,7 +9,7 @@ why: >-
   parsers from returning. Verbs whose parser port was withdrawn because their domain retires
   are exempt until they are retired.
 wave: 5
-depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/25", "desktools-v2/29", "desktools-v2/30", "desktools-v2/35", "desktools-v2/42", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "desktools-v2/64"]
+depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/25", "desktools-v2/29", "desktools-v2/30", "desktools-v2/35", "desktools-v2/42", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "desktools-v2/64", "desktools-v2/78", "desktools-v2/79", "desktools-v2/80", "desk-containers/31"]
 unblocks: []
 effort: "L"
 gate: "model"
@@ -45,13 +45,13 @@ consumers:
 
 files:
 - `tools/desk/internal/clicontract/` — coverage, behavior conformance and negative controls.
-- `docs/streams/desktools-v2/cli-migration.json`, `cli-contract.md`, `README.md`.
-- Owning module test registries and `.github/workflows/ci.yml` (or the project's staged workflow-promotion artifact when direct workflow scope is unavailable).
+- `docs/streams/desktools-v2/cli-migration.json`, `docs/streams/desktools-v2/cli-contract.md`, `docs/streams/desktools-v2/README.md`.
+- `.github/workflows/ci.yml` — Owning module test registries and `.github/workflows/ci.yml` (or the project's staged workflow-promotion artifact when direct workflow scope is unavailable).
 - `changelog/cli-suite-conformance.md` (planned).
 
 facts:
 - /15 landed exhaustive source discovery (`tools/desk/internal/clicontract`, TestCLIInventory) and a concrete migration brief for every remaining entrypoint. `cli-migration.json` routes every discovered entrypoint to one of them; /29 waits on /45 and /54 on /30, which puts this brief in wave 5.
-- **Rescoped 2026-10-18** under the ratified target architecture (`docs/proposals/non-ci-architecture/11-target-architecture.md`, "What happens to today's tools": do not port the entire command matrix; `docs/proposals/non-ci-architecture/13-migration-and-decisions.md`: no parser migration is a prerequisite). The per-verb ports /24, /26–/28, /31–/34, /36–/41 and /43 are `withdrawn` (/21, deskdispatch, merged before this amendment and stays a child); their rows are state `exempt` in the registry: they keep their current parser until retired, and they are not dependencies of this brief. This brief's depends are the reference /16 plus every surviving child: statusgen, qualgen, deskboard, deskdispatch, deskwt, deskfleet, deskapps, the inbox launcher, the GitLab provisioner, the install path, comms client, metrics, board readers, release/provenance, admin, standalone module CLIs, harness/CI guards, skill lint, plugin scripts, changelog/CI/security/go-analysis script ports, deskperf and intake-eval.
+- **Rescoped 2026-10-18** under the ratified target architecture (`docs/proposals/non-ci-architecture/11-target-architecture.md`, "What happens to today's tools": do not port the entire command matrix; `docs/proposals/non-ci-architecture/13-migration-and-decisions.md`: no parser migration is a prerequisite). The per-verb ports /24, /26–/28, /31–/34, /36–/41 and /43 are `withdrawn` (/21, deskdispatch, merged before this amendment and stays a child); their rows are state `exempt` in the registry: they keep their current parser until retired, and they are not dependencies of this brief. This brief's depends are the reference /16 plus every surviving child: statusgen, qualgen, deskboard, deskdispatch, deskwt, deskfleet, deskapps, the inbox launcher, the GitLab provisioner, the install path, comms client, metrics, board readers, release/provenance, admin, standalone module CLIs, harness/CI guards, skill lint, plugin scripts, changelog/CI/security/go-analysis script ports, the release spec-header stamp (/80), deskperf and intake-eval.
 - The new-tool rule is normative in `docs/streams/desktools-v2/cli-contract.md` §7: every new command-line tool or verb adapter for the target architecture is built on the /15 foundation. The enforcement check reads the tree, not the registry's promises: a new `main` package that bypasses the foundation fails.
 - `TestCLIOwnerMigrated` (from /15) is each child's own completion check; this brief's TestCLIComplete is the suite-wide one.
 - `tools/desk/cmd/*` alone misses statusgen, qualgen and module-local operator/maintenance CLIs. The registry must be checked against independent discovery and release/build declarations.

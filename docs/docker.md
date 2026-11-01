@@ -176,6 +176,158 @@ docker run -it "$PEM" "$ENVF" -v thedesk-work:/work \
 Run without the PEM mount or without a model credential and the desk exits
 non-zero, naming exactly what is missing — the fail-closed preflight.
 
+### Run a desk from your desktop
+
+[`containers/desk-run.sh`](../containers/desk-run.sh) composes that `docker run` for
+you, so the credentials are mounted the same way every time instead of being
+hand-assembled. It validates the desk name, checks that your credential files
+exist, and starts the desk interactively (`-it`) with a per-desk work volume.
+The script comes from a checkout of this repository
+(`git clone https://github.com/medici-finance/assay.git && cd assay`); the
+commands below run from the checkout root.
+
+**Prerequisites**
+
+- docker, with the daemon running.
+- The bot App PEM for your desk's App, as a file on your machine. Each desk has
+  its own default location, `~/.config/assay/<desk-name>.pem` (for example
+  `~/.config/assay/worker-desk.pem`), so two desks started on defaults never
+  mount the same file, and a missing file refuses rather than borrowing another
+  desk's. Put each desk's own App key at its own path. The launcher mounts the
+  file you point it at and does not check which App that file belongs to.
+  `ASSAY_DESK_PEM_FILE` is one value for every desk started from that shell, so
+  set it per desk window or pass `--pem <file>` per desk.
+  The supported minimum is three distinct App identities: the implementer
+  (worker-desk), the reviewer (pr-review-desk) and the verifier (verify-desk)
+  each need their own App key, and none of those three may be pointed at
+  another's file
+  ([#463](https://github.com/medici-finance/assay/issues/463)). Pointing
+  intake-desk or the-desk at a shared file is a choice you make, not a default;
+  pointing two of the three at one file is not supported.
+- A model env-file: `KEY=value` lines for the model endpoint (for example
+  `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` or `ANTHROPIC_MODEL` when you
+  use a gateway). The model variables the container accepts are listed in
+  [`containers/secrets.md`](../containers/secrets.md) section 3. That list
+  covers model access only; what `desktoken` reads to mint a forge token is
+  under "What a launched desk needs before it can mint and post" below. The
+  default location is `~/.config/assay/desk.env`, and every desk started on
+  defaults reads that one file, so keep it to model settings: no forge token
+  and no App key or App ID setting.
+
+`~/.config` is `$XDG_CONFIG_HOME` when you set it. To keep the files elsewhere,
+pass `--pem <file>` and `--env-file <file>`, or export `ASSAY_DESK_PEM_FILE` and
+`ASSAY_DESK_ENV_FILE`. A flag wins over the environment variable, which wins over
+the default. `--attach` takes no credential flag and does not read these two
+variables. An override you give but leave empty (for example
+`--pem "$MY_PEM"` with `MY_PEM` unset, or an exported empty variable) is
+refused, never skipped, so a desk cannot start on a different credential than
+the one you named. Docker Desktop shares your files with the container for you. On a
+Linux host the container's `desk` user (UID 999) must be able to read the PEM, so
+give it a mode and group that allow that; the container reports an unreadable PEM
+at start.
+
+**Which App a launched desk acts as**
+
+The launcher only mounts the PEM you name, read-only, at
+`/run/secrets/assay/app.pem`. It does not decide which App the desk then acts as,
+and this launcher gives no guarantee about that. Inside the container, the
+entrypoint checks that the mounted file exists and is readable. The `desktoken`
+tool looks for a key through `<ROLE>_PEM` or an `<app-name>.pem` file on its
+search path, and neither the image nor the launcher sets either of those to the
+mount (the next section says what to set). Which key a desk mints its tokens
+from is therefore settled by the container's own configuration, not by this
+launcher or by the name of the host file. Treat the per-desk host default as a
+way to keep the desks' key files apart on your machine, not as an identity
+guarantee. This was read from the code and not run against a real container.
+
+**What a launched desk needs before it can mint and post**
+
+On a fresh work volume the desk starts and gives you a shell, but its first
+`desktoken` mint fails: the mount alone is not enough. Supply these three for
+the role the desk mints as (for example `worker` for worker-desk); the first
+two are needed to mint at all, the third before a desk tool can post.
+`<ROLE>` below is that role name in capitals with `-` as `_`, for example
+`WORKER`. A deployment that binds the role to a differently named App (a
+`<ROLE>_APP=<app-name>` setting) uses that App's prefix instead.
+
+| What | Where it goes | Why |
+|---|---|---|
+| The key pointer: `<ROLE>_PEM=/run/secrets/assay/app.pem` | An environment variable in that desk's container: a per-desk env-file passed with `--env-file` (for example `~/.config/assay/worker-desk.env`), or an `export` in the desk's shell | `desktoken` reads the key from `<ROLE>_PEM` or from `<app-name>.pem` under `~/.config/assay`. It does not read `ASSAY_APP_PEM_FILE`, the variable the entrypoint checks. |
+| The App ID: `<ROLE>_APP_ID=<id>` | A line in `/work/.config/assay/apps.env`, on that desk's own work volume, or the same per-desk env-file | Without it the mint refuses before it reads the key. |
+| The trust roster | `/work/.config/assay/roster.env` on that desk's own work volume, owned by the `desk` user, with neither the file nor its directory writable by group or others (`0600` for the file) | Write-class desk tools read the roster only from this file and never from the environment, so they refuse to post or open a pull request without it. `desktoken` reports it missing and carries on with the mint. |
+
+Inside the container `HOME` is `/work`, so `~/.config/assay` is
+`/work/.config/assay` on the desk's own `<desk-name>-work` volume, and
+nothing there is shared with another desk. Keep these settings per desk, in
+that volume or in a per-desk env-file, never in the shared default `desk.env`:
+that one file reaches every desk started on defaults, so a forge token put
+there acts as one identity in all five desks, the collapse the per-desk PEM
+default exists to prevent. The App ID must belong to the App whose key that
+desk mounts. The launcher passes one env-file, so a per-desk env-file also
+carries that desk's model settings.
+
+This is from reading `desktoken` and the image, plus a host run of `desktoken`
+built from this tree with an empty config home and a test key. With only
+`ASSAY_APP_PEM_FILE` set, it exited 6 for a missing App ID. With `<ROLE>_APP_ID`
+added, it exited 6 because no key was found, naming `<ROLE>_PEM`. With both
+set, it passed every local check and stopped at the network request for the
+installation. It was not run in a real container or against GitHub. Wiring the
+mount to `desktoken` inside the image would change the credential contract in
+[`containers/secrets.md`](../containers/secrets.md), which is human-gated, so
+this launcher leaves it to you.
+
+**First run**
+
+```sh
+containers/desk-run.sh worker-desk
+```
+
+The desk is one of `intake-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`
+or `the-desk`. The script runs `ghcr.io/medici-finance/assay/<desk-name>:latest`
+in a container named after the desk, with the work volume `<desk-name>-work` on
+`/work`. Pass `--version vX.Y.Z` (or `sha-<short>`) to run a pinned tag.
+
+To see the exact command without running it, add `--dry-run`. The output names the
+credential paths and never their contents:
+
+```sh
+containers/desk-run.sh pr-review-desk --dry-run
+```
+
+**Re-attach**
+
+The container keeps its name and its work volume, and its filesystem, when you
+detach or restart your desktop. Resume it with `--attach`, which runs
+`docker start -ai`. That starts the container again: its entrypoint runs into a
+NEW shell, so `/work` and the container filesystem are kept and earlier
+processes are not.
+
+```sh
+containers/desk-run.sh worker-desk --attach
+```
+
+Running the first-run command again while the container still exists is refused
+with this same hint. To start from scratch, remove the container with
+`docker rm <desk-name>`; the work volume stays until you remove it too. An
+existing container keeps the image version it was created with, so `--attach`
+does not take `--version`, `--pem` or `--env-file`: its image and mounts are
+fixed, so those flags are refused with `--attach` rather than ignored. To change
+a mount or an image, remove the container and start it again.
+
+**When it refuses**
+
+The script refuses before it starts docker, and names what it expected:
+
+| Exit | Meaning |
+|------|---------|
+| 2 | Unknown desk name or option (the five valid desks are listed), an invalid `--version`, or `--pem` / `--env-file` / `--version` together with `--attach`. The message gives the argument's position and length, not its text, because stderr often lands in shell logs. |
+| 3 | The PEM or env-file is missing, is not a regular file, or is not readable; an override (`--pem`, `--env-file`, `ASSAY_DESK_PEM_FILE`, `ASSAY_DESK_ENV_FILE`) was given empty; or the PEM path holds a comma, a double quote or a newline. The message names the override and how to fix it. It prints the path only for a default location; a path you supplied is named by its flag or variable, never printed back, because it may be a credential pasted into the wrong slot. |
+| 4 | docker is not installed or its daemon cannot be reached, or the container is in the wrong state for the request. |
+
+There is no fallback to other credentials on your machine: it uses the files named
+above or nothing. A model credential missing from inside the env-file is caught by
+the container's own start-up check.
+
 ### How they're built and published
 
 The approved job in `.github/workflows/release.yml` builds the base first, then
@@ -280,3 +432,45 @@ Confirm the previous execution stopped before admitting a replacement role;
 retains claims, but namespace/PVC deletion and storage-provider policy still
 require separate backup/recovery planning. Neither offline schema validation nor
 an attach connection establishes safe recovery or a qualified managed cell.
+
+
+### Opt-in cellctl compatibility agent launcher
+
+The historical Kubernetes base still consumes its recorded shell-only v1.0.52
+images. The separate `containers/k8s/components/compatibility-cellctl` template
+selects the new image-owned bounded launcher and installs all roles paused. Its
+candidate record now pins the five published v1.0.65 role manifest references and
+the unchanged release image record. All five role images are `linux/amd64`, matching
+the inherited node selectors; the separate multi-platform verify-runner does not
+provide ARM64 desk images. See the [candidate provenance and preparation handoff](../containers/k8s/components/compatibility-cellctl/README.md).
+Actual launch/init identities, existing role-custodian groups and operator/agent
+profile inputs remain unresolved. The actual offline profile checker stays failed
+until those inputs are genuinely prepared; synthetic fixtures cannot satisfy it.
+Deployment, credential custody, activation and final qualification remain held.
+The [custodian preparation guide](kubernetes-compatibility-preparation.md) lists
+the required approved inputs and uses the existing launcher to prepare and read
+back each role's genuine identities before binding its profile and workloads.
+
+The existing image credential preflight remains the entrypoint. The launcher
+uses only the already-prepared pinned agent, role instructions and retained work
+inputs. It sends one pinned initial role prompt and keeps attach/reconnect
+separate from starting the process. Cold preparation, dirty-history holds,
+complete process-namespace stop and exact API termination acknowledgement are
+specified in the trusted compatibility section of `docs/cellctl.md`.
+
+Run the real lower-layer fixtures with an explicitly selected local test daemon
+and cached `python:3.13-slim`; no image pull or container network is allowed:
+
+```sh
+ASSAY_TEST_DOCKER_HOST=unix:///var/run/docker.sock \
+  sh containers/k8s/compatibility/desk-session.test.sh --self-test
+```
+
+This command uses synthetic agent/credential-free fixtures, not the real model or
+cluster. Missing local Docker/image capability is could-not-check. The fixture
+image identity is test-environment evidence and supplies no candidate provenance.
+
+## Local PostgreSQL for host cells
+
+A separate compose project, `containers/postgres/`, runs one loopback-only PostgreSQL server
+with one database and restricted role per cell — see [`docs/postgres.md`](postgres.md).

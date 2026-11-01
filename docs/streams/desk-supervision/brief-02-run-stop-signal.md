@@ -43,18 +43,11 @@ id: 70b635a0-b5ce-4b51-b968-e3b2a03bcfba
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/killswitch.go` — add the `STOP.run.<key>` layer below
-  `STOP.<loop>` in `Guard()`; the run key resolves from the worktree, never from an
-  argument.
+- `tools/desk/internal/deskkit/killswitch.go` — add the `STOP.run.<key>` layer below `STOP.<loop>` in `Guard()`; the run key resolves from the worktree, never from an argument.
 - `tools/desk/internal/deskkit/killswitch_test.go` — precedence and masking tests.
-- `tools/desk/cmd/deskdispatch/main.go` — step 2 writes the run key worktree-locally
-  (`git config --worktree assay.runKey <claim-key>`) right after `deskwt add`.
-- `tools/desk/cmd/desksupervise/main.go` (planned) — `stop <key> --reason "..."` arms the flag and
-  audits; `tick` arms it automatically for `HEARTBEAT-EXPIRED` / `NEVER-STARTED` before
-  releasing the claim; `status --stops` lists armed stops (the desk window's read).
-- `plugins/assay/skills/worker-desk/SKILL.md` §Cadence and wake — one added sentence:
-  the sweep reads armed stops and issues the harness-side stop for each, in capability
-  vocabulary.
+- `tools/desk/cmd/deskdispatch/main.go` — step 2 writes the run key worktree-locally (`git config --worktree assay.runKey <claim-key>`) right after `deskwt add`.
+- `tools/desk/cmd/desksupervise/main.go` (planned) — `stop <key> --reason "..."` arms the flag and audits; `tick` arms it automatically for `HEARTBEAT-EXPIRED` / `NEVER-STARTED` before releasing the claim; `status --stops` lists armed stops (the desk window's read).
+- `plugins/assay/skills/worker-desk/SKILL.md` — §Cadence and wake — one added sentence: the sweep reads armed stops and issues the harness-side stop for each, in capability vocabulary.
 
 single-point-of-failure: NONE claimed — two layers by design. Layer A: the flag, enforced
 by `Guard()` in every desk verb the worker runs next (fails when the worker never runs

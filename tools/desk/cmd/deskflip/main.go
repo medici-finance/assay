@@ -88,7 +88,7 @@ nothing is mutated:
                     which is a distinct answer from "no verdict". A CHANGES_REQUESTED at
                     the current head BLOCKS whatever came after it — an APPROVE at an
                     unchanged head re-verifies nothing.
-                    TWO EXEMPTIONS. (1) the CHECK-ONLY CR. A standing CHANGES_REQUESTED is
+                    THREE EXEMPTIONS. (1) the CHECK-ONLY CR. A standing CHANGES_REQUESTED is
                     cleared without a code push only when ALL of: the CR body declares
                     "Blocked-On-Check: <check name>" as its sole finding; a later APPROVE
                     from the same reviewer at the same head cites "Cleared-Check-Run: <id>";
@@ -111,6 +111,20 @@ nothing is mutated:
                     or any clause short refuses. CI is still judged by checks-green. The
                     digest is SHA-256 of the body with carriage returns removed and
                     trailing newlines trimmed (shell recipe: tools/desk README).
+                    (3) the MARKED SECURITY FAIL. A CR carrying "Security-Review: fail" is
+                    never cleared by a correctness APPROVE. It clears at the same head only
+                    when it also declares "Blocked-On-Body: <finding-id> <body-digest>", a
+                    later "Security-Review: pass" from the same reviewer stands at that head
+                    (a COMMENTED or APPROVED review, the states deskpost ready also admits
+                    for a security pass; a DISMISSED or PENDING one clears nothing)
+                    carrying "Body-Reread-Digest: <digest>" EQUAL to the live body's, the
+                    forge records a body edit LATER than the fail, no later security fail
+                    stands (a later unmarked fail blocks), and neither the fail, a later
+                    fail, nor a pass at head after the fail also carries a correctness
+                    "Verdict:" line, read as deskpost ready's lane classifier reads it.
+                    The newest standing pass at head is the one read; a later DISMISSED or PENDING pass does not displace it. An
+                    unmarked security fail standing at head blocks as before, until a new
+                    commit; a security pass never clears a correctness CR.
   checks-green      every check at the head has completed successfully. A pending or
                     unreadable rollup is could-not-verify, never green.
   desk-decided      MECHANICAL: a Desk-decided body section, when present, must parse, and

@@ -25,7 +25,7 @@ consumers: ["tools/desk/cmd/deskcalibrate/profilepilot.go: follow-up review-prof
 
 ## Context
 
-files: `tools/desk/cmd/deskcalibrate/profilepilot.go` (planned), `tools/desk/cmd/deskcalibrate/profilepilot_test.go` (planned), `tools/desk/internal/reviewprofile/calibration.go` (planned), `tools/desk/internal/reviewprofile/calibration_test.go` (planned), `docs/review-profile-calibration.md` (planned). New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
+files: `tools/desk/cmd/deskcalibrate/profilepilot.go` (planned), `tools/desk/cmd/deskcalibrate/profilepilot_test.go` (planned), `tools/desk/internal/reviewprofile/calibration.go` (planned), `tools/desk/internal/reviewprofile/calibration_test.go` (planned), `docs/review-profile-calibration.md` (planned) — New profile, calibration and operations files are planned deliverables; existing desk owners remain controlling.
 
 facts:
 - At the pinned main there are four review lanes, existing advisory design-fit and architectural fitness tests; no calibrated performance/architecture routing policy exists.

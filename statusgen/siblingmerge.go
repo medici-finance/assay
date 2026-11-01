@@ -502,7 +502,7 @@ func checkSiblingCheckout(path string) (ok bool, reason string) {
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
 		return false, fmt.Sprintf("%s is not a git directory (no .git)", path)
 	}
-	out, err := exec.Command("git", "-C", path, "rev-parse", "--is-shallow-repository").Output()
+	out, err := gitShallowOutput(path)
 	if err != nil {
 		return false, fmt.Sprintf("git rev-parse --is-shallow-repository failed at %s: %v", path, err)
 	}
@@ -569,9 +569,10 @@ func siblingIDPattern(id string) *regexp.Regexp {
 }
 
 // siblingIssuePattern matches an `Issue: #<N>` trailer or a GitHub closing
-// keyword for issue #<N> (key k2).
+// keyword for issue #<N> (key k2), with or without a colon after the keyword —
+// so deskpr's resolving `Fixes: #<N>` trailer matches as well as `Fixes #<N>`.
 func siblingIssuePattern(n int) *regexp.Regexp {
-	return regexp.MustCompile(`(?i)(?:\bissue:\s*#|\b(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#)` + strconv.Itoa(n) + `\b`)
+	return regexp.MustCompile(`(?i)(?:\bissue:\s*#|\b(?:close[sd]?|fixe[sd]?|resolve[sd]?)(?::\s*|\s+)#)` + strconv.Itoa(n) + `\b`)
 }
 
 // matchedSiblingCommit is one commit that matched a row, via which key.

@@ -1,0 +1,10 @@
+{
+  "schema": "cell-kube-compat-custody-v1",
+  "operator": "existing-role-custodian-only",
+  "terminal": "role-custodian",
+  "logs": "role-custodian",
+  "nodes": "role-custodian",
+  "downstream_logs": "excluded",
+  "network": "existing-default-deny-and-explicit-endpoint-allowlist",
+  "activation": "held-pending-human-qualification"
+}

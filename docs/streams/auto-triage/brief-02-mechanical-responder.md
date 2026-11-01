@@ -7,8 +7,8 @@ why: >-
   This brief lets the automation file the bug and open a fixing DRAFT PR on its own, so the
   recurring mechanical toil is discharged without a person — while the human still merges
   every fix and no gate is ever weakened to make the red pass.
-wave: 2
-depends: ["auto-triage/01"]
+wave: 3
+depends: ["auto-triage/01", "graph-execution/35"]
 unblocks: ["auto-triage/04"]
 effort: M
 gate: human
@@ -40,6 +40,7 @@ exec-tier-why: >-
   files a spurious issue) and (a) the draft-only / never-merge / never-weaken guarantees are
   design decisions the diff must embody, not just satisfy incidentally.
 consumers:
+  - "deskdispatch --signal-gate (planned): follow-up auto-triage/02 (this brief; it flips to fixed-here when the live path calls the gate)"
   - "tools/autotriage/ (the Classify seam from brief 01): follow-up auto-triage/02 (this brief; consumes 01's output schema, flips to fixed-here when the responder implementation reads it)"
 version: 1
 id: 739df04b-fc17-473d-8697-32ecdc7a3c36
@@ -48,6 +49,12 @@ id: 739df04b-fc17-473d-8697-32ecdc7a3c36
 # Brief 02 — mechanical responder
 
 > **Contract note, 2026-10-18.** This brief is the live mechanical exit of the gate-red class that graph-execution/08 now defines; this brief's canonicalized path allow-list is stricter than 08's pattern-level deny-list and stays this brief's control. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
+> **Contract note, 2026-11-01.** <!-- graph: encoded graph-execution/35→auto-triage/02 --> Going live means activating the gate-red class of a signal pattern, so this brief depends on graph-execution/35. Before any live effect, this responder calls that gate (`deskdispatch --signal-gate`) and proceeds only on exit 0. Every other result stops it: a refuse (5), a hold (6), a usage error, a disabled or rate-limited tool, a missing binary or a crash.
+
+> What it passes, and from where. Trigger and the fully qualified ref come from the values the CI platform sets for the run, never from model output or a log (auto-triage/01's `origin.ref` may hold a short branch or a sha, and the gate needs the full ref). Class is the literal `gate-red`. Culprit class comes from auto-triage/01's classifier record once this brief supplies a binding for it, and is absent when there is none. That record is the run's own output, so it isn't a value the run can't choose, and no binding exists today (#5150). This brief MUST supply the binding before its caller passes a culprit class, and until it does its caller MUST pass none: the gate then selects the judgement exit, refuses a node only on the mechanical route, and can't select the mechanical exit. Node and pattern name come from this brief's reviewed source or configuration. The expected sha256 comes from outside any root the run can write: reading it from a writable checkout doesn't count, and neither does computing it from one. Root is the CI workspace value. The gate's origin has no repository term and reads the ref only on `push`, so this responder itself refuses a fork's run and a scheduled run on any other branch than the default.
+
+> Liveness. No brief owns a liveness result for gate-red's source today (#5148). Until one does, this responder passes none, the gate holds and the responder stays out of live mode. Once one does, the value passed is that brief's observation made at run time, taken again for each node. A constant or otherwise unprobed value is not a liveness result. That hold stands, and this note doesn't close it. A hold stops this responder only, never a person acting on the red gate. A held responder has acted on nothing, so auto-triage/04's watchdog escalates the red gate to a person, as it does for any red no responder acted on. This brief's own controls stay as written, and the stricter rule applies.
 
 ## Context
 
@@ -61,8 +68,8 @@ failing for a different reason in a different component:
 - **Mechanical-class-only guard (this responder).** It acts only when `class == mechanical`
   and refuses every other class; leak-sweep and judgement reds can never reach the auto-fix
   path.
-- **Never-weaken-gate invariant (this responder).** The generated fix edits the culprit
-  `file:line` only; a culprit whose path resolves into the refused-path allow-list is
+- **Never-weaken-gate invariant (this responder).** The generated fix edits
+  the culprit `file:line` only; a culprit whose path resolves into the refused-path allow-list is
   refused, not "fixed".
 - **Credential scope (identity layer).** The forge-write identity holds no merge,
   review-submission, branch-protection-bypass, or workflow-write/dispatch authority — a
@@ -89,8 +96,8 @@ facts:
   refuse it too — see brief 03), so this responder refuses it outright instead of manufacturing
   a hand-off that ends in the same no-op.
 - On `class == mechanical`: (a) compose a bug issue body naming the check + `file:line` +
-  the deterministic remedy; (b) produce a fix on a fresh branch editing ONLY the culprit
-  `file:line`; (c) open the PR as a **draft**. Filing + PR-open go through the sanctioned
+  the deterministic remedy; (b) produce a fix on a fresh branch editing ONLY
+  the culprit `file:line`; (c) open the PR as a **draft**. Filing + PR-open go through the sanctioned
   desk write path — never a hand-rolled token mint, never a merge or ready-flip.
 - **Closed remedy enumeration.** The "deterministic remedy" in (a)/(b) above is one of
   exactly three named transforms, never a freely generated patch: (1) **gofmt** — apply

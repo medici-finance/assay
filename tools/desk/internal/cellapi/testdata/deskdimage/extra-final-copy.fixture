@@ -1,0 +1,5 @@
+# A fifth item in the final stage: the Go toolchain binary.
+want: extra-final-copy
+file: Dockerfile
+replace: "COPY --from=build /out/deskd /deskd\n"
+with: "COPY --from=build /out/deskd /deskd\nCOPY --from=build /usr/local/go/bin/go /go\n"

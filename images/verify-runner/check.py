@@ -3,6 +3,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import shutil
 import stat
 import subprocess
 
@@ -65,7 +66,37 @@ for name in ENTRYPOINTS:
     if run.stdout or not run.stderr.startswith(b'usage: '):
         raise RuntimeError(f'{path} with no argument did not print only its usage on stderr')
 
+# Row tools (#4684, #4318): rows run with no network, so a tool they shell out
+# to has to be in the image. Each is resolved on PATH and run, so a missing or
+# broken one fails this probe before anything is pushed. jq evaluates an
+# expression and shellcheck lints a clean script from stdin; tmux only reports
+# its version, since starting a server needs more than this fence allows.
+# name: (probe args, probe stdin, expected stdout or None, version args).
+ROW_TOOLS = {
+    'jq': (['-n', '-c', '{"sum": (1 + 1)}'], b'', b'{"sum":2}\n', ['--version']),
+    'shellcheck': (['--shell=sh', '-'], b'#!/bin/sh\nprintf \'%s\\n\' "$1"\n', b'',
+                   ['--version']),
+    'tmux': (['-V'], b'', None, ['-V']),
+}
+tools = {}
+for name, (args, stdin, want, version_args) in ROW_TOOLS.items():
+    path = shutil.which(name)
+    if path is None:
+        raise RuntimeError(f'{name} is not on PATH')
+    run = subprocess.run([path, *args], input=stdin, capture_output=True, timeout=60)
+    if run.returncode != 0:
+        raise RuntimeError(f'{name} exited {run.returncode}: {run.stderr!r}')
+    if want is not None and run.stdout != want:
+        raise RuntimeError(f'{name} printed {run.stdout!r}, not {want!r}')
+    version = subprocess.run([path, *version_args], stdin=subprocess.DEVNULL,
+                             capture_output=True, timeout=60)
+    if version.returncode != 0:
+        raise RuntimeError(f'{name} {" ".join(version_args)} exited {version.returncode}')
+    lines = version.stdout.decode(errors='replace').splitlines()
+    tools[name] = next((line.strip() for line in lines if any(c.isdigit() for c in line)), '')
+
 print(json.dumps({'python': platform.python_version(),
                   'PyYAML': importlib.metadata.version('PyYAML'),
                   'jsonschema': importlib.metadata.version('jsonschema'),
-                  'entrypoints': list(ENTRYPOINTS)}, sort_keys=True))
+                  'entrypoints': list(ENTRYPOINTS),
+                  'tools': tools}, sort_keys=True))

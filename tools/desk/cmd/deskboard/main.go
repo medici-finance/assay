@@ -31,10 +31,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/spf13/cobra"
 )
 
@@ -124,6 +124,14 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 }
 
 func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer) int, record func(func() int) int, sinks ...func(perfrec.Context)) int {
+	// Additive offline discovery; bare version output and help stay unchanged.
+	if len(args) == 2 && (args[0] == "--version" || args[0] == "version") && args[1] == "--json" {
+		if err := json.NewEncoder(stdout).Encode(map[string]any{"version": versionLine(), "readerCapabilities": deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), "deskboard")}); err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitUnverifiable
+		}
+		return 0
+	}
 	var sink func(perfrec.Context)
 	if len(sinks) > 0 {
 		sink = sinks[0]
@@ -812,22 +820,25 @@ func normalizeTag(tag string) string {
 // the in-tree ref "when it exists", could-not-check only when neither source resolves).
 // Malformed-pin detection is `deskpins --check`'s job, not the drift banner's.
 //
-// TWO ARTIFACT NAMES, TRIED IN ORDER, NEITHER MATCHED LOOSELY. The pin contract admits two
-// legitimate spellings of the same pin: the bare `desk-tools` line, and the per-platform
+// THREE ARTIFACT NAMES, TRIED IN ORDER, NONE MATCHED LOOSELY. The pin contract admits three
+// legitimate spellings of the same pin: the bare `desk-tools` line, the per-platform
 // `desk-tools-<os>-<arch>` line `docs/distribution.md` tells an adopter to write and that
-// `deskinstall` resolves by `runtime.GOOS + "-" + runtime.GOARCH`. Only the bare one was ever
+// `deskinstall` resolves by `runtime.GOOS + "-" + runtime.GOARCH`, and the
+// `desk-tools-<os>-<arch>.tar.gz` line the installer writes under the tarball's full asset
+// name (#4842; deskkit.DeskToolsPlatformArtifacts holds the per-platform list). Only the bare one was ever
 // looked up, so a consumer whose pin file carries ONLY the per-platform line fell through
 // here (found=false), through the channel-D arm, through the in-tree fallback its checkout
 // does not have, and landed on staleState's could-not-check arm — which reports stale=true by
 // design, because an unverifiable drift check is not evidence of freshness. The verdict was
 // right about what it observed; the observation was the defect.
 //
-// The fix is a SECOND LOOKUP WITH AN EXACT NAME, never a looser match. ArtifactPin selects by
+// The fix is a FURTHER LOOKUP WITH AN EXACT NAME per spelling, never a looser match. ArtifactPin selects by
 // a trailing-space prefix, and pins.go states plainly that this is why `desk-tools ` must
 // never match `desk-tools-linux-amd64 ` — that disambiguation is a control, not an
 // inconvenience, and relaxing it would collapse the two lines into one match everywhere in
-// the suite. So this asks for each name in full, and the BARE line still wins when both are
-// present: an existing consumer's verdict cannot change under it.
+// the suite. So this asks for each name in full, and the BARE line still wins when more than
+// one is present (then the suffixless platform line): an existing consumer's verdict cannot
+// change under it.
 //
 // The matched artifact name is returned so the banner can say which line the verdict came
 // from — two sources that can disagree must be distinguishable in the message that reports
@@ -837,7 +848,7 @@ func deskToolsPinReal() (root, tag, artifact string, found bool) {
 	if t, name, ok := deskkit.DeskToolsReleasePin(dir, deskPlatform); ok {
 		return dir, t, name, true
 	}
-	return "", "", "", false // no pin file, or no usable desk-tools line of either shape
+	return "", "", "", false // no pin file, or no usable desk-tools line of any shape
 }
 
 // deskToolsArtifact is the bare artifact name, tried first so a consumer that already

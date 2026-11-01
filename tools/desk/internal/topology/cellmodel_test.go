@@ -282,3 +282,22 @@ func requireParseError(t *testing.T, err error, what string, want ...string) {
 		}
 	}
 }
+
+// TestInternalReadsUnknown pins the deliberate divergence from deskkit.Visibility:
+// topology names no `internal` value, so a topology entry stating it reads as
+// unknown (fail closed). The visibility here is display-only; every gate reads the
+// allowed-repos roster through deskkit, which does carry `:internal`.
+//
+// regression: #4978
+func TestInternalReadsUnknown(t *testing.T) {
+	for in, want := range map[string]Visibility{
+		"public":   VisibilityPublic,
+		"private":  VisibilityPrivate,
+		"internal": VisibilityUnknown,
+		"unknown":  VisibilityUnknown,
+	} {
+		if got := parseVisibility(in); got != want {
+			t.Errorf("parseVisibility(%q) = %s, want %s", in, got, want)
+		}
+	}
+}

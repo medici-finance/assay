@@ -25,6 +25,9 @@
 #   PUSHCRED_TOKEN_VAR  NAME of the variable holding the push token. When set,
 #                       pushes authenticate through an inline credential helper
 #                       that reads it, so the value never enters a URL or argv.
+#                       That push also resets every http extraheader key by
+#                       name (#5004), so a header left by the runner's checkout
+#                       cannot outrank the helper; no config file is edited.
 #   PUSHCRED_LOG        where the masked output of the last push lands
 #                       (default: a mktemp file; a path that does not exist yet
 #                       is created mode 0600).
@@ -115,11 +118,40 @@ pushcred_push() {
       echo "pushcred: PUSHCRED_TOKEN_VAR is not a variable name; refusing rather than guessing" >&2
       return 2
     fi
+    # An http extraheader outranks the helper (#5004). A runner's checkout can
+    # leave the CI job token in git config as an Authorization extraheader, and
+    # git sends a configured header instead of asking any credential helper, so
+    # the push would authenticate as the job token, which cannot push (403).
+    # Every http.extraheader and http.<url>.extraheader key is reset BY NAME for
+    # this one push: an empty value empties git's header list, and command-line
+    # config is read after every file. Names only are listed, never a value.
+    # No config file is edited in any scope, so later git in the same job (the
+    # regen's `ls-remote origin`) still authenticates the way the runner set up.
+    set -- push "$@"
+    _pc_n=0
+    _pc_names=$(git config --name-only --get-regexp '^http\.(.+\.)?extraheader$' 2>/dev/null) || {
+      _pc_lrc=$?
+      _pc_names=
+      if [ "$_pc_lrc" -ne 1 ]; then
+        echo "NOTICE: pushcred: could-not-check http extraheaders (git config --name-only --get-regexp exited $_pc_lrc); a configured Authorization header may still be sent instead of the board credential." >&2
+      fi
+    }
+    while IFS= read -r _pc_name; do
+      if [ -n "$_pc_name" ]; then
+        set -- -c "$_pc_name=" "$@"
+        _pc_n=$((_pc_n + 1))
+      fi
+    done <<EOF
+$_pc_names
+EOF
+    if [ "$_pc_n" -gt 0 ]; then
+      echo "pushcred: reset $_pc_n http extraheader key(s) for this push, so the board credential is the one git sends." >&2
+    fi
     # The helper text carries the variable's NAME; the helper's own shell reads
     # the value at run time, so it is in no URL, no argv and no config dump.
     GIT_TERMINAL_PROMPT=0 git -c credential.helper= \
       -c "credential.helper=!f() { test \"\$1\" = get || return 0; echo username=oauth2; printf 'password=%s\\n' \"\${$PUSHCRED_TOKEN_VAR}\"; }; f" \
-      push "$@" >"$_pc_raw" 2>&1 || _pc_rc=$?
+      "$@" >"$_pc_raw" 2>&1 || _pc_rc=$?
   else
     GIT_TERMINAL_PROMPT=0 git push "$@" >"$_pc_raw" 2>&1 || _pc_rc=$?
   fi

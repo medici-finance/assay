@@ -31,10 +31,10 @@ consumers:
 
 ## Context
 files:
-- `examples/gitops/argocd/overlay/kustomization.yaml` (planned) (new — the adopter-owned overlay: remote base at a pinned tag, brief 12's component, namespace, image pin, schedule patch)
-- `examples/gitops/argocd/application.yaml` (planned) (new — `argoproj.io/v1alpha1` Application pointing at the adopter's repo path holding that overlay)
-- `examples/gitops/argocd/appproject.yaml` (planned) (new — an AppProject scoping source repos and the destination namespace)
-- `examples/gitops/check.sh` (planned) (new — builds every `examples/gitops/*/overlay` with its remote base swapped for the local `containers/k8s`, so CI and verifiers test the example against this tree; brief 14 reuses it without editing it)
+- `examples/gitops/argocd/overlay/kustomization.yaml` (planned) (new: the adopter-owned overlay: remote base at a pinned tag, brief 12's component, namespace, image pin, schedule patch)
+- `examples/gitops/argocd/application.yaml` (planned) (new: `argoproj.io/v1alpha1` Application pointing at the adopter's repo path holding that overlay)
+- `examples/gitops/argocd/appproject.yaml` (planned) (new: an AppProject scoping source repos and the destination namespace)
+- `examples/gitops/check.sh` (planned) (new: builds every `examples/gitops/*/overlay` with its remote base swapped for the local `containers/k8s`, so CI and verifiers test the example against this tree; brief 14 reuses it without editing it)
 - `docs/install-argocd.md` (planned) (new)
 - `docs/docker.md` — one pointer line in the Kubernetes section
 - `changelog/desk-containers-13-argocd-example.md` (planned)

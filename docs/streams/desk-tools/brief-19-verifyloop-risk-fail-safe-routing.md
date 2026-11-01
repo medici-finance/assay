@@ -43,13 +43,11 @@ None.
 ## Context
 
 files:
-- `tools/desk/cmd/verifyloop/tier.go` (`TierPolicy` — the irreversible arm)
+- `tools/desk/cmd/verifyloop/tier.go` (`TierPolicy`: the irreversible arm)
 - `tools/desk/cmd/verifyloop/queueclass.go` (`classifyItem`, `whyItWaits`, the bucket header)
-- `tools/desk/cmd/verifyloop/main.go` (`printBuckets` — the ROUTE-HUMAN heading and the
-  per-member Evidence-only line)
-- `tools/desk/internal/loopengine/engine.go` (`RiskFlags.Flagged`, plus a new `Any()`)
-- the packages' tests: `tools/desk/cmd/verifyloop/queueclass_test.go`,
-  `tools/desk/internal/loopengine/engine_test.go`
+- `tools/desk/cmd/verifyloop/main.go` (`printBuckets`: the ROUTE-HUMAN heading and the per-member Evidence-only line)
+- `tools/desk/internal/loopengine/engine.go` — (`RiskFlags.Flagged`, plus a new `Any()`)
+- `tools/desk/cmd/verifyloop/queueclass_test.go`, `tools/desk/internal/loopengine/engine_test.go` — the packages' tests: `tools/desk/cmd/verifyloop/queueclass_test.go`, `tools/desk/internal/loopengine/engine_test.go`
 
 facts (all read at `0af8093`, 2026-09-06):
 - `TierPolicy` precedence today is: `Risk.Irreversible` → `TierLocal` (dispatched so the

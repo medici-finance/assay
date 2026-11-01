@@ -227,6 +227,7 @@ type deskreadItemEnvelope struct {
 			Events       []struct {
 				AuthorLogin string `json:"authorLogin"`
 				AuthorID    int64  `json:"authorId"`
+				AuthorBot   bool   `json:"authorBot"`
 				CreatedAt   string `json:"createdAt"`
 				EditedAt    string `json:"editedAt"`
 			} `json:"events"`
@@ -346,7 +347,7 @@ func (d deskreadReader) IssueTrust(repo string, number int) (issueTrustRead, err
 		if eerr != nil {
 			return issueTrustRead{}, eerr
 		}
-		out.Events = append(out.Events, blessEvent{login: e.AuthorLogin, id: e.AuthorID, created: created, edited: edited})
+		out.Events = append(out.Events, blessEvent{login: e.AuthorLogin, id: e.AuthorID, forgeBot: e.AuthorBot, created: created, edited: edited})
 	}
 	return out, nil
 }

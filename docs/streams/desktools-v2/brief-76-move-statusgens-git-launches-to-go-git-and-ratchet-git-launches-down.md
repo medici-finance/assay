@@ -27,10 +27,31 @@ domain: complicated
 gate-why: "sensitive-data is yes because the moved reads include the history and merge-base inputs of the verified-flip provenance control (statusgen/verifyflip.go, SEC-2013-4). The human confirms parity on criss-cross and replace-ref histories, and accepts each git launch kept as one go-git cannot do."
 decision-trigger: start
 consumers:
-  - "tools/desk/internal/gitcore/: follow-up desktools-v2/76 (lifted to an importable module; tools/desk keeps its import path or a forwarding shim)"
-  - "tools/desk/internal/gitquiet/, tools/desk/internal/gittest/: follow-up desktools-v2/76 (gitcore's internal imports move with it or are replaced; the top-level gitquiet/ module is the precedent)"
-  - "statusgen/*.go git call sites, statusgen/go.mod: follow-up desktools-v2/76"
-  - "statusgen/verifyflip.go flipJudgeHistory and flipMergeBases: follow-up desktools-v2/76 (move only with parity goldens; keep on git if parity cannot be shown)"
+  - "tools/go-analysis/pins.env: fixed-here (human-authorized loader alignment to the already admitted BUILD_GO 1.27.1 archives; scanner version, configuration, fingerprint and finding allowances unchanged; reviewed policy-transition admission remains required)"
+  - "gitcore/: fixed-here (canonical importable Git owner lifted from tools/desk/internal/gitcore; supported typed reads and native capability boundaries stay with this owner)"
+  - "gitcore/gittest/: fixed-here (the canonical test-only fixture owner moves from tools/desk/internal/gittest without duplication)"
+  - "tools/desk/: fixed-here (public gitcore/gittest imports and local module replacements; retain desk source guard coverage alongside the lifted owner)"
+  - "gitquiet/: out-of-scope (reuse the existing public quiet-fixture implementation; the desk internal adapter remains its consumer)"
+  - "statusgen/: fixed-here (link the canonical owner for qualified raw/header, HEAD, discovery/prefix, tree-entry, resolution and parent reads; each native operation keeps its own documented boundary)"
+  - "statusgen/verifyflip.go: fixed-here (retain full-history and every-best-base semantics at the existing choke point; do not substitute a different history verdict)"
+  - "statusgen/scripts/count-git-launch.sh: fixed-here (source-only offline counter entrypoint used by original Verify row 4)"
+  - "statusgen/internal/gitlaunch/: fixed-here (source-only AST inventory, exact per-operation routing and down-only ceiling controls)"
+  - "statusgen/git-launches.json: fixed-here (one reasoned operation inventory; distinguish qualified typed defaults, counted native compatibility branches and concrete retained capability/output boundaries)"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here (only the two exact /76 test routes; preserve the independent statusgen/26 workload route and owner)"
+  - "tools/desk/internal/clicontract/gitlaunch_test.go: fixed-here (owner declaration, route removal, shipping and neighboring-entrypoint controls)"
+  - "tools/desk/internal/deskkit/citrigger_test.go: fixed-here (actual cross-module read coverage and executing CI route for lifted and retained controls)"
+  - "tools/go-analysis/runner.py, scripts/tests/go-analysis.py, scripts/tests/go-analysis-mutations.py: fixed-here (carry the existing desk platform/tag tuples to gitcore without narrowing desk coverage or changing analysis policy)"
+  - "Dockerfile, images/assay-harness/Dockerfile, images/verify-runner/Dockerfile: fixed-here (retain sibling module layout in source builds and manifest-only cache preparation)"
+  - "statusgen/testdata/verification-handoff/mutate.py: fixed-here (include the lifted owner in the bounded source snapshot without raising its caps)"
+  - "docs/research/2026-10-22-git-ai-cache-and-source-control.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/desk-tools/README.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/desktools-go-git/inventory.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/desktools-v2/brief-13-platform-gates-and-reconciliation.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/desktools-v2/inventory.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/forge-neutral/reviewer-write-boundary.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "docs/streams/milestone-support/brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md: fixed-here (repair only the lifted owner reference; historical citations use immutable pre-lift blobs and completed Verify/Evidence tails stay unchanged)"
+  - "tools/go-analysis/baseline.json: out-of-scope (no identity translation or allowance expansion; exact resolved removals require complete comparable qualification and reviewed policy-transition admission)"
   - "tools/desk/scripts/count-git-exec.sh: out-of-scope (desk-tools' counter and its gate flip belong to desktools-go-git/08; this brief adds statusgen's own ratchet beside it)"
   - "statusgen/evaluation/: out-of-scope (pure evaluation; reads no repository)"
 ---
@@ -40,12 +61,49 @@ consumers:
 ## Context
 
 files:
-- `tools/desk/internal/gitcore/` (lifted to a module; path decided at implementation)
-- `tools/desk/internal/gitquiet/`, `tools/desk/internal/gittest/`, top-level `gitquiet/`
-- `statusgen/go.mod`, `statusgen/gitbatch.go`, `statusgen/gitinfo.go`, `statusgen/verifyflip.go`,
-  `statusgen/registercorroborate.go` and the other files with git launches
-- `statusgen/scripts/count-git-launch.sh` (planned) or an equivalent test
+- `gitcore/` — including the canonical `gitcore/gittest/` fixture owner, lifted from `tools/desk/internal/gitcore/` and `tools/desk/internal/gittest/`
+- `tools/desk/go.mod`, `tools/desk/go.sum` — and the desk Git/fixture import consumers; `tools/desk/internal/gitquiet/` continues to use the existing public `gitquiet/` owner
+- `gitcore/ackguard_test.go`, `gitcore/claimref_guard_test.go`, `gitcore/fetchtags_guard_test.go`, `tools/desk/internal/gitquiet/`, `tools/desk/internal/deskkit/ambienttoken_guard_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go` and `tools/desk/internal/deskkit/citrigger_test.go` (preserve retained and lifted scopes)
+- `statusgen/go.mod`, `statusgen/go.sum`, `statusgen/gitcore_read.go`, `statusgen/gitbatch.go`, `statusgen/gitinfo.go`, `statusgen/verifyflip.go`, `statusgen/registercorroborate.go` — and the other Git read call sites
+- `statusgen/scripts/count-git-launch.sh`, `statusgen/internal/gitlaunch/`, `statusgen/git-launches.json`, `statusgen/gogit-mutations.json`, `statusgen/history-mutations.json`, `statusgen/stalefail_history_test.go`, `statusgen/gogit_discovery_parity_test.go` — and their named parity/counter controls
+- `docs/streams/desktools-v2/cli-migration.json` (the two exact /76 test routes only), `tools/desk/internal/clicontract/gitlaunch_test.go`
+- `tools/go-analysis/pins.env` (explicitly authorized Go-loader repair using existing Go 1.27.1 archive pins)
+- `tools/go-analysis/runner.py`, `scripts/tests/go-analysis.py`, `scripts/tests/go-analysis-mutations.py` (retain prior platform/tag coverage for both owners)
+- `Dockerfile`, `images/assay-harness/Dockerfile`, `images/verify-runner/Dockerfile`, `statusgen/testdata/verification-handoff/mutate.py`
+- **CI consumer targets:** `.github/workflows/ci.yml`, `.github/workflows/assay-statusgen.yml`, `.github/workflows/git-maintenance-windows.yml` and `ci/staged-workflows/assay-statusgen.yml` (the existing twin) — live activation remains the existing maintainer-owned act, not an implicit permission of this brief
+- **Source-bound mutation maps and acceptance callers whose old `internal/gitcore` paths or test-module working directories change with the lift**
 - `changelog/statusgen-go-git.md` (planned)
+
+The library owns object/revision interpretation. Statusgen's adapters preserve the
+ordinary and provenance profiles separately: provenance keeps its original repository
+locator stripping and replacement/graft isolation. A positively observed unsupported
+profile selects native execution before the operation; an in-process read error remains
+uncertainty and never triggers a native retry.
+
+The existing invocation reader also shares successful stale-FAIL native log bytes,
+bound to physical repository, selected main, effective native configuration/reference
+namespace and exact arguments/environment. Each brief retains its own issue, path and
+date decision. Failures are retryable; unsupported profiles stay uncached.
+
+Native retention is operation-specific. The generic blob accessor using full commit
+decoding has observed raw-header/path-selector gaps; the selected diff reader has
+observed missing-subtree and control-name differences; ancestry/merge-base readers have
+observed incomplete-graph uncertainty differences. Full-history path selection and the
+every-best-base requirement keep their existing counterexample controls. These findings
+do not establish that unrelated operations are impossible. The finite revision-caller
+pass reuses the qualified existing primitives; remaining short-token, generic-object,
+symbolic-ref, native formatting and public failure-output contracts retain their
+original operation. Human acceptance of each retained boundary remains required.
+
+The first canonical Go-analysis acquisition stopped at the Go 1.25 loader / Go 1.27
+source requirement boundary, recorded in [the /76 analysis blocker](https://github.com/medici-finance/assay/issues/4655#issuecomment-6455905095).
+The human subsequently authorized runtime alignment; acquisition with the pinned Go
+1.27.1 runtime has succeeded. Policy admission, complete comparable scans and exact
+resolved-allowance removals remain separate qualification work. This implementation
+note claims neither a canonical scan result nor permission to translate baseline keys.
+
+Desktools-v2/68 and PR #4541's independently owned changes remain excluded. The only
+shared-registry amendment is /76's two exact source-only test routes.
 
 single-point-of-failure: none — this brief adds no credential, identity or forge access; it
 changes how local repository objects are read. The control it can weaken is the verified-flip
@@ -88,7 +146,7 @@ design-fit:
 ## Read first
 
 `docs/streams/desktools-go-git/README.md` and its brief 01 (inventory and golden harness),
-`tools/desk/internal/gitcore/`, and the verified-flip code named in facts.
+`gitcore/` and `gitcore/gittest/` (the lifted canonical owners), and the verified-flip code named in facts.
 
 ## Human decision
 

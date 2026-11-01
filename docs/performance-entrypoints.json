@@ -175,7 +175,7 @@
       "path": "tools/desk/cmd/deskcalibrate",
       "module": "tools/desk",
       "parser_owner": "desktools-v2/44",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "current-parser-gap",
       "owner": "desktools-v2/44",
       "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
@@ -488,7 +488,7 @@
       "path": "tools/desk/cmd/deskreconcile",
       "module": "tools/desk",
       "parser_owner": "desktools-v2/44",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "current-parser-gap",
       "owner": "desktools-v2/44",
       "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
@@ -656,7 +656,7 @@
       "path": "tools/desk/cmd/muhar",
       "module": "tools/desk",
       "parser_owner": "desktools-v2/44",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "current-parser-gap",
       "owner": "desktools-v2/44",
       "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
@@ -666,7 +666,7 @@
       "path": "actions/muhar/muhar-action.sh",
       "module": "bash",
       "parser_owner": "desktools-v2/44",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "standalone-gap",
       "owner": "desktools-v2/44",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
@@ -676,7 +676,7 @@
       "path": "tools/desk/cmd/opmetrics",
       "module": "tools/desk",
       "parser_owner": "desktools-v2/44",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "current-parser-gap",
       "owner": "desktools-v2/44",
       "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
@@ -1175,10 +1175,10 @@
       "executable": "stamp-spec-header-version.sh",
       "path": "tools/release/stamp-spec-header-version.sh",
       "module": "bash",
-      "parser_owner": "desktools-v2/47",
+      "parser_owner": "desktools-v2/80",
       "parser_state": "pending",
       "context": "standalone-gap",
-      "owner": "desktools-v2/47",
+      "owner": "desktools-v2/80",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
     },
     {

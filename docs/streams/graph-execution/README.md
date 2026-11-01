@@ -84,11 +84,11 @@ or removing any human gate (spec §5 states the divergence).
 | 01 | [Eligibility evaluator — gates and feathers become gating, with a reason](brief-01-eligibility-evaluator.md) | 0 | L | done | 2026-09-17 sonnet-5-verifier (9/12 clean PASS; rows 6/12 literal-fail-shaped but independently proven pre-existing board-drift, not regressions; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1298 @ d3b1f88dd9a6941e7c8449a460513e4638b8ae38) |
 | 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | verified | 2026-10-25 assay-verifier-app[bot] @ 4aeecf71626f (forge-identity) | — |
 | 03 | [Evidence coverage rule and the observe evidence kind](brief-03-evidence-coverage-rule.md) | 1 | L | implemented | — | — |
-| 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 4 | L | todo | — | — |
+| 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 4 | L | verified | 2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity) | — |
 | 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 8 | L | todo | — | — |
 | 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 9 | L | todo | — | — |
 | 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
-| 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 1 | M | todo | — | — |
+| 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 2 | M | todo | — | — |
 | 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 10 | [Typed advice and separate deterministic policy records](brief-10-decision-contract.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1499 @ f4c4e5222b775331f2d255daf981984b029023b3) |
 | 11 | [Optional pinned Laya provider with explicit CPU and GPU profiles](brief-11-laya-local-provider.md) | 1 | M | todo | — | — |
@@ -108,12 +108,14 @@ or removing any human gate (spec §5 states the divergence).
 | 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 11 | M | todo | — | — |
 | 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 6 | L | todo | — | — |
 | 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | L | todo | — | — |
-| 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | implemented | — | — |
-| 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | implemented | — | — |
-| 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
-| 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
+| 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | verified | 2026-10-28 assay-verifier-app[bot] @ 8db7d356334e (forge-identity) | — |
+| 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | verified | 2026-10-28 assay-verifier-app[bot] @ 9363e5df55fa (forge-identity) | — |
+| 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 5729430698d4 (forge-identity) | — |
+| 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | implemented | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | todo | — | — |
+| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | implemented | — | — |
+| 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | todo | — | — |
+| 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -147,6 +149,7 @@ No parallel drain engine, model timer or telemetry store is commissioned.
                              ├──► 04 recovery contract ┼──► 05 offline experiment ──► 06 run records + replay
                              └──► 08 signal-triggered  │
                                    (01 also feeds 05) ─┘
+  33 human decision owner ──► 34 signal schema + lint ──► 08 signal-triggered
 ```
 
 **In-stream head: 02**, with 01 alongside it. Longest chain is `02 → 03 → 05 → 06` (equal
@@ -401,3 +404,38 @@ is not widened. graph-execution/02 stays held until /33 lands, read as /33 reach
 the hold note is in brief 02's `## Review` section. /33 is a Wave 0 item with no open
 dependency, because /02 and /09's deliverables are already on main; it is a new prerequisite of
 /14, which binds the re-pinned pattern at dispatch.
+
+## Signal-pattern schema amendment — 2026-10-27
+
+[Brief 34](brief-34-signal-input-and-signal-classes.md) is the schema and lint amendment
+[brief 08](brief-08-signal-triggered-pattern.md) now depends on, per the maintainer's ruling <!-- graph: encoded graph-execution/34→graph-execution/08 -->
+choosing option A: https://github.com/medici-finance/assay/issues/4506#issuecomment-6454769886
+It adds a `signal` input with a liveness check, decision-node `options`, `default` and a closed
+`containment` list, a top-level `signal-classes` block (admission predicate, culprit record,
+remedy set, judgement default, limits), and eight lint rules, including the ones 08's Verify rows
+3 and 9-12 name. Per the ruling on the role-effect table, the §7 table is not widened:
+https://github.com/medici-finance/assay/issues/4506#issuecomment-6455243468
+Containment and confirm-filing in 08 are `human`-owned decision nodes with no effects. /34
+depends on /33 rather than subsuming it: /33 already adds `human` as an owner of effect-free
+decision nodes, is human-gated, and edits the same schema and lint files. The chain to 08 is
+`33 → 34 → 08`.
+
+## Signal-pattern runtime — 2026-11-01
+
+[Brief 35](brief-35-signal-pattern-runtime.md) closes the gap #5144 reports. /34 and /08 define the
+signal pattern, and nothing reads one at run time. /35 adds one stateless check, called before each <!-- graph: encoded graph-execution/34→graph-execution/35 -->
+node, that refuses a run failing its class's admission, refuses a node off its class's route, and
+holds a run whose source is dead or could not be checked. It reads the pattern with its own strict decoder and
+refuses the faults it lists with no lint run. It doesn't enforce the other lint rules at run time, among
+them the remedy set and refused paths, the replay rule, effect limits by role and the containment set; the
+brief lists them all. It trusts its caller for every input and pins the pattern revision to a digest the
+caller passes. It activates nothing, and it is `gate: human` because it lifts /34's activation hold. #5147 carried that decision, which is ruled:
+https://github.com/medici-finance/assay/issues/5147#issuecomment-6560646821
+The record is `DR-graph-exec-35`.
+
+Any brief that activates a signal pattern depends on /35. auto-triage/02 and /03 now carry that edge. <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
+/08 ships a definition and activates nothing, so it carries no edge to /35. The chains are `33 → 34 → 08` and <!-- graph: encoded graph-execution/34→graph-execution/35 -->
+`33 → 34 → 35 → auto-triage/02, /03 → auto-triage/04`. Effect limits stay with the activating brief; only <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
+auto-triage/02 and /03 own them today. No brief owns a liveness result for any source (#5148), so a caller following
+the spec has none to pass and every such run holds. The gate can't tell an observed result from a constant,
+so the spec text requires each activating brief to name the source and the brief owning its result.

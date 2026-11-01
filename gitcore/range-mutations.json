@@ -1,0 +1,48 @@
+{
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .",
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestCommitRange' .",
+  "control": {
+    "name": "CONTROL range includes excluded ancestry",
+    "file": "rangehistory.go",
+    "old": "if !excluded[index] {\n\t\t\trow := r.graphNodes[index].record",
+    "new": "if true {\n\t\t\trow := r.graphNodes[index].record"
+  },
+  "mutations": [
+    {
+      "name": "excluded endpoint never validated",
+      "file": "rangehistory.go",
+      "old": "baseIndex, err := r.loadRangeNode(base, map[string]bool{})",
+      "new": "baseIndex, err := 0, error(nil)"
+    },
+    {
+      "name": "missing parent becomes absence",
+      "file": "rangehistory.go",
+      "old": "if err != nil {\n\t\t\treturn 0, err\n\t\t}",
+      "new": "if err != nil {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "returned parent slice aliases cached graph",
+      "file": "rangehistory.go",
+      "old": "row.Parents = append([]string(nil), row.Parents...)",
+      "new": "row.Parents = row.Parents[:len(row.Parents)]"
+    },
+    {
+      "name": "parent order reversed",
+      "file": "rangehistory.go",
+      "old": "row.Parents = append(row.Parents, parent.String())",
+      "new": "row.Parents = append([]string{parent.String()}, row.Parents...)"
+    },
+    {
+      "name": "reference alias does not select native namespace",
+      "file": "rangehistory.go",
+      "old": "return \"native revision name shadows object abbreviation\", nil",
+      "new": "return \"\", nil"
+    },
+    {
+      "name": "binary message treated as native-formatted text",
+      "file": "rangehistory.go",
+      "old": "if strings.ContainsRune(c.Message, 0) {",
+      "new": "if strings.ContainsRune(c.Message, 0) && false {"
+    }
+  ]
+}

@@ -67,20 +67,12 @@ checklist row names a kind its forge serves or gets could-not-check, never the o
 document.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` — extend `HardeningReadKind` with the five GitLab
-  kinds (the validator's closed set grows; still no path argument).
-- `tools/desk/internal/deskkit/forge_gitlab.go`, `forge_gitlab_test.go` — implement the five
-  kinds; goldens per kind; a `push_rules_premium_gated` golden pinning 403/404 → could-not-check
-  carrying a `ForgeAPIError`, never an empty document.
+- `tools/desk/internal/deskkit/forge.go` — extend `HardeningReadKind` with the five GitLab kinds (the validator's closed set grows; still no path argument).
+- `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/forge_gitlab_test.go` — implement the five kinds; goldens per kind; a `push_rules_premium_gated` golden pinning 403/404 → could-not-check carrying a `ForgeAPIError`, never an empty document.
 - `tools/desk/internal/deskkit/forge_github.go` — the symmetric named refusal for GitLab kinds.
-- `tools/desk/cmd/repohardenguard/repohardenguard_test.go` — a GitLab fixture checklist block
-  (`gl/p` project): a Free row, a `not available — Premium` row, a tier-403 row.
-- `docs/streams/forge-gitlab/inventory.md`, `edition-matrix.md` — op 38's GitLab column →
-  implemented; one matrix row per kind with its docs citation.
-- `docs/adopting-assay-gitlab.md` — the GitLab checklist template (rows above, Required cells
-  per the profile) and the auditor service account's minimum project role per kind (Reporter
-  for `project`/`file`; the protected-branches/tags and approvals reads need at least
-  Maintainer on GitLab — dereferenced in Verify row 4, never asserted from memory).
+- `tools/desk/cmd/repohardenguard/repohardenguard_test.go` — a GitLab fixture checklist block (`gl/p` project): a Free row, a `not available — Premium` row, a tier-403 row.
+- `docs/streams/forge-gitlab/inventory.md`, `docs/streams/forge-gitlab/edition-matrix.md` — op 38's GitLab column → implemented; one matrix row per kind with its docs citation.
+- `docs/adopting-assay-gitlab.md` — the GitLab checklist template (rows above, Required cells per the profile) and the auditor service account's minimum project role per kind (Reporter for `project`/`file`; the protected-branches/tags and approvals reads need at least Maintainer on GitLab — dereferenced in Verify row 4, never asserted from memory).
 - `changelog/forge-gitlab-12-gitlab-hardening-reads.md` (planned).
 
 single-point-of-failure: the tier-gate mapping — a Premium endpoint on CE must read as
@@ -802,7 +794,113 @@ Risk values at this head:
 Findings: the cmd test packages under tools/desk are not hermetic. They read the ambient origin remote and roster, so row 1 cannot go green in the sanctioned no-network container lane. Under amd64 emulation, the default package timeout is also too short for several packages. Neither finding touches this brief's implementation.
 
 **VERIFY: BLOCKED** — row 4 (live GitLab read-back under a human-provisioned auditor PAT) could not be checked, and its command still needs the medici-finance/assay#1794 re-authoring. In the closed container bracket, rows 2, 3 and 5 pass. Row 1 is red for lane reasons (non-hermetic command tests, and package timeouts under emulation), not for anything in this brief. Row 6 passes vacuously. No implementation defect. Blocker: medici-finance/assay#1794.
+### Independent run 2026-10-30 (claude-opus-5-5, strong) — container-netns admission bracket plus host row
 
+Separate run under a fresh admission (attestation medici-finance/assay#4968) at merged head 40925e8233c8. It credits nothing from the runs above. Container rows 1, 2, 3 and 5 ran in one closed admission bracket; row 6 ran on the host because it reads git history; row 4 was not selected (reason below).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 sandbox=container-netns | sha256:b508f79942a2 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | pass exit=0 sandbox=container-netns | sha256:a0d130e5bf10 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | pass exit=0 sandbox=container-netns | sha256:9872759f3862 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465
+Container-Image: sha256:29494cbeca300a29295a2eeed7398500675cb63c7911d660a08c899e8584d175
+Verification-Attestation: medici-finance/assay#4968 run=cf1399b3f9c9d865e8a69ef2f66c3eb37b3004c4a52a821a5b0ebb61aa67062c source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=cf1399b3f9c9d865e8a69ef2f66c3eb37b3004c4a52a821a5b0ebb61aa67062c source=40925e8233c8a63d70682e77ca333e665f1f955e tree=sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465 witness=sha256:c524a0a9ffa4d54734f062cb5770014c5e3105dde60622a0748722c3f19a6c29 opened=2026-10-30T02:50:51Z closed=2026-10-30T03:00:41Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:ca38fbc4dc1b | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4968 run=cf1399b3f9c9d865e8a69ef2f66c3eb37b3004c4a52a821a5b0ebb61aa67062c source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+
+Host and lane. darwin-arm64 host, Docker 29.8.2 (6 CPU), statusgen v1.0.66 as installed. Rows 1, 2, 3 and 5 ran in the pinned verify-runner v1.0.66 image (index digest above; its linux/arm64 entry, run natively, go1.27.3, git 2.56.0, jq-1.6) with no network, a read-only root, all capabilities dropped, no credentials in the container, GOPROXY off, and a no-hardlinks clone of the head mounted read-only at the home's path. The bracket closed with a matching digest. Row 6 ran on the host because it reads git history, which the container mount does not carry.
+
+Row 4 was not selected. It needs a live GitLab instance and an auditor personal access token that a human provisions, and its command mints that token through desktoken. No GitLab API base is configured for this run and the checkout's origin is a GitHub remote. The row's command is still open for re-authoring (medici-finance/assay#1794, re-authoring tracker medici-finance/assay#1927, both open on 2026-10-30), and the auditor's minimum roles are still stated rather than measured (medici-finance/assay#1946, open). The row's claim is unproven.
+
+Row 1 is red in this lane, and the red is not in the code this brief changed. A diagnostic re-run of the same command under the same container settings (outside the bracket, no credit) reproduced it: 118 packages ok, the repohardenguard command package among them. The failures are all lane reasons. (a) Two deskinbox parity tests call the jq builtin scan/2, which the image's jq-1.6 lacks (it arrived in jq 1.7). (b) A deskperf flow test builds a subprocess binary and cannot create a Go build cache under the read-only home. (c) A desksourceguard platform test derives linux-arm64, which is not on the published platform list, because the lane runs natively on arm64. (d) The deskkit package aborts on a nil-pointer panic in TestOverrideIdentityResolvesRosterLogin, because the container user has no passwd entry, so the rest of that package does not report (tracked as medici-finance/assay#4329, open). None of the failing tests is a GitLab hardening read. A second diagnostic run of the whole deskkit package with only that one test skipped passed (ok, exit 0), so the hardening code in that package is green apart from the lane panic. Row 1 could not be checked in this lane. That is not a fail.
+
+Row 6 passes vacuously: there are no brief files in the diff against the merge-base, so nothing is corroborated.
+
+Supplemental mutation (no credit): a container run of TestForgeGitlabGolden under a compile overlay. The overlay makes a tier-gated 403 or 404 in the hardening read return an empty JSON document with no error. The test went red in three subtests (push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404) and exited 1. The unmutated test passes, as row 2 shows. So the golden test catches the tier-gated could-not-check path being turned into a silent empty read.
+
+Uncovered obligations and supplemental runs (the S rows carry no acceptance credit):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 4 | `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: $(cat "$(desktoken auditor --forge gitlab --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')")")" "$GITLAB_API_BASE/projects/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/([^/]+?)(\.git)?$#\1%2F\2#')/protected_branches"` | 200 | could-not-run: the bracket's row filter (rows 1, 2, 3, 5) excluded it because it needs a live GitLab instance and a human-provisioned auditor PAT minted through desktoken; GITLAB_API_BASE is not set and origin is a GitHub remote. Blocker medici-finance/assay#1794; next actor: the driver provisions the PAT and pilot project | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (model verifier) (on-behalf-of human:ian) |
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | could-not-check in this lane: exit 1 in the bracket; failures are jq-1.6 scan/2, read-only home build cache, linux-arm64 platform list, and the medici-finance/assay#4329 panic; none on the GitLab hardening path | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (model verifier) (on-behalf-of human:ian) |
+| S1 | `cd tools/desk && go build ./... && go test ./...` (diagnostic, outside the bracket, same container settings) | diagnosis | exit 1; 118 packages ok, including the repohardenguard command package; failures as listed for row 1 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (model verifier) (on-behalf-of human:ian) |
+| S2 | `cd tools/desk && go test ./internal/deskkit/ -skip "^TestOverrideIdentityResolvesRosterLogin$"` (container, outside the bracket) | exit 0 | ok, exit 0 (361 s) | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (model verifier) (on-behalf-of human:ian) |
+| S3 | `cd tools/desk && go test -overlay <mutant overlay> ./internal/deskkit/ -run TestForgeGitlabGolden -v` (container, outside the bracket) | exit 1 | exit 1; red in push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (model verifier) (on-behalf-of human:ian) |
+
+Risk values at this head (the brief's file set changed since the 2026-10-24 run only in an adopter-doc note on the bot username and in GitHub-side forge code; nothing on the GitLab hardening path moved except line numbers):
+- RISK-VALUE: hardening read paths projects/%s, projects/%s/push_rule, projects/%s/approvals, and the list paths projects/%s/protected_branches and projects/%s/protected_tags (forge_gitlab.go:2601-2608): DERIVED. These are GitLab's REST v4 resource paths, and the golden test in row 2 pins them; a wrong path fails closed as a 404.
+- RISK-VALUE: tier-gated kinds {push-rules, approvals} (forge_gitlab.go:2621), a 403 or 404 on them mapped to could-not-check (forge_gitlab.go:2680-2681), and an empty body refused (forge_gitlab.go:2687): DERIVED from GitLab's tier matrix. Rows 2 and 3 exercise them, and the mutation above shows the golden test discriminates.
+- RISK-VALUE: hardeningKindForge partition (forge.go:1367): DERIVED, a closed vocabulary that the coverage test checks.
+- RISK-VALUE: adopter-doc Required cells main-no-force false, main-push-no-one 0, main-merge-maintainers 40, release-tags 40 (adopting-assay-gitlab.md:1124-1127): DERIVED. GitLab access level 0 is No one and 40 is Maintainer. The push-rules rows are not available — Premium (adopting-assay-gitlab.md:1131-1132), which row 5 counts.
+- RISK-VALUE: auditor roles Reporter (20) and Maintainer (40) (adopting-assay-gitlab.md:142, role table at :1068-1073): NAMED, NOT DERIVED. The doc says so itself at :1075 ("a stated minimum, not a measured one"). Only row 4's live read-back can derive it. Tracked as medici-finance/assay#1946.
+- RISK-VALUE: gitlabMaxHardeningPage = 10 (forge_gitlab.go:2615) and gitlabPerPage = 100 (forge_gitlab.go:465): NAMED. These are reversible ceilings that fail closed past the cap, so they rank last.
+
+Findings (none touches this brief's implementation): the v1.0.66 verify-runner image ships jq-1.6, below what the deskinbox parity tests need; the deskperf flow test needs a writable Go build cache under the home; the desksourceguard platform test fails on a native linux-arm64 lane; and the deskkit roster-identity test panics without a passwd entry (medici-finance/assay#4329). Together they keep row 1 from going green in the sanctioned no-network container lane.
+
+**VERIFY: BLOCKED** — row 4 (live GitLab read-back under a human-provisioned auditor PAT) could not be checked, and its command still needs the medici-finance/assay#1794 re-authoring. In the closed container bracket, rows 2, 3 and 5 pass. Row 1 is red for lane reasons (old jq in the image, read-only home build cache, arm64 platform list, and the medici-finance/assay#4329 panic), not for anything in this brief. Row 6 passes vacuously. No implementation defect. Blocker: medici-finance/assay#1794.
+
+### Independent run 2026-11-01 (claude-opus-5-5, strong) — container-netns admission bracket plus host row
+
+Separate run under a fresh admission (attestation medici-finance/assay#5119) at merged head 703a1d9ca092. It credits nothing from the runs above. Container rows 1, 2, 3 and 5 ran in one closed admission bracket; row 6 ran on the host because it reads git history; row 4 was not selected (reason below).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 sandbox=container-netns | sha256:7b60fc50433c | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | pass exit=0 sandbox=container-netns | sha256:4f8971bb20bb | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | pass exit=0 sandbox=container-netns | sha256:1b64a5cf55f4 | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | pass exit=0 sandbox=container-netns | sha256:53c234e5e847 | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a81459a4e091c6e08588b15ed170d0f0a4a52dfd514c35b0cf8eadc4b7ddd2fa
+Container-Image: sha256:5fa242b9d02a5f769fe9d541f5a8ad33ae291e418a735617faf4812ef21e8629
+Verification-Attestation: medici-finance/assay#5119 run=c7c2893c4812156932075007f8d166ef822cc4ef8347728f9b7e118998b4657f source=703a1d9ca092d176bdbae87cab4954a39300da56 brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c7c2893c4812156932075007f8d166ef822cc4ef8347728f9b7e118998b4657f source=703a1d9ca092d176bdbae87cab4954a39300da56 tree=sha256:a81459a4e091c6e08588b15ed170d0f0a4a52dfd514c35b0cf8eadc4b7ddd2fa witness=sha256:0185d00b9e7627372e10e25f1481b6b2eb4cd8462fcc5d0f7d7b76375ed781b7 opened=2026-11-01T00:46:37Z closed=2026-11-01T01:04:50Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:e284fad6163d | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5119 run=c7c2893c4812156932075007f8d166ef822cc4ef8347728f9b7e118998b4657f source=703a1d9ca092d176bdbae87cab4954a39300da56 brief=docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md model=claude-opus-5-5 tier=strong
+
+Host and lane. darwin-arm64 host, Docker 29.8.2 (6 CPU), statusgen v1.0.67 as installed. Rows 1, 2, 3 and 5 ran in the pinned verify-runner v1.0.67 image, its linux/arm64 entry (digest above, child of index sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa, run natively, go1.27.3, git 2.56.0, jq-1.6), with no network, a read-only root, all capabilities dropped, no credentials and no roster in the container, GOPROXY off, HOME on a tmpfs, and a no-hardlinks clone of the head mounted read-only at the home's path. Per-row timeout 60m. The bracket closed with a matching digest. Row 6 ran on the host, in the home, because its base and diff come from that checkout's refs.
+
+Row 4 was not selected. It needs a live GitLab instance and a human-provisioned auditor personal access token, and its command mints that token through desktoken. GITLAB_API_BASE is not set and the checkout's origin is a GitHub remote. The row's command is still open for re-authoring (medici-finance/assay#1794, re-authoring tracker medici-finance/assay#1927, both open on 2026-11-01), and the auditor's minimum roles are still stated rather than measured (medici-finance/assay#1946, open). The row's claim is unproven.
+
+Row 1 is red in this lane, and the red is not in the code this brief changed. A diagnostic re-run of the same command under the same container settings (outside the bracket, no credit) reproduced exit 1: 119 packages ok, the repohardenguard command package and deskkit among them, and 5 packages red. Each red was isolated with a further no-credit run. (a) deskinbox TestParityWalk and TestParityHTMLLoginShapes call the jq builtin scan/2, which the image's jq-1.6 lacks; on the host with jq-1.8.2 the TestParity tests pass. (b) deskperf TestV4ReadReportFlow rebuilds a binary with a stripped environment, so it looks for modules under HOME and ignores GOMODCACHE; it passes in the container with HOME/go linked to the image's GOPATH. (c) deskpreflight TestRealFixtures and TestRealRepo_GitStorageIsOutOfScope get a refused configuration from statusgen lint with no roster; the package passes with a copy of roster.env in a scratch HOME. (d) desksourceguard TestDefaultPlatform derives linux-arm64, which desk-tools does not publish; it passes in the image's linux/amd64 entry under emulation. (e) regression TestReleaseGoCache was killed at its 60s deadline under full-suite load (medici-finance/assay#5125, open); it passes when run alone. These are single-cause checks, not one combined green run, so row 1 still has no passing witness in this lane.
+
+Row 2 detail (no credit, same image and settings). TestForgeGitlabGolden run verbose passes push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404, each by name. Mutation: a compile overlay makes a tier-gated 403 or 404 in the hardening read return an empty JSON document with no error. The test went red in exactly those three subtests and exited 1. So the golden test catches a tier-gated could-not-check turned into a silent empty read.
+
+Row 5's count is 2 (the push-rules rows). Row 6's only Expect is exit 0, and it says little here. A read-only re-run in the home, with the Evidence edit in place, reports base 703a1d9ca092 and 1 brief, this one: 0 corroborated, 0 disproved, 5 unchecked, exit 0. The base is the head, so the diff is only this brief's own uncommitted Evidence, and the gate judged none of the routing claims. Unchecked entries are not passes. Run in the scratch clone (no credit), where the origin/main ref sits 143 commits behind the head, the same command took base 011f14965ef2, read 30 briefs and exited 1 on a disproved tools/desk/go.mod routing claim in milestone-support/02, so this exit status depends on the checkout's base.
+
+Disclosed attempts with no result: two diagnostic launches outside the bracket reported nothing because of a wrong mount spelling in my script. They ran no test. The bracket itself ran once.
+
+Uncovered obligations and supplemental runs (the S rows carry no acceptance credit):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 4 | `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: $(cat "$(desktoken auditor --forge gitlab --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')")")" "$GITLAB_API_BASE/projects/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/([^/]+?)(\.git)?$#\1%2F\2#')/protected_branches"` | 200 | could-not-run: the bracket's row filter (rows 1, 2, 3, 5) and the host row filter (row 6) excluded it because it needs a live GitLab instance and a human-provisioned auditor PAT minted through desktoken; GITLAB_API_BASE is not set and origin is a GitHub remote. Blocker medici-finance/assay#1794 | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (model verifier) (on-behalf-of human:ian) |
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | could-not-check in this lane: exit 1 in the bracket; failures are jq-1.6 scan/2, stripped-environment module lookup, no roster, linux-arm64 platform list and a 60s deadline under load; none on the GitLab hardening path | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (model verifier) (on-behalf-of human:ian) |
+| S1 | `cd tools/desk && go build ./... && go test ./...` (diagnostic, outside the bracket, same container settings) | diagnosis | exit 1; 119 packages ok, 5 red as listed | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (model verifier) (on-behalf-of human:ian) |
+| S2 | `go test -overlay <mutant overlay> ./internal/deskkit/ -run TestForgeGitlabGolden -v` in tools/desk (container, outside the bracket) | exit 1 | exit 1; red in push_rules_premium_gated, push_rules_ce_not_found and hardening_read_approvals_ce_404 | 2026-11-01 | assay-verifier-app[bot] @ 703a1d9ca092 (model verifier) (on-behalf-of human:ian) |
+
+Risk values at this head (the brief's file set changed since the 2026-10-30 run only in the adopter doc, on board-push token provisioning; no GitLab hardening code moved):
+- RISK-VALUE: DERIVED — hardeningGitlabObjectPaths = projects/%s, projects/%s/push_rule, projects/%s/approvals @ tools/desk/internal/deskkit/forge_gitlab.go:2601-2603, and hardeningGitlabListPaths = projects/%s/protected_branches, projects/%s/protected_tags @ forge_gitlab.go:2607-2608 — these are GitLab's REST v4 resource paths, as the brief's kind table states; the goldens pin them, and a wrong path fails closed as a 404.
+- RISK-VALUE: DERIVED — gitlabTierGatedHardeningKinds = {push-rules, approvals} @ forge_gitlab.go:2621, with 403 and 404 mapped to could-not-check @ forge_gitlab.go:2680-2681 — the brief's kind table gives these two kinds a tier gate; the mutation above shows the golden test discriminates.
+- RISK-VALUE: DERIVED — empty body refused = len(raw) == 0 @ forge_gitlab.go:2687 — an empty answer is not a value, which row 3's premium_null_document_is_not_a_value subtest also pins for a null document.
+- RISK-VALUE: DERIVED — hardeningKindForge = closed per-forge partition @ tools/desk/internal/deskkit/forge.go:1367 — one closed vocabulary split by forge, as the brief requires; row 2's coverage test ran over it.
+- RISK-VALUE: DERIVED — main-no-force = false, main-push-no-one = 0, main-merge-maintainers = 40, release-tags = 40 @ docs/adopting-assay-gitlab.md:1217-1220 — GitLab's protected-branches API defines 0 as No one and 40 as Maintainer, matching each row's stated check; the brief's facts name 0 as the Community Edition form of "no one pushes to main".
+- RISK-VALUE: DERIVED — push-rules-signed, push-rules-secrets = not available — Premium @ docs/adopting-assay-gitlab.md:1224-1225; secret-push-protection = not available — Ultimate @ docs/adopting-assay-gitlab.md:1226 — from the tiers the brief's kind table and facts record; row 5 counts the two Premium rows.
+- RISK-VALUE: DERIVED — approvals-reset, approvals-no-author, approvals-no-committer required cells @ docs/adopting-assay-gitlab.md:1221-1223 — the rows mark themselves advisory on Community Edition and cite spec controls B3 and B4; no check reads them there.
+- RISK-VALUE: NAMED, NOT DERIVED — auditor roles = Reporter (20), Maintainer (40) @ docs/adopting-assay-gitlab.md:144, role table at :1161-1166 — the doc says at :1168 that the Maintainer rows are a stated minimum, not a measured one. Only row 4's live read-back can derive it. Tracked as medici-finance/assay#1946.
+- RISK-VALUE: NAMED, NOT DERIVED — gitlabMaxHardeningPage = 10 @ forge_gitlab.go:2615; gitlabPerPage = 100 @ forge_gitlab.go:465 — reversible ceilings that fail closed past the cap, so they rank last and need no derivation.
+
+Findings (none touches this brief's implementation): the v1.0.67 verify-runner image still ships jq-1.6, below what the deskinbox parity tests need; the deskperf flow test ignores an overridden GOMODCACHE; the desksourceguard platform test fails on a native linux-arm64 lane; deskpreflight needs a roster the container does not carry; TestReleaseGoCache's deadline is thin under load (medici-finance/assay#5125). Together they keep row 1 from going green in the sanctioned no-network container lane. Separately, row 6's exit status depends on the checkout's base, as described above.
+
+**VERIFY: BLOCKED** — row 4 (live GitLab read-back under a human-provisioned auditor PAT) could not be checked, and its command still needs the medici-finance/assay#1794 re-authoring. In the closed container bracket, rows 2, 3 and 5 pass. Row 1 is red for lane reasons, not for anything in this brief. Row 6 exits 0 with 0 corroborated, 0 disproved and 5 unchecked, so it judged no routing claim. No implementation defect was observed. Blocker: medici-finance/assay#1794.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

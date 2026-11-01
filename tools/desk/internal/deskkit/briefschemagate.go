@@ -23,6 +23,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/readercaps"
+	capstree "github.com/medici-finance/assay/statusgen/readercaps/tree"
 )
 
 // briefSchemaV2 is the schema value that trips the gate.
@@ -73,6 +77,13 @@ func treeHasBriefV2(root string) bool {
 // a brief-v2 tree, it writes the upgrade message to stderr and returns
 // ExitUnverifiable (6). Otherwise it returns 0 (proceed).
 func RefuseIfTreeV2BelowV1(roots []string, version, tool string, stderr io.Writer) int {
+	if result := capstree.Check(roots, ReaderCapabilities(version, tool)); result.State != readercaps.Supported {
+		fmt.Fprintf(stderr, "%s: reader capabilities: %s\n", tool, result.Reason)
+		if result.State == readercaps.Unsupported {
+			return ExitRefused
+		}
+		return ExitUnverifiable
+	}
 	if !gateBelowV1(version) {
 		return 0
 	}
@@ -83,6 +94,23 @@ func RefuseIfTreeV2BelowV1(roots []string, version, tool string, stderr io.Write
 		}
 	}
 	return 0
+}
+
+// ReaderCapabilities lists wired legacy syntax and requirements preflight only.
+// The historical dev/latest convention grants no new semantic support.
+func ReaderCapabilities(version, tool string) readercaps.Advertisement {
+	if strings.TrimSpace(version) == "" {
+		version = "dev"
+	}
+	schemas := briefdoc.SchemaVersions()
+	if gateBelowV1(version) {
+		schemas = []string{"brief-v1"}
+	}
+	return readercaps.Advertisement{Schema: readercaps.AdvertisementSchema, Provider: tool, Version: version,
+		Operations: []readercaps.Operation{
+			{Operation: "syntax", Schemas: schemas, Semantics: []string{}},
+			{Operation: "preflight", Schemas: []string{readercaps.RequirementsSchema}, Semantics: []string{"required-semantics-v1"}},
+		}}
 }
 
 // RootsFromArgs extracts every `--root <dir>` (repeatable) from a raw arg slice,

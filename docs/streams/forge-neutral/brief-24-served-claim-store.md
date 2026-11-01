@@ -50,10 +50,9 @@ id: 83a44057-bb03-4c92-9024-c280d958493e
 ## Context
 files:
 - `tools/desk/internal/deskkit/claimstore_service.go` (planned) — the client backend.
-- `tools/desk/cmd/deskclaim-ref/serve.go` (planned), `serve_test.go` (planned) — the serve mode.
+- `tools/desk/cmd/deskclaim-ref/serve.go` (planned), `tools/desk/cmd/deskclaim-ref/serve_test.go` (planned) — the serve mode.
 - `docs/desk-tools/claim-service-api.md` (planned) — the API, so another service can implement it.
-- `tools/desk/internal/deskkit/mutations.json`; `tools/desk/README.md`;
-  `changelog/<branch-slug>.md` (planned)
+- `tools/desk/internal/deskkit/mutations.json`; `tools/desk/README.md` — and `changelog/<branch-slug>.md` (planned)
 
 single-point-of-failure: the cell-token check in front of the handler — behind it, the accept
 set (six verbs, key grammar, rostered repos — a request that passes the token still cannot

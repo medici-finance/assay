@@ -26,6 +26,14 @@ On-behalf-of: human:<who> mode:unattended
   `:private`, and the roster's neutral **name** for that same human — the
   `ASSAY_HUMAN_LOGIN_MAP` key, i.e. the given name the map already carries as that
   human's public form — on every other target. See "Which form" below.
+  The name carries no whitespace (the trailer is space-delimited): a map entry whose name
+  has a space between its words (`Ada Lovelace:<login>`), or any other whitespace character
+  in it such as a no-break space, is not applied — the config echo prints a `NOTICE` naming
+  it, that human has no neutral name, so a write that needs one refuses, and the
+  ruling-impersonation guard does not recognise that name — while every other entry and key
+  of the roster still loads. A space directly before the colon (`ada :<login>`) is still
+  malformed and refuses the whole roster, as it always has. Only a comma, semicolon, line
+  break, space or tab separates entries. Write the name as `ada-lovelace:<login>`.
 - ` mode:unattended` — appended only when the resolving session carried no live
   interactive roster beacon (a cron loop: `scanloop`, `verifyloop`, …, as opposed to a
   desk/worker session with a registered role). Its absence means the session was
@@ -49,13 +57,13 @@ a trailing parenthetical never perturbs the runner-agreement comparison.
 A trailer stamped onto a write to a **public** repo is world-readable for good — a posted
 review cannot be edited afterwards, and a commit message cannot be taken back out of
 history. So the form the trailer names is chosen from the target repo's **configured**
-visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` token, read with no network call
+visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` / `:internal` token, read with no network call
 — the same value `VisibilityRiskClassed` reads):
 
 | Target | The trailer names |
 |---|---|
 | A repo the roster states is `:private` | the mapped login — unchanged |
-| Everything else — `:public`, an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
+| Everything else — `:public`, `:internal` (visible instance-wide), an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
 
 The rule is stated in the fail-closed direction on purpose, exactly as
 `VisibilityRiskClassed` states its own: *everything except a repo declared private takes the
@@ -232,7 +240,169 @@ same roster's human set:
   and every added App row must carry exactly one annotation, in the exact written form,
   naming `<who>`. A row counts as already on the branch there only when the base has the same
   line with the same Runner cell, so a base line re-landed under a header that moves the
-  Runner column is checked like an added row.
+  Runner column is checked like an added row. The heading line that ends the section is
+  checked for control characters too, when the landing adds it;
+- the landed Evidence section must be one both readings agree on: what a Markdown (GFM)
+  renderer shows as Evidence rows is what the lint reads. A landing that adds anything else
+  refuses (exit 5), naming the line and the reason; nothing is written. The checks look at
+  what the landing adds (and at the table or heading it adds lines under), so a brief that
+  already carries an older shape is not blocked from landings that leave it alone. The tool
+  carries no Markdown parser; it holds the rules below, which are narrower than "every
+  shape a renderer could show", and the lint-way read of the landed section remains the
+  last check.
+  - **Lines in the section.** Every added line is a blank line, a `|`-led table row, or a
+    note line. A table is a `|`-led header, then a delimiter row a renderer accepts (cells of
+    dashes with optional edge colons, one per header cell), then `|`-led rows. In the middle
+    of a table, an added line the lint reads as a separator, or as a new header (a `|`-led
+    line with a separator line under it), is refused unless it repeats the table's own header
+    exactly; so is an added row read under such a header. A `|`-led line under no header is
+    read by the lint with its last cell as Runner, so it lands only when no other cell shows
+    as an App-run Runner cell; a separator line under no header is refused.
+  - **Rows.** Only the cell the lint reads as Runner may show as an App-run Runner cell. An
+    added row wider than its header is refused when the header has no exact `Runner` cell
+    (the lint then reads the row's last cell, which a renderer drops).
+  - **Lines without a leading `|`.** Inside a table, a line holding a `|` that does not begin
+    with one renders as a row the lint never reads, and is refused. A pipe-less line that
+    closes a table renders as a one-cell row: it lands when it shows no `[bot]` or
+    on-behalf-of text and no word in it (at its start or after a space, a tab or a `(`) shows a
+    login and tag (below). A line after a blank
+    line or a heading starts no table and is not read for that text. After it the lint has dropped the table's header, so a `|`-led row
+    added later in that table is refused, unless a repeat of the table's own header (with its
+    separator line) comes first, or the row has exactly as many cells as the table's header
+    and that header's Runner column is its last cell (or it has none): both readings then take
+    the row's last cell as its Runner cell.
+    A table with a different header needs a blank line above it. The `--brief-path` merge
+    puts one there whenever the appended block opens with a header, so a witness table
+    appended after an attestation line lands as its own table.
+  - **Markup.** An added line may not hold a raw HTML table or heading tag, share its line
+    with an HTML comment that crosses a line break, or be a table line inside a block quote.
+    A Runner cell the lint does not read as App-run is refused when it shows as one once HTML
+    tags and comment markers are removed, entities decoded, and emphasis, strikethrough,
+    code-span and escape characters (`*`, `_`, `~`, a backtick, `\`) stripped; that covers
+    `<span>…[bot]</span>`, `**…[bot]**`, `_…[bot]_` and a login in a code span. Link, image
+    and autolink syntax is read as the text a renderer shows for it (a link's text, an image's
+    alt text both shown and not shown, an autolink's address), and a closed HTML comment both
+    hidden and shown; a bracketed `[text]` that opens no link is also read as a shortcut
+    reference link (its text shown, since a definition elsewhere in the brief can resolve it).
+    A cell or line shows App-run text when any of these readings does, and every check of what
+    a cell, line or heading shows uses them. A reader also takes a cell that opens with a login
+    and a tag as App-run, whatever follows the tag and whatever characters the login holds, so
+    the tool reads that by structure rather than by folding characters it knows. Each reading
+    is also read with every character that renders as nothing dropped (a nonspacing or
+    enclosing mark, a default-ignorable code point such as a filler letter, the blank braille
+    pattern, and a control, format, private-use, noncharacter or unassigned code point, with a
+    numeric reference to a C1 control read both as a browser maps it and as the control
+    itself), and with every word that leads it and holds no ASCII letter or digit skipped
+    (a word ends at white space), since such a word cannot be a login and a reader takes the
+    word after it for the name, whatever its characters are and whether or not they render.
+    That reading is taken once more with its leading words read as a renderer shows them: a
+    word a renderer replaces with a glyph (`:name:`) is read as one symbol with no ASCII letter
+    or digit. Each leading word still ends at white space and is read by itself, and the rest
+    of the text stays as written, so a glyph word or a clock time later in a cell can add a
+    reading but never removes one. A text holding an HTML tag with a quoted attribute value is
+    also read with every such value emptied, beside the text as written, since a `>` inside
+    quotes ends no tag. When a text holds two or more runs of `$` a renderer can take as math
+    delimiters (an escaped dollar sign, one written as an entity and one inside a code span are
+    not, since a renderer shows each as text, and the runs are found before entities are
+    decoded), it is read beside the text as written, always with the text before the first run
+    as written: once for each run, with everything from the first run up to and including it
+    dropped, as when the spans there show only a symbol or blank space; once with every run
+    dropped and the text between them read as math; and once for each two adjacent runs and
+    each place in the text between them where a control word, a brace or white space ends, with
+    everything from the first run up to that place dropped, the text from there to the second
+    run read as math and the text after it as written. Where code spans stand is read two ways,
+    each giving its own set of runs: by a loose match that pairs backtick runs of any lengths,
+    and as CommonMark reads them (a backtick run no backslash escapes opens a code span, which
+    only the next run of the same length closes). Beside both, the runs are also paired from
+    the left, inside code spans too, for a renderer that typesets math there, each span read
+    from each place a control word, a brace or white space ends. Text read as math has its
+    markup (control words, braces, backticks and sub- or superscript signs) removed, a control
+    word for a bracket, brace, bar or escaped sign read as that character, a character code
+    (`\unicode` with optional arguments and a braced decimal or hex code, `\char` with a hex,
+    octal, decimal or backtick code, `\mathchar` by the low byte of its code) read as the
+    character it names, and is read both with its white space and with it dropped, as math
+    typesets the symbols in it without the white space between them. It is read once more for
+    each control word or symbol the tool does not name, read alone as an opening and alone as a
+    closing bracket, and for each two of them, in order, read as an opening and a closing
+    bracket, since a renderer can typeset any of them as one; a word read as a bracket is read
+    both with the argument after it (optional arguments, then a brace group or a number) shown
+    and with that argument taken into the bracket, since a renderer can typeset a word and its
+    argument as one character. A text holding a character code is read all of those ways once
+    more with each code's control word read as one the tool does not name, for a renderer that
+    does not typeset the code, so reading codes adds readings and removes none. A text read as
+    math that holds a control word or symbol the tool neither names nor reads as a character
+    code fails closed: once those readings are taken it is taken as showing App-run text and
+    refused, since the tool cannot know how many arguments such a word takes, which of them a
+    renderer typesets, or what glyph it typesets for it. That holds for a decorative lead too
+    (a bullet or a math space before a human runner): such a row is refused, and lands with a
+    plain Runner cell. An escaped bar
+    (`\|`, as a table cell writes a shell pipe) is read as a bar, never as a bracket. No reading
+    depends on which runs before a span a renderer pairs. A
+    later backtick run can still close a code span an earlier one opens, and so take the runs
+    of `$` inside it out of the CommonMark reading, as it takes them out of what a renderer
+    typesets; the loose and left-paired readings keep them. The text after each raw line break
+    or block element tag (a paragraph, list, table or disclosure element and the like) is also
+    read as a text of its own, since a renderer starts a new line there. Every reading is taken
+    both with and without the text of a raw HTML element a sanitizer can drop with its text
+    (`<script>`, `<style>` and the like), and apart from that, both with and without the text
+    of the elements a renderer hides by default (a ruby fallback `<rp>`, a `<datalist>` or
+    `<dialog>`, or any element with a `hidden` attribute, which may follow white space, a slash
+    or a closing quote). Those are read dropped several ways: once with every ruby fallback,
+    data list or dialog dropped to the next closing tag of its own kind and every element whose
+    `hidden` attribute follows white space dropped to the first closing tag after it; and, with
+    the hidden elements taken in order, once without the first, once without the first two and
+    so on to all of them, each dropped both to the first closing tag after it and to the
+    closing tag that matches it, counting the elements of the same name opened inside it, since
+    a renderer can hide one element and show the next. These readings are rules the tool holds,
+    not a renderer's own behaviour; apart from the code-span case above each only adds a
+    reading, so they can refuse a cell a renderer shows plainly, and a renderer can pair,
+    typeset or hide text in a way none of them names. A text reached by more than one reading
+    is read once. The number of readings, each about as long as the text, grows with the line
+    breaks and hidden elements a text holds, times the places between two runs of `$` a span's
+    text can start at, times the control words and the pairs of control words in a span (up to
+    four readings for a pair whose words both take an argument, and twice that when the span
+    holds a character code), so a short text can ask for far more work than its length. The
+    readings of one cell or line may read at most 128 MiB of text in all, each hidden-element
+    reading charged before the next is built and each hidden element's end found by reading
+    only as far as that end; past that cap the text is taken as showing
+    App-run text and refused, never read with fewer readings. The heaviest text in the briefs the
+    cap was checked against reads about 5.3 MiB.
+    Every trim takes any Unicode white space, a non-breaking or wide space included.
+    A cell's text so starts at the first word a reader can take for a name. A cell's
+    identity region is its text up to the first ASCII space or `(`, where the lint cuts it,
+    extended over spaces inside a tag that closes before any `(` or other tag bracket. A tag
+    is an ASCII square or angle bracket, or a non-ASCII opening or closing bracket or quotation
+    mark, opened directly after a letter, digit, `.`, `_`, `-` or non-ASCII character, and
+    closed later in the region. A Runner cell the lint does not read as App-run is refused when
+    its region holds a tag of exactly three letters or digits, as `[bot]` does, or a tag of
+    three or more letters, digits or symbols while any character in the region is outside the
+    ASCII login alphabet (letters, digits, `.`, `_`, `-`, `[`, `]`). A character in the region
+    that no rule names therefore fails closed: `name[bot]\u00a0@ …`, `name[bo\u200bt]`,
+    `name[bot]:`, `[name\[bot\]]` and an ASCII-only `name[abc]` are refused. A region whose
+    letters are all
+    CJK text (`東京【東京都】`) cannot spell a login and lands, as do `[bot]` later in a cell
+    (`human:operator (via name[bot] review)`), a model tag (`[1m]`), brackets that open no tag
+    (`[21:24Z][ok-all]`), a tag of only login characters (`release[draft]`) and a human
+    name with a non-ASCII letter land. An App Runner cell holding
+    `<`, `>`, `&`, `~` or `\`, or link, image or autolink syntax, is refused as unreadable
+    (above); brackets that open no link, such as a model tag, are left alone.
+  - **Headers.** A header the landing adds, or adds rows under, is refused when a reader can
+    take it as naming a different Runner column than the lint reads: an invisible format
+    character such as a bidi isolate, a non-ASCII letter or mark, a cell whose letters spell
+    `Runner` but that the lint does not read as exactly `runner` (`**Runner**`), or more than
+    one `Runner` column (the lint reads the last).
+  - **Headings.** The lint reads only the first `## Evidence` section. A heading a renderer
+    shows as Evidence anywhere else (ATX, setext or HTML, at any level or case, with entities
+    decoded, tags removed and link syntax read as its text, or put on its own rendered line by
+    a lone carriage return) may
+    not be added, and no line may be added under one that is already on the branch. An added
+    heading may not hold a non-ASCII letter or mark. Headings inside fenced or indented code
+    are code, not headings, and are not counted.
+  - **Outside the section.** An added line outside the section the lint reads (or anywhere
+    in the body, when there is no such section) may not show an App-run Runner cell in a
+    `|`-separated row, or hold a raw HTML table or heading tag outside a code span, with code
+    spans read both by the loose match and as CommonMark reads them. Fenced
+    code is left alone.
 
 Like the lint, the tool looks for `## Evidence` only in the brief's body, after the
 frontmatter block: a `## Evidence` line inside the frontmatter is never taken as the section.

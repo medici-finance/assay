@@ -23,12 +23,12 @@ outcome: none
 version: 2
 id: bc0e7a98-87bb-4a7f-9081-a31ac9a34ab4
 consumers:
-  - "statusgen/flow_52_test.go: follow-up desk-tools/52 (planned test contract)"
-  - "statusgen/decisionissues.go: follow-up desk-tools/52 (this implementation brief)"
-  - "statusgen/verifyissues.go: follow-up desk-tools/52 (this implementation brief)"
-  - "statusgen/briefv2.go: follow-up desk-tools/52 (this implementation brief)"
-  - "statusgen/decisiongatehold.go: follow-up desk-tools/52 (this implementation brief)"
-  - "changelog/verification-card-links.md: follow-up desk-tools/52 (this implementation brief)"
+  - "statusgen/flow_52_test.go: fixed-here (planned test contract)"
+  - "statusgen/decisionissues.go: fixed-here (this implementation brief)"
+  - "statusgen/verifyissues.go: fixed-here (this implementation brief)"
+  - "statusgen/briefv2.go: fixed-here (this implementation brief)"
+  - "statusgen/decisiongatehold.go: fixed-here (this implementation brief)"
+  - "changelog/verification-card-links.md: fixed-here (this implementation brief)"
 ---
 
 # Brief 52 — Link decision and verification cards without conflating their authority

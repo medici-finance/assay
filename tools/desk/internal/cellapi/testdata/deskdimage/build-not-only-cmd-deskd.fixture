@@ -1,0 +1,5 @@
+# Building every package instead of the service command.
+want: build-not-only-cmd-deskd
+file: Dockerfile
+replace: "/out/deskd ./cmd/deskd"
+with: "/out/deskd ./..."

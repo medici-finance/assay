@@ -65,17 +65,11 @@ that needs a decision rather than a sweep. The review desk needs the first two: 
 workpad on the change, one lands Evidence.
 
 files:
-- `tools/desk/cmd/deskevidence/deskevidence.go` — the gate's fetcher becomes the generic
-  already-resolved-forge adapter wrapping the backend resolved earlier in the same function.
-- `tools/desk/cmd/deskreply/deskreply.go` — same change; the backend is already taken once and
-  reused for every read and the write below it, so the adapter is a two-line swap.
-- `tools/desk/cmd/deskrelease/cut.go` — the third site. RULE on it in this brief: route it, or
-  record at the site, in a comment, why a release cut's gate legitimately reads one forge.
-- `tools/desk/internal/deskkit/forge_gitlab.go` — delete the superseded single-forge visibility
-  adapter, which the generic one has replaced and which no production code calls.
-- `tools/desk/cmd/deskevidence/*_test.go`, `tools/desk/cmd/deskreply/*_test.go` — one regression
-  test per verb, asserting the fetcher handed to the gate wraps the SAME backend the verb
-  already resolved, then exercising its visibility read against a fake backend.
+- `tools/desk/cmd/deskevidence/deskevidence.go` — the gate's fetcher becomes the generic already-resolved-forge adapter wrapping the backend resolved earlier in the same function.
+- `tools/desk/cmd/deskreply/deskreply.go` — same change; the backend is already taken once and reused for every read and the write below it, so the adapter is a two-line swap.
+- `tools/desk/cmd/deskrelease/cut.go` — the third site. RULE on it in this brief: route it, or record at the site, in a comment, why a release cut's gate legitimately reads one forge.
+- `tools/desk/internal/deskkit/forge_gitlab.go` — delete the superseded single-forge visibility adapter, which the generic one has replaced and which no production code calls.
+- `tools/desk/cmd/deskevidence/*_test.go`, `tools/desk/cmd/deskreply/*_test.go` — one regression test per verb, asserting the fetcher handed to the gate wraps the SAME backend the verb already resolved, then exercising its visibility read against a fake backend.
 - `docs/streams/forge-gitlab/README.md` — the status row.
 - `changelog/forge-gitlab-14-public-repo-gate-on-the-resolved-forge.md` (planned).
 

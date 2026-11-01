@@ -37,12 +37,9 @@ id: f800d926-c99d-4c19-9cda-1759ed81895e
 ## Context
 
 files:
-- `tools/desk/internal/deskkit/workpad.go` (new) — the marker (`<!-- assay:workpad -->`),
-  the template sections, `Render(Workpad) string`, `Parse(body) (Workpad, bool)`.
+- `tools/desk/internal/deskkit/workpad.go` (new) — the marker (the `assay:workpad` HTML comment), the template sections, `Render(Workpad) string`, `Parse(body) (Workpad, bool)`.
 - `tools/desk/internal/deskkit/workpad_test.go` (new).
-- `tools/desk/cmd/deskreply/main.go` — `deskreply --workpad --pr N --body-file F`: find
-  the newest unresolved comment by the worker identity carrying the marker; edit it in
-  place; else create. Never creates a second.
+- `tools/desk/cmd/deskreply/main.go` — `deskreply --workpad --pr N --body-file F`: find the newest unresolved comment by the worker identity carrying the marker; edit it in place; else create. Never creates a second.
 - `tools/desk/cmd/deskdispatch/references/common-clauses.md` — the workpad clause.
 - `tools/desk/README.md` — deskreply row update.
 

@@ -1,10 +1,10 @@
 {
-  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|ProtectedRecordRun|ProtectedRecordRefusal|ProtectedRecordCredit)$' -count=1 -timeout 240s",
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|ProtectedRecordRun|ProtectedRecordRefusal|ProtectedRecordCredit|ExpectOnlyTransition|ExpectTransitionExecution|ExpectTransitionRefusals|ExpectScopeExecution|TransitionDeliveredPlaceholder)$' -count=1 -timeout 240s",
   "control": {
     "name": "approval payload binding removed",
     "file": "acceptancetransition.go",
-    "old": "if strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {",
-    "new": "if false && strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {"
+    "old": "rawIDs, matched := strings.CutPrefix(approvalBody, payloadPrefix)",
+    "new": "_, rawIDs, _ := strings.Cut(approvalBody, \"\\nrows=\")\n\tmatched := true\n\t_ = payloadPrefix"
   },
   "mutations": [
     {
@@ -34,8 +34,8 @@
     {
       "name": "CRLF comment normalization removed",
       "file": "acceptancetransition.go",
-      "old": "strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload",
-      "new": "strings.TrimSpace(out.Body) != payload"
+      "old": "approvalBody := strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\"))",
+      "new": "approvalBody := strings.TrimSpace(out.Body)"
     },
     {
       "name": "command context comparison omitted",
@@ -90,6 +90,66 @@
       "file": "protectedclosure.go",
       "old": "if proposal == \"\" && (len(cells) == 0 ||",
       "new": "if false && proposal == \"\" && (len(cells) == 0 ||"
+    },
+    {
+      "name": "required Command approval omitted",
+      "file": "acceptancetransition.go",
+      "old": "if required[old.ID] && !selected[old.ID] {",
+      "new": "if false && required[old.ID] && !selected[old.ID] {"
+    },
+    {
+      "name": "unselected Expect receives amendment credit",
+      "file": "acceptancetransition.go",
+      "old": "// Rewrite only approved columns in the original table. Unselected Expect",
+      "new": "for id, row := range candidates {\n\t\tif columns[id] == \"Expect\" { changes[id] = row }\n\t}\n\t// Rewrite only approved columns in the original table. Unselected Expect"
+    },
+    {
+      "name": "approval table order omitted",
+      "file": "acceptancetransition.go",
+      "old": "if !matched || len(ids) == 0 || strings.Join(ids, \",\") != rawIDs {",
+      "new": "if !matched || len(ids) == 0 {"
+    },
+    {
+      "name": "placeholder exception accepts substantive delivered Evidence",
+      "file": "acceptancetransition.go",
+      "old": "if strings.TrimSpace(delivered) != placeholder {",
+      "new": "if false && strings.TrimSpace(delivered) != placeholder {"
+    },
+    {
+      "name": "placeholder quotation identity omitted",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if true {"
+    },
+    {
+      "name": "amendment historical Evidence equality omitted",
+      "file": "acceptancetransition.go",
+      "old": "if e != nil || atAmendment != historical {",
+      "new": "_ = atAmendment\n\tif e != nil {"
+    },
+    {
+      "name": "current historical Evidence prefix omitted",
+      "file": "acceptancetransition.go",
+      "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {",
+      "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {"
+    },
+    {
+      "name": "placeholder quotation requirement omitted",
+      "file": "acceptancetransition.go",
+      "old": "if !strings.HasPrefix(line, \">\") {",
+      "new": "if false && !strings.HasPrefix(line, \">\") {"
+    },
+    {
+      "name": "placeholder exact quotation widened to containment",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if strings.Contains(line, placeholder) {"
+    },
+    {
+      "name": "placeholder exact quotation widened to suffix",
+      "file": "acceptancetransition.go",
+      "old": "if line == placeholder {",
+      "new": "if strings.HasSuffix(line, placeholder) {"
     }
   ]
 }
