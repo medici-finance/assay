@@ -307,11 +307,34 @@ still yours to post, as an ordinary clause-13 finding.
   change.
 <!-- lane:correctness:end -->
 <!-- lane:security:begin -->
-- **On the security lane:** the same-head rule above has three declared exemptions — check-only
-  (`Blocked-On-Check:`), external-prerequisite (`External-Prereq-Only:`) and documented body-edit
-  (`Blocked-On-Body:`). Each is claimed on a correctness rejection and cleared by a correctness
-  APPROVE, and their forms are carried on the correctness lane. A security verdict is `pass` or
-  `fail`, never an APPROVE, and claims none of them.
+- **On the security lane:** the same-head rule above has three correctness-lane exemptions —
+  check-only (`Blocked-On-Check:`), external-prerequisite (`External-Prereq-Only:`) and
+  documented body-edit re-verification (`Blocked-On-Body:` on a CR, cleared by a documenting
+  APPROVE). Each is claimed on a correctness rejection and cleared by a correctness APPROVE, and
+  their forms are carried on the correctness lane. A security verdict is `pass` or `fail`, never
+  an APPROVE, and claims none of those three: a correctness APPROVE never clears your fail, and
+  your pass never clears a correctness CR. At `deskflip`, rule 2 refuses a security fail carrying
+  `Blocked-On-Check:` or `External-Prereq-Only:` while it stands as a CHANGES_REQUESTED at the
+  head; `deskpost ready` does not apply that rule. The security lane has one clearance of its
+  own, the next bullet, which reuses the `Blocked-On-Body:` line on a fail.
+- **A security fail whose ONLY basis is the PR body.** It carries its own marker. When the
+  whole fail rests on the PR body and no code at head would change, add
+  `Blocked-On-Body: <finding-id> <64-hex digest of the body as you read it>` to the
+  `Security-Review: fail`. Never mark a fail that rests on any code, config or check. After the
+  body is edited, re-read it via the API and post `Security-Review: pass` at the same head
+  carrying `Body-Reread-Digest: <64-hex digest of the live body>`. Both digests are SHA-256 of
+  the body with carriage returns removed and trailing newlines trimmed, and the gate compares
+  them for exact equality, so hash the body this way and never as it reads on screen:
+  `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | tr -d '\r')" | shasum -a 256`.
+  The full rule is in `verdict-format.md`, section "A security fail whose ONLY basis is the PR
+  body". `deskflip` reads your newest pass at the head after the last fail that is posted as a
+  COMMENTED or APPROVED review; a later pass in another review state does not displace it. It
+  clears the fail when that pass's digest matches the live body and differs from the fail's,
+  the forge records a body edit after the fail, and neither the fail, nor a later fail, nor a
+  pass at the head after the fail carries a correctness `Verdict:` line, read the way
+  `deskpost ready`'s lane classifier reads it. At `deskflip`, an unmarked fail standing as a
+  CHANGES_REQUESTED at the head is cleared only by a new commit; `deskpost ready` does not apply that rule. The gate cannot check
+  that the marker is true; that is your claim.
 <!-- lane:security:end -->
 - Cite sops material, never quote it. When a finding is about an encrypted file, name it by
   `path:line` and describe it in words: the `sops` footer, its `mac` or `lastmodified` field,
