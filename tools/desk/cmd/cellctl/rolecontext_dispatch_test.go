@@ -151,8 +151,19 @@ func TestCodexRoleInstructions(t *testing.T) {
 		}
 	}
 
+	// The session name carries the launch second, so two dry runs that straddle a second differ
+	// there and nowhere else; the comparison drops that one word.
+	sessionless := func(out string) string {
+		words := strings.Split(out, " ")
+		for i, w := range words {
+			if strings.HasPrefix(w, "session=") {
+				words[i] = "session="
+			}
+		}
+		return strings.Join(words, " ")
+	}
 	d1, d2 := f.dryRunDesk(t, "worker-desk"), f.dryRunDesk(t, "worker-desk")
-	if d1.code != 0 || d1.stdout != d2.stdout {
+	if d1.code != 0 || sessionless(d1.stdout) != sessionless(d2.stdout) {
 		t.Errorf("two dry runs differ or fail:\n%+v\n%+v", d1, d2)
 	}
 	if !strings.Contains(d1.stdout, "[dry-run] context flags: -c "+codexInstructionsKey+"=<") {
@@ -249,7 +260,7 @@ func deskdispatchBinary(t *testing.T) string {
 	if deskdispatchBuilt != "" {
 		return deskdispatchBuilt
 	}
-	out := filepath.Join(os.TempDir(), "deskdispatch-dc30-"+strings.ReplaceAll(t.Name(), "/", "_"))
+	out := filepath.Join(os.TempDir(), "deskdispatch-rules-"+strings.ReplaceAll(t.Name(), "/", "_"))
 	cmd := exec.Command("go", "build", "-o", out, "../deskdispatch")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building deskdispatch: %v\n%s", err, b)
@@ -333,7 +344,7 @@ func TestBinaryDispatchRulesFlow(t *testing.T) {
 			cmd.Dir = root
 			cmd.Env = []string{
 				"HOME=" + home, "PATH=/usr/bin:/bin", "KUBECONFIG=/dev/null", "DESK_LOOP=the-desk",
-				"DESK_SESSION=dc30-flow", "GIT_CONFIG_GLOBAL=" + filepath.Join(root, "absent"), "GIT_CONFIG_NOSYSTEM=1",
+				"DESK_SESSION=rules-flow", "GIT_CONFIG_GLOBAL=" + filepath.Join(root, "absent"), "GIT_CONFIG_NOSYSTEM=1",
 				deskkit.EnvDispatchInstructions + "=" + value, cellstop.EnvCellDir + "=" + f.cellDir,
 			}
 			var stdout, stderr bytes.Buffer

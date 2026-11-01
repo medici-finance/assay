@@ -111,7 +111,7 @@ func TestDispatchRulesInPrompt(t *testing.T) {
 			s := &stub{}
 			home, root := s.install(t)
 			plantScripts(t, root)
-			s.replies = happyReplies("/private/tmp/worker-home-dc30")
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 			f := newRulesFixture(t, "worker", "worker-objective")
 			f.set(t, f.value("worker", "worker-objective"))
 
@@ -180,7 +180,7 @@ func TestDispatchRulesInPrompt(t *testing.T) {
 		s := &stub{}
 		_, root := s.install(t)
 		plantScripts(t, root)
-		s.replies = happyReplies("/private/tmp/worker-home-dc30")
+		s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 		args := []string{"item-30", "--kit", "worker", "--dry-run"}
 		t.Setenv(deskkit.EnvDispatchInstructions, "")
 		unset, rc := runRules(t, root, args...)
@@ -280,7 +280,7 @@ func TestDispatchRulesRefusals(t *testing.T) {
 			s := &stub{}
 			home, root := s.install(t)
 			plantScripts(t, root)
-			s.replies = happyReplies("/private/tmp/worker-home-dc30")
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 			f := newRulesFixture(t, "worker")
 			value, file := tc.setup(t, f, s)
 			f.set(t, value)
