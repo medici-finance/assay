@@ -10,7 +10,7 @@ why: >-
   without granting any role a new effect, so containment stays a person's act.
 wave: 1
 depends: ["graph-execution/33"]
-unblocks: ["graph-execution/08"]
+unblocks: ["graph-execution/08", "graph-execution/35"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -40,7 +40,7 @@ consumers:
   - "statusgen/enforcementstatus.go and the generated enforcement tables in plugins/assay/skills/author-brief/SKILL.md and .cursor/skills/author-brief/SKILL.md: follow-up graph-execution/34 (this brief; the tables are regenerated, never hand-edited)"
   - "spec/workflow-patterns/signal-triggered-v1.yaml (planned): follow-up graph-execution/08 (the first shipped pattern that uses these keys)"
   - "spec/workflow-patterns/implementation-v1.yaml, spec/workflow-patterns/research-v1.yaml: out-of-scope (unchanged; they use none of the new keys and Verify row 2 proves they still lint clean)"
-  - "statusgen/instance.go, schemas/workflow-instance-v1.json: out-of-scope (no instance of a signal-instantiated pattern is produced until a dispatch brief exists; instances of the two shipped patterns use no new key)"
+  - "statusgen/instance.go, schemas/workflow-instance-v1.json: out-of-scope (no instance of a signal-instantiated pattern is produced until a brief activates one; graph-execution/35 produces none; instances of the two shipped patterns use no new key)"
   - "tools/desk/internal/deskkit/admission.go (LoadPatternRiskInput): out-of-scope (decodes only schema, pattern, version, risk-input and node ids with a non-strict decoder, so the new keys are ignored)"
   - "statusgen/coverage.go (loadPatternDocs): out-of-scope (reads node evidence only; no new key changes what it reads)"
   - "pattern role-effect table (spec/workflow-pattern-v1.md §7, patternRoleEffectPermissions): out-of-scope (not widened, per the maintainer's ruling)"
@@ -94,9 +94,9 @@ runtime honouring class routes. The `.github/` floor is bound the same way
 value without the lint. **No runtime layer stands behind it today.** Nothing yet reads a signal
 pattern at run time: graph-execution/01 evaluates brief `gates:`, `depends:` and feathers and
 reads no pattern, signal class or admission predicate. The only planned runtime check is
-gate-red's admission predicate in auto-triage/01 (`todo`), which covers that one class. No
-authored brief owns admission refusal for any other class, class-route enforcement or the
-liveness hold. Until one does, a signal pattern is a reviewed definition only and MUST NOT be
+gate-red's admission predicate in auto-triage/01 (`todo`), which covers that one class. graph-execution/35
+(`todo`) owns admission refusal for every class, class-route enforcement and the liveness hold;
+none of that exists until it lands. Until then, a signal pattern is a reviewed definition only and MUST NOT be
 activated (step 7's §4.3 text; graph-execution/08's "Activation is not in this brief").
 
 facts (7fcd9d284, 2026-10-27):
@@ -142,9 +142,9 @@ facts (7fcd9d284, 2026-10-27):
 layering: no new component. The schema owns closed value sets and key shapes; the pattern lint
 owns every rule that needs the resolved graph or a cross-field condition; the spec text states
 both. Runtime behaviour (holding an instance whose liveness check is could-not-check, refusing a
-run at admission, running only a class's route, enforcing limits) is not built here, and no
-authored brief builds it for a signal pattern in general: graph-execution/01 is `done` and reads
-no pattern. auto-triage/01-03 (`todo`) build gate-red's admission check and its two live exits,
+run at admission, running only a class's route, enforcing limits) is not built here. graph-execution/01 is `done` and reads no pattern. graph-execution/35 (`todo`)
+builds admission refusal, route enforcement and the liveness hold for a signal pattern in general;
+limits stay with the activating brief. auto-triage/01-03 (`todo`) build gate-red's admission check and its two live exits,
 for that class only. The lint rules below are written so that none of them depends on that
 missing layer, and step 7's spec text forbids activating a signal pattern before a runtime
 enforces admission, routes and liveness.
@@ -476,7 +476,7 @@ so rows 3-11 and 17-24 exit 4 there.
 | A declared class is left out of the signal input's `classes`, so a rule that ranges over the listed classes skips it | row 24 |
 | A mechanical exit ships with no culprit record | row 18 |
 | A class whose exit is not a mechanical exit escapes the gate-configuration floor | row 20 |
-| A runtime runs a node off a class's route, admits a run that fails admission, or ignores a could-not-check liveness check | not caught here, and no runtime exists to catch it: no authored brief enforces routes, admission or liveness for a signal pattern (graph-execution/01 reads no pattern; auto-triage/01 covers gate-red admission only). The lint rules do not depend on it (rows 19-23 key on presence), and step 7's spec text forbids activating a signal pattern until a dispatch brief enforces all three |
+| A runtime runs a node off a class's route, admits a run that fails admission, or ignores a could-not-check liveness check | not caught here, and no runtime exists to catch it until graph-execution/35 lands (graph-execution/01 reads no pattern; auto-triage/01 covers gate-red admission only). The lint rules do not depend on it (rows 19-23 key on presence), and step 7's spec text forbids activating a signal pattern until a dispatch brief enforces all three |
 | The generated enforcement table is hand-edited or left stale | row 14 (`make skillslint`) |
 
 ## Evidence
@@ -496,4 +496,4 @@ the schema says. For provenance, rows 19 and 21-23 show the admission and floor 
 un-admitted or unfloored class whatever its exit, whatever kind of node carries the effect, and
 whether or not an edge reaches it, so neither rule leans on the exit, the node kind,
 reachability or route enforcement. No runtime layer stands behind the lint for provenance today;
-is the stated activation hold (step 7) an acceptable substitute until a dispatch brief lands?
+is the stated activation hold (step 7) an acceptable substitute until a dispatch brief (graph-execution/35) lands?

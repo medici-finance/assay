@@ -115,6 +115,7 @@ or removing any human gate (spec §5 states the divergence).
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | todo | — | — |
 | 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | todo | — | — |
+| 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -418,3 +419,23 @@ Containment and confirm-filing in 08 are `human`-owned decision nodes with no ef
 depends on /33 rather than subsuming it: /33 already adds `human` as an owner of effect-free
 decision nodes, is human-gated, and edits the same schema and lint files. The chain to 08 is
 `33 → 34 → 08`.
+
+## Signal-pattern runtime — 2026-11-01
+
+[Brief 35](brief-35-signal-pattern-runtime.md) closes the gap #5144 reports. /34 and /08 define the
+signal pattern, and nothing reads one at run time. /35 adds one stateless check, called before each <!-- graph: encoded graph-execution/34→graph-execution/35 -->
+node, that refuses a run failing its class's admission, refuses a node off its class's route, and
+holds a run whose source is dead or could not be checked. It reads the pattern with its own strict decoder and
+refuses the faults it lists with no lint run. It doesn't enforce the other lint rules at run time, among
+them the remedy set and refused paths, the replay rule, effect limits by role and the containment set; the
+brief lists them all. It trusts its caller for every input and pins the pattern revision to a digest the
+caller passes. It activates nothing, and it is `gate: human` because it lifts /34's activation hold. #5147 carried that decision, which is ruled:
+https://github.com/medici-finance/assay/issues/5147#issuecomment-6560646821
+The record is `DR-graph-exec-35`.
+
+Any brief that activates a signal pattern depends on /35. auto-triage/02 and /03 now carry that edge. <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
+/08 ships a definition and activates nothing, so it carries no edge to /35. The chains are `33 → 34 → 08` and <!-- graph: encoded graph-execution/34→graph-execution/35 -->
+`33 → 34 → 35 → auto-triage/02, /03 → auto-triage/04`. Effect limits stay with the activating brief; only <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
+auto-triage/02 and /03 own them today. No brief owns a liveness result for any source (#5148), so a caller following
+the spec has none to pass and every such run holds. The gate can't tell an observed result from a constant,
+so the spec text requires each activating brief to name the source and the brief owning its result.
