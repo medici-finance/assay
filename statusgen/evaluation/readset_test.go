@@ -47,10 +47,13 @@ type rsFx struct {
 	// verbatim writes the entries as given, unsorted and repeated, the way
 	// a file not made by FormatReadSet may hold them.
 	verbatim bool
-	W, E, T  string
-	digest   string
-	runner   string
-	content  []byte
+	// unrecorded judges as a build with no read-set recorder does
+	// (CoverageInput.ReadSetsRecorded false).
+	unrecorded bool
+	W, E, T    string
+	digest     string
+	runner     string
+	content    []byte
 }
 
 func newRsFx(t *testing.T) *rsFx {
@@ -146,7 +149,7 @@ func (fx *rsFx) claimAt(rev string) Claim {
 	}
 	w := Witness{Command: cmd, State: StatePass, Tree: tree, Runner: runner, Result: "pass", ReadSet: o}
 	b := BriefObservation{ID: rsBriefID, BriefRel: rsBrief, VerifyRows: []VerifyRow{rsRow()}, Witnesses: map[string][]Witness{"1": {w}}}
-	in := CoverageInput{Revision: rev, Briefs: []BriefObservation{b}, GoFloors: fx.floors, ReadSetDeadline: fx.deadline}
+	in := CoverageInput{Revision: rev, Briefs: []BriefObservation{b}, GoFloors: fx.floors, ReadSetDeadline: fx.deadline, ReadSetsRecorded: !fx.unrecorded}
 	if fx.src != nil {
 		in.GoFloors = fx.src
 	}

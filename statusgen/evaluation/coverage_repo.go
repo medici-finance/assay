@@ -117,8 +117,10 @@ type evalCtx struct {
 	v2     *v2Ctx
 	policy WitnessPolicy
 	forge  Forge
-	// goFloors is CoverageInput.GoFloors (readset.go).
-	goFloors GoFloorSource
+	// goFloors is CoverageInput.GoFloors and readSetsRecorded
+	// CoverageInput.ReadSetsRecorded (readset.go).
+	goFloors         GoFloorSource
+	readSetsRecorded bool
 	// readSetDeadline is CoverageInput.ReadSetDeadline, and rsSorted holds
 	// each revision's file listing sorted for presence lookups (readset.go).
 	readSetDeadline func() string

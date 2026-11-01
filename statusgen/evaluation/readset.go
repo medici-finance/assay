@@ -47,6 +47,14 @@ const (
 	ReasonFloorOmits        = "the recorded read set omits a file the go toolchain compiles for this row"
 	ReasonFloorMissing      = "the read set records a go build but no compile-input floor was supplied"
 	ReasonReadSetBounds     = "the witness's recorded read set or its introduction could not be observed within the reader's bounds"
+	// ReasonNoRecorder is why no `(reads sha256:…)` token is judged while
+	// CoverageInput.ReadSetsRecorded is false: no recorder in this build
+	// writes a read set, so a token and its file are self-asserted, whoever
+	// landed them. The Linux writer records the same reason in its token.
+	ReasonNoRecorder = "no read-set recorder in this build"
+	// ReadSetNotJudged is the note a row carrying such a token gains; the
+	// row is otherwise judged exactly as it is without the token.
+	ReadSetNotJudged = "the read-set token is could-not-check (" + ReasonNoRecorder + "), so the row is judged as it is without one"
 )
 
 // Read-set entry kinds. A path is slash-separated, relative to the
@@ -510,10 +518,12 @@ func (sc witnessScope) exempt(p string) bool {
 // reason when the token names a file that is absent or whose digest differs,
 // or when the caller could not observe the file or its introduction within
 // its bounds, which resolves the claim could-not-check whatever its scope
-// would say.
+// would say. With no recorder in this build (x.readSetsRecorded false) no
+// token is judged at all: nil, "" keeps today's scope and reason, and
+// tokenNotJudged names why.
 func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *readSet, couldNot string) {
 	digest, _, ok := ReadSetToken(w.Runner)
-	if !ok || digest == "" {
+	if !ok || digest == "" || !x.readSetsRecorded {
 		return nil, ""
 	}
 	o := w.ReadSet
@@ -586,6 +596,18 @@ func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *rea
 }
 
 // describe says what a read-set scope covers, for a reason.
+// tokenNotJudged is the note for a row whose judged (last) witness carries
+// a `(reads sha256:…)` token in a build with no recorder, "" otherwise.
+func (x *evalCtx) tokenNotJudged(witnesses []Witness) string {
+	if x.readSetsRecorded || len(witnesses) == 0 {
+		return ""
+	}
+	if digest, _, ok := ReadSetToken(witnesses[len(witnesses)-1].Runner); !ok || digest == "" {
+		return ""
+	}
+	return ReadSetNotJudged
+}
+
 func (rs *readSet) describe() string {
 	return fmt.Sprintf("its recorded read set: %d in-tree entries, %d recorded reads exempt as the board's bookkeeping", rs.paths, rs.exempt)
 }

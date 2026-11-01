@@ -648,6 +648,36 @@
    "file": "readset_adapter.go",
    "old": "stop := func() bool { late = s.overdue(); return late != \"\" }",
    "new": "stop := func() bool { return false }"
+  },
+  {
+   "name": "switch: the read-set judgement shipped with no recorder (review S20)",
+   "file": "readset_platform.go",
+   "old": "const readSetRecorderShipped = false",
+   "new": "const readSetRecorderShipped = true"
+  },
+  {
+   "name": "switch: the judge honours a token although no recorder is declared (review S20)",
+   "file": "evaluation/readset.go",
+   "old": "if !ok || digest == \"\" || !x.readSetsRecorded {",
+   "new": "if !ok || digest == \"\" {"
+  },
+  {
+   "name": "switch: --coverage and the callers declare a recorder with no observation wired (review S20)",
+   "file": "coverage.go",
+   "old": "\topts := coverageOptions{Patterns: patterns}\n",
+   "new": "\topts := coverageOptions{Patterns: patterns}\n\topts.readSets = newReadSetSource(root)\n"
+  },
+  {
+   "name": "switch: an unjudged token goes unnamed (review S20)",
+   "file": "evaluation/coverage_api.go",
+   "old": "\t\tif note := x.tokenNotJudged(b.Witnesses[r.ID]); note != \"\" {",
+   "new": "\t\tif note := x.tokenNotJudged(b.Witnesses[r.ID]); false && note != \"\" {"
+  },
+  {
+   "name": "switch: the judge told a recorder ships while no observation is wired (review S20)",
+   "file": "coverage.go",
+   "old": "\tif opts.readSets != nil {\n\t\tin.ReadSetsRecorded = true\n",
+   "new": "\tin.ReadSetsRecorded = true\n\tif opts.readSets != nil {\n"
   }
  ]
 }

@@ -39,7 +39,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/principal.go` | reads informational fields only | renders or round-trips a Runner cell without interpreting the marker |
 | `statusgen/protectedclosure.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/readset_adapter.go` | judges through the library | reads a witness's read-set file and its introducing commit, exports the witness tree for the floor's `go list`, and hands the library the files it lists or why it could not list them; the library decides the claim |
-| `statusgen/readset_platform.go` | migrates in statusgen/37 | writes the v1 Runner cell's read-set token (the could-not-check form off Linux) through the library's token writer |
+| `statusgen/readset_platform.go` | migrates in statusgen/37 | writes the v1 Runner cell's read-set token (the could-not-check form off Linux) through the library's token writer, and holds `readSetRecorderShipped`, the switch that keeps every caller from judging a read-set token until a recorder ships |
 | `statusgen/reconcilefold.go` | reads informational fields only | renders or round-trips a Runner cell without interpreting the marker |
 | `statusgen/unrun.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/verifiedrunneragree.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |

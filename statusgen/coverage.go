@@ -110,18 +110,25 @@ type coverageOptions struct {
 	// Production passes none today, so every claim takes the conservative scope.
 	Dependencies map[string]dependencyManifest
 	// readSets observes each witness's recorded read set, its introduction
-	// and the go compile-input floor (build-less-brittle/15). Set only by
-	// coverageOptionsFor; nil leaves every read-set token unobserved, which the
-	// library treats as unreadable (never a narrower scope).
+	// and the go compile-input floor (build-less-brittle/15). Set by
+	// coverageOptionsFor only when read sets are honoured
+	// (readSetRecorderShipped); nil judges as a build with no recorder: no
+	// observation runs and no read-set token is judged, so a row with one
+	// comes out as the same row without it (never a narrower scope).
 	readSets *readSetSource
 }
 
 // coverageOptionsFor is the one source of coverage options for the callers
 // that decide a brief (autoflip, the reconcile fold, --coverage): the parsed
-// pattern files plus the read-set, introduction and go-floor observations.
-// No caller builds an empty options value itself.
+// pattern files plus, once a recorder ships (readSetRecorderShipped), the
+// read-set, introduction and go-floor observations. No caller builds an
+// empty options value itself.
 func coverageOptionsFor(root string, patterns map[string]patternDoc) coverageOptions {
-	return coverageOptions{Patterns: patterns, readSets: newReadSetSource(root)}
+	opts := coverageOptions{Patterns: patterns}
+	if honourReadSets {
+		opts.readSets = newReadSetSource(root)
+	}
+	return opts
 }
 
 // evaluateCoverage computes the coverage verdict for every brief across
@@ -187,6 +194,7 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 		}
 	}
 	if opts.readSets != nil {
+		in.ReadSetsRecorded = true
 		in.GoFloors = opts.readSets
 		in.ReadSetDeadline = opts.readSets.overdue
 		defer opts.readSets.close()

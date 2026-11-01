@@ -220,6 +220,13 @@ type CoverageInput struct {
 	// path a counted set is compared on and before each attribute read; past
 	// it the claim is could-not-check with that reason. nil is no limit.
 	ReadSetDeadline func() string
+	// ReadSetsRecorded is true only in a build that ships a read-set
+	// recorder (statusgen's readSetRecorderShipped). While it is false no
+	// `(reads sha256:…)` token is judged: the token is could-not-check
+	// (ReasonNoRecorder), the row comes out exactly as the same row with no
+	// token and its reason gains ReadSetNotJudged. A token then never
+	// narrows a witness's scope, whatever file or introduction is observed.
+	ReadSetsRecorded bool
 }
 
 // EvaluateCoverage computes the coverage verdict of every observed brief,
@@ -233,6 +240,7 @@ func EvaluateCoverage(in CoverageInput, repo Repo) map[string]Coverage {
 	x.policy, x.forge = in.WitnessPolicy, in.Forge
 	x.goFloors = in.GoFloors
 	x.readSetDeadline = in.ReadSetDeadline
+	x.readSetsRecorded = in.ReadSetsRecorded
 	x.prefetchV2Records(in)
 	out := map[string]Coverage{}
 	for _, b := range in.Briefs {
@@ -268,6 +276,9 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 			definition = amended
 		}
 		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, definition)
+		if note := x.tokenNotJudged(b.Witnesses[r.ID]); note != "" {
+			reason += "; " + note
+		}
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",

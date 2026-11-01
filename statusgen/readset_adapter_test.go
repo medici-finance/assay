@@ -111,10 +111,27 @@ func TestGoFloorFromWitnessTree(t *testing.T) {
 
 // afReadSetFixture builds the af fixture with a go module, commits it, and
 // lands af/01's witness at that commit carrying a read-set token and file
-// recording `recorded`: each a read path, or a "dir <path>" entry kept as is.
-// It returns the root.
+// recording `recorded`: each a read path, or an entry with its kind ("dir
+// <path>", "list <path>") kept as is. It returns the root.
 func afReadSetFixture(t *testing.T, recorded []string, extra ...string) string {
 	t.Helper()
+	return afReadSetBuild(t, afRS{recorded: recorded, extra: extra})
+}
+
+// afRS shapes afReadSetBuild's landing: who lands the row and its file
+// (mail; "" is the bound verifier), whether the set records the go build
+// (noGoRun drops its go-run entry) and whether the Runner cell carries the
+// token at all (noToken: the same row and file, the token left out).
+type afRS struct {
+	mail             string
+	noGoRun, noToken bool
+	recorded, extra  []string
+}
+
+// afReadSetBuild is afReadSetFixture shaped by o.
+func afReadSetBuild(t *testing.T, o afRS) string {
+	t.Helper()
+	recorded, extra := o.recorded, o.extra
 	root, _ := loadAFStreams(t)
 	briefRel := "docs/streams/af/brief-01-model-approved-at-head.md"
 	p := filepath.Join(root, filepath.FromSlash(briefRel))
@@ -140,9 +157,12 @@ func afReadSetFixture(t *testing.T, recorded []string, extra ...string) string {
 	writes(extra...)(t, root)
 	mustGitCommitAll(t, root, "fixture: af module")
 	full := gitFullHead(t, root)
-	entries := []string{evaluation.GoRunEntry(evaluation.GoRun{Dir: ".", Args: []string{"go", "vet", "./..."}})}
+	var entries []string
+	if !o.noGoRun {
+		entries = append(entries, evaluation.GoRunEntry(evaluation.GoRun{Dir: ".", Args: []string{"go", "vet", "./..."}}))
+	}
 	for _, p := range recorded {
-		if !strings.HasPrefix(p, "dir ") {
+		if !strings.Contains(p, " ") {
 			p = "read " + p
 		}
 		entries = append(entries, p)
@@ -152,13 +172,21 @@ func afReadSetFixture(t *testing.T, recorded []string, extra ...string) string {
 	}, entries)
 	digest := evaluation.ReadSetDigest(content)
 	mustWriteFile(t, root, "docs/streams/af/reads/"+digest, string(content))
+	token := " " + evaluation.ReadSetCellToken(digest, "")
+	if o.noToken {
+		token = ""
+	}
 	row := "| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456 | 2026-07-08 | " + vfRunner + " @ " +
-		full[:treeSHALen] + " " + evaluation.ReadSetCellToken(digest, "") + " |"
+		full[:treeSHALen] + token + " |"
 	evidence := witnessTableFor(row) + "\n\n**VERIFY: PASS**\n\n"
 	if err := os.WriteFile(p, []byte(head+evidence+tail), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	vfCommit(t, root, vfMailVerifier) // the bound verifier lands the row and its file in one commit
+	mail := o.mail
+	if mail == "" {
+		mail = vfMailVerifier // the bound verifier lands the row and its file in one commit
+	}
+	vfCommit(t, root, mail)
 	return root
 }
 
@@ -194,12 +222,29 @@ func coverageAF01(t *testing.T, root string) (modelFlipResult, bool, string) {
 
 // regression: #2026
 // TestCoverageCallersApplyFloor — build-less-brittle/15 row 11: autoflip's
-// dry run, the reconcile fold and --coverage all take coverageOptionsFor, so
-// a recorded read set releases an unrelated change through each, and a
-// compiled file planted missing from the record refuses through each with the
-// floor reason — the floor computed by the adapter, never injected.
+// dry run, the reconcile fold and --coverage all take coverageOptionsFor.
+// With no recorder in this build (readSetRecorderShipped false) none of them
+// judges the token: an unrelated change holds through each, as it does for
+// the row without one (review S20). With read sets honoured (the switch the
+// recorder slice flips, injected here) a recorded read set releases an
+// unrelated change through each, and a compiled file planted missing from the
+// record refuses through each with the floor reason — the floor computed by
+// the adapter, never injected.
 func TestCoverageCallersApplyFloor(t *testing.T) {
+	t.Run("with no recorder the token is not judged", func(t *testing.T) {
+		root := afReadSetFixture(t, []string{"a.go", "b.go", "go.mod"})
+		mustWriteFile(t, root, ".claude-plugin/marketplace.json", "{}\n")
+		mustGitCommitAll(t, root, "fixture: unrelated change")
+		flip, folded, line := coverageAF01(t, root)
+		if flip.Outcome == flipDone || folded || !strings.HasPrefix(line, "af/01 held ") {
+			t.Errorf("want af/01 held through all three callers; got %v (%s), folded %v, %q", flip.Outcome, flip.Reason, folded, line)
+		}
+		if !strings.Contains(flip.Reason, evaluation.ReasonNoRecorder) || !strings.Contains(line, evaluation.ReasonNoRecorder) {
+			t.Errorf("want the missing recorder named; got autoflip %q, --coverage %q", flip.Reason, line)
+		}
+	})
 	t.Run("a recorded witness releases an unrecorded change", func(t *testing.T) {
+		recordedReadSets(t)
 		root := afReadSetFixture(t, []string{"a.go", "b.go", "go.mod"})
 		mustWriteFile(t, root, ".claude-plugin/marketplace.json", "{}\n")
 		mustGitCommitAll(t, root, "fixture: unrelated change")
@@ -215,6 +260,7 @@ func TestCoverageCallersApplyFloor(t *testing.T) {
 		}
 	})
 	t.Run("a complete record of a package with test files releases", func(t *testing.T) {
+		recordedReadSets(t)
 		root := afReadSetFixture(t, []string{"a.go", "a_test.go", "b.go", "go.mod"},
 			"a_test.go", "package af\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) { _ = A() }\n")
 		mustWriteFile(t, root, ".claude-plugin/marketplace.json", "{}\n")
@@ -225,6 +271,7 @@ func TestCoverageCallersApplyFloor(t *testing.T) {
 		}
 	})
 	t.Run("a compiled file missing from the record refuses with the floor reason", func(t *testing.T) {
+		recordedReadSets(t)
 		root := afReadSetFixture(t, []string{"a.go", "go.mod"})
 		mustWriteFile(t, root, "b.go", "package af\n\nfunc B() int { return 2 }\n")
 		mustGitCommitAll(t, root, "fixture: change only the unrecorded compiled file")
@@ -266,6 +313,7 @@ func TestCoverageStatDirNowFile(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			recordedReadSets(t)
 			root := afReadSetFixture(t, []string{"a.go", "b.go", "go.mod", "dir sub"}, "sub/x.txt", "fixture\n")
 			change(root)
 			mustGitCommitAll(t, root, "fixture: the stat-ed directory "+name)
