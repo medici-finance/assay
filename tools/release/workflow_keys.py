@@ -77,10 +77,18 @@ def plain_value(raw):
     return value
 
 
+NOT_PRINTABLE_ASCII = re.compile(r'[^ -~]')
+
+
 def odd_character(line):
-    """The first character of LINE outside the plain set, or None."""
-    for char in line:
-        if char != ' ' and unicodedata.category(char) in REFUSED_CATEGORIES:
+    """The first character of LINE outside the plain set, or None.
+
+    Printable ASCII is never in a refused category, so only the other
+    characters are looked up.
+    """
+    for match in NOT_PRINTABLE_ASCII.finditer(line):
+        char = match.group(0)
+        if unicodedata.category(char) in REFUSED_CATEGORIES:
             return char
     return None
 
