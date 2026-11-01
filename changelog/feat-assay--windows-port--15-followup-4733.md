@@ -1,0 +1,2 @@
+### Fixed
+- The windows-port/15 (`deskinbox html` and `deskinbox flow`) Verify table now proves what it claims. Each row gates on its real exit status, and the test rows assert anchored `--- PASS:` lines from the delivered tests. Every row fails on the tree before the delivery. All but one run offline and pass on the delivered tree. The exception is the live flow comparison against the shell oracle: it is marked `gate:human`, and any difference in the stage block or the bottleneck line now fails it.
