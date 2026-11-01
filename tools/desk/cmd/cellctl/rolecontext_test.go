@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // Tests for the per-role starting context (rolecontext.go, #2438). The in-process half pins the
@@ -1019,13 +1021,13 @@ func TestRoleContextCustodyFailsClosed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		custodyStat = func(name string) (os.FileInfo, error) {
+		deskkit.CustodyStat = func(name string) (os.FileInfo, error) {
 			if name == above {
 				return nil, errors.New("examination refused")
 			}
 			return os.Stat(name)
 		}
-		t.Cleanup(func() { custodyStat = os.Stat })
+		t.Cleanup(func() { deskkit.CustodyStat = os.Stat })
 		_, err = loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"})
 		if err == nil || !strings.Contains(err.Error(), "cannot tell whether a role session can write it") || !strings.Contains(err.Error(), "examination refused") {
 			t.Fatalf("want a refusal that says the place could not be examined, got %v", err)

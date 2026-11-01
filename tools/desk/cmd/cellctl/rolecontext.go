@@ -6,10 +6,8 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,6 +19,8 @@ import (
 	"syscall"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // Per-role starting context (#2438). Every role window of a cell starts with the same context
@@ -304,104 +304,6 @@ func strictlyBelow(dir, p string) bool {
 	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// custodyStat is os.Stat; a test replaces it to make one path impossible to examine.
-var custodyStat = os.Stat
-
-// writablePlace is one directory a role session writes, held by file identity: what it is
-// called in a refusal, and the directory its name leads to once every link is followed.
-type writablePlace struct {
-	label string
-	info  os.FileInfo
-}
-
-// sessionWritablePlaces lists the directories of a cell that a role session writes:
-// <cell-dir>/worktrees and <cell-dir>/memory, and the directory every entry of worktrees/
-// leads to. The launcher links worktrees/<role> to a tree elsewhere when the worktree tool
-// makes the tree, and that tree is the session's working tree wherever it lives. A name with
-// nothing behind it is passed over. Any other failure is returned: a place that cannot be
-// examined cannot be ruled out.
-func sessionWritablePlaces(cellDir string) ([]writablePlace, error) {
-	var places []writablePlace
-	add := func(label, dir string) error {
-		info, err := custodyStat(dir)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		places = append(places, writablePlace{label, info})
-		return nil
-	}
-	worktrees := filepath.Join(cellDir, "worktrees")
-	entries, err := os.ReadDir(worktrees)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	// Role worktrees first, so a refusal names the tree and not only the directory above it.
-	for _, e := range entries {
-		dir := filepath.Join(worktrees, e.Name())
-		if err := add("the role worktree "+dir, dir); err != nil {
-			return nil, err
-		}
-	}
-	for _, dir := range []string{worktrees, filepath.Join(cellDir, roleMemoryRoot)} {
-		if err := add(dir, dir); err != nil {
-			return nil, err
-		}
-	}
-	return places, nil
-}
-
-// sessionWritablePlace names the place a role session writes that path lies in, or "" when it
-// lies in none. A file there could be rewritten by one session and decide the next launch, so
-// the declaration and every file it names are refused when they resolve into one.
-//
-// The question is settled by file identity, never by spelling. The path is resolved, then it
-// and each directory above it is compared (os.SameFile) with every place. A path spelling
-// proves nothing here: a linked role worktree resolves outside the cell, and on a volume that
-// ignores letter case WORKTREES/ and worktrees/ are one directory under two names.
-func sessionWritablePlace(cellDir, path string) (string, error) {
-	real, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", err
-	}
-	if real, err = filepath.Abs(real); err != nil {
-		return "", err
-	}
-	places, err := sessionWritablePlaces(cellDir)
-	if err != nil {
-		return "", err
-	}
-	for at := real; ; at = filepath.Dir(at) {
-		info, err := custodyStat(at)
-		if err != nil {
-			return "", err
-		}
-		for _, pl := range places {
-			if os.SameFile(info, pl.info) {
-				return pl.label, nil
-			}
-		}
-		if filepath.Dir(at) == at {
-			return "", nil
-		}
-	}
-}
-
-// refuseSessionWritable is sessionWritablePlace as a refusal; path names the file in the error.
-// It fails closed: when the file or a place cannot be examined, the file is refused.
-func refuseSessionWritable(cellDir, path string) error {
-	place, err := sessionWritablePlace(cellDir, path)
-	if err != nil {
-		return fmt.Errorf("%s: cannot tell whether a role session can write it: %v", path, err)
-	}
-	if place != "" {
-		return fmt.Errorf("%s resolves into %s, which a role session can write; keep the declaration and every file it names outside the role worktrees and the memory directories", path, place)
-	}
-	return nil
-}
-
 // containedMemoryDir resolves a declared memory_dir and returns the real directory, refusing
 // one that is not below <cell-dir>/memory/. The window WRITES its memory there, so the key is
 // a write grant: it may not name the cell directory (cell.env and the declaration live there),
@@ -553,7 +455,7 @@ func loadAgentDefinition(ref, cellDir string) (agentDefinition, error) {
 	if err != nil {
 		return agentDefinition{}, roleContextFail("cannot read agent definition %s: %v", path, err)
 	}
-	if err := refuseSessionWritable(cellDir, path); err != nil {
+	if err := deskkit.RefuseSessionWritable(cellDir, path); err != nil {
 		return agentDefinition{}, roleContextFail("agent definition %v", err)
 	}
 	return parseAgentDefinition(raw, path)
@@ -577,7 +479,7 @@ func loadRoleContext(path, cellDir string) (*roleContextDecl, error) {
 	if err != nil {
 		return nil, roleContextFail("cannot read %s: %v", path, err)
 	}
-	if err := refuseSessionWritable(cellDir, path); err != nil {
+	if err := deskkit.RefuseSessionWritable(cellDir, path); err != nil {
 		return nil, roleContextFail("%v", err)
 	}
 	var top struct {
@@ -683,7 +585,7 @@ func (rc *roleContext) resolve(cellDir string) error {
 		if err != nil {
 			return roleContextFail("role %s: instructions: %v", role, err)
 		}
-		if err := refuseSessionWritable(cellDir, p); err != nil {
+		if err := deskkit.RefuseSessionWritable(cellDir, p); err != nil {
 			return roleContextFail("role %s: instructions %v", role, err)
 		}
 		if !cleanText(string(raw)) {
