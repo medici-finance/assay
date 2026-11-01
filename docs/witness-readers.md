@@ -15,7 +15,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/acceptancetransition.go` | migrates in statusgen/37 | reads the tree token of a Runner cell as a commit and refuses a cell whose token is not an object id, so a v2 cell fails closed until statusgen/37 migrates it |
 | `statusgen/attribution.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/autoflip.go` | judges through the library | consumes the library verdict (`--coverage` result) to gate an automatic flip; reads no cell |
-| `statusgen/awaiting_bucket.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
+| `statusgen/awaiting_bucket.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record; removes a read-set token before its could-not-check test, so the token never unsettles a run row |
 | `statusgen/briefevidence.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
 | `statusgen/citationcorroborate.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/containerbracket.go` | migrates in statusgen/37 | bracket of container-run witness cells carries the v1 tree token; the v2 form is written by statusgen/37 |

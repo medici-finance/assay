@@ -38,7 +38,8 @@ type rsFx struct {
 	dirty   bool
 	runCmd  string // the command the witness ran ("" = rsCommand)
 	obs     func(*ReadSetObservation)
-	floors  map[string]GoFloor
+	floors  GoFloorMap
+	src     GoFloorSource // when set, used in place of floors
 	W, E, T string
 	digest  string
 	runner  string
@@ -136,6 +137,9 @@ func (fx *rsFx) claimAt(rev string) Claim {
 	w := Witness{Command: cmd, State: StatePass, Tree: tree, Runner: runner, Result: "pass", ReadSet: o}
 	b := BriefObservation{ID: rsBriefID, BriefRel: rsBrief, VerifyRows: []VerifyRow{rsRow()}, Witnesses: map[string][]Witness{"1": {w}}}
 	in := CoverageInput{Revision: rev, Briefs: []BriefObservation{b}, GoFloors: fx.floors}
+	if fx.src != nil {
+		in.GoFloors = fx.src
+	}
 	cs := EvaluateCoverage(in, rsRepo{fx.repo})[rsBriefID].Claims
 	if len(cs) == 0 {
 		fx.t.Fatal("no claim")
@@ -456,5 +460,55 @@ func TestReadSetTokenRoundTrip(t *testing.T) {
 		if _, _, err := ParseReadSet(FormatReadSet(h, []string{bad})); err == nil {
 			t.Errorf("entry %q parsed", bad)
 		}
+	}
+}
+
+// countingFloors is a GoFloorSource that counts the floors it is asked for.
+type countingFloors struct {
+	floor GoFloor
+	asked []string
+}
+
+func (c *countingFloors) GoFloor(commit, entry string) (GoFloor, bool) {
+	c.asked = append(c.asked, GoFloorKey(commit, entry))
+	return c.floor, true
+}
+
+// regression: #2026
+// TestFloorAskedOnlyAdmitted — the floor is computed only for a read set the
+// library has admitted: a read set refused at admission (added after the
+// witness, or naming another commit) never asks for one, so a recorded go
+// invocation in it reaches nothing; an admitted one asks exactly for its
+// own entry at the witness commit.
+func TestFloorAskedOnlyAdmitted(t *testing.T) {
+	goRun := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./..."}})
+	floor := GoFloor{Files: []string{"tools/x/go.mod", "tools/x/a.go", "tools/x/b.go", "tools/x/a_test.go"}}
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	refused := map[string]func(*rsFx){
+		"file committed after the row": func(fx *rsFx) {
+			fx.obs = func(o *ReadSetObservation) { o.IntroFile = false }
+		},
+		"header names another commit": func(fx *rsFx) {
+			fx.header = func(h *ReadSetHeader) { h.Commit = strings.Repeat("a", 40) }
+		},
+	}
+	for name, set := range refused {
+		fx := newRsFx(t)
+		fx.entries = append(fx.entries, goRun)
+		set(fx)
+		src := &countingFloors{floor: floor}
+		fx.src = src
+		wantResult(t, name, fx.item(market), ResultWrongRevision, ".claude-plugin/marketplace.json")
+		if len(src.asked) != 0 {
+			t.Errorf("%s: the floor was asked for %v before the read set was admitted", name, src.asked)
+		}
+	}
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, goRun)
+	src := &countingFloors{floor: floor}
+	fx.src = src
+	wantReleased(t, "admitted", fx.item(market))
+	if len(src.asked) == 0 || src.asked[0] != GoFloorKey(fx.W, goRun) {
+		t.Errorf("admitted read set: floor asked for %v, want its entry at the witness commit", src.asked)
 	}
 }

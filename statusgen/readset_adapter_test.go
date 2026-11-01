@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
@@ -272,4 +273,285 @@ func TestReadSetIntroObservation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// goFloorFixture is a two-package module committed in a fresh repository, with
+// its read-set source; the source is closed when the test ends.
+func goFloorFixture(t *testing.T) (*readSetSource, string) {
+	t.Helper()
+	root := t.TempDir()
+	writes(
+		"go.mod", "module example.com/fl\n\ngo 1.22\n",
+		"p/p.go", "package p\n\nimport _ \"example.com/fl/r\"\n",
+		"r/r.go", "package r\n",
+	)(t, root)
+	mustGitInit(t, root)
+	src := newReadSetSource(root)
+	t.Cleanup(src.close)
+	return src, gitFullHead(t, root)
+}
+
+// regression: #2026
+// TestFloorRefusesUnreadFlags — the floor reads a recorded invocation through
+// an allow-list: a flag, GOFLAGS word, directory or package argument it does
+// not reproduce is a problem, in either spelling, never a narrower floor and
+// never a value handed to the go tool.
+func TestFloorRefusesUnreadFlags(t *testing.T) {
+	src, commit := goFloorFixture(t)
+	outside := t.TempDir()
+	test := func(extra ...string) []string { return append([]string{"go", "test"}, append(extra, "./p")...) }
+	cases := map[string]evaluation.GoRun{
+		"-toolexec":                {Dir: ".", Args: test("-toolexec=x")},
+		"--toolexec":               {Dir: ".", Args: test("--toolexec=x")},
+		"-toolexec, value apart":   {Dir: ".", Args: test("-toolexec", "x")},
+		"-exec":                    {Dir: ".", Args: test("-exec=x")},
+		"-ldflags":                 {Dir: ".", Args: test("-ldflags=-s")},
+		"-modfile":                 {Dir: ".", Args: test("-modfile=alt.mod")},
+		"-overlay":                 {Dir: ".", Args: test("-overlay=o.json")},
+		"-mod=mod":                 {Dir: ".", Args: test("-mod=mod")},
+		"-e over a missing pkg":    {Dir: ".", Args: []string{"go", "test", "-e", "./missing"}},
+		"GOFLAGS -toolexec":        {Dir: ".", Args: test(), GOFLAGS: "-toolexec=x"},
+		"GOFLAGS --toolexec":       {Dir: ".", Args: test(), GOFLAGS: "--toolexec=x"},
+		"GOFLAGS -e, missing pkg":  {Dir: ".", Args: []string{"go", "test", "./missing"}, GOFLAGS: "-e"},
+		"GOFLAGS bare word":        {Dir: ".", Args: test(), GOFLAGS: "toolexec=x"},
+		"GOFLAGS -tags, no value":  {Dir: ".", Args: test(), GOFLAGS: "-tags"},
+		"GOFLAGS -mod=mod":         {Dir: ".", Args: test(), GOFLAGS: "-mod=mod"},
+		"-tags with a separator":   {Dir: ".", Args: test("-tags=a;b")},
+		"-C absolute":              {Dir: ".", Args: []string{"go", "-C", outside, "test", "."}},
+		"-C= absolute":             {Dir: ".", Args: []string{"go", "-C=" + outside, "test", "."}},
+		"-C climbing":              {Dir: ".", Args: []string{"go", "-C", "../x", "test", "."}},
+		"-C climbing from a dir":   {Dir: "p", Args: []string{"go", "-C", "../..", "test", "."}},
+		"dir climbing":             {Dir: "../x", Args: test()},
+		"absolute package":         {Dir: ".", Args: []string{"go", "test", outside}},
+		"climbing package":         {Dir: ".", Args: []string{"go", "test", "../x"}},
+		"versioned package":        {Dir: ".", Args: []string{"go", "run", "example.com/tool@latest"}},
+		"GOWORK path":              {Dir: ".", Args: test(), GOWORK: "elsewhere/go.work"},
+		"GOOS not a platform":      {Dir: ".", Args: test(), GOOS: "linux x"},
+		"CGO_ENABLED not 0 or 1":   {Dir: ".", Args: test(), CGOEnabled: "yes"},
+		"no subcommand after a -C": {Dir: ".", Args: []string{"go", "-C", "p"}},
+	}
+	for name, g := range cases {
+		if fl := src.goFloor(commit, g); fl.Problem == "" || len(fl.Files) != 0 {
+			t.Errorf("%s: want a problem and no files; got %v (%q)", name, fl.Files, fl.Problem)
+		}
+	}
+	// Flags that never change what compiles are read and dropped; a relative
+	// -C resolves inside the tree.
+	for name, g := range map[string]evaluation.GoRun{
+		"ignored flags": {Dir: ".", Args: test("-count=1", "-run", "X", "-v", "-timeout", "5m", "-race=false")},
+		"relative -C":   {Dir: ".", Args: []string{"go", "-C", "p", "test", "."}},
+		"GOFLAGS -mod":  {Dir: ".", Args: test(), GOFLAGS: "-mod=readonly -count=1"},
+	} {
+		if fl := src.goFloor(commit, g); fl.Problem != "" || !slices.Contains(fl.Files, "p/p.go") || !slices.Contains(fl.Files, "r/r.go") {
+			t.Errorf("%s: want p/p.go and r/r.go; got %v (%q)", name, fl.Files, fl.Problem)
+		}
+	}
+}
+
+// regression: #2026
+// TestFloorEmptyIsProblem — a floor with no file of the witness tree is a
+// problem, never an empty floor the library would read as nothing omitted.
+func TestFloorEmptyIsProblem(t *testing.T) {
+	src, commit := goFloorFixture(t)
+	for name, g := range map[string]evaluation.GoRun{
+		"a pattern matching nothing": {Dir: ".", Args: []string{"go", "vet", "./nomatch/..."}},
+		"only standard packages":     {Dir: ".", Args: []string{"go", "vet", "fmt"}},
+	} {
+		if fl := src.goFloor(commit, g); fl.Problem == "" {
+			t.Errorf("%s: want a problem; got the floor %v", name, fl.Files)
+		}
+	}
+}
+
+// regression: #2026
+// TestFloorEnvIsBuilt — the go tool runs with an environment built from
+// nothing the caller set: ambient GOFLAGS, proxy, experiment, workspace and
+// any other variable never reach it, and the pins hold.
+func TestFloorEnvIsBuilt(t *testing.T) {
+	for k, v := range map[string]string{
+		"GOFLAGS": "-toolexec=x", "GOPROXY": "https://proxy.invalid", "GOINSECURE": "*", "GOEXPERIMENT": "nosuchexperiment",
+		"GOWORK": "elsewhere/go.work", "GONOSUMDB": "*", "GOTOOLCHAIN": "go1.99.0", "FLOOR_PROBE_SECRET": "leaked",
+	} {
+		t.Setenv(k, v)
+	}
+	scratch := t.TempDir()
+	tool := &floorTool{goroot: filepath.Join(scratch, "goroot"), modcache: filepath.Join(scratch, "mod"), goos: "linux", goarch: "amd64", cgo: "0"}
+	env := floorEnv(tool, scratch, floorPlan{goos: "darwin"})
+	got := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		if _, dup := got[k]; dup {
+			t.Errorf("%s is set twice", k)
+		}
+		got[k] = v
+	}
+	for k, want := range map[string]string{
+		"GOFLAGS": "", "GOPROXY": "off", "GOSUMDB": "off", "GOVCS": "*:off", "GOTOOLCHAIN": "local", "GOENV": "off",
+		"GOEXPERIMENT": "", "GOINSECURE": "", "GONOSUMDB": "", "GO111MODULE": "on", "GOOS": "darwin", "GOARCH": "amd64",
+		"CGO_ENABLED": "0", "GOMODCACHE": tool.modcache, "GOROOT": tool.goroot, "PATH": filepath.Join(tool.goroot, "bin"),
+	} {
+		if v, ok := got[k]; !ok || v != want {
+			t.Errorf("%s = %q (set %v), want %q", k, v, ok, want)
+		}
+	}
+	for _, k := range []string{"FLOOR_PROBE_SECRET", "GOWORK"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s reached the floor's environment", k)
+		}
+	}
+	for _, k := range []string{"HOME", "GOPATH", "GOCACHE", "TMPDIR"} {
+		if rel, ok := inRoots([]string{scratch}, got[k]); !ok || rel == "." {
+			t.Errorf("%s = %q, want a directory of the floor's own scratch", k, got[k])
+		}
+	}
+	// And through the go tool: the ambient settings above change nothing.
+	src, commit := goFloorFixture(t)
+	if fl := src.goFloor(commit, evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}); fl.Problem != "" || !slices.Contains(fl.Files, "r/r.go") {
+		t.Errorf("floor under ambient settings: %v (%q)", fl.Files, fl.Problem)
+	}
+}
+
+// regression: #2026
+// TestFloorRunIsBounded — a go tool run that outlives floorTimeout is a
+// problem, never a wait without end.
+func TestFloorRunIsBounded(t *testing.T) {
+	src, commit := goFloorFixture(t)
+	g := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
+	if fl := src.goFloor(commit, g); fl.Problem != "" {
+		t.Fatalf("control floor: %q", fl.Problem)
+	}
+	defer func(d time.Duration) { floorTimeout = d }(floorTimeout)
+	floorTimeout = time.Nanosecond
+	if fl := src.goFloor(commit, g); !strings.Contains(fl.Problem, "did not finish") {
+		t.Errorf("want a did-not-finish problem; got %v (%q)", fl.Files, fl.Problem)
+	}
+}
+
+// gitPipe runs git in dir with stdin and returns its trimmed output.
+func gitPipe(t *testing.T, dir, stdin string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir, cmd.Stdin = dir, strings.NewReader(stdin)
+	cmd.Env = append(fixtureGitEnv(os.Environ()), fixtureGitIdentity...)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// regression: #2026
+// TestExportTreeContains — a crafted tree never writes outside the export
+// directory: a `..` or `.git` component, two names equal ignoring case, a
+// duplicate name, a path through a link, and a link out of the tree are each
+// an error, the partial export is removed, and nothing lands beside it.
+func TestExportTreeContains(t *testing.T) {
+	repo := t.TempDir()
+	writes("seed.txt", "seed\n")(t, repo)
+	mustGitInit(t, repo)
+	obj := func(body string) string { return gitPipe(t, repo, body, "hash-object", "-w", "--stdin") }
+	tree := func(lines ...string) string { return gitPipe(t, repo, strings.Join(lines, "\n")+"\n", "mktree") }
+	blob := obj("planted\n")
+	sub := tree("100644 blob " + blob + "\tx")
+	climb := tree("040000 tree " + tree("040000 tree "+sub+"\t..") + "\t..")
+	cases := map[string]string{
+		"a .. component":            climb,
+		"a .git directory":          tree("040000 tree " + sub + "\t.git"),
+		"a .GIT file":               tree("100644 blob " + blob + "\t.GIT"),
+		"names equal ignoring case": tree("100644 blob "+blob+"\tA", "100644 blob "+blob+"\ta"),
+		"a duplicate name":          tree("100644 blob "+blob+"\td", "040000 tree "+sub+"\td"),
+		"a path through a link":     tree("120000 blob "+obj("..")+"\td", "040000 tree "+sub+"\tD"),
+		"a link climbing out":       tree("120000 blob " + obj("../../outside") + "\tl"),
+		"an absolute link":          tree("120000 blob " + obj("/") + "\tl"),
+	}
+	for name, tr := range cases {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			inner := filepath.Join(base, "inner")
+			if err := os.Mkdir(inner, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("TMPDIR", inner)
+			commit := gitPipe(t, repo, "", "commit-tree", tr, "-m", "fixture: crafted")
+			if dir, err := exportTree(repo, commit); err == nil {
+				t.Errorf("want an error; got the export %s", dir)
+			}
+			for dir, want := range map[string]int{base: 1, inner: 0} {
+				if ents, _ := os.ReadDir(dir); len(ents) != want {
+					t.Errorf("%s holds %d entries after the refused export, want %d", dir, len(ents), want)
+				}
+			}
+		})
+	}
+	// An ordinary tree exports: files, an executable and an in-tree link.
+	ok := tree("100644 blob "+blob+"\tf", "100755 blob "+blob+"\tx.sh", "120000 blob "+obj("sub/x")+"\tl", "040000 tree "+sub+"\tsub")
+	dir, err := exportTree(repo, gitPipe(t, repo, "", "commit-tree", ok, "-m", "fixture: ordinary"))
+	if err != nil {
+		t.Fatalf("ordinary tree: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	if b, err := os.ReadFile(filepath.Join(dir, "l")); err != nil || string(b) != "planted\n" {
+		t.Errorf("in-tree link: %q, %v", b, err)
+	}
+}
+
+// regression: #2026
+// TestIntroIgnoresCommitDate — the introduction is read from ancestry, never
+// from commit dates: a later commit back-dated before the row's first commit
+// does not become its introduction, and a row two branches each added has
+// none, so neither shape binds a read set.
+func TestIntroIgnoresCommitDate(t *testing.T) {
+	const briefRel = "docs/streams/s/brief-01-x.md"
+	digest := strings.Repeat("cd", 32)
+	token := evaluation.ReadSetCellToken(digest, "")
+	fileRel := "docs/streams/s/reads/" + digest
+	row := func(tok string) string {
+		r := "| 1 | `true` | pass exit=0 | sha256:6f1a0b3c9d22 | 2026-08-13 | " + vfRunner + " @ b988d175ab12"
+		if tok != "" {
+			r += " " + tok
+		}
+		return "# Brief\n\n## Evidence\n\n" + witnessTableFor(r+" |") + "\n"
+	}
+	early := []string{"GIT_AUTHOR_DATE=2001-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2001-01-01T00:00:00Z"}
+	observe := func(t *testing.T, root string) *evaluation.ReadSetObservation {
+		src := newReadSetSource(root)
+		defer src.close()
+		w := evaluation.Witness{Command: "true", Date: "2026-08-13", Runner: vfRunner + " @ b988d175ab12 " + token}
+		src.observe(filepath.Join(root, filepath.FromSlash(briefRel)), briefRel, "1", &w)
+		return w.ReadSet
+	}
+	t.Run("a back-dated later commit", func(t *testing.T) {
+		root := t.TempDir()
+		mustWriteFile(t, root, briefRel, row(""))
+		mustGitInit(t, root)
+		mustWriteFile(t, root, briefRel, row(token))
+		mustWriteFile(t, root, fileRel, "x\n")
+		runGitEnv(t, root, nil, "add", "-A")
+		runGitEnv(t, root, early, "commit", "-q", "-m", "fixture: token and file, back-dated")
+		o := observe(t, root)
+		if o == nil || !o.IntroFound {
+			t.Fatalf("observation %+v: want the row's introduction found", o)
+		}
+		if o.IntroFile || strings.Contains(o.IntroRunner, token) {
+			t.Errorf("introduction moved to the back-dated commit: IntroFile=%v Runner=%q", o.IntroFile, o.IntroRunner)
+		}
+	})
+	t.Run("a row two branches added", func(t *testing.T) {
+		root := t.TempDir()
+		mustWriteFile(t, root, "seed.txt", "seed\n")
+		mustGitInit(t, root)
+		runGitEnv(t, root, nil, "branch", "side")
+		mustWriteFile(t, root, briefRel, row(""))
+		mustGitCommitAll(t, root, "fixture: row on the main line")
+		runGitEnv(t, root, nil, "checkout", "-q", "side")
+		mustWriteFile(t, root, briefRel, row(token))
+		mustWriteFile(t, root, fileRel, "x\n")
+		runGitEnv(t, root, nil, "add", "-A")
+		runGitEnv(t, root, early, "commit", "-q", "-m", "fixture: row, token and file on a side branch, back-dated")
+		runGitEnv(t, root, nil, "checkout", "-q", "-")
+		runGitEnv(t, root, nil, "merge", "-q", "--no-edit", "-X", "theirs", "side")
+		if o := observe(t, root); o == nil || o.IntroFound {
+			t.Errorf("observation %+v: want no introduction for a row two branches added", o)
+		}
+	})
 }

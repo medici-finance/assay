@@ -207,10 +207,13 @@ type CoverageInput struct {
 	// Forge is the optional code-hosting seam a v2 landing check consults; nil
 	// is offline.
 	Forge Forge
-	// GoFloors is the compile-input floor of every build-family `go-run`
-	// entry of a witness's read set, keyed by GoFloorKey. A read set with such
-	// an entry and no floor here is could-not-check, never narrowed.
-	GoFloors map[string]GoFloor
+	// GoFloors answers the compile-input floor of a build-family `go-run`
+	// entry of a witness's read set. It is asked only for a read set the
+	// library has admitted (digest, header and introduction binding all
+	// hold), so a read set that is never admitted never reaches the go tool.
+	// A read set with such an entry and no floor here (nil, or an unanswered
+	// entry) is could-not-check, never narrowed.
+	GoFloors GoFloorSource
 }
 
 // EvaluateCoverage computes the coverage verdict of every observed brief,

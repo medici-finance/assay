@@ -71,9 +71,10 @@ type ReadSetHeader struct {
 // ReadSetObservation is what the caller observed about the read-set file a
 // witness's Runner token names. Found is false when the file is absent or
 // cannot be read. The Intro fields are the introduction observation: the
-// earliest commit whose brief file holds this witness row (identity key:
-// WitnessRowKey) and, there, the row's Runner cell and whether the read-set
-// file existed in that commit.
+// commit that introduced this witness row (identity key: WitnessRowKey) into
+// the brief file, read from ancestry (its brief file holds the row and no
+// parent's does; a row more than one commit introduced has none), and, there,
+// the row's Runner cell and whether the read-set file existed in that commit.
 type ReadSetObservation struct {
 	Content     []byte
 	Found       bool
@@ -90,8 +91,24 @@ type GoFloor struct {
 	Problem string
 }
 
-// GoFloorKey keys CoverageInput.GoFloors: the witness's full commit and the
-// read set's `go-run` entry line, verbatim.
+// GoFloorSource answers the compile-input floor for one `go-run` entry
+// line, verbatim, at one full witness commit. ok is false when it has none.
+type GoFloorSource interface {
+	GoFloor(commit, entry string) (floor GoFloor, ok bool)
+}
+
+// GoFloorMap is a GoFloorSource over floors computed up front, keyed by
+// GoFloorKey.
+type GoFloorMap map[string]GoFloor
+
+// GoFloor implements GoFloorSource.
+func (m GoFloorMap) GoFloor(commit, entry string) (GoFloor, bool) {
+	f, ok := m[GoFloorKey(commit, entry)]
+	return f, ok
+}
+
+// GoFloorKey keys a GoFloorMap: the witness's full commit and the read set's
+// `go-run` entry line, verbatim.
 func GoFloorKey(commit, entry string) string { return commit + "\x00" + entry }
 
 // GoRun is a `go-run` entry's JSON body: one exec of the go tool.
@@ -578,7 +595,11 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 		if !g.BuildFamily() {
 			continue
 		}
-		fl, ok := x.goFloors[GoFloorKey(w, e)]
+		var fl GoFloor
+		ok := false
+		if x.goFloors != nil {
+			fl, ok = x.goFloors.GoFloor(w, e)
+		}
 		if !ok {
 			return revisionUnestablished, ReasonFloorMissing, true
 		}

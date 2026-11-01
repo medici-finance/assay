@@ -132,13 +132,8 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway) and the
 // forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
 // which start no Verify row, and only ever removes CELLCTL_GH_AMBIENT and adds
-// a placeholder for an unset token family) and the read-set floor's go tool
-// environment (goListEnv: it only wraps the compile-input floor's literal
-// `go list` and `go env` reads over an exported tree, which start no Verify
-// row, drops the caller's GOFLAGS, GOWORK, GOOS, GOARCH, CGO_ENABLED, GOPROXY
-// and GOTOOLCHAIN, and pins -mod=readonly, GOPROXY=off, GOTOOLCHAIN=local and
-// the recorded platform in their place).
-var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard", "goListEnv"}
+// a placeholder for an unset token family).
+var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
 var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
