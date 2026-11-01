@@ -1,0 +1,5 @@
+# The recipe logs in to a registry.
+want: registry-login
+file: Makefile
+replace: "\tdocker build -f"
+with: "\tdocker login registry.example.com; \\\n\tdocker build -f"

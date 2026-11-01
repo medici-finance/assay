@@ -104,6 +104,8 @@ func ClaimLivenessFromRefPresence(present bool, err error) ClaimLiveness {
 //
 //	Brief: <stream>/<NN>  ->  <short>--<stream>--<NN>
 //	Issue: #<N>           ->  <short>--issue-<N>
+//	Fixes: #<N>           ->  <short>--issue-<N>   (the resolving form is the same edge)
+//	Fixes: <owner/repo>#<N>  ->  <that repo's short>--issue-<N>
 //	Cross-repo-brief: <alias>:<stream>/<NN>  ->  <alias>--<stream>--<NN>
 //
 // A malformed trailer SET is not a key. So is a body with neither trailer — a human-opened PR
@@ -145,6 +147,15 @@ func ClaimKeyForPR(repo, body string) (string, bool) {
 		n := strings.TrimSpace(t.Value)
 		if n == "" {
 			return "", false
+		}
+		if t.Repo != "" {
+			// A cross-repository resolving link names the issue's own repository; the
+			// claim for it is keyed under that repository's label, never this one's.
+			other := strings.TrimSpace(RepoShortLabel(t.Repo))
+			if other == "" {
+				return "", false
+			}
+			return other + "--issue-" + n, true
 		}
 		return short + "--issue-" + n, true
 	}

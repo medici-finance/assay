@@ -44,7 +44,7 @@ id: 76b90784-54de-4789-afa1-7cd2ed6b51bf
 files:
 - `plugins/assay/skills/install/SKILL.md`, `plugins/assay/skills/adopt/SKILL.md`.
 - `docs/adopting-assay.md` — § PRIMITIVE setup-reviewer-app (renamed `setup-apps`), the roster section, the Human post-install checklist; new § "Choosing a tier".
-- `tools/desk/README.md` § Operator reference → App credentials.
+- `tools/desk/README.md` — § Operator reference → App credentials.
 
 facts:
 - What stays human, verbatim in all three places: clicking **Create GitHub App** on GitHub's page,

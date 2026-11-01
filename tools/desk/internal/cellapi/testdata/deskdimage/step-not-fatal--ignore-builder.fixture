@@ -1,0 +1,6 @@
+# A leading - on the builder check ignores its could-not-check exit 2, so a
+# missing docker no longer stops the target at a named non-zero exit.
+want: step-not-fatal
+file: Makefile
+replace: "\t@command -v docker"
+with: "\t- @command -v docker"

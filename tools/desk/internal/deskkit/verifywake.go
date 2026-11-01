@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -435,7 +436,7 @@ func (r WakeReceipt) MarshalLine() ([]byte, error) {
 
 // RootRevisionReader is the OFFLINE, probe-free reader used by the live plan. It answers a
 // revision query by content-hashing the named file under the repo root (a "file:<relpath>" key),
-// the applicable tool version (the "tool" key), or refuses (ok=false) for a key it does not know.
+// or the named directory's members (a "file:<dir>/" key), the applicable tool version (the "tool" key), or refuses (ok=false) for a key it does not know.
 // It NEVER observes an external action — ActionCompleted always returns ok=false, which is
 // exactly could-not-check, so an offline plan cannot fabricate an action-completed wake.
 type RootRevisionReader struct {
@@ -458,7 +459,9 @@ const (
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
 // configured tool version; a "file:<relpath>" key returns the sha256 of that file's bytes (of a
-// symlink's target text, as git stores it); any unreadable file or unknown key is ok=false
+// symlink's target text, as git stores it); a "file:<dir>/" key (#4865) returns DirInputDigest
+// over the directory's current members, each hashed the same way, so an edit, add, remove or
+// rename of any member changes it; any unreadable file or unknown key is ok=false
 // (could-not-check).
 func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 	switch {
@@ -489,45 +492,90 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 			return "", false
 		}
 		return head, true
-	case strings.HasPrefix(input, inputKeyFilePrefix):
-		rel := strings.TrimPrefix(input, inputKeyFilePrefix)
-		if _, err := (rootScopeTree{root: rr.Root}).safePath(rel); err != nil {
+	case strings.HasPrefix(input, inputKeyFilePrefix) && strings.HasSuffix(input, "/"):
+		// A declared directory (#4865): one digest over every member's path and content,
+		// enumerated exactly as the scope: reader enumerates it. An older reader resolves
+		// this key as a file path, fails, and reports could-not-check.
+		dir, ok := ParseDirInputKey(input)
+		if !ok {
 			return "", false
 		}
-		// Contain the read within the root: a key that climbs out is could-not-check, never a
-		// read of an arbitrary path.
-		clean := filepath.Clean(rel)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		tree := rootScopeTree{root: rr.Root}
+		if kind, err := tree.PathKind(dir); err != nil || kind != "tree" {
 			return "", false
 		}
-		// A symlink is hashed as its target text, never followed — exactly the blob git stores
-		// for it, which is what the receipt writer hashed at the record's sha. Following it would
-		// disagree with the writer on every symlinked input and could read outside the root.
-		full := filepath.Join(rr.Root, clean)
-		var b []byte
-		if fi, err := os.Lstat(full); err != nil {
-			return "", false
-		} else if fi.Mode()&os.ModeSymlink != 0 {
-			target, lerr := os.Readlink(full)
-			if lerr != nil {
-				return "", false
-			}
-			b = []byte(target)
-		} else if b, err = os.ReadFile(full); err != nil {
-			return "", false
-		}
-		sum := sha256.Sum256(b)
-		return hex.EncodeToString(sum[:]), true
-	case strings.HasPrefix(input, InputKeyScopePrefix):
-		decl := strings.TrimPrefix(input, InputKeyScopePrefix)
-		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		members, err := tree.ListFiles(dir)
 		if err != nil {
 			return "", false
 		}
-		return scope.Shapes[input], true
+		digest, err := DirInputDigest(members, func(f string) (string, error) {
+			if !canonicalRepoPath(f) || !strings.HasPrefix(f, dir+"/") {
+				return "", errors.New("invalid directory member")
+			}
+			if h, ok := rr.fileRevision(f); ok {
+				return h, nil
+			}
+			return "", errors.New("unreadable directory member")
+		})
+		if err != nil {
+			return "", false
+		}
+		return digest, true
+	case strings.HasPrefix(input, inputKeyFilePrefix):
+		return rr.fileRevision(strings.TrimPrefix(input, inputKeyFilePrefix))
+	case strings.HasPrefix(input, InputKeyScopePrefix):
+		// Key on the declaration, not the key string: a legacy directory key and its
+		// slash form name the same declaration and read the same digest. A kind change
+		// changes the digest, so it wakes; it never reads as missing.
+		decl, _, ok := ParseScopeInputKey(input)
+		if !ok {
+			return "", false
+		}
+		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		if err != nil || len(scope.Shapes) != 1 {
+			return "", false
+		}
+		for _, digest := range scope.Shapes {
+			if digest == "" {
+				return "", false
+			}
+			return digest, true
+		}
+		return "", false
 	default:
 		return "", false
 	}
+}
+
+// fileRevision is the sha256 of one repo-relative file under the root, or ok=false.
+func (rr *RootRevisionReader) fileRevision(rel string) (string, bool) {
+	if _, err := (rootScopeTree{root: rr.Root}).safePath(rel); err != nil {
+		return "", false
+	}
+	// Contain the read within the root: a key that climbs out is could-not-check, never a
+	// read of an arbitrary path.
+	clean := filepath.Clean(rel)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		return "", false
+	}
+	// A symlink is hashed as its target text, never followed — exactly the blob git stores
+	// for it, which is what the receipt writer hashed at the record's sha. Following it would
+	// disagree with the writer on every symlinked input and could read outside the root.
+	full := filepath.Join(rr.Root, clean)
+	var b []byte
+	if fi, err := os.Lstat(full); err != nil {
+		return "", false
+	} else if fi.Mode()&os.ModeSymlink != 0 {
+		target, lerr := os.Readlink(full)
+		if lerr != nil {
+			return "", false
+		}
+		b = []byte(target)
+	} else if b, err = os.ReadFile(full); err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), true
 }
 
 // ActionCompleted never observes an action offline — this is could-not-check by construction, so

@@ -31,9 +31,14 @@ first-class principles (see [spec.md](spec.md) §2):
    `deskread` verb, never by importing `deskkit` (`statusgen/forgeread.go`), and that migration
    is owned by the sibling briefs `forge-neutral/18` and, for the control-feeding reads, `/35`.
    v2 does not redo it: it brings `statusgen/**` under the ban so the progress is measurable,
-   then holds the zero. The [library-first amendment](../../library-first.md), ruled on #2395
-   (`DR-forge-neutral-36`), lets statusgen link a narrow module's offline and frozen packages;
-   every online forge read keeps the verb and `deskkit` stays internal.
+   then holds the zero. The [library-first amendment](../../library-first.md) of 2026-10-08
+   (`DR-forge-neutral-36`) let statusgen link a narrow module's offline and frozen packages.
+   **Superseded 2026-10-25** by the driver's later ruling on #2395 (`DR-forge-library`): one
+   shared forge library for reads and writes, built here (`desktools-v2/75`); `deskread` and the
+   write verbs become thin wrappers around it, statusgen links it for its forge calls
+   (`desktools-v2/77`), the library owns the per-role-and-repository credential, gh/glab
+   launches are held to at most 7 and git uses go-git (`desktools-v2/76`). `deskkit` stays
+   internal.
 3. **Purpose-built queries** — typed access-pattern operations (review-queue snapshot, head-sha
    batch, board sweep), each backend one tuned query: N+1 → one round-trip, rate-limit headroom,
    and one consistent snapshot (freshness), with the GraphQL document never crossing the seam.
@@ -76,8 +81,8 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
+| 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | implemented | — | — |
 | 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
 | 25 | [Migrate deskapps to Cobra and Viper](brief-25-migrate-deskapps-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 26 | [Migrate deskclose to Cobra and Viper](brief-26-migrate-deskclose-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
@@ -98,9 +103,9 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 41 | [Migrate the scan and monitor loops to Cobra and Viper](brief-41-migrate-the-scan-and-monitor-loops-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 42 | [Migrate the comms verbs to Cobra and Viper](brief-42-migrate-the-comms-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
-| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 45 | [Migrate the board reader verbs to Cobra and Viper](brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 47 | [Migrate the small admin verbs to Cobra and Viper](brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 48 | [Migrate the small standalone module CLIs to Cobra and Viper](brief-48-migrate-the-small-standalone-module-clis-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 49 | [Migrate the harness and version guard CLIs to Cobra and Viper](brief-49-migrate-the-harness-and-version-guard-clis-to-cobra-and-viper.md) | 3 | L | todo | — | — |
@@ -119,16 +124,21 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 4 | M | todo | — | — |
 | 63 | [Define perf-v3 attribution, profiles and compatible local readers](brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md) | 2 | M | implemented | — | — |
 | 64 | [Propagate performance context through desks, agents and tool CLIs](brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md) | 3 | M | implemented | — | — |
-| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | implemented | — | — |
-| 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | todo | — | — |
+| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | verified | 2026-10-27 assay-verifier-app[bot] @ e25479a69d69 (forge-identity) | — |
+| 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | implemented | — | — |
 | 67 | [Define an extensible perf-v4 envelope and compatible readers](brief-67-define-an-extensible-perf-v4-envelope-and-compatible-readers.md) | 3 | M | todo | — | — |
 | 68 | [Select perf-v4 in shared producers and qualify the direct migration](brief-68-select-perf-v4-in-shared-producers-and-qualify-the-direct-migration.md) | 4 | M | todo | — | — |
-| 69 | [Specify extensible JSON contracts and migration targets](brief-69-specify-extensible-json-contracts-and-migration-targets.md) | 1 | M | implemented | — | — |
+| 69 | [Specify extensible JSON contracts and migration targets](brief-69-specify-extensible-json-contracts-and-migration-targets.md) | 1 | M | done | 2026-10-24 assay-verifier-app[bot] @ 385cb29e5682 (forge-identity) | 2026-10-27 assay-reviewer-app[bot] (approved PR #3830 @ 8ee5cc30f25b13843667a5f174951e9d0cdeb4b4) |
 | 70 | [Exempt workflow-bound issue filings from the filing budget](brief-70-exempt-workflow-bound-issue-filings-from-the-filing-budget.md) | 1 | M | todo | — | — |
 | 71 | [Credit container witness rows bracketed by host verifier admission](brief-71-credit-container-witness-rows-bracketed-by-host-verifier-admission.md) | 1 | M | implemented | — | — |
-| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | todo | — | — |
+| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | implemented | — | — |
 | 73 | [Make deskevidence own the on-behalf-of principal on Runner cells](brief-73-make-deskevidence-own-the-on-behalf-of-principal-on-runner-cells.md) | 1 | M | todo | — | — |
-| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | todo | — | — |
+| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | implemented | — | — |
+| 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
+| 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
+| 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
+| 78 | [Migrate the release object transport adapter to the shared CLI contract](brief-78-migrate-the-release-object-transport-adapter.md) | 4 | M | blocked | — | — |
+| 79 | [Migrate the release object client bootstrap to the shared CLI contract](brief-79-migrate-the-release-object-client-bootstrap.md) | 4 | S | blocked | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -153,12 +163,16 @@ An earlier draft of this README put a different chain here — promote `deskkit`
 library, then port statusgen onto it. That was the tempting-but-wrong first step: it was derived
 without reading `statusgen/forgeread.go` or `forge-neutral/18`, which record the opposite
 decision and already own that migration ([spec.md](spec.md) §2 Principle 2, §4). Brief 07 is
-withdrawn and its number is not reused. The 2026-10-08 library-first amendment is not that
-chain: as ruled (`DR-forge-neutral-36`, spec §2 Principle 2) it covers offline and frozen
-inputs only, keeps `deskkit` internal and keeps statusgen's online reads on the verb. `desktools-v2/08` is the one brief here that waits on
+withdrawn and its number is not reused. The 2026-10-08 library-first amendment was not that
+chain (`DR-forge-neutral-36`: offline and frozen inputs only). The 2026-10-25 ruling
+(`DR-forge-library`, spec §2 Principle 2) does give statusgen a linked forge library, but not by
+exporting `deskkit`: briefs 75 and 76 build one narrow typed library with its own credential,
+outside `tools/desk/internal/`, and the git path beside it. `desktools-v2/08` waits on <!-- graph: encoded forge-neutral/18→desktools-v2/08 -->
 another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
-sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
-no critical path.
+sites in statusgen (26 remained on 2026-09-17), which is why it sits in wave 7 (only /77, which depends on it, is later) and on
+no critical path. Brief 77, which moves statusgen's reader onto the library, has the same
+cross-stream edges plus /75, /58 and /08, all in its frontmatter; the /08 edge is there so /08's
+class a gate lands first and /77 widens it, never the reverse. <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
 
 ## Dependency waves
 
@@ -178,6 +192,8 @@ no critical path.
 - **Wave 7** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the siblings
   `forge-neutral/18` and `/35`, waves 5 and 6 of their own stream — the wave number follows
   the later edge).
+- **Wave 8** — `desktools-v2/77` (retire the deskread bridge for statusgen; depends 75, 58,
+  `forge-neutral/18`, `/35` and 08 — the wave number follows the later edge, /08 at wave 7).
 
 Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 10 → 11` beside it.
 
@@ -220,6 +236,25 @@ requires its top-level PASS line; missing selections and failures are red. The
 fixtures use local git repositories, local HTTP servers and fake CLI executables.
 
 ## Cobra/Viper migration track
+
+### Release workflow adapter ownership — PR #4939, reverted by #5089
+
+PR #4939 added an executable object handoff and a pinned-client bootstrap to the release
+workflow, and authored [brief 78](brief-78-migrate-the-release-object-transport-adapter.md)
+and [brief 79](brief-79-migrate-the-release-object-client-bootstrap.md) to own their CLI
+ports. Issue #5089 reverts that handoff: releases are back on the runner labels and GitHub
+artifact path of v1.0.68, `tools/release/transport.py` (future: re-landed with the handoff) and
+`tools/release/install-object-client.sh` (future: re-landed with the handoff) are no longer
+in the tree, and `cli-migration.json` no longer carries their pending rows.
+
+Both briefs stay on the board, `blocked`, with their /16, /46 and /17 edges unchanged.
+They are `gate: human`, so dropping or withdrawing them is a guarded move that needs a
+recorded human ruling on a decision issue (lifecycle-v1 §4.5); `blocked` only keeps them
+out of dispatch while the code they would port is absent. A PR that re-lands the handoff
+re-adds the pending rows and returns them to `todo`; otherwise a human ruling withdraws
+them, and that change also removes them from /17's `depends:`, since an edge into a
+withdrawn brief is never satisfied.
+
 
 - **Wave 1 — /15:** shared command/configuration adapter and conformance fixtures, complete
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
@@ -383,3 +418,28 @@ coordinate /20–21 CLI surfaces with desk-tools/39–43. graph-execution/27 own
 planner binding and existing runtime owners handle claims/refill. Neither parser migration
 nor transport optimization creates a new priority engine. Ranked GH savings and parity
 qualification stay with desk-tools/44 and R6; completed Evidence is preserved.
+
+## Shared forge library — ruled 25 October 2026
+
+The driver's ruling on #2395, recorded in
+[`DR-forge-library`](../decisions/DR-forge-library.md), supersedes `DR-forge-neutral-36`. Three
+human-gated briefs carry it; each cites the record with its `design:` key:
+
+- **/75** (wave 2, after /58) builds the one shared forge library for reads and writes and turns
+  `deskread` and the write verbs into thin wrappers around it. The library owns the credential
+  (one client per role and repository, private field, no ambient fallback) and carries the five
+  named custody records unchanged. It adds the combined gh/glab launch ratchet across desk-tools
+  and statusgen.
+- **/76** (wave 1) moves statusgen's git launches to go-git on top of the existing `gitcore`,
+  with parity goldens for the history and merge-base semantics `statusgen/verifyflip.go`
+  depends on, and adds statusgen's down-only git-launch ratchet beside the desk-tools counter
+  that `desktools-go-git/08` flips.
+- **/77** (wave 8, after /75, /58, /08, `forge-neutral/18` and `/35`) swaps statusgen's reader seam
+  from the `deskread` process to the library and retires statusgen's environment-token reads.
+
+Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 08 → 77` and `{forge-neutral/18, /35} → 77`; /76 is independent. The /08
+edge fixes landing order: /08's Task 2 gate and Task 5 path entry land before /77 widens them, so
+the two cannot land the other way round and narrow /77's gate. /08's row 10 admits the library's caller package only when /77 lands. /08 holds statusgen's gh
+column of the counter at zero; the rest of the statusgen total (the `origin` classifier and the
+API host literals) is /77's: /77 row 9 asserts it at `0`, and /77 Task 7 widens /08's gate to the
+whole total so it stays there (row 11 proves the script exits non-zero).

@@ -1,0 +1,2 @@
+### Fixed
+- Releases run again on the runner labels and GitHub artifact path used at v1.0.68. The release object handoff from #4939 is reverted whole: the `artifacts` and `release` jobs no longer wait for the `assay-release-object-builder` and `assay-release-object-publisher` pools, and the object-store upload, download and client bootstrap steps are removed with that routing. Re-landing the handoff needs a new pull request once its runner pools and credentials exist.

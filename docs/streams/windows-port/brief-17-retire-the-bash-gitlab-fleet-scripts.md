@@ -75,16 +75,11 @@ id: a164160b-9849-4188-a296-2fde438db66b
 ## Context
 
 files:
-- **delete** `tools/create-fleet-gitlab.sh`, `tools/create-fleet-gitlab_test.sh`,
-  `tools/renew-fleet-gitlab-tokens.sh`, `tools/renew-fleet-gitlab-tokens_test.sh`,
-  `tools/fleet-gitlab-roles.sh`.
-- **edit** `tools/desk/cmd/deskfleet/tables_parity_test.go` (planned) — created by windows-port/08 — (remove the bash-comparing tests and their skip helper), and `tools/desk/internal/deskkit/forge_gitlab.go` (the `--tier ultimate` message, per the ruling).
-- **edit** `docs/adopting-assay-gitlab.md`, `docs/adopting-assay.md`,
-  `plugins/assay/skills/adopt/SKILL.md`, `plugins/assay/skills/install/SKILL.md`, and any other
-  file the sweep in row 6 finds at pickup.
-- **create** `changelog/<branch-slug>.md` (a `### Removed` note naming the three scripts and the
-  verb that replaces each).
-- **do NOT** edit `CHANGELOG.md` or anything under `docs/streams/`. Those are records.
+- **delete** `tools/create-fleet-gitlab.sh`, `tools/create-fleet-gitlab_test.sh`, `tools/renew-fleet-gitlab-tokens.sh`, `tools/renew-fleet-gitlab-tokens_test.sh`, `tools/fleet-gitlab-roles.sh`.
+- **edit** `tools/desk/cmd/deskfleet/tables_parity_test.go` (planned) and `tools/desk/internal/deskkit/forge_gitlab.go` — the first created by windows-port/08 (remove the bash-comparing tests and their skip helper); the second for the `--tier ultimate` message, per the ruling.
+- **edit** `docs/adopting-assay-gitlab.md`, `docs/adopting-assay.md`, `plugins/assay/skills/adopt/SKILL.md`, `plugins/assay/skills/install/SKILL.md` — and any other file the sweep in row 6 finds at pickup.
+- **create** — `changelog/<branch-slug>.md` (a `### Removed` note naming the three scripts and the verb that replaces each).
+- **do NOT edit** `CHANGELOG.md` and `docs/streams/` (neither) — not `CHANGELOG.md` or anything under `docs/streams/`. Those are records.
 
 facts:
 - **Prerequisite state (2026-09-25).** windows-port/08's implementation (PR #1572, open and

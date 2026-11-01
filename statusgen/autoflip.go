@@ -154,6 +154,8 @@ package main
 // TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -162,7 +164,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -489,34 +490,36 @@ func bulkMigrationReason(shape prShape) string {
 // briefLikeTrailerRe matches a `Brief:` or `Authors:` trailer line (deskkit's
 // trailer grammar: the key, a colon, then non-empty content on the same line).
 // The first group is the key, the second the trimmed value.
-var briefLikeTrailerRe = regexp.MustCompile(`^[ \t]*(Brief|Authors):[ \t]*(\S.*?)[ \t]*$`)
 
 // parseBriefLikeTrailers reads the Brief:/Authors: trailer lines in a PR body,
 // skipping fenced code blocks — the same fence-aware grammar as prlink.go's
 // ClassifyPRLink, so a trailer shown as a documentation example inside a code
 // sample is never counted as a real one. It returns the count of both kinds
 // (the bulk-shape signal) and the canonical key of each `Brief:` value (the
-// attribution signal).
+// attribution signal). It is parseLinkTrailers without the `Issue:` count.
 func parseBriefLikeTrailers(body string) (count int, briefs []string) {
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		m := briefLikeTrailerRe.FindStringSubmatch(strings.TrimRight(raw, "\r"))
-		if m == nil {
-			continue
-		}
-		count++
-		if m[1] == "Brief" {
-			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(m[2], ".,;:")))
+	count, briefs, _ = parseLinkTrailers(body)
+	return count, briefs
+}
+
+// parseLinkTrailers is the one fence-aware link-trailer read. count and briefs
+// are exactly parseBriefLikeTrailers' (the Brief:/Authors: count
+// bulkMigrationReason reads never includes an `Issue:` line); issues is the
+// number of `Issue:` trailers, returned SEPARATELY because only the --backfill
+// walk reads it (derived-board/10 amendment B, #2703).
+func parseLinkTrailers(body string) (count int, briefs []string, issues int) {
+	for _, t := range trailers.Scan([]byte(body)) {
+		switch t.Kind {
+		case trailers.TrailerIssue:
+			issues++
+		case trailers.TrailerAuthors:
+			count++
+		case trailers.TrailerBrief:
+			count++
+			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(t.Value, ".,;:")))
 		}
 	}
-	return count, briefs
+	return count, briefs, issues
 }
 
 // candidateVerdict is attributeCandidate's judgement of one merged, approved
@@ -539,29 +542,43 @@ const (
 // only ever asked about a candidate that is merged AND App-approved at its own
 // merged head (decideModelFlip checks that first), so a walk-past can change
 // which approved PR is credited but never whether an approval was required.
+// After the bulk-migration check its verdict is the shared trailer predicate's.
 func attributeCandidate(shape prShape, briefID string) (candidateVerdict, string) {
 	if why := bulkMigrationReason(shape); why != "" {
 		return candidateWalkPast, why
 	}
+	return linkTrailerVerdict(shape.BriefTrailers, shape.Briefs, briefID)
+}
+
+// linkTrailerVerdict is the ONE trailer rule shared by attributeCandidate and the
+// --backfill walk (briefauthoring.go's backfillTrailerWalkPast, derived-board/10
+// amendment B), so the two readers cannot drift apart on what a trailer means. It is
+// a variable only so a test can replace it and watch both callers change.
+var linkTrailerVerdict = judgeLinkTrailers
+
+// judgeLinkTrailers judges a candidate by its link trailers alone: briefTrailers is
+// its Brief:/Authors: count and briefs the canonical key of each `Brief:` value
+// (parseLinkTrailers).
+func judgeLinkTrailers(briefTrailers int, briefs []string, briefID string) (candidateVerdict, string) {
 	want := canonicalBriefKey(briefID)
 	switch {
-	case len(shape.Briefs) == 0 && shape.BriefTrailers > 0:
+	case len(briefs) == 0 && briefTrailers > 0:
 		return candidateWalkPast, "it carries only `Authors:` trailers — a brief-AUTHORING PR, not a delivery"
-	case len(shape.Briefs) == 0:
+	case len(briefs) == 0:
 		return candidateUnattributable, fmt.Sprintf("it carries no `Brief:` trailer, so whether it delivered %s is not a readable fact", want)
 	}
 	names := false
-	for _, b := range shape.Briefs {
+	for _, b := range briefs {
 		if b == want {
 			names = true
 		}
 	}
 	switch {
 	case !names:
-		return candidateWalkPast, fmt.Sprintf("its `Brief:` trailer names %s, not %s", strings.Join(shape.Briefs, ", "), want)
-	case len(shape.Briefs) > 1:
+		return candidateWalkPast, fmt.Sprintf("its `Brief:` trailer names %s, not %s", strings.Join(briefs, ", "), want)
+	case len(briefs) > 1:
 		return candidateUnattributable, fmt.Sprintf("it carries %d `Brief:` trailers (%s) — a PR body links exactly one brief",
-			len(shape.Briefs), strings.Join(shape.Briefs, ", "))
+			len(briefs), strings.Join(briefs, ", "))
 	}
 	return candidateCredit, ""
 }
@@ -1202,8 +1219,8 @@ type ghCommitPR struct {
 }
 
 func (g ghModelFlipSource) MergedPRForCommit(repo, sha string) (int, bool, error) {
-	out, err := exec.Command("gh", "api",
-		fmt.Sprintf("repos/%s/commits/%s/pulls", repo, sha)).Output()
+	out, err := ghGuard(exec.Command("gh", "api",
+		fmt.Sprintf("repos/%s/commits/%s/pulls", repo, sha))).Output()
 	if err != nil {
 		return 0, false, fmt.Errorf("gh api commits/%s/pulls: %w", sha, err)
 	}
@@ -1282,8 +1299,8 @@ func mergedPRForCommit(sha string, prs []ghCommitPR, prCommits func(n int) ([]st
 // intermediate commit while still refusing a PR that merely CONTAINS one. (The
 // endpoint caps at 250 commits per PR — far beyond any brief-touching branch.)
 func (ghModelFlipSource) prBranchCommits(repo string, n int) ([]string, error) {
-	out, err := exec.Command("gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/pulls/%d/commits", repo, n)).Output()
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/commits", repo, n))).Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh api pulls/%d/commits: %w", n, err)
 	}
@@ -1338,7 +1355,7 @@ func summaryBase(pr int, v ghPRSummaryJSON) (base, def string, err error) {
 // (at 3000 files), so shapeFromListing refuses any list whose length disagrees
 // with the PR's own changed_files count.
 func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
-	sum, err := exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr)).Output()
+	sum, err := ghGuard(exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr))).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d: %w", pr, err)
 	}
@@ -1349,9 +1366,9 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	// --jq emits one JSON [filename, previous_filename, patch] triple per line
 	// across every page, so the concatenated per-page arrays --paginate
 	// produces never need re-joining. patch is null when GitHub omits it.
-	out, err := exec.Command("gh", "api", "--paginate",
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
 		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, pr),
-		"--jq", `.[] | [.filename, (.previous_filename // ""), .patch] | @json`).Output()
+		"--jq", `.[] | [.filename, (.previous_filename // ""), .patch] | @json`)).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
@@ -1398,8 +1415,8 @@ func readEvidenceHeads(repo, sha string, shape prShape) map[string]string {
 		for i := range segs {
 			segs[i] = url.PathEscape(segs[i])
 		}
-		b, err := exec.Command("gh", "api", "-H", "Accept: application/vnd.github.raw+json",
-			fmt.Sprintf("repos/%s/contents/%s?ref=%s", repo, strings.Join(segs, "/"), sha)).Output()
+		b, err := ghGuard(exec.Command("gh", "api", "-H", "Accept: application/vnd.github.raw+json",
+			fmt.Sprintf("repos/%s/contents/%s?ref=%s", repo, strings.Join(segs, "/"), sha))).Output()
 		if err == nil {
 			heads[f] = string(b)
 		}
@@ -1440,9 +1457,9 @@ func parseFileListing(pr int, out []byte) (files, renamedFrom []string, patches 
 // looser match (a key that is a prefix of another, prose quoting the trailer)
 // is dropped by attributeCandidate, never credited.
 func (ghModelFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
-	out, err := exec.Command("gh", "pr", "list", "--repo", repo, "--state", "merged",
+	out, err := ghGuard(exec.Command("gh", "pr", "list", "--repo", repo, "--state", "merged",
 		"--search", fmt.Sprintf("%q in:body", "Brief: "+briefKey),
-		"--limit", "100", "--json", "number").Output()
+		"--limit", "100", "--json", "number")).Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh pr list --search Brief: %s: %w", briefKey, err)
 	}
@@ -1466,9 +1483,9 @@ func (ghModelFlipSource) PRBodyEditedAt(repo string, pr int) (time.Time, error) 
 	if !ok || owner == "" || name == "" {
 		return time.Time{}, fmt.Errorf("repo %q is not <owner>/<name>", repo)
 	}
-	out, err := exec.Command("gh", "api", "graphql",
+	out, err := ghGuard(exec.Command("gh", "api", "graphql",
 		"-f", "query=query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){lastEditedAt}}}",
-		"-f", "o="+owner, "-f", "r="+name, "-F", fmt.Sprintf("n=%d", pr)).Output()
+		"-f", "o="+owner, "-f", "r="+name, "-F", fmt.Sprintf("n=%d", pr))).Output()
 	if err != nil {
 		return time.Time{}, fmt.Errorf("gh api graphql lastEditedAt of PR %d: %w", pr, err)
 	}
@@ -1539,8 +1556,8 @@ type ghPRHead struct {
 }
 
 func (ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error) {
-	head, err := exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
-		"--repo", repo, "--json", "headRefOid,state,mergedAt").Output()
+	head, err := ghGuard(exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
+		"--repo", repo, "--json", "headRefOid,state,mergedAt")).Output()
 	if err != nil {
 		return prReviewState{}, fmt.Errorf("gh pr view %d: %w", pr, err)
 	}
@@ -1549,8 +1566,8 @@ func (ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error)
 		return prReviewState{}, fmt.Errorf("unmarshal PR %d head: %w", pr, err)
 	}
 
-	out, err := exec.Command("gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr)).Output()
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr))).Output()
 	if err != nil {
 		return prReviewState{}, fmt.Errorf("gh api pulls/%d/reviews: %w", pr, err)
 	}

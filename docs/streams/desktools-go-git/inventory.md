@@ -74,7 +74,7 @@ caller — per the migration checklist contract above, a row is only **ticked/em
 once every seam site on it routes through `internal/gitcore` (briefs 03-07). This note
 records, separately from that contract, which op families now have a working
 `gitcore` implementation for those later briefs to swap callers onto, golden-verified
-against the brief-01 harness (`tools/desk/internal/gitcore/gitcore_test.go`):
+against the brief-01 harness ([pre-lift golden harness](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore_test.go)):
 
 - **#6** `rev-parse` (path + sha plumbing) — `Repo.Resolve` (`ResolveRevision`).
 - **#8** `for-each-ref` — `Repo.Refs`.
@@ -120,7 +120,7 @@ stays **un-ticked**, its owning brief named.
 | 17 | `config` | partial | ONLY `remote.<name>.url` reads migrated (`Repo.RemoteURL`) — deliberately, see below; every other `config --get`/`--list` read/write across deskwt, deskpr, deskreply, deskkit preflight stays on the git binary |
 
 New `gitcore` read helpers this brief added (golden-verified against real git on
-deterministic fixtures, `tools/desk/internal/gitcore/gitcore_test.go`): `Toplevel`,
+deterministic fixtures, [pre-lift golden harness](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore_test.go)): `Toplevel`,
 `CommonDir`, `InsideWorkTree`, `AbbrevRefHEAD`, `SymbolicRefShortHEAD`,
 `SymbolicRefTarget`, `UpstreamRef`, `AheadCount`, `RemoteURL`, `CommitVerifyQuiet`,
 `HasStagedChanges`, `DirtyTrackedPorcelain`, `Diff`/`DiffSymmetric`, `TreeishID`,
@@ -192,7 +192,7 @@ callers: the alias always mirrors a concrete ref (`origin/main`) that IS returne
 caller here already excludes that concrete ref by name.
 
 New `gitcore` read helpers this brief added (parity-verified against real git,
-`tools/desk/internal/gitcore/gitcore_test.go`): `Repo.CommitSubject`, `Repo.ParentHashes`,
+[pre-lift golden harness](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore_test.go)): `Repo.CommitSubject`, `Repo.ParentHashes`,
 `Repo.DiffNameStatus` (+ the `ChangeStatus` type).
 
 Mandatory mutation test (brief-rules rule 16 — a DETECTION control's seam swap must prove
@@ -211,7 +211,7 @@ lists for it routes through `gitcore` or is re-keyed to `gitexec` with a cited r
 
 | # | Family | Ticked? | Note |
 |---|---|---|---|
-| 2 | `add` | **re-keyed (exception)** | deskmerge's ONE `add` (regenerable-conflict resolution, `merge.go`) is NOT migrated — verified empirically that go-git's `Worktree.Add` cannot clear a path's conflict-stage (1/2/3) index entries; a `gitcore.Commit` built from that index writes a tree with DUPLICATE ENTRIES (`git fsck`: `duplicateEntries`). Fenced through `internal/gitexec` beside the merge it resolves — see `tools/desk/internal/gitcore/write.go`'s doc for the full experiment. verifyloop's `add` (durable.go) is untouched (not this brief's Context) |
+| 2 | `add` | **re-keyed (exception)** | deskmerge's ONE `add` (regenerable-conflict resolution, `merge.go`) is NOT migrated — verified empirically that go-git's `Worktree.Add` cannot clear a path's conflict-stage (1/2/3) index entries; a `gitcore.Commit` built from that index writes a tree with DUPLICATE ENTRIES (`git fsck`: `duplicateEntries`). Fenced through `internal/gitexec` beside the merge it resolves — see [pre-lift write helpers](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/write.go)'s doc for the full experiment. verifyloop's `add` (durable.go) is untouched (not this brief's Context) |
 | 3 | `commit` | partial | deskmerge's ONE `commit` (`merge.go`'s `commitMerge`) migrated — `gitcore.Commit` with explicit `Parents`, no separate `rev-parse HEAD` read-back needed. verifyloop's `commit` (durable.go) is untouched, brief unassigned |
 | 6 | `rev-parse` | partial | deskmerge's 3 sites (`resolveRepoRoot`'s checkout-validity check — now `gitcore.Open`; `fetchState`'s post-fetch base/head resolution — now `Repo.Resolve`) migrated. NOTE: this family's frozen tool list (above) never named deskmerge as a seam site for it — a gap in the brief-01 freeze, not a re-scoping; recorded here so a later audit does not read deskmerge as never having had rev-parse sites. deskpushguard's sites remain brief 04's |
 | 14 | `diff` | partial (deskmerge side ticked+exception) | deskmerge's CI-contract-drift diff and the semantic-probe's changed-path diff (both plain two-tree reads, `assess.go`) migrated to `Repo.DiffNames`, filtered client-side (`underAny`) where the git-binary call carried a pathspec — `gitcore.DiffNames` takes none. deskmerge's OTHER `diff` — the `--diff-filter=U` conflict-path enumeration/residual-check, `currency.go`'s `conflictedPaths` and `merge.go`'s post-regeneration check — reads the SAME mid-merge conflict-stage index the trial merge produces and is re-keyed to `gitexec` beside it, for the same reason as `add` above. deskboard's site remains untouched (not named in any brief's Context yet) |
@@ -222,7 +222,7 @@ lists for it routes through `gitcore` or is re-keyed to `gitexec` with a cited r
 | 22 | `merge` (three-way trial) | **ticked as fenced** | the trial merge itself now runs through `internal/gitexec` (`gitexec.Run("deskmerge", …)`) under a narrow allowlist entry, rather than deskmerge's own ad hoc exec seam — same git-binary op, now the audited one. Still THE decided exception; see brief 07 and the spec's decision 5 |
 | 23 | `update-ref` | **ticked** | deskmerge's ONE site (`dropPRHeadRef`) migrated — `Repo.DeleteLocalRef`, a new write added in this brief (matches `git update-ref -d`'s own no-op-on-absent behaviour) |
 
-New `gitcore` write helpers this brief added, in `tools/desk/internal/gitcore/write.go` (golden-
+New `gitcore` write helpers this brief added, in [pre-lift write helpers](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/write.go) (golden-
 verified in `gitcore_test.go` against the real git binary reading the result back —
 there is no pre-existing git-binary golden for a write helper to diff against, since
 deskmerge is the stream's first migrated WRITE caller): `Commit` (explicit `Parents`,
@@ -233,7 +233,7 @@ deskmerge checkout in this stream's fixtures uses it), `CommitParents`, `DeleteL
 **Bug found and NOT worked around in `gitcore`, by design (fenced instead) — same
 class as the two `gitcore` bugs brief 03 found and fixed:** go-git's `Worktree.Add`
 does not clear a path's conflict-stage (1/2/3) index entries left by a real
-`git merge` conflict; `tools/desk/internal/gitcore/write.go`'s doc carries the full reproduction.
+`git merge` conflict; [pre-lift write helpers](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/write.go)'s doc carries the full reproduction.
 Unlike brief 03's two bugs (a storer wrapper and a linked-worktree path fix), this one
 is not a `gitcore`-side workaround to build: it is the SAME class of gap as the trial
 merge's own (no three-way merge, no conflict-stage awareness), so the fix is fencing
@@ -277,7 +277,7 @@ exit 6), matching `git fetch`'s own refusal.
 
 A local-path or `file://` origin is fetched in-process too: go-git's stock local transport
 starts `git-upload-pack` with the caller's whole environment, so gitcore replaces that
-protocol's fetch side (`tools/desk/internal/gitcore/localtransport.go`) with an in-process server over
+protocol's fetch side ([pre-lift local transport](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/localtransport.go)) with an in-process server over
 the local repository's storage, for every caller of `Fetch`, `List` and `FetchTree`. Its
 receive side (a push to a local path) is still go-git's stock child — tracked separately, as
 it is the child that enforces the target's hooks and compare-and-swap. The environment still

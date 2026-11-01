@@ -1,4 +1,5 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/gitquiet && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/regression && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskclaim-ref && (cd ../../gitquiet && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./goquiet)",
   "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation|GoPackagesQuietHome|GoGuardControl|GoQuietOffPin|GoQuietHostUntouched)$'",
   "control": {
     "name": "CONTROL — the desk adapter never installs the shared template",
@@ -28,8 +29,8 @@
     {
       "name": "guard: a package whose only git use is the shared gittest harness is not treated as a git-test package",
       "file": "internal/gitquiet/gitquiet_test.go",
-      "old": "strings.HasSuffix(p, \"/internal/gittest\")",
-      "new": "strings.HasSuffix(p, \"/internal/gittest-never\")"
+      "old": "strings.HasSuffix(p, \"/gitcore/gittest\")",
+      "new": "strings.HasSuffix(p, \"/gitcore/gittest-never\")"
     },
     {
       "name": "guard: the launcher arm is dropped — a package whose tests reach git only through its own non-test launcher (internal/gitexec's shape) is never examined",

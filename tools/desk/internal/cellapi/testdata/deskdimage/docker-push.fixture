@@ -1,0 +1,5 @@
+# The local build is pushed.
+want: docker-push
+file: Makefile
+replace: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; \\\n"
+with: "\tsh containers/scripts/layer-secret-scan.sh \"assay-deskd:$$tag\"; \\\n\tdocker push \"assay-deskd:$$tag\"; \\\n"

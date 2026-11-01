@@ -55,6 +55,8 @@ package deskkit
 // so the duplication cannot drift.
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,13 +79,21 @@ const (
 	EnvBlessLogin = "ASSAY_BLESS_LOGIN"
 	// EnvTrustedLogins carries trusted HUMAN authors, comma-separated `login[:id]`.
 	EnvTrustedLogins = "ASSAY_TRUSTED_LOGINS"
+	// EnvAssertedHumans carries pinned `login:id` assertions that a login ending in -bot or
+	// -app is a HUMAN (deskcore/trust assert.go owns the grammar and every refusal). It
+	// waives ONLY the name-shape check, ONLY on an ASSAY_TRUSTED_LOGINS or ASSAY_BLESS_LOGIN
+	// entry carrying the same login AND the same id; a [bot] / app/ rendering is never
+	// waivable. The loader is offline and cannot read the forge's bot flag: at load the
+	// pinned id is the control. At run time a forge-marked bot still loses wherever the
+	// read carries the forge's actor kind (Blessed, via ContentEvent.ForgeBot).
+	EnvAssertedHumans = trustcore.HumanAssertionsKey
 	// EnvTrustedBotSlugs carries trusted App slugs, comma-separated
 	// `[role=]slug[:id]`. The optional `role=` prefix additionally binds a desk
 	// role (reviewer / verifier / worker / desk …) to that App, which is what
 	// replaces the compiled-in `<slug>[bot]` literals in the tools.
 	EnvTrustedBotSlugs = "ASSAY_TRUSTED_BOT_SLUGS"
 	// EnvAllowedRepos carries the write-authorisation repo set,
-	// comma-separated `owner/name[:ci|:no-ci][:public|:private]`. An entry may
+	// comma-separated `owner/name[:ci|:no-ci][:public|:private|:internal]`. An entry may
 	// instead be a bare PATTERN `owner/*`, which admits every
 	// current and future repo under that owner to IsAllowedRepo with no further
 	// entry required; it carries no ci/visibility tokens. See parseConfig's
@@ -367,6 +377,26 @@ const (
 	//	               email cannot enter it.
 	EnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 
+	// EnvGitLabRoleEmails (ASSAY_GITLAB_ROLE_EMAILS) binds each GitLab desk role to its OWN
+	// commit address — `role=email`, comma-separated (#4978). It exists because a GitLab
+	// service-account noreply address embeds a group id and a per-account suffix the roster
+	// does not carry, so the address cannot be constructed from the role's
+	// ASSAY_TRUSTED_BOT_SLUGS entry, and ASSAY_GITLAB_SESSION_EMAILS is a flat allowlist that
+	// says nothing about which address belongs to which role. Before this key the worktree
+	// stamper took the allowlist's FIRST address for every role, so a cell that binds one
+	// service account per role committed every role's work under one account.
+	//
+	// It is consumed ONLY by the worktree commit-identity stamper
+	// (RoleGitLabCommitIdentity). It widens nothing: every bound address must already be one
+	// the commit-identity preflight accepts (the service-account noreply shape, or an entry
+	// of ASSAY_GITLAB_SESSION_EMAILS), each role must be bound to a GitLab identity, and no
+	// address may be bound to two roles that are different accounts. A value that breaks any of those rules does not
+	// refuse the whole roster: it disables this binding, and every GitLab role then REFUSES
+	// to stamp (naming the reason) rather than falling back to a shared address. Unset is a
+	// complete configuration — the session allowlist is then used only where it names an
+	// address unambiguously.
+	EnvGitLabRoleEmails = "ASSAY_GITLAB_ROLE_EMAILS"
+
 	// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is a STATUSGEN-only roster value:
 	// the map from a GitLab account USERNAME to its DISPLAY name, consumed by statusgen's
 	// Evidence-actor gate as the OFFLINE fallback for a GitLab verifier (#1477). A GitLab
@@ -573,96 +603,7 @@ func autoLaneRawKeys() []string {
 //
 // Keys OUTSIDE the ASSAY_ namespace are not listed and never refuse: they are
 // legitimate co-tenants in the same file and are echoed as UnknownKeys.
-func knownRosterKeys() []string {
-	return []string{
-		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
-		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
-		// EnvOSUserLoginMap (ASSAY_OS_USER_LOGIN_MAP) is CONSUMED here, by
-		// scanoverride.go's OverrideIdentity alone; statusgen recognises it only.
-		// Bound to statusgen's scanKnownRosterKeys by the shared key list.
-		EnvOSUserLoginMap,
-		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
-		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
-		EnvStampTrustedLogins,
-		// The outbound-write check's house callout (desktools-v2/11). Consumed by
-		// outboundcallout.go; recognised here in the SAME change so a roster carrying them
-		// is not refused whole. KEEP IN SYNC with statusgen's scanKnownRosterKeys.
-		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
-		// STATUSGEN-only keys: recognised so a shared roster.env that configures
-		// statusgen does not collapse deskkit's configuration; not consumed here.
-		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
-		EnvFormerHumanLoginMap,
-		EnvChannelDriftTarget, EnvDeterministicGatePatterns,
-		// EnvGitLabSessionEmails (ASSAY_GITLAB_SESSION_EMAILS) is CONSUMED here, not
-		// merely recognised: parseConfig lands it on cfg.GitLabSessionEmails and the
-		// GitLab commit-identity preflight reads it via GitLabSessionEmailAllowed()
-		// (#643). It must be recognised or a roster carrying it collapses the whole
-		// configuration on the unknown-ASSAY_-key refusal.
-		EnvGitLabSessionEmails,
-		// EnvGitLabDisplayNames (ASSAY_GITLAB_DISPLAY_NAMES) is STATUSGEN-only (its
-		// Evidence-actor offline fallback, #1477), recognised-not-applied here so a roster
-		// arming that fallback does not collapse deskkit's configuration.
-		EnvGitLabDisplayNames,
-		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
-		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
-		// scanConfig — but the de-housing REQUIRES the house to set it in the
-		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
-		// activating that de-housing collapses the whole roster on the
-		// unknown-ASSAY_-key refusal. Bound to statusgen's
-		// scanEnvSweepWithheldStreams by the shared key list.
-		EnvSweepWithheldStreams,
-		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is CONSUMED
-		// here, not merely recognised: parseConfig lands it on cfg.WithheldIdentifiers and
-		// the public-repo self-containment scan reads it through WithheldIdentifiers(),
-		// environment first and this roster value second. Recognised-and-ignored is what
-		// it used to be, and #490 is the bug that shape produced — a roster carrying the
-		// key loaded clean and the scan's register category still never ran.
-		//
-		// statusgen consumes it in NEITHER form and recognises it only, which is why it
-		// still belongs in the shared key list: consumption is per-binary, recognition is
-		// not.
-		EnvWithheldIdentifiers,
-		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
-		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
-		// RECOGNISED so that an operator who records it in the shared roster.env does not
-		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
-		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
-		// is a per-shell export by design.
-		EnvAllowCluster,
-		// EnvStreamCap (ASSAY_STREAM_CAP) is STATUSGEN-only (the active-stream cap,
-		// attention-budget/04): consumed by statusgen's stream-cap lint, recognised
-		// and ignored here so a shared roster.env that configures the cap does not
-		// collapse the desk tools' configuration. Bound to statusgen's
-		// scanEnvStreamCap by the shared key list.
-		EnvStreamCap,
-		// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is
-		// STATUSGEN-only (the drives critical tier's stamped-security authority set):
-		// recognised and ignored here, bound to statusgen's key by the shared list.
-		EnvCriticalStampAuthorities,
-		// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) is CONSUMED by cmd/deskcalibrate
-		// (the reviewer-calibration SPOF vendor check) via a direct os.Getenv, and
-		// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) is a documented policy key no tool
-		// enforces yet. Both are RECOGNISED here so a roster.env carrying either does
-		// not collapse the whole desk-tools configuration on the unknown-ASSAY_-key
-		// refusal. KEEP IN SYNC with statusgen's scanKnownRosterKeys() and the
-		// coupling vector (statusgen/testdata/roster_coupling.json).
-		EnvReviewerVendor, EnvVerifierVendor,
-		// EnvRunCredentials (ASSAY_RUN_CREDENTIALS) is CONSUMED here: parseConfig lands it
-		// on cfg.RunCredentials and cmd/deskrun reads it through ResolveRunCredential
-		// (forge-neutral brief 14). statusgen recognises it only.
-		EnvRunCredentials,
-		// EnvClaimStore / EnvClaimDir / EnvClaimSingleHost are CONSUMED by the claim-store
-		// resolver (claimstore.go), which reads them directly and parses them through
-		// parseClaimStoreKeys; parseConfig only RECOGNISES them, so a roster that sets the
-		// claim store does not collapse the whole configuration on the unknown-ASSAY_-key
-		// refusal. statusgen recognises them too (the coupling vector binds the two).
-		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir,
-		// The auto-approve lane keys are CONSUMED here (autolane.go, through cfg.AutoLaneRaw).
-		// statusgen recognises them only.
-		EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap,
-		EnvAutoApproveSignOffThread,
-	}
-}
+func knownRosterKeys() []string { return trustcore.KnownRosterKeys() }
 
 // rosterSchemaVersion is the format version this build speaks.
 const rosterSchemaVersion = "1"
@@ -853,6 +794,14 @@ type Config struct {
 	// consulted ONLY on the GitLab commit-identity path, never on GitHub.
 	GitLabSessionEmails []string
 
+	// GitLabRoleEmails is the parsed ASSAY_GITLAB_ROLE_EMAILS binding (#4978): lowercased
+	// role → lowercased commit address. Nil when unset or when the value is invalid; in the
+	// invalid case GitLabRoleEmailsProblem names why, and every GitLab role refuses to
+	// stamp rather than falling back to a shared address. Read through
+	// RoleGitLabCommitIdentity only.
+	GitLabRoleEmails        map[string]string
+	GitLabRoleEmailsProblem string
+
 	// RepoPatterns is the sorted, de-duplicated set of owner/* PATTERN entries parsed
 	// out of ASSAY_ALLOWED_REPOS (extended to configuration: an entry
 	// shaped "owner/*" instead of "owner/name"). Each element is the bare owner half
@@ -892,6 +841,23 @@ type Config struct {
 	// EXTENSION keys' own bad VALUES (as opposed to an unrecognised key NAME)
 	// get the new per-key, non-aborting treatment — see Ext, below.
 	UnknownKeys []string
+
+	// AssertedHumans is the parsed ASSAY_ASSERTED_HUMANS set (lowercased login → pinned id),
+	// and AssertionUses records, per asserted login, which keys' entries the waiver applied
+	// to. Both render in the echo, so every waiver is visible in the run and its digest.
+	AssertedHumans trustcore.HumanAssertions
+	AssertionUses  map[string][]string
+
+	// Dropped is set only on a REFUSED configuration: one line per ASSAY_ key that carried a
+	// value and was not applied, with the reason (trustcore.DroppedKeys). A refused roster
+	// still loads nothing; this only names what the refusal discarded.
+	Dropped []string
+
+	// Notices names single ENTRIES that were not applied without refusing the configuration —
+	// today only an ASSAY_HUMAN_LOGIN_MAP entry whose name half contains a space
+	// (trustcore.SpacedNameNotice). Each renders as an `assay-config: NOTICE` line and forces
+	// the full echo, so a dropped entry is never silent.
+	Notices []string
 
 	// Ext carries the per-key OUTCOME of every extension key this loader
 	// validates (rosterconfig.go's TRUST/EXTENSION split, this brief),
@@ -1132,7 +1098,8 @@ func LoadConfig(class ToolClass) Config {
 	if len(problems) > 0 {
 		// A source-level problem (bad permissions, unreadable file) refuses
 		// everything: see the fail-closed note in the package comment.
-		return Config{Class: class, Source: source, Problems: append(problems, cfg.Problems...)}
+		all := append(problems, cfg.Problems...)
+		return Config{Class: class, Source: source, Problems: all, Dropped: trustcore.DroppedKeys(vals, all)}
 	}
 	return cfg
 }
@@ -1147,7 +1114,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
 		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
 		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
-		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir,
+		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir, EnvAssertedHumans,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -1254,87 +1221,37 @@ func checkOwnerPerms(path string, isDir bool) error {
 // parseDotenv reads KEY=VALUE lines. A leading "export " is tolerated, "#"
 // comment lines are skipped, and surrounding quotes are trimmed — the same shape
 // appconfig.go's apps.env already uses.
-func parseDotenv(s string) map[string]string {
-	m := map[string]string{}
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		eq := strings.IndexByte(line, '=')
-		if eq < 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:eq])
-		val := strings.TrimSpace(line[eq+1:])
-		val = strings.Trim(val, `"'`)
-		if v := strings.TrimSpace(val); v != "" {
-			m[key] = v
-		}
-	}
-	return m
-}
+func parseDotenv(s string) map[string]string { return trustcore.ParseDotenv(s) }
 
 // ---- parsing -----------------------------------------------------------------
 
 // splitList splits a list value on the separators every list-shaped variable
 // accepts. ASSAY_BLESS_LOGIN deliberately does NOT go through here.
-func splitList(raw string) []string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
-	})
-	out := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if f = strings.TrimSpace(f); f != "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
+func splitList(raw string) []string { return trustcore.SplitList(raw) }
 
 // splitIdentity splits `login[:id]`. ok is false when an id is present but not a
 // number — a typo'd id must never degrade to login-only trust.
-func splitIdentity(entry string) (login string, id int64, ok bool) {
-	l, rest, found := strings.Cut(entry, ":")
-	l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "@")))
-	if l == "" {
-		return "", 0, false
-	}
-	if !found || strings.TrimSpace(rest) == "" {
-		return l, 0, true
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
-	if err != nil || n <= 0 {
-		return "", 0, false
-	}
-	return l, n, true
-}
+func splitIdentity(entry string) (string, int64, bool) { return trustcore.SplitIdentity(entry) }
 
 // looksLikeBot reports whether a login renders as a GitHub App / bot / shared
 // agent account. The argument: "the authorisation half of a two-factor mechanism
 // has to be a human act". A blessing IS that authorisation half.
-func looksLikeBot(login string) bool {
-	l := strings.ToLower(strings.TrimSpace(login))
-	return strings.HasSuffix(l, "[bot]") ||
-		strings.HasPrefix(l, "app/") ||
-		strings.HasSuffix(l, "-app") ||
-		strings.HasSuffix(l, "-bot")
-}
+func looksLikeBot(login string) bool { return trustcore.LooksLikeBot(login) }
 
 func parseConfig(class ToolClass, source string, vals map[string]string) Config {
 	cfg := Config{
-		UsageDir:    vals[EnvUsageDir],
-		Class:       class,
-		Source:      source,
-		Humans:      map[string]int64{},
-		StampLogins: map[string]int64{},
-		Bots:        map[string]int64{},
-		BotIdents:   map[string]BotIdentity{},
-		RoleBots:    map[string]string{},
-		Logins:      map[string]bool{},
-		Repos:       map[string]repoPolicy{},
-		HumanLogins: map[string]string{},
+		UsageDir:      vals[EnvUsageDir],
+		Class:         class,
+		Source:        source,
+		Humans:        map[string]int64{},
+		StampLogins:   map[string]int64{},
+		Bots:          map[string]int64{},
+		BotIdents:     map[string]BotIdentity{},
+		RoleBots:      map[string]string{},
+		Logins:        map[string]bool{},
+		Repos:         map[string]repoPolicy{},
+		HumanLogins:   map[string]string{},
+		AssertionUses: map[string][]string{},
 	}
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -1436,6 +1353,16 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		}
 	}
 
+	// --- pinned human-name assertions (after the bot slugs: an assertion may not name a
+	// login the roster registers for a bot account; before the humans: they consume it) ---
+	botLogins := map[string]bool{}
+	for l := range cfg.Logins {
+		botLogins[l] = true
+	}
+	assertions, aProblems := trustcore.ParseHumanAssertions(vals[EnvAssertedHumans], botLogins)
+	problems = append(problems, aProblems...)
+	cfg.AssertedHumans = assertions
+
 	// --- trusted humans ---
 	for _, entry := range splitList(vals[EnvTrustedLogins]) {
 		login, id, ok := splitIdentity(entry)
@@ -1445,10 +1372,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			continue
 		}
 		if looksLikeBot(login) {
-			bad("%s lists %q, which renders as a bot/App account. App identities belong in %s "+
-				"(where their rendered forms are derived), not in the human roster",
-				EnvTrustedLogins, login, EnvTrustedBotSlugs)
-			continue
+			if !cfg.AssertedHumans.Waives(login, id) {
+				bad("%s lists %q, which renders as a bot/App account. App identities belong in %s "+
+					"(where their rendered forms are derived), not in the human roster%s",
+					EnvTrustedLogins, login, EnvTrustedBotSlugs, trustcore.RefusalHint(login))
+				continue
+			}
+			cfg.AssertionUses[login] = append(cfg.AssertionUses[login], EnvTrustedLogins)
 		}
 		cfg.Humans[login] = id
 		cfg.Logins[login] = true
@@ -1505,14 +1435,17 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 					"(unlike its siblings): a deleted login can be re-registered by an attacker, and the "+
 					"blessing authority is the highest-value target for that. Refusing, exactly as if it "+
 					"were unset", EnvBlessLogin, raw)
-			case looksLikeBot(login):
+			case looksLikeBot(login) && !cfg.AssertedHumans.Waives(login, id):
 				bad("%s=%q names a bot/App/shared-agent account. The blessing is the authorisation "+
 					"half of the trust gate and has to be a HUMAN act — an App that could bless would "+
-					"admit external text into its own queue. Refusing", EnvBlessLogin, raw)
+					"admit external text into its own queue. Refusing%s", EnvBlessLogin, raw, trustcore.RefusalHint(login))
 			case inBotSet:
 				bad("%s=%q is also listed in %s. A trusted App is a trusted AUTHOR; it must never be "+
 					"the blessing authority", EnvBlessLogin, raw, EnvTrustedBotSlugs)
 			default:
+				if looksLikeBot(login) {
+					cfg.AssertionUses[login] = append(cfg.AssertionUses[login], EnvBlessLogin)
+				}
 				cfg.Bless = Identity{Login: login, ID: id}
 				// The blessing authority is trusted in its own right.
 				cfg.Humans[login] = id
@@ -1520,10 +1453,12 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			}
 		}
 	}
+	problems = append(problems, trustcore.UnusedProblems(cfg.AssertedHumans, cfg.AssertionUses,
+		EnvTrustedLogins, EnvBlessLogin)...)
 
 	// --- allowed repos, the WRITE boundary ---
 	//
-	// Two shapes share this list: an EXPLICIT "owner/name[:ci|:no-ci][:public|:private]"
+	// Two shapes share this list: an EXPLICIT "owner/name[:ci|:no-ci][:public|:private|:internal]"
 	// entry, and a PATTERN "owner/*" entry. Both pass the identical
 	// slash-shape check below (exactly one "/", no leading/trailing slash) — a pattern
 	// is distinguished by its name half being the literal "*", checked AFTER that shape
@@ -1575,9 +1510,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 				pol.Visibility = VisibilityPublic
 			case "private":
 				pol.Visibility = VisibilityPrivate
+			case "internal":
+				// Instance-visible, NOT private: every "is it private?" consumer answers
+				// no, so this names the forge's value without relaxing any control.
+				pol.Visibility = VisibilityInternal
 			case "":
 			default:
-				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private",
+				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private|internal",
 					EnvAllowedRepos, slug, tok)
 				malformed = true
 			}
@@ -1610,9 +1549,17 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	recordExt(&cfg, EnvScanRepos, vals[EnvScanRepos], scanReposIssue)
 
 	// --- human-name → login map ---
-	for _, entry := range splitList(vals[EnvHumanLoginMap]) {
-		name, login, found := strings.Cut(entry, ":")
-		name = strings.ToLower(strings.TrimSpace(name))
+	// Split by trustcore.SplitNameLoginList, not splitList: a name with a space BETWEEN its words
+	// (`Ada Lovelace:ada`) stays ONE entry, refused on its own with a NOTICE (it yields no mapping)
+	// instead of shredding into a colon-less word that refused the whole roster plus a fragment
+	// mapping nobody wrote. A malformed or bot-shaped entry still refuses the whole roster, and so
+	// does a space before the colon (`ada :ada`), which the splitter leaves as two malformed
+	// entries. The whitespace check reads the UNTRIMMED name half, so a space the trim would drop
+	// can never turn a refused entry into a mapping. KEEP IN SYNC with statusgen's scanParseConfig.
+	var notices []string
+	for _, entry := range trustcore.SplitNameLoginList(vals[EnvHumanLoginMap]) {
+		rawName, login, found := strings.Cut(entry, ":")
+		name := strings.ToLower(strings.TrimSpace(rawName))
 		login = strings.ToLower(strings.TrimSpace(login))
 		if !found || name == "" || login == "" {
 			bad("%s: cannot parse entry %q — expected name:login", EnvHumanLoginMap, entry)
@@ -1626,8 +1573,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 				"exclude. Refusing", EnvHumanLoginMap, entry, login)
 			continue
 		}
+		if trustcore.NameHasWhitespace(rawName) {
+			notices = append(notices, trustcore.SpacedNameNotice(EnvHumanLoginMap, entry))
+			continue
+		}
 		cfg.HumanLogins[name] = login
 	}
+	cfg.Notices = notices
 
 	// --- OS-account → login map (ASSAY_OS_USER_LOGIN_MAP), an EXTENSION key ---
 	// Feeds ONLY the scan-override audit identity. A MALFORMED entry does not refuse
@@ -1933,6 +1885,14 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// service-account noreply shape is then the only accepted GitLab commit email).
 	cfg.GitLabSessionEmails = splitGitLabSessionEmails(vals[EnvGitLabSessionEmails])
 
+	// --- GitLab per-role commit address (#4978) ---
+	//
+	// Parsed after the bot slugs (role bindings) and the session allowlist, because every
+	// entry is validated against both. A bad value disables only this binding (see
+	// EnvGitLabRoleEmails): the stamper then refuses every GitLab role, so nothing is
+	// stamped from a half-applied map and nothing else in the roster is dropped.
+	cfg.GitLabRoleEmails, cfg.GitLabRoleEmailsProblem = parseGitLabRoleEmails(vals[EnvGitLabRoleEmails], cfg)
+
 	// --- statusgen-only extension keys deskkit recognises but does not parse ---
 	// ASSAY_CHANNEL_DRIFT_TARGET and ASSAY_HOME_REPO have no shape this reader
 	// validates (see their const comments) — presence is all cfg.Ext can report
@@ -1943,7 +1903,11 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], extAccumulator{})
 
 	if len(problems) > 0 {
-		return Config{Class: class, Source: source, Problems: problems}
+		// Fail closed, P1: a refused roster loads NOTHING, however well-formed its other keys
+		// are. Dropped only names what the refusal discarded, so the echo can say why a
+		// configured key reads empty.
+		return Config{Class: class, Source: source, Problems: problems, Dropped: trustcore.DroppedKeys(vals, problems),
+			Notices: notices}
 	}
 	return cfg
 }
@@ -2222,6 +2186,18 @@ func (c Config) EffectiveConfigLines() []string {
 		// count) — a widening on an identity gate must be as visible in the run as
 		// the role bindings above (#643).
 		fmt.Sprintf("assay-config: %s=%s", EnvGitLabSessionEmails, strings.Join(c.GitLabSessionEmails, ",")),
+		// The per-role commit address chooses which identity a worktree is stamped with,
+		// so it renders in full, and an invalid value says why (#4978).
+		fmt.Sprintf("assay-config: %s=%s", EnvGitLabRoleEmails, c.gitLabRoleEmailsEcho()),
+	}
+	if len(c.AssertedHumans) > 0 {
+		// Every human-name assertion and the keys it waived the name check for. A waiver is
+		// an identity decision, so it renders in full like the role bindings. The line is
+		// present only when an assertion loaded: a roster without the key echoes (and
+		// digests) exactly as before, and a refused value is named in its REFUSED and
+		// DROPPED lines instead.
+		lines = append(lines, fmt.Sprintf("assay-config: %s=%s", EnvAssertedHumans,
+			trustcore.EchoAssertions(c.AssertedHumans, c.AssertionUses)))
 	}
 	if len(c.UnknownKeys) > 0 {
 		// Not a refusal on its own (a non-ASSAY_ key may legitimately share the file
@@ -2232,6 +2208,12 @@ func (c Config) EffectiveConfigLines() []string {
 	}
 	for _, p := range c.Problems {
 		lines = append(lines, "assay-config: REFUSED — "+p)
+	}
+	for _, d := range c.Dropped {
+		lines = append(lines, "assay-config: DROPPED "+d)
+	}
+	for _, n := range c.Notices {
+		lines = append(lines, "assay-config: NOTICE — "+n)
 	}
 	return lines
 }

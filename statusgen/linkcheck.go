@@ -475,7 +475,7 @@ func (ix *consumedFragmentIndex) build() {
 	// silently wrong answer (#999). Detect it the same way evidenceactor.go does
 	// and treat it exactly like the git-log-errored case: could-not-check, never
 	// a false "this fragment was never tracked".
-	shallow, err := exec.Command("git", "-C", ix.root, "rev-parse", "--is-shallow-repository").Output()
+	shallow, err := gitShallowOutput(ix.root)
 	if err != nil || strings.TrimSpace(string(shallow)) != "false" {
 		// Name the shallow case in the message: its remedy is the CI job's
 		// checkout depth, not the brief (#3364).

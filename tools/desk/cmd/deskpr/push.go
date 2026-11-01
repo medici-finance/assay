@@ -30,8 +30,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // pushSpec is one in-process push: which local ref goes to which remote branch.
@@ -123,7 +123,7 @@ func pushBranch(s pushSpec) error {
 //
 //   - refs/remotes/origin/<dst> at the pushed commit (through origin's own fetch refspec), as
 //     every `git push origin` did. deskpr update's offline publish-identity anchor
-//     (remoteTrackingTip) reads it, and so does `deskwt remove`'s pushed-commits guard through
+//     (deskkit.PublishTrackingTip) reads it, and so does `deskwt remove`'s pushed-commits guard through
 //     the upstream;
 //   - on create (setUpstream), branch.<b>.remote=origin and branch.<b>.merge=refs/heads/<dst>,
 //     as `git push -u` did. Without them `deskwt remove` refuses the worktree ("no upstream").

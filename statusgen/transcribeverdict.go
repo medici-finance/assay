@@ -33,20 +33,17 @@ package main
 // verdict (cl.5), because the sole `human:` writer is verify-gate-close.yml.
 
 import (
+	verdictcore "github.com/medici-finance/assay/deskcore/verdict"
+
 	"bytes"
-	"crypto"
 	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,10 +57,8 @@ const verdictSchemaVersion = "verdict-v1"
 // The issue-body block delimiters — the literal markers ParseVerdictBody keys on.
 // The payload is a fenced code block tagged verdictFenceTag; the signature is an
 // HTML-comment trailer so it does not render in the issue body a human reads.
-// KEEP IN SYNC with deskkit/verdict.go (the signer): the two are separate Go
-// modules that share no code, so the canonical form + markers are a documented
-// cross-tree duplicate, and a change to either must be made in both. A behavioural
-// coupling exists in that a body the signer emits must verify here byte-for-byte.
+// Canonical bytes, envelope parsing and public-key verification are owned by
+// deskcore/verdict. Constants here identify the existing wire profile only.
 const (
 	verdictFenceTag  = "verdict-payload"
 	verdictSigMarker = "deskverdict-signature"
@@ -71,7 +66,6 @@ const (
 
 // verdictSigRE extracts the base64 signature from the trailer comment. Standard
 // base64 alphabet — a raw RSA blob, never the eyJ… JWT shape a body scanner refuses.
-var verdictSigRE = regexp.MustCompile(verdictSigMarker + `\b[^>]*\bsig=([A-Za-z0-9+/=]+)`)
 
 // verdictPubkeyVar carries the verifier PUBLIC key. A repo/Actions VARIABLE, never
 // a secret — the public half is public material — and NOT committed to the tree
@@ -128,129 +122,7 @@ type verdictSession struct {
 // rune raw UTF-8 — `<`/`>`/`&` NOT escaped), integers normalised to shortest
 // decimal, trailing data rejected. Idempotent, which lets verify re-canonicalise a
 // payload block that was reflowed in transit.
-func verdictCanonicalizeJSON(raw []byte) ([]byte, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var v interface{}
-	if err := dec.Decode(&v); err != nil {
-		return nil, fmt.Errorf("payload is not valid JSON: %w", err)
-	}
-	if dec.More() {
-		return nil, errors.New("payload has trailing data after the JSON value")
-	}
-	var buf bytes.Buffer
-	if err := verdictWriteCanonical(&buf, v); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func verdictWriteCanonical(buf *bytes.Buffer, v interface{}) error {
-	switch t := v.(type) {
-	case nil:
-		buf.WriteString("null")
-	case bool:
-		if t {
-			buf.WriteString("true")
-		} else {
-			buf.WriteString("false")
-		}
-	case json.Number:
-		buf.WriteString(verdictCanonicalNumber(t))
-	case string:
-		verdictWriteCanonicalString(buf, t)
-	case []interface{}:
-		buf.WriteByte('[')
-		for i, e := range t {
-			if i > 0 {
-				buf.WriteByte(',')
-			}
-			if err := verdictWriteCanonical(buf, e); err != nil {
-				return err
-			}
-		}
-		buf.WriteByte(']')
-	case map[string]interface{}:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		buf.WriteByte('{')
-		for i, k := range keys {
-			if i > 0 {
-				buf.WriteByte(',')
-			}
-			verdictWriteCanonicalString(buf, k)
-			buf.WriteByte(':')
-			if err := verdictWriteCanonical(buf, t[k]); err != nil {
-				return err
-			}
-		}
-		buf.WriteByte('}')
-	default:
-		return fmt.Errorf("unexpected JSON value of type %T during canonicalisation", v)
-	}
-	return nil
-}
-
-func verdictCanonicalNumber(n json.Number) string {
-	s := n.String()
-	if verdictIsIntegerLiteral(s) {
-		if i, err := n.Int64(); err == nil {
-			return strconv.FormatInt(i, 10)
-		}
-	}
-	return s
-}
-
-func verdictIsIntegerLiteral(s string) bool {
-	if s == "" {
-		return false
-	}
-	i := 0
-	if s[0] == '-' {
-		i = 1
-	}
-	if i == len(s) {
-		return false
-	}
-	for ; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func verdictWriteCanonicalString(buf *bytes.Buffer, s string) {
-	buf.WriteByte('"')
-	for _, r := range s {
-		switch r {
-		case '"':
-			buf.WriteString(`\"`)
-		case '\\':
-			buf.WriteString(`\\`)
-		case '\b':
-			buf.WriteString(`\b`)
-		case '\f':
-			buf.WriteString(`\f`)
-		case '\n':
-			buf.WriteString(`\n`)
-		case '\r':
-			buf.WriteString(`\r`)
-		case '\t':
-			buf.WriteString(`\t`)
-		default:
-			if r < 0x20 {
-				fmt.Fprintf(buf, `\u%04x`, r)
-			} else {
-				buf.WriteRune(r)
-			}
-		}
-	}
-	buf.WriteByte('"')
-}
+func verdictCanonicalizeJSON(raw []byte) ([]byte, error) { return verdictcore.CanonicalizeJSON(raw) }
 
 // verdictVerifyState is the three-state result of verifying an issue body. A trust
 // gate treats everything that is not Verified as "do not trust".
@@ -264,40 +136,10 @@ const (
 
 // verdictParseBody extracts the payload JSON and base64 signature from an issue
 // body. A missing block or trailer is a structural error mapped to CouldNotCheck.
-func verdictParseBody(body string) (payload []byte, sigB64 string, err error) {
-	payloadStr, perr := verdictExtractFenced(body)
-	if perr != nil {
-		return nil, "", perr
-	}
-	m := verdictSigRE.FindStringSubmatch(body)
-	if m == nil {
-		return nil, "", errors.New("no verdict signature trailer found in body")
-	}
-	return []byte(payloadStr), m[1], nil
-}
+func verdictParseBody(body string) ([]byte, string, error) { return verdictcore.ParseBody(body) }
 
 // verdictExtractFenced returns the inner text of the first ```verdict-payload block.
-func verdictExtractFenced(body string) (string, error) {
-	lines := strings.Split(body, "\n")
-	open := -1
-	for i, ln := range lines {
-		t := strings.TrimSpace(ln)
-		if strings.HasPrefix(t, "```") && strings.TrimSpace(strings.TrimLeft(t, "`")) == verdictFenceTag {
-			open = i
-			break
-		}
-	}
-	if open < 0 {
-		return "", errors.New("no ```" + verdictFenceTag + " block found in body")
-	}
-	for j := open + 1; j < len(lines); j++ {
-		t := strings.TrimSpace(lines[j])
-		if strings.HasPrefix(t, "```") && strings.TrimLeft(t, "`") == "" {
-			return strings.Join(lines[open+1:j], "\n"), nil
-		}
-	}
-	return "", errors.New("unterminated ```" + verdictFenceTag + " block in body")
-}
+func verdictExtractFenced(body string) (string, error) { return verdictcore.ExtractFencedPayload(body) }
 
 // verdictHasPayloadBlock reports whether body carries a verdict-payload fence at
 // all — the cheap test that separates a verdict issue (evaluate the clause battery)
@@ -310,26 +152,14 @@ func verdictHasPayloadBlock(body string) bool {
 // verdictVerifyBody extracts, re-canonicalises, and checks the signature with the
 // PUBLIC key. A nil pub is CouldNotCheck (a missing key is never trust).
 func verdictVerifyBody(body string, pub *rsa.PublicKey) (verdictVerifyState, string) {
-	rawPayload, sigB64, err := verdictParseBody(body)
-	if err != nil {
+	if _, _, err := verdictcore.ParseBody(body); err != nil {
 		return verdictCouldNotCheck, "could not check: " + err.Error()
 	}
 	if pub == nil {
 		return verdictCouldNotCheck, "could not check: no verifier public key configured (" + verdictPubkeyVar + ")"
 	}
-	canonical, cerr := verdictCanonicalizeJSON(rawPayload)
-	if cerr != nil {
-		return verdictCouldNotCheck, "could not check: " + cerr.Error()
-	}
-	sig, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(sigB64))
-	if derr != nil {
-		return verdictRefused, "refused: signature is not valid base64: " + derr.Error()
-	}
-	sum := sha256.Sum256(canonical)
-	if verr := rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig); verr != nil {
-		return verdictRefused, "refused: signature does not verify against the verifier public key"
-	}
-	return verdictVerified, "verified: signature matches the canonical verdict payload"
+	v, why := verdictcore.VerifyBodyForRole(body, pub, "verifier")
+	return verdictVerifyState(v), why
 }
 
 // ---------------------------------------------------------------------------
@@ -393,23 +223,8 @@ func verdictDecodePubkeyVar(varName, val string) ([]byte, error) {
 
 // verdictParseRSAPublicKeyPEM parses an RSA public key from a PKIX ("PUBLIC KEY")
 // PEM, tolerating the bare PKCS#1 form too.
-func verdictParseRSAPublicKeyPEM(pemBytes []byte) (*rsa.PublicKey, error) {
-	block, _ := pem.Decode(pemBytes)
-	if block == nil {
-		return nil, errors.New("no PEM block found in verifier public key")
-	}
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		if rk, e2 := x509.ParsePKCS1PublicKey(block.Bytes); e2 == nil {
-			return rk, nil
-		}
-		return nil, fmt.Errorf("cannot parse verifier public key: %w", err)
-	}
-	rk, ok := pub.(*rsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("verifier public key is %T, not RSA", pub)
-	}
-	return rk, nil
+func verdictParseRSAPublicKeyPEM(b []byte) (*rsa.PublicKey, error) {
+	return verdictcore.ParseRSAPublicKeyPEM(b)
 }
 
 // ---------------------------------------------------------------------------
@@ -503,9 +318,9 @@ type verdictIssueResolver func(repo string, issue int) (verdictIssue, error)
 // and labels do not touch it), which is exactly the cl.2 timeline signal — an
 // edited body is a refusal.
 func ghVerdictIssueResolver(repo string, issue int) (verdictIssue, error) {
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/issues/%d", repo, issue),
-		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body, edited: (.last_edited_at != null)}").Output()
+		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body, edited: (.last_edited_at != null)}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -576,9 +391,9 @@ func ghVerdictMainHealth(root string) mainHealthChecker {
 		if repo == "" {
 			return false, "", nil
 		}
-		out, err := exec.Command("gh", "issue", "list",
+		out, err := ghGuard(exec.Command("gh", "issue", "list",
 			"--repo", repo, "--state", "open", "--limit", "200",
-			"--json", "number,title,createdAt").Output()
+			"--json", "number,title,createdAt")).Output()
 		if err != nil {
 			detail := ""
 			if ee, ok := err.(*exec.ExitError); ok {
@@ -792,7 +607,7 @@ func planTranscribeVerdict(root string, streams []*Stream, homeRepo string,
 		var staged []evidenceAppend
 		verdictOK := true
 		for _, e := range pl.Entries {
-			// cl.8: a FAIL result transcribes nothing from the whole verdict.
+			// cl.8: a FAIL result transcribes nothing from the whole verdictcore.
 			if !strings.EqualFold(e.Result, "PASS") {
 				refuse("clause-8 (fail)", fmt.Sprintf("entry for %s row %d is %q, not PASS — a FAIL verdict transcribes nothing; the verdict issue stays open and the workflow files a brief-freshness triage issue", e.Brief, e.Row, e.Result))
 				verdictOK = false

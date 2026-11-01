@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"testing"
 )
 
@@ -50,6 +51,9 @@ func TestRunGateScoresHydratesFrontmatter(t *testing.T) {
 		t.Fatalf("want exactly 1 scored (awaiting) row, got %d: %+v", len(rows), rows)
 	}
 	got := rows[0]
+	if !verifyqueue.Supported(got.QueueVersion, got.QueueClass) {
+		t.Fatal("gate-scores diverged from published wire contract")
+	}
 
 	if got.Brief != "gatehydration/01" {
 		t.Errorf("brief = %q, want gatehydration/01", got.Brief)

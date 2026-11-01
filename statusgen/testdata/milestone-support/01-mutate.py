@@ -21,12 +21,12 @@ for sig in (signal.SIGTERM, signal.SIGHUP):
     signal.signal(sig, interrupted)
 
 
-def main():
+def main(manifest_path=MANIFEST, schema="workref-mutations-v1"):
     parser = argparse.ArgumentParser()
     parser.add_argument("--name")
     args = parser.parse_args()
-    manifest = json.loads(MANIFEST.read_text())
-    if manifest.get("schema") != "workref-mutations-v1":
+    manifest = json.loads(manifest_path.read_text())
+    if manifest.get("schema") != schema:
         raise SystemExit("unsupported mutation manifest schema")
     mutations = manifest["cases"]
     if not mutations:

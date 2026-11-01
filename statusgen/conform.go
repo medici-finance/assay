@@ -367,7 +367,8 @@ var schemaKeywords = map[string]bool{
 	"$schema": true, "$id": true, "title": true, "description": true,
 	"type": true, "const": true, "enum": true, "required": true,
 	"properties": true, "additionalProperties": true, "items": true,
-	"minItems": true, "minimum": true, "pattern": true,
+	"minItems": true, "maxItems": true, "minimum": true, "pattern": true,
+	"if": true, "then": true, "else": true, "not": true,
 }
 
 // validateValue validates v against schema, returning human-readable violations
@@ -381,6 +382,20 @@ func validateNode(node map[string]any, v any, path string) []string {
 	label := path
 	if label == "" {
 		label = "(root)"
+	}
+
+	// Conditional shape constraints used by effect-free human decision nodes.
+	if condition, ok := node["if"].(map[string]any); ok {
+		branch := "else"
+		if len(validateNode(condition, v, path)) == 0 {
+			branch = "then"
+		}
+		if selected, ok := node[branch].(map[string]any); ok {
+			out = append(out, validateNode(selected, v, path)...)
+		}
+	}
+	if forbidden, ok := node["not"].(map[string]any); ok && len(validateNode(forbidden, v, path)) == 0 {
+		out = append(out, fmt.Sprintf("%s: matches forbidden schema", label))
 	}
 
 	// type
@@ -435,6 +450,9 @@ func validateNode(node map[string]any, v any, path string) []string {
 
 	// array keywords
 	if arr, isArr := v.([]any); isArr {
+		if limit, ok := numericValue(node["maxItems"]); ok && float64(len(arr)) > limit {
+			out = append(out, fmt.Sprintf("%s: array has %d items, maximum is %v", label, len(arr), limit))
+		}
 		out = append(out, validateArray(node, arr, path)...)
 	}
 

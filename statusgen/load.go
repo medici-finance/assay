@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,19 +62,7 @@ func emptyRootMessage(root string) string {
 // and content a register directory holds that its parser does not recognise is
 // reported there (requirements.go's requirementRegisterStrays) rather than left
 // invisible by this skip.
-var reservedRegisterNames = map[string]bool{
-	"intake":            true,
-	"findings":          true,
-	requirementsDirName: true,
-	decisionsDirName:    true,
-	deploysDirName:      true,
-	// verify-outcomes (#882): one file per verify outcome, per-stream subdirectory — a
-	// register of per-brief records, not a stream board (no README brief-status table, no
-	// waves). Its own README additionally self-declares "register, not a stream" per
-	// spec/registers-v1.md §7, so an adopter tree that has not yet re-pinned this literal
-	// name still skips it via that declaration.
-	"verify-outcomes": true,
-}
+var reservedRegisterNames = briefdoc.ReservedRegisterNames()
 
 // selfDeclaredRegisterRe matches the canonical self-declaration a register's
 // README carries per spec/registers-v1.md §7 — the DECISIONS register README
@@ -89,7 +78,7 @@ var reservedRegisterNames = map[string]bool{
 // --consumers run on the register's frontmatter-free README (issue #616). The
 // anchor "register, not a stream" is specific enough not to match an ordinary
 // stream README that merely uses the words "not a stream" in prose.
-var selfDeclaredRegisterRe = regexp.MustCompile(`(?i)register,\s+not\s+a\s+stream`)
+var selfDeclaredRegisterRe = briefdoc.RegisterDeclarationPattern()
 
 // isSelfDeclaredRegisterREADME reports whether the README at path declares its
 // directory a register per spec/registers-v1.md §7. A register README

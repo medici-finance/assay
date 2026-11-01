@@ -61,6 +61,16 @@ const (
 	unprotectAccessLevel = 50
 )
 
+// The board-push credential the scaffolded statusgen-regen job reads (pushtoken.go). A
+// DEDICATED project access token, never a role-fleet PAT: write_repository only (no `api`),
+// at Maintainer — the credential class docs/adopting-assay-gitlab.md §2c names.
+const (
+	pushTokenVariable    = "STATUSGEN_PUSH_TOKEN"
+	pushTokenName        = "assay-statusgen-push"
+	pushTokenScope       = "write_repository"
+	pushTokenAccessLevel = 40
+)
+
 // tokenFileName is the custody file a role's PAT is written to: the exact name
 // `desktoken --forge gitlab <role>` resolves, so no link/copy step is needed afterwards.
 func tokenFileName(role string) string { return "gitlab-" + role + ".token" }

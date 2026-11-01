@@ -4,7 +4,7 @@ title: Compose the public deskd service and read model
 why: "Moving only a binary leaves duplicate indexes and embedded lifecycle behavior. Composing the public service over existing readers gives every client one truthful read model without another scheduler or authority store."
 wave: 9
 depends: ["cell-api/01", "forge-neutral/37", "graph-execution/21"]
-unblocks: ["cell-api/03"]
+unblocks: ["cell-api/03", "delivery-profiles/04", "delivery-profiles/03"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

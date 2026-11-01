@@ -55,9 +55,7 @@ id: ab8934e7-cfe3-4a52-bb3e-679ceb33a414
 files:
 - **create** `docs/cursor-smoke-protocol.md` (planned) — de-housed, see note above — the scripted live-harness checklist, numbered steps each with a literal action and an `Expect:` line, mirroring HP/07's shape and minimum coverage, adapted to Cursor's ruled two-surface posture (headless `cursor-agent` primary, in-editor IDE agent secondary) and extended with the step this brief exists to add: an actual **full desk loop**, not only per-skill invocation.
 - **amend** `docs/adopting-assay.md` (~L773–828, the "Running Assay on Cursor" section) — replace the current unlinked sentence ("The one acceptance step is a live smoke run on a Cursor install...") with a concrete reference to the protocol doc, matching the fuller runbook treatment the Codex path already gets in the same file.
-- **amend** (planned; de-housed) the bundle's `PARITY.md` / `RELEASE-NOTES.md` — version
-  bump recording the Cursor live-desk-smoke as the third-harness parity milestone (mirrors
-  HP/07 task 4, one harness later).
+- **amend (planned; de-housed) the bundle's** `plugins/assay/PARITY.md` and `plugins/assay/RELEASE-NOTES.md` — version bump recording the Cursor live-desk-smoke as the third-harness parity milestone (mirrors HP/07 task 4, one harness later).
 - **amend** `docs/streams/harness-portability/README.md` — this brief's status-table row (wave 6, depends on 12), the gate-distribution line, the cross-repo dependency table's Cursor-environment row, and a "Note on 13" paragraph beside the existing "Note on 07".
 
 out-of-repo files: none

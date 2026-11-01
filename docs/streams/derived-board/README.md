@@ -32,20 +32,21 @@ with no README change; the class-1 sweep of 2026-08-21 hand-flipped dozens). Rul
 machine-readable witness must not stay hand-asserted. This stream finishes the job for the
 other three states, and removes the hand-edited table entirely. See [spec.md](spec.md).
 
-**Staged, not yet applied:** the reconcile step this repo's own board workflow must gain —
-`statusgen reconcile --backfill` after the regen, which folds each brief's lifecycle cell
-back out of `Brief:`-trailer PR history — is committed as
-[`.github/assay-statusgen.reconcile.patch`](../../../.github/assay-statusgen.reconcile.patch)
-rather than applied. Files under `.github/workflows/` need a scope the identity that opened
-the flag-day pull request does not hold, so the patch carries its own apply instructions for
-whoever does. Until it is applied the authoring columns regenerate normally and the
-lifecycle columns are carried through unchanged rather than reconciled.
+**Applied:** the reconcile step this repo's own board workflow needed is live as the
+hourly `reconcile` job in
+[`.github/workflows/assay-statusgen.yml`](../../../.github/workflows/assay-statusgen.yml)
+(promoted by a human push, as workflow-file pushes are the human's). It folds each brief's
+lifecycle cell back out of `Brief:`-trailer PR history, trailer-only (the historical
+branch/body fallback is a `--backfill` flag the schedule does not pass), and carries the
+result as one draft PR on `board/reconcile`. The earlier staged
+`.github/assay-statusgen.reconcile.patch` targeted the push-time regen job instead and is
+retired: applying it now would add a second, `--backfill` reconcile beside the scheduled one.
 
 **Desk-side writer, no workflow change needed:** the `deskreconcile` verb
 (`tools/desk/cmd/deskreconcile`, see [tools/desk/README.md](../../../tools/desk/README.md))
-runs that same `statusgen reconcile --backfill --apply` from a verb the desk/worker App can
-run, and carries the result as one draft PR on `board/reconcile` — so the stale lifecycle
-cells can be reconciled before the staged workflow patch lands.
+runs `statusgen reconcile --backfill --apply` directly, from a verb the desk/worker App can
+run, and carries the result as one draft PR on `board/reconcile`. Unlike the scheduled job it
+passes `--backfill`, so it also folds in the historical branch/body fallback.
 
 ## Briefs
 
@@ -61,8 +62,8 @@ cells can be reconciled before the staged workflow patch lands.
 | 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | in-progress | — | — |
 | 08 | [witness ledger — the board writer records every merged-PR fact the fold reads, so a merged PR is read from the forge once, ever](brief-08-witness-ledger.md) | 2 | M | todo | — | — |
 | 09 | [incremental reconcile — forge reads scale with open PRs plus PRs changed since the last regen, never with total PR history](brief-09-incremental-reconcile.md) | 3 | M | todo | — | — |
-| 10 | [Complete candidate coverage for partial-delivery reconciliation](brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md) | 0 | M | todo | — | — |
-| 11 | [Preserve incomplete delivery in the audited board cohort](brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md) | 0 | M | implemented | — | — |
+| 10 | [Complete candidate coverage for partial-delivery reconciliation](brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md) | 0 | M | implemented | — | — |
+| 11 | [Preserve incomplete delivery in the audited board cohort](brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

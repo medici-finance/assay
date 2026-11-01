@@ -19,6 +19,7 @@ delivery:
   - {in: "assay#945", covers: partial, note: "backfill capability and this repo's drift report only; Task 2-4 remain owed"}
   - {in: "assay#1010", covers: partial, note: "the reconcile --apply write arm only; Task 2-4 remain owed"}
   - {in: "assay#1194", covers: partial, note: "this repo's rollout slice and trailer join repair only; its scope keeps the brief in progress, with Task 2-4 still owed"}
+  - {in: "assay#5037", covers: partial, note: "retires the stale staged reconcile patch and records this repo's rollout evidence only; Task 2-4 remain owed"}
 schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
@@ -36,18 +37,14 @@ id: 3535fcb8-1d38-4a68-b59d-202985f32264
 # Brief 07 — rollout + backfill
 
 ## Context
-files (per consumer repo, one PR each; this repo first):
-- `.assay-versions` — re-pinned to v1.0.0 by `upgrade-assay` (sha256 from the published
-  release's `checksums.txt`, harvested not typed).
-- the repo's statusgen regen workflow — `reconcile` step + read permissions + schedule,
-  exactly the YAML from the migration's release note.
+The files below are touched per consumer repo, one PR each; this repo first.
+
+files:
+- `.assay-versions` — re-pinned to v1.0.0 by `upgrade-assay` (sha256 from the published release's `checksums.txt`, harvested not typed).
+- **the repo's statusgen regen workflow** — `reconcile` step + read permissions + schedule, exactly the YAML from the migration's release note.
 - `docs/streams/*/README.md`, `docs/streams/*/brief-*.md` — migrated by the migration op.
-- private toolkit only: `docs/brief-rules.md`, `docs/brief-template.md`, the four skills —
-  overlay re-stage from the public copies (public is now the newer text).
-- `statusgen reconcile --backfill --root . --repo <owner/name> --report` — produces
-  `docs/streams/board-drift-<date>.md`: one row per brief where `hand-said ≠ derived`,
-  with the witness (or "no PR carries a trailer; last hand edit <sha>"). Committed in the
-  same PR so the reviewer sees the drift before the generated table replaces the old one.
+- **private toolkit only:** `docs/brief-rules.md`, `docs/brief-template.md` — and the four skills: overlay re-stage from the public copies (public is now the newer text).
+- **`statusgen reconcile --backfill --root . --repo <owner/name> --report`** — produces `docs/streams/board-drift-<date>.md`: one row per brief where `hand-said ≠ derived`, with the witness (or "no PR carries a trailer; last hand edit <sha>"). Committed in the same PR so the reviewer sees the drift before the generated table replaces the old one.
 
 facts:
 - Historical PRs have no trailer. `--backfill` uses a DECLARED, reviewable fallback for
@@ -119,6 +116,41 @@ regression).
 
 This is an IMPLEMENTER run, not a verdict — the frontmatter gate is model, and the flip is
 the reviewer/verify-gate's per the Review section below.
+
+### Implementer run — this repo's slice (Task 1) — 2026-10-30, branch off main @ 57285f1a9
+
+**What this run covers.** Task 1 only, for this repo. Tasks 2-4 (each consumer repo,
+the private toolkit's overlay re-stage, retiring the historical fallback after every repo
+merges) are other checkouts and other PRs and remain owed. This repo is the SOURCE of the
+tooling, so it carries no root `.assay-versions` to re-pin (the pin files here are adopter
+fixtures); its workflow step and its drift reports already existed. What was wrong: the
+stream README still described the reconcile step as "staged, not applied" and the staged
+`assay-statusgen.reconcile.patch` was still committed, although the hourly `reconcile` job
+(trailer-only, read-scoped token, `schedule`) was promoted into
+`.github/workflows/assay-statusgen.yml` by a human push. Applying that patch now would add
+a second `--backfill` reconcile to the push-time job. This run retires the patch and fixes
+the README paragraph. Nothing in the generated Briefs table was hand-edited; this brief's
+row is derived from the PRs carrying its `Brief:` trailer. This PR is declared a partial delivery in the `delivery:` list
+above, so the row stays in-progress while Tasks 2-4 are owed.
+
+**Verify rows, run offline against the head above.**
+
+| # | Result |
+|---|--------|
+| 1 | could-not-check as written: no root `.assay-versions` in the source repo (not an adopter) |
+| 2 | `statusgen --root . --lint` (v1.0.67): zero `ungenerated board` NOTICEs; one PROBLEM, `desktools-v2/65: ... --acceptance-forge is required` -- a could-not-check of human authority, because CI runs lint with `--acceptance-forge` and this offline run cannot reach the forge. Not a pass |
+| 3 | 36 of 43 stream dirs carry `board: generated`; the other seven (`decisions`, `deploys`, `issue-flow`, `verify-outcomes`, `witnesses`, `findings`, `requirements`) hold no stream README or no briefs table, so the row's equality does not hold as written |
+| 4 | `docs/streams/board-drift-2026-09-12.md` (70 table lines) and `board-drift-2026-09-16.md` (75) exist; a fresh report needs the forge, could-not-check offline |
+| 5, 6 | could-not-check: need an authenticated forge read; not run |
+| 7 | could-not-check: the other four stream-bearing repos are other checkouts, outside this run |
+| 8 | not applicable: this is the public repo, not the private toolkit |
+| 9 | `go test ./statusgen/ -run TestApplyReconcileWrites -v` (run in `statusgen/`): all five tests PASS, including the todo-to-implemented, done/verified-immutable and human-stamp-untouched cases |
+
+**Fail-first.** Not applicable: this diff carries no test, only docs, a changelog fragment and
+the removal of a stale patch file; the Verify-9 suite is unchanged and was re-run green.
+
+**Owed to a human.** Rows 5-6 need the forge; rows 1, 7 and Tasks 2-4 need the other
+checkouts. The brief therefore keeps its partial `delivery:` entries.
 
 ## Review
 Gate: model. Reviewer records verdict + date via the generated board.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 )
@@ -45,8 +44,7 @@ var (
 // wall-clock read into the board. "unknown" when git is unavailable or the blob
 // has no committed history yet.
 func driveHeartbeatLine(root string) string {
-	cmd := exec.Command("git", "-C", root, "log", "-1", "--format=%h %cI", "--", "STATUS.md")
-	out, err := cmd.Output()
+	out, err := gitLastPathHeartbeatOutput(root)
 	if err != nil {
 		return "unknown"
 	}

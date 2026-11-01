@@ -39,7 +39,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/topology.go`, `statusgen/briefv2.go`, `statusgen/evaluation/`, `statusgen/testdata/milestone-support/05/` (planned), `docs/dependency-graph-design.md`, `changelog/milestone-support-05.md` (planned), `statusgen/testdata/milestone-support/05-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/topology.go`, `statusgen/briefv2.go`, `statusgen/evaluation/`, `statusgen/testdata/milestone-support/05/` (planned), `docs/dependency-graph-design.md`, `changelog/milestone-support-05.md` (planned), `statusgen/testdata/milestone-support/05-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

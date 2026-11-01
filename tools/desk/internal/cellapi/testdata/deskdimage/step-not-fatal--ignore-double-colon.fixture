@@ -1,0 +1,5 @@
+# The double-colon form of a bare .IGNORE ignores failed recipe lines too.
+want: step-not-fatal
+file: Makefile
+replace: "\n## deskd-image: LOCAL image build"
+with: "\n.IGNORE::\n\n## deskd-image: LOCAL image build"

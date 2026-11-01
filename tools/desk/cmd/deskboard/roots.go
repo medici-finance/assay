@@ -30,6 +30,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/readercaps"
+	capstree "github.com/medici-finance/assay/statusgen/readercaps/tree"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -66,8 +69,8 @@ func (rs rootSet) skew() bool { return rs.running != rs.pinnedTag }
 
 // resolveRootsOnce performs the root/pin/version preamble exactly once.
 //
-// FAIL-CLOSED, IN THE ORDER IT ALREADY RAN. Every root is resolved UP FRONT, before any of
-// them is read — the discipline both callers already stated in their own comments, for two
+// FAIL-CLOSED. Every root is resolved and preflighted UP FRONT, before a statusgen
+// binary or pin is resolved — the discipline both callers need, for two
 // reasons that are unchanged here: a bad root aborts before a single row is collected, and
 // the report can carry the resolved ABSOLUTE path so the coverage lines name the directory
 // the rows actually came from rather than the configured spelling.
@@ -76,17 +79,27 @@ func resolveRootsOnce() (rootSet, error) {
 	if err != nil {
 		return rootSet{}, err
 	}
-	bin, err := resolveStatusgen()
-	if err != nil {
-		return rootSet{}, err
-	}
 	resolved := make([]deskkit.RootConfig, 0, len(roots))
+	var paths []string
 	for _, r := range roots {
 		abs, rerr := deskkit.ResolveRoot(r)
 		if rerr != nil {
 			return rootSet{}, rerr // fail-closed: never a partial board
 		}
 		resolved = append(resolved, deskkit.RootConfig{Repo: r.Repo, Path: abs})
+		paths = append(paths, abs)
+	}
+	// The local-CWD startup gate is not evidence about a configured sibling.
+	// Check the actual resolved population before any reader process is started.
+	if result := capstree.Check(paths, deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), "deskboard")); result.State != readercaps.Supported {
+		if result.State == readercaps.Unsupported {
+			return rootSet{}, deskkit.Refused(result.Reason)
+		}
+		return rootSet{}, deskkit.Unverifiable(result.Reason, nil)
+	}
+	bin, err := resolveStatusgen()
+	if err != nil {
+		return rootSet{}, err
 	}
 	pinnedTag, pinRepo, err := resolveStatusgenPin(resolved)
 	if err != nil {
@@ -130,7 +143,7 @@ func runPerRoot[T any](rs rootSet, work func(deskkit.RootConfig) (T, error)) ([]
 
 const (
 	// queueContractVersion is the statusgen queue contract this binary reads.
-	queueContractVersion = 1
+	queueContractVersion = verifyqueue.Version
 
 	rootHealthy     = "healthy"
 	rootDegraded    = "degraded"
@@ -168,7 +181,7 @@ func (c rootCoverage) gap() bool { return c.State != rootHealthy }
 // rowSupported reports whether a gate-scores row carries a queue classification
 // this binary understands.
 func rowSupported(r gateScoreRow) bool {
-	return r.QueueVersion == queueContractVersion && r.QueueClass != ""
+	return verifyqueue.Supported(r.QueueVersion, r.QueueClass)
 }
 
 // classOf is the row's class as a consumer must read it: the statusgen class

@@ -51,17 +51,12 @@ consumers:
 
 ## Context
 files:
-- **edit** `tools/desk/internal/deskkit/decide.go` — `Advice` gains `Prediction *Prediction` (optional,
-  additive); `Decide` builds a `DecideRecordV1` beside the existing `DecisionRecord`; the nil-Journal
-  default becomes a tee of `AuditJournal` (unchanged) and the new `StructuredJournal`.
-- **add** `tools/desk/internal/deskkit/decidejournal.go` (planned) + `decidejournal_test.go` (planned) —
-  record type, observation type, the two append-only writers, reader, and the join used by export.
-- **edit** `tools/desk/internal/deskkit/decisionassessment.go` — `PredictionAdvisor.Advise` attaches
-  the validated `Prediction` to the returned `Advice`, including on the abstention path.
-- **edit** `tools/desk/internal/deskkit/decide.md` — new section "Structured journal" carrying both
-  field tables (the canonical schema).
+- **edit** `tools/desk/internal/deskkit/decide.go` — `Advice` gains `Prediction *Prediction` (optional, additive); `Decide` builds a `DecideRecordV1` beside the existing `DecisionRecord`; the nil-Journal default becomes a tee of `AuditJournal` (unchanged) and the new `StructuredJournal`.
+- **add** `tools/desk/internal/deskkit/decidejournal.go` (planned) + `tools/desk/internal/deskkit/decidejournal_test.go` (planned) — record type, observation type, the two append-only writers, reader, and the join used by export.
+- **edit** `tools/desk/internal/deskkit/decisionassessment.go` — `PredictionAdvisor.Advise` attaches the validated `Prediction` to the returned `Advice`, including on the abstention path.
+- **edit** `tools/desk/internal/deskkit/decide.md` — new section "Structured journal" carrying both field tables (the canonical schema).
 - **edit** `spec/decision-assessment-v1.md` — §6 step 4.
-- **edit** `tools/desk/cmd/deskaudit/main.go` + `main_test.go` — verbs `decide-observe`, `decide-export`.
+- **edit** `tools/desk/cmd/deskaudit/main.go` + `tools/desk/cmd/deskaudit/main_test.go` — verbs `decide-observe`, `decide-export`.
 - **edit** `tools/desk/README.md` — deskaudit row and a short Decide-journal paragraph.
 - **add** `changelog/desk-supervision-29.md` (planned).
 

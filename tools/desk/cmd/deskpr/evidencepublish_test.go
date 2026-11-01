@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -266,5 +269,110 @@ func TestUpdateSourceSnapshot(t *testing.T) {
 	stderr := captureStderr(t, func() { rc = run([]string{"update"}) })
 	if checks != 2 || rc != deskkit.ExitRefused || !strings.Contains(stderr, "source changed after") {
 		t.Fatalf("update snapshot binding checks=%d rc=%d: %s", checks, rc, stderr)
+	}
+}
+
+// regression: #4434
+// Exercise the production flip binary and real deskpr publication against one
+// bare remote. Statusgen is a deterministic fixture: this test concerns the
+// cross-tool identity/range boundary, not verdict or stamp derivation.
+func TestCreateEvidenceFlipWorkflow(t *testing.T) {
+	bin := t.TempDir()
+	suffix := ""
+	if runtime.GOOS == "windows" {
+		suffix = ".exe"
+	}
+	flipBinary := filepath.Join(bin, "deskevidence"+suffix)
+	build := exec.Command("go", "build", "-o", flipBinary, "../deskevidence")
+	build.Env = fakeBuildEnv()
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build deskevidence: %v\n%s", err, out)
+	}
+	work, calls, _ := evidenceFixture(t)
+	t.Setenv("DESK_LOOP", "verify-desk")
+	readme := "docs/streams/fixture/README.md"
+	writeFile(t, filepath.Join(work, readme), "| 01 | implemented | |\n")
+	brief := "docs/streams/fixture/brief-01-test.md"
+	f, err := os.OpenFile(filepath.Join(work, brief), os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("\n## Evidence\n\n**VERIFY: PASS**\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, work, "add", readme, brief)
+	mustGit(t, work, "-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit", "--author=Assay Verifier <"+prVerifierEmail+">", "-m", "Evidence: verification row")
+	evidence := mustGit(t, work, "rev-parse", "HEAD")
+	original := mustGit(t, work, "cat-file", "commit", evidence)
+	mustGit(t, work, "push", "origin", "HEAD:refs/heads/feature/test-branch")
+	mustGit(t, work, "branch", "--set-upstream-to=origin/main")
+
+	// A Go fixture keeps the subprocess workflow runnable on native Windows too.
+	script := `package main
+import ("fmt"; "os"; "path/filepath")
+func main() {
+ switch os.Args[1] {
+ case "verifyflip":
+  dry := false
+  for _, arg := range os.Args[2:] { if arg == "--dry-run" { dry = true } }
+  if !dry {
+   if err := os.WriteFile(filepath.Join(os.Getenv("WORKFLOW_ROOT"), "docs/streams/fixture/README.md"), []byte("| 01 | verified | fixture-stamp |\n"), 0644); err != nil { panic(err) }
+  }
+  fmt.Print("readme: docs/streams/fixture/README.md\nverified-stamp: fixture-stamp\n")
+ case "brief": fmt.Println("{\"key\":\"fixture/01\",\"file\":\"docs/streams/fixture/brief-01-test.md\"}")
+ case "--root":
+ default: os.Exit(2)
+ }
+}
+`
+	source := filepath.Join(bin, "statusgen.go")
+	if err := os.WriteFile(source, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stubBuild := exec.Command("go", "build", "-o", filepath.Join(bin, "statusgen"+suffix), source)
+	stubBuild.Env = fakeBuildEnv()
+	if out, err := stubBuild.CombinedOutput(); err != nil {
+		t.Fatalf("build statusgen fixture: %v\n%s", err, out)
+	}
+
+	for _, dry := range []bool{true, false} {
+		args := []string{"flip", "--root", work, "--brief", "fixture/01", "--sha", evidence}
+		if dry {
+			args = append(args, "--dry-run")
+		}
+		flip := exec.Command(flipBinary, args...)
+		flip.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "WORKFLOW_ROOT="+work)
+		if out, err := flip.CombinedOutput(); err != nil {
+			t.Fatalf("flip dry=%v: %v\n%s", dry, err, out)
+		}
+		if dry && mustGit(t, work, "rev-parse", "HEAD") != evidence {
+			t.Fatal("dry-run moved HEAD")
+		}
+	}
+	head := mustGit(t, work, "rev-parse", "HEAD")
+	if head == evidence {
+		t.Fatal("flip made no commit")
+	}
+	if got := mustGit(t, work, "log", "-1", "--format=%ae|%ce"); got != prVerifierEmail+"|"+prVerifierEmail {
+		t.Fatalf("flip identity: %s", got)
+	}
+	if got := mustGit(t, work, "diff", "--name-only", evidence, head); got != readme {
+		t.Fatalf("flip changed %s", got)
+	}
+	if rc := createEvidence(false); rc != deskkit.ExitOK {
+		t.Fatalf("publish flip rc=%d", rc)
+	}
+	if !anyPush(*calls) || curForge.created == nil {
+		t.Fatal("draft PR was not published")
+	}
+	bare := filepath.Join(filepath.Dir(work), "origin.git")
+	if got := remoteRef(t, bare, "refs/heads/feature/test-branch"); got != head {
+		t.Fatalf("remote=%s want %s", got, head)
+	}
+	if got := mustGit(t, bare, "cat-file", "commit", evidence); got != original {
+		t.Fatal("Evidence commit was rewritten")
 	}
 }

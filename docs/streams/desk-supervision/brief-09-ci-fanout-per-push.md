@@ -45,15 +45,6 @@ id: 4b4dc7f7-13f1-42cc-8b97-6ff097f1e7c8
 
 ## Context
 
-files:
-- `tools/ci-load/activation/ci.yml`, `plugin-drift.yml`, `assay-statusgen.yml`,
-  `assay-qualgen.yml`, `evidence-automerge.yml` — the five post-change workflow files.
-- `tools/ci-load/activation/ci-load.diff` — the unified diff of those five against the versions in `.github/workflows/`, as a reading aid.
-- `tools/ci-load/activation/README.md` — copy command, verification, rollback, and the rule the edits were held to.
-- `tools/ci-load/pathsemantics.py` — the offline negative control for Verify rows 3 / 3b: it reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on five diff shapes, three of which must NOT skip.
-- `docs/streams/desk-supervision/README.md` — the Briefs row and the wave block.
-- `changelog/ci-per-push-fanout.md` (planned) — the fragment. Marked `(planned)` because a release roll AGGREGATES every fragment into the dated `CHANGELOG.md` section and CLEARS `changelog/` in the same commit, so a fragment path is transient by design: it exists only between the brief's own PR and the next release cut. This one was consumed by the v0.26.0 roll.
-
 prescribes (applied by a human copy, NOT written by this brief's diff):
 `.github/workflows/ci.yml`, `plugin-drift.yml`, `assay-statusgen.yml`, `assay-qualgen.yml`,
 `evidence-automerge.yml`. The implementing identity holds no `workflows` permission and
@@ -62,6 +53,14 @@ the same shape `tools/pairedversions/activation/` already uses. The risk×files 
 is not being dodged by that split: the four risk answers are stated for the PRESCRIBED
 change, not just for the staged files, and the reasoning a reviewer should check is in
 `single-point-of-failure` below.
+
+files:
+- `tools/ci-load/activation/ci.yml`, `tools/ci-load/activation/plugin-drift.yml`, `tools/ci-load/activation/assay-statusgen.yml`, `tools/ci-load/activation/assay-qualgen.yml`, `tools/ci-load/activation/evidence-automerge.yml` — the five post-change workflow files.
+- `tools/ci-load/activation/ci-load.diff` — the unified diff of those five against the versions in `.github/workflows/`, as a reading aid.
+- `tools/ci-load/activation/README.md` — copy command, verification, rollback, and the rule the edits were held to.
+- `tools/ci-load/pathsemantics.py` — the offline negative control for Verify rows 3 / 3b: it reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on five diff shapes, three of which must NOT skip.
+- `docs/streams/desk-supervision/README.md` — the Briefs row and the wave block.
+- `changelog/ci-per-push-fanout.md` (planned) — the fragment. Marked `(planned)` because a release roll AGGREGATES every fragment into the dated `CHANGELOG.md` section and CLEARS `changelog/` in the same commit, so a fragment path is transient by design: it exists only between the brief's own PR and the next release cut. This one was consumed by the v0.26.0 roll.
 
 single-point-of-failure: none of these edits stands between a fault and any damage — they
 select WHICH workflows are asked a question, and change nothing about how any workflow
@@ -911,6 +910,69 @@ This note corrects the citations in the rework addendum above. The addendum's pe
 - Corrected coverage. For this brief, medici-finance/assay#1922 already recorded row 3b (prose-led), row 5 (the expected list predates live) and the stale staged assay-statusgen.yml copy. The new comment adds rows 2 and 7 and row 11's grep id. The row 9 and row 10 entries on that issue belong to a different brief in this stream, so they do not cover rows 9 and 10 here. Those two rows rest only on the witness gap (medici-finance/assay#2665, medici-finance/assay#1800). Row 11's missing base is on medici-finance/assay#1915. The pre-landing rows (1, 2, 4, 5, 7, 8) rest on medici-finance/assay#1185 and medici-finance/assay#1187. Row 4's anchor drift and the #3971 development are recorded on medici-finance/assay#1185. All cited issues are open.
 
 **VERIFY: BLOCKED** — 0 MET, 0 FAIL, 12 could-not-check (unchanged from the rework addendum above).
+### Non-implementer verifier re-run: 2026-10-27, verifier App (claude-opus-5-5 verifier, strong tier), merged main dda6c8c67d3bbdb185c16428609e6e11678ca63a
+
+The table below is the host statusgen verifyrun witness (v1.0.63), written by the tool and copied here unchanged. On this darwin runner the check:ci rows (3, 6, 9, 10, 11) need a network-off sandbox, so they record could-not-run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `PR=$(gh pr list --repo medici-finance/assay --state all --author 'assay-verifier-app[bot]' --limit 1 --json number --jq '.[0].number'); B=$(gh pr view "$PR" --repo medici-finance/assay --json headRefName --jq .headRefName); gh run list --repo medici-finance/assay --branch "$B" --json workflowName,event --jq '[.[]\|"\(.workflowName)/\(.event)"]\|sort\|unique'` | pass exit=0 | sha256:03b204c9d159 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 2 | `H=$(gh pr view "$PR" --repo medici-finance/assay --json headRefOid --jq .headRefOid); gh api "repos/medici-finance/assay/commits/$H/status" --jq '[.statuses[].context]'; gh api repos/medici-finance/assay/rulesets --jq '[.[].name]'` | pass exit=0 | sha256:6f1be414c64f | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 3 | `python3 tools/ci-load/pathsemantics.py` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 3b | `skipped()` | could-not-run exit=- — prose-led-command: not executed; the first span skipped() is a code identifier, not a command. Mark the command with a cmd: code span | sha256: | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 4 | `L=$(git log -1 --format=%H -- .github/workflows/ci.yml); git diff --stat "$L^" HEAD -- .github/workflows/leaksweep-control.yml .github/workflows/leaksweep-pattern.yml` | pass exit=0 | sha256:3565f49ead51 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -n 'cancel-in-progress' .github/workflows/*.yml` | pass exit=0 | sha256:c4f6695a0ab1 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run TestWouldFire -count=1 && go test ./cmd/deskboard/ -run TestZeroCI -count=1` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 7 | `gh pr view "$PR" --repo medici-finance/assay --json statusCheckRollup --jq '.statusCheckRollup\|length'` | fail exit=1 | sha256:52d48f40d9e3 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 8 | `for f in ci plugin-drift assay-statusgen assay-qualgen evidence-automerge; do diff -q "tools/ci-load/activation/$f.yml" ".github/workflows/$f.yml" \|\| exit 1; done` | fail exit=1 | sha256:2ccc6a4a8bc0 | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 9 | `for f in tools/ci-load/activation/*.yml; do python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); print(sys.argv[1], d.get(True) or d.get('on'), d.get('concurrency')); sys.exit(0 if (d.get(True) or d.get('on')) and d.get('jobs') else 1)" "$f" \|\| exit 1; done` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd statusgen && go run . --root .. --lint; echo $?` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go run . --root .. --consumers 2>&1 \| grep -A6 'desk-supervision/09'` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4651 run=ed8fd32a73124a2fc5960d511b19e3a4a04f507a9b7f3556341cebcb69507438 source=dda6c8c67d3bbdb185c16428609e6e11678ca63a brief=docs/streams/desk-supervision/brief-09-ci-fanout-per-push.md model=claude-opus-5-5 tier=strong
+
+
+Container bracket attempt (no credit). A bracket receipt was opened at 2026-10-27T21:19:56Z over tree sha256:6233608935c6a667c94aaddf91837c61157fad94c5c563033fa49bcd4cc07935. The rows then ran in the pinned verify-runner image (sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8) with sandbox=container-netns. Rows 3, 6, 9 and 10 passed there. Row 3b was could-not-run (prose-led) and row 11 failed with exit 1. The close step refused, so that container table is not reproduced here and earns no credit. The refusal, verbatim:
+
+> statusgen verifyrun --close-bracket: refused, nothing appended: the container table carries a row that is not a witness row: "| 3b | `skipped()` | could-not-run exit=- — prose-led-command: not executed; the first span skipped() is a code identifier, not a command. Mark the command with a cmd: code span | sha256: | 2026-10-27 | assay-verifier-app[bot] @ dda6c8c67d3b (on-behalf-of human:ian) (forge-identity) |"
+
+A row 3b that the tool itself marks could-not-run therefore blocks the whole bracket from closing. That is a tool defect, and it compounds the open row-definition defect on 3b (medici-finance/assay#1922).
+
+Fail-first attempt (no credit). The delivering merge is dfbd883d58f18a00c36e665f860e69507044219f (PR 458). The fail-first base given was its first parent, afd0346d21de37fe9a5647e3e1826ea2928ff68a. The tool refused it, verbatim:
+
+> statusgen verifyrun: --fail-first: --base "afd0346d21de37fe9a5647e3e1826ea2928ff68a" is refused: the base predates the brief: it does not hold docs/streams/desk-supervision/brief-09-ci-fanout-per-push.md, which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (pass a later ancestor of the merge-base)
+
+The brief and its staged files landed in one merge, so no ancestor holds the brief without also holding the change. No risk-bearing row carries a fail-first witness with a Base cell.
+
+Supplemental reads (hand runs, no credit):
+
+- F1, forge, row 1. The verifier App's latest PR is 4657, a draft opened 2026-10-27 that touches one brief file. Its check-run list is changelog-check, ci, inbound-triage, leaksweep-control, leaksweep-pattern, plugin-drift and statusgen-board. All four required entries are present and ci/push is absent. ci/pull_request and plugin-drift/pull_request are still there, which is the pre-activation state.
+- F2, forge, row 2. On PR 4657's head, the commit statuses are [leak-sweep]. The rulesets are leak-sweep, protect-main and protect-release-tags. The leak-sweep ruleset is active on the default branch and requires leak-sweep, build-test and changelog. The other two rulesets require no checks. Discriminator count: 0.
+- F3, forge, row 7. PR 4657's statusCheckRollup length is 21. The witness row failed because each row runs in its own shell, so $PR from row 1 is empty there (row-definition defect, medici-finance/assay#1922).
+- F4, local, row 4. The last commit to touch the live ci workflow is a Go-pin bump (GO_VERSION 1.27.2 to 1.27.3), not the activation landing. The row diffs that commit, so its result says nothing about the activation (vacuous).
+- F5, local, row 5. In the live assay-statusgen and assay-qualgen workflows, cancel-in-progress still reads false. In the live ci and truth-suite workflows it is conditioned. This is the pre-activation state.
+- F6, local, row 8. All five staged activation copies still differ from their live workflows. The human copy has not landed (medici-finance/assay#1185, open).
+- F7, container, network none, row 3. The path-semantics probe printed: mixed, go-only and plugin-only give skipped=False; docs-only and status-regen give skipped=True; exit 0.
+- F8, container, row 3b, mutation probe. On a scratch copy, changing the all() at line 83 of the path-semantics script to any() gives FAIL mixed skipped=True (want False) for both workflows, and the mutant exits 1. The unmodified script passes. The skip predicate is therefore load-bearing.
+- F9, container, row 6. TestWouldFire: 1 top-level PASS. TestZeroCI: 16 PASS.
+- F10, container, row 9. The five staged files parse with the expected trigger and concurrency shapes. The evidence-automerge copy is on schedule plus workflow_dispatch, with group evidence-automerge-main and cancel false.
+- F11, container, row 10. Lint exits 0 with LINT: PASS and 0 PROBLEM lines. The NOTICEs name row 11 (consumer-delivery-range), row 3b (prose-led-command), row 6 (gotest-run-vacuous, twice) and the risk-files cross-read. No NOTICE names the activation staging directory.
+- F12, container, row 11. The grep pattern desk-supervision/09 matches 0 lines, because the consumers block prints the full id assay:assay:desk-supervision:09. All four entries in that block read UNCHECKED, "unchanged since the merge-base". This brief's row-11 id mismatch is tracked at medici-finance/assay#4682. The class tracker medici-finance/assay#1915 is closed, and its per-brief amendments did not include this brief.
+
+Per-row disposition: 1 could-not-check (pre-landing, F1); 2 could-not-check (empty $PR, F2); 3 could-not-check (could-not-run on host, bracket refused; F7 hand run clean); 3b could-not-check (prose-led; F8 hand run clean); 4 could-not-check (vacuous anchor, F4); 5 could-not-check (pre-landing, F5); 6 could-not-check (could-not-run on host; F9 hand run clean); 7 could-not-check (the witness fail is the empty $PR plus pre-landing, not a delivered defect; F3); 8 could-not-check (the witness fail is the expected pre-landing state, F6); 9 could-not-check (could-not-run on host; F10 hand run clean); 10 could-not-check (could-not-run on host; F11 hand run clean); 11 could-not-check (check-definition defect, F12).
+
+RISK-VALUE enumeration. The fail-safe trigger fires because the prescribed change sits under the risk-classed workflows path while all four risk answers are no. Literals in the staged copies at this head: ci.yml:55 push branches [main]; ci.yml:56,62 paths-ignore; ci.yml:72 group ci-${{ github.ref }}; ci.yml:75 conditioned cancel; plugin-drift.yml:46 paths-ignore (pull_request only), :52 push branches [main], :59 cancel true; assay-statusgen.yml:60-61 group statusgen-board-${{ github.ref }} with conditioned cancel; assay-qualgen.yml:61-62 group quality-report-${{ github.ref }} with conditioned cancel; evidence-automerge.yml:89,187 EVIDENCE_AUTHOR. Ranked by blast radius: paths-ignore on the required-check workflow first, then cancel on the board writers, then EVIDENCE_AUTHOR, then plugin-drift.
+
+RISK-VALUE: NAMED, NOT DERIVED — paths-ignore = ["docs/**", "changelog/**", "CHANGELOG.md", "STATUS.md"] @ tools/ci-load/activation/ci.yml:56,62 — the live leak-sweep ruleset requires build-test (F2), so a docs-only PR whose ci run is skipped by paths-ignore would leave a required check unreported. The staged design does not show how build-test reports on a skipped run, and that question stays open until the copy lands.
+RISK-VALUE: DERIVED — paths-ignore (same four entries) @ tools/ci-load/activation/plugin-drift.yml:46 — the filter is on the pull_request leg only. The push-main leg (:52) still runs on every push, and plugin-drift is not a required check (F2).
+RISK-VALUE: DERIVED — cancel-in-progress = ${{ github.event_name == 'pull_request' }} @ tools/ci-load/activation/ci.yml:75 and assay-qualgen.yml:62 — each group is keyed on github.ref. Only a superseded PR run is cancelled, never a main push.
+RISK-VALUE: NAMED, NOT DERIVED — cancel-in-progress = ${{ github.event_name == 'pull_request' }} with group statusgen-board-${{ github.ref }} @ tools/ci-load/activation/assay-statusgen.yml:60-61 — the staged copy has drifted from live (F6, medici-finance/assay#1187), so the value that would land is not the one reviewed.
+RISK-VALUE: DERIVED — EVIDENCE_AUTHOR = assay-verifier-app[bot] @ tools/ci-load/activation/evidence-automerge.yml:89,187 — this is the App the Evidence lane opens its PRs under (F1, PR 4657). The staged copy has no job-level if: from Task 5.
+
+**Tally: 12 rows. 0 MET, 0 FAIL, 12 could-not-check.** No delivered-code defect was observed. The hand runs F7 to F12 are clean.
+
+gate: model; status stays implemented.
+
+**VERIFY: BLOCKED** — 0 MET, 0 FAIL, 12 could-not-check. Rows 1, 2, 4, 5, 7 and 8 wait on the human workflows copy (medici-finance/assay#1185, open). The check:ci rows are could-not-run on the host, and the container bracket close refused on the could-not-run row 3b. The fail-first base was refused because it predates the brief. Rows 2 and 7 carry the open row-definition defect medici-finance/assay#1922, and row 8's staged copies are stale (medici-finance/assay#1187, open). Row 11's id mismatch is tracked at medici-finance/assay#4682, which also tracks why no outcome record is landed: outcome-record derivation refuses this brief's Context block.
 
 ## Review
 

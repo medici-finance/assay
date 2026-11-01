@@ -42,19 +42,14 @@ consumers:
 ## Context
 
 files:
-- `statusgen/verifyrows.go` — a new rule tag constant, the rule inside `rowFindings`, and
-  the closed-brief scoping inside `unfailableRowNotices`.
-- `statusgen/verifyrows_test.go` — one new `TestRuleFixturesGoRed` table entry and the new
-  tests named in Verify.
-- NEW `statusgen/testdata/verifyrows/gotest-run-vacuous/` (planned) — `README.md`,
-  `brief-01-red.md`, `brief-02-green.md`, and a closed brief for the exemption (Task 4).
-- `statusgen/testdata/verifyrows/literal-pipe/docs/streams/literal-pipe/brief-02-green.md`
-  — rows 1 and 2 gain the `--- PASS` assertion (Task 5).
+- `statusgen/verifyrows.go` — a new rule tag constant, the rule inside `rowFindings`, and the closed-brief scoping inside `unfailableRowNotices`.
+- `statusgen/verifyrows_test.go` — one new `TestRuleFixturesGoRed` table entry and the new tests named in Verify.
+- **add** `statusgen/testdata/verifyrows/gotest-run-vacuous/` (planned) — `README.md`, `brief-01-red.md`, `brief-02-green.md`, and a closed brief for the exemption (Task 4).
+- `statusgen/testdata/verifyrows/literal-pipe/docs/streams/literal-pipe/brief-02-green.md` — rows 1 and 2 gain the `--- PASS` assertion (Task 5).
 - `statusgen/enforcementstatus.go` — one `lintRuleRegistry` entry, `StatusAdvisory`.
-- `plugins/assay/skills/author-brief/SKILL.md` — the generated enforcement block only,
-  rewritten by the sync command, never by hand.
+- `plugins/assay/skills/author-brief/SKILL.md` — the generated enforcement block only, rewritten by the sync command, never by hand.
 - `docs/brief-rules.md` — rule 27.
-- `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
+- **changelog** — `changelog/<branch-slug>.md`: the per-PR fragment this repo enforces.
 
 facts:
 - **The Go fact (checked 2026-09-23):** `go test -run 'TestNoSuchName' -v ./...` prints

@@ -9,7 +9,7 @@ why: >-
   parsers from returning. Verbs whose parser port was withdrawn because their domain retires
   are exempt until they are retired.
 wave: 5
-depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/25", "desktools-v2/29", "desktools-v2/30", "desktools-v2/35", "desktools-v2/42", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "desktools-v2/64"]
+depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/25", "desktools-v2/29", "desktools-v2/30", "desktools-v2/35", "desktools-v2/42", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "desktools-v2/64", "desktools-v2/78", "desktools-v2/79"]
 unblocks: []
 effort: "L"
 gate: "model"
@@ -45,8 +45,8 @@ consumers:
 
 files:
 - `tools/desk/internal/clicontract/` — coverage, behavior conformance and negative controls.
-- `docs/streams/desktools-v2/cli-migration.json`, `cli-contract.md`, `README.md`.
-- Owning module test registries and `.github/workflows/ci.yml` (or the project's staged workflow-promotion artifact when direct workflow scope is unavailable).
+- `docs/streams/desktools-v2/cli-migration.json`, `docs/streams/desktools-v2/cli-contract.md`, `docs/streams/desktools-v2/README.md`.
+- `.github/workflows/ci.yml` — Owning module test registries and `.github/workflows/ci.yml` (or the project's staged workflow-promotion artifact when direct workflow scope is unavailable).
 - `changelog/cli-suite-conformance.md` (planned).
 
 facts:

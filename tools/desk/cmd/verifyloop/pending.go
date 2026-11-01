@@ -453,6 +453,9 @@ func pendingRun(f deskkit.Forge, repo deskkit.ForgeRepo, root string, it loopeng
 		in := deskkit.OutcomeReceiptInput{BriefPath: b.Brief, LandedBrief: content, ToolVersion: rec.ToolVersion, Repo: b.Repo}
 		if b.Version == 2 {
 			in.SourceRepo, in.Source = b.SourceRepo, b.Source
+			if in.SiblingSources, e = deskkit.VerifierSiblingSources(b); e != nil {
+				return false, e
+			}
 		}
 		derived, e := deskkit.BuildOutcomeRecord(raw, in, source)
 		if e != nil {
@@ -596,7 +599,7 @@ func (c *pendingChanges) change(f deskkit.Forge, repo deskkit.ForgeRepo, number 
 	return read
 }
 func pendingChangeProvenance(pr *deskkit.PullRequest, change deskkit.ChangeRef, base, slug, verifier, implementer string) error {
-	if pr == nil || pr.Author.ID == 0 || !deskkit.SameActor(pr.Author.Login, verifier) || !deskkit.TrustedAuthorID(pr.Author.Login, pr.Author.ID) || (implementer != "" && deskkit.SameActor(implementer, pr.Author.Login)) {
+	if pr == nil || pr.Author.ID == 0 || !deskkit.SameActor(pr.Author.Login, verifier) || !deskkit.TrustedAuthorID(pr.Author.Login, pr.Author.ID) || (implementer != "" && loopengine.ImplementerIs(implementer, pr.Author.Login, deskkit.SameActor)) {
 		return fmt.Errorf("has no independent trusted verifier author")
 	}
 	if pr.Number != change.Number || pr.State != "open" || pr.Merged || pr.BaseRef != base || pr.CrossRepo != deskkit.CrossRepoSame || change.CrossRepo != deskkit.CrossRepoSame || change.HeadRepo != slug || change.HeadSHA != pr.HeadSHA || !pendingSHA(pr.HeadSHA) {

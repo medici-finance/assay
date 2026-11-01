@@ -31,21 +31,10 @@ id: bf949de7-254e-4de8-ad13-467d892136f7
 ## Context
 
 files:
-- `tools/desk/cmd/deskmerge/assess.go` — the trial merge: `merge --no-ff --no-commit <sha>` +
-  `diff --name-only --diff-filter=U` conflict enumeration + `merge --abort`. This STAYS
-  on the git binary, routed through `internal/gitexec` with an allowlist entry naming
-  exactly these verbs for exactly this tool.
-- `tools/desk/cmd/deskmerge/merge.go`, `tools/desk/cmd/deskmerge/currency.go`, `tools/desk/cmd/deskmerge/exec.go` — the
-  MIGRATABLE verbs: `rev-parse`, `rev-list --parents`, `merge-base`, `diff` reads, `add`,
-  `commit` (with explicit `Author`/`Parents`), `update-ref -d`. Migrate these to
-  `gitcore`. (deskmerge's base/PR FETCH migrated in brief 05; its scratch-worktree
-  add/remove stays on the binary — worktree-family, follow-on.)
-- NEW/EXTENDED doc in `internal/gitexec` (and a line in the stream README/inventory)
-  stating the exception plainly: the trial merge is the sole sanctioned git-binary
-  caller, why (FF-only go-git), and its usage envelope (human-gated `deskmerge merge`,
-  run only on the desk machine, never by agents).
-- `docs/streams/desktools-go-git/inventory.md` (planned) — mark op family 9 as EXCEPTION (fenced),
-  tick the migrated deskmerge verbs.
+- `tools/desk/cmd/deskmerge/assess.go` — the trial merge: `merge --no-ff --no-commit <sha>` + `diff --name-only --diff-filter=U` conflict enumeration + `merge --abort`. This STAYS on the git binary, routed through `internal/gitexec` with an allowlist entry naming exactly these verbs for exactly this tool.
+- `tools/desk/cmd/deskmerge/merge.go`, `tools/desk/cmd/deskmerge/currency.go`, `tools/desk/cmd/deskmerge/exec.go` — the MIGRATABLE verbs: `rev-parse`, `rev-list --parents`, `merge-base`, `diff` reads, `add`, `commit` (with explicit `Author`/`Parents`), `update-ref -d`. Migrate these to `gitcore`. (deskmerge's base/PR FETCH migrated in brief 05; its scratch-worktree add/remove stays on the binary — worktree-family, follow-on.)
+- **NEW/EXTENDED doc in** `tools/desk/internal/gitexec/` (and a line in the stream README/inventory) — stating the exception plainly: the trial merge is the sole sanctioned git-binary caller, why (FF-only go-git), and its usage envelope (human-gated `deskmerge merge`, run only on the desk machine, never by agents).
+- `docs/streams/desktools-go-git/inventory.md` (planned) — mark op family 9 as EXCEPTION (fenced), tick the migrated deskmerge verbs.
 
 facts:
 - Merge-commit construction on the migrated side: pass both `Parents` explicitly to

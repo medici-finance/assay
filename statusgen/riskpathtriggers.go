@@ -1,24 +1,13 @@
 package main
 
 import (
-	"sort"
+	"github.com/medici-finance/assay/deskcore/riskpath"
+
 	"strings"
 )
 
-// riskpathtriggers.go — the POLICY half of the desk's risk-path classifier,
-// DUPLICATED into the lint so a brief's declared paths can be cross-read against
-// the same classification a pull request is (mistake-proofing/01, spec §4 B3).
-//
-// WHY A DUPLICATE AND NOT AN IMPORT. The classifier lives in
-// tools/desk/internal/deskkit/{riskpath,riskclassifier}.go. That is a SEPARATE Go
-// module (github.com/medici-finance/assay/tools/desk) and the classifier's package
-// is `internal/`, so there is no import path in either direction. The established
-// pattern for exactly this shape is duplicate-the-reader and bind-the-two-with-a-
-// shared-test-vector — statusgen/rosterconfig.go already duplicates deskkit's
-// config reader and TestRosterCouplingVectors / TestScanIssuesTrustGateEnforced
-// bind them over statusgen/testdata/roster_coupling.json. This file copies that
-// pattern: risk_trigger_coupling.json is read by a TriggerCoupling test in BOTH
-// modules, so a drift in either copy reddens both.
+// Risk trigger values are supplied by this adapter; deskcore/riskpath owns
+// additive composition and matching for both lint and desk consumers.
 //
 // POLICY HALF ONLY. deskkit's classifier has two halves with OPPOSITE semantics.
 // The MECHANISM half (riskClassify's early returns) answers TRUE on every
@@ -48,15 +37,11 @@ import (
 // ASSAY_RISK_PATH_TRIGGERS_EXTRA gets the generic base only, so a clean cross-read
 // there is not a claim to have classified that adopter's real security surfaces.
 
-// lintBaseRiskPathTriggers is a byte-for-byte DUPLICATE of deskkit's
+// lintBaseRiskPathTriggers is a forwarder to the shared owner for deskkit's
 // baseRiskPathTriggers (tools/desk/internal/deskkit/riskpath.go). They are the
 // GENERIC, illustrative security surfaces that apply to every repo. A drift
 // between this copy and deskkit's is caught by the shared TriggerCoupling vector.
-var lintBaseRiskPathTriggers = []string{
-	"secrets/",
-	".github/workflows/",
-	"k8s/*/rbac.yaml",
-}
+var lintBaseRiskPathTriggers = riskpath.Base()
 
 // lintRepoRiskPathTriggersFor returns the ADDITIONAL triggers topology.yaml
 // declares for one repo (repos[].risk_path_triggers), layered on top of the base
@@ -87,54 +72,16 @@ func lintRiskPathTriggersFor(repo string) []string {
 
 // lintUnionSortedTriggers merges trigger lists, de-duplicating and sorting. It
 // never removes. Mirrors deskkit's unionSorted.
-func lintUnionSortedTriggers(lists ...[]string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, 8)
-	for _, l := range lists {
-		for _, p := range l {
-			p = strings.TrimSpace(p)
-			if p == "" || seen[p] {
-				continue
-			}
-			seen[p] = true
-			out = append(out, p)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
+func lintUnionSortedTriggers(lists ...[]string) []string { return riskpath.Union(lists...) }
 
 // lintMatchTrigger reports whether path matches trigger pattern. It is a
-// byte-for-byte DUPLICATE of deskkit's matchTrigger: paths are compared as
+// forwarder to the shared owner for deskkit's matchTrigger: paths are compared as
 // '/'-separated segments; a trailing '/' in a trigger means "directory prefix"
 // (matches the trigger and anything beneath it); a '*' segment matches exactly
 // one path segment; a trigger WITHOUT a trailing '/' is an exact file match (same
 // number of segments). A drift from deskkit's rule is caught by the shared
 // TriggerCoupling vector.
-func lintMatchTrigger(pattern, path string) bool {
-	dirPrefix := strings.HasSuffix(pattern, "/")
-	pp := strings.Split(strings.Trim(pattern, "/"), "/")
-	fp := strings.Split(strings.Trim(path, "/"), "/")
-
-	if dirPrefix {
-		if len(fp) < len(pp) {
-			return false
-		}
-	} else {
-		if len(fp) != len(pp) {
-			return false
-		}
-	}
-	for i, seg := range pp {
-		if seg == "*" {
-			continue
-		}
-		if fp[i] != seg {
-			return false
-		}
-	}
-	return true
-}
+func lintMatchTrigger(pattern, path string) bool { return riskpath.Match(pattern, path) }
 
 // lintRiskTriggerHit is the POLICY-half decision for one path on one repo: does
 // path match any trigger in repo's set. It returns the FIRST matching trigger so

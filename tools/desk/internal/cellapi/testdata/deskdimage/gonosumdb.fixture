@@ -1,0 +1,5 @@
+# Module paths excluded from the checksum database.
+want: gonosumdb
+file: Dockerfile
+replace: "    GOFLAGS=-mod=readonly\n"
+with: "    GOFLAGS=-mod=readonly \\\n    GONOSUMDB=example.com/*\n"

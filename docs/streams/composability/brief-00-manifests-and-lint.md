@@ -31,21 +31,11 @@ id: d91c64e8-36e6-4c8c-a4db-0974d7d9ecba
 ## Context
 
 files:
-- **create** `components/KEYS.md` (planned) — the authoritative key catalogue (the table in
-  `component-model.md` §3, kept here from now on; §3 links to it).
-- **create** one `component.yaml` per unit of the `docs/adopting-assay.md` §2 inventory:
-  `plugins/assay/skills/<name>/component.yaml` for every skill directory,
-  `plugins/assay/hooks/component.yaml` (planned), `tools/desk/component.yaml` (planned), `statusgen/component.yaml` (planned),
-  and `components/<name>/component.yaml` for the forge-side / scaffold-side units with no source
-  directory: `streams-scaffold`, `registers-scaffold`, `ci-statusgen`, `main-guard`, `labels`,
-  `roster`, `reviewer-app`, `forge-github`.
-- **create** `tools/desk/cmd/deskmanifest/` — `deskmanifest lint [--root <dir>]`: discovers every
-  `component.yaml`, parses it against §2, resolves every `inject` key to a `provides`, checks
-  `range` against the provider's `version`, reports cycles among `inject.required`. Three-state
-  output per `spec/brief-v1.md` §8.
-- **edit** the existing lint CI job so `deskmanifest lint` runs on every push.
-- **edit** `docs/streams/composability/component-model.md` §3 — replace the inline table with a
-  link to `components/KEYS.md` (planned) once the catalogue exists.
+- **create** `components/KEYS.md` (planned) — the authoritative key catalogue (the table in `component-model.md` §3, kept here from now on; §3 links to it).
+- **create** `plugins/assay/skills/*/component.yaml`, `plugins/assay/hooks/component.yaml` (planned), `tools/desk/component.yaml` (planned), `statusgen/component.yaml` (planned), `components/streams-scaffold/component.yaml`, `components/registers-scaffold/component.yaml`, `components/ci-statusgen/component.yaml`, `components/main-guard/component.yaml`, `components/labels/component.yaml`, `components/roster/component.yaml`, `components/reviewer-app/component.yaml`, `components/forge-github/component.yaml` (planned) — one `component.yaml` per unit of the `docs/adopting-assay.md` §2 inventory: `plugins/assay/skills/<name>/component.yaml` for every skill directory, `plugins/assay/hooks/component.yaml` (planned), `tools/desk/component.yaml` (planned), `statusgen/component.yaml` (planned), and `components/<name>/component.yaml` for the forge-side / scaffold-side units with no source directory: `streams-scaffold`, `registers-scaffold`, `ci-statusgen`, `main-guard`, `labels`, `roster`, `reviewer-app`, `forge-github`.
+- **create** `tools/desk/cmd/deskmanifest/` — `deskmanifest lint [--root <dir>]`: discovers every `component.yaml`, parses it against §2, resolves every `inject` key to a `provides`, checks `range` against the provider's `version`, reports cycles among `inject.required`. Three-state output per `spec/brief-v1.md` §8.
+- **edit** `.github/workflows/` — the existing lint CI job so `deskmanifest lint` runs on every push.
+- **edit** `docs/streams/composability/component-model.md` (§3) — replace the inline table with a link to `components/KEYS.md` (planned) once the catalogue exists.
 
 facts:
 - **Manifests declare; they do not yet act.** This brief installs nothing and reverses nothing.

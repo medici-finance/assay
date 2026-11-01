@@ -316,13 +316,17 @@ func validV3(r Record) error {
 			if x < 0 {
 				return ErrSchemaReuse
 			}
-			n += x
+			if !addNonnegative(&n, x) {
+				return errAggregateOverflow
+			}
 		}
 		for _, x := range s.DurationBins {
 			if x < 0 {
 				return ErrSchemaReuse
 			}
-			bins += x
+			if !addNonnegative(&bins, x) {
+				return errAggregateOverflow
+			}
 		}
 		measured := s.DurationCoverage[CoverageMeasured]
 		if s.DurationMaxMs > s.DurationSumMs || (measured == 0 || s.DurationMaxMs == 0) && s.DurationSumMs != 0 {

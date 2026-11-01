@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskprStderr is the seam for warnIfConflicting's advisory output and run()'s terminal
@@ -259,7 +259,7 @@ func cmdCreate(args []string) (err error) {
 	// A real run checks against the destination immediately before its push below.
 	if *check {
 		fmt.Fprintln(deskprStderr, "publish-identity: remote branch head was not checked (offline); judging the whole base-to-HEAD range. A real create confirms the destination before checking new commits.")
-		if ierr := publishIdentityGate(facts.dir, *base, "", facts.head); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, *base, "", "", facts.head); ierr != nil {
 			return ierr
 		}
 	}
@@ -602,12 +602,12 @@ func cmdUpdate(args []string) (err error) {
 	// the push, against the head the forge reports, which HEAD must descend from and the push
 	// destination must hold. Under --check there is no live stage, so the whole range is
 	// judged here (fail closed) and a refusal names the offline way to the narrow judgement.
-	offlineTip := remoteTrackingTip(facts.branch)
+	offlineTip, offlineWhy := deskkit.PublishTrackingTip(facts.dir, facts.branch)
 	if *prNum > 0 {
-		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
+		offlineTip, offlineWhy = "", "" // head ref unknown offline: judge the whole range, fail closed
 	}
 	if *prNum == 0 || *check {
-		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, facts.head); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, offlineWhy, facts.head); ierr != nil {
 			if *prNum > 0 {
 				return prCheckWideNote(ierr)
 			}
@@ -738,7 +738,7 @@ func cmdUpdate(args []string) (err error) {
 	// authority on what the remote branch holds. Re-judge against it before anything is
 	// pushed. A head the forge did not report, one not fetched here, or one this branch does
 	// not descend from (a force-moved PR head) falls back to the whole range — fail closed.
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, "", facts.head); ierr != nil {
 		return ierr
 	}
 
@@ -1299,7 +1299,9 @@ func parseRepo(raw string) (string, error) {
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
 // AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
 // another repo (checked against --root's alias registry, never resolved to a file here —
-// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work — or its RESOLVING form
+// `Fixes: #<N>` / `Closes: #<N>` / `Resolves: #<N>` (also `owner/repo#<N>`), the same edge
+// written as a GitHub closing keyword so merging the PR closes the issue. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1335,9 +1337,14 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
 			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
-			"or `Issue: #<N>` for issue-only work")
+			"or `Issue: #<N>` for issue-only work (`Fixes: #<N>` when merging this PR should close the issue)")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
+		// A cross-repository resolving link names an issue in ANOTHER repository, so its
+		// number is no hint about a `#N` in this repository's body.
+		if trs[0].Repo != "" {
+			return 0, nil
+		}
 		// Value is the bare digits (trailer.go guarantees `[0-9]+`); Atoi cannot fail,
 		// but treat any parse anomaly as "no number" (0) rather than admitting a
 		// negative that would read as a sentinel to the gate.

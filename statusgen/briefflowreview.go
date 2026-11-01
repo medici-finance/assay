@@ -37,6 +37,8 @@ package main
 // is could-not-check, never a fabricated pass rate.
 
 import (
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -69,9 +71,9 @@ type ghBFPRSource struct{}
 // endpoint, same closed+base=main+client-side-since-filter shape — but also
 // reads `body`, which that source has no need of.
 func (ghBFPRSource) MergedPRs(repo string, since time.Time) ([]bfPRRecord, error) {
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100", repo),
-	).Output()
+	)).Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh api pulls: %w", err)
 	}
@@ -100,8 +102,8 @@ func (ghBFPRSource) MergedPRs(repo string, since time.Time) ([]bfPRRecord, error
 // Reviews reads the REST reviews-endpoint array (autoflip.go's ghRESTReview
 // shape, reused as-is) — the un-laundered array brief-07's facts call for.
 func (ghBFPRSource) Reviews(repo string, pr int) ([]ghReview, error) {
-	out, err := exec.Command("gh", "api", "--paginate",
-		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr)).Output()
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, pr))).Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh api pulls/%d/reviews: %w", pr, err)
 	}
@@ -125,15 +127,8 @@ var bfBriefTrailerRe = regexp.MustCompile(`(?m)^[ \t]*Brief:[ \t]*(\S+)[ \t]*$`)
 // code block — prlink.go's rePRLinkFence reused verbatim so a trailer shown as
 // a documentation example is not read as a real link.
 func extractBriefTrailer(body string) (string, bool) {
-	inFence := false
-	for _, raw := range strings.Split(body, "\n") {
-		if rePRLinkFence.MatchString(raw) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
+	for _, source := range trailers.OutsideFences(body) {
+		raw := source.Text
 		if m := bfBriefTrailerRe.FindStringSubmatch(raw); m != nil {
 			return strings.TrimRight(m[1], ".,;:"), true
 		}

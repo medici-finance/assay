@@ -25,7 +25,7 @@ id: "a39c5fdb-370a-4459-a7a7-59b083eb7585"
 
 ## Context
 
-files: `loopadmin/experiments/harnessrefinement/` (planned), `loopadmin/testdata/harnessrefinement/` (planned), `docs/reports/agent-execution/harness-refinement.md` (planned), and a changelog fragment. These are an offline experiment and report, not a production refinement engine.
+files: `loopadmin/experiments/harnessrefinement/` (planned), `loopadmin/testdata/harnessrefinement/` (planned), `docs/reports/agent-execution/harness-refinement.md` (planned) — and a changelog fragment. These are an offline experiment and report, not a production refinement engine.
 
 single-point-of-failure: the allowed-change boundary on a proposed profile — behind it, execution fixtures have no publisher/operator capability and an independently owned held-out evaluator rejects regressions and contaminated results.
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,117 @@ func (c *Cell) repairAdmissionValue() string {
 		return "on"
 	}
 	return ""
+}
+
+// The two variables a cell with a database composes into every role window, from its cell.env
+// CELL_DB_DSN and CELL_DB_PASSFILE (docs/postgres.md). libpq reads PGPASSFILE itself, so the
+// password is never an environment value or an argv element: only the DSN (which `check` proves
+// carries no password) and the path of the 0600 credential file are composed.
+const (
+	envCellDBDSN      = "ASSAY_CELL_DB_DSN"
+	envCellDBPassfile = "PGPASSFILE"
+)
+
+// cellDBValues is the (DSN, passfile path) pair this cell composes into a launched desk's
+// environment. Both are "" when CELL_DB_DSN is unset: a cell with no database is unchanged, as
+// with repairAdmissionValue. With the DSN set and CELL_DB_PASSFILE unset the path is "" (and so
+// not composed); `check` reports that as a MISS.
+func (c *Cell) cellDBValues() (dsn, passfile string) {
+	dsn = strings.TrimSpace(c.Env.Get("CELL_DB_DSN"))
+	if dsn == "" {
+		return "", ""
+	}
+	return dsn, strings.TrimSpace(c.Env.Get("CELL_DB_PASSFILE"))
+}
+
+// cellDBComposed is the pair cellDBValues returns, withheld ("", "") when the DSN carries a
+// password: no compose site (host launch, scrubbed launch, codex argv, dry-run plan) ever sees a
+// password-bearing value, and desk refuses the launch itself (cellDBRefusal).
+func (c *Cell) cellDBComposed() (dsn, passfile string) {
+	dsn, passfile = c.cellDBValues()
+	if dsnCarriesPassword(dsn) {
+		return "", ""
+	}
+	return dsn, passfile
+}
+
+// cellDBRefusal is the reason `desk` refuses to launch, or "" when the cell may launch: a
+// CELL_DB_DSN that carries a password is never composed into a window or onto a harness argv.
+func (c *Cell) cellDBRefusal() string {
+	if dsn, _ := c.cellDBValues(); dsn != "" && dsnCarriesPassword(dsn) {
+		return "desk: CELL_DB_DSN carries a password (a password= keyword or URI userinfo) — remove it; libpq reads the password from CELL_DB_PASSFILE (the value is not printed)"
+	}
+	return ""
+}
+
+// cellDBEnv composes the cell database variables into a host launch environment. An empty value
+// is skipped, never exported as `KEY=`, and a key this cell does not compose is REMOVED: the
+// launching shell may already carry another cell's ASSAY_CELL_DB_DSN or PGPASSFILE (every role
+// window of a database cell does), and a cell with no database, or with no passfile, must not
+// inherit it.
+func (c *Cell) cellDBEnv(env []string) []string {
+	dsn, passfile := c.cellDBComposed()
+	env = envUnset(env, envCellDBDSN)
+	env = envUnset(env, envCellDBPassfile)
+	if dsn != "" {
+		env = envSet(env, envCellDBDSN, dsn)
+	}
+	if passfile != "" {
+		env = envSet(env, envCellDBPassfile, passfile)
+	}
+	return env
+}
+
+// forgeEndpointEnv sets GITLAB_API_BASE in a host role window to the GitLab base this cell's own
+// cell.env states (#4841), over any value the launching shell carried. desktoken reads that key
+// from its process environment and deliberately has no default, so a cell that sets its base
+// only in cell.env could not cold-mint from inside its own role window.
+//
+// The base is cell.env's GITLAB_API_BASE when it is set non-empty, else cell.env's
+// FORGE_API_BASE (the key loadCell treats as primary for a GitLab cell) — what loadCell resolves
+// with no inherited environment. Only a GitLab cell has one. A cell.env that states neither
+// leaves the inherited environment exactly as it was: cellctl's compiled gitlab.com fallback is
+// never forwarded, so desktoken's refusal on an unconfigured GitLab base still stands.
+// FORGE_API_BASE itself is not exported: nothing in the window reads it, and a nested cellctl
+// would rank it over its own cell's cell.env.
+func (c *Cell) forgeEndpointEnv(env []string) []string {
+	if base := c.forgeEndpointBase(); base != "" {
+		env = envSet(env, "GITLAB_API_BASE", base)
+	}
+	return env
+}
+
+// forgeEndpointBase is shared by host, Codex command and scrubbed environments.
+// Only the cell.env layer can declare a destination; never forward defaults or
+// arbitrary inherited values onto Codex argv or across the scrubbed boundary.
+// Changes to this credential destination require security review (#4845).
+func (c *Cell) forgeEndpointBase() string {
+	if c.Forge != "gitlab" {
+		return ""
+	}
+	if v := c.Env.Get("GITLAB_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("GITLAB_API_BASE") == layerCellEnv {
+		return v
+	}
+	if v := c.Env.Get("FORGE_API_BASE"); strings.TrimSpace(v) != "" && c.Env.Source("FORGE_API_BASE") == layerCellEnv {
+		return v
+	}
+	return ""
+}
+
+// forgeEndpointExportBase guards the new argv/plan surfaces. URL userinfo,
+// queries and fragments can hold credentials, so refuse them before output.
+// Keep the host-window resolver unchanged; HTTPS, inheritance and conflicting
+// keys remain separate policy work. Never echo the URL or a parser error.
+func (c *Cell) forgeEndpointExportBase() (string, error) {
+	base := c.forgeEndpointBase()
+	if base == "" {
+		return "", nil
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("cell forge endpoint must be parseable and contain no URL userinfo, query or fragment before export to Codex commands or scrubbed plans")
+	}
+	return base, nil
 }
 
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
@@ -101,7 +213,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.ensureCodexResidentRules(wt)
 	}
 	if c.Kind == "scrubbed" {
-		c.scrubbedDeskLaunch(role, harness, model, session, wt, performance...)
+		c.scrubbedDeskLaunchWithOptions(role, harness, model, session, wt, provider, cockpit, performance...)
 		return
 	}
 	// The worktree now exists (created, or merged up to main), so its own .claude settings —
@@ -132,6 +244,10 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if harness != "codex" {
 		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
 	}
+	// The pinned desk-tools directory the shims above were generated against (genShims reads
+	// the same deskToolsBin), so deskboot's binary-pin step classifies them against the SAME
+	// directory, including one set only in defaults.env or cell.env.
+	env = envSet(env, deskkit.DeskToolsBinEnv, deskToolsBin(c.Env))
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
 	env = envSet(env, "ASSAY_SOURCE_REVISION", sha)
@@ -155,10 +271,19 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if rav := c.repairAdmissionValue(); rav != "" {
 		env = envSet(env, deskkit.EnvRepairAdmission, rav)
 	}
+	// The cell's database pointer (CELL_DB_DSN / CELL_DB_PASSFILE), composed for every role and
+	// absent when the cell has none. The codex arm forwards both by name.
+	env = c.cellDBEnv(env)
 	// The cell's one resolved cockpit (see cmdDesk) — ALWAYS set on a host window, so an
 	// ASSAY_COCKPIT the launching shell happened to carry never outlives the cell's own value.
 	if cockpit.Cockpit != "" {
 		env = envSet(env, envAssayCockpit, cockpit.Cockpit)
+	}
+	// The host harnesses receive the endpoint here. Codex resolves the same
+	// cell-declared base in codexCommandEnvironment, keeping its operator process
+	// environment intact and exposing only the endpoint to command subprocesses.
+	if harness != "codex" {
+		env = c.forgeEndpointEnv(env)
 	}
 	var argv []string
 	if harness == "codex" {
@@ -273,6 +398,10 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 // tmux SERVER itself was started with, so nothing of the launching shell reaches the harness
 // regardless of what launched the socket.
 func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string, performance ...perfrec.Context) {
+	c.scrubbedDeskLaunchWithOptions(role, harness, model, session, wt, "", cockpitResolution{Cockpit: "tmux"}, performance...)
+}
+
+func (c *Cell) scrubbedDeskLaunchWithOptions(role, harness, model, session, wt, provider string, cockpit cockpitResolution, performance ...perfrec.Context) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		die("desk: tmux is required for a scrubbed cell (the private-socket session) and is not on PATH")
 	}
@@ -289,12 +418,12 @@ func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string, perf
 		_ = os.RemoveAll(lockdir)
 		die("desk: session %s is already running on the private socket (%s) — cellctl down %s to release", sessname, sockpath, c.Name)
 	}
-	env := c.scrubbedComposeEnv(role, harness, session)
+	env := scrubbedDisplayEnv(c.scrubbedComposeEnv(role, harness, session), cockpit.Cockpit)
 	if len(performance) > 0 {
 		child := deskkit.PerfAgentContext(performance[0], perfDeskFunction(role), nil, nil)
 		env.Pairs = deskkit.PerfContextEnv(env.Pairs, child, false)
 	}
-	argv := harnessArgv(harness, role, model, session, wt)
+	argv := c.scrubbedLaunchArgv(role, harness, model, session, wt, provider)
 	if p, err := c.cachePolicy(); err != nil {
 		die("Go cache policy: %v", err)
 	} else if p != nil {
@@ -312,11 +441,20 @@ func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string, perf
 	}
 	fmt.Printf("[launch] %s/%s kind=scrubbed model=%s harness=%s session=%s cwd=%s (env -i composed — see docs/cellctl.md Scrubbed cells)\n",
 		c.Name, role, model, harness, sessname, wt)
-	_ = exec.Command("tmux", "-S", sockpath, "new-session", "-d", "-s", sessname, "-c", wt, cmdline.String()).Run()
+	if err := exec.Command("tmux", "-S", sockpath, "new-session", "-d", "-s", sessname, "-c", wt, cmdline.String()).Run(); err != nil {
+		_ = os.RemoveAll(lockdir)
+		die("scrubbed session launch failed: %v", err)
+	}
 	if out, err := exec.Command("tmux", "-S", sockpath, "list-panes", "-t", sessname, "-F", "#{pane_pid}").Output(); err == nil {
 		if pane := firstLine(string(out)); pane != "" {
 			writePid(lockdir, pane)
 		}
+	}
+	if cockpit.Cockpit == "herdr" {
+		if err := c.scrubbedHerdrAttach(sockpath, sessname); err != nil {
+			die("scrubbed Herdr attach failed: %v; private session remains running — inspect status/down", err)
+		}
+		return
 	}
 	if isTTY(os.Stdin) {
 		runForeground([]string{"tmux", "-S", sockpath, "attach", "-t", sessname}, os.Environ(), "")
