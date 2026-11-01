@@ -194,6 +194,7 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	fmt.Fprintf(&b, "\n\n---\n\n# Standing clauses — %s (quoted verbatim, not paraphrased)\n\n", kitName)
 	b.WriteString(kit)
 	b.WriteString("\n")
+	writeDispatchRules(&b, plan.rules)
 	return b.String(), nil
 }
 

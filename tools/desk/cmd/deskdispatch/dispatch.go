@@ -796,6 +796,10 @@ type dispatchPlan struct {
 	// and its round number, read before the claim. The zero value — every non-review
 	// dispatch, --dry-run, and a run with no forge read wired — states a full pass.
 	round reviewRound
+	// rules is the role's dispatch-instruction file this run's kit took from
+	// ASSAY_DISPATCH_INSTRUCTIONS, read and digest-checked before the claim
+	// (dispatchinstructions.go); nil when the value is unset or names other kits only.
+	rules *dispatchRules
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -1229,6 +1233,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 		plan.home = home
 	}
+
+	// The role's dispatch-instruction file: read, custody-checked and
+	// digest-checked here, so a refusal leaves no claim, worktree or record line.
+	rules, err := resolveDispatchRules(o)
+	if err != nil {
+		return plan, err
+	}
+	plan.rules = rules
 
 	return plan, nil
 }

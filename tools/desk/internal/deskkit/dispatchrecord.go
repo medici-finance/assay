@@ -142,6 +142,10 @@ type DispatchRecord struct {
 	// THIS store. It is a LOCAL ordinal — a second machine dispatching the same item keeps its
 	// own count — never a global attempt number.
 	AttemptLocal *int `json:"attempt_local"`
+	// DispatchInstructionsSHA256 is the sha256 of the role dispatch-instruction file quoted into
+	// the prompt (ASSAY_DISPATCH_INSTRUCTIONS), 64 lowercase hex; null when the run's kit took no
+	// entry and on every `released` line. Never the file's path: a path is free text.
+	DispatchInstructionsSHA256 *string `json:"dispatch_instructions_sha256"`
 }
 
 // MintDispatchRef builds `<claimKey>@<t as YYYYMMDDTHHMMSSZ>.<12 lowercase hex>` from an injected
@@ -218,6 +222,7 @@ func ValidateDispatchRecord(r DispatchRecord) error {
 		{"claim_key", &r.ClaimKey}, {"repo", &r.Repo}, {"item", r.Item}, {"brief", r.Brief},
 		{"kit", r.Kit}, {"branch", r.Branch}, {"session_tag", &r.SessionTag}, {"tier", r.Tier},
 		{"brief_exec_tier", r.BriefExec}, {"brief_effort", r.BriefEffort}, {"model_stamp", r.ModelStamp},
+		{"dispatch_instructions_sha256", r.DispatchInstructionsSHA256},
 	}
 	for _, s := range strs {
 		if s.v == nil {
@@ -256,8 +261,9 @@ func ValidateDispatchRecord(r DispatchRecord) error {
 		}
 	case DispatchEventReleased:
 		if r.Item != nil || r.Brief != nil || r.Kit != nil || r.Branch != nil || r.PR != nil ||
-			r.Tier != nil || r.BriefExec != nil || r.BriefEffort != nil || r.ModelStamp != nil || r.AttemptLocal != nil {
-			return errors.New("a released record carries no dispatch-only field (item, brief, kit, branch, pr, tier, brief_exec_tier, brief_effort, model_stamp, attempt_local must be null)")
+			r.Tier != nil || r.BriefExec != nil || r.BriefEffort != nil || r.ModelStamp != nil || r.AttemptLocal != nil ||
+			r.DispatchInstructionsSHA256 != nil {
+			return errors.New("a released record carries no dispatch-only field (item, brief, kit, branch, pr, tier, brief_exec_tier, brief_effort, model_stamp, attempt_local, dispatch_instructions_sha256 must be null)")
 		}
 	}
 	return nil
@@ -290,6 +296,8 @@ func checkRecordField(name, v string) error {
 		ok = v == "S" || v == "M" || v == "L"
 	case "model_stamp":
 		ok = v == ModelStampApplied || v == ModelStampPending || v == ModelStampSkipped
+	case "dispatch_instructions_sha256":
+		ok = dispatchInstructionsDigestRe.MatchString(v)
 	case "schema", "event", "ts", "claim_key", "dispatch_ref":
 		ok = true // each is held to its own grammar by ValidateDispatchRecord itself
 	default:

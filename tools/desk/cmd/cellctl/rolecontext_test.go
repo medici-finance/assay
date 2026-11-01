@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // Tests for the per-role starting context (rolecontext.go, #2438). The in-process half pins the
@@ -252,7 +254,7 @@ func TestRoleContextCannotWiden(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
-	if got, want := tags(roleContextSpec{}), []string{"agents", "agents_off", "connectors_off", "dispatch_agent", "instructions", "instructions_off", "memory_dir", "memory_off", "plugins_off", "skills_off", "tools_off"}; !reflect.DeepEqual(got, want) {
+	if got, want := tags(roleContextSpec{}), []string{"agents", "agents_off", "connectors_off", "dispatch_agent", "dispatch_instructions", "instructions", "instructions_off", "memory_dir", "memory_off", "plugins_off", "skills_off", "tools_off"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("role keys = %v, want %v", got, want)
 	}
 	if got, want := tags(agentDefinition{}), []string{"capabilities", "description", "inherit_instructions", "name", "prompt"}; !reflect.DeepEqual(got, want) {
@@ -408,6 +410,14 @@ func TestRoleContextShippedExample(t *testing.T) {
 	dir := roleContextCell(t)
 	p := filepath.Join(dir, "role-context.json")
 	if err := os.WriteFile(p, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The example's dispatch_instructions file ships beside it and is copied with it.
+	rules, err := os.ReadFile(filepath.Join(filepath.Dir(exampleRoleContextPath), "review-dispatch.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "review-dispatch.md"), rules, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	d, err := loadRoleContext(p, dir)
@@ -1019,13 +1029,13 @@ func TestRoleContextCustodyFailsClosed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		custodyStat = func(name string) (os.FileInfo, error) {
+		deskkit.CustodyStat = func(name string) (os.FileInfo, error) {
 			if name == above {
 				return nil, errors.New("examination refused")
 			}
 			return os.Stat(name)
 		}
-		t.Cleanup(func() { custodyStat = os.Stat })
+		t.Cleanup(func() { deskkit.CustodyStat = os.Stat })
 		_, err = loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"})
 		if err == nil || !strings.Contains(err.Error(), "cannot tell whether a role session can write it") || !strings.Contains(err.Error(), "examination refused") {
 			t.Fatalf("want a refusal that says the place could not be examined, got %v", err)

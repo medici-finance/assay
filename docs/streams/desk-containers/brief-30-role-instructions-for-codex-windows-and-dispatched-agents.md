@@ -34,18 +34,18 @@ sources:
 domain: complicated
 outcome: none
 consumers:
-  - "tools/desk/cmd/cellctl/rolecontext.go (the declaration gains `dispatch_instructions`; the Codex refusal narrows to the keys with no Codex binding; the file-identity custody check, lines 323-403, moves to deskkit and cellctl calls the shared one): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/cellctl/launch.go (composes ASSAY_DISPATCH_INSTRUCTIONS into the window environment and scrubs an inherited one; the existing cell marker already stamps ASSAY_CELL_DIR, which deskdispatch now also reads; Codex argv carries `instructions`): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/dispatchinstructions.go (the ASSAY_DISPATCH_INSTRUCTIONS key name and the value grammar both binaries read; the cell directory key is the existing cellstop.EnvCellDir, ASSAY_CELL_DIR, not redefined): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/custody.go (the file-identity custody check, moved from cellctl, shared by cellctl and deskdispatch): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskdispatch/prompt.go (reads the key, verifies the digest, quotes the file after the class kit): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/cmd/cellctl/rolecontext.go (the declaration gains `dispatch_instructions`; the Codex refusal narrows to the keys with no Codex binding; the file-identity custody check, lines 323-403, moves to deskkit and cellctl calls the shared one): fixed-here"
+  - "tools/desk/cmd/cellctl/launch.go (composes ASSAY_DISPATCH_INSTRUCTIONS into the window environment and scrubs an inherited one; the existing cell marker already stamps ASSAY_CELL_DIR, which deskdispatch now also reads; Codex argv carries `instructions`): fixed-here"
+  - "tools/desk/internal/deskkit/dispatchinstructions.go (the ASSAY_DISPATCH_INSTRUCTIONS key name and the value grammar both binaries read; the cell directory key is the existing cellstop.EnvCellDir, ASSAY_CELL_DIR, not redefined): fixed-here"
+  - "tools/desk/internal/deskkit/custody.go (the file-identity custody check, moved from cellctl, shared by cellctl and deskdispatch): fixed-here"
+  - "tools/desk/cmd/deskdispatch/prompt.go (reads the key, verifies the digest, quotes the file after the class kit): fixed-here"
   - "tools/desk/internal/deskkit/dispatchrecord.go:115 DispatchKits() (the parser reads this existing kit vocabulary; it is not redefined): out-of-scope (read, not changed)"
-  - "tools/desk/internal/deskkit/dispatchrecord.go:124 DispatchRecord and ValidateDispatchRecord (gains the nullable `dispatch_instructions_sha256` field, 64 lowercase hex, never a path; a `released` line leaves it null): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskdispatch/dispatchrecord.go buildDispatchRecord (sets the digest on a `dispatched` line): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md §The dispatch record (the key list gains `dispatch_instructions_sha256`): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/internal/deskkit/dispatchrecord.go (DispatchRecord and ValidateDispatchRecord, line 124 at authoring; gains the nullable `dispatch_instructions_sha256` field, 64 lowercase hex, never a path; a `released` line leaves it null): fixed-here"
+  - "tools/desk/cmd/deskdispatch/dispatchrecord.go buildDispatchRecord (sets the digest on a `dispatched` line): fixed-here"
+  - "tools/desk/README.md §The dispatch record (the key list gains `dispatch_instructions_sha256`): fixed-here"
   - "tools/desk/cmd/deskclaim-ref/claim.go (writes `released` lines): out-of-scope (a released line leaves the new field null, the Go zero value, so the writer is unchanged; row 9b proves the validator refuses a released line that sets it)"
-  - "docs/cellctl-role-context.md (key table, Codex binding, dispatch delivery, refusals): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/cellctl/examples/role-context.json (the shipped example names a review-kit dispatch file beside builtin:lean-reviewer): follow-up desk-containers/30 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "docs/cellctl-role-context.md (key table, Codex binding, dispatch delivery, refusals): fixed-here"
+  - "tools/cellctl/examples/role-context.json (the shipped example names a review-kit dispatch file beside builtin:lean-reviewer): fixed-here"
   - "container and scrubbed cells: out-of-scope (CELL_ROLE_CONTEXT is refused there today and stays refused; this brief adds no binding for a launch composed inside a container)"
 ---
 
