@@ -96,11 +96,24 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | `2` — both work-list rows are still present |
-| 2 | check +dereference | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0 and no line printed — each row quotes a probe count or a determination result, or says COULD-NOT-CHECK |
-| 3 | gate:model +dereference | Re-run the local-disk control of Task 3 from the recorded command text | exactly one of N succeeded; a different count is checked-failed on this brief |
-| 4 | check | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' -e 'forgeForReviewer' -e 'stampRoleForKit' -e 'SessionTokenRole' -e 'TokenRoleForLoop' -e 'mintedRole' -e 'RequireRole(' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory |
-| 5 | check | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' -e 'DispatchClaimActiveRefsPrefix' -e 'ReadReviewClaims' -e 'ReviewClaimFamil' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself |
+| 1 | check | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md \| grep -c -e 'established' \| grep -x 2` | `2` — both work-list rows are still present |
+| 2 | check +dereference | `S=docs/streams/forge-neutral/reviewer-write-boundary.md && test "$(grep -c -e '^. S2 . ' -e '^. S4 . ' "$S")" = 2 && ! grep -e '^. S2 . ' -e '^. S4 . ' "$S" \| grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK'` | exit 0 and no line printed — each row quotes a probe count or a determination result, or says COULD-NOT-CHECK |
+| 3 | gate:model +dereference | `grep -e '^. S2 . ' docs/streams/forge-neutral/reviewer-write-boundary.md \| grep -F -e 'TestAcquireConcurrentExactlyOneWinner' \| grep -F -e '1 of 16 succeeded' > /dev/null && cd tools/desk && go test ./internal/deskkit/ -run '^TestAcquireConcurrentExactlyOneWinner$' -count=1 -v -timeout 120s \| grep -F -e '--- PASS: TestAcquireConcurrentExactlyOneWinner'` | exactly one of N succeeded; a different count is checked-failed on this brief |
+| 4 | check | `S=docs/streams/forge-neutral/reviewer-write-boundary.md && sec=$(sed -n '/^### 3\.1a /,/^### 3\.1b /p' "$S") && L=$(git grep -l -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' -e 'forgeForReviewer' -e 'stampRoleForKit' -e 'SessionTokenRole' -e 'TokenRoleForLoop' -e 'mintedRole' -e 'RequireRole(' 8d36864899ce -- 'tools/desk/cmd/*.go' 'tools/desk/internal/*.go' \| sed 's/^[^:]*://' \| grep -v -e '_test\.go$' \| sort -u) && test -n "$L" && m=0 && for f in $L; do [[ $sec == *"$f"* ]] \|\| { echo "MISSING $f"; m=1; }; done && echo "$(echo "$L" \| wc -l \| tr -d ' ') files checked" && test "$m" = 0` | every file listed appears in the reviewer write inventory |
+| 5 | check | `S=docs/streams/forge-neutral/reviewer-write-boundary.md && sec=$(sed -n '/^### 3\.1b /,/^### 3\.2 /p' "$S") && L=$(git grep -l -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' -e 'DispatchClaimActiveRefsPrefix' -e 'ReadReviewClaims' -e 'ReviewClaimFamil' a724e99dcd89 -- 'tools/desk/cmd/*.go' 'tools/desk/internal/*.go' \| sed 's/^[^:]*://' \| grep -v -e '_test\.go$' -e '^tools/desk/cmd/deskclaim-ref/' \| sort -u) && test -n "$L" && m=0 && for f in $L; do [[ $sec == *"$f"* ]] \|\| { echo "MISSING $f"; m=1; }; done && echo "$(echo "$L" \| wc -l \| tr -d ' ') files checked" && test "$m" = 0` | every file listed appears in the claim reader inventory or is the claim tool itself |
+
+**Verify table rewritten (2026-11-01, follow-up to #5115).** Every row is now a command that runs
+offline, needs no scratch file, and goes red on the tree before this brief was delivered. Row 1
+counts the S2/S4 rows that carry a measured result rather than rows that merely exist. Row 2
+asserts both rows are present before its negated grep, so an empty read can no longer pass. Row 3
+was prose, so every verifyrun witness recorded it as could-not-run; it now checks the S2 row
+records the control and its count, then runs that test anchored and asserts its `--- PASS:` line.
+Rows 4 and 5 now sweep the source **at the commit each inventory says it was read at** (§3.1a's
+minted-role re-read, `8d36864899ce`; §3.1b's re-read, `a724e99dcd89`), not at whatever main is
+when the verifier runs, and check each file against its own section by script instead of by hand.
+The old rows grepped the live tree, so any later commit that added a matching file turned a dated
+measurement red without the measurement changing. Whether the inventories still match today's
+tree is a new measurement, tracked by #1606, not a property of this delivery.
 
 **Rows 4 and 5 widened (2026-10-18, #1606).** Both greps gained patterns; neither Expect
 changed, and every pattern the rows searched before is still searched. The old patterns had gone
