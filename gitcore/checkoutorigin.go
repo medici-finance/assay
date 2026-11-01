@@ -50,6 +50,13 @@ func (r *Repo) snapshotOrigin() string {
 		return ""
 	}
 	if !strings.Contains(origin, "://") {
+		// Support Git's ordinary [user@]host:path form only. The endpoint
+		// parser also accepts multi-colon/second-@ spellings that native Git
+		// interprets as a different host; they cannot supply proven authority.
+		colon := strings.IndexByte(origin, ':')
+		if strings.Count(origin, ":") != 1 || strings.Count(origin, "@") > 1 || colon <= 0 || strings.ContainsAny(origin[:colon], "/\\") {
+			return ""
+		}
 		ep, err := transport.NewEndpoint(origin)
 		if err != nil || ep.Protocol != "ssh" || ep.Host == "" {
 			return ""

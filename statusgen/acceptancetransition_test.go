@@ -389,7 +389,7 @@ func TestTransitionRootPaths(t *testing.T) {
 
 // regression: #4823
 func TestSnapshotApprovalContext(t *testing.T) {
-	for _, mode := range []string{"approved", "offline", "absent", "bot", "edited", "foreign", "missing", "other-repo"} {
+	for _, mode := range []string{"approved", "offline", "absent", "bot", "edited", "foreign", "missing", "other-repo", "worktree-other"} {
 		t.Run(mode, func(t *testing.T) {
 			f := transitionFixtureAt(t)
 			f.evidence(t, nil)
@@ -410,8 +410,18 @@ func TestSnapshotApprovalContext(t *testing.T) {
 			}
 			head := vfRev(t, f.root, "HEAD")
 			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			source := f.root
+			if mode == "worktree-other" {
+				// The human approval belongs to the shared-config repository. A role
+				// worktree overrides that with a different effective repository.
+				vfGit(t, f.root, vfMailHuman, "config", "extensions.worktreeConfig", "true")
+				source = filepath.Join(t.TempDir(), "linked")
+				vfGit(t, f.root, vfMailHuman, "worktree", "add", "--detach", source, head)
+				vfGit(t, source, vfMailHuman, "config", "--worktree", "--add", "remote.origin.url", "")
+				vfGit(t, source, vfMailHuman, "config", "--worktree", "--add", "remote.origin.url", "https://github.com/other/project.git")
+			}
 			snapshot := t.TempDir()
-			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+			if err := gitcore.CheckoutLocalCommit(source, snapshot, head, "refs/remotes/origin/main"); err != nil {
 				t.Fatal(err)
 			}
 			// Offline must never invoke the approval reader, even though origin survives.
@@ -446,11 +456,23 @@ func TestSnapshotApprovalContext(t *testing.T) {
 
 // regression: #4823 C1 C2
 func TestSnapshotOriginFailures(t *testing.T) {
-	for _, mode := range []string{"malformed", "push-only", "multiple"} {
+	for _, mode := range []string{"malformed", "push-only", "multiple", "scp-ambiguous", "scp-double-at", "helper"} {
 		t.Run(mode, func(t *testing.T) {
 			f := transitionFixtureAt(t)
 			f.evidence(t, nil)
 			switch mode {
+			case "scp-ambiguous", "scp-double-at", "helper":
+				origin := "git:git@github.com:" + rlRepo + ".git"
+				if mode == "scp-double-at" {
+					origin = "git@github.com@github.com:" + rlRepo + ".git"
+				} else if mode == "helper" {
+					origin = "ext::https://github.com/" + rlRepo + ".git"
+				}
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", origin)
+				got, err := historyGit(f.root, "remote", "get-url", "origin").Output()
+				if err != nil || strings.TrimSpace(string(got)) != origin {
+					t.Fatalf("native origin control=%q err=%v", got, err)
+				}
 			case "malformed":
 				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@github.com:o/r.git")
 			case "push-only":
