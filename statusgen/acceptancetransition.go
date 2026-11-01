@@ -234,8 +234,13 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if gitcore.OriginConfigInjected() {
 		return fail("could-not-check repository authority: injected Git configuration is unsupported")
 	}
+	// The owner's error names a fixed unavailability class, never a URL,
+	// credential or path, so it is reported verbatim.
 	origin, err := gitcore.OriginAuthority(root)
-	if err != nil || remoteHost(origin) != "github.com" {
+	if err != nil {
+		return fail("could-not-check repository authority: " + err.Error())
+	}
+	if remoteHost(origin) != "github.com" {
 		return fail("could-not-check repository authority: approval requires a github.com origin")
 	}
 	repo := originOwnerRepo(strings.TrimSpace(origin))

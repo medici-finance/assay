@@ -84,7 +84,7 @@ func TestCheckoutOriginContext(t *testing.T) {
 	}
 }
 
-// regression: #4823 C1 C2
+// regression: #4823 C1 C2 C3
 func TestCheckoutEffectiveOrigin(t *testing.T) {
 	const want = "https://github.com:443/example/project.git"
 	for _, mode := range []string{"worktree-host", "worktree-other", "local-reset", "push-only", "multiple", "push-rewrite", "fetch-rewrite", "malformed", "unreadable", "include", "global", "global-rewrite", "injected", "bare-extension"} {
@@ -157,8 +157,8 @@ func TestCheckoutEffectiveOrigin(t *testing.T) {
 				git("remote", "set-url", "origin", "ssh://git@github.com:o/r.git")
 				expected = ""
 			case "include":
-				git("config", "includeIf.gitdir:**.path", filepath.Join(t.TempDir(), "unsupported"))
-				expected = ""
+				// Git honours this match and silently skips the missing file.
+				git("config", "includeIf.gitdir:**.path", filepath.Join(t.TempDir(), "missing"))
 			case "global-rewrite":
 				global := filepath.Join(t.TempDir(), "global")
 				if err := os.WriteFile(global, []byte("[url \"https://github.com:443/\"]\n insteadOf = gitlab.com:\n"), 0600); err != nil {
@@ -222,4 +222,102 @@ func TestCheckoutEffectiveOrigin(t *testing.T) {
 func resolveGitDirForTest(dir string) (string, error) {
 	admin, _, err := resolveGitDir(dir)
 	return admin, err
+}
+
+// regression: #4823 C3 C4
+func TestOriginIncludeOracle(t *testing.T) {
+	const want = "https://github.com/example/project.git"
+	const foreign = "[remote \"origin\"]\n url = https://github.com/foreign/project.git\n"
+	// available rows are the review's accepted-at-merge-base shapes: they must
+	// reach authority. Every other row may only agree with native Git or refuse.
+	for _, tc := range []struct {
+		name, global, content string
+		available             bool
+	}{
+		{"home-slash", "[includeIf \"gitdir:~/.assay-fixture-absent/\"]\n path = INC\n", foreign, true},
+		{"abs-slash", "[includeIf \"gitdir:/example.invalid/work/\"]\n path = INC\n", foreign, true},
+		{"onbranch-other", "[includeIf \"onbranch:release/\"]\n path = INC\n", foreign, true},
+		{"identity", "[include]\n path = INC\n", "[user]\n name = fixture\n email = fixture@example.invalid\n", true},
+		{"missing", "[include]\n path = MISSING\n", "", true},
+		{"credential-rewrite", "[url \"https://fixture-user:fixture-token@github.com/\"]\n insteadOf = https://github.com/\n", "", true},
+		{"global-extension", "[extensions]\n worktreeConfig = true\n", "", true},
+		{"include-extension", "[include]\n path = INC\n", "[extensions]\n worktreeConfig = true\n", false},
+		{"home-match", "[includeIf \"gitdir:~/\"]\n path = INC\n", foreign, false},
+		{"onbranch-match", "[includeIf \"onbranch:ma*\"]\n path = INC\n", foreign, false},
+		{"question-match", "[includeIf \"gitdir:**/.gi?\"]\n path = INC\n", foreign, false},
+		{"relative-match", "[includeIf \"gitdir:.git\"]\n path = INC\n", foreign, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			f := gittest.NewFixture(t)
+			if _, err := f.Git("remote", "add", "origin", want); err != nil {
+				t.Fatal(err)
+			}
+			physical, err := filepath.EvalSymlinks(filepath.Dir(f.Dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			home := filepath.Join(dir, "home")
+			if tc.name == "home-match" {
+				home = physical
+			}
+			inc := filepath.Join(dir, "included.config")
+			if tc.content != "" {
+				if err := os.WriteFile(inc, []byte(tc.content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A worktree-scoped origin that Git ignores unless the repository itself
+			// enables the extension; global or included declarations never do.
+			if err := os.WriteFile(filepath.Join(f.Dir, ".git", "config.worktree"), []byte("[remote \"origin\"]\n url =\n url = https://github.com/foreign/worktree.git\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			body := strings.NewReplacer("INC", filepath.ToSlash(inc), "MISSING", filepath.ToSlash(filepath.Join(dir, "absent.config"))).Replace(tc.global)
+			global := filepath.Join(dir, "global")
+			if err := os.WriteFile(global, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("HOME", home)
+			t.Setenv("GIT_CONFIG_GLOBAL", global)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			raw, nativeErr := exec.Command("git", "-C", f.Dir, "remote", "get-url", "--all", "origin").Output()
+			native := strings.TrimSpace(string(raw))
+			if tc.available && (nativeErr != nil || strings.Contains(native, "\n") || !strings.Contains(native, "github.com/example/project.git")) {
+				t.Fatalf("native control=%q err=%v", native, nativeErr)
+			}
+			got, err := OriginAuthority(f.Dir)
+			if tc.available && (err != nil || got != want) {
+				t.Fatalf("accepted shape withheld authority=%q err=%v", got, err)
+			}
+			if err == nil && (nativeErr != nil || strings.Contains(native, "\n") || !strings.HasSuffix(native, "@github.com/example/project.git") && native != want) {
+				t.Fatalf("authority %q disagrees with native Git %q", got, native)
+			}
+			if err != nil && (strings.Contains(err.Error(), "://") || strings.Contains(err.Error(), "fixture") || strings.Contains(err.Error(), dir)) {
+				t.Fatalf("unavailable class leaked detail: %v", err)
+			}
+			// The disposable snapshot carries the same decision to native consumers.
+			dest := t.TempDir()
+			sha := mustOut(t, f, "rev-parse", "HEAD")
+			mustOut(t, f, "update-ref", "refs/remotes/origin/main", sha)
+			if err := CheckoutLocalCommit(f.Dir, dest, sha, "refs/remotes/origin/main"); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := OriginAuthority(dest)
+			if (err == nil) != (got != "") || snapshot != got {
+				t.Fatalf("snapshot authority=%q err=%v source=%q", snapshot, err, got)
+			}
+		})
+	}
+}
+
+func mustOut(t *testing.T, f *gittest.Fixture, args ...string) string {
+	t.Helper()
+	out, err := f.Git(args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

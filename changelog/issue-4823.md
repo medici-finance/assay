@@ -4,3 +4,4 @@
 - Consume owner-proven origin authority directly so ordinary ambient rewrites cannot turn missing snapshot metadata into a foreign approval origin.
 - Support checkout-v7's proven authority-neutral conditional credential includes, without persisting headers/helpers or accepting authority-changing, unreadable or unsupported includes.
 - Withhold ambiguous SCP-like origin spellings and cover linked-worktree approval refusal through the protected closure consumer.
+- Evaluate Git include conditions (gitdir with home/trailing-slash forms, onbranch, plain and missing includes) and same-host credential rewrites as native Git does, refusing only includes that can carry remote, URL or extension configuration; read the worktree-config extension only from repository config; and name the unavailability class in approval refusals without printing URLs or credentials.

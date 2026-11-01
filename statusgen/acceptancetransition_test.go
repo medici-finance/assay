@@ -585,9 +585,9 @@ func TestSnapshotRewriteFallback(t *testing.T) {
 	}
 }
 
-// regression: #4823 C1 C2
+// regression: #4823 C1 C2 C3
 func TestAuthorityNeutralIncludes(t *testing.T) {
-	for _, mode := range []string{"matching-ci", "nonmatch-missing", "linked", "worktree-glob", "case-insensitive", "nested", "foreign", "rewrite", "unreadable", "cycle", "depth", "unsupported"} {
+	for _, mode := range []string{"matching-ci", "nonmatch-missing", "linked", "worktree-glob", "case-insensitive", "nested", "foreign", "rewrite", "unreadable", "cycle", "depth", "globstar", "approx-foreign"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
@@ -651,8 +651,12 @@ func TestAuthorityNeutralIncludes(t *testing.T) {
 				want = false
 			case "unreadable":
 				want = false
-			case "unsupported":
+			case "globstar":
 				condition = "gitdir:**"
+			case "approx-foreign":
+				// A class is not modelled, so the include is read as if it matched.
+				condition = "gitdir:/example.invalid/[x]/**"
+				content += "[remote \"origin\"]\n url = https://github.com/foreign/project.git\n"
 				want = false
 			}
 			if mode == "unreadable" {
@@ -667,7 +671,7 @@ func TestAuthorityNeutralIncludes(t *testing.T) {
 			// A nonmatching container path in checkout-v7 must never be opened.
 			vfGit(t, f.root, vfMailHuman, "config", "includeIf.gitdir:/example.invalid/container/.git.path", filepath.Join(t.TempDir(), "not-present"))
 			vfGit(t, f.root, vfMailHuman, "config", "includeIf."+condition+".path", file)
-			if mode == "matching-ci" || mode == "linked" || mode == "worktree-glob" || mode == "case-insensitive" || mode == "nested" {
+			if mode == "matching-ci" || mode == "linked" || mode == "worktree-glob" || mode == "case-insensitive" || mode == "nested" || mode == "globstar" {
 				raw, err := historyGit(source, "config", "--get", "http.https://github.com.extraHeader").Output()
 				if err != nil || strings.TrimSpace(string(raw)) != "fixture-secret" {
 					t.Fatalf("native include control=%q %v", raw, err)
@@ -705,6 +709,83 @@ func TestAuthorityNeutralIncludes(t *testing.T) {
 				config, err := os.ReadFile(filepath.Join(snapshot, ".git", "config"))
 				if err != nil || strings.Contains(string(config), "fixture-secret") || strings.Contains(string(config), "include") {
 					t.Fatal("included credential/transport config copied")
+				}
+			}
+		})
+	}
+}
+
+// regression: #4823 C3 C4 C5
+func TestGlobalIncludeApproval(t *testing.T) {
+	const foreign = "[remote \"origin\"]\n url = https://github.com/foreign/project.git\n"
+	for _, tc := range []struct{ name, global, content string }{
+		{"home-slash", "[includeIf \"gitdir:~/.assay-fixture-absent/\"]\n path = INC\n", foreign},
+		{"abs-slash", "[includeIf \"gitdir:/example.invalid/work/\"]\n path = INC\n", foreign},
+		{"onbranch-other", "[includeIf \"onbranch:release/\"]\n path = INC\n", foreign},
+		{"identity", "[include]\n path = INC\n", "[user]\n name = fixture\n email = fixture@example.invalid\n"},
+		{"missing", "[include]\n path = MISSING\n", ""},
+		{"credential-rewrite", "[url \"https://fixture-user:fixture-token@github.com/\"]\n insteadOf = https://github.com/\n", ""},
+		{"global-extension", "[extensions]\n worktreeConfig = true\n", ""},
+		{"authority-include", "[include]\n path = INC\n", foreign},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			inc := filepath.Join(dir, "included.config")
+			if tc.content != "" {
+				if err := os.WriteFile(inc, []byte(tc.content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			global := filepath.Join(dir, "global")
+			body := strings.NewReplacer("INC", filepath.ToSlash(inc), "MISSING", filepath.ToSlash(filepath.Join(dir, "absent.config"))).Replace(tc.global)
+			if err := os.WriteFile(global, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			// Git ignores this worktree origin unless the repository itself enables it.
+			if err := os.WriteFile(filepath.Join(f.root, ".git", "config.worktree"), []byte("[remote \"origin\"]\n url =\n url = https://github.com/foreign/worktree.git\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_CONFIG_GLOBAL", global)
+			want := tc.name != "authority-include"
+			native, err := historyGit(f.root, "remote", "get-url", "--all", "origin").Output()
+			if want && (err != nil || strings.Count(string(native), "\n") != 1 || !strings.Contains(string(native), "github.com/"+rlRepo+".git")) {
+				t.Fatalf("native control=%q %v", native, err)
+			}
+			if !want {
+				transitionClient = func() *ghClient { t.Fatal("authority include reached approval reader"); return nil }
+			}
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatal(err)
+			}
+			for _, root := range []string{f.root, snapshot} {
+				resetReadMemo()
+				verify, evidence, err := briefSections(vfBrief(root))
+				if err != nil {
+					t.Fatal(err)
+				}
+				findings, why := closureWitnesses(verify, evidence, vfBrief(root))
+				accepted := why == "" && len(findings) == 3
+				for _, finding := range findings {
+					accepted = accepted && closureSatisfied(finding)
+				}
+				if accepted != want {
+					t.Fatalf("closure accepted=%v want=%v: %s", accepted, want, why)
+				}
+				if !want && root == f.root {
+					// The consumer names the owner's unavailability class, never a URL.
+					if !strings.Contains(why, "could-not-check repository authority: repository origin authority is unavailable: an include may affect authority") || strings.Contains(why, "foreign") || strings.Contains(why, dir) {
+						t.Fatalf("unavailability class not named safely: %s", why)
+					}
 				}
 			}
 		})
