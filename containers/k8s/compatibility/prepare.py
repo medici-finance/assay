@@ -65,8 +65,8 @@ def run(args, *, launcher_path=LAUNCHER):
          'invalid cell or role')
     need(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', args.agent_version),
          'exact installed Claude package version required')
-    need(re.fullmatch(r'claude-[a-z0-9]+(?:-[a-z0-9]+)+(?:\[1m\])?', args.model)
-         and 'latest' not in args.model.split('-'), 'explicit versioned Claude model ID required')
+    need(re.fullmatch(r'claude-[a-z][a-z0-9]*-[0-9]+(?:-[0-9]+)*(?:\[1m\])?', args.model),
+         'explicit versioned Claude model ID required')
     descriptor_path = work / 'compat-launch.json'
     history = work / '.assay-compat'
 

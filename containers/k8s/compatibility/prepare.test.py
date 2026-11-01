@@ -166,7 +166,8 @@ class Preparation(unittest.TestCase):
 
     def test_floating_package_or_model_is_not_a_pin(self):
         for field, value in [('agent_version', 'latest'), ('agent_version', '^2.1.228'),
-                             ('model', 'sonnet'), ('model', 'claude-sonnet-latest')]:
+                             ('model', 'sonnet'), ('model', 'claude-sonnet-latest'),
+                             ('model', 'claude-sonnet-default'), ('model', 'claude-sonnet-5-latest')]:
             with self.subTest(field=field, value=value):
                 args = self.args()
                 setattr(args, field, value)
