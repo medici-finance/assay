@@ -88,7 +88,7 @@ or removing any human gate (spec §5 states the divergence).
 | 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 8 | L | todo | — | — |
 | 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 9 | L | todo | — | — |
 | 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
-| 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 3 | M | todo | — | — |
+| 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 2 | M | todo | — | — |
 | 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 10 | [Typed advice and separate deterministic policy records](brief-10-decision-contract.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1499 @ f4c4e5222b775331f2d255daf981984b029023b3) |
 | 11 | [Optional pinned Laya provider with explicit CPU and GPU profiles](brief-11-laya-local-provider.md) | 1 | M | todo | — | — |
@@ -425,10 +425,15 @@ decision nodes, is human-gated, and edits the same schema and lint files. The ch
 [Brief 35](brief-35-signal-pattern-runtime.md) closes the gap #5144 reports. /34 and /08 define the
 signal pattern, and nothing reads one at run time. /35 adds one stateless check, called before each <!-- graph: encoded graph-execution/34→graph-execution/35 -->
 node, that refuses a run failing its class's admission, refuses a node off its class's route, and
-holds a run whose source is dead or could not be checked. It reads the pattern with its own decoder,
-so it stands behind the lint and does not rely on it. It activates nothing.
+holds a run whose source is dead or could not be checked. It reads the pattern with its own decoder and
+refuses the faults it lists with no lint run. It doesn't enforce the other lint rules at run time, among
+them the remedy set and refused paths, the replay rule, effect limits by role and the containment set; the
+brief lists them all. It trusts its caller for every input and pins the pattern revision to a digest the
+caller passes. It activates nothing, and it is `gate: human` because it lifts /34's activation hold: #5147
+carries that decision, and no ruling exists yet.
 
 Any brief that activates a signal pattern depends on /35. auto-triage/02 and /03 now carry that edge. <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
-/08 ships a definition and activates nothing, and it depends on /35 as well, so the pattern file <!-- graph: encoded graph-execution/35→graph-execution/08 -->
-lands only once the gate that can refuse a run against it exists. The chain is now `33 → 34 → 35 → 08`.
-Effect limits stay with the activating brief; only auto-triage/02 and /03 own them today.
+/08 ships a definition and activates nothing, so it carries no edge to /35. The chains are `33 → 34 → 08` and <!-- graph: encoded graph-execution/34→graph-execution/35 -->
+`33 → 34 → 35 → auto-triage/02, /03 → auto-triage/04`. Effect limits stay with the activating brief; only <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
+auto-triage/02 and /03 own them today. No brief owns a liveness result for any source, so the gate holds every
+run until one does.

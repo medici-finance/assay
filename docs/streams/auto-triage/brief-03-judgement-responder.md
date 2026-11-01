@@ -48,7 +48,11 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 
 > **Contract note, 2026-10-18.** This brief is the live judgement exit of the gate-red class that graph-execution/08 now defines; every route still carries a recommended default. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
 
-> **Contract note, 2026-11-01.** <!-- graph: encoded graph-execution/35→auto-triage/03 --> Going live means activating the gate-red class of a signal pattern, so this brief depends on graph-execution/35. Before any live effect, this responder passes that gate (`deskdispatch --signal-gate`) and stops on a refuse or a hold. The trigger and ref it passes come from the values the CI platform sets for the run, never from model output or a log. This brief's own controls stay as written, and the stricter rule applies.
+> **Contract note, 2026-11-01.** <!-- graph: encoded graph-execution/35→auto-triage/03 --> Going live means activating the gate-red class of a signal pattern, so this brief depends on graph-execution/35. Before any live effect, this responder calls that gate (`deskdispatch --signal-gate`) and proceeds only on exit 0. Every other result stops it: a refuse (5), a hold (6), a usage error, a disabled or rate-limited tool, a missing binary or a crash.
+
+> What it passes, and from where. Trigger and the fully qualified ref come from the values the CI platform sets for the run, never from model output or a log (auto-triage/01's `origin.ref` may hold a short branch or a sha, and the gate needs the full ref). Class is the literal `gate-red`. Culprit class comes from auto-triage/01's classifier record, and is absent when there is none. Node, pattern name and expected sha256 come from this brief's reviewed source or configuration, never computed from a checkout the run can write. Root is the CI workspace value. The gate's origin has no repository term and reads the ref only on `push`, so this responder itself refuses a fork's run and a scheduled run on any other branch than the default.
+
+> Liveness. No brief owns a liveness result for gate-red's source today. Until one does, this responder passes none, the gate holds and the responder stays out of live mode. That hold stands, and this note doesn't close it. A hold stops this responder only, never a person acting on the red gate. This brief's own controls stay as written, and the stricter rule applies.
 
 ## Context
 

@@ -62,7 +62,8 @@ gate (`leak-sweep`) withholds its detail by design and so has a defined non-gues
 fallback (always route to judgement). 01 therefore has no hidden upstream blocker.
 
 <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 --> The responders also wait on `graph-execution/35`, added 2026-11-01: no signal pattern goes live
-until that gate exists. 01 stays this stream's head and does not wait on it.
+until that gate exists. 01 stays this stream's head and does not wait on it. No brief owns a liveness
+result for gate-red's source yet, so the gate holds and both responders stay out of live mode until one does.
 
 **Tempting-but-wrong first step:** wiring the auto-fixer (02) first. It is dead on arrival
 without 01's classifier — an auto-fixer with no reliable culprit + class would either do
