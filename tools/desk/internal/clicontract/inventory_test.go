@@ -235,13 +235,19 @@ func TestCLIRoutingMutations(t *testing.T) {
 		t.Fatalf("owner brief %s: %v", victimOwner, err)
 	}
 	complexOwner := rowFor(t, ref, "statusgen").Owner
-	// A real port target: a simple migrated Go row its own owner's scripts name.
+	// A real port target: a complex migrated Go row its own owner's scripts name.
 	const targetPath = "tools/desk/cmd/deskchangelog"
 	portOwner := rowFor(t, ref, targetPath).Owner
 	if rowFor(t, ref, "tools/changelog/check.sh").MigratedTo != targetPath || rowFor(t, ref, "tools/changelog/check.sh").Owner != portOwner {
 		t.Fatalf("%s is not named by its own owner's script rows; the exemption cases below test nothing", targetPath)
 	}
 	fullOwner := ownerAtBudget(t, ref, portOwner)
+	// The narrower case stays exempt too: the same target classed simple validates clean.
+	simpleReg := decode(t, raw)
+	rowFor(t, simpleReg, targetPath).Complexity = "simple"
+	if p := Validate(base, simpleReg); len(p) > 0 {
+		t.Fatalf("a simple port target is no longer exempt:\n  %s", strings.Join(p, "\n  "))
+	}
 
 	type mutation struct {
 		name  string
@@ -299,8 +305,10 @@ func TestCLIRoutingMutations(t *testing.T) {
 		{name: "target-named-by-other-owner",
 			edit: func(r *Registry) { rowFor(t, r, targetPath).Owner = fullOwner },
 			want: "owner " + fullOwner + " over budget"},
-		{name: "complex-port-target",
-			edit: func(r *Registry) { rowFor(t, r, targetPath).Complexity = "complex" },
+		{name: "second-complex-row",
+			// The owner keeps one script naming the target, made complex, and nothing else,
+			// so only the sole-complex-row condition stands between it and the exemption.
+			edit: func(r *Registry) { soleComplexNamer(t, r, portOwner, targetPath, fullOwner) },
 			want: "owner " + portOwner + " over budget"},
 		{name: "pending-port-target",
 			edit: func(r *Registry) { rowFor(t, r, targetPath).State = StatePending },
@@ -436,6 +444,25 @@ func ownerAtBudget(t *testing.T, r *Registry, skip string) string {
 	}
 	t.Fatalf("no owner holds exactly %d simple pending scripts", MaxSimple)
 	return ""
+}
+
+// soleComplexNamer leaves owner o with the target and exactly one other row: a complex script
+// that names the target. Its other rows move to owner away.
+func soleComplexNamer(t *testing.T, r *Registry, o, target, away string) {
+	t.Helper()
+	kept := false
+	for _, e := range ownerRows(r, o) {
+		switch {
+		case e.Path == target:
+		case !kept && e.Kind == "script" && e.MigratedTo == target:
+			e.Complexity, kept = "complex", true
+		default:
+			e.Owner = away
+		}
+	}
+	if !kept {
+		t.Fatalf("owner %s has no script naming %s", o, target)
+	}
 }
 
 // anyPendingScript is a simple pending script row owned by someone other than o.

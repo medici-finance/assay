@@ -256,9 +256,15 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 		if final != nil && !contains(final.Depends, o) {
 			add("final gate %s does not depend on %s", reg.FinalGate, o)
 		}
+		ownerComplex := 0
+		for _, e := range es {
+			if e.Complexity == "complex" {
+				ownerComplex++
+			}
+		}
 		simple, complex := 0, 0
 		for _, e := range es {
-			if portTarget(e, targets) {
+			if portTarget(e, targets, ownerComplex) {
 				continue
 			}
 			if e.Complexity == "complex" {
@@ -288,12 +294,14 @@ func portTargets(entries []Entry) map[[2]string]bool {
 }
 
 // portTarget reports whether e is the Go entrypoint its own owner's port lands in: a
-// simple, migrated Go row that at least one row with the SAME owner names in migrated_to.
-// Such a row is the destination of rows already counted against that owner, not a further
-// entrypoint to route, so it carries no budget of its own. A complex row, a row named only
-// by another owner's rows, and a Go row no same-owner row names all still count.
-func portTarget(e *Entry, targets map[[2]string]bool) bool {
-	return e.Kind == "go" && e.State == StateMigrated && e.Complexity == "simple" && targets[[2]string{e.Owner, e.Path}]
+// migrated Go row that at least one row with the SAME owner names in migrated_to. Such a row
+// is the destination of rows already counted against that owner, not a further entrypoint to
+// route, so it carries no budget of its own. A complex target is exempt only while it is the
+// owner's sole complex row (ownerComplex counts e itself). A row named only by another
+// owner's rows, a pending or script row, a Go row no same-owner row names, and a complex
+// target beside a second complex row all still count.
+func portTarget(e *Entry, targets map[[2]string]bool, ownerComplex int) bool {
+	return e.Kind == "go" && e.State == StateMigrated && targets[[2]string{e.Owner, e.Path}] && (e.Complexity == "simple" || ownerComplex == 1)
 }
 
 func rowPaths(es []*Entry) string {

@@ -124,10 +124,13 @@ a path the release workflow or Makefile names) can never be excluded. Test-named
 flags; a script is complex at 1000 lines or more. Everything else is simple.
 
 **Budget.** One owning brief takes one complex entrypoint alone, or at most five simple ones.
-A port target carries no budget of its own: a simple, migrated Go row that at least one row
-with the same owner names in `migrated_to` is the destination of rows already counted, not a
-further entrypoint. A complex target, a target named only by another owner's rows, and any
-Go row that no same-owner row names all still count.
+A port target carries no budget of its own: a migrated Go row that at least one row with the
+same owner names in `migrated_to` is the destination of rows already counted, not a further
+entrypoint. A complex target is exempt only while it is its owner's sole complex row, so an
+owner can take one complex port target beside its five simple scripts; this departs from "one
+complex entrypoint alone" for that case only. A target named only by another owner's rows, a
+pending or script target, any Go row that no same-owner row names, and a complex target
+beside a second complex row all still count.
 Every owner of a non-exempt row depends on desktools-v2/16, the reference adapter migration,
 and desktools-v2/17 depends on every such owner. Exempt rows carry no budget and no edge.
 

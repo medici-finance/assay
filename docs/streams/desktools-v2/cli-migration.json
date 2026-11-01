@@ -796,7 +796,7 @@
         "tools/release/check-spec-header-version.sh"
       ],
       "parser": "Cobra via tools/desk/internal/cli",
-      "complexity": "simple",
+      "complexity": "complex",
       "basis": "~1600 LOC, 8 verbs, 2 flags (desktools-v2/52)",
       "owner": "desktools-v2/52",
       "state": "migrated"
