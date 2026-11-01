@@ -7,8 +7,8 @@ why: >-
   This brief lets the automation file the bug and open a fixing DRAFT PR on its own, so the
   recurring mechanical toil is discharged without a person — while the human still merges
   every fix and no gate is ever weakened to make the red pass.
-wave: 2
-depends: ["auto-triage/01"]
+wave: 3
+depends: ["auto-triage/01", "graph-execution/35"]
 unblocks: ["auto-triage/04"]
 effort: M
 gate: human
@@ -40,6 +40,7 @@ exec-tier-why: >-
   files a spurious issue) and (a) the draft-only / never-merge / never-weaken guarantees are
   design decisions the diff must embody, not just satisfy incidentally.
 consumers:
+  - "deskdispatch --signal-gate (planned): follow-up auto-triage/02 (this brief; it flips to fixed-here when the live path calls the gate)"
   - "tools/autotriage/ (the Classify seam from brief 01): follow-up auto-triage/02 (this brief; consumes 01's output schema, flips to fixed-here when the responder implementation reads it)"
 version: 1
 id: 739df04b-fc17-473d-8697-32ecdc7a3c36
@@ -48,6 +49,8 @@ id: 739df04b-fc17-473d-8697-32ecdc7a3c36
 # Brief 02 — mechanical responder
 
 > **Contract note, 2026-10-18.** This brief is the live mechanical exit of the gate-red class that graph-execution/08 now defines; this brief's canonicalized path allow-list is stricter than 08's pattern-level deny-list and stays this brief's control. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
+> **Contract note, 2026-11-01.** <!-- graph: encoded graph-execution/35→auto-triage/02 --> Going live means activating the gate-red class of a signal pattern, so this brief depends on graph-execution/35. Before any live effect, this responder passes that gate (`deskdispatch --signal-gate`) and stops on a refuse or a hold. The trigger and ref it passes come from the values the CI platform sets for the run, never from model output or a log. This brief's own controls stay as written, and the stricter rule applies.
 
 ## Context
 

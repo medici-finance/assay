@@ -39,9 +39,9 @@ claiming an approval that has not happened.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Culprit identifier — parse a failing whole-tree gate into check + file:line + mechanical/judgement class](brief-01-culprit-identifier.md) | 1 | M | todo | — | — |
-| 02 | [Mechanical responder — file the bug and open a fixing draft PR, autonomously, for the mechanical class](brief-02-mechanical-responder.md) | 2 | M | todo | — | — |
-| 03 | [Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes](brief-03-judgement-responder.md) | 2 | M | todo | — | — |
-| 04 | [Never-invisible watchdog — escalate any red whole-tree gate that no responder acted on within N minutes](brief-04-never-invisible-watchdog.md) | 3 | M | todo | — | — |
+| 02 | [Mechanical responder — file the bug and open a fixing draft PR, autonomously, for the mechanical class](brief-02-mechanical-responder.md) | 3 | M | todo | — | — |
+| 03 | [Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes](brief-03-judgement-responder.md) | 3 | M | todo | — | — |
+| 04 | [Never-invisible watchdog — escalate any red whole-tree gate that no responder acted on within N minutes](brief-04-never-invisible-watchdog.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -61,6 +61,9 @@ against the live workflows @ `e9fa19d3`: the readable jobs (`ci` → `build-test
 gate (`leak-sweep`) withholds its detail by design and so has a defined non-guessing
 fallback (always route to judgement). 01 therefore has no hidden upstream blocker.
 
+<!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 --> The responders also wait on `graph-execution/35`, added 2026-11-01: no signal pattern goes live
+until that gate exists. 01 stays this stream's head and does not wait on it.
+
 **Tempting-but-wrong first step:** wiring the auto-fixer (02) first. It is dead on arrival
 without 01's classifier — an auto-fixer with no reliable culprit + class would either do
 nothing or attempt to fix reds it must never touch (leak-sweep). Build the classifier, then
@@ -69,10 +72,11 @@ the responders.
 ## Dependency waves
 
 - **Wave 1** — `auto-triage/01` (culprit identifier; depends on nothing; `gate: model`).
-- **Wave 2** — `auto-triage/02` (mechanical responder) and `auto-triage/03` (judgement
-  responder), both depend on 01 and are parallelizable; both `gate: human` (autonomous
+- **Wave 3** — `auto-triage/02` (mechanical responder) and `auto-triage/03` (judgement
+  responder), both depend on 01 and on `graph-execution/35` (the signal-pattern runtime gate, <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
+  added 2026-11-01) and are parallelizable; both `gate: human` (autonomous
   outbound action; cite `DR-auto-triage`).
-- **Wave 3** — `auto-triage/04` (never-invisible watchdog; depends on 02 + 03 — it observes
+- **Wave 4** — `auto-triage/04` (never-invisible watchdog; depends on 02 + 03 — it observes
   whether a responder acted; `gate: human`, cites `DR-auto-triage`).
 
 Path: `01 → {02, 03} → 04`.

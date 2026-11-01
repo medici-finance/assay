@@ -7,8 +7,8 @@ why: >-
   deterministic fix to draft — but the red still must not sit silent. This brief files the
   bug and ROUTES it with a recommended default, so a human gets a named next-step instead
   of a bare stack trace, without the automation ever guessing a fix or a withheld token.
-wave: 2
-depends: ["auto-triage/01"]
+wave: 3
+depends: ["auto-triage/01", "graph-execution/35"]
 unblocks: ["auto-triage/04"]
 effort: M
 gate: human
@@ -38,6 +38,7 @@ exec-tier-why: >-
   the boundary between what CI exposes and what it withholds — a wrong call there leaks a
   withheld token onto a public issue.
 consumers:
+  - "deskdispatch --signal-gate (planned): follow-up auto-triage/03 (this brief; it flips to fixed-here when the live path calls the gate)"
   - "tools/autotriage/ (the Classify seam from brief 01): follow-up auto-triage/03 (this brief; consumes 01's output schema, flips to fixed-here when the router implementation reads it)"
 version: 1
 id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
@@ -46,6 +47,8 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 # Brief 03 — judgement responder
 
 > **Contract note, 2026-10-18.** This brief is the live judgement exit of the gate-red class that graph-execution/08 now defines; every route still carries a recommended default. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
+> **Contract note, 2026-11-01.** <!-- graph: encoded graph-execution/35→auto-triage/03 --> Going live means activating the gate-red class of a signal pattern, so this brief depends on graph-execution/35. Before any live effect, this responder passes that gate (`deskdispatch --signal-gate`) and stops on a refuse or a hold. The trigger and ref it passes come from the values the CI platform sets for the run, never from model output or a log. This brief's own controls stay as written, and the stricter rule applies.
 
 ## Context
 
