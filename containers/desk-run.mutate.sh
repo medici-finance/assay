@@ -35,6 +35,8 @@
 #   shared-default    every desk's default PEM is the one shared app.pem again
 #   echo-slot         a refusal prints back the path given in a credential slot
 #   echo-slot-guard   the mount-grammar refusal prints back the PEM path
+#   echo-pem-unread   the unreadable-PEM refusal prints back the supplied path
+#   echo-env-unread   the unreadable-env-file refusal prints back the supplied path
 #   daemon-down       an unreachable daemon is read as "no container"
 #   name-exists       the refusal when the desk's container already exists
 #
@@ -181,6 +183,14 @@ echo-slot-guard | value in a PEM or env-file slot is not echoed
         "which cannot be passed safely to docker --mount: $(where "$pem_src" "$pem")" \
         "which cannot be passed safely to docker --mount: $pem" \
 
+echo-pem-unread | unreadable PEM is refused and the supplied path is not echoed
+    printf '%s\n' "$prog: $desk cannot start: the bot App PEM is not readable by this user." \
+    printf '%s\n' "$prog: $desk cannot start: the bot App PEM is not readable by this user: $pem" \
+
+echo-env-unread | unreadable env-file is refused and the supplied path is not echoed
+    printf '%s\n' "$prog: $desk cannot start: the model env-file is not readable by this user." \
+    printf '%s\n' "$prog: $desk cannot start: the model env-file is not readable by this user: $envf" \
+
 name-exists | refuses when a container of that name already exists
   [ "$have" -eq 0 ] || die 4 "$prog: a container named '$desk' already exists" \
   [ 0 -eq 0 ] || die 4 "$prog: a container named '$desk' already exists" \
@@ -212,9 +222,9 @@ while IFS= read -r header; do
   cmp -s "$SCRIPT" "$file" && cannot "$name: the rewrite changed nothing"
   sh -n "$file" || cannot "$name: the mutant is not valid sh"
 
-  # The two "unreadable" fixtures cannot fail for root, which reads any file.
+  # The "unreadable" fixtures cannot fail for root, which reads any file.
   case $name in
-    pem-readable | env-readable)
+    pem-readable | env-readable | echo-pem-unread | echo-env-unread)
       if [ "$root" -eq 1 ]; then
         printf '%-18s %-6s %s\n' "$name" SKIP "could-not-check: root reads any file"
         skipped=$((skipped + 1))

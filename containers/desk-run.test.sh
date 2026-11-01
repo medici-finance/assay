@@ -187,10 +187,12 @@ rc=$?
 cat "$tmp/out" "$tmp/err" >>"$all"
 if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$pem,"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
-# A symlinked working directory: the launcher anchors a relative path at the
-# physical directory (a login shell with a clean environment computes PWD that
-# way), so the mount source is the real path, never the link's spelling.
-name="a relative path run from a symlinked directory is anchored at the real path"
+# A symlinked working directory: the launcher anchors a relative path at $PWD.
+# Under `env -i`, as here, no PWD is inherited and the shell computes the
+# physical directory, so the mount source is the real path. An ordinary shell
+# that inherits a logical PWD gives the link's spelling instead; docker accepts
+# either, and this case pins only the clean-environment form.
+name="a relative path run from a symlinked directory under env -i is anchored at the real path"
 ln -s "$creds" "$tmp/credlink"
 (cd "$tmp/credlink" && env -i HOME="$home" PATH="$stub_path" ASSAY_DESK_PEM_FILE=app.pem ASSAY_DESK_ENV_FILE=desk.env \
   /bin/sh "$run" the-desk --dry-run >"$tmp/out" 2>"$tmp/err")
@@ -352,28 +354,43 @@ mkdir -p "$creds/adir"
 drun ASSAY_DESK_PEM_FILE="$creds/adir" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
 if [ "$rc" -eq 3 ] && has "$tmp/err" 'not a regular file'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
-name="an unreadable PEM is refused"
+# The two unreadable cases put the echo sentinel in the file name and run the
+# slot by variable and by flag, so a refusal that prints the supplied path at
+# this call site is red here (each call site has its own mutant).
+name="an unreadable PEM is refused and the supplied path is not echoed"
 if [ "$(id -u)" -eq 0 ]; then
   printf 'SKIP (could-not-check): %s: root reads any file\n' "$name"
 else
-  cp "$pem" "$creds/locked.pem"
-  chmod 000 "$creds/locked.pem"
-  drun ASSAY_DESK_PEM_FILE="$creds/locked.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
-  if [ "$rc" -eq 3 ] && has "$tmp/err" 'not readable'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+  cp "$pem" "$creds/locked-$leakc.pem"
+  chmod 000 "$creds/locked-$leakc.pem"
+  bad=""
+  drun ASSAY_DESK_PEM_FILE="$creds/locked-$leakc.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
+  { [ "$rc" -eq 3 ] && has "$tmp/err" 'PEM is not readable' && has "$tmp/err" 'ASSAY_DESK_PEM_FILE'; } || bad="$bad [var rc=$rc]"
+  combined | grep -F -q -- "$leakc" && bad="$bad [var echoed]"
+  drun ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run --pem "$creds/locked-$leakc.pem"
+  { [ "$rc" -eq 3 ] && has "$tmp/err" 'PEM is not readable' && has "$tmp/err" '--pem'; } || bad="$bad [flag rc=$rc]"
+  combined | grep -F -q -- "$leakc" && bad="$bad [flag echoed]"
+  if [ -z "$bad" ]; then pass "$name"; else fail "$name" "$bad"; fi
 fi
 
 name="an env-file path that is a directory is refused"
 drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/adir" /bin/sh "$run" worker-desk --dry-run
 if [ "$rc" -eq 3 ] && has "$tmp/err" 'not a regular file' && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
-name="an unreadable env-file is refused"
+name="an unreadable env-file is refused and the supplied path is not echoed"
 if [ "$(id -u)" -eq 0 ]; then
   printf 'SKIP (could-not-check): %s: root reads any file\n' "$name"
 else
-  cp "$envf" "$creds/locked.env"
-  chmod 000 "$creds/locked.env"
-  drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/locked.env" /bin/sh "$run" worker-desk --dry-run
-  if [ "$rc" -eq 3 ] && has "$tmp/err" 'not readable' && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+  cp "$envf" "$creds/locked-$leakc.env"
+  chmod 000 "$creds/locked-$leakc.env"
+  bad=""
+  drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/locked-$leakc.env" /bin/sh "$run" worker-desk --dry-run
+  { [ "$rc" -eq 3 ] && has "$tmp/err" 'env-file is not readable' && has "$tmp/err" 'ASSAY_DESK_ENV_FILE' && ! has "$tmp/out" 'docker'; } || bad="$bad [var rc=$rc]"
+  combined | grep -F -q -- "$leakc" && bad="$bad [var echoed]"
+  drun ASSAY_DESK_PEM_FILE="$pem" /bin/sh "$run" worker-desk --dry-run --env-file "$creds/locked-$leakc.env"
+  { [ "$rc" -eq 3 ] && has "$tmp/err" 'env-file is not readable' && has "$tmp/err" '--env-file' && ! has "$tmp/out" 'docker'; } || bad="$bad [flag rc=$rc]"
+  combined | grep -F -q -- "$leakc" && bad="$bad [flag echoed]"
+  if [ -z "$bad" ]; then pass "$name"; else fail "$name" "$bad"; fi
 fi
 
 # --mount takes comma-separated key=value pairs on one line, so each of these

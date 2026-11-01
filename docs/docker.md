@@ -196,13 +196,23 @@ commands below run from the checkout root.
   desk's. Put each desk's own App key at its own path. The launcher mounts the
   file you point it at and does not check which App that file belongs to.
   `ASSAY_DESK_PEM_FILE` is one value for every desk started from that shell, so
-  set it per desk window or pass `--pem <file>` per desk; pointing two desks at
-  one file is a choice you make, not a default.
+  set it per desk window or pass `--pem <file>` per desk.
+  The supported minimum is three distinct App identities: the implementer
+  (worker-desk), the reviewer (pr-review-desk) and the verifier (verify-desk)
+  each need their own App key, and none of those three may be pointed at
+  another's file
+  ([#463](https://github.com/medici-finance/assay/issues/463)). Pointing
+  intake-desk or the-desk at a shared file is a choice you make, not a default;
+  pointing two of the three at one file is not supported.
 - A model env-file: `KEY=value` lines for the model endpoint (for example
   `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` or `ANTHROPIC_MODEL` when you
-  use a gateway). The variables the container accepts are listed in
-  [`containers/secrets.md`](../containers/secrets.md) section 3. The default
-  location is `~/.config/assay/desk.env`.
+  use a gateway). The model variables the container accepts are listed in
+  [`containers/secrets.md`](../containers/secrets.md) section 3. That list
+  covers model access only; what `desktoken` reads to mint a forge token is
+  under "What a launched desk needs before it can mint and post" below. The
+  default location is `~/.config/assay/desk.env`, and every desk started on
+  defaults reads that one file, so keep it to model settings: no forge token
+  and no App key or App ID setting.
 
 `~/.config` is `$XDG_CONFIG_HOME` when you set it. To keep the files elsewhere,
 pass `--pem <file>` and `--env-file <file>`, or export `ASSAY_DESK_PEM_FILE` and
@@ -222,13 +232,49 @@ The launcher only mounts the PEM you name, read-only, at
 `/run/secrets/assay/app.pem`. It does not decide which App the desk then acts as,
 and this launcher gives no guarantee about that. Inside the container, the
 entrypoint checks that the mounted file exists and is readable. The `desktoken`
-tool looks for a key through `<PREFIX>_PEM` or an `<app-name>.pem` file on its
+tool looks for a key through `<ROLE>_PEM` or an `<app-name>.pem` file on its
 search path, and neither the image nor the launcher sets either of those to the
-mount. Which key a desk mints its tokens from is therefore settled by the
-container's own configuration, not by this launcher or by the name of the host
-file. Treat the per-desk host default as a way to keep the desks' key files apart
-on your machine, not as an identity guarantee. This was read from the code and
-not run against a real container.
+mount (the next section says what to set). Which key a desk mints its tokens
+from is therefore settled by the container's own configuration, not by this
+launcher or by the name of the host file. Treat the per-desk host default as a
+way to keep the desks' key files apart on your machine, not as an identity
+guarantee. This was read from the code and not run against a real container.
+
+**What a launched desk needs before it can mint and post**
+
+On a fresh work volume the desk starts and gives you a shell, but its first
+`desktoken` mint fails: the mount alone is not enough. Supply these three for
+the role the desk mints as (for example `worker` for worker-desk); the first
+two are needed to mint at all, the third before a desk tool can post.
+`<ROLE>` below is that role name in capitals with `-` as `_`, for example
+`WORKER`. A deployment that binds the role to a differently named App (a
+`<ROLE>_APP=<app-name>` setting) uses that App's prefix instead.
+
+| What | Where it goes | Why |
+|---|---|---|
+| The key pointer: `<ROLE>_PEM=/run/secrets/assay/app.pem` | An environment variable in that desk's container: a per-desk env-file passed with `--env-file` (for example `~/.config/assay/worker-desk.env`), or an `export` in the desk's shell | `desktoken` reads the key from `<ROLE>_PEM` or from `<app-name>.pem` under `~/.config/assay`. It does not read `ASSAY_APP_PEM_FILE`, the variable the entrypoint checks. |
+| The App ID: `<ROLE>_APP_ID=<id>` | A line in `/work/.config/assay/apps.env`, on that desk's own work volume, or the same per-desk env-file | Without it the mint refuses before it reads the key. |
+| The trust roster | `/work/.config/assay/roster.env` on that desk's own work volume, owned by the `desk` user, with neither the file nor its directory writable by group or others (`0600` for the file) | Write-class desk tools read the roster only from this file and never from the environment, so they refuse to post or open a pull request without it. `desktoken` reports it missing and carries on with the mint. |
+
+Inside the container `HOME` is `/work`, so `~/.config/assay` is
+`/work/.config/assay` on the desk's own `<desk-name>-work` volume, and
+nothing there is shared with another desk. Keep these settings per desk, in
+that volume or in a per-desk env-file, never in the shared default `desk.env`:
+that one file reaches every desk started on defaults, so a forge token put
+there acts as one identity in all five desks, the collapse the per-desk PEM
+default exists to prevent. The App ID must belong to the App whose key that
+desk mounts. The launcher passes one env-file, so a per-desk env-file also
+carries that desk's model settings.
+
+This is from reading `desktoken` and the image, plus a host run of `desktoken`
+built from this tree with an empty config home and a test key. With only
+`ASSAY_APP_PEM_FILE` set, it exited 6 for a missing App ID. With `<ROLE>_APP_ID`
+added, it exited 6 because no key was found, naming `<ROLE>_PEM`. With both
+set, it passed every local check and stopped at the network request for the
+installation. It was not run in a real container or against GitHub. Wiring the
+mount to `desktoken` inside the image would change the credential contract in
+[`containers/secrets.md`](../containers/secrets.md), which is human-gated, so
+this launcher leaves it to you.
 
 **First run**
 
