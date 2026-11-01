@@ -36,6 +36,23 @@ def load_launcher(path):
     return module
 
 
+def handoff(launcher, work, expected):
+    history = work / '.assay-compat'
+    need(history.is_dir() and not history.is_symlink(), 'prepared history missing or linked; held')
+    need(not (history / 'uncommitted').exists() and not (history / '.state-next').exists(),
+         'interrupted history write; held')
+    actual, launch_id = launcher.profile(work / 'compat-launch.json')
+    inputs = dict(actual)
+    inputs.pop('initialization_id')
+    need(inputs == expected, 'prepared inputs differ from the selected installed profile')
+    state = launcher.read(history / 'state.json')
+    launcher.state(state, actual, launch_id)
+    need(state['state'] == 'prepared', 'cold preparation is no longer unused')
+    return {'descriptor': actual, 'launch_id': launch_id, 'workload_env': {
+        'ASSAY_COMPAT_LAUNCH_ID': launch_id,
+        'ASSAY_COMPAT_INIT_ID': state['initialization_id']}}
+
+
 def run(args, *, launcher_path=LAUNCHER):
     """Reuse the image's descriptor/hash/history owner, including its prepare verb."""
     need(os.geteuid() == 999 and os.getegid() == 999,
@@ -57,7 +74,6 @@ def run(args, *, launcher_path=LAUNCHER):
         need(not os.path.lexists(history), 'history exists; no reset or reinitialization is supported')
         need(not os.path.lexists(descriptor_path), 'launch descriptor exists; do not overwrite it')
 
-    cold()
     agent = Path(args.agent or work / '.npm-global/bin/claude')
     manifest = Path(args.version_manifest or work / '.npm-global/lib/node_modules/@anthropic-ai/claude-code/package.json')
     instructions = Path(args.instructions or '/opt/assay/plugin/skills/' + args.role + '/SKILL.md')
@@ -77,6 +93,9 @@ def run(args, *, launcher_path=LAUNCHER):
         'instructions_sha256': launcher.digest(instructions), 'workdir': str(workdir),
         'initial_prompt': 'Read /opt/assay/plugin/skills/' + args.role +
             '/SKILL.md and run that role under its existing STOP, claim and human gates.'}
+    if args.readback:
+        return handoff(launcher, work, descriptor)
+    cold()
     if not args.prepare:
         return {'mode': 'plan', 'descriptor_inputs': descriptor,
                 'next': 'Explicit --prepare creates cold history; no files were written.'}
@@ -112,22 +131,16 @@ def run(args, *, launcher_path=LAUNCHER):
             raise Error('cold preparation did not complete; retain descriptor/history for the custodian') from error
         need(result.returncode == 0,
              'image-owned cold preparation failed; retain descriptor/history for the custodian')
-        need(not (history / 'uncommitted').exists() and not (history / '.state-next').exists(),
-             'interrupted history write; held')
-        actual, launch_id = launcher.profile(descriptor_path)
-        state = launcher.read(history / 'state.json')
-        launcher.state(state, actual, launch_id)
-        need(state['state'] == 'prepared', 'cold preparation is no longer unused')
-        return {'descriptor': actual, 'launch_id': launch_id, 'workload_env': {
-            'ASSAY_COMPAT_LAUNCH_ID': launch_id,
-            'ASSAY_COMPAT_INIT_ID': state['initialization_id']}}
+        return handoff(launcher, work, {k: v for k, v in descriptor.items() if k != 'initialization_id'})
     finally:
         os.close(fd)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--prepare', action='store_true', help='explicitly create cold descriptor/history; default is read-only plan')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--prepare', action='store_true', help='explicitly create cold descriptor/history; default is read-only plan')
+    mode.add_argument('--readback', action='store_true', help='read validated unused preparation bindings without changing them')
     parser.add_argument('--work', default='/work')
     parser.add_argument('--cell', required=True)
     parser.add_argument('--role', required=True)

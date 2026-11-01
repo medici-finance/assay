@@ -33,7 +33,7 @@ class Preparation(unittest.TestCase):
             agent_version='2.1.228', model='claude-sonnet-5-5',
             agent=str(self.agent), version_manifest=str(self.manifest),
             instructions=str(self.instructions), workdir=str(self.work / 'repository'),
-            prepare=apply)
+            prepare=apply, readback=False)
 
     def run_prepare(self, args):
         with patch.object(prepare.os, 'geteuid', return_value=999), \
@@ -89,6 +89,51 @@ class Preparation(unittest.TestCase):
         with self.assertRaises(prepare.Error):
             self.run_prepare(self.args())
         self.assertEqual(before, {name: (self.work / name).read_bytes() for name in files})
+
+    def test_lost_output_readback_is_read_only(self):
+        expected = self.run_prepare(self.args())
+        args = self.args(apply=False)
+        args.readback = True
+        files = {p: p.read_bytes() for p in self.work.rglob('*') if p.is_file()}
+        with patch.object(prepare.subprocess, 'run', side_effect=AssertionError('readback invoked a child')):
+            self.assertEqual(self.run_prepare(args), expected)
+        self.assertEqual(files, {p: p.read_bytes() for p in self.work.rglob('*') if p.is_file()})
+
+    def test_readback_rejects_changed_inputs_and_foreign_state(self):
+        self.run_prepare(self.args())
+        args = self.args(apply=False)
+        args.readback = True
+        self.instructions.write_text('changed synthetic instructions')
+        with self.assertRaises(prepare.Error):
+            self.run_prepare(args)
+        self.instructions.write_text('Synthetic role inputs; no credential or model.\n')
+        path = self.work / '.assay-compat/state.json'
+        state = json.loads(path.read_text())
+        state['launch_id'] = '0' * 64
+        path.write_text(json.dumps(state))
+        with self.assertRaises(Exception):
+            self.run_prepare(args)
+
+    def test_readback_holds_interrupted_used_or_linked_history(self):
+        self.run_prepare(self.args())
+        args = self.args(apply=False)
+        args.readback = True
+        history = self.work / '.assay-compat'
+        marker = history / 'uncommitted'
+        marker.write_text('synthetic interrupted write')
+        with self.assertRaises(prepare.Error):
+            self.run_prepare(args)
+        marker.unlink()  # synthetic fixture only
+        path = history / 'state.json'
+        state = json.loads(path.read_text())
+        state.update(state='clean', pod_uid='synthetic-prior-pod')
+        path.write_text(json.dumps(state))
+        with self.assertRaises(prepare.Error):
+            self.run_prepare(args)
+        history.rename(self.work / 'saved-history')
+        history.symlink_to(self.work / 'saved-history')
+        with self.assertRaises(prepare.Error):
+            self.run_prepare(args)
 
     def test_wrong_package_version_stops_before_descriptor(self):
         args = self.args()

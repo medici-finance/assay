@@ -110,6 +110,12 @@ unknown history, floating package/model aliases and concurrent preparation. A
 failed or interrupted preparation remains held, with its files retained. Never
 delete history, reset it or switch volumes to erase an unknown predecessor.
 
+If preparation succeeded but its output was lost, run the same selection with
+`--readback` instead of `--prepare`. It revalidates the installed inputs and
+existing unused prepared state and prints the same bindings without writing,
+installing or invoking a child. Changed inputs, foreign/corrupt state or a role
+that has already booted remain held; readback never reinitializes a volume.
+
 Retain the helper's non-secret JSON privately with volume identity, role,
 preparer, time, approved-input references and exact image reference. It is input
 for operator configuration, not independent execution or acceptance evidence.
