@@ -67,6 +67,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskboard":         {},
 	"deskboot":          {},
 	"deskcalibrate":     {},
+	"deskchangelog":     {},
 	"deskclaim":         {},
 	"deskclaim-ref":     {},
 	"deskclose":         {},

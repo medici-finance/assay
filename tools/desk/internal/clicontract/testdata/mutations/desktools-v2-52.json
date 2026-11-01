@@ -1,0 +1,221 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIRoutingMutations|TestAdapterMissingGo|TestAdapterStubOnPath)$' ./cmd/deskchangelog/ ./internal/clicontract/",
+  "control": {
+    "name": "CONTROL — a parse failure exits with the wrong code (usage exit 2 becomes 3)",
+    "file": "cmd/deskchangelog/main.go",
+    "old": "UsageExit:       cli.ExitUsage,",
+    "new": "UsageExit:       3,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after an environment read: the environment is consulted while the tree is built, so every help and version form reads ASSAY_TRUSTED_LOGINS first",
+      "file": "cmd/deskchangelog/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_, _ = lookupEnv(\"ASSAY_TRUSTED_LOGINS\")\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "a setting gains an undeclared source (--credits also reads DESKCHANGELOG_CREDITS from the environment)",
+      "file": "cmd/deskchangelog/main.go",
+      "old": "Key: \"credits\", Kind: cli.String, Flag: \"credits\",",
+      "new": "Key: \"credits\", Kind: cli.String, Flag: \"credits\", Env: []string{\"DESKCHANGELOG_CREDITS\"},"
+    },
+    {
+      "name": "a setting gains an undeclared source (the BASE_SHA binding also reads DESKCHANGELOG_BASE_SHA first)",
+      "file": "cmd/deskchangelog/check.go",
+      "old": "env(\"base-sha\", \"BASE_SHA\",",
+      "new": "env(\"base-sha\", \"DESKCHANGELOG_BASE_SHA\","
+    },
+    {
+      "name": "one legacy flag form dropped (aggregate.py's --credits is renamed --credit-map, so the release workflow's spelling no longer parses)",
+      "file": "cmd/deskchangelog/main.go",
+      "old": "Flag: \"credits\"",
+      "new": "Flag: \"credit-map\""
+    },
+    {
+      "name": "one legacy flag form dropped (check's --reconcile, the adapter's only flag, is renamed --reconcile-all)",
+      "file": "cmd/deskchangelog/check.go",
+      "old": "Flag: \"reconcile\"",
+      "new": "Flag: \"reconcile-all\""
+    },
+    {
+      "name": "a refusal leaves the domain check (a malformed release tag is no longer refused)",
+      "file": "cmd/deskchangelog/specheader.go",
+      "old": "if !releaseTagRe.MatchString(tag) {",
+      "new": "if false && !releaseTagRe.MatchString(tag) {"
+    },
+    {
+      "name": "a refusal leaves the domain check (a spec header naming another version passes)",
+      "file": "cmd/deskchangelog/specheader.go",
+      "old": "if have != tag {",
+      "new": "if false && have != tag {"
+    },
+    {
+      "name": "a refusal leaves the domain check (the gate runs without BASE_SHA/HEAD_SHA)",
+      "file": "cmd/deskchangelog/check.go",
+      "old": "if req.val == \"\" {",
+      "new": "if false && req.val == \"\" {"
+    },
+    {
+      "name": "a refusal leaves the domain check (highlights over no fragments prints an empty section instead of refusing)",
+      "file": "cmd/deskchangelog/aggregate.go",
+      "old": "if total == 0 {\n\t\tfmt.Fprint(stderr, refuseEmptyMsg)\n\t\treturn 2\n\t}\n\tfmt.Fprint(stdout",
+      "new": "if false && total == 0 {\n\t\tfmt.Fprint(stderr, refuseEmptyMsg)\n\t\treturn 2\n\t}\n\tfmt.Fprint(stdout"
+    },
+    {
+      "name": "a refusal leaves the domain check (the lint passes a ROOT with no docs/streams)",
+      "file": "cmd/deskchangelog/lintdecision.go",
+      "old": "if st, err := os.Stat(streams); err != nil || !st.IsDir() {",
+      "new": "if st, err := os.Stat(streams); false && (err != nil || !st.IsDir()) {"
+    },
+    {
+      "name": "the classifier stops failing closed (no roster configured at all credits every login)",
+      "file": "cmd/deskchangelog/credit.go",
+      "old": "if logins == \"\" && slugs == \"\" && humans == \"\" {",
+      "new": "if false && logins == \"\" && slugs == \"\" && humans == \"\" {"
+    },
+    {
+      "name": "the port-target exemption is removed (every Go row this owner's scripts name counts again, so the real registry goes over budget)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\tif portTarget(e, targets, ownerComplex) {\n",
+      "new": "\t\t\tif false && portTarget(e, targets, ownerComplex) {\n"
+    },
+    {
+      "name": "a complex port target is exempted beside a second complex row (the sole-complex-row condition is dropped)",
+      "file": "internal/clicontract/validate.go",
+      "old": " || ownerComplex == 1)",
+      "new": " || ownerComplex >= 1)"
+    },
+    {
+      "name": "the exemption narrows back to simple targets only (the real registry's complex deskchangelog row counts again and the owner goes over budget)",
+      "file": "internal/clicontract/validate.go",
+      "old": "(e.Complexity == \"simple\" || ownerComplex == 1)",
+      "new": "e.Complexity == \"simple\""
+    },
+    {
+      "name": "the owner's complex rows are no longer counted (no complex target is ever its owner's sole complex row)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\t\townerComplex++\n",
+      "new": "\t\t\t\townerComplex += 0\n"
+    },
+    {
+      "name": "a target named only by ANOTHER owner's rows is exempted (the owner half of the pair is dropped)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\tt[[2]string{e.Owner, e.MigratedTo}] = true\n",
+      "new": "\t\t\tfor _, x := range entries {\n\t\t\t\tt[[2]string{x.Owner, e.MigratedTo}] = true\n\t\t\t}\n"
+    },
+    {
+      "name": "the build proof is dropped (a migrated script that only mentions its target names it, so a registry-only edit qualifies a Go row)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\tif !buildsTarget(fsys, e.Path, e.MigratedTo) {\n",
+      "new": "\t\t\tif false && !buildsTarget(fsys, e.Path, e.MigratedTo) {\n"
+    },
+    {
+      "name": "a commented-out build line counts as a build",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\tif strings.HasPrefix(line, \"#\") {\n",
+      "new": "\t\tif false && strings.HasPrefix(line, \"#\") {\n"
+    },
+    {
+      "name": "calling a binary of the target's name counts as a build (the base name stands in for the build operand)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\top := buildOperand(fsys, target)\n",
+      "new": "\top := path.Base(target)\n"
+    },
+    {
+      "name": "the build operand need not end at a word boundary (building a longer name counts)",
+      "file": "internal/clicontract/validate.go",
+      "old": "regexp.QuoteMeta(op) + `($|[^A-Za-z0-9_./-])`)",
+      "new": "regexp.QuoteMeta(op))"
+    },
+    {
+      "name": "the build operand ignores the module root (the real scripts' ./cmd/<name> no longer proves their port, so the owner goes over budget)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\treturn \"./\" + strings.TrimPrefix(dir, m+\"/\")\n",
+      "new": "\t\t\treturn \"./\" + dir\n"
+    },
+    {
+      "name": "any row with a migrated_to names a target again, with no build proof (registry metadata on Go or pending rows qualifies, so a Go row can exempt itself)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif !buildsTarget(",
+      "new": "if e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif e.Kind == \"script\" && !buildsTarget("
+    },
+    {
+      "name": "a Go row's migrated_to names a target, with no build proof (Go rows qualify themselves or each other)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif !buildsTarget(",
+      "new": "if e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif e.Kind == \"script\" && !buildsTarget("
+    },
+    {
+      "name": "a pending script's migrated_to names a target (a script not yet ported qualifies a Go row)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner",
+      "new": "if e.Kind == \"script\" && e.Owner"
+    },
+    {
+      "name": "any migrated Go row is exempted, named in migrated_to or not",
+      "file": "internal/clicontract/validate.go",
+      "old": " && targets[[2]string{e.Owner, e.Path}] && (",
+      "new": " && ("
+    },
+    {
+      "name": "a not-yet-migrated Go row is exempted as a port target",
+      "file": "internal/clicontract/validate.go",
+      "old": "e.Kind == \"go\" && e.State == StateMigrated && ",
+      "new": "e.Kind == \"go\" && "
+    },
+    {
+      "name": "a script row named in migrated_to is exempted as a port target",
+      "file": "internal/clicontract/validate.go",
+      "old": "return e.Kind == \"go\" && e.State",
+      "new": "return e.State"
+    },
+    {
+      "name": "the budget limit loosens by one row (six simple rows pass)",
+      "file": "internal/clicontract/validate.go",
+      "old": "|| simple > MaxSimple {",
+      "new": "|| simple > MaxSimple+1 {"
+    },
+    {
+      "name": "the credit adapter answers skip:unknown when go is missing in a tree that has the source (a missing tool passes for a credit decision)",
+      "file": "../changelog/credit-identity.sh",
+      "old": "so it cannot be built; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    exit 127\n",
+      "new": "so it cannot be built; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    echo skip:unknown\n    exit 0\n"
+    },
+    {
+      "name": "the credit adapter exits 0 when building deskchangelog fails",
+      "file": "../changelog/credit-identity.sh",
+      "old": "failed; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    exit 127\n",
+      "new": "failed; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    exit 0\n"
+    },
+    {
+      "name": "the credit adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../changelog/credit-identity.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "the changelog gate adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../changelog/check.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "the spec-header adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../release/check-spec-header-version.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "the decision-defaults lint adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../lint-human-decision-defaults.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "aggregate.py looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../changelog/aggregate.py",
+      "old": "def main(argv):\n    desk_dir =",
+      "new": "def main(argv):\n    if shutil.which(\"deskchangelog\"):\n        return subprocess.run([shutil.which(\"deskchangelog\"), *argv[1:]]).returncode\n    desk_dir ="
+    }
+  ]
+}

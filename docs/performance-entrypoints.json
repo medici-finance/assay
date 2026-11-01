@@ -181,6 +181,16 @@
       "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
     },
     {
+      "executable": "deskchangelog",
+      "path": "tools/desk/cmd/deskchangelog",
+      "module": "tools/desk",
+      "parser_owner": "desktools-v2/52",
+      "parser_state": "migrated",
+      "context": "current-parser-gap",
+      "owner": "desktools-v2/52",
+      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+    },
+    {
       "executable": "deskclaim",
       "path": "tools/desk/cmd/deskclaim",
       "module": "tools/desk",
@@ -1046,7 +1056,7 @@
       "path": "tools/changelog/aggregate.py",
       "module": "python3",
       "parser_owner": "desktools-v2/52",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "standalone-gap",
       "owner": "desktools-v2/52",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
@@ -1056,7 +1066,7 @@
       "path": "tools/changelog/check.sh",
       "module": "bash",
       "parser_owner": "desktools-v2/52",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "standalone-gap",
       "owner": "desktools-v2/52",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
@@ -1066,7 +1076,7 @@
       "path": "tools/changelog/credit-identity.sh",
       "module": "bash",
       "parser_owner": "desktools-v2/52",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "standalone-gap",
       "owner": "desktools-v2/52",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
@@ -1156,7 +1166,7 @@
       "path": "tools/lint-human-decision-defaults.sh",
       "module": "bash",
       "parser_owner": "desktools-v2/52",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "standalone-gap",
       "owner": "desktools-v2/52",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
@@ -1166,7 +1176,7 @@
       "path": "tools/release/check-spec-header-version.sh",
       "module": "bash",
       "parser_owner": "desktools-v2/52",
-      "parser_state": "pending",
+      "parser_state": "migrated",
       "context": "standalone-gap",
       "owner": "desktools-v2/52",
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."

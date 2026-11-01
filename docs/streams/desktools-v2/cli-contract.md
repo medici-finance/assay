@@ -124,6 +124,23 @@ a path the release workflow or Makefile names) can never be excluded. Test-named
 flags; a script is complex at 1000 lines or more. Everything else is simple.
 
 **Budget.** One owning brief takes one complex entrypoint alone, or at most five simple ones.
+One exception: a port target carries no budget of its own. A port target is a migrated Go row
+that at least one migrated script row with the same owner names in `migrated_to` and builds;
+it is the destination of script rows already counted against that owner, not a further
+entrypoint. "Builds" is read from the script's own text, never from the registry: a line that
+is not a `#` comment carries the target's build operand, `./` plus its path below the nearest
+directory holding a `go.mod` (for example `./cmd/deskchangelog`), as a whole word. A mention of
+the name, the operand in a comment, or a call of a binary of that name is not a build, and a
+`migrated_to` on a Go row or a pending row names nothing. So an edit to registry rows alone,
+with no script changed, cannot make a Go row a target; one migrated script whose code builds a
+Go row of its owner can. A complex target is exempt only while it is its owner's sole complex
+row, so an owner can take one complex port target beside its five simple scripts. A target
+named only by another owner's rows, a pending or script target, any Go row that no same-owner
+migrated script names and builds, and a complex target beside a second complex row all still
+count. Retiring the scripts ends the exemption: a retired row is not migrated, so it names no
+target, yet it still counts against its owner; an owner whose ported scripts all retire is
+over budget again until the brief that retires them reassigns or drops those rows. This is
+deliberate: a retired script's file is gone, so nothing in the tree could prove the port.
 Every owner of a non-exempt row depends on desktools-v2/16, the reference adapter migration,
 and desktools-v2/17 depends on every such owner. Exempt rows carry no budget and no edge.
 

@@ -27,9 +27,14 @@ name: changelog-check
 # fed to the check below, and why `labeled`/`unlabeled` are in the trigger list.
 #
 # WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, matching
-# ci.yml and the other control legs. It needs no Go toolchain and no network: a
-# git diff against the PR base, a label read off the event payload, and python3
-# (present on the runner) for the shared changelog parser.
+# ci.yml and the other control legs. It reads a git diff against the PR base,
+# a label off the event payload, and uses python3 (present on the runner) for
+# the shared changelog parser. It also needs Go: tools/changelog/check.sh is an
+# adapter onto deskchangelog, which it builds from the PR's own checkout, and
+# the build may fetch Go modules from the network. This staged copy has no
+# Install Go step, so it relies on a go on the runner's PATH; with none, the
+# check exits 127 and the leg fails. The live .github/workflows copy installs
+# the pinned toolchain first.
 
 on:
   pull_request:
