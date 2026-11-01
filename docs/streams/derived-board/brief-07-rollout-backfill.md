@@ -130,7 +130,8 @@ stream README still described the reconcile step as "staged, not applied" and th
 `.github/workflows/assay-statusgen.yml` by a human push. Applying that patch now would add
 a second `--backfill` reconcile to the push-time job. This run retires the patch and fixes
 the README paragraph. Nothing in the generated Briefs table was hand-edited; this brief's
-row is derived from the PRs carrying its `Brief:` trailer. This PR is declared a partial delivery in the `delivery:` list above, so the row stays in-progress while Tasks 2-4 are owed.
+row is derived from the PRs carrying its `Brief:` trailer. This PR is declared a partial delivery in the `delivery:` list
+above, so the row stays in-progress while Tasks 2-4 are owed.
 
 **Verify rows, run offline against the head above.**
 
