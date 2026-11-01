@@ -1091,7 +1091,7 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 	// brief whose mandatory claims are not ALL `released` never reaches
 	// decideModelFlip's network calls at all, cheapest check first, same as the
 	// verifyPassHeldContradiction pre-check decideModelFlip already applies.
-	coverage := evaluateCoverage(root, streams, coverageOptions{})
+	coverage := evaluateCoverage(root, streams, coverageOptionsFor(root, nil))
 
 	for _, s := range streams {
 		// Per-stream, so one README is read once and written once even when

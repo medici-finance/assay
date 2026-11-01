@@ -109,6 +109,19 @@ type coverageOptions struct {
 	// Dependencies maps a brief id to its work-input dependency manifest.
 	// Production passes none today, so every claim takes the conservative scope.
 	Dependencies map[string]dependencyManifest
+	// readSets observes each witness's recorded read set, its introduction
+	// and the go compile-input floor (build-less-brittle/15). Set only by
+	// coverageOptionsFor; nil leaves every read-set token unobserved, which the
+	// library treats as unreadable (never a narrower scope).
+	readSets *readSetSource
+}
+
+// coverageOptionsFor is the one source of coverage options for the callers
+// that decide a brief (autoflip, the reconcile fold, --coverage): the parsed
+// pattern files plus the read-set, introduction and go-floor observations.
+// No caller builds an empty options value itself.
+func coverageOptionsFor(root string, patterns map[string]patternDoc) coverageOptions {
+	return coverageOptions{Patterns: patterns, readSets: newReadSetSource(root)}
 }
 
 // evaluateCoverage computes the coverage verdict for every brief across
@@ -148,6 +161,13 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 				continue
 			}
 			obs, texts := observeBriefTexts(root, path, s.Name+"/"+num, bf)
+			if opts.readSets != nil {
+				for rowID, ws := range obs.Witnesses {
+					for i := range ws {
+						opts.readSets.observe(path, obs.BriefRel, rowID, &ws[i])
+					}
+				}
+			}
 			observed[obs.ID] = observedBrief{Path: path, Obs: obs, WitnessTexts: texts}
 			in.Briefs = append(in.Briefs, obs)
 		}
@@ -169,6 +189,10 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 			}
 			in.Dependencies[id] = evaluation.DependencyManifest{Complete: m.Complete, Deps: deps}
 		}
+	}
+	if opts.readSets != nil {
+		in.GoFloors = opts.readSets.floors(in.Briefs)
+		defer opts.readSets.close()
 	}
 	var repo evaluation.Repo
 	if root != "" {
@@ -356,7 +380,7 @@ func runCoverage(root string, jsonMode bool) int {
 		return coverageExitCouldNot
 	}
 	patterns, _ := loadPatternDocs(root)
-	cov, observed := evaluateCoverageObserved(root, streams, coverageOptions{Patterns: patterns})
+	cov, observed := evaluateCoverageObserved(root, streams, coverageOptionsFor(root, patterns))
 
 	ids := make([]string, 0, len(cov))
 	for id := range cov {

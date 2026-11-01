@@ -117,6 +117,8 @@ type evalCtx struct {
 	v2     *v2Ctx
 	policy WitnessPolicy
 	forge  Forge
+	// goFloors is CoverageInput.GoFloors (readset.go).
+	goFloors map[string]GoFloor
 }
 
 func newEvalCtx(repo Repo, maxLanding int) *evalCtx {

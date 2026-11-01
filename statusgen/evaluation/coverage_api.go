@@ -104,12 +104,16 @@ type Witness struct {
 	Tree    string // the tree token after the Runner cell's `@`, "" when absent
 	// Runner, Result, Output and Date are the row's Runner, Result, output-digest
 	// and Date cells as written (trimmed). A v2 cell (`[w2]`) is judged from
-	// them (witness.go); a v1 cell never reads them. An empty Runner is read
-	// from Tree alone.
+	// them (witness.go); a v1 cell reads only Runner's read-set token
+	// (readset.go). An empty Runner is read from Tree alone.
 	Runner string
 	Result string
 	Output string
 	Date   string
+	// ReadSet is the caller's observation of the read-set file the Runner
+	// cell's `(reads sha256:…)` token names, and of the commit that
+	// introduced this row (readset.go); nil when none was observed.
+	ReadSet *ReadSetObservation
 }
 
 // BriefObservation is everything coverage reads about one brief.
@@ -203,6 +207,10 @@ type CoverageInput struct {
 	// Forge is the optional code-hosting seam a v2 landing check consults; nil
 	// is offline.
 	Forge Forge
+	// GoFloors is the compile-input floor of every build-family `go-run`
+	// entry of a witness's read set, keyed by GoFloorKey. A read set with such
+	// an entry and no floor here is could-not-check, never narrowed.
+	GoFloors map[string]GoFloor
 }
 
 // EvaluateCoverage computes the coverage verdict of every observed brief,
@@ -214,6 +222,7 @@ type CoverageInput struct {
 func EvaluateCoverage(in CoverageInput, repo Repo) map[string]Coverage {
 	x := newEvalCtx(repo, in.MaxLandingCandidates)
 	x.policy, x.forge = in.WitnessPolicy, in.Forge
+	x.goFloors = in.GoFloors
 	x.prefetchV2Records(in)
 	out := map[string]Coverage{}
 	for _, b := range in.Briefs {

@@ -1,0 +1,599 @@
+package evaluation
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	pathpkg "path"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+// readset.go — a witness's RECORDED read set (build-less-brittle/15).
+//
+// A Verify row run under verifyrun's recorder (statusgen readset_linux.go)
+// leaves a file naming every in-tree path the row's processes read, stat-ed,
+// listed or looked up and found absent. The witness row's Runner cell names
+// that file by the sha256 of its content: `<runner> @ <tree> (reads
+// sha256:<64 hex>)`. Where the recorder could not observe the whole row the
+// cell instead says `(reads could-not-check: <reason>)` and no file exists.
+//
+// A counted read set replaces the scope a witness speaks for: the witness is
+// stale exactly when one of its recorded entries changed between its tree and
+// the item's (readSetStale). Nothing here widens a release that today's scope
+// refuses on its own ground: the Command and Expect guards still bind, a
+// `+dirty` or `+unknown` witness keeps the conservative scope, a manifest's
+// scope is unioned in, and the landing check still runs. A read set that does
+// not count (judgeReadSet) leaves today's scope and reason untouched.
+//
+// The go floor is the independent lower layer. For every build-family `go-run`
+// entry the caller supplies the files `go list -deps -test` names for the
+// recorded invocation at the witness's tree (GoFloor). A recorded set that
+// lacks one of them is refused, and a build-family entry with no floor
+// observation is could-not-check, so a caller that skips the floor fails
+// closed.
+
+// ReadSetDir is the directory under a stream (`docs/streams/<stream>/`) that
+// holds its read-set files, each named by the sha256 of its content.
+const ReadSetDir = "reads"
+
+// The exact refusal strings (brief 15, Task step 5 and 6).
+const (
+	ReasonReadSetUnreadable = "the witness's recorded read set cannot be read or does not match its digest"
+	ReasonReadSetHistory    = "the row read repository history (.git), so only a witness at the item's exact revision speaks for it"
+	ReasonFloorOmits        = "the recorded read set omits a file the go toolchain compiles for this row"
+	ReasonFloorMissing      = "the read set records a go build but no compile-input floor was supplied"
+)
+
+// Read-set entry kinds. A path is slash-separated, relative to the
+// repository's toplevel; "." names the toplevel directory itself.
+const (
+	EntryRead    = "read"    // a file opened for reading, mapped or executed
+	EntryStat    = "stat"    // a tracked file stat-ed or probed; judged by content
+	EntryList    = "list"    // a directory listed: its direct-children names are an input
+	EntryAbsent  = "absent"  // a path looked up and found absent
+	EntryDir     = "dir"     // a directory stat-ed or probed: its existence is an input
+	EntryHistory = "history" // repository history (.git) was read; no path
+	EntryGoRun   = "go-run"  // one exec of the go tool; JSON GoRun
+)
+
+// ReadSetHeader is a read-set file's header.
+type ReadSetHeader struct {
+	Commit  string // the full commit the row ran on
+	Command string // "sha256:<64 hex>" of the row's Command text (ReadSetCommandDigest)
+	Brief   string // the brief's repository path
+	Row     string // the Verify row id
+}
+
+// ReadSetObservation is what the caller observed about the read-set file a
+// witness's Runner token names. Found is false when the file is absent or
+// cannot be read. The Intro fields are the introduction observation: the
+// earliest commit whose brief file holds this witness row (identity key:
+// WitnessRowKey) and, there, the row's Runner cell and whether the read-set
+// file existed in that commit.
+type ReadSetObservation struct {
+	Content     []byte
+	Found       bool
+	IntroFound  bool
+	IntroRunner string
+	IntroFile   bool
+}
+
+// GoFloor is the compile-input floor for one `go-run` entry at one witness
+// commit: every in-tree file `go list -deps -test -json` names for the
+// recorded invocation. Problem is non-empty when it could not be computed.
+type GoFloor struct {
+	Files   []string
+	Problem string
+}
+
+// GoFloorKey keys CoverageInput.GoFloors: the witness's full commit and the
+// read set's `go-run` entry line, verbatim.
+func GoFloorKey(commit, entry string) string { return commit + "\x00" + entry }
+
+// GoRun is a `go-run` entry's JSON body: one exec of the go tool.
+type GoRun struct {
+	// Dir is the exec's working directory relative to the toplevel ("." at it).
+	Dir        string   `json:"dir"`
+	Args       []string `json:"args"`
+	GOFLAGS    string   `json:"goflags,omitempty"`
+	GOWORK     string   `json:"gowork,omitempty"`
+	GOOS       string   `json:"goos,omitempty"`
+	GOARCH     string   `json:"goarch,omitempty"`
+	CGOEnabled string   `json:"cgo_enabled,omitempty"`
+}
+
+// GoRunEntry renders g as a read-set entry line.
+func GoRunEntry(g GoRun) string {
+	b, _ := json.Marshal(g)
+	return EntryGoRun + " " + string(b)
+}
+
+// ParseGoRun reads a `go-run` entry line.
+func ParseGoRun(entry string) (GoRun, bool) {
+	var g GoRun
+	body, ok := strings.CutPrefix(entry, EntryGoRun+" ")
+	if !ok || json.Unmarshal([]byte(body), &g) != nil {
+		return GoRun{}, false
+	}
+	return g, true
+}
+
+// Subcommand is the go tool subcommand the exec ran: Args[1], or the one after
+// a leading `-C <dir>` / `-C=<dir>`.
+func (g GoRun) Subcommand() string {
+	a := g.Args
+	if len(a) < 2 {
+		return ""
+	}
+	i := 1
+	switch {
+	case a[i] == "-C" || a[i] == "--C":
+		i += 2
+	case strings.HasPrefix(a[i], "-C=") || strings.HasPrefix(a[i], "--C="):
+		i++
+	}
+	if i >= len(a) {
+		return ""
+	}
+	return a[i]
+}
+
+// BuildFamily reports whether the exec compiles or loads packages: build,
+// test, vet, run, install or list. Only these get a floor.
+func (g GoRun) BuildFamily() bool {
+	switch g.Subcommand() {
+	case "build", "test", "vet", "run", "install", "list":
+		return true
+	}
+	return false
+}
+
+// readsTokenRe lifts the Runner cell's read-set token. A could-not-check
+// reason may carry one level of parentheses (`recorder is Linux-only
+// (darwin)`).
+var readsTokenRe = regexp.MustCompile(`\s*\(reads (sha256:([0-9a-f]{64})|could-not-check: ((?:[^()]|\([^()]*\))*))\)`)
+
+// ReadSetToken returns a Runner cell's read-set token: digest is the 64-hex
+// file name of a `sha256:` token, couldNot the reason of a `could-not-check:`
+// token; ok is false when the cell carries none.
+func ReadSetToken(runner string) (digest, couldNot string, ok bool) {
+	m := readsTokenRe.FindStringSubmatch(runner)
+	if m == nil {
+		return "", "", false
+	}
+	if m[2] != "" {
+		return m[2], "", true
+	}
+	return "", m[3], true
+}
+
+// StripReadSetToken removes the read-set token from a Runner cell, so the
+// rest (runner, tree and any other parenthetical) reads as before.
+func StripReadSetToken(runner string) string {
+	return strings.TrimSpace(readsTokenRe.ReplaceAllString(runner, ""))
+}
+
+// ReadSetCellToken renders the token's parenthetical for a Runner cell from a
+// digest ("" when none) or a could-not-check reason. A reason's table pipes,
+// line breaks and unbalanced parentheses are neutralised so the cell parses.
+func ReadSetCellToken(digest, couldNot string) string {
+	if digest != "" {
+		return "(reads sha256:" + digest + ")"
+	}
+	return "(reads could-not-check: " + sanitizeReason(couldNot) + ")"
+}
+
+// sanitizeReason keeps a reason inside one table cell and within the one
+// level of parentheses readsTokenRe accepts.
+func sanitizeReason(s string) string {
+	s = strings.NewReplacer("|", "/", "\n", " ", "\r", " ", "`", "'").Replace(s)
+	var b strings.Builder
+	depth := 0
+	for _, r := range s {
+		switch r {
+		case '(':
+			if depth == 0 {
+				depth++
+				b.WriteRune(r)
+			} else {
+				b.WriteRune('[')
+			}
+			continue
+		case ')':
+			if depth == 1 {
+				depth--
+				b.WriteRune(r)
+			} else {
+				b.WriteRune(']')
+			}
+			continue
+		}
+		b.WriteRune(r)
+	}
+	if depth == 1 {
+		b.WriteRune(')')
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// ReadSetCommandDigest is the header's command digest of a Verify row's
+// Command text as authored (whitespace-normalised, as the Command guard
+// compares it).
+func ReadSetCommandDigest(command string) string {
+	sum := sha256.Sum256([]byte(NormalizeCommandText(command)))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// ReadSetDigest is the file name of a read set's content.
+func ReadSetDigest(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
+}
+
+// ReadSetPath is the repository path of a stream's read-set file.
+func ReadSetPath(streamDir, digest string) string {
+	return pathpkg.Join(streamDir, ReadSetDir, digest)
+}
+
+// WitnessRowKey is a witness row's identity key for the introduction binding:
+// its `#`, Command and Date cells and its Runner cell without the read-set
+// token, so neither the token nor a result or output edit makes a new row.
+func WitnessRowKey(id, command, date, runner string) string {
+	return strings.Join([]string{strings.TrimSpace(id), NormalizeCommandText(command), strings.TrimSpace(date), NormalizeCommandText(StripReadSetToken(runner))}, "\x00")
+}
+
+// FormatReadSet renders a read-set file: the header, then the sorted, de-
+// duplicated entries, newline-terminated.
+func FormatReadSet(h ReadSetHeader, entries []string) []byte {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "witness-commit %s\ncommand %s\nbrief %s\nrow %s\n", h.Commit, h.Command, h.Brief, h.Row)
+	seen := map[string]bool{}
+	sorted := append([]string(nil), entries...)
+	sort.Strings(sorted)
+	for _, e := range sorted {
+		if e == "" || seen[e] {
+			continue
+		}
+		seen[e] = true
+		b.WriteString(e)
+		b.WriteByte('\n')
+	}
+	return b.Bytes()
+}
+
+var (
+	hex40Re = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	cmdSum  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
+
+// ParseReadSet reads a read-set file. Any line it does not know is an error:
+// a file this reader cannot fully read never narrows a scope.
+func ParseReadSet(content []byte) (ReadSetHeader, []string, error) {
+	var h ReadSetHeader
+	text := string(content)
+	if !strings.HasSuffix(text, "\n") {
+		return h, nil, errors.New("not newline-terminated")
+	}
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	if len(lines) < 4 {
+		return h, nil, errors.New("short header")
+	}
+	fields := []*string{&h.Commit, &h.Command, &h.Brief, &h.Row}
+	for i, name := range []string{"witness-commit ", "command ", "brief ", "row "} {
+		v, ok := strings.CutPrefix(lines[i], name)
+		if !ok || v == "" {
+			return h, nil, fmt.Errorf("header line %d is not %q", i+1, strings.TrimSpace(name))
+		}
+		*fields[i] = v
+	}
+	if !hex40Re.MatchString(h.Commit) || !cmdSum.MatchString(h.Command) {
+		return h, nil, errors.New("malformed header")
+	}
+	var entries []string
+	for _, l := range lines[4:] {
+		kind, rest, _ := strings.Cut(l, " ")
+		switch kind {
+		case EntryHistory:
+			if rest != "" {
+				return h, nil, fmt.Errorf("malformed entry %q", l)
+			}
+		case EntryGoRun:
+			if _, ok := ParseGoRun(l); !ok {
+				return h, nil, fmt.Errorf("malformed entry %q", l)
+			}
+		case EntryRead, EntryStat, EntryList, EntryAbsent, EntryDir:
+			if !readSetPathOK(rest) {
+				return h, nil, fmt.Errorf("malformed path in entry %q", l)
+			}
+		default:
+			return h, nil, fmt.Errorf("unknown entry %q", l)
+		}
+		entries = append(entries, l)
+	}
+	return h, entries, nil
+}
+
+// readSetPathOK reports whether p is a clean, local, slash-separated path.
+func readSetPathOK(p string) bool {
+	if p == "." {
+		return true
+	}
+	return p != "" && !strings.HasPrefix(p, "/") && pathpkg.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../")
+}
+
+// readSet is a counted read set, its paths with the exempt ones subtracted.
+type readSet struct {
+	files   map[string]bool // read and stat entries
+	all     map[string]bool // every read and stat path, exempt ones included (the floor's comparison)
+	lists   []string
+	absent  []string
+	dirs    []string
+	history bool
+	goRuns  []string
+	paths   int // non-exempt path entries
+	exempt  int // recorded path entries subtracted as bookkeeping
+}
+
+// exempt reports whether a change to repo path p can never stale a witness of
+// this brief: the brief's own file (bound by the Command and Expect guards),
+// the board's bookkeeping surface (docs/streams/**, STATUS.md) and the paths
+// verify and regen write. The conservative scope leaves out exactly these,
+// and the read-set scope subtracts them through this one function.
+func (sc witnessScope) exempt(p string) bool {
+	return p == sc.briefRel || isBoardBookkeepingPath(p) || isVerifyWrittenPath(p)
+}
+
+// judgeReadSet decides whether witness w's read set counts for row r. It
+// returns the counted set, or nil (today's scope stands); unreadable is set
+// when the token names a file that is absent or whose digest differs, which
+// resolves the claim could-not-check whatever its scope would say.
+func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *readSet, unreadable bool) {
+	digest, _, ok := ReadSetToken(w.Runner)
+	if !ok || digest == "" {
+		return nil, false
+	}
+	o := w.ReadSet
+	if o == nil || !o.Found || ReadSetDigest(o.Content) != digest {
+		return nil, true
+	}
+	h, entries, err := ParseReadSet(o.Content)
+	if err != nil {
+		return nil, false
+	}
+	full, why := x.resolveCommitToken(witnessBaseRevision(w.Tree))
+	if why != "" || h.Commit != full {
+		return nil, false
+	}
+	if h.Command != ReadSetCommandDigest(r.Command) || h.Brief != sc.briefRel || h.Row != r.ID {
+		return nil, false
+	}
+	// The introduction binding: the row arrived carrying this token, with its
+	// file, in one commit. A token or file a later commit added is ignored.
+	if !o.IntroFound || !o.IntroFile {
+		return nil, false
+	}
+	if d, _, ok := ReadSetToken(o.IntroRunner); !ok || d != digest {
+		return nil, false
+	}
+	rs = &readSet{files: map[string]bool{}, all: map[string]bool{}}
+	for _, e := range entries {
+		kind, p, _ := strings.Cut(e, " ")
+		switch kind {
+		case EntryHistory:
+			rs.history = true
+			continue
+		case EntryGoRun:
+			rs.goRuns = append(rs.goRuns, e)
+			continue
+		case EntryRead, EntryStat:
+			rs.all[p] = true
+		}
+		if sc.exempt(p) {
+			rs.exempt++
+			continue
+		}
+		rs.paths++
+		switch kind {
+		case EntryRead, EntryStat:
+			rs.files[p] = true
+		case EntryList:
+			rs.lists = append(rs.lists, p)
+		case EntryAbsent:
+			rs.absent = append(rs.absent, p)
+		case EntryDir:
+			rs.dirs = append(rs.dirs, p)
+		}
+	}
+	if rs.paths == 0 {
+		return nil, false
+	}
+	return rs, false
+}
+
+// describe says what a read-set scope covers, for a reason.
+func (rs *readSet) describe() string {
+	return fmt.Sprintf("its recorded read set: %d in-tree entries, %d recorded reads exempt as the board's bookkeeping", rs.paths, rs.exempt)
+}
+
+// underDir reports whether p sits below directory d ("." is the toplevel).
+func underDir(d, p string) (child string, ok bool) {
+	rest := p
+	if d != "." {
+		var found bool
+		rest, found = strings.CutPrefix(p, d+"/")
+		if !found {
+			return "", false
+		}
+	}
+	child, _, _ = strings.Cut(rest, "/")
+	return child, child != ""
+}
+
+// childNames lists directory d's direct children in a file listing.
+func childNames(files []string, d string) map[string]bool {
+	out := map[string]bool{}
+	for _, f := range files {
+		if c, ok := underDir(d, f); ok {
+			out[c] = true
+		}
+	}
+	return out
+}
+
+// contentAttrs are the attributes that change what a checkout of a path
+// holds.
+var contentAttrs = []string{"text", "eol", "filter", "working-tree-encoding", "ident"}
+
+// readSetApplies is witnessTreeApplies for a counted read set, at full commit
+// ids w and t that share history. used is false when the read set cannot be
+// applied here (the root is not the toplevel), and today's scope then judges.
+func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun string) (rel revisionRelation, detail string, used bool) {
+	if prefix, ok := x.rootPrefix(); !ok || prefix != "" {
+		return 0, "", false
+	}
+	if rs.history {
+		return revisionMismatch, ReasonReadSetHistory, true
+	}
+	// The go floor (lower layer): each build-family exec's compiled files must
+	// all be in the recorded set.
+	for _, e := range rs.goRuns {
+		g, _ := ParseGoRun(e)
+		if !g.BuildFamily() {
+			continue
+		}
+		fl, ok := x.goFloors[GoFloorKey(w, e)]
+		if !ok {
+			return revisionUnestablished, ReasonFloorMissing, true
+		}
+		if fl.Problem != "" {
+			return revisionUnestablished, "the compile-input floor for the row's `" + strings.Join(g.Args, " ") + "` could not be computed (" + fl.Problem + ")", true
+		}
+		for _, f := range fl.Files {
+			if !rs.all[f] {
+				return revisionMismatch, fmt.Sprintf("%s (%s is compiled for `%s` and is not recorded)", ReasonFloorOmits, f, strings.Join(g.Args, " ")), true
+			}
+		}
+	}
+	changed, ok := x.repo.DiffNames(w, t)
+	if !ok {
+		return revisionUnestablished, "the witness's tree and the item's could not be compared (git diff failed)", true
+	}
+	var eff witnessScope
+	union := sc.manifest != nil
+	if union {
+		eff = sc.atBase(x, w, t)
+	}
+	attrsTouched := false
+	for _, p := range changed {
+		if pathpkg.Base(p) == ".gitattributes" {
+			attrsTouched = true
+		}
+		if why := rs.stale(x, p, w, t); why != "" {
+			return revisionMismatch, fmt.Sprintf("%s differs between the witness's tree and the item's and the witness speaks for it (%s; %s)", p, why, rs.describe()), true
+		}
+		if union && eff.invalidatedBy(p) {
+			return revisionMismatch, fmt.Sprintf("%s differs between the witness's tree and the item's and the witness speaks for it (%s)", p, eff.describe()), true
+		}
+	}
+	if attrsTouched {
+		if p, why := x.attrsChanged(rs, w, t); why != "" {
+			return revisionUnestablished, why, true
+		} else if p != "" {
+			return revisionMismatch, fmt.Sprintf("%s differs between the witness's tree and the item's and the witness speaks for it (its content attributes changed: a .gitattributes edit alters how it checks out; %s)", p, rs.describe()), true
+		}
+	}
+	landedAt, landed, why := x.witnessLanded(w, t)
+	if why != "" {
+		return revisionUnestablished, why, true
+	}
+	if !landed {
+		return revisionMismatch, fmt.Sprintf("the witness's tree never landed: no commit on the item's history since the merge base has a tree identical to it outside docs/streams/** and STATUS.md (a branch squash-merged after its base moved, or never merged), so the check did not run against code %s carries", t), true
+	}
+	derivation := fmt.Sprintf("none of the %d in-tree entries of the witness's recorded read set differs between the witness's tree and the item's (%d recorded reads exempt as the board's bookkeeping)", rs.paths, rs.exempt)
+	if union {
+		derivation += "; and " + eff.derivation()
+	}
+	return revisionMatch, fmt.Sprintf("%s; %s landed at %s", derivation, landedNoun, landedAt[:TreeSHALen]), true
+}
+
+// stale reports why a change to path p stales the read set ("" when it does
+// not): a recorded or stat-ed file changed; a listed directory's direct
+// children gained or lost a name; a path recorded absent now exists; a
+// directory recorded present is gone.
+func (rs *readSet) stale(x *evalCtx, p, w, t string) string {
+	if rs.files[p] {
+		return "the row read or stat-ed it"
+	}
+	for _, a := range rs.absent {
+		if p == a || strings.HasPrefix(p, a+"/") {
+			return "the row looked up " + a + " and found it absent"
+		}
+	}
+	for _, d := range rs.lists {
+		c, ok := underDir(d, p)
+		if !ok {
+			continue
+		}
+		was := childNames(x.treeFilesAt(w), d)[c]
+		now := childNames(x.treeFilesAt(t), d)[c]
+		if was != now {
+			return "the row listed the directory " + d + ", whose entry " + c + " was added or removed"
+		}
+	}
+	for _, d := range rs.dirs {
+		if _, ok := underDir(d, p); !ok {
+			continue
+		}
+		if len(childNames(x.treeFilesAt(t), d)) == 0 {
+			return "the row stat-ed the directory " + d + ", which no longer exists"
+		}
+	}
+	return ""
+}
+
+// attrsChanged compares the content attributes of every recorded file at w
+// and t. It returns the first path whose attributes differ, or why they could
+// not be read.
+func (x *evalCtx) attrsChanged(rs *readSet, w, t string) (path, why string) {
+	wr, ok := x.repo.(WitnessRepo)
+	if !ok {
+		return "", "a .gitattributes file changed and this repository reader cannot resolve attributes, so whether the recorded paths still check out the same cannot be established"
+	}
+	paths := make([]string, 0, len(rs.files))
+	for p := range rs.files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	was, ok1 := wr.CheckAttr(w, paths)
+	now, ok2 := wr.CheckAttr(t, paths)
+	if !ok1 || !ok2 {
+		return "", "a .gitattributes file changed and the recorded paths' attributes could not be read (git check-attr failed)"
+	}
+	for _, p := range paths {
+		if contentAttrLines(was[p]) != contentAttrLines(now[p]) {
+			return p, ""
+		}
+	}
+	return "", ""
+}
+
+// contentAttrLines keeps the content attributes of one path's `<attr>:
+// <value>` lines, sorted, as one comparable string.
+func contentAttrLines(lines []string) string {
+	var keep []string
+	for _, l := range lines {
+		name, _, _ := strings.Cut(l, ":")
+		for _, a := range contentAttrs {
+			if name == a {
+				keep = append(keep, l)
+			}
+		}
+	}
+	sort.Strings(keep)
+	return strings.Join(keep, "\n")
+}
