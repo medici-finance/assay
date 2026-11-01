@@ -19,6 +19,8 @@ gate-why: >-
   but lifting that hold is the owner's call, and each activating brief then relies on what it says.
 decision-trigger: creation
 decision-issue: 5147
+design: DR-graph-exec-35
+ruling: "https://github.com/medici-finance/assay/issues/5147#issuecomment-6560646821"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [5144, 5147]
 schema: brief-v2
@@ -163,7 +165,7 @@ Why it matters: this rule is the only thing keeping signal patterns from going l
 
 Options:
 
-1. Lift the rule once the check is implemented, for any activating change that carries its own human gate, binds every caller input to a value the run cannot choose, passes a culprit class only once it supplies that binding, and names a liveness source. (Recommended.)
+1. Lift the rule once the check is implemented, for any activating change that carries its own human gate, binds every caller input to a value the run cannot choose, passes a culprit class only once it supplies that binding, and names a liveness source that is observed again for each node. (Recommended.)
 2. Lift it for the gate-red class only. The outage and regression classes stay held until a further ruling.
 3. Keep the rule. The check is built, and activation needs a separate ruling later.
 
@@ -171,9 +173,9 @@ Default if no answer: none — blocks until answered.
 
 ## Ground rules
 
-- Blocked until #5147 carries a human ruling. Task 10 is written for option 1; a ruling for option 2
-  or 3 changes its text, so read the ruling first. The design-decision record `spec/lifecycle-v1.md`
-  §4.4 requires doesn't exist yet: only a human ruling can produce one, and no one may write it ahead of that.
+- Ruled option A on the decision issue, which is option 1 above: https://github.com/medici-finance/assay/issues/5147#issuecomment-6560646821
+  Task 10 is written for it. The design-decision record `spec/lifecycle-v1.md` §4.4 requires is
+  `DR-graph-exec-35`.
 - NEVER git push, trigger workflows or run mutating kubectl. Leave commits per the task instructions only.
 - Stop at `implemented`; you do not set verified or done.
 - **Activate nothing.** No workflow, skill, desk procedure or loop calls the gate in this brief, and no
@@ -276,7 +278,7 @@ Default if no answer: none — blocks until answered.
    `lint-bad-branch-ref.yaml` (`push-refs: [refs/heads/feature]`),
    `lint-bad-no-admission.yaml` (`admission` removed from `example-alert`),
    `lint-bad-two-inputs.yaml` (a second signal input on `contain`),
-   `lint-bad-exit-unknown.yaml` (`example-alert`'s `exit` names no node). Eight more, outside row 3's list:
+   `lint-bad-exit-unknown.yaml` (`example-alert`'s `exit` names no node). Ten more, outside row 3's list:
    `no-effects-no-admission.yaml` (no node declares effects and one class has no `admission`),
    `half-pair.yaml` (`judgement-exit` removed from `example-gate-red`),
    `empty-source.yaml` (the signal input's `source` is empty),
@@ -284,7 +286,9 @@ Default if no answer: none — blocks until answered.
    `two-documents.yaml` (a second document after `good-signal.yaml`'s content),
    `unknown-class-key.yaml` (an unknown key in `example-alert`),
    `merge-key-class.yaml` (`dedupe` in `example-alert`'s `limits` moved into a `<<` merge key in that mapping, which no closed list covers and the gate doesn't read),
-   `merge-key-node.yaml` (the `id` of the node holding the signal input moved into a `<<` merge key in that node, outside the three closed lists). Only the merge-key walk refuses these two.
+   `merge-key-node.yaml` (the `id` of the node holding the signal input moved into a `<<` merge key in that node, outside the three closed lists),
+   `merge-key-aliased-edge.yaml` (an unknown top-level key holds an anchored mapping whose `from` and `to` sit in a `<<` merge key, and one edge is an alias to it, with the same `from` and `to`),
+   `merge-key-unread.yaml` (a `<<` merge key in a mapping under an unknown top-level key, aliased nowhere). Only the merge-key walk refuses these four. The last two fail a walk limited to the subtrees the gate reads: one if it stops at aliases, the other even if it follows them.
 9. **Tests**, each named in Verify. Add `signalgate-mutations.json` with a failing control and one mutant
    per branch of Task 1-6, in the shape of `admission-mutations.json`.
 10. **Spec.** In `spec/workflow-pattern-v1.md` §4.3 replace the sentences saying no runtime exists and
@@ -332,8 +336,8 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | 14 | check | `statusgen --root . --consumers --brief assay:assay:graph-execution:35 --base "$(git merge-base HEAD refs/remotes/origin/main)"` | pre-merge only, on the implementing branch with its merge-base pinned: exit 0, and every `follow-up graph-execution/35` entry has flipped to `fixed-here` and is corroborated by the diff |
 | 15 | check | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS" |
 | 16 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGatePatternPin$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGatePatternPin (' "$T/out" \|\| exit 4)` | exit 0; an absent, malformed or differing expected digest is refused with `pattern-revision`, an absent one even when the file is missing; a right digest admits; a file changed between two calls with the same expected digest admits the first and refuses the second, so a run cannot change its own route by rewriting the pattern |
-| 17 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGateUnlintedEdges$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGateUnlintedEdges (' "$T/out" \|\| exit 4)` | exit 0; `no-effects-no-admission.yaml` is refused with `admission-missing` for its class with no `admission`, and `half-pair.yaml`, `empty-source.yaml`, `duplicate-key.yaml`, `two-documents.yaml`, `unknown-class-key.yaml`, `merge-key-class.yaml` and `merge-key-node.yaml` are refused with `pattern-invalid`, so these eight shapes fail closed |
-| 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'output produced during the run, so that condition does not cover it until the activating brief supplies the binding' 'MUST supply the culprit-class binding before its caller passes a culprit class, and until it does its caller MUST pass none, so a class with two exits takes its judgement exit and a run cannot select the mechanical exit' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result' 'MUST observe liveness again for each node, and a result from an earlier node does not count'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; §4.3 carries Task 10's eight statements and the binding's words for liveness, culprit class and the digest, across line wraps, and 34's hold wording is gone |
+| 17 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGateUnlintedEdges$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGateUnlintedEdges (' "$T/out" \|\| exit 4)` | exit 0; `no-effects-no-admission.yaml` is refused with `admission-missing` for its class with no `admission`, and `half-pair.yaml`, `empty-source.yaml`, `duplicate-key.yaml`, `two-documents.yaml`, `unknown-class-key.yaml`, `merge-key-class.yaml`, `merge-key-node.yaml`, `merge-key-aliased-edge.yaml` and `merge-key-unread.yaml` are refused with `pattern-invalid`, so these ten shapes fail closed |
+| 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'output produced during the run, so that condition does not cover it until the activating brief supplies the binding' 'MUST supply the culprit-class binding before its caller passes a culprit class, and until it does its caller MUST pass none, so a class with two exits takes its judgement exit and a run cannot select the mechanical exit' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result' 'MUST observe liveness again for each node, and a result from an earlier node does not count'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; the spec file carries Task 10's eight statements and the binding's words for liveness, culprit class and the digest, across line wraps, and 34's hold wording is gone. The row shows the words are in the file. It doesn't show that they sit in §4.3 or that nothing contradicts them; review of the spec's text checks that |
 
 ## Pre-mortem
 
@@ -356,9 +360,9 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | The spec keeps 34's hold, or lands without the human gate or the liveness owner statement | row 18 |
 | A caller skips the gate or passes a false value for any input | not caught here: each activating brief's review, and auto-triage/01's `origin` check for trigger and ref on gate-red. The single-point-of-failure note states the gap |
 | An activating brief passes no liveness result | the gate holds (row 6). No brief owns a source today (#5148), so that hold stands |
-| An activating brief passes a constant or unprobed `live` | not caught by the gate, which can't tell it from an observation. Row 18 shows the spec forbids it, and the activating brief's human gate and review are what catch it |
+| An activating brief passes a constant or unprobed `live` | not caught by the gate, which can't tell it from an observation. Row 18 shows the spec's words forbidding it, and the activating brief's human gate and review are what catch it |
 | An activating brief passes its run's classifier output as culprit class with no binding, so a value reading `mechanical` selects the mechanical exit | not caught by the gate, which can't tell a bound value from an unbound one. Row 18 shows the spec's words: the activating brief MUST supply the binding before its caller passes a culprit class, and until then its caller MUST pass none. That brief's human gate and review are what catch a caller that breaks this. No brief supplies one today (#5150) |
-| A caller reuses an earlier node's liveness result, so a source that died mid-run doesn't hold the next node | not caught by the gate, which holds no state. Row 18 shows the spec requires a fresh observation for each node, and the activating brief's human gate and review are what catch it |
+| A caller reuses an earlier node's liveness result, so a source that died mid-run doesn't hold the next node | not caught by the gate, which holds no state. Row 18 shows the spec's words requiring a fresh observation for each node, and the activating brief's human gate and review are what catch it |
 | A class with no limits owner goes live | not caught here: limits are the activating brief's, and only auto-triage/02 and /03 own them today |
 
 ## Evidence

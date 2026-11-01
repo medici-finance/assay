@@ -429,8 +429,9 @@ holds a run whose source is dead or could not be checked. It reads the pattern w
 refuses the faults it lists with no lint run. It doesn't enforce the other lint rules at run time, among
 them the remedy set and refused paths, the replay rule, effect limits by role and the containment set; the
 brief lists them all. It trusts its caller for every input and pins the pattern revision to a digest the
-caller passes. It activates nothing, and it is `gate: human` because it lifts /34's activation hold: #5147
-carries that decision, and no ruling exists yet.
+caller passes. It activates nothing, and it is `gate: human` because it lifts /34's activation hold. #5147 carried that decision, which is ruled:
+https://github.com/medici-finance/assay/issues/5147#issuecomment-6560646821
+The record is `DR-graph-exec-35`.
 
 Any brief that activates a signal pattern depends on /35. auto-triage/02 and /03 now carry that edge. <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
 /08 ships a definition and activates nothing, so it carries no edge to /35. The chains are `33 → 34 → 08` and <!-- graph: encoded graph-execution/34→graph-execution/35 -->
