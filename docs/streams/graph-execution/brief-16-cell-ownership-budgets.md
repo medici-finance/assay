@@ -87,7 +87,7 @@ executors cannot read signing material on the volume they mount, and snapshots o
 backups of that volume never restore operator-control state as current. Both are
 contract text in `spec/operator-incarnation-v1.md`, each pinned by a negative-control
 test and committed mutants. The accountable operator for the concrete profile is
-the `kryton` account, as named in the ruling. The ruling grants no deployment,
+the maintainer the ruling names, `human:ian`. The ruling grants no deployment,
 credentials or admission reopening; activation still needs the separate human gate.
 
 Ruling: https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515
