@@ -6860,7 +6860,7 @@ review event posted at the *same* head — so a head-only re-read reports "still
 flips over a live withdrawal. Both gates re-run against a freshly read review list
 immediately before the mutation.
 
-**A standing `CHANGES_REQUESTED` at head blocks — with TWO exemptions: the check-only CR, and the documented body-edit re-verification (below).**
+**A standing `CHANGES_REQUESTED` at head blocks — with THREE exemptions: the check-only CR, the documented body-edit re-verification, and the marked security fail (all below).**
 An APPROVE posted at an *unchanged* head cannot be a re-verification: there is nothing new to
 verify, and the forge's self-approval block only keys on the PR *author*, so it has nothing to
 say about a third-party App re-posting at the same head. That default stands. It had no path,
@@ -6920,6 +6920,43 @@ trimmed — `printf '%s' "$(gh api repos/<owner>/<repo>/pulls/<N> --jq .body | t
 Whether CI is green stays `checks-green`'s decision; the citation never substitutes for it. On
 the board, an admitted row reads approved at head (with the class named in its note) instead of
 `SUSPECT-APPROVAL`; every near-miss keeps the `SUSPECT-APPROVAL` suppression.
+
+**The third exemption: the marked security fail.** Rule 2 routes a CR carrying
+`Security-Review: fail` to the security lane first, so neither exemption above ever clears it: a
+correctness APPROVE never clears a security fail, and a security fail carrying
+`Blocked-On-Check:` / `External-Prereq-Only:` always refuses. A security pass never clears a
+correctness CR either. The fail clears at the same head only when all of these hold
+(`internal/deskkit/securitybodycr.go`, shared by `deskflip` and `deskboard`):
+
+- the fail declares `Blocked-On-Body: <finding-id> <body-digest>`, read by the same parser as the
+  correctness lane's. At `deskflip`, an unmarked fail standing as a CHANGES_REQUESTED at the head
+  is cleared only by a new commit; `deskpost ready` does not apply that rule;
+- the reviewer posted a `Security-Review: pass` at the head after the last fail, on a review in a
+  state that carries a standing pass: APPROVED or COMMENTED (`deskkit.SecurityPassStateStands`).
+  The decision reads the newest such pass, and it must carry `Body-Reread-Digest: <digest>`
+  equal to the live body's digest. `deskpost ready` keeps its own list of the same two states,
+  and a test pins the two lists to each other. A DISMISSED, PENDING or CHANGES_REQUESTED review
+  carrying the pass clears nothing, and a later one does not displace a standing pass before it.
+  Every security fail between the two must be marked and at the head: a later unmarked fail
+  blocks, and a later fail at another commit stands;
+- neither the fail, nor a later fail in the chain, nor a pass at head after the fail
+  carries a correctness `Verdict:`
+  line (read as `deskpost ready`'s lane classifier reads it). Rule 1 drops every security-marked
+  body, so clearing a body that speaks for both lanes would drop its correctness half;
+- the forge records a body edit later than the last fail, and the re-read digest differs from
+  every fail's recorded digest.
+
+A clearance applies only at its own head. Rule 2 reads a CR at the current head, and the shared
+decision admits only a pass at that head. After a content-preserving head move the condition
+`security-verdict` keeps the fail standing (a fail stands across a head move, and a pass counts
+only at the head) until a pass at the new head. Inside rule 2, `deskflip` also requires that
+condition's reduction to read a pass at head. That is a second layer that errs safe: when the
+decision clears, no fail follows the clearing pass, so the reduction reads a pass at head too.
+
+The gate cannot check that the marker is true, that the fail's whole basis was the PR body. That
+is the reviewer's claim; the later pass and the forge's body-edit record back it up. On the board,
+the lift no longer requires the suppressed-approve shape (the fail can be the last decisive
+review), only that the reviewer's last correctness verdict at head is an APPROVED.
 
 **An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
 Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that

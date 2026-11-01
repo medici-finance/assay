@@ -692,7 +692,7 @@
       "complexity": "simple",
       "basis": "162 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskautolane",
@@ -892,7 +892,7 @@
       "complexity": "simple",
       "basis": "624 LOC, ~2 verbs, ~4 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskdispatch",
@@ -1160,7 +1160,7 @@
       "complexity": "simple",
       "basis": "242 LOC, ~0 verbs, ~6 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskmonitor",
@@ -1624,7 +1624,7 @@
       "complexity": "simple",
       "basis": "120 LOC, ~0 verbs, ~5 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskwt",
@@ -2737,7 +2737,7 @@
       "parser": "bash positional arguments",
       "complexity": "simple",
       "basis": "104 lines at 53e432b36c75",
-      "owner": "desktools-v2/47",
+      "owner": "desktools-v2/80",
       "state": "pending"
     },
     {
