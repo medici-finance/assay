@@ -28,7 +28,7 @@ exec-tier: strong
 exec-tier-why: "(a) the containment taxonomy and the outage-vs-regression exit rule are design decisions the facts bound but do not fully pre-specify; (c) a node that is allowed one effect too many survives every happy-path test and is exactly the fault the lint row must catch"
 domain: complicated
 consumers:
-  - "spec/workflow-patterns/ (the pattern bank 02 creates gains a third file): follow-up graph-execution/08 (this brief; flips to fixed-here when the pattern file lands)"
+  - "spec/workflow-patterns/ (the pattern bank 02 creates gains a third file, signal-triggered-v1.yaml): fixed-here"
   - "plugins/assay/skills/ (the desk procedures that would DISPATCH into this pattern): out-of-scope (this brief ships the reviewed pattern definition only; wiring a desk to dispatch on a live signal is a later brief that first needs the signal-liveness precondition delivered)"
 version: 1
 id: 3482df1a-a5e1-4cd5-9c8d-0d423c2541ae

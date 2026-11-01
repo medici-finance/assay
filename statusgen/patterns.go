@@ -291,6 +291,15 @@ type patternNode struct {
 	Effects           []patternEffect
 	Evidence          []patternEvidence // graph-execution/03: the node's full evidence[] list, not just the review bit
 	HasReviewEvidence bool              // true iff any evidence[] entry has kind: review
+
+	// graph-execution/08 signal keys (patternsignal.go). All optional; nil or
+	// empty on every node of a pattern an authored item instantiates.
+	Signal      *patternSignal
+	Containment []string // containment.steps
+	Routes      map[string]string
+	Culprit     *patternCulprit
+	Remedies    *patternRemedies
+	Default     string
 }
 
 type patternEffect struct {
@@ -323,6 +332,7 @@ type patternDoc struct {
 	NodeByID  map[string]patternNode
 	Join      string
 	RiskInput map[string]bool // verdict name -> present (value not needed: presence is the rule)
+	HasLimits bool            // graph-execution/08: top-level `limits` present
 }
 
 func parsePatternDoc(data map[string]any) (patternDoc, error) {
@@ -336,6 +346,8 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 	if join, ok := data["join"].(string); ok {
 		doc.Join = join
 	}
+
+	_, doc.HasLimits = data["limits"].(map[string]any)
 
 	if ri, ok := data["risk-input"].(map[string]any); ok {
 		for k := range ri {
@@ -398,6 +410,8 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 				}
 			}
 		}
+
+		parseSignalKeys(nm, &n)
 
 		doc.Nodes = append(doc.Nodes, n)
 		if n.ID != "" {
@@ -487,6 +501,7 @@ func checkPatternMustRules(path string, pat patternDoc) []string {
 					path, rulePatternEffectExceedsRole, nodeLabel, n.Role, eff.Kind))
 			}
 		}
+		out = append(out, checkContainmentSteps(path, nodeLabel, n)...)
 
 		// Rule: a review node's role differs from every node that produced its
 		// inputs (pattern-review-same-role — §4.2 rule 3).
@@ -505,6 +520,7 @@ func checkPatternMustRules(path string, pat patternDoc) []string {
 		}
 	}
 
+	out = append(out, checkSignalRules(path, pat)...)
 	return out
 }
 

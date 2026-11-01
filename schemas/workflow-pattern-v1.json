@@ -103,7 +103,11 @@
               "additionalProperties": false,
               "required": ["kind", "target"],
               "properties": {
-                "kind": { "type": "string" },
+                "kind": {
+                  "description": "A closed set: the union of the effect kinds spec/workflow-pattern-v1.md §7's role table grants. An unknown kind fails this shape check independently of `pattern-effect-exceeds-role`, which then decides whether the node's role holds it. A signal pattern's containment steps are not effects of this list; they live in `containment.steps` (graph-execution/08).",
+                  "type": "string",
+                  "enum": ["push", "pr-open", "comment", "review", "evidence-commit", "file-issue", "dispatch"]
+                },
                 "target": { "type": "string" }
               }
             }
@@ -124,6 +128,123 @@
               "wait": { "type": "array", "items": { "type": "string" } },
               "fail": { "type": "array", "items": { "type": "string" } }
             }
+          },
+          "signal": {
+            "description": "graph-execution/08, OPTIONAL. Declared by the first node of a signal-instantiated pattern: the instance fields a signal must carry, the hold on a could-not-check liveness reading, the signal classes, and per-class run admission (spec/workflow-pattern-v1.md §4.3).",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requires", "on-could-not-check", "classes"],
+            "properties": {
+              "requires": {
+                "type": "array",
+                "minItems": 2,
+                "items": { "type": "string", "enum": ["source", "liveness-check"] }
+              },
+              "on-could-not-check": { "const": "hold" },
+              "classes": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "enum": ["outage", "regression", "gate-red"] }
+              },
+              "admission": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "gate-red": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["trigger"],
+                      "properties": {
+                        "trigger": { "type": "string" },
+                        "ref": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "containment": {
+            "description": "graph-execution/08, OPTIONAL. The closed containment taxonomy a signal node may choose from, or the recorded outcome `none-needed` with the signal reading that justifies it. Permitted only on the node that declares `signal` (pattern-effect-exceeds-role).",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["steps", "none-needed"],
+            "properties": {
+              "steps": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "enum": ["quarantine", "rollback", "secondary-auth", "stop"] }
+              },
+              "none-needed": { "type": "string" }
+            }
+          },
+          "routes": {
+            "description": "graph-execution/08, OPTIONAL. A selector decision node's exits: signal or culprit class to the node id that class routes to.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "outage": { "type": "string" },
+              "regression": { "type": "string" },
+              "mechanical": { "type": "string" },
+              "judgement": { "type": "string" }
+            }
+          },
+          "culprit": {
+            "description": "graph-execution/08, OPTIONAL. The gate-red class's culprit record a confirm node owes, its conservative default class, and the gates that withhold their detail by design.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["record", "default-class", "ci-text"],
+            "properties": {
+              "record": {
+                "type": "array",
+                "minItems": 6,
+                "items": { "type": "string", "enum": ["check", "file", "line", "problem", "class", "origin"] }
+              },
+              "default-class": { "const": "judgement" },
+              "ci-text": { "const": "fenced" },
+              "withheld": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["gate", "class", "file"],
+                  "properties": {
+                    "gate": { "type": "string" },
+                    "class": { "type": "string", "enum": ["mechanical", "judgement"] },
+                    "file": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "remedies": {
+            "description": "graph-execution/08, OPTIONAL. The mechanical exit's closed remedy set on the culprit file, the gate-configuration paths it refuses, and the node a refused remedy routes to.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["set", "refused-paths", "otherwise"],
+            "properties": {
+              "set": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": { "type": "string" },
+                    "path": { "type": "string" }
+                  }
+                }
+              },
+              "refused-paths": { "type": "array", "items": { "type": "string" } },
+              "otherwise": { "type": "string" }
+            }
+          },
+          "default": {
+            "description": "graph-execution/08, OPTIONAL. The recommended default next step a human decision carries. REQUIRED (pattern-judgement-no-default) on the node a gate-red judgement route names.",
+            "type": "string"
           }
         }
       }
@@ -144,6 +265,26 @@
     "join": {
       "description": "The node id carrying the integration check. MUST name a `check`-kind node (`statusgen patterns --lint`'s `pattern-join-not-check` rule).",
       "type": "string"
+    },
+    "limits": {
+      "description": "graph-execution/08, OPTIONAL; REQUIRED when a node's signal declares the gate-red class (pattern-gate-red-incomplete). One open artifact per culprit, an open-artifact ceiling and a per-window rate, each failing closed to an escalation signal.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["per-culprit", "open-ceiling", "rate", "on-exceed"],
+      "properties": {
+        "per-culprit": { "const": 1 },
+        "open-ceiling": { "type": "integer", "minimum": 1 },
+        "rate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "window"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 1 },
+            "window": { "type": "string" }
+          }
+        },
+        "on-exceed": { "const": "escalate" }
+      }
     }
   }
 }

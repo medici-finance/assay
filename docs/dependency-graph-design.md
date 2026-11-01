@@ -317,3 +317,14 @@ substrate: the brief frontmatter and the stream READMEs. The board derives a bri
 **lifecycle cell** from its witnesses; the graph derives a brief's **edges** from its
 typed fields. Neither is a field a human hand-asserts, and neither is a file committed to
 the default branch that a merge conflict or a regen failure can take down.
+
+**Workflow patterns, and the one that starts without a brief.** The edges above order
+briefs; a workflow pattern (`spec/workflow-pattern-v1.md`) states the node shape a single
+piece of work runs through. The pattern bank holds three: `implementation` and `research`,
+which a brief instantiates, and `signal-triggered` (`spec/workflow-patterns/signal-triggered-v1.yaml`,
+graph-execution/08), which a signal instantiates instead — a red `main`, a red scheduled
+check, a firing alert or a band crossing. Such an instance has no brief node in this graph
+until its exits produce one: a regression exit opens a draft PR into the ordinary review
+lane, while an outage or a gate-red judgement ends at a human decision. Its first node holds
+on a could-not-check liveness reading exactly as §3.7 holds a `gates:` edge it cannot
+resolve: a signal source that cannot be read is never taken as a quiet one.

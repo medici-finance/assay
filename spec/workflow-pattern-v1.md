@@ -44,6 +44,7 @@ A workflow-pattern-v1 file is a single YAML document with these top-level keys, 
 | `nodes` | array (>= 1) | REQUIRED. The node set; see §4. |
 | `edges` | array | REQUIRED. Directed `{from, to}` pairs between node ids. MAY be empty for a single-node pattern, though no shipped pattern is. |
 | `join` | string | REQUIRED. The id of the node carrying the integration check; see §6. |
+| `limits` | mapping | OPTIONAL. Effect limits of a signal-instantiated pattern; REQUIRED when a node's `signal` declares `gate-red`. See §4.3. |
 
 ## 4. Nodes — the execution contract
 
@@ -66,6 +67,7 @@ be represented as one.
 | `effects` | array of `{kind, target}` | OPTIONAL. External-consequence actions the node performs. |
 | `budget` | `{attempts?}` | OPTIONAL. |
 | `outcomes` | `{wait?, fail?}` | OPTIONAL. Named non-success dispositions. |
+| `signal`, `containment`, `routes`, `culprit`, `remedies`, `default` | mappings / string | OPTIONAL. The signal-instantiated pattern keys; see §4.3. |
 
 ### 4.1.1 The `observe` evidence kind
 
@@ -137,6 +139,33 @@ shape below is illustrative only, under a placeholder `example-org` deploy:
 7. A node with `role: human` MUST be `kind: decision` and declare no effects
    (`pattern-human-role-not-decision`). The schema independently enforces this shape.
 
+### 4.3 Signal-instantiated patterns
+
+A pattern is normally instantiated by an authored item: a brief binds it, and the brief's
+own text is what the first node reads. A **signal-instantiated** pattern starts instead
+from a signal — a red whole-tree gate, a firing alert, a dashboard crossing its band — and
+its first node declares `signal` (`requires: [source, liveness-check]`,
+`on-could-not-check: hold`, the signal `classes` it accepts, and per-class `admission`).
+The liveness check is a precondition, not something the pattern delivers: a dead source
+reports nothing and looks healthy, so an instance whose liveness check reads
+could-not-check MUST be held, never run as if the signal were quiet. The OPTIONAL node keys
+`signal`, `containment`, `routes`, `culprit`, `remedies` and `default`, and the top-level
+`limits`, exist for such patterns (`schemas/workflow-pattern-v1.json` gives their shapes);
+a pattern with no `signal` node is checked exactly as before. When a node declares
+`signal`, `statusgen patterns --lint` also applies: `pattern-signal-route-invalid` (only
+the first node declares `signal` and takes the `signal` input; each route names a node; the
+outage route names a human decision), `pattern-fixture-not-mandatory` (every `artifact`
+node owes mandatory `command` evidence, its replay fixture) and, when `classes` includes
+`gate-red`, `pattern-gate-red-admission` (only `schedule`, or `push` to `main`),
+`pattern-withheld-not-judgement` (a gate that withholds its detail is `judgement` with
+`file: null`), `pattern-remedy-set-open` (remedies drawn from `gofmt`,
+`stray-file-deletion`, `exact-stale-string-replace`; no remedy path under a refused or
+gate-configuration path, compared after cleaning and case-folding; `refused-paths` covers
+`.github/` and `.claude/`), `pattern-judgement-no-default` (the judgement route and
+`remedies.otherwise` name a human decision carrying a non-empty `default`) and
+`pattern-gate-red-incomplete` (a culprit record, a remedy set, `limits` and a mechanical
+route are all present). The shipped instance is `spec/workflow-patterns/signal-triggered-v1.yaml`.
+
 ## 5. `risk-input` — risk class as a declared input
 
 `risk-input` maps a brief's risk-class verdict to the node ids that become mandatory gates
@@ -195,6 +224,15 @@ A node's `effects[].kind` MUST be permitted for the node's `role`, derived from 
 
 `human` holds no effect kind and is not added to this table. Widening the topology
 role-effect table is outside this amendment's scope.
+
+One declaration sits outside the table without widening it: a signal node's
+`containment.steps`, drawn from the closed taxonomy `quarantine`, `rollback`,
+`secondary-auth`, `stop` (§4.3). `pattern-effect-exceeds-role` permits a step only on a
+`worker` `effect` node that declares `signal`; on any other node, or written as an
+ordinary `effects[].kind`, it is refused. No role's row above gains a containment step, so
+an instance still cannot record one as a capability, and the run-time roster binding is
+unchanged. `effects[].kind` is itself a closed enumeration in the schema — the union of the
+table above — so an unknown kind is a shape violation as well as a role violation.
 
 The `pattern-effect-exceeds-role` lint rule refuses a node whose effect kind is not
 permitted for its role. This is the single point of failure this schema depends on for

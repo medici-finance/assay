@@ -1,0 +1,176 @@
+# MUTATED COPY (graph-execution/08): (a) the contain node gains a guard-config-edit effect.
+# The signal-triggered workflow pattern (graph-execution/08): a red main, a
+# firing alert or a dashboard crossing its band starts the work, not an authored
+# brief. Four obligations run in order (contain, confirm and de-duplicate,
+# root-cause with a mandatory replay fixture, propose), and one selector picks the
+# exit. Every exit ends at a human: an outage leaves a mitigation for a human to
+# execute, a regression opens a draft PR into the ordinary review lane, and a
+# gate-red judgement leaves a human decision that carries a recommended default.
+#
+# No node merges, deploys or edits a guard. The containment steps are a closed
+# taxonomy declared only on the node that receives the signal. This file states
+# the contract; activating it on a live signal is not part of it.
+#
+# Validate: `statusgen patterns --lint --root .`.
+schema: workflow-pattern-v1
+pattern: signal-triggered
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review, merge]
+  human: [review, merge]
+limits:
+  per-culprit: 1
+  open-ceiling: 5
+  rate:
+    count: 3
+    window: PT1H
+  on-exceed: escalate
+nodes:
+  - id: contain
+    kind: effect
+    role: worker
+    inputs:
+      - {artifact: signal}
+    outputs: [containment-record]
+    signal:
+      requires: [source, liveness-check]
+      on-could-not-check: hold
+      classes: [outage, regression, gate-red]
+      admission:
+        gate-red:
+          - {trigger: schedule}
+          - {trigger: push, ref: main}
+    containment:
+      steps:
+        - quarantine
+        - rollback
+        - secondary-auth
+        - stop
+      none-needed: "the containment record states none needed and quotes the signal reading that justifies it"
+    evidence:
+      - {kind: command, claim: "the containment record names one step from the taxonomy, or none needed with the signal reading, and the signal's liveness check read live", mandatory: true}
+    effects:
+      - {kind: guard-config-edit, target: containment-record}
+    budget: {attempts: 1}
+    outcomes:
+      wait: [liveness-could-not-check]
+      fail: [admission-refused]
+  - id: confirm
+    kind: check
+    role: worker
+    inputs:
+      - {artifact: containment-record}
+    outputs: [signal-record, item-attachment]
+    culprit:
+      record: [check, file, line, problem, class, origin]
+      default-class: judgement
+      ci-text: fenced
+      withheld:
+        - {gate: leak-sweep, class: judgement, file: null}
+    evidence:
+      - {kind: command, claim: "the signal record names the signal, its source and every open item it matches; for gate-red it is a culprit record whose fields are all present", mandatory: true}
+    effects:
+      - {kind: comment, target: item-attachment}
+    outcomes:
+      fail: [could-not-check]
+  - id: select-exit
+    kind: decision
+    role: worker
+    inputs:
+      - {artifact: signal-record}
+    outputs: [exit-route]
+    routes:
+      outage: mitigate
+      regression: root-cause
+      mechanical: root-cause
+      judgement: triage
+    evidence:
+      - {kind: command, claim: "the exit route follows the recorded signal class, and the culprit class for gate-red", mandatory: true}
+  - id: mitigate
+    kind: decision
+    role: human
+    inputs:
+      - {artifact: exit-route}
+    outputs: [mitigation-decision]
+    evidence:
+      - {kind: witness, claim: "a human recorded the mitigation they executed, or that none was executed", mandatory: true}
+    outcomes:
+      wait: [awaiting-human]
+  - id: triage
+    kind: decision
+    role: human
+    inputs:
+      - {artifact: exit-route}
+    outputs: [triage-decision]
+    default: "hold the gate red, attach the fenced culprit record to the matched item, and route a fix through an authored brief"
+    evidence:
+      - {kind: witness, claim: "a human accepted the recommended default or recorded a different next step", mandatory: true}
+    outcomes:
+      wait: [awaiting-human]
+  - id: root-cause
+    kind: artifact
+    role: worker
+    inputs:
+      - {artifact: exit-route}
+    outputs: [replay-fixture]
+    evidence:
+      - {kind: command, claim: "the replay fixture reproduces the failure on the pre-fix revision", mandatory: true}
+    budget: {attempts: 2}
+    outcomes:
+      fail: [needs-context]
+  - id: propose
+    kind: effect
+    role: worker
+    inputs:
+      - {artifact: replay-fixture}
+    outputs: [branch, draft-pr]
+    remedies:
+      set:
+        - {kind: gofmt}
+        - {kind: stray-file-deletion}
+        - {kind: exact-stale-string-replace}
+      refused-paths: [.github/, .claude/]
+      otherwise: triage
+    evidence:
+      - {kind: command, claim: "the draft PR carries the replay fixture as its test and a findings-register entry, and the fixture passes at the PR head", mandatory: true}
+    effects:
+      - {kind: push, target: branch}
+      - {kind: pr-open, target: draft-pr}
+    budget: {attempts: 2}
+    outcomes:
+      wait: [review-pending]
+      fail: [needs-context]
+  - id: review
+    kind: check
+    role: reviewer
+    inputs:
+      - {artifact: draft-pr}
+    outputs: [approval]
+    evidence:
+      - {kind: review, claim: "the reviewer App APPROVED the head commit", mandatory: true}
+    effects:
+      - {kind: comment, target: approval}
+    outcomes:
+      wait: [changes-requested]
+  - id: merge
+    kind: decision
+    role: human
+    inputs:
+      - {artifact: approval}
+    outputs: [merge-commit]
+    evidence:
+      - {kind: command, claim: "the forge records the merge of the approved head as an authenticated human act", mandatory: true}
+    outcomes:
+      wait: [awaiting-human]
+edges:
+  - {from: contain, to: confirm}
+  - {from: confirm, to: select-exit}
+  - {from: select-exit, to: mitigate}
+  - {from: select-exit, to: triage}
+  - {from: select-exit, to: root-cause}
+  - {from: root-cause, to: propose}
+  - {from: propose, to: review}
+  - {from: review, to: merge}
+join: review
