@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIRoutingMutations|TestAdapterMissingGo)$' ./cmd/deskchangelog/ ./internal/clicontract/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIRoutingMutations|TestAdapterMissingGo|TestAdapterStubOnPath)$' ./cmd/deskchangelog/ ./internal/clicontract/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 2 becomes 3)",
     "file": "cmd/deskchangelog/main.go",
@@ -76,14 +76,26 @@
     {
       "name": "the port-target exemption is removed (every Go row this owner's scripts name counts again, so the real registry goes over budget)",
       "file": "internal/clicontract/validate.go",
-      "old": "\t\t\tif portTarget(e, targets) {\n",
-      "new": "\t\t\tif false && portTarget(e, targets) {\n"
+      "old": "\t\t\tif portTarget(e, targets, ownerComplex) {\n",
+      "new": "\t\t\tif false && portTarget(e, targets, ownerComplex) {\n"
     },
     {
-      "name": "a complex Go row is exempted as a port target",
+      "name": "a complex port target is exempted beside a second complex row (the sole-complex-row condition is dropped)",
       "file": "internal/clicontract/validate.go",
-      "old": " && e.Complexity == \"simple\" && targets",
-      "new": " && targets"
+      "old": " || ownerComplex == 1)",
+      "new": " || ownerComplex >= 1)"
+    },
+    {
+      "name": "the exemption narrows back to simple targets only (the real registry's complex deskchangelog row counts again and the owner goes over budget)",
+      "file": "internal/clicontract/validate.go",
+      "old": "(e.Complexity == \"simple\" || ownerComplex == 1)",
+      "new": "e.Complexity == \"simple\""
+    },
+    {
+      "name": "the owner's complex rows are no longer counted (no complex target is ever its owner's sole complex row)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\t\townerComplex++\n",
+      "new": "\t\t\t\townerComplex += 0\n"
     },
     {
       "name": "a target named only by ANOTHER owner's rows is exempted (the owner half of the pair is dropped)",
@@ -92,10 +104,10 @@
       "new": "\t\t\tfor _, x := range entries {\n\t\t\t\tt[[2]string{x.Owner, e.MigratedTo}] = true\n\t\t\t}\n"
     },
     {
-      "name": "any simple migrated Go row is exempted, named in migrated_to or not",
+      "name": "any migrated Go row is exempted, named in migrated_to or not",
       "file": "internal/clicontract/validate.go",
-      "old": " && e.Complexity == \"simple\" && targets[[2]string{e.Owner, e.Path}]",
-      "new": " && e.Complexity == \"simple\""
+      "old": " && targets[[2]string{e.Owner, e.Path}] && (",
+      "new": " && ("
     },
     {
       "name": "a not-yet-migrated Go row is exempted as a port target",
@@ -116,16 +128,46 @@
       "new": "|| simple > MaxSimple+1 {"
     },
     {
-      "name": "the credit adapter answers skip:unknown when no deskchangelog can be found (a missing tool passes for a credit decision)",
+      "name": "the credit adapter answers skip:unknown when go is missing in a tree that has the source (a missing tool passes for a credit decision)",
       "file": "../changelog/credit-identity.sh",
-      "old": "    echo \"       Install the desk-tools release, or run from an assay checkout with Go installed.\" >&2\n    exit 127\n",
-      "new": "    echo \"       Install the desk-tools release, or run from an assay checkout with Go installed.\" >&2\n    echo skip:unknown\n    exit 0\n"
+      "old": "so it cannot be built; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    exit 127\n",
+      "new": "so it cannot be built; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    echo skip:unknown\n    exit 0\n"
     },
     {
       "name": "the credit adapter exits 0 when building deskchangelog fails",
       "file": "../changelog/credit-identity.sh",
-      "old": "failed; nothing was checked\" >&2\n    exit 127\n",
-      "new": "failed; nothing was checked\" >&2\n    exit 0\n"
+      "old": "failed; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    exit 127\n",
+      "new": "failed; nothing was checked.\" >&2\n    echo \"       A deskchangelog on PATH is not used for a tree that has the source.\" >&2\n    exit 0\n"
+    },
+    {
+      "name": "the credit adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../changelog/credit-identity.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "the changelog gate adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../changelog/check.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "the spec-header adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../release/check-spec-header-version.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "the decision-defaults lint adapter looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../lint-human-decision-defaults.sh",
+      "old": "if [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n",
+      "new": "if command -v deskchangelog >/dev/null 2>&1; then\n  bin=deskchangelog\nelif [ -d \"$desk_dir/cmd/deskchangelog\" ]; then\n"
+    },
+    {
+      "name": "aggregate.py looks on PATH first again (a deskchangelog on PATH decides a tree that carries the source)",
+      "file": "../changelog/aggregate.py",
+      "old": "def main(argv):\n    desk_dir =",
+      "new": "def main(argv):\n    if shutil.which(\"deskchangelog\"):\n        return subprocess.run([shutil.which(\"deskchangelog\"), *argv[1:]]).returncode\n    desk_dir ="
     }
   ]
 }

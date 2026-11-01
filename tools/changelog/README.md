@@ -20,10 +20,15 @@ Everything else in the rework is **live on the branch** and needs no activation:
   two workflows call, with offline unit tests (`aggregate_test.sh`,
   `check_test.sh`) and their fail-first stubs under `testdata/`. Both are now thin
   adapters onto the `deskchangelog` Go command (`tools/desk/cmd/deskchangelog`:
-  verbs `aggregate`, `check`, `credit-identity`, `check-spec-header`,
-  `lint-decision-defaults`). An adapter runs `deskchangelog` from `PATH`, else
-  builds it from `tools/desk` with the Go toolchain, and exits 127 when neither is
-  available. The call forms and exit codes are unchanged;
+  verbs `unreleased-bullets`, `highlights`, `roll`, `credits`, `check`,
+  `credit-identity`, `check-spec-header`, `lint-decision-defaults`). In a checkout
+  that carries `tools/desk/cmd/deskchangelog`, an adapter builds the command from
+  that source with the Go toolchain and never uses a `deskchangelog` on `PATH`; it
+  exits 127 when Go is missing or the build fails. Only a tree without the source
+  runs the `deskchangelog` on `PATH`. The existing call forms keep their output and
+  exit codes, with three differences: exit 127 without Go, a `--` needed before a
+  positional argument to `aggregate.py` that starts with a dash, and
+  `aggregate.py --help` exiting 0;
 - `plugins/assay/skills/worker-desk/SKILL.md` — the worker clause, now naming the
   `changelog/<slug>.md` fragment path.
 
