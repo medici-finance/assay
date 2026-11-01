@@ -145,13 +145,79 @@ release. Local root-owned tool installation remains a separate operator act.
 ## Validation
 
 ```sh
-python3 -B -m unittest discover -s tools/release -p images_test.py -v
+python3 -B -m unittest tools.release.images_test tools.release.ci_step_test -v
 sh containers/scripts/layer-secret-scan.test.sh
 sh containers/scripts/layer-secret-scan.mutate.sh
 ```
 
 The image-producer tests use fake Docker and check real metadata and artifact
-bytes without registry access. The scan suites separately prove real-key and
+bytes without registry access. `ci_step_test` checks, from outside that suite, that
+CI still runs it on the `rest` shard, fails the shard when it fails and stops
+it within 15 minutes. Both read workflow settings through
+`tools/release/workflow_keys.py`, a closed reader that accepts only the forms
+these three workflow files use, each read exactly as written: `key:` and
+`key: value` with a plain key, plain sequence items that start with no
+indicator character (`-` and `?` among them), one-line plain values
+(no `: ` inside, no `:` at the end), one-line double-quoted values with no
+backslash, one-line single-quoted values with no quote inside, one-line flow
+sequences of such items, and a bare `|` block scalar only as a step's `run` or
+as the `path` under a step's `with`. A `uses` value must be an action pinned to
+a full commit SHA. A sequence item is a dash and exactly one space, and lines
+nest the way YAML nests them: one mapping's keys share a column, one
+sequence's dashes share a column two past the key that holds them, and an
+item's keys sit two past its dash, so a step ends where YAML ends it. The
+reader takes the text as stored on disk (`workflow_keys.load`), so a carriage
+return is seen. Every other line (an escape sequence, a doubled quote, a
+`>` or chomped block scalar, a block scalar anywhere else, a flow mapping, an
+anchor, a tag, a quoted or spaced key, a key written twice, any other spacing
+after a dash, a key or dash outside its column, a tab, a carriage
+return or another control, format or separator character) is unread, and
+every unread line is refused, wherever it sits in the file, so keep these
+workflows in that form. Job and step text is cut where
+the reader ends the job or step, and a step name used twice in one job counts
+as no step at all. The publishing jobs (`artifacts`, `runner-arm64`, `release`) and their
+steps must not set `continue-on-error` in any form, except the two optional
+release Go cache steps, and each of those is exempt only while its whole content
+(every key and value, in order) matches its pin and no other step shares its
+name. The publishing jobs must not set step `defaults` (nor may the workflow),
+no step in one may set `shell` or `working-directory`, each job's own
+environment is pinned (only `CGO_ENABLED: "0"` on `artifacts`, none on the
+other two), and each step's `if` must match its pin, so a step with no pinned
+condition may not gain one. The publisher's approval, needs, runner, step order,
+dry-run guards and native arm64 directory, the permissions and environment of
+every job, `persist-credentials: false` on every checkout in the test and
+publishing jobs, and the upload and download settings are read from the
+reader's keys, never from job text, so a line in a comment, a run script or a
+`with` block scalar never counts. Each platform upload in `artifacts`, the
+native image's upload, the report upload and every `actions/download-artifact`
+step in `runner-arm64` and `release` must hold exactly its pinned `with`
+inputs: the build downloads read every `release-build-*` artifact, merged,
+each platform upload is uncompressed, fails when it finds no files and its
+path holds exactly its pinned lines, in order (no `!` exclusion, no added
+pattern, no expression), and the native image's upload path holds exactly the
+archive and its receipt. No other step in any job may have a
+`with` `name` that can start with the `release-build-` prefix: a fixed name
+under it is refused, and so is an expression whose fixed text before it is
+empty or still a start of the prefix. Only `release` may
+grant a write, the workflow default is `contents: read` alone, and no job may
+name its environment with an expression. The test and publishing
+jobs must not run in a `container`, and no job may call another workflow (a
+job-level `uses`). The workflow environment must hold only `GO_VERSION`,
+and the test and CI shard jobs must not set their own. The CI step must hold
+only `name`, `if`, `timeout-minutes` and `run`, and the Go regression test file
+that runs every release suite is pinned whole. The publisher's script checks,
+the two `sha256sum -c` checks of the restore step among them, look for fixed
+lines among the live, non-comment lines of one named step's `run` script, each
+as a whole line, so the same text in another key, another step or beside other
+text on its line (`|| true` after it, say) does not count. Not checked:
+whether the shell executes such a line (a heredoc, a dead branch, or another
+line of the script such as `set +e` can stop it), other files
+in that Go package, earlier steps that write `GITHUB_ENV` or `GITHUB_PATH`, a
+step's own `env` in a publishing job (a shell startup variable set there is not
+refused), the commands and conditions of the test job's suite steps (the legs
+that are not mutation harnesses; the matrix holding them is checked), and a
+transfer made other than through `actions/upload-artifact` or
+`actions/download-artifact`. The scan suites separately prove real-key and
 hidden-layer detection, fail-closed errors and exact-label precision. The
 complete release workflow must still be exercised after maintainer promotion.
 

@@ -113,6 +113,11 @@
     },
     {
       "class": "library",
+      "pattern": "tools/release/workflow_keys.py",
+      "reason": "pure workflow-text reader imported only by the offline release workflow checks in images_test.py and ci_step_test.py; no standalone CLI or network calls (#5091)"
+    },
+    {
+      "class": "library",
       "pattern": "tools/release/bundles.py",
       "reason": "internal release provenance-bundle check imported by fixed release workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3094)"
     },
@@ -125,6 +130,11 @@
       "class": "test",
       "pattern": "tools/release/images_test.py",
       "reason": "offline image producer and manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#3204)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/ci_step_test.py",
+      "reason": "offline checks that the release test suites are named in the CI step that runs them, executed by build-test through the regression package; never an operator entrypoint (#5091)"
     },
     {
       "class": "test",
@@ -692,7 +702,7 @@
       "complexity": "simple",
       "basis": "162 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskautolane",
@@ -892,7 +902,7 @@
       "complexity": "simple",
       "basis": "624 LOC, ~2 verbs, ~4 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskdispatch",
@@ -1160,7 +1170,7 @@
       "complexity": "simple",
       "basis": "242 LOC, ~0 verbs, ~6 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskmonitor",
@@ -1624,7 +1634,7 @@
       "complexity": "simple",
       "basis": "120 LOC, ~0 verbs, ~5 flags at 3ad1ad83c871",
       "owner": "desktools-v2/47",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskwt",
