@@ -215,7 +215,10 @@ The ownership, budget and operator-incarnation records in `ownership.go`,
 Config, Run, the effect path or an ownership store. MatchCellFence compares
 records; its success is not authority, signature verification, current durable
 ownership or a provider fence. No IncarnationSource adapter is installed.
-DecodeCellCheckpoint is the checkpoint reader: it refuses absent fields, unknown
+CheckControlGrant and CheckNotRestored record the two ruled custody restrictions:
+an executor never reads signing material on the control volume it mounts, and
+restored control state never counts as current. They compare records and install
+no access rule. DecodeCellCheckpoint is the checkpoint reader: it refuses absent fields, unknown
 fields and an unsupported schema, so an absent hold flag never decodes as not held.
 
 The named schema tests and selected mutations in `testdata/effect_mutations.py`

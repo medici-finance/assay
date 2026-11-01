@@ -22,10 +22,11 @@ func (s fixtureSource) CurrentIncarnation(context.Context, string) (OperatorInca
 // It checks the production record predicate before recording a fake effect.
 // It does not qualify signatures, real custody, store transactions or providers.
 type fixtureBoundary struct {
-	source  IncarnationSource
-	active  CellActivation
-	owned   CellOwnership
-	effects int
+	source   IncarnationSource
+	active   CellActivation
+	owned    CellOwnership
+	restored []RestoredControl
+	effects  int
 }
 
 func (p *fixtureBoundary) apply(cap CellOwnership) error {
@@ -38,6 +39,11 @@ func (p *fixtureBoundary) apply(cap CellOwnership) error {
 	}
 	if err := MatchCellFence(current, p.active, p.owned, cap); err != nil {
 		return err
+	}
+	for _, r := range p.restored {
+		if err := CheckNotRestored(current, r); err != nil {
+			return err
+		}
 	}
 	p.effects++
 	return nil
@@ -178,4 +184,83 @@ func TestIncarnationContractFields(t *testing.T) {
 	if !reflect.DeepEqual(names, exported) {
 		t.Fatalf("contract fields %v differ from exported type fields %v", names, exported)
 	}
+}
+
+// regression: F-ge16-custody
+func TestExecutorKeyReadRefused(t *testing.T) {
+	executor := ControlGrant{Identity: "example-executor", Role: ControlExecutor,
+		VolumeRef: "ref:control-volume"}
+	operator := ControlGrant{Identity: "example-operator", Role: ControlOperator,
+		VolumeRef: "ref:control-volume", ReadSigning: true, Write: true}
+	for _, g := range []ControlGrant{executor, operator} {
+		if err := CheckControlGrant(g); err != nil {
+			t.Fatalf("positive control %s refused: %v", g.Role, err)
+		}
+	}
+	cases := map[string]func(*ControlGrant){
+		"executor-reads-signing": func(g *ControlGrant) { g.ReadSigning = true },
+		"executor-writes-state":  func(g *ControlGrant) { g.Write = true },
+		"empty-identity":         func(g *ControlGrant) { g.Identity = "" },
+		"empty-volume":           func(g *ControlGrant) { g.VolumeRef = "" },
+		"unknown-role":           func(g *ControlGrant) { g.Role = "runner" },
+	}
+	for name, change := range cases {
+		g := executor
+		change(&g)
+		if err := CheckControlGrant(g); err == nil {
+			t.Errorf("%s: grant accepted", name)
+		}
+	}
+}
+
+// regression: F-ge16-custody
+func TestRestoredControlNotCurrent(t *testing.T) {
+	// A snapshot of the control volume restored together with the database:
+	// current, activation and ownership all agree on the restored incarnation,
+	// so the record fence alone cannot tell it belongs to the past.
+	p := cellFenceFixture()
+	snapshot := RestoredControl{SnapshotRef: "ref:volume-snapshot-3",
+		IncarnationID: "incarnation-new", KeyRef: "ref:example-key-new"}
+	if err := p.apply(p.owned); err != nil {
+		t.Fatalf("restored tuple must pass the record fence alone: %v", err)
+	}
+	cases := map[string]func(*RestoredControl, *fixtureBoundary){
+		"restored-as-current": func(*RestoredControl, *fixtureBoundary) {},
+		"id-kept-key-rotated": func(_ *RestoredControl, p *fixtureBoundary) {
+			setCurrent(p, func(c *OperatorIncarnation) { c.KeyRef = "ref:example-key-next" })
+			p.active.KeyRef = "ref:example-key-next"
+		},
+		"key-kept-id-rotated": func(_ *RestoredControl, p *fixtureBoundary) {
+			setCurrent(p, func(c *OperatorIncarnation) { c.ID = "incarnation-next" })
+			p.active.IncarnationID, p.owned.IncarnationID = "incarnation-next", "incarnation-next"
+		},
+		"no-snapshot-ref": func(r *RestoredControl, p *fixtureBoundary) { r.SnapshotRef = ""; rotate(p) },
+		"no-restored-id":  func(r *RestoredControl, p *fixtureBoundary) { r.IncarnationID = ""; rotate(p) },
+		"no-restored-key": func(r *RestoredControl, p *fixtureBoundary) { r.KeyRef = ""; rotate(p) },
+	}
+	for name, change := range cases {
+		p := cellFenceFixture()
+		r := snapshot
+		change(&r, &p)
+		p.restored = []RestoredControl{r}
+		if err := p.apply(p.owned); err == nil || p.effects != 0 {
+			t.Errorf("%s: restored state admitted effect: error=%v effects=%d", name, err, p.effects)
+		}
+	}
+	p = cellFenceFixture()
+	rotate(&p)
+	p.restored = []RestoredControl{snapshot}
+	if err := p.apply(p.owned); err != nil || p.effects != 1 {
+		t.Fatalf("rotated positive control: error=%v effects=%d", err, p.effects)
+	}
+}
+
+// rotate moves the fixture to a fresh identity and key, as the operator must
+// after any restore, keeping activation and ownership bound to it.
+func rotate(p *fixtureBoundary) {
+	setCurrent(p, func(c *OperatorIncarnation) {
+		c.ID, c.KeyRef = "incarnation-next", "ref:example-key-next"
+	})
+	p.active.IncarnationID, p.active.KeyRef = "incarnation-next", "ref:example-key-next"
+	p.owned.IncarnationID = "incarnation-next"
 }

@@ -103,6 +103,30 @@ mutations += [
     ("checkpoint-schema-unchecked", "ownership.go", "state.Schema != CellCheckpointSchema",
      "false", "TestCheckpointAbsentFieldsHeld"),
 ]
+# GE/16 ruled restrictions on custody 1A: executor key custody and snapshot restore.
+mutations += [
+    ("executor-signing-read-ok", "incarnation.go", "if g.ReadSigning {",
+     "if false {", "TestExecutorKeyReadRefused"),
+    ("executor-write-ok", "incarnation.go", "if g.Write {",
+     "if false {", "TestExecutorKeyReadRefused"),
+    ("grant-identity-empty-ok", "incarnation.go", 'g.Identity == ""',
+     "false", "TestExecutorKeyReadRefused"),
+    ("grant-volume-empty-ok", "incarnation.go", 'g.VolumeRef == ""',
+     "false", "TestExecutorKeyReadRefused"),
+    ("grant-role-unknown-ok", "incarnation.go",
+     'return errors.New("control grant role unknown")', "return nil",
+     "TestExecutorKeyReadRefused"),
+    ("restored-id-current-ok", "incarnation.go", "now.ID == restored.IncarnationID",
+     "false", "TestRestoredControlNotCurrent"),
+    ("restored-key-current-ok", "incarnation.go", "now.KeyRef == restored.KeyRef",
+     "false", "TestRestoredControlNotCurrent"),
+    ("snapshot-ref-empty-ok", "incarnation.go", 'restored.SnapshotRef == ""',
+     "false", "TestRestoredControlNotCurrent"),
+    ("restored-id-empty-ok", "incarnation.go", 'restored.IncarnationID == ""',
+     "false", "TestRestoredControlNotCurrent"),
+    ("restored-key-empty-ok", "incarnation.go", 'restored.KeyRef == ""',
+     "false", "TestRestoredControlNotCurrent"),
+]
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}

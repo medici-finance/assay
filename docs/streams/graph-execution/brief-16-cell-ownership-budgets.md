@@ -25,6 +25,7 @@ risk:
 gate-why: Ownership and restore behavior constrain external effects; the owner confirms stale writers cannot retain independent authority.
 decision-trigger: spec
 decision-issue: 5111
+ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515"
 issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
@@ -78,7 +79,20 @@ and offline negative fixtures. It does not deliver this brief. The existing Task
 Verify rows 1–11, Evidence, dependencies and human activation gate remain owed.
 No generated board status or lifecycle completion is changed.
 
-#### Human decision block — pending; no option enacted
+#### Human decision block — ruled: option 3, design only
+
+**Ruling recorded.** Option 3, design only: custody 1A, reopen 2A, budget 3A,
+provider 4A, and pacing rule 5 unchanged. Two restrictions apply to 1A: role
+executors cannot read signing material on the volume they mount, and snapshots or
+backups of that volume never restore operator-control state as current. Both are
+contract text in `spec/operator-incarnation-v1.md`, each pinned by a negative-control
+test and committed mutants. The accountable operator for the concrete profile is
+the `kryton` account, as named in the ruling. The ruling grants no deployment,
+credentials or admission reopening; activation still needs the separate human gate.
+
+Ruling: https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515
+
+The options as offered:
 
 **Decision:** approve a bounded first Kubernetes operator profile for subsequent
 implementation and qualification of ownership, budgets and restoration fencing.
@@ -87,7 +101,7 @@ the existing separate human gate and consumer qualification. No response leaves
 mutation admission paused. Scope is one Cell execution/publisher group; automatic
 multi-host recovery and R3 repository assignment remain excluded.
 
-Choose one response:
+Responses offered:
 
 1. **Approve the recommended bounded design profile:** custody 1A, reopen 2A,
    budget 3A, provider 4A, and pacing rule 5 unchanged, as detailed below. This
@@ -97,7 +111,7 @@ Choose one response:
    and restrictions below; every unspecified dimension stays held. This also grants
    no deployment, credential provisioning or reopening authority.
 
-Default if no answer: none — blocks until answered; keep all policy choices pending and mutation admission paused; schema/test preparation alone may proceed.
+Default if no answer (superseded by the ruling): none — blocks until answered; keep all policy choices pending and mutation admission paused; schema/test preparation alone may proceed.
 
 **Dimension 1 — Incarnation custody and rotation (1A / 1B).** Recommend protected operator-control state
    on a dedicated persistent volume outside PostgreSQL/CNPG backup and PITR, mounted
@@ -110,13 +124,11 @@ Default if no answer: none — blocks until answered; keep all policy choices pe
    authority with equivalent non-restorable-current semantics. A Git revision or
    restored database value is never current authority. This choice creates no
    Kubernetes resources or credentials.
-   Two points stay open for the person answering; this block recommends neither:
-   (a) whether qualified role executors may read the signing material on the
-   volume they mount, or only the operator may, given that an executor able to
-   read the key can mint what it is meant to check; (b) whether snapshots and
-   cluster backups of the volume itself are excluded from restore, so that
-   restoring database and volume together cannot make an old incarnation look
-   current (the non-restorable-current semantics the alternative names).
+   Ruled restrictions on 1A: (a) role executors never read the signing material
+   on the volume they mount, and only the operator writes control state; (b) a
+   snapshot or backup of the volume never restores operator-control state as
+   current, so the operator rotates identity and key away from every restored
+   value before a match counts.
 **Dimension 2 — Reopen procedure (2A / 2B).** Recommend operator-confirmed whole-group stop plus old
    socket/capability invalidation and independent credential revocation/restriction
    (or expiry), followed by external reconciliation, rotation and fresh executors.
@@ -152,18 +164,20 @@ to approve only the recommended bounded design (1A/2A/3A/4A + 5 unchanged),
 `graph-execution/16: 2` to hold, or `graph-execution/16: 3` followed by the
 explicit alternative selections/narrowed scope and rationale. A bare option
 number does not name the brief and is not recorded as a ruling. For either
-approval, name the operator accountable for the concrete profile and answer the
-two open Dimension 1 points. Missing or ambiguous selections
+approval, name the operator accountable for the concrete profile and any
+restrictions on the selected options. Missing or ambiguous selections
 stay held. No reply authorizes deployment, credentials or admission reopening.
 
 **Evidence available for the ruling:** implementation tests
 `TestCellFenceBoundary`, `TestIncarnationContractFields`,
-`TestCellCheckpointRoundTrip` and `TestCheckpointAbsentFieldsHeld`, with a
+`TestCellCheckpointRoundTrip`, `TestCheckpointAbsentFieldsHeld`,
+`TestExecutorKeyReadRefused` and `TestRestoredControlNotCurrent`, with a
 committed negative mutation control per guard, exercise the pure contract and
 separately invoked fake effect boundary. They cover restored owner/generation
 under an old incarnation, stale tuple, absent or unsupported protected current
 state, activation/key mismatch, contract wire names, refusal of a checkpoint with
-any field absent, retained pause/cancellation/unknown usage and all attempt phases. They do not
+any field absent, executor signing-material reads, restored control state
+presented as current, retained pause/cancellation/unknown usage and all attempt phases. They do not
 qualify Kubernetes containment, signature custody, real provider enforcement,
 atomic reservations, concurrent owners or PostgreSQL rollback. Those checks remain
 could-not-check in this preparation and required before activation. Independent

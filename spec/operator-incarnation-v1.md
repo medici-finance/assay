@@ -41,6 +41,39 @@ legacy credentials or wait for expiry, reconcile outstanding external effects,
 then record operator confirmation before reopening. A recovered SQL attempt list
 is not proof that the group stopped. Unknown stop or external outcomes hold.
 
+## Ruled custody restrictions
+
+The graph-execution/16 design ruling selects custody 1A with two restrictions.
+Both bind every profile that implements this contract.
+
+1. **Role executors never read signing material on the volume they mount.** A
+   qualified role executor may mount the protected operator-control volume and
+   read the current incarnation and activation references on it. It cannot read
+   the signing material, and it cannot write control state. Only the operator
+   holds signing custody. An executor able to read the key could mint the
+   capability it is meant to check.
+2. **A snapshot or backup restore never presents operator-control state as
+   current.** Restored control state is provenance only. Before any match counts,
+   the operator rotates both the incarnation identity and the key reference away
+   from every restored value, even when the restored database agrees with the
+   restored volume.
+
+`ControlGrant` records one identity's access to the volume: `identity`, `role`
+(`operator` or `executor`), `volume_ref`, `read_signing` and `write`.
+`CheckControlGrant` refuses an executor grant with `read_signing` or `write`, an
+unknown role, and an empty identity or volume reference.
+
+`RestoredControl` records restore provenance: `snapshot_ref`, `incarnation_id`
+and `key_ref`. `CheckNotRestored(current, restored)` refuses a current
+incarnation whose identity or key reference equals the restored one, and refuses
+incomplete provenance. It runs alongside `MatchCellFence`, because a database and
+volume restored together can agree with each other on the old incarnation.
+
+Both checks compare passive records. They create no volume, mount, file-access
+rule, credential or Kubernetes policy, and a nil result authorizes nothing. The
+profile's own access layer enforces restriction 1 and the operator's rotation
+procedure enforces restriction 2. Both remain delivery work.
+
 ## Consumer read contract
 
 `IncarnationSource.CurrentIncarnation(context.Context, cellID)` returns the
@@ -75,10 +108,19 @@ consistent: unsupported current schema; empty current cell, ID or key reference;
 an owned cell that differs from the current one while the presented tuple equals
 the owned one; and empty owned owner, generation or backend.
 
+`TestExecutorKeyReadRefused` refuses an executor grant that reads signing
+material or writes control state, an unknown role and incomplete grants, with an
+executor and an operator grant as positive controls. `TestRestoredControlNotCurrent`
+restores a volume snapshot together with matching activation and ownership,
+shows the record fence alone admits it, and requires the fake boundary to refuse
+it, along with a kept identity, a kept key reference and each incomplete
+provenance field. A rotated identity and key is the positive control.
+
 `TestIncarnationContractFields` compares the field inventory with the exported
 type in both directions, Go names and wire names together. The committed
 incarnation mutations in `drainloop/testdata/effect_mutations.py`, one per guard
-plus wire-name drift, must fail named runtime assertions.
+plus wire-name drift and one per custody-restriction check, must fail named
+runtime assertions.
 
 These are implementation tests of a pure record contract. They do not satisfy the
 whole GE/16 Verify table, prove real provider fencing or qualify PostgreSQL rollback,

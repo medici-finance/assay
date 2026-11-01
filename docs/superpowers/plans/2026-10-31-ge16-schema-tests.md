@@ -91,7 +91,7 @@ documentation and changelog fragment.
 
 - [x] Preserve original Task/Verify/Evidence/dependency obligations.
 - [x] Prepare bounded custody/rotation, reopen, budget, provider and pacing choices.
-- [x] Commit decision-ready preparation; dispatcher filed decision issue #5111 through centralized ensure at spec. The issue remains pending, not approved.
+- [x] Commit decision-ready preparation; dispatcher filed decision issue #5111 through centralized ensure at spec. It is now ruled: option 3, design only (1A/2A/3A/4A, pacing rule 5 unchanged, two restrictions on 1A); no deployment, credentials or admission reopening.
 - [x] Publish draft with supported issue linkage, implementation tests and mutation results.
 - [x] Hand off exact PR/head and unresolved runtime obligations without a lifecycle change.
 
@@ -105,6 +105,18 @@ documentation and changelog fragment.
 - [x] `DecodeCellCheckpoint` refuses absent, unknown and unsupported-schema records; absent hold flags never read as not held.
 - [x] Dimension 1 open points (executor key read access, volume snapshot restore) recorded as open, not decided.
 - [ ] Workflow path trigger for `spec/**` and the out-of-checkout spec read: linked follow-up, needs workflow scope.
+
+### Task 5: Carry the design ruling
+
+**Files:** `drainloop/incarnation.go`, `incarnation_test.go`, mutation runner;
+`spec/operator-incarnation-v1.md`; the GE/16 decision block.
+
+Ruling: https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515
+
+- [x] Record options 1A/2A/3A/4A and pacing rule 5 unchanged; name the accountable operator as the ruling does.
+- [x] Restriction (a) as contract text, `CheckControlGrant`, `TestExecutorKeyReadRefused` and one mutant per guard.
+- [x] Restriction (b) as contract text, `CheckNotRestored`, `TestRestoredControlNotCurrent` and one mutant per guard.
+- [x] No deployment, credential, admission, Kubernetes policy or activation step; Evidence, status and board rows untouched.
 
 ## Local permission checkpoint
 
