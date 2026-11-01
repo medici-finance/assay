@@ -151,6 +151,47 @@ MUTATION_REPORTS = {
     'cmd/deskmerge/mutations.json': 'deskmerge.${MUHAR_SHARD%%/*}.report',
 }
 DESKMERGE = 'cmd/deskmerge/mutations.json'
+UPLOAD = 'Upload captured mutation reports (tool-validation pack)'
+TEST_DEPENDENTS = ('artifacts', 'runner-arm64', 'release')
+# The whole live body of one mutation harness step. Anything added, dropped or
+# reordered fails the match, so the checks below never rest on a substring.
+HARNESS_STEP = re.compile(
+    r"        if: matrix\.leg == '(?P<leg>[^']+)'\n"
+    r"(?P<env>        env:\n          MUHAR_SHARD: \$\{\{ matrix\.shard \}\}\n)?"
+    r"        run: \|\n"
+    r"          set -euo pipefail\n"
+    r"          cd tools/desk\n"
+    r"          report=\$\(go run \./cmd/muhar -j 0 (?P<shard>-shard \"\$MUHAR_SHARD\" )?"
+    r"-spec (?P<spec>[a-zA-Z0-9_./-]+\.json)\)\n"
+    r"          echo \"\$report\"\n"
+    r"          mkdir -p \"\$\{RUNNER_TEMP\}/tv-reports\"\n"
+    r"          printf '%s\\n' \"\$report\" > \"\$\{RUNNER_TEMP\}/tv-reports/(?P<report>[^\"\n]+)\"\n"
+    r"          if ! grep -qE 'Totals: \[0-9\]\+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<\"\$report\"; then\n"
+    r"            echo \"::error::[^\"$`\;&|\n]*\"\n"
+    r"            exit (?P<exit>[0-9]+)\n"
+    r"          fi\n*")
+UPLOAD_LEGS = re.compile(r"matrix\.leg == '[^']+'(?: \|\| matrix\.leg == '[^']+')*")
+
+
+def live_lines(block):
+    """BLOCK without its comment lines: a comment never holds a setting."""
+    return ''.join(line for line in block.splitlines(True) if not line.lstrip().startswith('#'))
+
+
+def publish_wait_problems(jobs):
+    """Each publishing job still needs `test` and never runs past its failure."""
+    problems = []
+    for name in TEST_DEPENDENTS:
+        block = live_lines(jobs.get(name, ''))
+        needs = re.findall(r'(?m)^    needs:(.*)$', block)
+        value = needs[0].strip() if len(needs) == 1 else ''
+        listed = value[1:-1].split(',') if value.startswith('[') and value.endswith(']') else [value]
+        if 'test' not in {item.strip() for item in listed}:
+            problems.append(name + ' must wait for the test job')
+        if any(re.search(r'\b(always|failure|cancelled)\(\)', condition)
+               for condition in re.findall(r'(?m)^    if:(.*)$', block)):
+            problems.append(name + ' must not run past a failed test job')
+    return problems
 
 
 def mutation_routing_problems(text):
@@ -158,20 +199,44 @@ def mutation_routing_problems(text):
 
     muhar still owns baselines, controls and per-mutant verdicts. This checks
     that scheduling neither omits nor duplicates a full harness or a deskmerge
-    shard, that every scheduled harness uploads its report, and that each
-    harness keeps its verdict gate and report name.
+    shard, that every scheduled harness uploads its report, that each harness
+    keeps its verdict gate and report name, and that no failure in the test job
+    can be tolerated on the way to publication. Comment lines are dropped
+    first, so a setting kept only in a comment counts as absent.
     """
-    test = workflow_jobs(text).get('test', '')
-    problems = []
+    jobs = workflow_jobs(text)
+    test = live_lines(jobs.get('test', ''))
+    problems = publish_wait_problems(jobs)
     matrix = re.findall(r'(?m)^          - leg: (\S+)(?:\n            shard: (\S+))?', test)
     if not matrix or len(matrix) != len(set(matrix)):
         problems.append('test matrix must contain unique leg/shard entries')
-    if 'fail-fast: false' not in test:
+    if re.search(r'(?m)^ *exclude:', test):
+        problems.append('the test matrix must not exclude a leg')
+    if re.findall(r'(?m)^ *fail-fast:.*$', test) != ['      fail-fast: false']:
         problems.append('all matrix verdicts must run without fail-fast cancellation')
+    if re.search(r'(?m)^    continue-on-error:', test):
+        problems.append('the test job must not tolerate a failed leg')
+    if (re.search(r'(?m)^ *shell:|^    defaults:', test)
+            or re.search(r'(?m)^defaults:', live_lines(text.split('\njobs:\n', 1)[0]))):
+        problems.append('the test job must run its steps in the default shell')
+    for chunk in re.findall(r'(?ms)^      - (.*?)(?=^      - |\Z)', test):
+        if re.search(r'(?m)^(?:        )?continue-on-error:', chunk):
+            spec = re.search(r'-spec (\S+\.json)', chunk)
+            problems.append('mutation harness step must not tolerate failure: ' + spec.group(1)
+                            if spec else 'a test job step must not tolerate failure')
     steps = workflow_steps(test)
-    upload = steps.get('Upload captured mutation reports (tool-validation pack)', '')
-    upload_legs = set(re.findall(r"matrix\.leg == '([^']+)'", upload))
-    if 'if-no-files-found: error' not in upload or 'strategy.job-index' not in upload:
+    upload = steps.get(UPLOAD, '')
+    conditions = re.findall(r'(?m)^        if: (.*)$', upload)
+    upload_legs = set()
+    if len(conditions) == 1 and UPLOAD_LEGS.fullmatch(conditions[0]):
+        upload_legs = set(re.findall(r"matrix\.leg == '([^']+)'", conditions[0]))
+    else:
+        problems.append('the report upload must run on exactly the legs it names')
+    if re.findall(r'(?m)^ *if-no-files-found:.*$', upload) != ['          if-no-files-found: error']:
+        problems.append('the report upload must fail when it finds no files')
+    if (not re.search(r'(?m)^        uses: actions/upload-artifact@', upload)
+            or not re.search(r'(?m)^          name: tv-reports-\$\{\{ matrix\.leg \}\}'
+                             r'-\$\{\{ strategy\.job-index \}\}$', upload)):
         problems.append('each mutation leg must upload its reports without collision or omission')
     actual = Counter()
     for name, step in steps.items():
@@ -182,30 +247,30 @@ def mutation_routing_problems(text):
             problems.append('unknown or ambiguous mutation harness: ' + name)
             continue
         spec = specs[0]
-        match = re.search(r"(?m)^        if: matrix\.leg == '([^']+)'$", step)
-        if not match:
-            problems.append('mutation harness has no single explicit matrix leg: ' + spec)
+        gate = HARNESS_STEP.fullmatch(step)
+        if not gate or gate.group('spec') != spec:
+            problems.append('mutation verdict gate changed: ' + spec)
             continue
-        leg = match.group(1)
+        if gate.group('exit') != '1':
+            problems.append('a surviving mutation must fail its harness step: ' + spec)
+        if gate.group('report') != MUTATION_REPORTS[spec]:
+            problems.append('mutation report identity changed: ' + spec)
+        leg = gate.group('leg')
         if leg not in upload_legs:
             problems.append('mutation harness report is not uploaded: ' + spec)
-        if ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate'" not in step
-                or 'set -euo pipefail' not in step or 'go run ./cmd/muhar -j 0 ' not in step):
-            problems.append('mutation verdict gate changed: ' + spec)
-        if ('${RUNNER_TEMP}/tv-reports/' + MUTATION_REPORTS[spec] + '"') not in step:
-            problems.append('mutation report identity changed: ' + spec)
+        sharded = bool(gate.group('env')) and bool(gate.group('shard'))
+        if spec != DESKMERGE and (gate.group('env') or gate.group('shard')):
+            problems.append('full mutation harness unexpectedly sharded: ' + spec)
         for entry, shard in matrix:
             if entry != leg:
                 continue
             if spec == DESKMERGE:
-                if (shard not in ('0/3', '1/3', '2/3')
-                        or '-shard "$MUHAR_SHARD"' not in step
-                        or 'MUHAR_SHARD: ${{ matrix.shard }}' not in step):
+                if shard not in ('0/3', '1/3', '2/3') or not sharded:
                     problems.append('deskmerge must retain its exact three shards')
                     continue
                 actual['deskmerge.' + shard[0] + '.report'] += 1
             else:
-                if shard or re.search(r'report=\$\(go run[^\n]*-shard ', step):
+                if shard:
                     problems.append('full mutation harness unexpectedly sharded: ' + spec)
                 actual[MUTATION_REPORTS[spec]] += 1
     expected = Counter(report for spec, report in MUTATION_REPORTS.items() if spec != DESKMERGE)
@@ -842,28 +907,103 @@ if args[:2] == ['image', 'inspect']:
         main = (HERE.parents[1] / '.github/workflows/release.yml').read_text()
         self.assertEqual(mutation_routing_problems(main), [])
         bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        once = 'matrix must execute every full harness and deskmerge shard exactly once'
+        gate = 'internal/deskkit/mutations.json'
         mutants = {
-            'missing-light-leg': ('          - leg: muhar-light\n', ''),
+            'missing-light-leg': ('          - leg: muhar-light\n', '', once),
             'duplicate-light-leg': ('          - leg: muhar-light\n',
-                                    '          - leg: muhar-light\n          - leg: muhar-light\n'),
-            'missing-deskmerge-shard': ('          - leg: deskmerge\n            shard: 2/3\n', ''),
-            'changed-shard-count': ('            shard: 2/3\n', '            shard: 2/4\n'),
-            'fail-fast': ('      fail-fast: false\n', '      fail-fast: true\n'),
-            'missing-light-upload': ("matrix.leg == 'muhar-light' || ", ''),
+                                    '          - leg: muhar-light\n          - leg: muhar-light\n',
+                                    'test matrix must contain unique leg/shard entries'),
+            'missing-deskmerge-shard': ('          - leg: deskmerge\n            shard: 2/3\n', '', once),
+            'changed-shard-count': ('            shard: 2/3\n', '            shard: 2/4\n',
+                                    'deskmerge must retain its exact three shards'),
+            'fail-fast': ('      fail-fast: false\n', '      fail-fast: true\n',
+                          'all matrix verdicts must run without fail-fast cancellation'),
+            'missing-light-upload': ("matrix.leg == 'muhar-light' || ", '',
+                                     'mutation harness report is not uploaded: ' + gate),
             'upload-name-collision': ('tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}',
-                                      'tv-reports-${{ matrix.leg }}'),
-            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-light'", "'statusgen'")),
+                                      'tv-reports-${{ matrix.leg }}',
+                                      'each mutation leg must upload its reports without collision or omission'),
+            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-light'", "'statusgen'"),
+                                    'mutation harness report is not uploaded: ' + gate),
             'missing-caught-gate': ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<\"$report\"; then\n"
                                     "            echo \"::error::a bodycheck",
                                     "grep -qE 'Totals:' <<<\"$report\"; then\n"
-                                    "            echo \"::error::a bodycheck"),
-            'renamed-report': ('/tv-reports/bodycheck.report', '/tv-reports/other.report'),
+                                    "            echo \"::error::a bodycheck",
+                                    'mutation verdict gate changed: ' + gate),
+            'renamed-report': ('/tv-reports/bodycheck.report', '/tv-reports/other.report',
+                               'mutation report identity changed: ' + gate),
         }
-        for name, (old, new) in mutants.items():
+        for name, (old, new, problem) in mutants.items():
             with self.subTest(name=name):
-                self.assertEqual(main.count(old), 1, 'control target is not unique')
-                mutant = main.replace(old, new, 1)
-                self.assertTrue(mutation_routing_problems(mutant), 'routing control survived')
+                self.assertIn(problem, mutation_routing_problems(mutate_job(main, 'test', old, new)))
+
+    # regression: #5091
+    def test_routing_gate_weakening(self):
+        # Each plant weakens the gate in one way only, often keeping the
+        # correct text in a comment, and must draw its own named refusal.
+        harness = 'internal/deskkit/mutations.json'
+        light = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        grep = ("          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' "
+                "<<<\"$report\"; then\n            echo \"::error::a bodycheck")
+        upload_if = "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+        plants = {
+            'job-tolerates-failure': ('test', '    runs-on: medici-builder-release\n',
+                                      '    runs-on: medici-builder-release\n    continue-on-error: true\n',
+                                      'the test job must not tolerate a failed leg'),
+            'harness-tolerates-failure': ('test', light, light + '        continue-on-error: true\n',
+                                          'mutation harness step must not tolerate failure: ' + harness),
+            'shard-tolerates-failure': ('test', "        if: matrix.leg == 'deskmerge'\n",
+                                        "        if: matrix.leg == 'deskmerge'\n"
+                                        "        continue-on-error: ${{ matrix.shard == '2/3' }}\n",
+                                        'mutation harness step must not tolerate failure: '
+                                        'cmd/deskmerge/mutations.json'),
+            'suite-tolerates-failure': ('test', "        if: matrix.leg == 'desk-tools'\n",
+                                        "        if: matrix.leg == 'desk-tools'\n        continue-on-error: true\n",
+                                        'a test job step must not tolerate failure'),
+            'survivor-exits-zero': ('test', 'not load-bearing as written (docs/desk-tools-gate-bar.md)"\n'
+                                            '            exit 1\n',
+                                    'not load-bearing as written (docs/desk-tools-gate-bar.md)"\n'
+                                    '            exit 0\n',
+                                    'a surviving mutation must fail its harness step: ' + harness),
+            'grep-weakened-shadowed': ('test', grep,
+                                       grep.replace('          if', '          # if', 1)
+                                       .replace('\n            echo', "\n          if ! grep -qE 'Totals:' "
+                                                '<<<"$report"; then\n            echo', 1),
+                                       'mutation verdict gate changed: ' + harness),
+            'harness-shell-override': ('test', light, light + "        shell: bash -c 'exit 0' {0}\n",
+                                       'the test job must run its steps in the default shell'),
+            'fail-fast-shadowed': ('test', '      fail-fast: false\n',
+                                   '      fail-fast: true\n      # fail-fast: false\n',
+                                   'all matrix verdicts must run without fail-fast cancellation'),
+            'leg-excluded': ('test', '      matrix:\n',
+                             '      matrix:\n        exclude:\n          - leg: muhar-light\n',
+                             'the test matrix must not exclude a leg'),
+            'upload-warns-inline': ('test', '          if-no-files-found: error\n',
+                                    '          if-no-files-found: warn # if-no-files-found: error\n',
+                                    'the report upload must fail when it finds no files'),
+            'upload-warns-shadowed': ('test', '          if-no-files-found: error\n',
+                                      '          if-no-files-found: warn\n          # if-no-files-found: error\n',
+                                      'the report upload must fail when it finds no files'),
+            'upload-disabled': ('test', upload_if,
+                                upload_if.replace('if: ', 'if: false && (', 1).replace('\n', ')\n', 1),
+                                'the report upload must run on exactly the legs it names'),
+            'artifacts-skips-test': ('artifacts', '    needs: [resolve, guard, test]\n',
+                                     '    needs: [resolve, guard]\n', 'artifacts must wait for the test job'),
+            'native-skips-test': ('runner-arm64', '    needs: [resolve, guard, test, artifacts]\n',
+                                  '    needs: [resolve, guard, artifacts]\n',
+                                  'runner-arm64 must wait for the test job'),
+            'publisher-runs-anyway': ('release', '    needs: [resolve, guard, test, artifacts, runner-arm64]\n',
+                                      '    needs: [resolve, guard, test, artifacts, runner-arm64]\n'
+                                      '    if: ${{ always() }}\n',
+                                      'release must not run past a failed test job'),
+        }
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            self.assertEqual(mutation_routing_problems(text), [])
+            for name, (job, old, new, problem) in plants.items():
+                with self.subTest(path=path, plant=name):
+                    self.assertIn(problem, mutation_routing_problems(mutate_job(text, job, old, new)))
 
     # regression: #5091
     def test_release_runners_fixed(self):
