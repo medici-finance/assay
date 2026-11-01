@@ -22,6 +22,7 @@ issues: []
 schema: brief-v2
 design: DR-desktools-v2-10
 decision-issue: 1319
+ruling: "https://github.com/medici-finance/assay/issues/1319#issuecomment-5753805199"
 authored: 2026-09-17 by desktools-v2 authoring session
 sources:
   - "docs/streams/desktools-v2/spec.md §8 — the driver's direction of 2026-09-17, the three incidents stated without their identifiers, the verb × check table (§8.2) and the design (§8.3)"
