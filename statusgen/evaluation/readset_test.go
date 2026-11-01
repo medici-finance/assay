@@ -503,6 +503,21 @@ func TestFloorAskedOnlyAdmitted(t *testing.T) {
 			t.Errorf("%s: the floor was asked for %v before the read set was admitted", name, src.asked)
 		}
 	}
+	{ // a file whose content is not its digest is never admitted either
+		fx := newRsFx(t)
+		fx.entries = append(fx.entries, goRun)
+		fx.obs = func(o *ReadSetObservation) {
+			o.Content = append(append([]byte(nil), o.Content...), "read tools/y/y.go\n"...)
+		}
+		src := &countingFloors{floor: floor}
+		fx.src = src
+		if c := fx.item(market); c.Released || c.Result != ResultCouldNotCheck {
+			t.Errorf("other digest: want could-not-check, not released; got %s: %s", c.Result, c.Reason)
+		}
+		if len(src.asked) != 0 {
+			t.Errorf("other digest: the floor was asked for %v before the read set was admitted", src.asked)
+		}
+	}
 	fx := newRsFx(t)
 	fx.entries = append(fx.entries, goRun)
 	src := &countingFloors{floor: floor}
