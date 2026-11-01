@@ -435,6 +435,57 @@ Row 5's Expect still says the scan does not catch a key overwritten by a later l
 
 **VERIFY: PASS** — all 7 Verify rows pass at b1cf3d790708: rows 1-3, 6 and 7 in the container witness, and rows 4 and 5 by hand on a docker host under the environment-only rule. Status is left for the human gate.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c 'ASSAY_APP_PEM_FILE' containers/secrets.md` | pass exit=0 | sha256:f0b5c2c2211c | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c '/run/secrets/assay/app.pem' containers/secrets.md` | pass exit=0 | sha256:06e9d52c1720 | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -ci 'no secret in any image layer' containers/secrets.md` | pass exit=0 | sha256:1121cfccd591 | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `sh containers/scripts/layer-secret-scan.test.sh` | pass exit=0 | sha256:effc577a7503 | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `docker build --platform linux/amd64 -f containers/base/Dockerfile -t assay-desk-base:dev . && sh containers/scripts/layer-secret-scan.sh assay-desk-base:dev` | pass exit=0 | sha256:acad687409f6 | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --consumers --brief desk-containers/02 --root . --base 709c223eff6d~1` | pass exit=0 | sha256:13e436378e1a | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `shellcheck containers/scripts/layer-secret-scan.sh` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 9f9f99cdd8d5 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5159 run=000e4cb88c95ba35f152cc45461250cf55100de28eb6e2ad62772077ad522322 source=9f9f99cdd8d5d1b504ca72324b39b4ecdd4cb8d4 brief=docs/streams/desk-containers/brief-02-secret-injection-contract.md model=claude-opus-5-5 tier=strong
+
+### 2026-11-01 fresh witness on merged main 9f9f99cdd8d5 (non-implementer, gate: human Evidence pass)
+
+The witness table above was written by the installed `statusgen verifyrun` v1.0.67, run on a macOS arm64 host with a docker client and daemon (server 29.8.2, linux/arm64) against the dispatcher's detached checkout of merged main `9f9f99cdd8d5d1b504ca72324b39b4ecdd4cb8d4`. Network was allowed and no sandbox wrapped the rows, because this Verify table declares no Class column. This one host run covers all seven rows, so no row in this pass was run by hand for credit. `statusgen verifyrun --check` now reads 7 pass, 0 fail, 0 could-not-run/missing. The verifier wrote none of this brief's deliverables.
+
+The witness cells keep only output hashes, so a separate supplemental re-run at the same SHA, with no acceptance credit, captured readable output:
+
+- Rows 1-3: counts 5, 6 and 3, each reproducing its witness hash.
+- Row 4: output reproduced the witness hash `effc577a7503` byte for byte. Both required tokens are printed, `RED on baked-key fixture` and `GREEN on clean fixture`. The scanner went red on the baked PEM, the baked ENV key, the false-positive fixture's real secret, the generic sk-in-binary fixture, overwrite fixtures 1-6, sandwich fixtures 1-3, the directory-swap fixture with its whited-out key, and the unreadable fixture. It stayed green on the clean fixture, all five allowlisted-path mimics and the stand-in clean control. It exited 2 on all 16 fail-closed fixtures, and all 53 label-exemption cases passed. The mutation claim was exercised directly.
+- Row 5: the witness run built image sha256:83d6e5854aea (amd64) from the repository root inside the run's time window, and exited 0. The supplemental re-run did not reuse every layer and produced a second image, sha256:d00402ce6fdc, so row 5's witness hash is not reproducible. Scanning each image directly printed the required clean line for that image, exit 0 both times, with the witness image named by digest and the second by the assay-desk-base:dev tag. The pinned parents, desk-tools v1.0.64 and debian:bookworm-slim, were pulled by digest with no denial. Registry login state on this host was left uninspected. An anonymous manifest read of the desk-tools digest with an empty docker config succeeded, so that parent does not need a credential; the same read for the debian digest ended in a manifest verification error, which says nothing about access.
+- Row 6: captured before the witness on the clean tree, reproducing its witness hash. It printed `summary: 4 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`, with a CORROBORATED line for each of 03/04/05/06.
+- Row 7: exit 0 with no output under ShellCheck 0.11.0.
+
+Row 5's Expect still says the scan does not catch a key overwritten by a later layer (#2256). Row 4's overwrite, sandwich and directory-swap fixtures go red at this SHA, so that caveat is out of date. It does not change this row's result.
+
+**Risk-bearing values.** The trigger fires on `risk.sensitive-data: yes`. The three deliverables are byte-identical to b1cf3d790708 (the only file under the compared paths that changed is containers/base/Dockerfile, an input to row 5), and the literals below were re-read at this SHA.
+
+| Literal | Location | Rank / reversibility |
+|---|---|---|
+| PEM = 'BEGIN[A-Z0-9 _-]*PRIVATE KEY' | containers/scripts/layer-secret-scan.sh:102 | top: a gap ships a baked key in a public image, and a published layer cannot be recalled |
+| GHTOK = 'gh[ps]_[A-Za-z0-9]{20,}\|github_pat_[A-Za-z0-9_]{20,}' | layer-secret-scan.sh:103 | top: same |
+| MODELKEY_ANT = 'sk-ant-[A-Za-z0-9_-]{10,}' | layer-secret-scan.sh:104 | top: same |
+| MODELKEY_GENERIC = 'sk-[A-Za-z0-9]{20,}' | layer-secret-scan.sh:105 | high: same exposure, with a precision trade-off |
+| path allowlist /usr/local/go/src/* and /usr/local/lib/node_modules/npm/* | layer-secret-scan.sh:144, :151 | high: an exemption is a recall hole at that prefix |
+| path allowlist /usr/bin/gpgv, /usr/lib/*/libssh2.so*, /usr/lib/*/libgnutls.so*, /usr/local/bin/gh | layer-secret-scan.sh:164-166, :175 | medium: exact paths or narrow globs |
+| label-match exemptions (deskflip, deskpr x2, deskdigest; exact path plus exact whole match) | layer-secret-scan.sh:425-428 | medium: exempts one exact string at one path |
+| hit exit 1, could-not-scan exit 2 | layer-secret-scan.sh:479, :184 | medium: gate semantics, reversible |
+| mask width '%.4s' | layer-secret-scan.sh:412 | low: prints at most 4 leading characters of a hit |
+| PEM mount path /run/secrets/assay/app.pem; env name ASSAY_APP_PEM_FILE | containers/secrets.md:39, :55, :57 | medium: contract constants, reversible by edit |
+| PEM file mode 0400 | containers/secrets.md:144, :171 | low: operational; an unreadable PEM fails closed |
+
+- RISK-VALUE: DERIVED — PEM = 'BEGIN[A-Z0-9 _-]*PRIVATE KEY' @ containers/scripts/layer-secret-scan.sh:102 — every PEM private-key armor header (PKCS#1 RSA, SEC1 EC, OPENSSH, PKCS#8 plain and ENCRYPTED, PGP private-key block) is BEGIN, then an uppercase/space/hyphen label, then PRIVATE KEY, so the class accepts all of them.
+- RISK-VALUE: DERIVED — GHTOK = 'gh[ps]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' @ containers/scripts/layer-secret-scan.sh:103 — it covers the brief's required minimum (ghp_, ghs_, github_pat_), and real token bodies are well over 20 characters. The gho_/ghu_/ghr_ prefixes are outside the brief's minimum and remain a candidate for human pattern review.
+- RISK-VALUE: DERIVED — MODELKEY_ANT = 'sk-ant-[A-Za-z0-9_-]{10,}' @ containers/scripts/layer-secret-scan.sh:104 — Anthropic keys are sk-ant- followed by a long URL-safe body, the class matches that alphabet, and {10,} is far below the real body length.
+- RISK-VALUE: NAMED, NOT DERIVED — MODELKEY_GENERIC = 'sk-[A-Za-z0-9]{20,}' @ containers/scripts/layer-secret-scan.sh:105 — a deliberately loose catch-all with no first-principles precision/recall bound; row 4's sk-in-binary fixture shows it still fires inside binaries.
+- RISK-VALUE: NAMED, NOT DERIVED — path allowlist prefixes @ containers/scripts/layer-secret-scan.sh:144 and :151, and the label-match table @ containers/scripts/layer-secret-scan.sh:425-428 — the real base image scans clean with them in place, and row 4's label cases show a key beside an exempted string still fails. Proving that no later desk image step writes a credential under those prefixes, or that the four exempted strings stay non-secret across tool releases, needs an audit of every per-desk Dockerfile and binary build, which this pass did not do.
+
+**Human gate.** This brief is `gate: human` with `risk.sensitive-data: yes`, and a model does not sign it off. Decision issue medici-finance/assay#900 was closed on 2026-11-01 by the desk's triage lane, citing the ruling at https://github.com/medici-finance/assay/issues/900#issuecomment-6004016520. That is the only human ruling read on the issue's latest comments, and it is dated 2026-10-05. The Evidence pass at b1cf3d790708 records that this date predates the per-layer scan change and the label-match exemption table. This Evidence does not record a human confirmation of either, and it does not decide whether the closed issue satisfies the gate.
+
+**VERIFY: PASS** — all 7 Verify rows pass at 9f9f99cdd8d5 in one host witness run, and `verifyrun --check` accounts for every row. Status is left for the human gate.
+
 ## Review
 Gate: human (sensitive-data: yes — App-PEM custody design; see gate-why). Reviewer
 answers both core-control questions: (1) the single control standing between a baked
