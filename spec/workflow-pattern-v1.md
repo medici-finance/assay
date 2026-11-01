@@ -44,6 +44,7 @@ A workflow-pattern-v1 file is a single YAML document with these top-level keys, 
 | `nodes` | array (>= 1) | REQUIRED. The node set; see §4. |
 | `edges` | array | REQUIRED. Directed `{from, to}` pairs between node ids. MAY be empty for a single-node pattern, though no shipped pattern is. |
 | `join` | string | REQUIRED. The id of the node carrying the integration check; see §6. |
+| `signal-classes` | array of `{id, exit?, admission?, culprit-record?, mechanical-exit?, judgement-exit?, remedies?, refused-paths?, limits}` | OPTIONAL. Signal-instantiated patterns only: the classes of signal the pattern's signal input admits; see §4.3. |
 
 ## 4. Nodes — the execution contract
 
@@ -60,12 +61,15 @@ be represented as one.
 | `id` | string | REQUIRED. Unique within the pattern. |
 | `kind` | string | REQUIRED. Exactly one of `artifact`, `check`, `decision`, `effect`. |
 | `role` | string | REQUIRED. Exactly one of `desk`, `reviewer`, `verifier`, `worker` — a `topology.yaml` `apps:` role name — or `human`. `human` is not a topology role and binds no identity; it is permitted only on effect-free `kind: decision` nodes, closed by an external authenticated human act (instance §8). A node names a role, never a login or an id: binding a role to an identity is the roster's job, not the pattern's. |
-| `inputs` | array of `{artifact, revision?}` | OPTIONAL. What the node needs before it runs. |
+| `inputs` | array of `{artifact, revision?}` or `{signal: {source, liveness-check, classes}}` | OPTIONAL. What the node needs before it runs. Each item names exactly one of `artifact` (an artifact kind the node consumes) or `signal` (an external signal that starts an instance; §4.3). In a `signal`, `source` names where the signal comes from, `liveness-check` states in words a verifier can check how a dead source is detected, and `classes` (at least one) names the `signal-classes` ids the input admits. |
 | `outputs` | array of string | OPTIONAL. The durable artifacts the node produces, by name. |
 | `evidence` | array of `{kind, claim, mandatory?, signal?, band?, window?, source?}` | OPTIONAL. The claims the node owes. `kind` MUST be one of `command`, `review`, `witness`, `observe`. Each `claim` MUST be stated in words a verifier can check — not "it works". `signal`, `band`, `window` and `source` are meaningful ONLY for `kind: observe`; see §4.1.1. |
 | `effects` | array of `{kind, target}` | OPTIONAL. External-consequence actions the node performs. |
 | `budget` | `{attempts?}` | OPTIONAL. |
 | `outcomes` | `{wait?, fail?}` | OPTIONAL. Named non-success dispositions. |
+| `options` | array of string (>= 2) | OPTIONAL, `kind: decision` only. The choices a person closes the decision with. Not a synonym for `outcomes`: `outcomes` names a node's non-success dispositions (`wait`, `fail`), while `options` lists the choices that close a decision. |
+| `default` | string | OPTIONAL, `kind: decision` only. The recommended next step; MUST be one of the node's `options`. A recommendation shown to the person who closes the decision and nothing more: it never closes a decision on a timeout, when no one answers, or by any act but the person's own. |
+| `containment` | array of string (>= 5), each one of `quarantine`, `rollback`, `secondary-auth`, `stop`, `none-needed` | OPTIONAL. The closed containment taxonomy, on the one effect-free `human` containment decision of a signal pattern (§4.3). `none-needed` is recorded only together with the signal reading that justifies it. |
 
 ### 4.1.1 The `observe` evidence kind
 
@@ -137,6 +141,100 @@ shape below is illustrative only, under a placeholder `example-org` deploy:
 7. A node with `role: human` MUST be `kind: decision` and declare no effects
    (`pattern-human-role-not-decision`). The schema independently enforces this shape.
 
+### 4.3 Signal-instantiated patterns
+
+A **signal pattern** is a pattern with a `signal` input: an instance starts from an
+external signal (a red main, a firing alert, a dashboard crossing a band) rather than an
+authored artifact. Its top-level `signal-classes` names each class of signal the input
+admits.
+
+**Not active in this version.** No runtime in this version reads a signal pattern, refuses
+a run at admission, enforces a class's route or holds an instance on liveness. A signal
+pattern MUST NOT be activated (instantiated from a live signal) until a dispatch brief that
+enforces all three has landed. Until then a signal pattern is a reviewed definition only,
+and the lint below is the only layer.
+
+**Exits and routes.** A class names its exit node(s):
+
+- `exit`: the class's single exit, for a class with no culprit record.
+- `mechanical-exit`: where a culprit recorded `mechanical` goes.
+- `judgement-exit`: where every other culprit goes, unresolved included.
+
+A class names `exit` alone, or both `mechanical-exit` and `judgement-exit`. Between a
+class's two exits, the class recorded on the culprit record at run time selects:
+`mechanical` goes to `mechanical-exit`; anything else, unresolved included, goes to
+`judgement-exit`. That is the conservative default.
+
+The **route** of class C is every node on a directed path along `edges` from the
+signal-input node to one of C's exit nodes, plus every node reachable along `edges` from
+one of those exits. An instance of class C runs only the nodes on C's route; a node off the
+route is never run for that instance.
+
+An **effect-bearing node** is any node whose `effects` list is non-empty, whatever its
+`kind` (§4.2 rule 2 lets an `artifact`, `check` or `decision` node carry effects on its own
+outputs). Admission and the `.github/` floor are checked fail-closed on the presence of any
+effect-bearing node anywhere in the pattern. They are not checked over a route, a node kind
+or reachability, so neither depends on route enforcement.
+
+**Closed constants.** The rules below read three constants and never a pattern-supplied
+value:
+
+- the reserved artifact `replay-fixture`;
+- the remedy set `gofmt`, `stray-file-deletion`, `exact-stale-string-replace`;
+- the gate-configuration floor `.github/` (workflows, composite actions and CODEOWNERS
+  alike). The floor is a subset of gate configuration: a runtime allow-list MAY refuse more
+  paths, never fewer.
+
+A `push-refs` entry is a fully qualified ref (`refs/heads/main`), never a bare branch name,
+so a tag named `main` can never satisfy it.
+
+**Liveness.** A signal pattern's `liveness-check` is a precondition a runtime MUST hold on:
+when the check resolves `could-not-check`, the instance is held, never run.
+
+**Rules (MUST).** Each is a `statusgen patterns --lint` rule, reported even when the schema
+also refuses the same node:
+
+1. `pattern-signal-input`: an input item names exactly one of `artifact` or `signal`. A
+   `signal` input sits only on an entry node (no edge points at it), and its `source` and
+   `liveness-check` are non-empty. The names in its `classes` are exactly the declared
+   `signal-classes` ids, each once: a declared class the input does not list is a finding,
+   as is a listed name no class declares. A pattern with a signal input declares at least
+   one class, and a pattern declaring classes has exactly one signal input. In a pattern
+   with a signal input, every node is reachable along `edges` from the signal-input node.
+   Every node id a class names (`exit`, `mechanical-exit`, `judgement-exit`) is a node, and
+   class ids are unique. A class names `exit`, or both `mechanical-exit` and
+   `judgement-exit`. `mechanical-exit` and `culprit-record` imply each other, and both imply
+   `judgement-exit`, `admission`, `remedies` and `refused-paths`.
+2. `pattern-replay-not-mandatory`: in a pattern with a signal input, at least one node
+   outputs `replay-fixture`, and every such node carries a `kind: command` evidence entry
+   with `mandatory: true`.
+3. `pattern-signal-admission-open`: `admission.triggers` is a subset of `schedule`, `push`.
+   When `push` is present, `push-refs` is exactly `[refs/heads/main]`; `push` with no
+   `push-refs` is a finding. If any node in the pattern is effect-bearing, every declared
+   class declares `admission`, whatever its exit and whatever its route. There is no
+   exemption for a class whose exit is a human decision: edges carry no condition, and a
+   person closing a containment or judgement decision is not a screen on where the signal
+   came from. A class MAY omit `admission` only in a signal pattern in which no node
+   declares any effect. A run that fails admission is refused wholesale, so the class has no
+   lower-confidence path for it.
+4. `pattern-remedy-set-open`: on a class that names `mechanical-exit`, `remedies` is a
+   non-empty subset of the remedy set and the `mechanical-exit` node is `kind: effect`. On
+   any class, a `remedies` entry outside the remedy set is a finding. If any node in the
+   pattern is effect-bearing, every declared class declares `refused-paths` containing
+   `.github/`, whatever its exit, route or node kinds.
+5. `pattern-judgement-no-default`: a class's `judgement-exit` node is `kind: decision`,
+   `role: human`, declares `options`, and declares a `default` that is one of them.
+6. `pattern-culprit-record`: `culprit-record.fields` is exactly the set `check`, `file`,
+   `line`, `problem`, `class`, `origin`; `default-class` is `judgement`; `withheld.class` is
+   `judgement` and `withheld.file` is YAML null.
+7. `pattern-decision-options`: `options`, `default` and `containment` appear only on
+   `kind: decision` nodes; `default` is one of the node's `options`; `options` has no
+   duplicate.
+8. `pattern-containment-set`: a node's `containment` is exactly the five values, each once;
+   the node is `kind: decision`, `role: human`, with no `effects` and no `default` (no
+   outcome of the containment step is pre-selected, `none-needed` included); and a pattern
+   with a signal input has exactly one such node.
+
 ## 5. `risk-input` — risk class as a declared input
 
 `risk-input` maps a brief's risk-class verdict to the node ids that become mandatory gates
@@ -196,6 +294,9 @@ A node's `effects[].kind` MUST be permitted for the node's `role`, derived from 
 `human` holds no effect kind and is not added to this table. Widening the topology
 role-effect table is outside this amendment's scope.
 
+The signal-pattern keys (§4.3) leave this table unchanged. Containment is a `human`
+decision node carrying no effects, so no role gains an effect kind from it.
+
 The `pattern-effect-exceeds-role` lint rule refuses a node whose effect kind is not
 permitted for its role. This is the single point of failure this schema depends on for
 permission safety (see `docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md`
@@ -212,7 +313,7 @@ wrong pattern cannot act on its own.
 A conforming implementation of this specification MUST:
 
 1. Validate every `spec/workflow-patterns/*.yaml` file against `schemas/workflow-pattern-v1.json`
-   and against the MUST rules in §4.2, §5 and §6.
+   and against the MUST rules in §4.2, §4.3, §5 and §6.
 2. Refuse (exit non-zero, naming the file, node and rule) a pattern that violates any MUST
    rule; report a schema violation and a MUST-rule violation as distinct classes (a schema
    violation is a shape defect; a MUST-rule violation needs the resolved node graph).

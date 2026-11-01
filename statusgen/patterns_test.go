@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // patterns_test.go — graph-execution/02. Covers the schema-parity gate, the two
@@ -55,7 +57,7 @@ func TestPatternsEmbeddedSchemaMatchesCommitted(t *testing.T) {
 // and no MUST-rule violation.
 func TestPatternsGoodFixturesLintClean(t *testing.T) {
 	schema := mustParseEmbeddedPatternSchema(t)
-	for _, name := range []string{"good-implementation-v1.yaml", "good-research-v1.yaml"} {
+	for _, name := range []string{"good-implementation-v1.yaml", "good-research-v1.yaml", "good-signal-example.yaml"} {
 		path := filepath.Join("testdata", "patterns", name)
 		state, violations := lintPatternFile(path, schema)
 		if state != patternStateClean {
@@ -268,4 +270,110 @@ func TestHumanSchemaConditions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Signal-pattern rules (graph-execution/34, spec/workflow-pattern-v1.md §4.3).
+// Each test feeds its named bad fixtures and asserts the rule tag fires, and
+// that the good signal fixture does not report that tag.
+
+// assertSignalRule lints each fixture and requires it to fail naming rule, and
+// requires good-signal-example.yaml not to name it.
+func assertSignalRule(t *testing.T, rule string, fixtures ...string) {
+	t.Helper()
+	schema := mustParseEmbeddedPatternSchema(t)
+	tag := "[" + rule + "]"
+	for _, name := range fixtures {
+		path := filepath.Join("testdata", "patterns", name+".yaml")
+		state, violations := lintPatternFile(path, schema)
+		if state != patternStateFailed {
+			t.Errorf("%s: want checked-failed, got state=%d violations=%v", name, state, violations)
+			continue
+		}
+		if !anyContains(violations, tag) {
+			t.Errorf("%s: violations do not name %s:\n%s", name, tag, strings.Join(violations, "\n"))
+		}
+	}
+	good := filepath.Join("testdata", "patterns", "good-signal-example.yaml")
+	if _, violations := lintPatternFile(good, schema); anyContains(violations, tag) {
+		t.Errorf("good-signal-example.yaml names %s:\n%s", tag, strings.Join(violations, "\n"))
+	}
+}
+
+// lintSignalDoc runs the MUST rules over an inline YAML document.
+func lintSignalDoc(t *testing.T, doc string) []string {
+	t.Helper()
+	var data map[string]any
+	if err := yaml.Unmarshal([]byte(doc), &data); err != nil {
+		t.Fatalf("inline doc: %v", err)
+	}
+	pat, err := parsePatternDoc(data)
+	if err != nil {
+		t.Fatalf("parse inline doc: %v", err)
+	}
+	return checkPatternMustRules("inline.yaml", pat)
+}
+
+// regression: #4506
+func TestPatternsSignalInput(t *testing.T) {
+	assertSignalRule(t, rulePatternSignalInput,
+		"bad-signal-input-not-entry", "bad-mechanical-no-culprit", "bad-exit-unreachable",
+		"bad-class-unlisted", "bad-disconnected-effect")
+
+	// The schema no longer requires `artifact`, so an input item naming neither
+	// key (or both) is the lint's to refuse.
+	good, err := os.ReadFile(filepath.Join("testdata", "patterns", "good-signal-example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for label, item := range map[string]string{
+		"neither": "inputs: [{revision: brief.version}]",
+		"both":    `inputs: [{artifact: signal-record, signal: {source: "example-org/example-app#ci-main", liveness-check: "x", classes: [example-alert, example-gate-red]}}]`,
+	} {
+		doc := strings.Replace(string(good), "inputs: [{artifact: signal-record}]", item, 1)
+		if doc == string(good) {
+			t.Fatalf("%s: anchor not found in the good fixture", label)
+		}
+		if v := lintSignalDoc(t, doc); !anyContains(v, "["+rulePatternSignalInput+"]") {
+			t.Errorf("%s: input item naming %s of artifact/signal not refused: %v", label, label, v)
+		}
+	}
+}
+
+// regression: #4506
+func TestPatternsReplayMandatory(t *testing.T) {
+	assertSignalRule(t, rulePatternReplayMandatory, "bad-replay-not-mandatory")
+}
+
+// regression: #4506
+func TestPatternsSignalAdmission(t *testing.T) {
+	assertSignalRule(t, rulePatternAdmissionOpen,
+		"bad-admission-pull-request", "bad-exit-effect-no-admission", "bad-judgement-class-no-admission",
+		"bad-artifact-effect-no-admission", "bad-disconnected-effect")
+}
+
+// regression: #4506
+func TestPatternsRemedySetClosed(t *testing.T) {
+	assertSignalRule(t, rulePatternRemedySetOpen,
+		"bad-remedy-open", "bad-refused-paths-dropped", "bad-class-no-floor",
+		"bad-artifact-effect-no-floor", "bad-disconnected-effect")
+}
+
+// regression: #4506
+func TestPatternsJudgementDefault(t *testing.T) {
+	assertSignalRule(t, rulePatternJudgementDefault, "bad-judgement-no-default")
+}
+
+// regression: #4506
+func TestPatternsCulpritRecord(t *testing.T) {
+	assertSignalRule(t, rulePatternCulpritRecord, "bad-withheld-mechanical")
+}
+
+// regression: #4506
+func TestPatternsDecisionOptions(t *testing.T) {
+	assertSignalRule(t, rulePatternDecisionOptions, "bad-options-on-effect")
+}
+
+// regression: #4506
+func TestPatternsContainmentSet(t *testing.T) {
+	assertSignalRule(t, rulePatternContainmentSet, "bad-containment-open", "bad-containment-default")
 }
