@@ -306,6 +306,8 @@ func hookPolicyMutations(t *testing.T) {
 		{"classification-borrows-environment", "lex.Env = env", "lex.Env = lex.Env", "^TestClassificationOwnsItsSnapshot$", "FAIL: TestClassificationOwnsItsSnapshot", true},
 		// #4821 positive control: a matcher that never fires must fail the hook-level refusal fixture.
 		{"ambient-token-unmatched", "return forgeTokenRead(c.request.Target)", "return false", "^TestAmbientTokenRefusedLoop$", "an ambient gh token read must be refused", false},
+		// #5078 positive control: the same, for the gh output filter check.
+		{"gh-filter-unmatched", "return ghFilterReads(c.request.Target)", "return false", "^TestHookGhFilterRefused$", "a gh filter reading beyond its output must be refused", false},
 	} {
 		t.Run(m.name, func(t *testing.T) {
 			dst := t.TempDir()

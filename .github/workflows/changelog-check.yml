@@ -14,10 +14,14 @@ name: changelog-check
 # the fix for a red run is always one of two obvious acts — add a fragment, or
 # label the PR.
 #
-# WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, matching
-# ci.yml and the other control legs. It needs no Go toolchain and no network: a
-# git diff against the PR base, a label read off the event payload, and python3
-# (present on the runner) for the shared changelog parser.
+# WHERE THIS RUNS — a GitHub-hosted `ubuntu-latest` runner, like ci.yml's
+# `scope` and required `build-test` jobs. It needs no Go toolchain, no secrets
+# and no house network: a git diff against the PR base, a label read off the
+# event payload, python3 for the shared changelog parser, and gh (both shipped on
+# the hosted image) for the read-only Evidence classification. It used to run on
+# the shared self-hosted `medici-builder-public` pool, where every label change
+# queued a fresh run behind full CI builds and the PR read BLOCKED until a runner
+# freed up (#3939). Revert: set `runs-on:` back to `medici-builder-public`.
 #
 # ── ADDED: a second, in-workflow SKIP condition for verify-desk Evidence PRs ──
 #
@@ -50,7 +54,10 @@ name: changelog-check
 on:
   pull_request:
     # `labeled` / `unlabeled` are load-bearing: adding or removing the
-    # `changelog:skip` label must re-run this leg so the verdict tracks the label.
+    # `changelog:skip` label must re-run this leg so the verdict tracks the label,
+    # and any label change re-reads the base branch for a fork PR's proxy
+    # fragment (changelog/README.md). Unrelated label changes still run the full
+    # check — they only never cancel a run (see `concurrency:` below).
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
@@ -60,13 +67,26 @@ permissions:
   # endpoint accepts. Nothing in this workflow writes anything.
   pull-requests: read
 
+# One group per PR, so runs are serialized and each verdict finishes in event
+# order. Only an event that can CHANGE the verdict cancels a run in progress: a
+# push (opened / synchronize / reopened) or a change to the `changelog:skip`
+# label. Any other label change waits its turn instead of cancelling. Before
+# #3939 every label change cancelled the run in progress, and the cancelled
+# check-run stayed on the unchanged head as a red X after a later run passed
+# (a ready-flip's two-label swap did this on every flipped PR).
+#
+# DO NOT replace this with a job-level `if:` that skips unrelated label events.
+# `changelog` is a required check and a skipped job reports success, so a skip
+# on the same head would replace a red verdict and let the PR merge without a
+# fragment. TestLabelEventsNeverCancel (tools/desk/internal/deskkit) fails if a
+# label-triggered workflow cancels in progress on an unrelated label event.
 concurrency:
   group: changelog-check-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'changelog:skip' }}
 
 jobs:
   changelog:
-    runs-on: medici-builder-public
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,11 +95,11 @@ jobs:
           # would not carry them).
           fetch-depth: 0
 
-      # ADDED. The classify step below reads the PR file list with gh, and this
-      # self-hosted runner image does not ship it. Pinned + sha256-verified
-      # before unpack (the same release and digest the board workflow uses), and
-      # skipped when the image already has it. Durable alternative: bake gh into
-      # the runner image and delete this step.
+      # ADDED. The classify step below reads the PR file list with gh. The
+      # hosted image ships it, so this step is normally a no-op; it is kept so a
+      # revert to the self-hosted pool (whose image does not ship gh) still
+      # works. Pinned + sha256-verified before unpack (the same release and
+      # digest the board workflow uses), and skipped when the image has gh.
       - name: Ensure gh CLI is available (pinned, checksum-verified)
         run: |
           set -euo pipefail

@@ -279,5 +279,59 @@ RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar
 
 **VERIFY: BLOCKED** — row 6, check-definition, #4560: all 6 rows pass on observation at 4264d1027198 (row 6: 4 corroborated, 0 disproved, 0 unchecked), but row 6 still has no pinned --delivery and first-parent --base, so the closure lint refuses a verified flip until the reviewed amendment lands.
 
+### 2026-10-30 re-pass at the current source (fresh verifier, admitted run)
+
+Observed source: 0006683ef1c8dc7341d0c2e67a4cb6b566e7814e (merged main, detached home, clean before the run). Delivery: squash commit f52610f4e036de6b8e01e16c6f7aadde168b5b25 (#3171) on the first-parent chain, single parent 59246f0b7a95c5ac600ef209d6731fd378125e6e. Dispatcher admission check passed before any row ran (Verification-Attestation #5041, run f95e2aad5512a62445869c79e564ac20ca528cf29521c93e41e4d8babe3ed61d, brief sha256 110b178ca720ebd78fe6f24d63c737c81af54890540b211a545fde13192bcb12, model claude-opus-5-5, tier any). Toolchain: go1.27.2 darwin/arm64, git 2.56.0, statusgen v1.0.67 (installed release).
+
+Source currency: `git diff --stat f52610f4e036de6b8e01e16c6f7aadde168b5b25..0006683ef1c8dc7341d0c2e67a4cb6b566e7814e` over the delivered code and docs (the avatar package, the deskavatar command, the deskavatar doc, the stream design note) printed nothing. The brief bytes equal those the 2026-10-29 receipt hashed; among that receipt's inputs the tool moved from v1.0.65 to v1.0.67. The Verify section and `version: 1` are unchanged, so no amendment of row 6 has landed, and #4560 is still open.
+
+Table re-derivation: `deskpathguard rederive --main 59246f0b7a95c5ac600ef209d6731fd378125e6e` reports 6 rows, 0 author-added; every row is from-base with its Command and Expect unchanged. No row is classed check:ci, so the darwin network-off sandbox gap does not apply. No row carries a risk-bearing, live, mutating or end-to-end tag and every brief-wide risk field is no, so `--fail-first` selected no row at base (Base cell `not-selected`).
+
+Verification-Table: delivery=f52610f4e036de6b8e01e16c6f7aadde168b5b25 base=59246f0b7a95c5ac600ef209d6731fd378125e6e original=59246f0b7a95c5ac600ef209d6731fd378125e6e
+
+Execution witness (written by `statusgen verifyrun --fail-first --base 59246f0b7a95c5ac600ef209d6731fd378125e6e` at the observed source; copied here unchanged):
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go build -o /tmp/deskavatar ./cmd/deskavatar && rm -rf /tmp/av10 && /tmp/deskavatar --org example --tier team --out /tmp/av10 --sizes 200 && ls /tmp/av10 \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | pass exit=0 | sha256:06e9d52c1720 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=0006683ef1c8 |
+| 2 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeam.*Proof' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeam.*Proof'` | pass exit=0 | sha256:53c234e5e847 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=0006683ef1c8 |
+| 3 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeamReadActUnchanged' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamReadActUnchanged'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=0006683ef1c8 |
+| 4 | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofRejects' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestProofRejects'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=0006683ef1c8 |
+| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1` | pass exit=0 | sha256:33a8fe083034 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=0006683ef1c8 |
+| 6 | `statusgen --root . --consumers --brief apps-installer/10` | pass exit=0 | sha256:1688c4225857 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=0006683ef1c8 |
+Verification-Attestation: medici-finance/assay#5041 run=f95e2aad5512a62445869c79e564ac20ca528cf29521c93e41e4d8babe3ed61d source=0006683ef1c8dc7341d0c2e67a4cb6b566e7814e brief=docs/streams/apps-installer/brief-10-team-review-avatar.md model=claude-opus-5-5 tier=any
+
+Output inspection (the witness records hashes only; each row was also executed at the same source, immediately before the witness run, with its primary output read directly):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | row 1 command, as in the witness | 6 | exit 0; printed 6 (example-act, example-read and example-review, each as .svg and .png); hash 06e9d52c1720 equals the sha256 of "6" plus newline | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | row 2 command, as in the witness | ≥ 1 | exit 0; printed 2: TestTeamThreeTileProof (logins example, acme, a and a 39-character login, the length asserted in the test) and TestTeamProofEveryHue both PASS; hash 53c234e5e847 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | row 3 command, as in the witness | 1 | exit 0; printed 1 (TestTeamReadActUnchanged PASS, comparing the read and act SVG bytes with the pre-change goldens team-example-read.svg and team-example-act.svg); hash 4355a46b19d3 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | row 4 command, as in the witness | ≥ 1 | exit 0; printed 1 (TestProofRejectsReviewLikeRead PASS: the forced review-equals-read set for org acme makes Generate return a *ProofError naming both Apps); hash 4355a46b19d3 | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | row 5 command, as in the witness | exit 0 | exit 0; printed `ok github.com/medici-finance/assay/tools/desk/internal/avatar` (the hash varies run to run with the elapsed-time suffix) | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | row 6 command, as in the witness | exit 0 | exit 0; combined output reproduced in a clean clone at the same source with origin/main at that source, sha256 1688c4225857, equal to the witness; it reports base 59246f0b7a95c5ac600ef209d6731fd378125e6e..f52610f4e036de6b8e01e16c6f7aadde168b5b25 (immutable delivered snapshot) and 4 corroborated, 0 disproved, 0 unchecked | 2026-10-30 | assay-verifier-app[bot] @ 0006683ef1c8 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Supplemental dereference of row 3 (no acceptance credit): the deskavatar command built from the delivery's parent 59246f0b7a95c5ac600ef209d6731fd378125e6e, run with `--org example --tier team --sizes 20`, wrote example-read.svg and example-act.svg byte-identical (cmp) to the two goldens and to the row 1 output at this source. The goldens' only commit is the delivery f52610f4e036.
+
+Row 6 closure status: the row passes on observation, but its definition still fails the closure rule recorded in the 2026-10-27 section. `statusgen --lint` at this source reports `Verify row 6 [consumer-delivery-range] consumer command has no explicit --base (the default becomes HEAD on merged main); post-merge consumer checks must name --brief and pin both --delivery and its first-parent --base` as a NOTICE at `implemented`. Supplemental probe (no acceptance credit): in a scratch clone at this source with only this brief's stream-index status set to verified, installed statusgen v1.0.67 reports that same finding as a PROBLEM ("because this branch closes the brief"), so a verified flip would be refused. #4560 still holds the fork it names: amend the row on the protected-amendment path, or change the lint to accept the marker-derived snapshot. Either is a driver act. No acceptance obligation failed.
+
+Risk-bearing value enumeration (diff scope: the delivery's generate.go and deskavatar main.go changes, plus the literals the brief names; tests and docs carry no runtime constant; the item is not irreversible and carries full risk metadata, all no):
+
+- reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 (introduced).
+- review tile App name = org + "-review" @ tools/desk/internal/avatar/generate.go:185 (introduced; the third tile's file name).
+- review glyph = GlyphDisc @ tools/desk/internal/avatar/generate.go:185 (introduced for the team tier).
+- review glyph colour colGlyphLite = "#EAF0FF" @ tools/desk/internal/avatar/compose.go:15 (pre-existing, reused).
+- proof thresholds proofDeltaE = 25.0 and proofIoU = 0.6 @ tools/desk/internal/avatar/proof.go:12 and :13 (named in the brief; the delivery does not touch proof.go).
+
+Ranking: all are cosmetic and reversible by an edit and a redeploy. The proof thresholds rank first, because lowering them would let indistinct tiles through; they are unchanged by the delivery. The tone ratio ranks next.
+
+RISK-VALUE: DERIVED — proofDeltaE = 25.0 @ tools/desk/internal/avatar/proof.go:12 and proofIoU = 0.6 @ tools/desk/internal/avatar/proof.go:13 — the values the brief's facts state as the proof contract, and its ground rule forbids lowering them; the delivery leaves proof.go untouched.
+
+RISK-VALUE: DERIVED — reviewBody mix ratio = 0.55 @ tools/desk/internal/avatar/generate.go:183 — a reversible cosmetic tone choice that places the review body between read's dark body and act's accent body; the brief's acceptance is the unchanged 20 px proof, which rows 2 and 5 show passing, TestTeamProofEveryHue covering the whole hue circle.
+
+**VERIFY: BLOCKED** — row 6, check-definition, #4560: all 6 rows pass on observation at 0006683ef1c8 (row 6: 4 corroborated, 0 disproved, 0 unchecked), but row 6 still has no pinned --delivery and first-parent --base, so the closure lint refuses a verified flip until #4560 is resolved.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

@@ -259,8 +259,8 @@ func validate(o options) error {
 	if o.noAvatars && o.avatarsDir != "" {
 		return &refusal{msg: "error: --avatars-dir and --no-avatars are contradictory"}
 	}
-	if n, err := strconv.Atoi(o.patExpiryDays); err != nil || n < 1 || strings.HasPrefix(o.patExpiryDays, "+") {
-		return &refusal{msg: "error: --pat-expiry-days must be a whole number of days, 1 or more (got '" + o.patExpiryDays + "')", usage: true}
+	if n, err := strconv.Atoi(o.patExpiryDays); err != nil || n < 1 || n > 365 || strings.HasPrefix(o.patExpiryDays, "+") {
+		return &refusal{msg: "error: --pat-expiry-days must be a whole number of days, 1-365 (got '" + o.patExpiryDays + "')", usage: true}
 	}
 	if err := validateGitLabURL(o.gitlabURL); err != nil {
 		return &refusal{msg: err.Error()}
