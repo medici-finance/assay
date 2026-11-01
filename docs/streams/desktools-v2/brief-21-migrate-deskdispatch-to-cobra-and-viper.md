@@ -497,6 +497,53 @@ RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.g
 
 **VERIFY: PASS** — all 10 Verify rows pass at merged main 40925e8233c8: rows 1-9 in the host witness, row 10 in the bracketed network-off container witness (bracket verdict match). 0 fail, 0 could-not-run.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-21.json` | pass exit=0 | sha256:410599008c6f | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdispatch/...` | fail exit=1 | sha256:9cebdb086935 | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskdispatch` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/21 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:614666dc9840 | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:19afe410897c | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:c00160ef48c1 | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5124 run=3f8db7f0d6f95f79d2aad2bcacb5b1c2179e4da5954b0a7daa9978cbe541f896 source=99627c1b8084886957217eb072e4e86e6c337977 brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdispatch/...` | pass exit=0 | sha256:ba141df78a3d | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5124 run=3f8db7f0d6f95f79d2aad2bcacb5b1c2179e4da5954b0a7daa9978cbe541f896 source=99627c1b8084886957217eb072e4e86e6c337977 brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskdispatch/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 99627c1b8084 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5124 run=3f8db7f0d6f95f79d2aad2bcacb5b1c2179e4da5954b0a7daa9978cbe541f896 source=99627c1b8084886957217eb072e4e86e6c337977 brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+
+
+
+### Re-verification — 2026-11-01 (merged main 99627c1b8084)
+
+Source 99627c1b8084886957217eb072e4e86e6c337977. The three witness tables above belong to this pass: rows 1-9 from `statusgen verifyrun --rows 1,2,3,4,5,6,7,8,9 --timeout 50m`, a row 5 re-witness from `--rows 5`, and row 10 from `--rows 10` on the host. The last witness per row wins. No row command was changed, filtered or shortened.
+
+Discarded attempt, disclosed: the first table's row 5 is fail exit=1. A labelled re-run of the same command named TestReworkAdoptsSameHome and TestReworkAdoptsEarlierHome, and each differs only by the path prefix: got the symlink-resolved path, want the unresolved one (`/tmp` is a symlink on macOS). The verifier caused this by setting TMPDIR=/tmp/v21t, and /tmp is a symlink on darwin. The tests compare the unresolved temporary path with the canonical path git reports, so any symlinked TMPDIR reddens them. Row 5 was re-witnessed with no TMPDIR override, under the managed scratch TMPDIR, and passes. Rows 1-4 and 6-9 keep their witnesses from the first table, which ran under TMPDIR=/tmp/v21t. Test-hermeticity note for the desk, not a failed obligation: the two tests assume an unsymlinked TMPDIR.
+
+Row 10 could-not-run. Its check:ci witness needs a network-off sandbox, darwin has no `unshare --net`, and the container bracket refused at its second step. The bracket opened at 2026-11-01T01:33:55Z with tree sha256:fd24111ee51438acadac1771b180adf845d06cd30f8edefaf82b8bb486184547. The container mounted the home, the receipt, a new witness directory and the Go module cache, but not the linked worktree's git directory. The refusal reads: "statusgen verifyrun: container admission refused; no Verify rows executed: the mounted root (the verifier home) digests to sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, not the sha256:fd24111ee51438acadac1771b180adf845d06cd30f8edefaf82b8bb486184547 the host recorded at the open step." That digest is the SHA-256 of empty input. The likely cause is the missing git directory, which was not tested. Earlier passes on this brief record mounting it read-only. This pass did not widen the mount or retry after the refusal, so the bracket was never closed and no bracket line exists. The image was verify-runner v1.0.67 at sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa, matched against that release's verify-runner-image.txt and checksums.txt. Needed: a re-dispatch with a sanctioned mount for the bracket.
+
+Supplemental host observations, no acceptance credit. Row 10's test on the host with the network available: --- PASS: TestCLIHelpDoesNotDiscoverManifests (7.64s). Row 4's exit code does not by itself show the Expect's Totals line, so a labelled re-run of the exact command at the same source printed the last line "Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate." and exited 0. The spec lists 10 mutations.
+
+No fail-first pass was run. The brief's risk block has every field "no" and no Verify row carries a risk-bearing, live, mutating or end-to-end tag. Protected-table re-derivation reported 10 rows, 0 author-added, base 99627c1b8084. The admission check returned 0 before any row ran, and again after the row 5 re-witness and after the row 10 witness.
+
+Risk-bearing values were enumerated over the change since the last landed pass (40925e8233c8..99627c1b8084), covering the deskdispatch package, the shared CLI package, the CLI contract tests and spec directory, the CLI contract and the CLI registry. The registry change flips desktools-v2/46 rows only. New in the review prompt: digest form = 64-hex @ tools/desk/cmd/deskdispatch/references/review-prompt.md:322 and :325, and digest algorithm = SHA-256 @ the same file, :325. Carried from earlier passes, in files this change does not touch: ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20, tier default = "any" and kit default = "worker" @ tools/desk/cmd/deskdispatch/cli.go:73, and unreadable-frontmatter gate = "human" @ tools/desk/cmd/deskdispatch/brief.go:58 and :62. Each can be reversed with an edit and a redeploy.
+
+RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20 — the shared CLI contract fixes exit 2 for unknown input before any handler runs; domain refusals keep their own codes, so callers keyed on custody outcomes see no change.
+RISK-VALUE: DERIVED — unreadable-frontmatter gate = "human" @ tools/desk/cmd/deskdispatch/brief.go:58 — a brief whose metadata cannot be parsed cannot show it is model-gated, so reading it as human-gated fails closed. The cost is a spurious decision issue, which is visible and reversible; "" would let a malformed human-gated brief skip its gate.
+RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:73 — identical to the pre-migration default; the brief requires the same worktree, branch and claim per invocation, and this default is part of that.
+RISK-VALUE: DERIVED — digest form = 64-hex @ tools/desk/cmd/deskdispatch/references/review-prompt.md:322 — a SHA-256 digest is 256 bits, which is 64 hex characters, so the form follows from the algorithm the same prompt names at :325.
+
+**VERIFY: BLOCKED** — 9 of 10 Verify rows pass at merged main 99627c1b8084 (rows 1-9), 0 fail, 1 could-not-run: row 10 (check:ci), because the container bracket refused admission. The host read of row 10's test carries no acceptance credit.
+
 ### Re-verification — 2026-11-01 (merged main 3758084fc1f0)
 
 Source 3758084fc1f0d63c28457fc1aebf0c518a7c55e5. Rows 1-9 are witnessed on the host by `statusgen verifyrun --rows 1,2,3,4,5,6,7,8,9 --timeout 50m`, with a non-symlink TMPDIR outside the verifier home; row 10 (check:ci) is witnessed in a network-off container inside an admission bracket. Both tables follow. This pass reuses no earlier witness.
