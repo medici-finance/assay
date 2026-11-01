@@ -11,6 +11,8 @@
 #
 # Usage: sh containers/desk-run.test.sh
 #   DESK_RUN=<path>   test another copy of the script (the mutation runs use it)
+#   DESK_RUN_NESTED=1 skip the closing re-run of this suite under a symlinked
+#                     TMPDIR (set by that re-run itself, and by the mutation runs)
 # Exit: 0 all cases passed; 1 a case failed.
 set -u
 
@@ -22,6 +24,11 @@ run=${DESK_RUN:-$here/desk-run.sh}
 }
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/desk-run-test.XXXXXX") || exit 1
+# Resolve symlinks in the scratch path (a stock macOS TMPDIR runs through the
+# /var -> /private/var link). The launcher anchors a relative path at the
+# physical directory it is started in, so the expected strings must be physical
+# too; one "tmp" that differs by a link would fail every path comparison.
+tmp=$(cd "$tmp" && pwd -P) || exit 1
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 # --- fixtures ----------------------------------------------------------------
@@ -141,12 +148,36 @@ drun ASSAY_DESK_PEM_FILE="$tmp/does-not-exist" ASSAY_DESK_ENV_FILE="$tmp/does-no
   /bin/sh "$run" the-desk --dry-run --pem "$alt/k.pem" --env-file="$alt/m.env"
 if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$alt/k.pem," && has "$tmp/out" "--env-file $alt/m.env "; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
-name="the default locations are <config>/assay/app.pem and desk.env"
+name="the default locations are <config>/assay/<desk-name>.pem and desk.env"
 mkdir -p "$home/.config/assay"
-cp "$pem" "$home/.config/assay/app.pem"
+cp "$pem" "$home/.config/assay/intake-desk.pem"
 cp "$envf" "$home/.config/assay/desk.env"
 drun /bin/sh "$run" intake-desk --dry-run
-if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$home/.config/assay/app.pem," && has "$tmp/out" "--env-file $home/.config/assay/desk.env "; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$home/.config/assay/intake-desk.pem," && has "$tmp/out" "--env-file $home/.config/assay/desk.env "; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+rm -rf "$home/.config"
+
+# Credential custody: two desks started on defaults must never be handed the
+# same App key. Every desk gets its own default file, and a file planted for one
+# desk is not picked up by another.
+name="no two desks on defaults resolve to the same PEM path"
+mkdir -p "$home/.config/assay"
+cp "$envf" "$home/.config/assay/desk.env"
+: >"$tmp/srcs"
+bad=""
+for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+  cp "$pem" "$home/.config/assay/$d.pem"
+  drun /bin/sh "$run" "$d" --dry-run
+  src=$(sed -n 's/.*src=\([^,]*\),dst=.*/\1/p' "$tmp/out")
+  [ "$rc" -eq 0 ] && [ "$src" = "$home/.config/assay/$d.pem" ] || bad="$bad [$d: rc=$rc src=$src]"
+  printf '%s\n' "$src" >>"$tmp/srcs"
+done
+[ "$(sort -u "$tmp/srcs" | wc -l | tr -d ' ')" -eq 5 ] || bad="$bad [fewer than 5 distinct paths]"
+if [ -z "$bad" ]; then pass "$name"; else fail "$name" "$bad"; fi
+
+name="a PEM planted for one desk is not used by another desk on defaults"
+rm -f "$home/.config/assay/verify-desk.pem"
+drun /bin/sh "$run" verify-desk --dry-run
+if [ "$rc" -eq 3 ] && has "$tmp/err" "$home/.config/assay/verify-desk.pem" && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 rm -rf "$home/.config"
 
 name="a relative path is anchored so docker gets an absolute mount source"
@@ -155,6 +186,18 @@ name="a relative path is anchored so docker gets an absolute mount source"
 rc=$?
 cat "$tmp/out" "$tmp/err" >>"$all"
 if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$pem,"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+# A symlinked working directory: the launcher anchors a relative path at the
+# physical directory (a login shell with a clean environment computes PWD that
+# way), so the mount source is the real path, never the link's spelling.
+name="a relative path run from a symlinked directory is anchored at the real path"
+ln -s "$creds" "$tmp/credlink"
+(cd "$tmp/credlink" && env -i HOME="$home" PATH="$stub_path" ASSAY_DESK_PEM_FILE=app.pem ASSAY_DESK_ENV_FILE=desk.env \
+  /bin/sh "$run" the-desk --dry-run >"$tmp/out" 2>"$tmp/err")
+rc=$?
+cat "$tmp/out" "$tmp/err" >>"$all"
+if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$pem," && has "$tmp/out" "--env-file $envf "; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+rm -f "$tmp/credlink"
 
 # --- unknown desk, usage errors ----------------------------------------------
 name="unknown desk is refused and the five valid desks are listed"
@@ -232,32 +275,71 @@ desk --help
 if [ "$rc" -eq 0 ] && has "$tmp/out" 'Usage:'; then pass "$name"; else fail "$name" "rc=$rc"; fi
 
 # --- fail-closed credential preflight ----------------------------------------
-name="a missing PEM is refused and its expected location is named"
+# A path the operator supplied is never printed back (it may be a credential
+# pasted into the wrong slot); the refusal names the slot and the reason. Only
+# a default location, which the script composes itself, is named by path.
+name="a missing PEM is refused; the refusal names the slot, not the supplied path"
 : >"$log"
 drun ASSAY_DESK_PEM_FILE="$creds/absent/app.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
-if [ "$rc" -eq 3 ] && has "$tmp/err" "$creds/absent/app.pem" && [ "$(docker_calls)" -eq 0 ]; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+if [ "$rc" -eq 3 ] && has "$tmp/err" 'ASSAY_DESK_PEM_FILE' && has "$tmp/err" 'PEM is missing' \
+  && ! combined | grep -F -q -- "$creds/absent" && [ "$(docker_calls)" -eq 0 ]; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
-name="a missing env-file is refused and its expected location is named"
+name="a missing env-file is refused; the refusal names the slot, not the supplied path"
 drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/absent.env" /bin/sh "$run" worker-desk --dry-run
-if [ "$rc" -eq 3 ] && has "$tmp/err" "$creds/absent.env"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+if [ "$rc" -eq 3 ] && has "$tmp/err" 'ASSAY_DESK_ENV_FILE' && has "$tmp/err" 'env-file is missing' \
+  && ! combined | grep -F -q -- "$creds/absent.env"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
 name="both missing files are reported in one pass"
 drun ASSAY_DESK_PEM_FILE="$creds/a.pem" ASSAY_DESK_ENV_FILE="$creds/b.env" /bin/sh "$run" worker-desk --dry-run
-if [ "$rc" -eq 3 ] && has "$tmp/err" "$creds/a.pem" && has "$tmp/err" "$creds/b.env"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+if [ "$rc" -eq 3 ] && has "$tmp/err" 'PEM is missing' && has "$tmp/err" 'env-file is missing'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
-name="missing defaults name the <config>/assay locations and do not fall back"
-# Ambient credential-looking files exist elsewhere under HOME; none may be used.
-mkdir -p "$home/.ssh" "$home/.aws"
+name="a missing PEM given by flag is refused; the refusal names --pem, not the path"
+drun /bin/sh "$run" worker-desk --dry-run --pem "$creds/absent-flag.pem" --env-file "$envf"
+if [ "$rc" -eq 3 ] && has "$tmp/err" '--pem' && ! combined | grep -F -q -- "$creds/absent-flag.pem"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+# A value pasted into a credential-path slot must not come back on stderr in
+# ANY refusal that slot can reach: missing, not a regular file, unreadable, or
+# a character the --mount grammar cannot carry.
+leakc="CRED-ECHO-SENTINEL-$$"
+name="a value in a PEM or env-file slot is not echoed by any refusal"
+bad=""
+for slot in 'pem-var' 'pem-flag' 'env-var' 'env-flag'; do
+  case $slot in
+    pem-var) drun ASSAY_DESK_PEM_FILE="$leakc" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run ;;
+    pem-flag) drun ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run --pem "$leakc" ;;
+    env-var) drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$leakc" /bin/sh "$run" worker-desk --dry-run ;;
+    env-flag) drun ASSAY_DESK_PEM_FILE="$pem" /bin/sh "$run" worker-desk --dry-run --env-file "$leakc" ;;
+  esac
+  [ "$rc" -eq 3 ] || bad="$bad [$slot rc=$rc]"
+  combined | grep -F -q -- "$leakc" && bad="$bad [$slot echoed]"
+done
+# The not-a-regular-file and mount-grammar refusals reach the value too.
+mkdir -p "$creds/$leakc"
+drun ASSAY_DESK_PEM_FILE="$creds/$leakc" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
+{ [ "$rc" -eq 3 ] && ! combined | grep -F -q -- "$leakc"; } || bad="$bad [pem dir]"
+drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/$leakc" /bin/sh "$run" worker-desk --dry-run
+{ [ "$rc" -eq 3 ] && ! combined | grep -F -q -- "$leakc"; } || bad="$bad [env dir]"
+cp "$pem" "$creds/$leakc,b.pem"
+drun ASSAY_DESK_PEM_FILE="$creds/$leakc,b.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
+{ [ "$rc" -eq 3 ] && ! combined | grep -F -q -- "$leakc"; } || bad="$bad [pem comma]"
+if [ -z "$bad" ]; then pass "$name"; else fail "$name" "$bad"; fi
+
+name="missing defaults name the desk's own <config>/assay locations and do not fall back"
+# Ambient credential-looking files exist elsewhere under HOME, and the old
+# shared <config>/assay/app.pem is planted too; none may be used.
+mkdir -p "$home/.ssh" "$home/.aws" "$home/.config/assay"
 cp "$pem" "$home/.ssh/app.pem"
 cp "$envf" "$home/.aws/desk.env"
 cp "$pem" "$home/app.pem"
+cp "$pem" "$home/.config/assay/app.pem"
 drun /bin/sh "$run" worker-desk --dry-run
-if [ "$rc" -eq 3 ] && has "$tmp/err" "$home/.config/assay/app.pem" && has "$tmp/err" "$home/.config/assay/desk.env" \
+if [ "$rc" -eq 3 ] && has "$tmp/err" "$home/.config/assay/worker-desk.pem" && has "$tmp/err" "$home/.config/assay/desk.env" \
   && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+rm -rf "$home/.config"
 
 name="XDG_CONFIG_HOME moves the default locations"
 drun XDG_CONFIG_HOME="$tmp/xdg" /bin/sh "$run" worker-desk --dry-run
-if [ "$rc" -eq 3 ] && has "$tmp/err" "$tmp/xdg/assay/app.pem"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+if [ "$rc" -eq 3 ] && has "$tmp/err" "$tmp/xdg/assay/worker-desk.pem"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
 name="no HOME and no override is refused, not guessed"
 env -i PATH="$stub_path" /bin/sh "$run" worker-desk --dry-run >"$tmp/out" 2>"$tmp/err"
@@ -317,7 +399,7 @@ if [ "$rc" -eq 3 ] && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$
 # --- an override given EMPTY is refused, never read as "not given" -----------
 # Default credentials are planted so a fall-through would succeed and show.
 mkdir -p "$home/.config/assay"
-cp "$pem" "$home/.config/assay/app.pem"
+cp "$pem" "$home/.config/assay/worker-desk.pem"
 cp "$envf" "$home/.config/assay/desk.env"
 
 # empty_refused <name> <override named in the message> <script args and env as for drun>
@@ -359,7 +441,7 @@ if [ "$rc" -eq 3 ] && has "$tmp/err" '--pem was given empty' && has "$tmp/err" '
 
 name="an empty XDG_CONFIG_HOME falls back to HOME/.config (the XDG convention)"
 drun XDG_CONFIG_HOME= /bin/sh "$run" worker-desk --dry-run
-if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$home/.config/assay/app.pem,"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$home/.config/assay/worker-desk.pem,"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 rm -rf "$home/.config"
 
 # --- the dry-run line is safe to paste ---------------------------------------
@@ -417,6 +499,20 @@ for form in '--pem /nonexistent' '--pem=/nonexistent' '--env-file /nonexistent' 
   if [ "$rc" -eq 2 ] && has "$tmp/err" '--attach' && [ "$(docker_calls)" -eq 0 ]; then pass "$name"; else fail "$name" "rc=$rc calls=$(docker_calls) $(combined)"; fi
 done
 
+# --attach never reads the credential VARIABLES (an ambient default for new
+# runs), whatever they hold: empty, unset or pointing nowhere. The flags are the
+# per-invocation request, and those are refused above.
+name="--attach ignores the credential variables consistently (empty, missing path)"
+bad=""
+: >"$log"
+drun ASSAY_DESK_PEM_FILE= ASSAY_DESK_ENV_FILE= STUB_EXISTING=worker-desk /bin/sh "$run" worker-desk --attach
+[ "$rc" -eq 0 ] || bad="$bad [empty rc=$rc]"
+drun ASSAY_DESK_PEM_FILE="$creds/absent.pem" ASSAY_DESK_ENV_FILE="$creds/absent.env" STUB_EXISTING=worker-desk /bin/sh "$run" worker-desk --attach
+[ "$rc" -eq 0 ] || bad="$bad [absent rc=$rc]"
+drun ASSAY_DESK_PEM_FILE= STUB_EXISTING=worker-desk /bin/sh "$run" worker-desk --attach --dry-run
+[ "$rc" -eq 0 ] && [ "$(cat "$tmp/out")" = "docker start -ai worker-desk" ] || bad="$bad [dry-run rc=$rc]"
+if [ -z "$bad" ] && [ "$(grep -c -x 'start -ai worker-desk' "$log")" -eq 2 ] && ! grep -q '^run ' "$log"; then pass "$name"; else fail "$name" "$bad log: $(cat "$log")"; fi
+
 # --- real-run path against the stub docker -----------------------------------
 name="a real run hands docker the exact run arguments the secrets.md command lists"
 : >"$log"
@@ -471,6 +567,22 @@ elif grep -F -q -e "$sent_pem" -e "$sent_env" "$all"; then
   fail "$name" "a sentinel appears in the captured output"
 else
   pass "$name"
+fi
+
+# --- the whole suite under a symlinked TMPDIR ---------------------------------
+# A stock macOS TMPDIR runs through a symlink (/var -> /private/var). Run this
+# suite again with TMPDIR reaching a real directory only through a link, once
+# (DESK_RUN_NESTED stops the recursion), so a scratch path that is not resolved
+# turns the nested run red.
+if [ -z "${DESK_RUN_NESTED:-}" ]; then
+  name="the whole suite passes when TMPDIR is reached through a symlink"
+  mkdir -p "$tmp/realtmp"
+  ln -s "$tmp/realtmp" "$tmp/linktmp"
+  if DESK_RUN_NESTED=1 DESK_RUN="$run" TMPDIR="$tmp/linktmp" /bin/sh "$here/$(basename "$0")" >"$tmp/nested.out" 2>&1; then
+    pass "$name"
+  else
+    fail "$name" "nested run: $(grep -E '^(FAIL|[0-9]+ case)' "$tmp/nested.out" | head -3 | tr '\n' ' ')"
+  fi
 fi
 
 if [ "$failures" -ne 0 ]; then

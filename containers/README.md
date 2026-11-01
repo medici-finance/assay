@@ -18,7 +18,7 @@ land, the per-desk images and launch surfaces.
 | `verify-desk/Dockerfile` | Thin per-desk image for `verify-desk`. |
 | `the-desk/Dockerfile` | Thin per-desk image for the coordinator `the-desk`. |
 | `entrypoint.sh` | Shared interactive boot baked into all five desk images: fail-closed credential preflight, then desk identity + skill pointer, then the interactive session. |
-| `desk-run.sh` | Interactive desktop launcher: validates the desk name and the credential files, then runs the desk image with the secrets.md mounts (`--dry-run` prints the command, `--attach` resumes a container). |
+| `desk-run.sh` | Interactive desktop launcher: validates the desk name and the credential files, then runs the desk image with the secrets.md mounts (`--dry-run` prints the command, `--attach` resumes a container). The default PEM is per desk (`<config>/assay/<desk-name>.pem`); the launcher mounts the file and does not decide which App the desk mints as. |
 | `desk-run.test.sh` | Offline tests for the launcher (dry-run output, refusal paths, no credential value in any output); no docker daemon needed. Run in CI by `TestDeskRunLauncherSuite` in `tools/desk/internal/regression`. |
 | `desk-run.mutate.sh` | Negative controls: runs the launcher suite against mutated copies of the launcher, one guard removed each, and requires the fixture that pins it to go red. |
 | `scripts/layer-secret-scan.sh` | Fails a built image that carries key-shaped material in any layer/config/history. |

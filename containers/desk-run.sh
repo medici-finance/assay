@@ -26,14 +26,23 @@
 #   - Misuse is not echoed: an unknown option, desk name or tag is reported by
 #     its position and length, never its text, because stderr often lands in
 #     shell logs and a credential pasted in the wrong place must not come back.
+#     The same holds for a value given in a credential-path slot (--pem,
+#     --env-file, ASSAY_DESK_PEM_FILE, ASSAY_DESK_ENV_FILE): a refusal names the
+#     slot and the reason, never the value. Only a default location, which this
+#     script composes itself, is printed.
+#   - One PEM per desk: the default PEM path is keyed by the desk
+#     (<config>/assay/<desk-name>.pem), so two desks started on defaults never
+#     mount the same file. This script mounts the file it is given; it does not
+#     check which App that file belongs to, and which App a desk then mints as
+#     is decided inside the container (the entrypoint and desktoken), not here.
 #   - The container re-runs its own credential preflight on every start
 #     (containers/entrypoint.sh), so a missing model credential INSIDE the
 #     env-file is caught there, not guessed at here.
 #
 # Exit codes: 0 success (or a printed --dry-run command); 2 usage error or
 # unknown desk; 3 credential preflight refused (including an empty override);
-# 4 docker unavailable or the container is in the wrong state for the request. docker's own exit status is
-# passed through once it has been exec'd.
+# 4 docker unavailable or the container is in the wrong state for the request.
+# docker's own exit status is passed through once it has been exec'd.
 #
 # POSIX sh; needs docker (not for --dry-run) and coreutils only.
 set -eu
@@ -60,15 +69,19 @@ Run an assay desk interactively in a container.
                        earlier processes are not. Takes no --version, --pem or
                        --env-file: the container's image and mounts are fixed.
   --pem <file>         bot App PEM on this host
-                       (env ASSAY_DESK_PEM_FILE; default <config>/assay/app.pem);
-                       one default serves every desk, so pass --pem per desk
-                       when the desks use different Apps
+                       (env ASSAY_DESK_PEM_FILE; default
+                       <config>/assay/<desk-name>.pem, one file per desk, so two
+                       desks on defaults never mount the same PEM). The
+                       environment variable is one value for every desk started
+                       from that shell: set it per desk window, or use --pem.
   --env-file <file>    model credentials as an env-file on this host
                        (env ASSAY_DESK_ENV_FILE; default <config>/assay/desk.env)
   -h, --help           this text
 
 <config> is \$XDG_CONFIG_HOME, or \$HOME/.config when that is unset or empty.
-An override that is given but empty is refused, not skipped.
+An override that is given but empty is refused, not skipped. A refusal names the
+override and the reason; it does not print a value you gave. --attach takes no
+credential flag and does not read ASSAY_DESK_PEM_FILE or ASSAY_DESK_ENV_FILE.
 Credentials are passed to docker by path and are never printed.
 See containers/secrets.md and docs/docker.md.
 EOF
@@ -215,7 +228,12 @@ fi
 
 # --- credential preflight (fail-closed, new runs only) -----------------------
 # --attach resumes a container that already carries its mounts and env; its
-# entrypoint re-runs the container-side preflight on start.
+# entrypoint re-runs the container-side preflight on start. It therefore never
+# consults ASSAY_DESK_PEM_FILE or ASSAY_DESK_ENV_FILE, set, empty or absent: a
+# variable is an ambient default for new runs (the docs have an operator export
+# it in the desk's own window), not a request made on this invocation, so
+# refusing it would make --attach unusable there. A credential FLAG is a request
+# on this invocation, and is refused above.
 pem=""
 envf=""
 if [ "$attach" -ne 1 ]; then
@@ -279,40 +297,53 @@ if [ "$attach" -ne 1 ]; then
         "XDG_CONFIG_HOME nor HOME is set" \
         "pass --pem and --env-file (or set ASSAY_DESK_PEM_FILE and ASSAY_DESK_ENV_FILE)"
     fi
-    [ -n "$pem" ] || pem=$cfg/assay/app.pem
+    [ -n "$pem" ] || pem=$cfg/assay/$desk.pem
     [ -n "$envf" ] || envf=$cfg/assay/desk.env
   fi
   pem=$(abspath "$pem")
   envf=$(abspath "$envf")
 
+  # where <source> <path> : how a refusal refers to a credential path. A default
+  # location is composed here from the desk name and the config directory, so it
+  # is printed. A path the operator supplied (a flag or a variable) may be
+  # anything, a credential pasted into the wrong slot included, and stderr often
+  # lands in shell logs: only the slot is named, never the value.
+  where() {
+    if [ "$1" = default ]; then
+      printf '%s  (default)' "$2"
+    else
+      printf 'the path given by %s  (value not echoed)' "$1"
+    fi
+  }
+
   # Both are reported in one pass, so the operator fixes everything at once.
   if [ ! -e "$pem" ]; then
     refused=1
     printf '%s\n' "$prog: $desk cannot start: the bot App PEM is missing." \
-      "  expected a readable file at: $pem  ($pem_src)" \
+      "  expected a readable file at: $(where "$pem_src" "$pem")" \
       "  override with --pem <file> or ASSAY_DESK_PEM_FILE; see containers/secrets.md section 2." >&2
   elif [ ! -f "$pem" ]; then
     refused=1
     printf '%s\n' "$prog: $desk cannot start: the bot App PEM path is not a regular file." \
-      "  path: $pem  ($pem_src)" >&2
+      "  path: $(where "$pem_src" "$pem")" >&2
   elif [ ! -r "$pem" ]; then
     refused=1
     printf '%s\n' "$prog: $desk cannot start: the bot App PEM is not readable by this user." \
-      "  path: $pem  ($pem_src)" >&2
+      "  path: $(where "$pem_src" "$pem")" >&2
   fi
   if [ ! -e "$envf" ]; then
     refused=1
     printf '%s\n' "$prog: $desk cannot start: the model env-file is missing." \
-      "  expected a readable file at: $envf  ($env_src)" \
+      "  expected a readable file at: $(where "$env_src" "$envf")" \
       "  override with --env-file <file> or ASSAY_DESK_ENV_FILE; see containers/secrets.md section 3." >&2
   elif [ ! -f "$envf" ]; then
     refused=1
     printf '%s\n' "$prog: $desk cannot start: the model env-file path is not a regular file." \
-      "  path: $envf  ($env_src)" >&2
+      "  path: $(where "$env_src" "$envf")" >&2
   elif [ ! -r "$envf" ]; then
     refused=1
     printf '%s\n' "$prog: $desk cannot start: the model env-file is not readable by this user." \
-      "  path: $envf  ($env_src)" >&2
+      "  path: $(where "$env_src" "$envf")" >&2
   fi
   [ "$refused" -eq 0 ] || exit 3
 
@@ -324,7 +355,7 @@ if [ "$attach" -ne 1 ]; then
   case $pem in
     *,* | *\"* | *"$nl"*)
       die 3 "$prog: the PEM path contains a comma, a double quote or a newline," \
-        "which cannot be passed safely to docker --mount: $pem" \
+        "which cannot be passed safely to docker --mount: $(where "$pem_src" "$pem")" \
         "move or link the file to a plain path and pass that."
       ;;
   esac

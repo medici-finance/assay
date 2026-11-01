@@ -189,12 +189,15 @@ commands below run from the checkout root.
 **Prerequisites**
 
 - docker, with the daemon running.
-- The bot App PEM for your desk's App, as a file on your machine. The default
-  location is `~/.config/assay/app.pem`. That one default serves every desk, so
-  if your desks use different Apps, pass `--pem <file>` for each desk (or export
-  `ASSAY_DESK_PEM_FILE` in each desk's own window): the launcher does not check
-  which App a PEM belongs to, and two desks started on the default run as the
-  same App.
+- The bot App PEM for your desk's App, as a file on your machine. Each desk has
+  its own default location, `~/.config/assay/<desk-name>.pem` (for example
+  `~/.config/assay/worker-desk.pem`), so two desks started on defaults never
+  mount the same file, and a missing file refuses rather than borrowing another
+  desk's. Put each desk's own App key at its own path. The launcher mounts the
+  file you point it at and does not check which App that file belongs to.
+  `ASSAY_DESK_PEM_FILE` is one value for every desk started from that shell, so
+  set it per desk window or pass `--pem <file>` per desk; pointing two desks at
+  one file is a choice you make, not a default.
 - A model env-file: `KEY=value` lines for the model endpoint (for example
   `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` or `ANTHROPIC_MODEL` when you
   use a gateway). The variables the container accepts are listed in
@@ -204,13 +207,28 @@ commands below run from the checkout root.
 `~/.config` is `$XDG_CONFIG_HOME` when you set it. To keep the files elsewhere,
 pass `--pem <file>` and `--env-file <file>`, or export `ASSAY_DESK_PEM_FILE` and
 `ASSAY_DESK_ENV_FILE`. A flag wins over the environment variable, which wins over
-the default. An override you give but leave empty (for example
+the default. `--attach` takes no credential flag and does not read these two
+variables. An override you give but leave empty (for example
 `--pem "$MY_PEM"` with `MY_PEM` unset, or an exported empty variable) is
 refused, never skipped, so a desk cannot start on a different credential than
 the one you named. Docker Desktop shares your files with the container for you. On a
 Linux host the container's `desk` user (UID 999) must be able to read the PEM, so
 give it a mode and group that allow that; the container reports an unreadable PEM
 at start.
+
+**Which App a launched desk acts as**
+
+The launcher only mounts the PEM you name, read-only, at
+`/run/secrets/assay/app.pem`. It does not decide which App the desk then acts as,
+and this launcher gives no guarantee about that. Inside the container, the
+entrypoint checks that the mounted file exists and is readable. The `desktoken`
+tool looks for a key through `<PREFIX>_PEM` or an `<app-name>.pem` file on its
+search path, and neither the image nor the launcher sets either of those to the
+mount. Which key a desk mints its tokens from is therefore settled by the
+container's own configuration, not by this launcher or by the name of the host
+file. Treat the per-desk host default as a way to keep the desks' key files apart
+on your machine, not as an identity guarantee. This was read from the code and
+not run against a real container.
 
 **First run**
 
@@ -257,7 +275,7 @@ The script refuses before it starts docker, and names what it expected:
 | Exit | Meaning |
 |------|---------|
 | 2 | Unknown desk name or option (the five valid desks are listed), an invalid `--version`, or `--pem` / `--env-file` / `--version` together with `--attach`. The message gives the argument's position and length, not its text, because stderr often lands in shell logs. |
-| 3 | The PEM or env-file is missing, is not a regular file, or is not readable; an override (`--pem`, `--env-file`, `ASSAY_DESK_PEM_FILE`, `ASSAY_DESK_ENV_FILE`) was given empty; or the PEM path holds a comma, a double quote or a newline. The message names the override and the expected path, and how to fix it. |
+| 3 | The PEM or env-file is missing, is not a regular file, or is not readable; an override (`--pem`, `--env-file`, `ASSAY_DESK_PEM_FILE`, `ASSAY_DESK_ENV_FILE`) was given empty; or the PEM path holds a comma, a double quote or a newline. The message names the override and how to fix it. It prints the path only for a default location; a path you supplied is named by its flag or variable, never printed back, because it may be a credential pasted into the wrong slot. |
 | 4 | docker is not installed or its daemon cannot be reached, or the container is in the wrong state for the request. |
 
 There is no fallback to other credentials on your machine: it uses the files named

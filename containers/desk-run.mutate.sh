@@ -32,6 +32,9 @@
 #   echo-desk2        a second desk name is echoed back on stderr
 #   echo-version      an invalid tag is echoed back on stderr
 #   ambient-fallback  a missing default PEM falls back to a file in $HOME
+#   shared-default    every desk's default PEM is the one shared app.pem again
+#   echo-slot         a refusal prints back the path given in a credential slot
+#   echo-slot-guard   the mount-grammar refusal prints back the PEM path
 #   daemon-down       an unreachable daemon is read as "no container"
 #   name-exists       the refusal when the desk's container already exists
 #
@@ -159,12 +162,24 @@ echo-version | invalid image tag is refused and its text is not echoed
     die 2 "$prog: invalid --version '$version'" \
 
 ambient-fallback | missing defaults name
-    [ -n "$pem" ] || pem=$cfg/assay/app.pem
-    [ -n "$pem" ] || { pem=$cfg/assay/app.pem; [ -e "$pem" ] || pem=${HOME:-}/app.pem; }
+    [ -n "$pem" ] || pem=$cfg/assay/$desk.pem
+    [ -n "$pem" ] || { pem=$cfg/assay/$desk.pem; [ -e "$pem" ] || pem=${HOME:-}/app.pem; }
 
 daemon-down | unreachable docker daemon
 if ! existing=$(docker container ls -a --filter "name=^/$desk\$" --format '{{.Names}}' 2>/dev/null); then
 if ! existing=$(docker container ls -a --filter "name=^/$desk\$" --format '{{.Names}}' 2>/dev/null || :); then
+
+shared-default | no two desks on defaults
+    [ -n "$pem" ] || pem=$cfg/assay/$desk.pem
+    [ -n "$pem" ] || pem=$cfg/assay/app.pem
+
+echo-slot | value in a PEM or env-file slot is not echoed
+    if [ "$1" = default ]; then
+    if true; then
+
+echo-slot-guard | value in a PEM or env-file slot is not echoed
+        "which cannot be passed safely to docker --mount: $(where "$pem_src" "$pem")" \
+        "which cannot be passed safely to docker --mount: $pem" \
 
 name-exists | refuses when a container of that name already exists
   [ "$have" -eq 0 ] || die 4 "$prog: a container named '$desk' already exists" \
@@ -208,7 +223,9 @@ while IFS= read -r header; do
       ;;
   esac
 
-  DESK_RUN=$file sh "$TEST" >"$WORK/$name.out" 2>&1
+  # DESK_RUN_NESTED skips the suite's own symlinked-TMPDIR re-run: no mutant
+  # needs it, and it would double every run.
+  DESK_RUN=$file DESK_RUN_NESTED=1 sh "$TEST" >"$WORK/$name.out" 2>&1
   rc=$?
   nfail=$(grep -c '^FAIL' "$WORK/$name.out")
   first=$(grep '^FAIL' "$WORK/$name.out" | head -1 | cut -c1-90)
