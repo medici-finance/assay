@@ -74,3 +74,7 @@ CI at 4b4fa4744 found four synthetic SSH fixture strings in the unchanged disclo
 
 
 Further C1 pickup at 00eb46178: an isolated parent diagnostic and the actual consumer's red positive control proved an ordinary global insteadOf=origin rule can reinterpret the missing-remote fallback even without injected configuration. Retire the native authority lookup in acceptanceTransition and consume gitcore.OriginAuthority directly, sharing the same bounded observation owner as the snapshot producer. Missing/ambiguous URLs can no longer become a native remote-name fallback. The explicit injected-config refusal remains; no new native process or exception is introduced.
+
+
+
+Actual cb09 CI context: checkout-v7 persists authentication through conditional includeIf.gitdir entries (host and container paths). The new native-equivalence fixture reproduces the real profile and fails with unavailable authority before support is added. Adapt the bounded owner to observe only authority-neutral HTTP/credential include files, including neutral nested files (relative paths require a canonical declaring directory), at proven absolute ASCII exact/single-component gitdir(/i) matches. Proven nonmatches are skipped before file access; remote/rewrite-bearing includes and unsupported conditions remain unavailable. Cycle/depth limits apply, and included headers/helper values are never merged, copied, logged or used for transport. This avoids a general conditional/inline Git config interpreter and preserves the existing codec owner.

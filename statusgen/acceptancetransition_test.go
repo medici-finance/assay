@@ -562,3 +562,129 @@ func TestSnapshotRewriteFallback(t *testing.T) {
 		t.Fatalf("global fallback did not hold: %s", why)
 	}
 }
+
+// regression: #4823 C1 C2
+func TestAuthorityNeutralIncludes(t *testing.T) {
+	for _, mode := range []string{"matching-ci", "nonmatch-missing", "linked", "worktree-glob", "case-insensitive", "nested", "foreign", "rewrite", "unreadable", "cycle", "depth", "unsupported"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			source := f.root
+			if mode == "linked" || mode == "worktree-glob" {
+				source = filepath.Join(t.TempDir(), "linked")
+				vfGit(t, f.root, vfMailHuman, "worktree", "add", "--detach", source, head)
+			}
+			adminRaw, adminErr := historyGit(source, "rev-parse", "--absolute-git-dir").Output()
+			if adminErr != nil {
+				t.Fatal(adminErr)
+			}
+			admin := strings.TrimSpace(string(adminRaw))
+			file := filepath.Join(t.TempDir(), "included.config")
+			const neutral = "[http \"https://github.com\"]\n extraHeader = fixture-secret\n[credential]\n helper = fixture-secret-helper\n"
+			content := neutral
+			condition := "gitdir:" + filepath.ToSlash(admin)
+			want := true
+			switch mode {
+			case "nonmatch-missing":
+				condition = "gitdir:" + filepath.ToSlash(filepath.Join(t.TempDir(), "absent", ".git"))
+			case "worktree-glob":
+				condition = "gitdir:" + filepath.ToSlash(filepath.Dir(admin)) + "/*"
+			case "case-insensitive":
+				condition = "gitdir/i:" + strings.ToUpper(filepath.ToSlash(admin))
+			case "foreign":
+				content += "[remote \"origin\"]\n url = https://github.com/foreign/project.git\n"
+				want = false
+			case "rewrite":
+				content += "[url \"https://github.com/foreign/\"]\n insteadOf = https://github.com/\n"
+				want = false
+			case "nested":
+				nested := filepath.Join(filepath.Dir(file), "nested.config")
+				if err := os.WriteFile(nested, []byte(neutral), 0600); err != nil {
+					t.Fatal(err)
+				}
+				content = fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(nested))
+			case "cycle":
+				content += fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(file))
+				want = false
+			case "depth":
+				for i := 0; i < 10; i++ {
+					current := filepath.Join(filepath.Dir(file), fmt.Sprintf("level-%d.config", i))
+					next := filepath.Join(filepath.Dir(file), fmt.Sprintf("level-%d.config", i+1))
+					body := neutral
+					if i < 9 {
+						body += fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(next))
+					}
+					if err := os.WriteFile(current, []byte(body), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				content = fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(filepath.Join(filepath.Dir(file), "level-0.config")))
+				want = false
+			case "unreadable":
+				want = false
+			case "unsupported":
+				condition = "gitdir:**"
+				want = false
+			}
+			if mode == "unreadable" {
+				if err := os.Mkdir(file, 0700); err != nil {
+					t.Fatal(err)
+				}
+			} else if mode != "nonmatch-missing" {
+				if err := os.WriteFile(file, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A nonmatching container path in checkout-v7 must never be opened.
+			vfGit(t, f.root, vfMailHuman, "config", "includeIf.gitdir:/example.invalid/container/.git.path", filepath.Join(t.TempDir(), "not-present"))
+			vfGit(t, f.root, vfMailHuman, "config", "includeIf."+condition+".path", file)
+			if mode == "matching-ci" || mode == "linked" || mode == "worktree-glob" || mode == "case-insensitive" || mode == "nested" {
+				raw, err := historyGit(source, "config", "--get", "http.https://github.com.extraHeader").Output()
+				if err != nil || strings.TrimSpace(string(raw)) != "fixture-secret" {
+					t.Fatalf("native include control=%q %v", raw, err)
+				}
+			}
+			got, err := gitcore.OriginAuthority(source)
+			if want {
+				if err != nil || got != "https://github.com/"+rlRepo+".git" {
+					t.Fatalf("supported include authority=%q err=%v", got, err)
+				}
+			} else if err == nil {
+				t.Fatalf("unsupported include supplied authority=%q", got)
+			}
+			if !want {
+				transitionClient = func() *ghClient { t.Fatal("unsupported include reached approval reader"); return nil }
+			}
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			findings, why := closureWitnesses(verify, evidence, vfBrief(source))
+			accepted := why == "" && len(findings) == 3
+			for _, finding := range findings {
+				accepted = accepted && closureSatisfied(finding)
+			}
+			if accepted != want {
+				t.Fatalf("included closure accepted=%v want=%v: %s", accepted, want, why)
+			}
+			if want {
+				snapshot := t.TempDir()
+				if err := gitcore.CheckoutLocalCommit(source, snapshot, head, "refs/remotes/origin/main"); err != nil {
+					t.Fatal(err)
+				}
+				config, err := os.ReadFile(filepath.Join(snapshot, ".git", "config"))
+				if err != nil || strings.Contains(string(config), "fixture-secret") || strings.Contains(string(config), "include") {
+					t.Fatal("included credential/transport config copied")
+				}
+			}
+		})
+	}
+}

@@ -16,7 +16,7 @@ import (
 // snapshotOrigin carries optional authority metadata, never transport config.
 // This bounded profile uses the owner's existing codec and fetch rewrite fix:
 // system/global files, common config and enabled worktree config, in scope order.
-// Includes, injected config, ambiguous rewrites and multiple fetch URLs are
+// Authority-affecting/unsupported includes, injected config, ambiguous rewrites and multiple fetch URLs are
 // unavailable rather than an invitation to select another scope/repository.
 // No failure here can abort an otherwise readable local history checkout.
 func (r *Repo) snapshotOrigin() string {
@@ -80,8 +80,9 @@ func (r *Repo) snapshotOrigin() string {
 	return origin
 }
 
-// originRawConfig merges observations with the selected config codec; it does
-// not execute includes, commands, helpers or native Git, nor copy configuration.
+// originRawConfig merges observations with the selected config codec. Proven
+// neutral include observations never contribute values. No command/helper/native
+// Git is executed and no credential configuration is copied.
 func (r *Repo) originRawConfig() (*format.Config, error) {
 	if OriginConfigInjected() {
 		return nil, fmt.Errorf("injected config is outside snapshot profile")
@@ -103,13 +104,21 @@ func (r *Repo) originRawConfig() (*format.Config, error) {
 		if err != nil {
 			return err
 		}
-		if err := format.NewDecoder(bytes.NewReader(content)).Decode(raw); err != nil {
+		current := format.New()
+		if err := format.NewDecoder(bytes.NewReader(content)).Decode(current); err != nil {
 			return err
 		}
-		if raw.HasSection("include") || raw.HasSection("includeIf") {
-			return fmt.Errorf("includes are outside snapshot profile")
+		if err := r.checkOriginIncludes(current, path); err != nil {
+			return err
 		}
-		return nil
+		// Matching includes are proven HTTP/credential-neutral, so ignoring their
+		// values preserves authority and avoids importing credential configuration.
+		current.RemoveSection("include").RemoveSection("includeIf")
+		var encoded bytes.Buffer
+		if err := format.NewEncoder(&encoded).Encode(current); err != nil {
+			return err
+		}
+		return format.NewDecoder(&encoded).Decode(raw)
 	}
 	noSystem := strings.ToLower(os.Getenv("GIT_CONFIG_NOSYSTEM"))
 	switch noSystem {
