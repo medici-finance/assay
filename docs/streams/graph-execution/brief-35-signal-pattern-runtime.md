@@ -87,8 +87,8 @@ to the revision its caller expected, and that is as far as it goes. The gate's d
 from the lint's so that one parser bug can't defeat both. The cost is that the two can read one file
 differently. Strict decoding (Task 1, row 17) closes a duplicate key in a mapping the gate decodes, a
 merge key, a second document, and an unknown key in the three objects Task 1 lists. A duplicate under a
-key the gate doesn't read is not refused, unlike the lint's map decode, which refuses it, so such a file
-passes the gate with no lint run. The same goes for an anchor that contains itself under such a key. The
+key the gate doesn't read is not refused. The lint's map decode can't read that file and reports
+could-not-check (exit 2), so it passes the gate with no lint run and the lint gives no clean result. The same goes for an anchor that contains itself under such a key. The
 gate doesn't read either value, so neither changes its route. Row 12 shows the two agree on one fixture, and no row compares them
 on every pattern.
 
@@ -99,9 +99,12 @@ choose, and its review checks that. Most come from its platform or reviewed sour
 an observation made at run time, so a value fixed in source is not a result, and the gate can't tell the
 two apart. Culprit class can't either: auto-triage/02 and /03 take it from auto-triage/01's classifier
 record, which the run's own classifier produces, so that condition doesn't cover it until the activating
-brief supplies a binding. No brief supplies one today, and the gate can't tell a bound value from an
-unbound one. Anything but exactly `mechanical` selects the judgement exit, so the exposure is a value that
-reads `mechanical` when it shouldn't. A run that can write its root can change the file the gate reads, so the expected digest has to
+brief supplies a binding. Task 10 says that brief MUST supply the binding before its caller passes a culprit
+class, and until it does its caller MUST pass none. With none, a class with two exits takes its judgement
+exit, a node only on the mechanical route is refused, and a run can't select the mechanical exit. No brief
+supplies a binding today (#5150), and the gate can't tell a bound value from an unbound one, so it can't
+enforce this. Anything but exactly `mechanical` selects the judgement exit, so the exposure is a caller that
+breaks the rule with a value reading `mechanical`. A run that can write its root can change the file the gate reads, so the expected digest has to
 come from outside any root the run can write, and reading it from a writable checkout doesn't count.
 auto-triage/01's `origin` check stands behind trigger and ref for the gate-red class.
 Nothing stands behind the other inputs, or behind any input of another class, which is why activation
@@ -160,7 +163,7 @@ Why it matters: this rule is the only thing keeping signal patterns from going l
 
 Options:
 
-1. Lift the rule once the check is implemented, for any activating change that carries its own human gate, binds every caller input to a value the run cannot choose and names a liveness source. (Recommended.)
+1. Lift the rule once the check is implemented, for any activating change that carries its own human gate, binds every caller input to a value the run cannot choose, passes a culprit class only once it supplies that binding, and names a liveness source. (Recommended.)
 2. Lift it for the gate-red class only. The outage and regression classes stay held until a further ruling.
 3. Keep the rule. The check is built, and activation needs a separate ruling later.
 
@@ -208,7 +211,7 @@ Default if no answer: none — blocks until answered.
    - a duplicate key in a mapping the gate decodes: the top level, each class and its `admission`, each
      node, the signal input and each edge (`yaml.v3` refuses one by default in a typed decode, and row 17
      pins that). A duplicate under a key the gate doesn't read is never visited, so it is not refused; the
-     lint's map decode refuses that one, and this loader doesn't decode the whole file to match it;
+     lint's map decode reports could-not-check (exit 2) on that one, and this loader doesn't decode the whole file to match it;
    - a merge key (`<<`) anywhere in the file, including one reached through an alias. A typed decode applies
      a merge key silently, and one inside a class reaches a value the gate reads. So the loader parses the
      bytes into a `yaml.Node`, walks that tree refusing any key whose `ShortTag()` is `!!merge`, and only
@@ -280,8 +283,8 @@ Default if no answer: none — blocks until answered.
    `duplicate-key.yaml` (`exit` twice in `example-alert`),
    `two-documents.yaml` (a second document after `good-signal.yaml`'s content),
    `unknown-class-key.yaml` (an unknown key in `example-alert`),
-   `merge-key-class.yaml` (`example-alert`'s `exit` moved into a `<<` merge key in that class),
-   `merge-key-node.yaml` (the `id` of the node holding the signal input moved into a `<<` merge key in that node, outside the three closed lists).
+   `merge-key-class.yaml` (`dedupe` in `example-alert`'s `limits` moved into a `<<` merge key in that mapping, which no closed list covers and the gate doesn't read),
+   `merge-key-node.yaml` (the `id` of the node holding the signal input moved into a `<<` merge key in that node, outside the three closed lists). Only the merge-key walk refuses these two.
 9. **Tests**, each named in Verify. Add `signalgate-mutations.json` with a failing control and one mutant
    per branch of Task 1-6, in the shape of `admission-mutations.json`.
 10. **Spec.** In `spec/workflow-pattern-v1.md` §4.3 replace the sentences saying no runtime exists and
@@ -294,8 +297,10 @@ Default if no answer: none — blocks until answered.
     value fixed in source" and the expected digest comes "from outside any root the run can write, and
     reading it from a writable checkout does not count", culprit class is "a classifier's output produced
     during the run, so that condition does not cover it until the activating brief supplies the binding",
-    and the others come from its platform or reviewed source; a caller "MUST proceed only on the admit
-    exit"; a hold "never blocks a person"; an activating brief "MUST name the source whose result it passes
+    and the others come from its platform or reviewed source; an activating brief "MUST supply the
+    culprit-class binding before its caller passes a culprit class, and until it does its caller MUST pass
+    none, so a class with two exits takes its judgement exit and a run cannot select the mechanical exit";
+    a caller "MUST proceed only on the admit exit"; a hold "never blocks a person"; an activating brief "MUST name the source whose result it passes
     and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness
     result"; a caller "MUST observe liveness again for each node, and a result from an earlier node does
     not count". Keep the statement that limits are the
@@ -328,7 +333,7 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | 15 | check | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS" |
 | 16 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGatePatternPin$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGatePatternPin (' "$T/out" \|\| exit 4)` | exit 0; an absent, malformed or differing expected digest is refused with `pattern-revision`, an absent one even when the file is missing; a right digest admits; a file changed between two calls with the same expected digest admits the first and refuses the second, so a run cannot change its own route by rewriting the pattern |
 | 17 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGateUnlintedEdges$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGateUnlintedEdges (' "$T/out" \|\| exit 4)` | exit 0; `no-effects-no-admission.yaml` is refused with `admission-missing` for its class with no `admission`, and `half-pair.yaml`, `empty-source.yaml`, `duplicate-key.yaml`, `two-documents.yaml`, `unknown-class-key.yaml`, `merge-key-class.yaml` and `merge-key-node.yaml` are refused with `pattern-invalid`, so these eight shapes fail closed |
-| 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'output produced during the run, so that condition does not cover it until the activating brief supplies the binding' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result' 'MUST observe liveness again for each node, and a result from an earlier node does not count'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; §4.3 carries Task 10's seven statements and the binding's words for liveness, culprit class and the digest, across line wraps, and 34's hold wording is gone |
+| 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'output produced during the run, so that condition does not cover it until the activating brief supplies the binding' 'MUST supply the culprit-class binding before its caller passes a culprit class, and until it does its caller MUST pass none, so a class with two exits takes its judgement exit and a run cannot select the mechanical exit' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result' 'MUST observe liveness again for each node, and a result from an earlier node does not count'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; §4.3 carries Task 10's eight statements and the binding's words for liveness, culprit class and the digest, across line wraps, and 34's hold wording is gone |
 
 ## Pre-mortem
 
@@ -346,13 +351,13 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | The brief quietly activates a pattern by wiring a caller | row 11 |
 | A run rewrites the pattern in its own root to change its route | row 16, when the expected digest comes from outside any root the run can write; each activating brief's review checks where it comes from |
 | A class with no `admission`, or half an exit pair, slips past a rule keyed on declared effects | row 17 |
-| A duplicate key, a merge key, a second document or a misspelt class key makes the gate and the lint read different patterns | row 17, for a duplicate in a mapping the gate decodes and for the other shapes. A duplicate under a key the gate doesn't read passes the gate, and the lint refuses it; the gate's route doesn't change. Other differentials between the two decoders aren't caught: the note says so |
+| A duplicate key, a merge key, a second document or a misspelt class key makes the gate and the lint read different patterns | row 17, for a duplicate in a mapping the gate decodes and for the other shapes. A duplicate under a key the gate doesn't read passes the gate, and the lint reports could-not-check (exit 2) on it; the gate's route doesn't change. Other differentials between the two decoders aren't caught: the note says so |
 | A caller reads a usage error, a disabled tool or a missing binary as "not refused" and proceeds | row 8 shows only an admit exits 0; the contract notes on auto-triage/02 and /03 say the same, and no Verify row on those briefs tests it (a Verify change there is the owner's) |
 | The spec keeps 34's hold, or lands without the human gate or the liveness owner statement | row 18 |
 | A caller skips the gate or passes a false value for any input | not caught here: each activating brief's review, and auto-triage/01's `origin` check for trigger and ref on gate-red. The single-point-of-failure note states the gap |
 | An activating brief passes no liveness result | the gate holds (row 6). No brief owns a source today (#5148), so that hold stands |
 | An activating brief passes a constant or unprobed `live` | not caught by the gate, which can't tell it from an observation. Row 18 shows the spec forbids it, and the activating brief's human gate and review are what catch it |
-| An activating brief passes its run's classifier output as culprit class with no binding, so a value reading `mechanical` selects the mechanical exit | not caught by the gate, which can't tell a bound value from an unbound one. Row 18 shows the spec requires the activating brief to supply the binding, and that brief's human gate and review are what catch it. No brief supplies one today |
+| An activating brief passes its run's classifier output as culprit class with no binding, so a value reading `mechanical` selects the mechanical exit | not caught by the gate, which can't tell a bound value from an unbound one. Row 18 shows the spec's words: the activating brief MUST supply the binding before its caller passes a culprit class, and until then its caller MUST pass none. That brief's human gate and review are what catch a caller that breaks this. No brief supplies one today (#5150) |
 | A caller reuses an earlier node's liveness result, so a source that died mid-run doesn't hold the next node | not caught by the gate, which holds no state. Row 18 shows the spec requires a fresh observation for each node, and the activating brief's human gate and review are what catch it |
 | A class with no limits owner goes live | not caught here: limits are the activating brief's, and only auto-triage/02 and /03 own them today |
 
