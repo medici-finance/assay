@@ -4,10 +4,9 @@ images_test.py cannot prove that CI runs it: if the step stopped running that
 suite, its own checks would never execute. This module reads ci.yml directly,
 through the strict reader in workflow_keys.py, and requires the step to run
 images_test (and this module), to fail its shard when the tests fail, and to
-stop at a fixed deadline. A line the reader does not accept is refused when it
-sits at top level, in the job, among any job's own keys, or under any job's
-permissions or environment, so another spelling of a setting cannot stand in
-for the one checked. Offline; reads only workflow text.
+stop at a fixed deadline. Every line the reader does not accept is refused,
+wherever it sits in the file, so another spelling of a setting cannot stand
+in for the one checked. Offline; reads only workflow text.
 
 Two runners execute it. The step itself runs it on the rest shard. The Go
 regression TestReleaseGoCache (tools/desk/internal/regression) discovers every
@@ -105,16 +104,15 @@ def step_keys(entries):
 def step_problems(text):
     """Why the release contract step would not run, fail closed, or finish.
 
-    Settings are read with workflow_keys: a line written in a form that
-    reader does not accept is refused at top level, in the job, among any
-    job's own keys and under any job's permissions or environment, so no
-    other spelling of a setting can stand in for the one checked here.
+    Settings are read with workflow_keys: every line written in a form that
+    reader does not accept is refused, wherever it sits, so no other
+    spelling of a setting can stand in for the one checked here.
     """
     entries, unread = workflow_keys.read(text)
     step = step_keys(entries)
     if step is None:
         return ['ci.yml has no ' + JOB + ' step named ' + STEP]
-    problems = workflow_keys.unread_problems(unread, JOB)
+    problems = workflow_keys.unread_problems(unread)
     job = [entry for entry in entries if entry.under('jobs', JOB)]
     own = {}
     for entry in step:
@@ -297,12 +295,12 @@ class ReleaseContractStepTest(unittest.TestCase):
     def test_reader_reads_one_form(self):
         read = workflow_keys.read
         entries, unread = read('a:\n  b: c # d\n  h: [i, j]\nk:\n  - l\n  - M: n\n'
-                               'steps:\n  - run: |\n      f: g\n    with:\n      p: >-\n        q: r\n')
+                               'steps:\n  - run: |\n      f: g\n    with:\n      path: |\n        q: r\n')
         self.assertEqual([(e.path, e.key, e.value, e.item) for e in entries],
                          [((), 'a', '', False), (('a',), 'b', 'c', False),
                           (('a',), 'h', '[i, j]', False), ((), 'k', '', False), (('k',), 'm', 'n', True),
                           ((), 'steps', '', False), (('steps',), 'run', '|', True),
-                          (('steps',), 'with', '', False), (('steps', 'with'), 'p', '>-', False)])
+                          (('steps',), 'with', '', False), (('steps', 'with'), 'path', '|', False)])
         self.assertEqual(unread, [])
         # A block scalar anywhere else is refused, and its body is still not read.
         entries, unread = read('a:\n  e: |\n    - name: f\n      g: h\n')
@@ -339,6 +337,36 @@ class ReleaseContractStepTest(unittest.TestCase):
             'environment-name-spaced-key': ('harnesslint', '  harnesslint:\n',
                                             '  harnesslint:\n    environment:\n      name : release\n',
                                             'name : release'),
+        }
+        for name, (job, old, new, line) in plants.items():
+            with self.subTest(name=name):
+                scope = old + job_block(text, job) if old.startswith('  ' + job) else job_block(text, job)
+                self.assertEqual(text.count(scope), 1, 'control scope is not unique')
+                self.assertEqual(scope.count(old), 1, 'control target is not unique')
+                problems = step_problems(text.replace(scope, scope.replace(old, new, 1), 1))
+                self.assertTrue(any(found.endswith(unread + line) for found in problems), problems)
+
+    # regression: #5091 — the reader is a closed grammar: a value it cannot
+    # read exactly as written is refused wherever it sits, in any job's steps
+    # too, so no escape or folded scalar decodes to a value the check refuses.
+    def test_closed_reader_in_every_job(self):
+        text = CI.read_text()
+        self.assertEqual(step_problems(text), [])
+        unread = 'is not in the plain form this check reads: '
+        checkout = '      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n'
+        plants = {
+            'grant-escaped': ('skillslint', '    needs: scope\n',
+                              '    needs: scope\n    permissions:\n      contents: "wri\\x74e"\n',
+                              'contents: "wri\\x74e"'),
+            'environment-doubled-quote': ('harnesslint', '  harnesslint:\n',
+                                          "  harnesslint:\n    environment: 'rel''ease'\n",
+                                          "environment: 'rel''ease'"),
+            'step-run-folded': ('skillslint', checkout, checkout + '      - run: >-\n          echo one\n',
+                                '- run: >-'),
+            'step-action-by-tag': ('skillslint', checkout, '      - uses: actions/checkout@v7\n',
+                                   '- uses: actions/checkout@v7'),
+            'step-key-quoted': ('skillslint', checkout, checkout + '        "with":\n          fetch-depth: 0\n',
+                                '"with":'),
         }
         for name, (job, old, new, line) in plants.items():
             with self.subTest(name=name):
