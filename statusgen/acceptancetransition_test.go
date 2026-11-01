@@ -523,3 +523,42 @@ func TestSnapshotInjectedOrigin(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4823 C1
+func TestSnapshotRewriteFallback(t *testing.T) {
+	f := transitionFixtureAt(t)
+	f.evidence(t, nil)
+	vfGit(t, f.root, vfMailHuman, "config", "--add", "remote.origin.url", "https://github.com/foreign/project.git")
+	head := vfRev(t, f.root, "HEAD")
+	vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+	global := filepath.Join(t.TempDir(), "global")
+	approved := "https://github.com/" + rlRepo + ".git"
+	body := fmt.Sprintf("[url %q]\n insteadOf = origin\n", approved)
+	if err := os.WriteFile(global, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_COUNT", "0")
+	t.Setenv("GIT_CONFIG_PARAMETERS", "")
+	snapshot := t.TempDir()
+	if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+		t.Fatal(err)
+	}
+	// A real global rewrite manufactures a foreign approval origin from the
+	// native missing-remote fallback despite the destination's local reset.
+	native, err := historyGit(snapshot, "remote", "get-url", "origin").Output()
+	if err != nil || strings.TrimSpace(string(native)) != approved {
+		t.Fatalf("rewrite control=%q %v", native, err)
+	}
+	transitionClient = func() *ghClient { t.Fatal("global fallback reached foreign approval reader"); return nil }
+	resetReadMemo()
+	verify, evidence, err := briefSections(vfBrief(snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, why := closureWitnesses(verify, evidence, vfBrief(snapshot))
+	if !strings.Contains(why, "could-not-check repository authority") {
+		t.Fatalf("global fallback did not hold: %s", why)
+	}
+}

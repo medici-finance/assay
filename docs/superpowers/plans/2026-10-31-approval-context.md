@@ -70,3 +70,7 @@ The URL reset alone was insufficient for command-priority injection: the positiv
 
 
 CI at 4b4fa4744 found four synthetic SSH fixture strings in the unchanged disclosure gate. Reserved .example spellings still require reviewed exceptions in that matcher. Use canonical public-forge SSH spellings for the differing shared host and SCP rewrite prefix, and SSH username/query coverage alongside the shared-parser HTTP password control. The same scope/reset/sanitization assertions remain; no scanner, allowlist, literal splitting or check changed. The unchanged disclosure/corpus gate and the affected origin fixture groups pass before the follow-up push.
+
+
+
+Further C1 pickup at 00eb46178: an isolated parent diagnostic and the actual consumer's red positive control proved an ordinary global insteadOf=origin rule can reinterpret the missing-remote fallback even without injected configuration. Retire the native authority lookup in acceptanceTransition and consume gitcore.OriginAuthority directly, sharing the same bounded observation owner as the snapshot producer. Missing/ambiguous URLs can no longer become a native remote-name fallback. The explicit injected-config refusal remains; no new native process or exception is introduced.

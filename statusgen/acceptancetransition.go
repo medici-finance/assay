@@ -234,11 +234,11 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if gitcore.OriginConfigInjected() {
 		return fail("could-not-check repository authority: injected Git configuration is unsupported")
 	}
-	origin, err := historyGit(root, "remote", "get-url", "origin").Output()
-	if err != nil || remoteHost(string(origin)) != "github.com" {
+	origin, err := gitcore.OriginAuthority(root)
+	if err != nil || remoteHost(origin) != "github.com" {
 		return fail("could-not-check repository authority: approval requires a github.com origin")
 	}
-	repo := originOwnerRepo(strings.TrimSpace(string(origin)))
+	repo := originOwnerRepo(strings.TrimSpace(origin))
 	if repo == "" {
 		return fail("cannot bind approval to the repository origin")
 	}

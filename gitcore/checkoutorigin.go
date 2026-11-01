@@ -185,3 +185,19 @@ func OriginConfigInjected() bool {
 	count := os.Getenv("GIT_CONFIG_COUNT")
 	return (count != "" && count != "0") || os.Getenv("GIT_CONFIG_PARAMETERS") != "" || os.Getenv("GIT_CONFIG") != ""
 }
+
+// OriginAuthority returns only the bounded owner's proven fetch authority.
+// Unlike a native remote lookup, an absent URL cannot fall back to the name
+// "origin" and be reinterpreted by an ambient rewrite. Unavailable metadata
+// remains an error for authority consumers, not for ordinary history snapshots.
+func OriginAuthority(root string) (string, error) {
+	repo, err := Open(root)
+	if err != nil {
+		return "", err
+	}
+	origin := repo.snapshotOrigin()
+	if origin == "" {
+		return "", fmt.Errorf("repository origin authority is unavailable")
+	}
+	return origin, nil
+}
