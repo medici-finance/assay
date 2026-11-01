@@ -21,6 +21,8 @@ gate-why: >-
   mode's boundaries — which verbs may run under it, what the roster records, that it is refused on
   a repo whose ruleset expects a bot identity — before any code is authored.
 decision-trigger: spec
+decision-issue: 467
+ruling: "https://github.com/medici-finance/assay/issues/467#issuecomment-5553170768"
 issues: [467]
 schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
