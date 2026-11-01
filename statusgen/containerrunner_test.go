@@ -122,7 +122,7 @@ func TestContainerLinkedWorktree(t *testing.T) {
 	cells := witnessRunnerCells(witness)
 	// The tree token is the host's: the container cannot name its commit, so
 	// it takes the one the open step recorded.
-	if want := "human:fixture @ " + hostTree + " (git-config)"; len(cells) != 1 || cells[0] != want {
+	if want := "human:fixture @ " + hostTree + " " + rowReadSetToken() + " (git-config)"; len(cells) != 1 || cells[0] != want {
 		t.Fatalf("the container rows do not carry the host runner from the receipt: %q\n%s", cells, witness)
 	}
 
@@ -181,7 +181,7 @@ func TestContainerReceiptRunner(t *testing.T) {
 	if res, stderr := captureVerifyrun(t, fx.runArgs()); res.code != verifyrunExitPass {
 		t.Fatalf("injected env: exit %d stderr %q", res.code, stderr)
 	}
-	if cells := witnessRunnerCells(getFile(t, fx.witness)); len(cells) != 1 || cells[0] != "human:fixture @ "+treeSHA(fx.home)+" (git-config)" {
+	if cells := witnessRunnerCells(getFile(t, fx.witness)); len(cells) != 1 || cells[0] != "human:fixture @ "+treeSHA(fx.home)+" "+rowReadSetToken()+" (git-config)" {
 		t.Fatalf("the container used an identity from its own environment: %q", cells)
 	}
 	for _, k := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1"} {
@@ -252,9 +252,9 @@ func TestCloseBracketRunner(t *testing.T) {
 	// step: the container writes it into its rows; the close refuses it.
 	hostTree := receiptTree(t, honest)
 	for name, c := range map[string]struct{ from, to, cell string }{
-		"altered tree": {`"runner_tree":"` + hostTree + `"`, `"runner_tree":"0123456789ab"`, "human:fixture @ 0123456789ab (git-config)"},
+		"altered tree": {`"runner_tree":"` + hostTree + `"`, `"runner_tree":"0123456789ab"`, "human:fixture @ 0123456789ab " + rowReadSetToken() + " (git-config)"},
 		"altered on-behalf-of": {`"on_behalf_of":""`, `"on_behalf_of":"on-behalf-of human:mallory"`,
-			"human:fixture @ " + hostTree + " (on-behalf-of human:mallory) (git-config)"},
+			"human:fixture @ " + hostTree + " " + rowReadSetToken() + " (on-behalf-of human:mallory) (git-config)"},
 	} {
 		if err := os.Remove(fx.witness); err != nil {
 			t.Fatal(err)

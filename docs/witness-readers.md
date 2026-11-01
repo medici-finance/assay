@@ -15,7 +15,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/acceptancetransition.go` | migrates in statusgen/37 | reads the tree token of a Runner cell as a commit and refuses a cell whose token is not an object id, so a v2 cell fails closed until statusgen/37 migrates it |
 | `statusgen/attribution.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/autoflip.go` | judges through the library | consumes the library verdict (`--coverage` result) to gate an automatic flip; reads no cell |
-| `statusgen/awaiting_bucket.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
+| `statusgen/awaiting_bucket.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record; removes a read-set token before its could-not-check test, so the token never unsettles a run row |
 | `statusgen/briefevidence.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
 | `statusgen/citationcorroborate.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/containerbracket.go` | migrates in statusgen/37 | bracket of container-run witness cells carries the v1 tree token; the v2 form is written by statusgen/37 |
@@ -27,6 +27,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/evaluation/coverage_api.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evaluation/declared_api.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evaluation/identity.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
+| `statusgen/evaluation/readset.go` | judges through the library | the library itself: read-set token and file grammar, the compile-input floor rule and the read-set judgement (build-less-brittle/15) |
 | `statusgen/evaluation/witness.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evaluation/witness_json.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evidenceactor.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
@@ -37,6 +38,8 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/outcomessplit.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
 | `statusgen/principal.go` | reads informational fields only | renders or round-trips a Runner cell without interpreting the marker |
 | `statusgen/protectedclosure.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
+| `statusgen/readset_adapter.go` | judges through the library | reads a witness's read-set file and its introducing commit, exports the witness tree for the floor's `go list`, and hands the library the files it lists or why it could not list them; the library decides the claim |
+| `statusgen/readset_platform.go` | migrates in statusgen/37 | writes the v1 Runner cell's read-set token (the could-not-check form off Linux) through the library's token writer, and holds `readSetRecorderShipped`, the switch that keeps every caller from judging a read-set token until a recorder ships |
 | `statusgen/reconcilefold.go` | reads informational fields only | renders or round-trips a Runner cell without interpreting the marker |
 | `statusgen/unrun.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/verifiedrunneragree.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
@@ -59,6 +62,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/cmd/deskevidence/outcomerecord.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/plainread.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/principalstamp.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskevidence/readset.go` | reads informational fields only | reads the read-set digest a Runner cell names and the local file at that path, and refuses the landing before any forge call; never a revision, a tree token or a staleness verdict (build-less-brittle/15) |
 | `tools/desk/cmd/deskevidence/receiptvalidate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/rowattribution.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/verifiedgate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |

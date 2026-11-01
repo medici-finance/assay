@@ -168,6 +168,40 @@ investigation, and executable architecture rules. The "no logic in main()" shape
 to a separate desk-tool redesign and is deliberately not here; the rule that is here is "one shared
 meaning, one implementation".
 
+## Batch re-witness
+
+Named by build-less-brittle/15 (Task step 9). It has not been run; the verify desk runs it
+after the implementation merges.
+
+- **Who runs it.** The verify desk, as a non-implementing identity, with writing-form
+  `verifyrun` under the read-set recorder on a Linux host (a container qualifies).
+- **Which revision.** The first main commit that contains the merge of the implementation PR
+  for build-less-brittle/15 (not the docs PR that authored the brief), the same commit for every
+  row.
+- **Per-brief trees.**
+One fresh detached worktree per brief
+  at that revision. Each brief's rows run in a tree that is clean apart from that brief's own
+  Evidence and read-set files, so no witness is `+dirty` from another brief's edits. When its
+  rows finish, the brief's Evidence rows and read-set files are committed together, in one
+  commit, to a per-brief branch. Nothing is pushed to main or merged yet.
+- **Bound.** The briefs at `verified` whose only hold is `wrong-revision`, as listed by
+  `statusgen --coverage --json` at that revision before the run starts (133 at 5ddf5a317).
+  Nothing is added mid-batch.
+- **Pre-landing checks.**
+Nothing lands until the pre-landing checks pass
+  over the whole batch. They run after every brief's branch exists, over all of them merged
+  into one batch tree: the dry-run release count with the batch's witnesses, recorded in the
+  batch's Evidence PR; and a re-run at the main head of ten released claims whose rows are not
+  go rows. That re-run is the one check behind non-go rows, which have no compile-input floor.
+  Any re-run that disagrees with its released witness stops the batch: no brief lands, and the
+  disagreement is filed as a finding.
+- **Landing.** Only after both checks pass, through the ordinary Evidence-PR flow. Each brief's
+  rows and read-set files keep their one-commit pairing.
+- **Failures.** A row that fails takes the ordinary red path and is never re-run to green.
+- **Exclusions.** History-reading rows and rows that run a prebuilt tool gain nothing from the
+  re-witness: their read sets record a history entry or an untraceable exec, so their scope stays
+  conservative either way.
+
 ## Shared conventions
 
 - **Net ≤ 0 lines** for every skill or kit a brief edits. Each such brief carries a line-count

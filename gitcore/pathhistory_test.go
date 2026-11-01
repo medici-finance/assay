@@ -1,6 +1,7 @@
 package gitcore
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -226,5 +227,72 @@ func TestPathHistoryAtAMerge(t *testing.T) {
 	// Control: the two lines interleave, so the order asked for is not one line then the other.
 	if firstParentFirst := git("rev-list", "--topo-order", "HEAD"); firstParentFirst == strings.Join(visited, "\n") {
 		t.Fatalf("control: this fixture cannot tell commit-time order from a line-by-line one")
+	}
+}
+
+// manyParents builds, on top of the seed, one side commit, n children of it that each add
+// their own file (so each has its own root tree), and a merge of all n as main's HEAD.
+func manyParents(t *testing.T, n int) *gittest.Fixture {
+	t.Helper()
+	f := gittest.NewFixture(t)
+	var b strings.Builder
+	b.WriteString("commit refs/heads/main\ncommitter test <test@example.invalid> 1000000000 +0000\ndata 4\nside\nfrom refs/heads/main^0\nM 100644 inline side.txt\ndata 5\nside\n\n")
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "commit refs/heads/c%d\nmark :%d\ncommitter test <test@example.invalid> %d +0000\ndata 5\nchild\nfrom refs/heads/main\nM 100644 inline c%d.txt\ndata 2\nc\n\n", i, i, 1000000001+i, i)
+	}
+	fmt.Fprintf(&b, "commit refs/heads/main\ncommitter test <test@example.invalid> %d +0000\ndata 6\nmerge\nfrom :1\n", 1000000002+n)
+	for i := 2; i <= n; i++ {
+		fmt.Fprintf(&b, "merge :%d\n", i)
+	}
+	b.WriteString("\n")
+	cmd := exec.Command("git", "fast-import", "--quiet", "--force")
+	cmd.Dir = f.Dir
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+	cmd.Stdin = strings.NewReader(b.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git fast-import: %v: %s", err, out)
+	}
+	return f
+}
+
+// regression: #2026
+// TestPathHistoryStopInParents: stop is asked before the commit's own tree and before each
+// parent's, so a merge of many parents ends at the stop that said so, inside its parents,
+// with ErrPathHistoryStopped and no visit; never stopping walks the whole history, one ask
+// per tree read.
+func TestPathHistoryStopInParents(t *testing.T) {
+	const parents = 40
+	f := manyParents(t, parents)
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked, visits := 0, 0
+	err = repo.PathHistoryStop("HEAD", "side.txt", func() bool { asked++; return asked >= 10 }, func(PathCommit) bool {
+		visits++
+		return true
+	})
+	if !errors.Is(err, ErrPathHistoryStopped) {
+		t.Fatalf("a stopped walk returned %v, want ErrPathHistoryStopped", err)
+	}
+	if asked != 10 || visits != 0 {
+		t.Errorf("stop asked %d times and %d commits visited; want the walk ended at the tenth ask, inside the merge's %d parents, with no visit", asked, visits, parents)
+	}
+
+	asked, visits = 0, 0
+	edges := 0
+	err = repo.PathHistoryStop("HEAD", "side.txt", func() bool { asked++; return false }, func(c PathCommit) bool {
+		visits++
+		edges += len(c.Parents)
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, _ := f.Git("rev-list", "--count", "HEAD"); fmt.Sprint(visits) != want {
+		t.Errorf("visited %d commits, want %s (git rev-list --count HEAD)", visits, want)
+	}
+	if asked != visits+edges {
+		t.Errorf("stop asked %d times over %d commits and %d parent edges; want one ask per tree read", asked, visits, edges)
 	}
 }

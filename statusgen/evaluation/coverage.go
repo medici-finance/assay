@@ -163,11 +163,16 @@ package evaluation
 //   - A reused pass says so: its reason names the revision it is reused at and
 //     the derivation. Claim.Revision stays the witness's own revision, so the
 //     old receipt is never retargeted to the new subject.
-//   - The result vocabulary is unchanged. graph-execution/09's adapter
-//     supplies manifests later. Production passes none today, so every row
-//     whose read set its command does not establish takes the conservative
-//     scope. That is the "start with conservative invalidation" posture WI-2
-//     asks for.
+//   - The result vocabulary is unchanged. The dependency manifest is owned by
+//     graph-execution/30; production passes none today, so a row whose inputs
+//     neither its command text nor a recorded read set establishes takes the
+//     conservative scope. That is the "start with conservative invalidation"
+//     posture WI-2 asks for.
+//   - A witness's RECORDED read set (build-less-brittle/15, readset.go) is a
+//     separate observation, not a manifest: verifyrun's recorder writes it,
+//     the caller supplies it on the Witness, and a counted one replaces the
+//     scope for that one witness (a manifest's scope is unioned in). The go
+//     compile-input floor (CoverageInput.GoFloors) is its lower layer.
 //
 // The residual the conservative scope still accepts: a change under
 // `docs/streams/**` or to STATUS.md never invalidates a witness unless the
@@ -369,6 +374,17 @@ func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses [
 		if r.ProseLed != "" {
 			return ResultCouldNotCheck, r.ProseLedNote, wrev
 		}
+		// The recorded read set (build-less-brittle/15, readset.go): a token
+		// naming a file that is absent or whose digest differs, or one the
+		// caller could not observe within its bounds, is
+		// could-not-check whatever the scope says; a set that counts replaces
+		// the scope, except on a `+dirty` / `+unknown` witness, which keeps the
+		// conservative one.
+		rs, couldNot := x.judgeReadSet(scope, r, latest)
+		if couldNot != "" {
+			return ResultCouldNotCheck, couldNot, wrev
+		}
+		scope.reads = rs
 		rel, exact, detail := classifyRevisionDetail(x, scope, wrev, targetRevision)
 		switch rel {
 		case revisionUnestablished:
@@ -584,11 +600,13 @@ func classifyRevisionDetail(x *evalCtx, scope witnessScope, witnessTree, target 
 	// A `+dirty` / `+unknown` witness ran on uncommitted edits over w: the
 	// landing check below compares w's tree, never the tree the row read, so
 	// it is no layer behind a narrowed scope. Such a witness keeps the
-	// conservative scope (#2026: narrowing only where both layers bind).
+	// conservative scope (#2026: narrowing only where both layers bind), read
+	// set or not (build-less-brittle/15).
 	landedNoun := "the witness's tree"
 	if w != witnessTree {
 		landedNoun = "the witness's base commit (not the uncommitted edits its " + strings.TrimPrefix(witnessTree, w) + " token marks)"
-		if scope.derived() {
+		if scope.derived() || scope.reads != nil {
+			scope.reads = nil
 			scope.inputs = nil
 			scope.conservative = true
 			scope.whyConservative = "no dependency manifest, and the witness ran on a working tree with uncommitted edits (" + strings.TrimPrefix(witnessTree, w) + "), whose tree no commit holds, so the landing check cannot stand behind a scope narrowed to the row's derived inputs"
@@ -628,6 +646,9 @@ type witnessScope struct {
 	briefID       string
 	v2inputs      []string
 	v2inputsFound bool
+	// reads, when set, is the witness's counted read set (readset.go): the
+	// witness speaks for exactly its entries. Set only for a clean witness.
+	reads *readSet
 }
 
 // derived reports whether the scope is a row's derived read set.
@@ -990,6 +1011,11 @@ func witnessTreeApplies(x *evalCtx, scope witnessScope, witnessTree, target, lan
 		return revisionMismatch, fmt.Sprintf("the witness's commit %s shares no history with the item's revision %s (no common ancestor), so it is not a witness for this work", witnessTree, target)
 	default:
 		return revisionUnestablished, "the witness's commit and the item's revision could not be related (git merge-base failed)"
+	}
+	if scope.reads != nil {
+		if rel, detail, used := x.readSetApplies(scope, scope.reads, w, t, landedNoun); used {
+			return rel, detail
+		}
 	}
 	eff := scope
 	if scope.derived() {

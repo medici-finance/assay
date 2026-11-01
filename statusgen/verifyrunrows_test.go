@@ -102,7 +102,9 @@ func evidenceOf(t *testing.T, path string) string {
 // TestVerifyrunRowsUnrestrictedGolden: without --rows the run writes the table
 // it wrote before --rows existed: a golden built from the witness format, byte
 // for byte. It uses no --rows step, so it runs unchanged on the tree before the
-// flag existed. TestVerifyrunRowsSelectsOnlyNamed runs the same check.
+// flag existed. TestVerifyrunRowsSelectsOnlyNamed runs the same check. Since
+// build-less-brittle/15 the witness format carries each executed row's
+// read-set token after its tree, and the golden carries it too.
 func TestVerifyrunRowsUnrestrictedGolden(t *testing.T) { checkUnrestrictedGolden(t) }
 
 // checkUnrestrictedGolden runs the unrestricted golden on its own fresh fixture.
@@ -120,7 +122,7 @@ func checkUnrestrictedGolden(t *testing.T) {
 	}
 	golden := witnessHeader
 	for _, id := range []string{"1", "2", "3", "4"} {
-		golden += fmt.Sprintf("\n| %s | `touch %s` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | human:fixture @ %s (git-config) |", id, f.marker(id), tree)
+		golden += fmt.Sprintf("\n| %s | `touch %s` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | human:fixture @ %s %s (git-config) |", id, f.marker(id), tree, rowReadSetToken())
 	}
 	if want := strings.Replace(before, "## Evidence\n", "## Evidence\n\n"+golden+"\n", 1); getFile(t, f.brief) != want {
 		t.Fatalf("an unrestricted run is not byte-identical to the pre-change output:\n--- got\n%s\n--- want\n%s", getFile(t, f.brief), want)

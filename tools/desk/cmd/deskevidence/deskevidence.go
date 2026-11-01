@@ -409,6 +409,15 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return deskkit.Refused("refused: target path " + targetRepoPath +
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
+	// A witness row naming a read-set file lands only with that file in one
+	// commit (the read-set introduction binding); refuse before any forge call.
+	readSetRoot := evidenceRoot
+	if readSetRoot == "" {
+		readSetRoot = "."
+	}
+	if rerr := refuseUnpairedReadSets(localContent, readSetRoot, targetRepoPath); rerr != nil {
+		return rerr
+	}
 
 	// The source was admitted independently of the conditional-write destination.
 	// Judge its immutable identity boundary against fetched main, never an older
