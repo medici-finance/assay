@@ -113,7 +113,7 @@ or removing any human gate (spec §5 states the divergence).
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | verified | 2026-10-29 assay-verifier-app[bot] @ 5729430698d4 (forge-identity) | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | implemented | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | verified | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | todo | — | — |
+| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | implemented | — | — |
 | 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | todo | — | — |
 | 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
