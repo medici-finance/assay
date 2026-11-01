@@ -15,10 +15,14 @@ name: changelog-check
 # label the PR.
 #
 # WHERE THIS RUNS — a GitHub-hosted `ubuntu-latest` runner, like ci.yml's
-# `scope` and required `build-test` jobs. It needs no Go toolchain, no secrets
-# and no house network: a git diff against the PR base, a label read off the
-# event payload, python3 for the shared changelog parser, and gh (both shipped on
-# the hosted image) for the read-only Evidence classification. It used to run on
+# `scope` and required `build-test` jobs. It needs no secrets and no house
+# network: a git diff against the PR base, a label read off the event payload,
+# python3 for the shared changelog parser, and gh (both shipped on the hosted
+# image) for the read-only Evidence classification. It does need Go:
+# tools/changelog/check.sh is an adapter onto deskchangelog (desktools-v2/52),
+# which it builds from the PR's own checkout, so the job installs the pinned,
+# digest-checked toolchain from go.dev and the build may fetch Go modules from
+# the public proxy. It used to run on
 # the shared self-hosted `medici-builder-public` pool, where every label change
 # queued a fresh run behind full CI builds and the PR read BLOCKED until a runner
 # freed up (#3939). Revert: set `runs-on:` back to `medici-builder-public`.
@@ -94,6 +98,11 @@ jobs:
           # the changelog/ tree) resolve for the diff below (a shallow clone
           # would not carry them).
           fetch-depth: 0
+          # The check step builds and runs Go from this checkout, so the read
+          # token is not left in .git/config. No later step asks origin with
+          # git: check.sh reads only local refs, and the classify step passes
+          # its token to gh in env.
+          persist-credentials: false
 
       # ADDED. The classify step below reads the PR file list with gh. The
       # hosted image ships it, so this step is normally a no-op; it is kept so a
@@ -205,6 +214,32 @@ jobs:
           fi
           echo "::notice title=Evidence PR::Verify-desk Evidence PR (docs/streams/ only) — the changelog fragment requirement is waived for this PR."
           echo "evidence=true" >> "$GITHUB_OUTPUT"
+
+      # check.sh below is an adapter onto deskchangelog (desktools-v2/52): in a
+      # tree that carries tools/desk/cmd/deskchangelog it builds the command from
+      # this checkout and exits 127 without Go, so the toolchain goes first.
+      # This step and the check step hold no token: neither has one in env,
+      # and the checkout above does not persist one in .git/config.
+      - name: Install Go
+        env:
+          GO_VERSION: "1.27.3"
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl, the same
+          # pin release.yml carries; bump both together — a GO_VERSION change
+          # without a matching digest fails this step CLOSED rather than
+          # trusting the fetch.
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
+          # toolchain there would shadow the system go/sha256sum/curl/git for
+          # every later step of this run.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
       - name: Require a changelog fragment (or the changelog:skip label); refuse a direct Unreleased edit
         env:
