@@ -283,19 +283,28 @@ func (s *readSetSource) export(commit string) (string, string) {
 	return d, ""
 }
 
-// exportMaxEntries and exportMaxBytes cap one exported witness tree.
+// exportMaxEntries, exportMaxBytes and exportMaxLinkBytes cap one exported
+// witness tree. exportMaxBytes bounds the bytes the export writes, every
+// entry counted, a repeated object once per entry; the bytes read from git
+// are each distinct object once, never more than that. exportMaxLinkBytes
+// bounds the link targets, the only content held in memory.
 var (
-	exportMaxEntries       = 200000
-	exportMaxBytes   int64 = 4 << 30
+	exportMaxEntries         = 200000
+	exportMaxBytes     int64 = 4 << 30
+	exportMaxLinkBytes int64 = 1 << 20
 )
 
 // exportTree writes the tree of commit to a new temporary directory through
-// the coverage port's tree listing and batch object read (`git ls-tree` and
-// `git cat-file --batch`, replacement objects disabled). Every write stays
-// under that directory: exportPlan refuses an entry path that is absolute,
-// has an empty, `.`, `..` or `.git` component, or collides with another
-// entry (the same path ignoring case, or one entry below another); every file
-// is created fresh (O_EXCL), so nothing is written through an existing name;
+// the coverage port's tree listing, size check and streamed object read
+// (`git cat-file --batch-check`, then `--batch`, replacement objects
+// disabled). The caps are checked against the listed sizes before any
+// content is read; each distinct object is then read once and streamed to
+// its first file, and a repeated object is copied from that file, so memory
+// stays a copy buffer whatever the tree holds. Every write stays under that
+// directory: exportPlan refuses an entry path that is absolute, has an
+// empty, `.`, `..` or `.git` component, or collides with another entry (the
+// same path ignoring case, or one entry below another); every file is
+// created fresh (O_EXCL), so nothing is written through an existing name;
 // and symbolic links are created last, only with a relative target that has
 // no `..` component, so no write ever passes through one and no link points
 // out of the tree. Submodule entries are skipped. A refused tree is an
@@ -304,7 +313,7 @@ func exportTree(root, commit string) (string, error) {
 	repo := coverageRepo{root: root}
 	listed, ok := repo.ListTree(commit)
 	if !ok {
-		return "", fmt.Errorf("git ls-tree %s failed", commit)
+		return "", fmt.Errorf("the tree of %s could not be listed", commit)
 	}
 	if len(listed) > exportMaxEntries {
 		return "", fmt.Errorf("the tree has %d entries, over the export cap of %d", len(listed), exportMaxEntries)
@@ -313,13 +322,39 @@ func exportTree(root, commit string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	oids := make([]string, 0, len(ents))
+	var distinct []string
+	seen := map[string]bool{}
+	files := map[string][]string{} // oid -> the file paths it fills, in plan order
+	isLink := map[string]bool{}
 	for _, e := range ents {
-		oids = append(oids, e.OID)
+		if !seen[e.OID] {
+			seen[e.OID] = true
+			distinct = append(distinct, e.OID)
+		}
+		if e.Mode == "120000" {
+			isLink[e.OID] = true
+		} else {
+			files[e.OID] = append(files[e.OID], e.Path)
+		}
 	}
-	objs, ok := repo.CatObjects(oids)
+	sizes, ok := repo.ObjectSizes(distinct)
 	if !ok {
-		return "", errors.New("git cat-file --batch failed")
+		return "", errors.New("git cat-file --batch-check failed")
+	}
+	var total, linkTotal int64
+	for _, e := range ents {
+		sz, found := sizes[e.OID]
+		if !found || sz.Type != "blob" {
+			return "", fmt.Errorf("%s (%s) is not a readable blob", e.Path, e.OID)
+		}
+		if total += sz.Size; total > exportMaxBytes {
+			return "", fmt.Errorf("the tree holds more than the export cap of %d bytes", exportMaxBytes)
+		}
+		if e.Mode == "120000" {
+			if linkTotal += sz.Size; linkTotal > exportMaxLinkBytes {
+				return "", fmt.Errorf("the tree's link targets hold more than the export cap of %d bytes", exportMaxLinkBytes)
+			}
+		}
 	}
 	dir, err := os.MkdirTemp("", "readset-floor-")
 	if err != nil {
@@ -329,42 +364,67 @@ func exportTree(root, commit string) (string, error) {
 		_ = os.RemoveAll(dir)
 		return "", err
 	}
-	var written int64
-	var links []evaluation.TreeBlob
-	for _, e := range ents {
-		obj, found := objs[e.OID]
-		if !found || obj.Type != "blob" {
-			return fail(fmt.Errorf("git cat-file --batch: %s (%s) is not a readable blob", e.Path, e.OID))
-		}
-		if written += int64(len(obj.Content)); written > exportMaxBytes {
-			return fail(fmt.Errorf("the tree holds more than the export cap of %d bytes", exportMaxBytes))
-		}
-		if e.Mode == "120000" {
-			links = append(links, e)
-			continue
-		}
-		dst := filepath.Join(dir, filepath.FromSlash(e.Path))
+	create := func(p string, mode os.FileMode) (*os.File, error) {
+		dst := filepath.Join(dir, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return fail(err)
+			return nil, err
 		}
-		mode := os.FileMode(0o644)
+		return os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	}
+	modes := map[string]os.FileMode{}
+	for _, e := range ents {
+		modes[e.Path] = 0o644
 		if e.Mode == "100755" {
-			mode = 0o755
-		}
-		f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
-		if err != nil {
-			return fail(err)
-		}
-		_, werr := f.Write(obj.Content)
-		if cerr := f.Close(); werr == nil {
-			werr = cerr
-		}
-		if werr != nil {
-			return fail(werr)
+			modes[e.Path] = 0o755
 		}
 	}
-	for _, e := range links {
-		target := string(objs[e.OID].Content)
+	targets := map[string]string{} // oid -> link target
+	err = repo.StreamObjects(distinct, func(oid, typ string, size int64, body io.Reader) error {
+		if typ != "blob" || size != sizes[oid].Size {
+			return fmt.Errorf("%s changed between the size check and the read", oid)
+		}
+		var link bytes.Buffer
+		var sink io.Writer = io.Discard
+		var f *os.File
+		if ps := files[oid]; len(ps) > 0 {
+			var err error
+			if f, err = create(ps[0], modes[ps[0]]); err != nil {
+				return err
+			}
+			sink = f
+		}
+		if isLink[oid] {
+			sink = io.MultiWriter(sink, &link)
+		}
+		n, err := io.Copy(sink, body)
+		if f != nil {
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+		}
+		if err == nil && n != size {
+			err = fmt.Errorf("%s: read %d of %d bytes", oid, n, size)
+		}
+		if isLink[oid] {
+			targets[oid] = link.String()
+		}
+		return err
+	})
+	if err != nil {
+		return fail(err)
+	}
+	for _, ps := range files {
+		for _, p := range ps[1:] {
+			if err := copyExported(dir, ps[0], p, modes[p], create); err != nil {
+				return fail(err)
+			}
+		}
+	}
+	for _, e := range ents {
+		if e.Mode != "120000" {
+			continue
+		}
+		target := targets[e.OID]
 		if !linkTargetInTree(target) {
 			return fail(fmt.Errorf("%s is a symbolic link whose target is absolute or climbs with ..", e.Path))
 		}
@@ -377,6 +437,25 @@ func exportTree(root, commit string) (string, error) {
 		}
 	}
 	return dir, nil
+}
+
+// copyExported copies the exported file from to a fresh file at p, both
+// relative to dir; no link exists yet, so neither path passes through one.
+func copyExported(dir, from, p string, mode os.FileMode, create func(string, os.FileMode) (*os.File, error)) error {
+	src, err := os.Open(filepath.Join(dir, filepath.FromSlash(from)))
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := create(p, mode)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	if cerr := dst.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // exportPlan checks every listed entry's path and mode before anything is
@@ -683,8 +762,12 @@ func planFloor(g evaluation.GoRun) (floorPlan, string) {
 	return p, ""
 }
 
-// floorTimeout bounds each go tool run the floor starts.
-var floorTimeout = 2 * time.Minute
+// floorTimeout bounds each go tool run the floor starts; floorWaitDelay
+// bounds the wait for its output pipes once it is killed.
+var (
+	floorTimeout   = 2 * time.Minute
+	floorWaitDelay = 5 * time.Second
+)
 
 // floorTool is the evaluator's own go tool and the settings the floor takes
 // from it.
@@ -730,7 +813,7 @@ func (s *readSetSource) readGoTool() (*floorTool, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), floorTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "env", "-json", "GOROOT", "GOMODCACHE", "GOOS", "GOARCH", "CGO_ENABLED")
-	cmd.Dir, cmd.Env = filepath.Join(scratch, "home"), env
+	cmd.Dir, cmd.Env, cmd.WaitDelay = filepath.Join(scratch, "home"), env, floorWaitDelay
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, "the evaluator's go tool could not be read (go env failed: " + firstLine(err.Error()) + ")"
@@ -782,7 +865,9 @@ func runFloorGo(t *floorTool, tree, dir string, env []string, what string, args 
 	ctx, cancel := context.WithTimeout(context.Background(), floorTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", args...)
-	cmd.Dir, cmd.Env = dir, env
+	// WaitDelay: a child that keeps the output pipes open past the timeout
+	// is not waited for without end.
+	cmd.Dir, cmd.Env, cmd.WaitDelay = dir, env, floorWaitDelay
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -855,14 +940,22 @@ func runFloor(t *floorTool, scratch, tree string, p floorPlan) evaluation.GoFloo
 	env := floorEnv(t, scratch, p)
 	seen := map[string]bool{}
 	var files []string
+	phantom := ""
 	add := func(f string) bool {
 		rel, ok := inRoots(roots, f)
-		if ok && !seen[rel] {
+		if !ok {
+			return false
+		}
+		if _, err := os.Lstat(f); err != nil && phantom == "" {
+			phantom = rel
+		}
+		if !seen[rel] {
 			seen[rel] = true
 			files = append(files, rel)
 		}
-		return ok
+		return true
 	}
+	own := withReal(scratch)
 	if p.gowork != "off" {
 		out, why := runFloorGo(t, tree, dir, env, "go env GOWORK", "env", "GOWORK")
 		if why != "" {
@@ -914,7 +1007,17 @@ func runFloor(t *floorTool, scratch, tree string, p floorPlan) evaluation.GoFloo
 			pkg.FFiles, pkg.SFiles, pkg.SwigFiles, pkg.SwigCXXFiles, pkg.SysoFiles, pkg.IgnoredGoFiles, pkg.IgnoredOtherFiles,
 			pkg.TestGoFiles, pkg.XTestGoFiles, pkg.EmbedFiles, pkg.TestEmbedFiles, pkg.XTestEmbedFiles} {
 			for _, f := range list {
-				if add(filepath.Join(pkg.Dir, f)) {
+				if !filepath.IsAbs(f) {
+					f = filepath.Join(pkg.Dir, f)
+				} else if _, in := inRoots(roots, f); !in {
+					// An absolute name is a file go generated (the test
+					// main) in the run's own build cache: not tree input.
+					if _, gen := inRoots(own, f); gen {
+						continue
+					}
+					return evaluation.GoFloor{Problem: "package " + pkg.ImportPath + " compiles a file from outside the witness tree, so the floor would be partial"}
+				}
+				if add(f) {
 					inTreeFiles++
 				}
 			}
@@ -922,6 +1025,9 @@ func runFloor(t *floorTool, scratch, tree string, p floorPlan) evaluation.GoFloo
 	}
 	if inTreeFiles == 0 {
 		return evaluation.GoFloor{Problem: "go list named no file of the witness tree, so the floor would be empty"}
+	}
+	if phantom != "" {
+		return evaluation.GoFloor{Problem: "go list named " + phantom + ", which the witness tree does not hold"}
 	}
 	return evaluation.GoFloor{Files: files}
 }

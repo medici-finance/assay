@@ -129,6 +129,116 @@ func (r coverageRepo) CatObjects(specs []string) (map[string]evaluation.CatObjec
 	return got, true
 }
 
+// objectSize is one `cat-file --batch-check` answer.
+type objectSize struct {
+	Type string
+	Size int64
+}
+
+// ObjectSizes reads each named object's type and size and no content: one
+// `cat-file --batch-check`. A missing object is absent from the map.
+func (r coverageRepo) ObjectSizes(oids []string) (map[string]objectSize, bool) {
+	got := map[string]objectSize{}
+	if len(oids) == 0 {
+		return got, true
+	}
+	var in bytes.Buffer
+	for _, s := range oids {
+		if strings.ContainsAny(s, "\n\x00") {
+			return nil, false
+		}
+		in.WriteString(s + "\n")
+	}
+	cmd := witnessGit(r.root, "cat-file", "--batch-check")
+	cmd.Stdin = &in
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false
+	}
+	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(lines) != len(oids) {
+		return nil, false
+	}
+	for i, l := range lines {
+		f := strings.Fields(l)
+		if len(f) >= 2 && (f[len(f)-1] == "missing" || f[len(f)-1] == "ambiguous") {
+			continue
+		}
+		if len(f) != 3 {
+			return nil, false
+		}
+		size, err := strconv.ParseInt(f[2], 10, 64)
+		if err != nil || size < 0 {
+			return nil, false
+		}
+		got[oids[i]] = objectSize{Type: f[1], Size: size}
+	}
+	return got, true
+}
+
+// StreamObjects reads the named objects in order through one
+// `cat-file --batch` whose output is consumed as it arrives, never buffered
+// whole: each gets the object's type, size and a reader of exactly its body.
+// A missing object, a malformed header or an error from each stops the read.
+func (r coverageRepo) StreamObjects(oids []string, each func(oid, typ string, size int64, body io.Reader) error) error {
+	if len(oids) == 0 {
+		return nil
+	}
+	var in bytes.Buffer
+	for _, s := range oids {
+		if strings.ContainsAny(s, "\n\x00") {
+			return errors.New("an object name holds a line break")
+		}
+		in.WriteString(s + "\n")
+	}
+	cmd := witnessGit(r.root, "cat-file", "--batch")
+	cmd.Stdin = &in
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	read := func() error {
+		br := bufio.NewReader(out)
+		for _, s := range oids {
+			header, err := br.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			f := strings.Fields(header)
+			if len(f) != 3 {
+				return errors.New("cat-file: " + s + " is not readable")
+			}
+			size, err := strconv.ParseInt(f[2], 10, 64)
+			if err != nil || size < 0 {
+				return errors.New("cat-file: a malformed size for " + s)
+			}
+			body := io.LimitReader(br, size)
+			if err := each(s, f[1], size, body); err != nil {
+				return err
+			}
+			if _, err := io.Copy(io.Discard, body); err != nil {
+				return err
+			}
+			if b, err := br.ReadByte(); err != nil || b != '\n' {
+				return errors.New("cat-file: " + s + " is not followed by a line break")
+			}
+		}
+		return nil
+	}
+	rerr := read()
+	if rerr != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	werr := cmd.Wait()
+	if rerr != nil {
+		return rerr
+	}
+	return werr
+}
+
 // WitnessAdditions reads only which commit added which record: the log
 // prints each commit's id and the added paths, NUL-terminated, and no commit
 // text at all. The landing check reads the commit's parents and message from

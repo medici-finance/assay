@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -317,6 +318,21 @@ func ReadSetCellToken(digest, couldNot string) string {
 	return "(reads could-not-check: " + sanitizeReason(couldNot) + ")"
 }
 
+// maxFloorRuns bounds the build-family go invocations one read set may
+// record: each needs its own floor, one go tool run.
+var maxFloorRuns = 16
+
+// reasonText is recorded or tree-supplied text made safe for a reason: no
+// control byte, no cell separator, no backtick, at most one parenthesis level.
+func reasonText(s string) string {
+	return sanitizeReason(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s))
+}
+
 // sanitizeReason keeps a reason inside one table cell and within the one
 // level of parentheses readsTokenRe accepts.
 func sanitizeReason(s string) string {
@@ -589,7 +605,17 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 		return revisionMismatch, ReasonReadSetHistory, true
 	}
 	// The go floor (lower layer): each build-family exec's compiled files must
-	// all be in the recorded set.
+	// all be in the recorded set. Each floor is one bounded go tool run, so
+	// their number is bounded too.
+	builds := 0
+	for _, e := range rs.goRuns {
+		if g, _ := ParseGoRun(e); g.BuildFamily() {
+			builds++
+		}
+	}
+	if builds > maxFloorRuns {
+		return revisionUnestablished, fmt.Sprintf("the read set records %d go build invocations, over the %d the compile-input floor computes", builds, maxFloorRuns), true
+	}
 	for _, e := range rs.goRuns {
 		g, _ := ParseGoRun(e)
 		if !g.BuildFamily() {
@@ -604,11 +630,11 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 			return revisionUnestablished, ReasonFloorMissing, true
 		}
 		if fl.Problem != "" {
-			return revisionUnestablished, "the compile-input floor for the row's `" + strings.Join(g.Args, " ") + "` could not be computed (" + fl.Problem + ")", true
+			return revisionUnestablished, "the compile-input floor for the row's `" + reasonText(strings.Join(g.Args, " ")) + "` could not be computed (" + reasonText(fl.Problem) + ")", true
 		}
 		for _, f := range fl.Files {
 			if !rs.all[f] {
-				return revisionMismatch, fmt.Sprintf("%s (%s is compiled for `%s` and is not recorded)", ReasonFloorOmits, f, strings.Join(g.Args, " ")), true
+				return revisionMismatch, fmt.Sprintf("%s (%s is compiled for `%s` and is not recorded)", ReasonFloorOmits, reasonText(f), reasonText(strings.Join(g.Args, " "))), true
 			}
 		}
 	}
@@ -626,7 +652,11 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 		if pathpkg.Base(p) == ".gitattributes" {
 			attrsTouched = true
 		}
-		if why := rs.stale(x, p, w, t); why != "" {
+		why, unread := rs.stale(x, p, w, t)
+		if unread != "" {
+			return revisionUnestablished, unread, true
+		}
+		if why != "" {
 			return revisionMismatch, fmt.Sprintf("%s differs between the witness's tree and the item's and the witness speaks for it (%s; %s)", p, why, rs.describe()), true
 		}
 		if union && eff.invalidatedBy(p) {
@@ -657,36 +687,55 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 // stale reports why a change to path p stales the read set ("" when it does
 // not): a recorded or stat-ed file changed; a listed directory's direct
 // children gained or lost a name; a path recorded absent now exists; a
-// directory recorded present is gone.
-func (rs *readSet) stale(x *evalCtx, p, w, t string) string {
+// directory recorded present is gone. unread is set instead when a tree
+// listing the answer needs could not be read: a failed listing is never
+// read as "unchanged" or "gone".
+func (rs *readSet) stale(x *evalCtx, p, w, t string) (why, unread string) {
 	if rs.files[p] {
-		return "the row read or stat-ed it"
+		return "the row read or stat-ed it", ""
 	}
 	for _, a := range rs.absent {
 		if p == a || strings.HasPrefix(p, a+"/") {
-			return "the row looked up " + a + " and found it absent"
+			return "the row looked up " + a + " and found it absent", ""
 		}
+	}
+	listing := func(rev string) ([]string, string) {
+		files := x.treeFilesAt(rev)
+		if files == nil {
+			return nil, "the tree at " + rev[:min(len(rev), TreeSHALen)] + " could not be listed, so whether a recorded directory changed under " + p + " cannot be established"
+		}
+		return files, ""
 	}
 	for _, d := range rs.lists {
 		c, ok := underDir(d, p)
 		if !ok {
 			continue
 		}
-		was := childNames(x.treeFilesAt(w), d)[c]
-		now := childNames(x.treeFilesAt(t), d)[c]
-		if was != now {
-			return "the row listed the directory " + d + ", whose entry " + c + " was added or removed"
+		wf, bad := listing(w)
+		if bad != "" {
+			return "", bad
+		}
+		tf, bad := listing(t)
+		if bad != "" {
+			return "", bad
+		}
+		if childNames(wf, d)[c] != childNames(tf, d)[c] {
+			return "the row listed the directory " + d + ", whose entry " + c + " was added or removed", ""
 		}
 	}
 	for _, d := range rs.dirs {
 		if _, ok := underDir(d, p); !ok {
 			continue
 		}
-		if len(childNames(x.treeFilesAt(t), d)) == 0 {
-			return "the row stat-ed the directory " + d + ", which no longer exists"
+		tf, bad := listing(t)
+		if bad != "" {
+			return "", bad
+		}
+		if len(childNames(tf, d)) == 0 {
+			return "the row stat-ed the directory " + d + ", which no longer exists", ""
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // attrsChanged compares the content attributes of every recorded file at w

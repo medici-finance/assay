@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,13 @@ func TestGoFloorFromWitnessTree(t *testing.T) {
 	if slices.Contains(fl.Files, "q/q.go") {
 		t.Errorf("floor %v lists q/q.go: the recorded package argument ./p did not reach go list", fl.Files)
 	}
+	// Every floor entry is a file of the tree: the generated test main go
+	// list names for a package with test files is not one.
+	for _, f := range fl.Files {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(f))); err != nil {
+			t.Errorf("floor entry %s is not in the witness tree", f)
+		}
+	}
 	// Without the recorded tag, r is not a dependency: the tag reached go list.
 	untagged := src.goFloor(commit, evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}, CGOEnabled: "1"})
 	if untagged.Problem != "" || slices.Contains(untagged.Files, "r/r.go") {
@@ -100,7 +109,7 @@ func TestGoFloorFromWitnessTree(t *testing.T) {
 // afReadSetFixture builds the af fixture with a go module, commits it, and
 // lands af/01's witness at that commit carrying a read-set token and file
 // recording `recorded`. It returns the root.
-func afReadSetFixture(t *testing.T, recorded []string) string {
+func afReadSetFixture(t *testing.T, recorded []string, extra ...string) string {
 	t.Helper()
 	root, _ := loadAFStreams(t)
 	briefRel := "docs/streams/af/brief-01-model-approved-at-head.md"
@@ -124,6 +133,7 @@ func afReadSetFixture(t *testing.T, recorded []string) string {
 		"a.go", "package af\n\nfunc A() int { return B() }\n",
 		"b.go", "package af\n\nfunc B() int { return 1 }\n",
 	)(t, root)
+	writes(extra...)(t, root)
 	mustGitCommitAll(t, root, "fixture: af module")
 	full := gitFullHead(t, root)
 	entries := []string{evaluation.GoRunEntry(evaluation.GoRun{Dir: ".", Args: []string{"go", "vet", "./..."}})}
@@ -195,6 +205,16 @@ func TestCoverageCallersApplyFloor(t *testing.T) {
 		}
 		if !strings.HasPrefix(line, "af/01 released ") {
 			t.Errorf("--coverage: want af/01 released; got %q", line)
+		}
+	})
+	t.Run("a complete record of a package with test files releases", func(t *testing.T) {
+		root := afReadSetFixture(t, []string{"a.go", "a_test.go", "b.go", "go.mod"},
+			"a_test.go", "package af\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) { _ = A() }\n")
+		mustWriteFile(t, root, ".claude-plugin/marketplace.json", "{}\n")
+		mustGitCommitAll(t, root, "fixture: unrelated change")
+		flip, folded, line := coverageAF01(t, root)
+		if flip.Outcome != flipDone || !folded || !strings.HasPrefix(line, "af/01 released ") {
+			t.Errorf("want a release through all three callers; got %v (%s), folded %v, %q", flip.Outcome, flip.Reason, folded, line)
 		}
 	})
 	t.Run("a compiled file missing from the record refuses with the floor reason", func(t *testing.T) {
@@ -355,7 +375,10 @@ func TestFloorEmptyIsProblem(t *testing.T) {
 	src, commit := goFloorFixture(t)
 	for name, g := range map[string]evaluation.GoRun{
 		"a pattern matching nothing": {Dir: ".", Args: []string{"go", "vet", "./nomatch/..."}},
-		"only standard packages":     {Dir: ".", Args: []string{"go", "vet", "fmt"}},
+		// p exists, so go list succeeds and names no package at all: this
+		// case reaches the no-in-tree-file guard itself.
+		"a pattern under a package matching nothing": {Dir: ".", Args: []string{"go", "vet", "./p/nothing..."}},
+		"only standard packages":                     {Dir: ".", Args: []string{"go", "vet", "fmt"}},
 	} {
 		if fl := src.goFloor(commit, g); fl.Problem == "" {
 			t.Errorf("%s: want a problem; got the floor %v", name, fl.Files)
@@ -492,6 +515,83 @@ func TestExportTreeContains(t *testing.T) {
 	defer os.RemoveAll(dir)
 	if b, err := os.ReadFile(filepath.Join(dir, "l")); err != nil || string(b) != "planted\n" {
 		t.Errorf("in-tree link: %q, %v", b, err)
+	}
+}
+
+// allocated returns the bytes the process allocated while f ran.
+func allocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// regression: #2026
+// TestExportCapBeforeRead — the export's caps are checked against the listed
+// sizes before any content is read, and the content is streamed: a tree whose
+// entries repeat one large object past the byte cap is refused having
+// allocated far less than one copy of that object, and a tree under the cap
+// exports with each distinct object read once, never held whole.
+func TestExportCapBeforeRead(t *testing.T) {
+	const big = 4 << 20
+	repo := t.TempDir()
+	writes("seed.txt", "seed\n")(t, repo)
+	mustGitInit(t, repo)
+	blob := gitPipe(t, repo, strings.Repeat("\x00", big), "hash-object", "-w", "--stdin")
+	small := gitPipe(t, repo, "f100", "hash-object", "-w", "--stdin")
+	commitOf := func(n int, extra ...string) string {
+		var lines []string
+		for i := 0; i < n; i++ {
+			lines = append(lines, "100644 blob "+blob+"\tf"+strconv.Itoa(100+i))
+		}
+		tr := gitPipe(t, repo, strings.Join(append(lines, extra...), "\n")+"\n", "mktree")
+		return gitPipe(t, repo, "", "commit-tree", tr, "-m", "fixture: repeated object")
+	}
+	t.Setenv("TMPDIR", t.TempDir())
+
+	over := commitOf(32)
+	defer func(n int64) { exportMaxBytes = n }(exportMaxBytes)
+	exportMaxBytes = 2 * big
+	var err error
+	if got := allocated(func() { _, err = exportTree(repo, over) }); got > big/4 {
+		t.Errorf("the refused export allocated %d bytes, want under %d: content was read before the cap", got, big/4)
+	} else {
+		t.Logf("the refused export allocated %d bytes", got)
+	}
+	if err == nil || !strings.Contains(err.Error(), "export cap") {
+		t.Errorf("want the byte cap refusal; got %v", err)
+	}
+
+	exportMaxBytes = 64 * big
+	under := commitOf(16, "100644 blob "+small+"\tlinkcopy", "120000 blob "+small+"\tl")
+	var dir string
+	if got := allocated(func() { dir, err = exportTree(repo, under) }); got > big/2 {
+		t.Errorf("the export allocated %d bytes, want under %d: content was buffered", got, big/2)
+	} else {
+		t.Logf("the export under the cap allocated %d bytes", got)
+	}
+	if err != nil {
+		t.Fatalf("export under the cap: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	for _, p := range []string{"f100", "f115"} {
+		if fi, err := os.Stat(filepath.Join(dir, p)); err != nil || fi.Size() != big {
+			t.Errorf("%s: %v, %v", p, fi, err)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "l")); err != nil || string(b) != strings.Repeat("\x00", big) {
+		t.Errorf("link through a repeated object: %d bytes, %v", len(b), err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "linkcopy")); err != nil || string(b) != "f100" {
+		t.Errorf("a file sharing the link's object: %q, %v", b, err)
+	}
+
+	exportMaxLinkBytes, exportMaxBytes = 2, 64*big
+	defer func() { exportMaxLinkBytes = 1 << 20 }()
+	if _, err := exportTree(repo, under); err == nil || !strings.Contains(err.Error(), "link targets") {
+		t.Errorf("want the link-target cap refusal; got %v", err)
 	}
 }
 

@@ -39,7 +39,8 @@ type rsFx struct {
 	runCmd  string // the command the witness ran ("" = rsCommand)
 	obs     func(*ReadSetObservation)
 	floors  GoFloorMap
-	src     GoFloorSource // when set, used in place of floors
+	src     GoFloorSource     // when set, used in place of floors
+	repoFor func(rsRepo) Repo // when set, wraps the repository the claim reads
 	W, E, T string
 	digest  string
 	runner  string
@@ -140,7 +141,11 @@ func (fx *rsFx) claimAt(rev string) Claim {
 	if fx.src != nil {
 		in.GoFloors = fx.src
 	}
-	cs := EvaluateCoverage(in, rsRepo{fx.repo})[rsBriefID].Claims
+	var repo Repo = rsRepo{fx.repo}
+	if fx.repoFor != nil {
+		repo = fx.repoFor(rsRepo{fx.repo})
+	}
+	cs := EvaluateCoverage(in, repo)[rsBriefID].Claims
 	if len(cs) == 0 {
 		fx.t.Fatal("no claim")
 	}
@@ -525,5 +530,101 @@ func TestFloorAskedOnlyAdmitted(t *testing.T) {
 	wantReleased(t, "admitted", fx.item(market))
 	if len(src.asked) == 0 || src.asked[0] != GoFloorKey(fx.W, goRun) {
 		t.Errorf("admitted read set: floor asked for %v, want its entry at the witness commit", src.asked)
+	}
+}
+
+// unlisted is rsRepo whose tree listing fails at the revisions fail names.
+type unlisted struct {
+	rsRepo
+	fail func(rev string) bool
+}
+
+func (u unlisted) TreeFiles(rev string) []string {
+	if u.fail(rev) {
+		return nil
+	}
+	return u.rsRepo.TreeFiles(rev)
+}
+
+// regression: #2026
+// TestReadSetFailedListingCouldNotCheck — a tree listing that could not be
+// read is could-not-check, never "the listed directory is unchanged" nor "the
+// stat-ed directory is gone": a file added to a listed directory, with the
+// listing failing at either revision or both, is never released.
+func TestReadSetFailedListingCouldNotCheck(t *testing.T) {
+	added := edit("tools/x/c.go", "package x\n")
+	for name, side := range map[string]func(fx *rsFx, rev string) bool{
+		"both sides":    func(*rsFx, string) bool { return true },
+		"the witness's": func(fx *rsFx, rev string) bool { return rev == fx.W },
+		"the item's":    func(fx *rsFx, rev string) bool { return rev == fx.T },
+	} {
+		fx := newRsFx(t)
+		fx.repoFor = func(r rsRepo) Repo { return unlisted{r, func(rev string) bool { return side(fx, rev) }} }
+		wantResult(t, "listing fails on "+name, fx.item(added), ResultCouldNotCheck, "could not be listed")
+	}
+	// A stat-ed directory whose listing fails is could-not-check, not gone.
+	fx := newRsFx(t)
+	fx.entries = []string{"read tools/x/a.go", "dir tools/x/testdata"}
+	fx.repoFor = func(r rsRepo) Repo { return unlisted{r, func(rev string) bool { return rev == fx.T }} }
+	wantResult(t, "stat-ed directory, listing fails", fx.item(edit("tools/x/testdata/in.txt", "fixture-2\n")), ResultCouldNotCheck, "could not be listed")
+}
+
+// regression: #2026
+// TestReadSetReleaseControlsPinned — the refusals between an admitted read
+// set and a release each bind on their own: an introducing row whose token
+// names another digest, a witness tree that never landed on the item's
+// history, and a stat-ed directory the item's tree no longer holds.
+func TestReadSetReleaseControlsPinned(t *testing.T) {
+	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
+	intro := newRsFx(t)
+	intro.obs = func(o *ReadSetObservation) {
+		o.IntroRunner = "local @ " + intro.W + " " + ReadSetCellToken(strings.Repeat("ef", 32), "")
+	}
+	wantResult(t, "introducing row names another digest", intro.item(market), ResultWrongRevision, ".claude-plugin/marketplace.json")
+
+	never := newRsFx(t)
+	never.repoFor = func(r rsRepo) Repo { return unlanded{r} }
+	wantResult(t, "witness tree never landed", never.item(market), ResultWrongRevision, "never landed")
+
+	gone := newRsFx(t)
+	gone.entries = []string{"read tools/x/a.go", "dir tools/x/testdata"}
+	wantReleased(t, "stat-ed directory still present", gone.item(edit("tools/x/testdata/in.txt", "fixture-2\n")))
+	wantResult(t, "stat-ed directory removed", gone.item(func(tr map[string]fakeEntry, _ map[string][]string) {
+		delete(tr, "tools/x/testdata/in.txt")
+	}), ResultWrongRevision, "which no longer exists", "tools/x/testdata")
+}
+
+// unlanded is rsRepo on which no commit of the item's history holds the
+// witness's tree: the merge base is the item itself and nothing lies between.
+type unlanded struct{ rsRepo }
+
+func (unlanded) MergeBaseAll(_, b string) ([]string, bool)      { return []string{b}, true }
+func (unlanded) RevList(string, []string, int) ([]string, bool) { return nil, true }
+
+// regression: #2026
+// TestFloorReasonTextAndBudget — recorded go-run text and the floor's problem
+// reach a reason with no control byte, line break or cell separator; and a
+// read set recording more build invocations than the floor computes is
+// could-not-check before any floor is asked for.
+func TestFloorReasonTextAndBudget(t *testing.T) {
+	odd := GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "./x\x1b[2J\n|y"}})
+	fx := newRsFx(t)
+	fx.entries = append(fx.entries, odd)
+	fx.src = &countingFloors{floor: GoFloor{Problem: "go list failed: \x1b]0;t\x07 a | b\nc"}}
+	c := fx.item(unreadOnly)
+	wantResult(t, "odd go-run text", c, ResultCouldNotCheck, "could not be computed")
+	if strings.ContainsAny(c.Reason, "\x1b\x07\n|") {
+		t.Errorf("the reason carries a control byte or separator: %q", c.Reason)
+	}
+
+	many := newRsFx(t)
+	for i := 0; i <= maxFloorRuns; i++ {
+		many.entries = append(many.entries, GoRunEntry(GoRun{Dir: "tools/x", Args: []string{"go", "test", "-run", "T" + strings.Repeat("x", i), "./..."}}))
+	}
+	src := &countingFloors{floor: GoFloor{Files: []string{"tools/x/go.mod"}}}
+	many.src = src
+	wantResult(t, "over the floor budget", many.item(unreadOnly), ResultCouldNotCheck, "go build invocations")
+	if len(src.asked) != 0 {
+		t.Errorf("floors were asked for over the budget: %d", len(src.asked))
 	}
 }

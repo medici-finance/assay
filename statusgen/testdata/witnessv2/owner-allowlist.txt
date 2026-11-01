@@ -4,7 +4,6 @@
 # parser; a listed entry that no longer matches fails the test.
 statusgen/coverage_witness.go | git-tree-read | port adapter: implements evaluation.WitnessRepo by shelling git; supplies bytes and OIDs only, never judges
 statusgen/coverage_witness.go | record-dir | port adapter: lists record files at a revision through the library's directory constant
-statusgen/readset_adapter.go | git-tree-read | read-set port adapter: exports a witness commit's tree for the compile-input floor's go list and reads read-set files; supplies bytes only, never judges
 statusgen/coverage_repo.go | git-tree-read | v1 coverage repo adapter: tree listing and entry lookup for the coverage evaluation, not witness content
 statusgen/briefinfo.go | git-tree-read | flag name check-attribution matched the check-attr substring; no git read
 statusgen/decisiongatehold.go | git-tree-read | decision-gate hold reads brief files at a revision; unrelated to witnesses
