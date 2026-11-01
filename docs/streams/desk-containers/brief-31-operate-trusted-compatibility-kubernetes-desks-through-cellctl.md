@@ -29,6 +29,8 @@ consumers:
   - "tools/desk/internal/kubecompat/: follow-up desk-containers/31"
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-containers/31"
   - "containers/k8s/compatibility/: follow-up desk-containers/31"
+  - "containers/k8s/compatibility/prepare.py and prepare.test.py: this brief, operator-owned cold preparation through the existing image launcher"
+  - "tools/desk/internal/kubecompat/profile_contract_test.go: this brief, preparation flow through CI"
   - "containers/k8s/components/compatibility-cellctl/: follow-up desk-containers/31"
   - "containers/k8s/check.py: follow-up desk-containers/31"
   - "containers/k8s/testdata/: follow-up desk-containers/31"
@@ -61,6 +63,7 @@ files:
 - tools/desk/go.mod and tools/desk/go.sum (native Kubernetes SDK only if needed after the existing dependency assessment)
 - containers/k8s/compatibility/desk-session.sh (planned bounded PID-1 agent launcher)
 - containers/k8s/compatibility/desk-session.test.sh (planned launcher negative controls)
+- containers/k8s/compatibility/prepare.py and prepare.test.py (operator-owned Claude cold-preparation adapter; read-only plan default)
 - containers/k8s/compatibility/cellctl-config.schema.json (planned profile contract)
 - containers/k8s/components/compatibility-cellctl/ (planned opt-in paused workloads, launch wiring and custodian-only RBAC)
 - containers/base/Dockerfile (package the compatibility launcher in a newly identified candidate image)
@@ -196,6 +199,15 @@ is inferred from code completion, a merge, a Running Pod or a local bookkeeping 
 5. Retain run/kubecompat/<role>.json under the selected cell for operator observations, binding config digest, StatefulSet UID, Pod UID, container ID and restart count, image, role and observation state. Never treat the writable receipt as authorization. Validate the live tuple before streams and effects; same-Pod new-container identity invalidates an old stream/receipt. A controlled stop requires existing role quiescence/claim and effect reconciliation, or an explicitly disclosed custodian-confirmed interactive idle condition when no machine signal exists. If the role remains busy or cannot be measured, hold and name the manual stop procedure. The launcher signals and reaps the complete execution group, records clean stop only after it has stopped, and exits. Observe exact container termination before recording stop success or admitting a replacement. Scale/delete accepted, timeout, Ready/NotReady or an absent Pod is not termination proof. Lost acknowledgement, changed/lost UID, node partition and uncertain old background execution remain held; no force deletion, forced claim release, automatic retry or history reset.
 6. Update existing CLI/help/config/command-inventory routes, the profile-aware offline checker and operator docs. Keep non-selected registrations unchanged. Document all manual preparation and custody restrictions, including preinstalled pinned agent/toolchain/work inputs, explicitly qualified harness/model profile and role policies, cold initialization, install versus up, detach versus stop, and the held recovery procedure. Report filesystem retention, conversation continuation and process continuation separately; a PVC is not a promise of restored conversation or live process. Supply the package/image identity and config/receipt fixtures for the separate small-profile qualification brief. No runtime benefit, latency or recovery target is invented.
 
+   The initial namespace remains `assay-desks` and the first supported agent is
+   Claude through the existing compatible launcher. A thin operator-owned
+   preparation adapter may replace manual descriptor/identity construction: it
+   defaults to a read-only plan, measures the installed approved inputs, invokes
+   only the image-owned cold-preparation verb, and exports its validated binding
+   values. It never installs packages, contacts a cluster/model, resets history,
+   changes the runtime launcher or grants activation. Test the adapter through
+   the existing CI module; keep actual volume preparation with the custodian.
+
 ## Interface contract
 
 - Profile: cell-kube-compat-v1, selected only by CELL_KUBERNETES_CONFIG; its schema and examples live under containers/k8s/compatibility/. Missing selection does not alter existing kinds.
@@ -217,6 +229,7 @@ Every named test must execute and emit its named PASS; a go test invocation matc
 | 5 | check:ci +mutation +dereference | `sh containers/k8s/check.sh --compatibility-cellctl --self-test` | exit 0; output contains "checked-clean: compatibility cellctl profile"; actual rendered component and candidate-image binding pass; hostile live replicas at installation, old shell-only digest, wildcard scope, foreign-role attach/log/debug, broad credential mounts, missing API-token isolation and missing network/terminal/log custody declarations are rejected offline; no discovery/API call. Effective RBAC/network/log custody remains separately human-qualified |
 | 6 | check:ci +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./cmd/cellctl -run '^TestKubeCompatParity$' > "$o" && grep -F -- '--- PASS: TestKubeCompatParity ' "$o")` | exit 0, named PASS; non-selected k8s/house/container/scrubbed routing and current cell-op JSON/plan/confirmation contract remain unchanged; docs examples replay against the fake production transport |
 | 7 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/31 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the actual immutable implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved, and resolve unchecked required consumers rather than treating them as PASS |
+| 8 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./internal/kubecompat -run '^TestKubeCompatPreparation$' > "$o" && grep -F -- '--- PASS: TestKubeCompatPreparation ' "$o")` | exit 0, named PASS; all five cold-preparation handoffs use the actual launcher and canonical retained state without invoking an agent/model; plan writes nothing; package/version, preparer identity, missing inputs, existing descriptor/history and concurrent preparation refuse; bypassing the read-only default or version check fails |
 
 ## Definition of Done
 

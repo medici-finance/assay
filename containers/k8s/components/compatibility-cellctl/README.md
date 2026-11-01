@@ -61,8 +61,9 @@ Use those same values in the operator profile and the workload's
 `ASSAY_COMPAT_LAUNCH_ID` and `ASSAY_COMPAT_INIT_ID`. Never substitute fixture hashes.
 
 Follow the [custodian preparation guide](../../../../docs/kubernetes-compatibility-preparation.md)
-for the approved-input inventory, descriptor creation, existing preparation command,
-readback and per-role profile/workload mapping. The guide starts inside an already
+for the approved-input inventory, bounded Claude preparation helper and per-role
+profile/workload mapping. The helper generates both binding identities and reads
+them back through the existing image-owned launcher; no manual hashes are needed. The guide starts inside an already
 authorized preparation context; it supplies no cluster or credential grant.
 
 A custodian must also supply each existing role-custodian group in `rbac.yaml` and
