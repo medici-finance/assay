@@ -1,0 +1,2 @@
+### Changed
+- The desk-containers/08 tick-contract brief's Verify table now runs offline and discriminates: each offline row is an executable command that ends in a fixed `rowN-ok` token, fails on the pre-delivery base and passes on the delivered tree (with full-SHA pins where history matters), and the four rows that need a real tick on a cell are marked production-only so an offline runner records them could-not-check instead of a pass.
