@@ -44,9 +44,9 @@ retired: applying it now would add a second, `--backfill` reconcile beside the s
 
 **Desk-side writer, no workflow change needed:** the `deskreconcile` verb
 (`tools/desk/cmd/deskreconcile`, see [tools/desk/README.md](../../../tools/desk/README.md))
-runs that same `statusgen reconcile --backfill --apply` from a verb the desk/worker App can
-run, and carries the result as one draft PR on `board/reconcile` — so the stale lifecycle
-cells can be reconciled before the staged workflow patch lands.
+runs `statusgen reconcile --backfill --apply` directly, from a verb the desk/worker App can
+run, and carries the result as one draft PR on `board/reconcile`. Unlike the scheduled job it
+passes `--backfill`, so it also folds in the historical branch/body fallback.
 
 ## Briefs
 

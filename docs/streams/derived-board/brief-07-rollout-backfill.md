@@ -19,6 +19,7 @@ delivery:
   - {in: "assay#945", covers: partial, note: "backfill capability and this repo's drift report only; Task 2-4 remain owed"}
   - {in: "assay#1010", covers: partial, note: "the reconcile --apply write arm only; Task 2-4 remain owed"}
   - {in: "assay#1194", covers: partial, note: "this repo's rollout slice and trailer join repair only; its scope keeps the brief in progress, with Task 2-4 still owed"}
+  - {in: "assay#5037", covers: partial, note: "retires the stale staged reconcile patch and records this repo's rollout evidence only; Task 2-4 remain owed"}
 schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
@@ -129,7 +130,7 @@ stream README still described the reconcile step as "staged, not applied" and th
 `.github/workflows/assay-statusgen.yml` by a human push. Applying that patch now would add
 a second `--backfill` reconcile to the push-time job. This run retires the patch and fixes
 the README paragraph. Nothing in the generated Briefs table was hand-edited; this brief's
-row is derived from the PR carrying its `Brief:` trailer.
+row is derived from the PRs carrying its `Brief:` trailer. This PR is declared a partial delivery in the `delivery:` list above, so the row stays in-progress while Tasks 2-4 are owed.
 
 **Verify rows, run offline against the head above.**
 
