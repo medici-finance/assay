@@ -248,6 +248,19 @@ func TestCLIRoutingMutations(t *testing.T) {
 	if p := Validate(base, simpleReg); len(p) > 0 {
 		t.Fatalf("a simple port target is no longer exempt:\n  %s", strings.Join(p, "\n  "))
 	}
+	// The imports check needs a Go row whose code imports neither cobra nor the adapter. It is
+	// picked from the pending rows, so migrating any one row (deskaudit was the fixed pick until
+	// desktools-v2/47 migrated it) never breaks this case.
+	unported := ""
+	for _, e := range ref.Entrypoints {
+		if e.Kind == "go" && e.State == StatePending && !importsAdapter(base, e.Path) {
+			unported = e.Path
+			break
+		}
+	}
+	if unported == "" {
+		t.Fatal("no pending Go row left that imports neither cobra nor the adapter; retire the imports-only-migration case")
+	}
 
 	type mutation struct {
 		name  string
@@ -368,8 +381,8 @@ func TestCLIRoutingMutations(t *testing.T) {
 			},
 			want: "row tools/desk/cmd/deskaudit has no owner"},
 		{name: "imports-only-migration",
-			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskaudit").State = StateMigrated },
-			want: "migrated row tools/desk/cmd/deskaudit imports neither"},
+			edit: func(r *Registry) { rowFor(t, r, unported).State = StateMigrated },
+			want: "migrated row " + unported + " imports neither"},
 		{name: "migrated-script-without-target",
 			edit: func(r *Registry) { rowFor(t, r, "plugins/assay/scripts/pdfingest.sh").State = StateMigrated },
 			want: "migrated script plugins/assay/scripts/pdfingest.sh must name"},
