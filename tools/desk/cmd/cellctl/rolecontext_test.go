@@ -254,7 +254,7 @@ func TestRoleContextCannotWiden(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
-	if got, want := tags(roleContextSpec{}), []string{"agents", "agents_off", "connectors_off", "dispatch_agent", "instructions", "instructions_off", "memory_dir", "memory_off", "plugins_off", "skills_off", "tools_off"}; !reflect.DeepEqual(got, want) {
+	if got, want := tags(roleContextSpec{}), []string{"agents", "agents_off", "connectors_off", "dispatch_agent", "dispatch_instructions", "instructions", "instructions_off", "memory_dir", "memory_off", "plugins_off", "skills_off", "tools_off"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("role keys = %v, want %v", got, want)
 	}
 	if got, want := tags(agentDefinition{}), []string{"capabilities", "description", "inherit_instructions", "name", "prompt"}; !reflect.DeepEqual(got, want) {

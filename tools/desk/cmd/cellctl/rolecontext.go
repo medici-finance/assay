@@ -48,8 +48,11 @@ import (
 //     neither the declaration nor a file it names may lie in a role worktree (the tree a
 //     worktrees/ entry leads to, wherever it is) or a memory directory.
 //
-// The declaration is harness-neutral; the binding below is Claude Code's. A role the cell runs
-// on another harness refuses a non-empty declaration rather than silently ignoring it.
+// The declaration is harness-neutral. Claude Code binds every key. Codex binds `instructions`
+// (one inline developer-instructions override on argv) and `dispatch_instructions` (the window
+// environment, the same on every harness); a Codex role declaring any other key is refused and
+// the refusal names the key. A role on any other harness refuses a non-empty entry rather than
+// silently ignoring it.
 
 const (
 	roleContextKey = "CELL_ROLE_CONTEXT"
@@ -115,6 +118,10 @@ type roleContextSpec struct {
 	AgentsOff       []string `json:"agents_off"`
 	ToolsOff        []string `json:"tools_off"`
 	ConnectorsOff   bool     `json:"connectors_off"`
+	// DispatchInstructions maps a dispatch kit to a file deskdispatch quotes into every prompt of
+	// that kit the window dispatches (desk-containers/30). It reaches deskdispatch through the
+	// window environment (deskkit.EnvDispatchInstructions), never through argv.
+	DispatchInstructions map[string]string `json:"dispatch_instructions"`
 }
 
 // agentDefinition is the harness-neutral definition of an agent a window may dispatch. It can
@@ -145,6 +152,16 @@ type roleContext struct {
 	InstructionsPath string // absolute; "" when not declared
 	InstructionsText string
 	Agents           []agentDefinition
+	Dispatch         []dispatchFile // one per dispatch_instructions kit, ordered by kit
+}
+
+// dispatchFile is one resolved dispatch_instructions entry: the kit, the file's absolute resolved
+// path, and the size and sha256 of the bytes read when the declaration was loaded.
+type dispatchFile struct {
+	Kit    string
+	Path   string
+	Size   int
+	SHA256 string
 }
 
 type roleContextDecl struct {
@@ -158,7 +175,8 @@ func (rc *roleContext) empty() bool {
 	s := rc.Spec
 	return len(s.PluginsOff) == 0 && len(s.SkillsOff) == 0 && s.MemoryDir == "" && !s.MemoryOff &&
 		s.Instructions == "" && len(s.InstructionsOff) == 0 && len(s.Agents) == 0 &&
-		s.DispatchAgent == "" && len(s.AgentsOff) == 0 && len(s.ToolsOff) == 0 && !s.ConnectorsOff
+		s.DispatchAgent == "" && len(s.AgentsOff) == 0 && len(s.ToolsOff) == 0 && !s.ConnectorsOff &&
+		len(s.DispatchInstructions) == 0
 }
 
 // decodeStrict decodes exactly one JSON value and refuses an unknown field, a repeated key or
@@ -593,6 +611,9 @@ func (rc *roleContext) resolve(cellDir string) error {
 		}
 		rc.InstructionsPath, rc.InstructionsText = p, strings.TrimSpace(string(raw))
 	}
+	if err := rc.resolveDispatch(cellDir); err != nil {
+		return err
+	}
 
 	names := map[string]bool{}
 	for _, ref := range s.Agents {
@@ -615,6 +636,66 @@ func (rc *roleContext) resolve(cellDir string) error {
 		}
 	}
 	return nil
+}
+
+// resolveDispatch validates every dispatch_instructions entry the way `instructions` is validated
+// (readable, a regular file within the size limit, valid UTF-8 without NUL, outside every place a
+// role session writes) and records the file's resolved path, size and digest. A kit outside the
+// shared dispatch-kit vocabulary is refused, and so is a resolved path ASSAY_DISPATCH_INSTRUCTIONS
+// cannot carry. One file may serve several kits and may also be the role's instructions file.
+func (rc *roleContext) resolveDispatch(cellDir string) error {
+	role := rc.Role
+	kits := make([]string, 0, len(rc.Spec.DispatchInstructions))
+	for kit := range rc.Spec.DispatchInstructions {
+		kits = append(kits, kit)
+	}
+	sort.Strings(kits)
+	known := deskkit.DispatchKits()
+	for _, kit := range kits {
+		if !valueIn(kit, known) {
+			return roleContextFail("role %s: dispatch_instructions: unknown kit %q (%s)", role, kit, strings.Join(known, ", "))
+		}
+		ref := rc.Spec.DispatchInstructions[kit]
+		if ref == "" {
+			return roleContextFail("role %s: dispatch_instructions kit %s: no file named", role, kit)
+		}
+		p := cellRelative(cellDir, ref)
+		raw, err := readBounded(p)
+		if err != nil {
+			return roleContextFail("role %s: dispatch_instructions kit %s: %v", role, kit, err)
+		}
+		if err := deskkit.RefuseSessionWritable(cellDir, p); err != nil {
+			return roleContextFail("role %s: dispatch_instructions kit %s: %v", role, kit, err)
+		}
+		if !cleanText(string(raw)) {
+			return roleContextFail("role %s: dispatch_instructions kit %s: %s must be valid UTF-8 without NUL", role, kit, p)
+		}
+		real, err := filepath.EvalSymlinks(p)
+		if err == nil {
+			real, err = filepath.Abs(real)
+		}
+		if err != nil {
+			return roleContextFail("role %s: dispatch_instructions kit %s: %s: %v", role, kit, p, err)
+		}
+		if err := deskkit.DispatchInstructionPathCarriable(real); err != nil {
+			return roleContextFail("role %s: dispatch_instructions kit %s: %v", role, kit, err)
+		}
+		sum := sha256.Sum256(raw)
+		rc.Dispatch = append(rc.Dispatch, dispatchFile{Kit: kit, Path: real, Size: len(raw), SHA256: hex.EncodeToString(sum[:])})
+	}
+	return nil
+}
+
+// dispatchValue is the ASSAY_DISPATCH_INSTRUCTIONS value for the role: "" when it declares none.
+func (rc *roleContext) dispatchValue() string {
+	if rc == nil || len(rc.Dispatch) == 0 {
+		return ""
+	}
+	entries := make([]deskkit.DispatchInstruction, 0, len(rc.Dispatch))
+	for _, f := range rc.Dispatch {
+		entries = append(entries, deskkit.DispatchInstruction{Kit: f.Kit, Path: f.Path, SHA256: f.SHA256})
+	}
+	return deskkit.FormatDispatchInstructions(entries)
 }
 
 // summary is the one-line account `check` and a dry run print: what the role will start with,
@@ -642,9 +723,13 @@ func (rc *roleContext) summary() string {
 	if s.ConnectorsOff {
 		connectors = "off"
 	}
-	return fmt.Sprintf("plugins_off=%s skills_off=%s memory=%s instructions=%s instructions_off=%s agents=%s dispatch_agent=%s agents_off=%s tools_off=%s connectors=%s",
+	var dispatch []string
+	for _, f := range rc.Dispatch {
+		dispatch = append(dispatch, f.Kit+":"+f.Path)
+	}
+	return fmt.Sprintf("plugins_off=%s skills_off=%s memory=%s instructions=%s instructions_off=%s agents=%s dispatch_agent=%s agents_off=%s tools_off=%s connectors=%s dispatch_instructions=%s",
 		list(s.PluginsOff), list(s.SkillsOff), memory, orDefault(rc.InstructionsPath, "none"), list(s.InstructionsOff),
-		list(agents), orDefault(s.DispatchAgent, "none"), list(s.AgentsOff), list(s.ToolsOff), connectors)
+		list(agents), orDefault(s.DispatchAgent, "none"), list(s.AgentsOff), list(s.ToolsOff), connectors, list(dispatch))
 }
 
 // pluginsOffNotes is one line per plugins_off entry saying what goes with it. The key reads like
@@ -853,6 +938,98 @@ func applyClaudeRoleContext(argv []string, rc *roleContext) ([]string, error) {
 	return out, nil
 }
 
+// ── Codex binding ───────────────────────────────────────────────────────────────────────────
+
+// codexInstructionsKey is the Codex configuration key `instructions` binds to. Probed on
+// codex-cli 0.166.0 (docs/cellctl-role-context.md §Codex): a `-c developer_instructions=<text>`
+// override reaches the model as developer instructions; `base_instructions` was accepted with an
+// "unrecognized configuration setting" warning and never reached the model.
+const codexInstructionsKey = "developer_instructions"
+
+// codexBoundKeys are the declaration keys with a Codex binding: `instructions` travels on argv,
+// `dispatch_instructions` through the window environment, the same on every harness.
+var codexBoundKeys = []string{"instructions", "dispatch_instructions"}
+
+// codexUnboundKeys names, in schema order, every non-empty key of the role's entry that has no
+// Codex binding. A Codex role declaring any of them is refused, never launched without it.
+func (rc *roleContext) codexUnboundKeys() []string {
+	s := rc.Spec
+	var out []string
+	for _, k := range []struct {
+		key string
+		set bool
+	}{
+		{"plugins_off", len(s.PluginsOff) > 0},
+		{"skills_off", len(s.SkillsOff) > 0},
+		{"memory_dir", s.MemoryDir != ""},
+		{"memory_off", s.MemoryOff},
+		{"instructions_off", len(s.InstructionsOff) > 0},
+		{"agents", len(s.Agents) > 0},
+		{"dispatch_agent", s.DispatchAgent != ""},
+		{"agents_off", len(s.AgentsOff) > 0},
+		{"tools_off", len(s.ToolsOff) > 0},
+		{"connectors_off", s.ConnectorsOff},
+	} {
+		if k.set {
+			out = append(out, k.key)
+		}
+	}
+	return out
+}
+
+// applyCodexRoleContext adds the role's instructions to a composed `codex …` launch argv as one
+// `-c developer_instructions=<JSON string>` override, inserted before the final element (the role
+// prompt), which does not move: the cadence launcher keeps argv[1:len-1] and rewrites the last
+// element, so the standing and the cadence form both carry it. A JSON string is a TOML basic
+// string, which is how Codex parses a -c value. Nothing is written to disk. An argv that already
+// sets the key is refused rather than overridden. nil, or a context without instructions, returns
+// argv itself, untouched.
+func applyCodexRoleContext(argv []string, rc *roleContext) ([]string, error) {
+	if rc == nil || rc.InstructionsText == "" {
+		return argv, nil
+	}
+	if len(argv) < 2 {
+		return nil, roleContextFail("launch argv has no prompt to preserve")
+	}
+	for i := 1; i+1 < len(argv)-1; i++ {
+		if argv[i] != "-c" && argv[i] != "--config" {
+			continue
+		}
+		if key, _, _ := strings.Cut(argv[i+1], "="); strings.TrimSpace(key) == codexInstructionsKey {
+			return nil, roleContextFail("the Codex launch already sets %s; a role context never overrides it", codexInstructionsKey)
+		}
+	}
+	value, err := compactJSON(rc.InstructionsText)
+	if err != nil {
+		return nil, roleContextFail("cannot encode instructions: %v", err)
+	}
+	arg := codexInstructionsKey + "=" + value
+	if len(arg) > roleContextMaxArg {
+		return nil, roleContextFail("a composed launch argument is %d bytes, over the %d-byte limit; shorten the role's instructions", len(arg), roleContextMaxArg)
+	}
+	out := make([]string, 0, len(argv)+2)
+	out = append(out, argv[:len(argv)-1]...)
+	out = append(out, "-c", arg, argv[len(argv)-1])
+	return out, nil
+}
+
+// codexFlagSummary names what the Codex binding adds, by size, never by content.
+func (rc *roleContext) codexFlagSummary() []string {
+	out, err := applyCodexRoleContext([]string{"codex", "prompt"}, rc)
+	if err != nil {
+		return []string{"(" + err.Error() + ")"}
+	}
+	var flags []string
+	for i := 1; i+1 < len(out)-1; i++ {
+		if out[i] == "-c" {
+			key, value, _ := strings.Cut(out[i+1], "=")
+			flags = append(flags, "-c "+key+"=<"+strconv.Itoa(len(value))+" bytes>")
+			i++
+		}
+	}
+	return flags
+}
+
 // ── cell wiring ─────────────────────────────────────────────────────────────────────────────
 
 // cellRoleContext loads the cell's declaration; (nil, nil) when CELL_ROLE_CONTEXT is unset.
@@ -881,10 +1058,54 @@ func (c *Cell) roleContextFor(role, harness string) (*roleContextDecl, *roleCont
 	if rc == nil || rc.empty() {
 		return d, nil, nil
 	}
-	if harness != "claude" {
+	switch harness {
+	case "claude":
+	case "codex":
+		if keys := rc.codexUnboundKeys(); len(keys) > 0 {
+			return d, nil, roleContextFail("role %s runs on codex; %s", role, codexUnboundMessage(keys))
+		}
+		// Compose once now, so an argument too large to launch with refuses before anything exists.
+		if _, err := applyCodexRoleContext([]string{"codex", "prompt"}, rc); err != nil {
+			return d, nil, fmt.Errorf("%w (role %s)", err, role)
+		}
+	default:
 		return d, nil, roleContextFail("role %s runs on %s; a role context is bound for the claude harness only — remove the role's entry or run it on claude", role, harness)
 	}
 	return d, rc, nil
+}
+
+// codexUnboundMessage is the refusal tail for a Codex role whose entry names keys with no Codex
+// binding; it names each key.
+func codexUnboundMessage(keys []string) string {
+	verb := "is"
+	if len(keys) > 1 {
+		verb = "are"
+	}
+	return fmt.Sprintf("%s %s bound for the claude harness only (on codex a role context binds %s) — remove %s from the role's entry or run the role on claude",
+		strings.Join(keys, ", "), verb, strings.Join(codexBoundKeys, " and "), strings.Join(keys, ", "))
+}
+
+// dispatchInstructionsEnv composes ASSAY_DISPATCH_INSTRUCTIONS into a role window's environment:
+// the role's dispatch_instructions value when it declares one, and otherwise nothing — an inherited
+// value is removed either way, so a launching shell's export never applies unnoticed. The cell
+// directory deskdispatch checks custody against travels in the cell marker (ASSAY_CELL_DIR),
+// which stampCellMarker already sets from the cell's own directory.
+func (c *Cell) dispatchInstructionsEnv(role, harness string, env []string) []string {
+	env = envUnset(env, deskkit.EnvDispatchInstructions)
+	if v := c.dispatchInstructionsValue(role, harness); v != "" {
+		env = envSet(env, deskkit.EnvDispatchInstructions, v)
+	}
+	return env
+}
+
+// dispatchInstructionsValue is the role's ASSAY_DISPATCH_INSTRUCTIONS value, read (and every file
+// digested) now; "" when the cell or the role declares none.
+func (c *Cell) dispatchInstructionsValue(role, harness string) string {
+	_, rc, err := c.roleContextFor(role, harness)
+	if err != nil {
+		die("%s", err)
+	}
+	return rc.dispatchValue()
 }
 
 // mustRoleContext is cmdDesk's early gate: a broken declaration stops the launch before a
@@ -902,12 +1123,15 @@ func (c *Cell) mustRoleContext(role, harness string) {
 // read through the environment overlay and a window that starts with less than its neighbours
 // should never be a surprise. A role with no entry, and a cell with no declaration, print
 // nothing and get argv back untouched.
-func (c *Cell) roleContextArgv(role string, argv []string) []string {
-	d, rc, err := c.roleContextFor(role, "claude")
+func (c *Cell) roleContextArgv(role, harness string, argv []string) []string {
+	d, rc, err := c.roleContextFor(role, harness)
 	if err != nil {
 		die("%s", err)
 	}
 	out, err := applyClaudeRoleContext(argv, rc)
+	if harness == "codex" {
+		out, err = applyCodexRoleContext(argv, rc)
+	}
 	if err != nil {
 		die("%s", err)
 	}
@@ -916,7 +1140,7 @@ func (c *Cell) roleContextArgv(role string, argv []string) []string {
 		for _, note := range rc.pluginsOffNotes() {
 			fmt.Printf("[context] role=%s %s\n", role, note)
 		}
-		if notice := roleContextVersionNotice(); notice != "" {
+		if notice := roleContextVersionNotice(); harness == "claude" && notice != "" {
 			fmt.Fprintf(os.Stderr, "NOTICE: %s\n", notice)
 		}
 	}
@@ -941,7 +1165,11 @@ func (c *Cell) printRoleContextPlan(role, harness string) {
 	for _, note := range rc.pluginsOffNotes() {
 		fmt.Printf("[dry-run] context role=%s %s\n", role, note)
 	}
-	fmt.Printf("[dry-run] context flags: %s\n", strings.Join(rc.claudeFlagSummary(), " "))
+	flags := rc.claudeFlagSummary()
+	if harness == "codex" {
+		flags = rc.codexFlagSummary()
+	}
+	fmt.Printf("[dry-run] context flags: %s\n", orDefault(strings.Join(flags, " "), "none"))
 }
 
 // claudeFlagSummary names what the launch adds, sizes instead of contents: the instruction text
@@ -1000,12 +1228,25 @@ func (c *Cell) checkRoleContext(k *checker, cfgArg string, harnessOf func(role s
 			continue
 		}
 		harness := harnessOf(role)
-		if harness != "claude" {
+		if harness == "codex" {
+			if keys := rc.codexUnboundKeys(); len(keys) > 0 {
+				k.chk(false, "role context: %s runs on codex; %s", role, codexUnboundMessage(keys))
+				continue
+			}
+			if _, err := applyCodexRoleContext([]string{"codex", "prompt"}, rc); err != nil {
+				k.chk(false, "%v (role %s)", err, role)
+				continue
+			}
+		} else if harness != "claude" {
 			k.chk(false, "role context: %s runs on %s; a role context is bound for the claude harness only", role, harness)
 			continue
+		} else {
+			anyClaude = true
 		}
-		anyClaude = true
 		k.chk(true, "role context: %s %s", role, rc.summary())
+		for _, f := range rc.Dispatch {
+			k.chk(true, "role context: %s dispatch_instructions kit=%s path=%s size=%d sha256=%s", role, f.Kit, f.Path, f.Size, f.SHA256)
+		}
 		if rc.MemoryDir != "" {
 			if _, err := os.Stat(filepath.Join(rc.MemoryDir, "MEMORY.md")); err != nil {
 				k.warn("role context: %s memory_dir %s has no MEMORY.md — the role starts with an EMPTY memory index (seed it from the shared one first; docs/cellctl-role-context.md)", role, rc.MemoryDir)
