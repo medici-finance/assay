@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -326,7 +325,7 @@ var maxFloorRuns = 16
 // control byte, no cell separator, no backtick, at most one parenthesis level.
 func reasonText(s string) string {
 	return sanitizeReason(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if r < 0x20 || (r >= 0x7f && r < 0xa0) { // C0, DEL and C1 controls
 			return ' '
 		}
 		return r
