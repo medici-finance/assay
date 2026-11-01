@@ -153,7 +153,10 @@ sh containers/scripts/layer-secret-scan.mutate.sh
 The image-producer tests use fake Docker and check real metadata and artifact
 bytes without registry access. `ci_step_test` checks, from outside that suite, that
 CI still runs it on the `rest` shard, fails the shard when it fails and stops
-it within 15 minutes. The scan suites separately prove real-key and
+it within 15 minutes. Both read workflow settings through
+`tools/release/workflow_keys.py`, a strict reader of plain block-style YAML: a
+line in a checked job, or at top level, that is not in that one plain form is
+refused, so keep these workflows in it. The scan suites separately prove real-key and
 hidden-layer detection, fail-closed errors and exact-label precision. The
 complete release workflow must still be exercised after maintainer promotion.
 

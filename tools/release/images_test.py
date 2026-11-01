@@ -19,6 +19,9 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('images_contract', HERE / 'images_contract.py')
 contract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(contract)
+keys_spec = importlib.util.spec_from_file_location('workflow_keys', HERE / 'workflow_keys.py')
+workflow_keys = importlib.util.module_from_spec(keys_spec)
+keys_spec.loader.exec_module(workflow_keys)
 VERSION = 'v1.2.3'
 SOURCE = 'a' * 40
 
@@ -66,9 +69,13 @@ def job_runner(block):
 
 
 def runner_binding_problems(text):
-    """Each privileged release job names its own fixed label, never an expression."""
+    """Each privileged release job names its own fixed label, never an expression.
+
+    A line in either job that workflow_keys cannot read is refused, so a second
+    binding in another spelling (a quoted key, say) cannot replace the label.
+    """
     jobs = workflow_jobs(text)
-    problems = []
+    problems = workflow_keys.unread_problems(workflow_keys.read(text)[1], *RELEASE_RUNNERS)
     for name, label in RELEASE_RUNNERS.items():
         block = jobs.get(name, '')
         if re.search(r'(?m)^ *runs-on:.*\$\{\{', block):
@@ -153,6 +160,11 @@ MUTATION_REPORTS = {
 DESKMERGE = 'cmd/deskmerge/mutations.json'
 UPLOAD = 'Upload captured mutation reports (tool-validation pack)'
 TEST_DEPENDENTS = ('artifacts', 'runner-arm64', 'release')
+# Every release test leg, in order; muhar-light and the deskmerge shards are the
+# mutation harnesses, the rest are the suites a release must also pass.
+TEST_MATRIX = [('statusgen', ''), ('desk-tools', ''), ('drainloop', ''), ('qualgen', ''),
+               ('muhar-light', ''), ('deskmerge', '0/3'), ('deskmerge', '1/3'),
+               ('deskmerge', '2/3')]
 # The whole live body of one mutation harness step. Anything added, dropped or
 # reordered fails the match, so the checks below never rest on a substring.
 HARNESS_STEP = re.compile(
@@ -178,52 +190,93 @@ def live_lines(block):
     return ''.join(line for line in block.splitlines(True) if not line.lstrip().startswith('#'))
 
 
-def publish_wait_problems(jobs):
-    """Each publishing job still needs `test` and never runs past its failure."""
+def publish_wait_problems(entries):
+    """Each publishing job still needs `test` and carries no job-level `if`.
+
+    Any job-level condition is refused, not only one that names a status
+    function: the three jobs have none, and a condition is the one setting
+    that lets a job run after a dependency failed.
+    """
     problems = []
     for name in TEST_DEPENDENTS:
-        block = live_lines(jobs.get(name, ''))
-        needs = re.findall(r'(?m)^    needs:(.*)$', block)
-        value = needs[0].strip() if len(needs) == 1 else ''
-        listed = value[1:-1].split(',') if value.startswith('[') and value.endswith(']') else [value]
-        if 'test' not in {item.strip() for item in listed}:
+        job = [entry for entry in entries if entry.path == ('jobs', name)]
+        needs = [entry.value for entry in job if entry.key == 'needs']
+        items = workflow_keys.flow_items(needs[0]) if len(needs) == 1 else None
+        if not items or 'test' not in items:
             problems.append(name + ' must wait for the test job')
-        if any(re.search(r'\b(always|failure|cancelled)\(\)', condition)
-               for condition in re.findall(r'(?m)^    if:(.*)$', block)):
+        if any(entry.key == 'if' for entry in job):
             problems.append(name + ' must not run past a failed test job')
     return problems
+
+
+def matrix_legs(entries):
+    """The test job's matrix as (leg, shard) pairs, or None if it is not one list."""
+    where = ('jobs', 'test', 'strategy', 'matrix')
+    if [entry.key for entry in entries if entry.path == where] != ['include']:
+        return None
+    matrix = []
+    for entry in entries:
+        if entry.path != where + ('include',):
+            continue
+        if entry.item:
+            matrix.append({})
+        if not matrix or entry.key not in ('leg', 'shard'):
+            return None
+        matrix[-1][entry.key] = entry.value
+    return [(item.get('leg', ''), item.get('shard', '')) for item in matrix]
+
+
+def step_text(text, entries, line):
+    """The text of the test job step that holds LINE."""
+    starts = [entry.line for entry in entries
+              if entry.path == ('jobs', 'test', 'steps') and entry.item]
+    start = max([number for number in starts if number <= line], default=line)
+    end = min([number for number in starts if number > start], default=len(text) + 1)
+    return '\n'.join(text.splitlines()[start - 1:end - 1])
 
 
 def mutation_routing_problems(text):
     """Expand the release test matrix and bind each mutation harness to its report.
 
     muhar still owns baselines, controls and per-mutant verdicts. This checks
-    that scheduling neither omits nor duplicates a full harness or a deskmerge
-    shard, that every scheduled harness uploads its report, that each harness
-    keeps its verdict gate and report name, and that no failure in the test job
-    can be tolerated on the way to publication. Comment lines are dropped
-    first, so a setting kept only in a comment counts as absent.
+    that the test matrix is exactly TEST_MATRIX, that scheduling neither omits
+    nor duplicates a full harness or a deskmerge shard, that every scheduled
+    harness uploads its report, that each harness keeps its verdict gate and
+    report name, and that no failure in the test job can be tolerated on the
+    way to publication. Settings are read with workflow_keys, so a setting kept
+    only in a comment counts as absent, and any line at top level or in the
+    test or publishing jobs written in a form the reader does not accept is
+    refused instead of being skipped.
     """
+    entries, unread = workflow_keys.read(text)
+    problems = workflow_keys.unread_problems(unread, 'test', *TEST_DEPENDENTS)
+    problems += publish_wait_problems(entries)
     jobs = workflow_jobs(text)
     test = live_lines(jobs.get('test', ''))
-    problems = publish_wait_problems(jobs)
-    matrix = re.findall(r'(?m)^          - leg: (\S+)(?:\n            shard: (\S+))?', test)
+    keys = [entry for entry in entries if entry.under('jobs', 'test')]
+    matrix = matrix_legs(entries) or []
     if not matrix or len(matrix) != len(set(matrix)):
         problems.append('test matrix must contain unique leg/shard entries')
-    if re.search(r'(?m)^ *exclude:', test):
+    if matrix != TEST_MATRIX:
+        problems.append('the test matrix must be exactly TEST_MATRIX')
+    if any(entry.key == 'exclude' for entry in keys):
         problems.append('the test matrix must not exclude a leg')
-    if re.findall(r'(?m)^ *fail-fast:.*$', test) != ['      fail-fast: false']:
+    if [(entry.path, entry.value) for entry in keys if entry.key == 'fail-fast'] != [
+            (('jobs', 'test', 'strategy'), 'false')]:
         problems.append('all matrix verdicts must run without fail-fast cancellation')
-    if re.search(r'(?m)^    continue-on-error:', test):
-        problems.append('the test job must not tolerate a failed leg')
-    if (re.search(r'(?m)^ *shell:|^    defaults:', test)
-            or re.search(r'(?m)^defaults:', live_lines(text.split('\njobs:\n', 1)[0]))):
+    if (any(entry.key == 'shell' for entry in keys)
+            or any(entry.key == 'defaults' and entry.path in ((), ('jobs', 'test'))
+                   for entry in entries)):
         problems.append('the test job must run its steps in the default shell')
-    for chunk in re.findall(r'(?ms)^      - (.*?)(?=^      - |\Z)', test):
-        if re.search(r'(?m)^(?:        )?continue-on-error:', chunk):
-            spec = re.search(r'-spec (\S+\.json)', chunk)
-            problems.append('mutation harness step must not tolerate failure: ' + spec.group(1)
-                            if spec else 'a test job step must not tolerate failure')
+    for entry in keys:
+        if entry.key != 'continue-on-error':
+            continue
+        if entry.path == ('jobs', 'test'):
+            problems.append('the test job must not tolerate a failed leg')
+            continue
+        spec = re.search(r'-spec (\S+\.json)', step_text(text, entries, entry.line))
+        problems.append('mutation harness step must not tolerate failure: ' + spec.group(1)
+                        if spec else 'a test job step must not tolerate failure')
     steps = workflow_steps(test)
     upload = steps.get(UPLOAD, '')
     conditions = re.findall(r'(?m)^        if: (.*)$', upload)
@@ -306,6 +359,84 @@ def mutate_job(text, job, old, new):
     if text.count(block) != 1 or block.count(old) != 1:
         raise AssertionError('control target is not unique: ' + job + ': ' + old)
     return text.replace(block, block.replace(old, new, 1), 1)
+
+
+def plant(text, job, old, new):
+    """Apply one plant: inside JOB, or appended to the workflow when JOB is None."""
+    return text + new if job is None else mutate_job(text, job, old, new)
+
+
+UNREAD = 'is not in the plain form this check reads: '
+# Plants that write a weakening in a spelling YAML accepts but the round-two
+# gate did not read. Each must still draw a refusal containing its problem.
+SPELLING_PLANTS = {
+    'release-if-block-scalar': (
+        'release', '    needs: [resolve, guard, test, artifacts, runner-arm64]\n',
+        '    needs: [resolve, guard, test, artifacts, runner-arm64]\n    if: >-\n      always()\n',
+        'release must not run past a failed test job'),
+    'artifacts-if-block-scalar': (
+        'artifacts', '    needs: [resolve, guard, test]\n',
+        '    needs: [resolve, guard, test]\n    if: >-\n      !cancelled()\n',
+        'artifacts must not run past a failed test job'),
+    'native-if-spaced-call': (
+        'runner-arm64', '    needs: [resolve, guard, test, artifacts]\n',
+        '    needs: [resolve, guard, test, artifacts]\n    if: always ()\n',
+        'runner-arm64 must not run past a failed test job'),
+    'release-if-quoted-key': (
+        'release', '    needs: [resolve, guard, test, artifacts, runner-arm64]\n',
+        '    needs: [resolve, guard, test, artifacts, runner-arm64]\n    "if": always()\n',
+        UNREAD + '"if": always()'),
+    'needs-test-in-comment': (
+        'artifacts', '    needs: [resolve, guard, test]\n', '    needs: [resolve, guard] #,test]\n',
+        'artifacts must wait for the test job'),
+    'release-needs-in-comment': (
+        'release', '    needs: [resolve, guard, test, artifacts, runner-arm64]\n',
+        '    needs: [resolve, guard, artifacts, runner-arm64] # test\n',
+        'release must wait for the test job'),
+    'job-tolerates-quoted-key': (
+        'test', '    runs-on: medici-builder-release\n',
+        '    runs-on: medici-builder-release\n    "continue-on-error": true\n',
+        UNREAD + '"continue-on-error": true'),
+    'job-tolerates-spaced-key': (
+        'test', '    runs-on: medici-builder-release\n',
+        '    runs-on: medici-builder-release\n    continue-on-error : true\n',
+        UNREAD + 'continue-on-error : true'),
+    'job-tolerates-other-case': (
+        'test', '    runs-on: medici-builder-release\n',
+        '    runs-on: medici-builder-release\n    Continue-On-Error: true\n',
+        'the test job must not tolerate a failed leg'),
+    'job-tolerates-merge-key': (
+        'test', '    runs-on: medici-builder-release\n',
+        '    runs-on: medici-builder-release\n    <<: *tolerate\n', UNREAD + '<<: *tolerate'),
+    'upload-tolerates-failure': (
+        'test', "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
+        "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+        '        continue-on-error: true\n',
+        'a test job step must not tolerate failure'),
+    'upload-tolerates-other-case': (
+        'test', "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
+        "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+        '        Continue-On-Error: true\n',
+        'a test job step must not tolerate failure'),
+    'harness-shell-quoted-key': (
+        'test', "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n",
+        "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        "        'shell': bash -c 'exit 0' {0}\n",
+        UNREAD + "'shell': bash -c 'exit 0' {0}"),
+    'defaults-after-jobs': (
+        None, '', "defaults:\n  run:\n    shell: bash -c 'exit 0' {0}\n",
+        'the test job must run its steps in the default shell'),
+    'statusgen-leg-dropped': (
+        'test', '          - leg: statusgen\n', '', 'the test matrix must be exactly TEST_MATRIX'),
+    'qualgen-leg-dropped': (
+        'test', '          - leg: qualgen\n', '', 'the test matrix must be exactly TEST_MATRIX'),
+    'desk-tools-leg-renamed': (
+        'test', '          - leg: desk-tools\n', '          - leg: desk-tool\n',
+        'the test matrix must be exactly TEST_MATRIX'),
+    'matrix-dimension-added': (
+        'test', '        include:\n', '        leg: [statusgen]\n        include:\n',
+        'the test matrix must be exactly TEST_MATRIX'),
+}
 
 
 class ImagesTest(unittest.TestCase):
@@ -1006,6 +1137,16 @@ if args[:2] == ['image', 'inspect']:
                     self.assertIn(problem, mutation_routing_problems(mutate_job(text, job, old, new)))
 
     # regression: #5091
+    def test_routing_other_spellings(self):
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            self.assertEqual(mutation_routing_problems(text), [])
+            for name, (job, old, new, problem) in SPELLING_PLANTS.items():
+                with self.subTest(path=path, plant=name):
+                    problems = mutation_routing_problems(plant(text, job, old, new))
+                    self.assertTrue(any(problem in found for found in problems), problems)
+
+    # regression: #5091
     def test_release_runners_fixed(self):
         root = HERE.parents[1]
         ci = workflow_jobs((root / '.github/workflows/ci.yml').read_text())
@@ -1024,6 +1165,8 @@ if args[:2] == ['image', 'inspect']:
                 'expression': "    runs-on: ${{ vars.RELEASE_RUNNER || '" + label + "' }}\n",
                 'label-list': '    runs-on: [' + label + ', ' + GENERAL_CI_RUNNER + ']\n',
                 'shadowed': '    runs-on: ' + GENERAL_CI_RUNNER + '\n    # runs-on: ' + label + '\n',
+                # regression: #5091 — a second binding under a quoted key.
+                'quoted-rebind': line + '    "runs-on": ' + GENERAL_CI_RUNNER + '\n',
             }.items():
                 with self.subTest(job=job, plant=name):
                     self.assertTrue(runner_binding_problems(mutate_job(text, job, line, new)))

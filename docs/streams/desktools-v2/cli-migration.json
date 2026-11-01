@@ -113,6 +113,11 @@
     },
     {
       "class": "library",
+      "pattern": "tools/release/workflow_keys.py",
+      "reason": "pure workflow-text reader imported only by the offline release workflow checks in images_test.py and ci_step_test.py; no standalone CLI or network calls (#5091)"
+    },
+    {
+      "class": "library",
       "pattern": "tools/release/bundles.py",
       "reason": "internal release provenance-bundle check imported by fixed release workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3094)"
     },
