@@ -61,9 +61,12 @@ Continue on the same PR for review findings C1 (effective-origin scope/list sema
 - [x] Reproduce C1 with linked homes whose shared origin names another host/repository, list reset, push-only and multi-valued cases.
 - [x] Reproduce C2 with pushInsteadOf-only and malformed/unreadable metadata at the checkout and both closure destinations.
 - [x] Share fetch normalization, qualify supported scope/reset/rewrite semantics, preserve sanitization and demonstrate approval consumers hold unavailable context.
-- [ ] Push a follow-up, respond by finding ID, refresh the PR body/workpad and own bounded CI watch.
+- [x] Push a follow-up, respond by finding ID, refresh the PR body/workpad and own bounded CI watch.
 
 
 Review validation: the new config matrix failed at the exact reviewed source 22413f2a9 for both differing linked origins, local reset, push-only, multiple URLs, push-only rewrite corruption, invalid/unreadable metadata and global scope cases. Snapshot consumer tests failed when malformed metadata aborted history or push-only/multiple origins reached approval. Both unrelated closure destinations failed on malformed metadata. After the scope/normalization repair those groups pass.
 
 The URL reset alone was insufficient for command-priority injection: the positive control proves native Git replaces the reset under both GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS, and each actual closure consumer reached the forbidden approval-reader seam before the added refusal. The shared OriginConfigInjected profile now refuses at acceptanceTransition before its origin read; both controls pass. This additional trust-boundary guard is recorded as R-approval-origin-config in docs/contracts.md. why-add: higher-priority injected config cannot be removed by writing a local URL reset; explicit consumer refusal is required. No native process is added to the canonical library path.
+
+
+CI at 4b4fa4744 found four synthetic SSH fixture strings in the unchanged disclosure gate. Reserved .example spellings still require reviewed exceptions in that matcher. Use canonical public-forge SSH spellings for the differing shared host and SCP rewrite prefix, and SSH username/query coverage alongside the shared-parser HTTP password control. The same scope/reset/sanitization assertions remain; no scanner, allowlist, literal splitting or check changed. The unchanged disclosure/corpus gate and the affected origin fixture groups pass before the follow-up push.

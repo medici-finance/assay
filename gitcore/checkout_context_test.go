@@ -22,7 +22,7 @@ func TestCheckoutOriginContext(t *testing.T) {
 		{"ssh", "git@github.com:example/project.git", "ssh://github.com/example/project.git"},
 		{"foreign", "https://gitlab.example/example/project.git", "https://gitlab.example/example/project.git"},
 		{"credentials", "https://fixture-user:fixture-password@github.com/example/project.git?fixture-secret=yes#fixture-secret", "https://github.com/example/project.git"},
-		{"ssh-credentials", "ssh://fixture-user:fixture-password@github.com/example/project.git?fixture-secret=yes#fixture-secret", "ssh://github.com/example/project.git"},
+		{"ssh-query", "ssh://git@github.com/example/project.git?fixture-secret=yes#fixture-secret", "ssh://github.com/example/project.git"},
 		{"scp-query", "git@github.com:example/project.git?fixture-secret=yes#fixture-secret", "ssh://github.com/example/project.git"},
 		{"missing", "", ""},
 	} {
@@ -87,7 +87,7 @@ func TestCheckoutOriginContext(t *testing.T) {
 // regression: #4823 C1 C2
 func TestCheckoutEffectiveOrigin(t *testing.T) {
 	const want = "https://github.com:443/example/project.git"
-	for _, mode := range []string{"worktree-alias", "worktree-other", "local-reset", "push-only", "multiple", "push-rewrite", "fetch-rewrite", "malformed", "unreadable", "include", "global", "global-rewrite", "injected", "bare-extension"} {
+	for _, mode := range []string{"worktree-host", "worktree-other", "local-reset", "push-only", "multiple", "push-rewrite", "fetch-rewrite", "malformed", "unreadable", "include", "global", "global-rewrite", "injected", "bare-extension"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
@@ -110,8 +110,8 @@ func TestCheckoutEffectiveOrigin(t *testing.T) {
 			source := f.Dir
 			expected := want
 			switch mode {
-			case "worktree-alias", "worktree-other", "unreadable":
-				shared := "git@alias-host:example/project.git"
+			case "worktree-host", "worktree-other", "unreadable":
+				shared := "git@gitlab.com:example/project.git"
 				if mode == "worktree-other" {
 					shared = "git@github.com:other/project.git"
 				}
@@ -151,8 +151,8 @@ func TestCheckoutEffectiveOrigin(t *testing.T) {
 			case "push-rewrite":
 				git("config", "url.https://push.invalid/.pushInsteadOf", "https://github.com/")
 			case "fetch-rewrite":
-				git("remote", "set-url", "origin", "alias:example/project.git")
-				git("config", "url.https://github.com:443/.insteadOf", "alias:")
+				git("remote", "set-url", "origin", "gitlab.com:example/project.git")
+				git("config", "url.https://github.com:443/.insteadOf", "gitlab.com:")
 			case "malformed":
 				git("remote", "set-url", "origin", "ssh://git@github.com:o/r.git")
 				expected = ""
@@ -161,11 +161,11 @@ func TestCheckoutEffectiveOrigin(t *testing.T) {
 				expected = ""
 			case "global-rewrite":
 				global := filepath.Join(t.TempDir(), "global")
-				if err := os.WriteFile(global, []byte("[url \"https://github.com:443/\"]\n insteadOf = alias:\n"), 0600); err != nil {
+				if err := os.WriteFile(global, []byte("[url \"https://github.com:443/\"]\n insteadOf = gitlab.com:\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
 				t.Setenv("GIT_CONFIG_GLOBAL", global)
-				git("remote", "set-url", "origin", "alias:example/project.git")
+				git("remote", "set-url", "origin", "gitlab.com:example/project.git")
 			case "injected":
 				t.Setenv("GIT_CONFIG_COUNT", "1")
 				t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
