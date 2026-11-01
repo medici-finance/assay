@@ -255,7 +255,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	// The cell marker every child of this role inherits: the only proof of ownership a later
 	// reconcile accepts before it stops a process this role's dead session left behind.
 	env = c.stampCellMarker(env, role)
-	// CELL_ROLE_CONTEXT dispatch_instructions (desk-containers/30): the role's own value, or none —
+	// CELL_ROLE_CONTEXT dispatch_instructions: the role's own value, or none —
 	// an inherited ASSAY_DISPATCH_INSTRUCTIONS is removed either way. Every harness carries it.
 	env = c.dispatchInstructionsEnv(role, harness, env)
 	var commsErr error
@@ -319,7 +319,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		if c.Cadence == nil {
 			argv[len(argv)-1] = codexStandingPrompt(role, argv[len(argv)-1])
 		}
-		// CELL_ROLE_CONTEXT instructions (desk-containers/30): one inline developer-instructions
+		// CELL_ROLE_CONTEXT instructions: one inline developer-instructions
 		// override before the prompt, so the standing and the cadence form both carry it.
 		argv = c.roleContextArgv(role, harness, argv)
 	} else if harness == "cursor" {

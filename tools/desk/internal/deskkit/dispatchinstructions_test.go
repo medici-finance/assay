@@ -10,7 +10,7 @@ const (
 	exampleDigestB = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 )
 
-// regression: desk-containers/30
+// regression: F-role-dispatch-instructions
 func TestParseDispatchInstructions(t *testing.T) {
 	t.Run("two kits parse", func(t *testing.T) {
 		v := "worker=/cells/example/rules/worker.md@sha256:" + exampleDigestA + ",review=/cells/example/rules/review.md@sha256:" + exampleDigestB
@@ -66,7 +66,7 @@ func TestParseDispatchInstructions(t *testing.T) {
 	}
 }
 
-// regression: desk-containers/30
+// regression: F-role-dispatch-instructions
 func TestDispatchRecordInstructionsDigest(t *testing.T) {
 	for _, c := range []struct {
 		name string

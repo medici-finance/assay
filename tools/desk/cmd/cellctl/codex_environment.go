@@ -76,7 +76,7 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 			}
 		}
 	}
-	// A role's dispatch-instruction value (desk-containers/30) and, only beside it, the cell marker
+	// A role's dispatch-instruction value and, only beside it, the cell marker
 	// directory deskdispatch checks custody against. A role without the value forwards neither, so
 	// its argv is what it was before the key existed.
 	for _, kv := range env {

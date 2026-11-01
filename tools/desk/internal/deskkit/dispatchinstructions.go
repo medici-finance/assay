@@ -1,7 +1,7 @@
 package deskkit
 
 // dispatchinstructions.go — the one value cellctl composes and deskdispatch reads to quote a
-// role's own dispatch-instruction file into every prompt of a kit (desk-containers/30).
+// role's own dispatch-instruction file into every prompt of a kit.
 //
 // cellctl resolves a role's `dispatch_instructions` declaration (kit → file) at launch, reads each
 // file and sets ASSAY_DISPATCH_INSTRUCTIONS in the window environment. deskdispatch, run from that
@@ -103,4 +103,6 @@ func ParseDispatchInstructions(v string) ([]DispatchInstruction, error) {
 }
 
 // ValidDispatchInstructionsDigest reports whether d is 64 lowercase hex.
-func ValidDispatchInstructionsDigest(d string) bool { return dispatchInstructionsDigestRe.MatchString(d) }
+func ValidDispatchInstructionsDigest(d string) bool {
+	return dispatchInstructionsDigestRe.MatchString(d)
+}

@@ -412,6 +412,14 @@ func TestRoleContextShippedExample(t *testing.T) {
 	if err := os.WriteFile(p, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The example's dispatch_instructions file ships beside it and is copied with it.
+	rules, err := os.ReadFile(filepath.Join(filepath.Dir(exampleRoleContextPath), "review-dispatch.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "review-dispatch.md"), rules, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	d, err := loadRoleContext(p, dir)
 	if err != nil {
 		t.Fatalf("the shipped example does not validate: %v", err)

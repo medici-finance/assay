@@ -6,7 +6,8 @@
       "agents": ["builtin:lean-reviewer"],
       "dispatch_agent": "lean-reviewer",
       "agents_off": ["general-purpose"],
-      "connectors_off": true
+      "connectors_off": true,
+      "dispatch_instructions": {"review": "review-dispatch.md"}
     }
   }
 }

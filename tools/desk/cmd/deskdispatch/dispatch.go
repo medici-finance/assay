@@ -1234,7 +1234,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.home = home
 	}
 
-	// The role's dispatch-instruction file (desk-containers/30): read, custody-checked and
+	// The role's dispatch-instruction file: read, custody-checked and
 	// digest-checked here, so a refusal leaves no claim, worktree or record line.
 	rules, err := resolveDispatchRules(o)
 	if err != nil {

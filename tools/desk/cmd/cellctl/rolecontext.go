@@ -119,7 +119,7 @@ type roleContextSpec struct {
 	ToolsOff        []string `json:"tools_off"`
 	ConnectorsOff   bool     `json:"connectors_off"`
 	// DispatchInstructions maps a dispatch kit to a file deskdispatch quotes into every prompt of
-	// that kit the window dispatches (desk-containers/30). It reaches deskdispatch through the
+	// that kit the window dispatches. It reaches deskdispatch through the
 	// window environment (deskkit.EnvDispatchInstructions), never through argv.
 	DispatchInstructions map[string]string `json:"dispatch_instructions"`
 }
@@ -1069,7 +1069,7 @@ func (c *Cell) roleContextFor(role, harness string) (*roleContextDecl, *roleCont
 			return d, nil, fmt.Errorf("%w (role %s)", err, role)
 		}
 	default:
-		return d, nil, roleContextFail("role %s runs on %s; a role context is bound for the claude harness only — remove the role's entry or run it on claude", role, harness)
+		return d, nil, roleContextFail("role %s runs on %s; a role context is bound for the claude and codex harnesses only — remove the role's entry or run it on claude or codex", role, harness)
 	}
 	return d, rc, nil
 }
@@ -1128,10 +1128,11 @@ func (c *Cell) roleContextArgv(role, harness string, argv []string) []string {
 	if err != nil {
 		die("%s", err)
 	}
-	out, err := applyClaudeRoleContext(argv, rc)
+	apply := applyClaudeRoleContext
 	if harness == "codex" {
-		out, err = applyCodexRoleContext(argv, rc)
+		apply = applyCodexRoleContext
 	}
+	out, err := apply(argv, rc)
 	if err != nil {
 		die("%s", err)
 	}
@@ -1238,7 +1239,7 @@ func (c *Cell) checkRoleContext(k *checker, cfgArg string, harnessOf func(role s
 				continue
 			}
 		} else if harness != "claude" {
-			k.chk(false, "role context: %s runs on %s; a role context is bound for the claude harness only", role, harness)
+			k.chk(false, "role context: %s runs on %s; a role context is bound for the claude and codex harnesses only", role, harness)
 			continue
 		} else {
 			anyClaude = true

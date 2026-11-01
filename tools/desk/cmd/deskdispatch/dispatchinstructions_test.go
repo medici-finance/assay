@@ -29,7 +29,7 @@ func newRulesFixture(t *testing.T, kits ...string) *rulesFixture {
 		}
 	}
 	for _, kit := range kits {
-		f.files[kit] = f.write(t, filepath.Join(f.rulesDir, kit+"-rules.md"), "# "+kit+" house rules\n\n- Example rule for the "+kit+" kit: cite the brief row you ran.\n")
+		f.files[kit] = f.write(t, filepath.Join(f.rulesDir, kit+"-rules.md"), "# "+kit+" role rules\n\n- Example rule for the "+kit+" kit: cite the brief row you ran.\n")
 		f.digests[kit] = digestOf(t, f.files[kit])
 	}
 	return f
@@ -92,7 +92,7 @@ func runRules(t *testing.T, root string, args ...string) (string, int) {
 	return string(body), rc
 }
 
-// regression: desk-containers/30
+// regression: F-role-dispatch-instructions
 func TestDispatchRulesInPrompt(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -209,7 +209,7 @@ func tail(s string, n int) string {
 	return s[len(s)-n:]
 }
 
-// regression: desk-containers/30
+// regression: F-role-dispatch-instructions
 func TestDispatchRulesRefusals(t *testing.T) {
 	type setup func(t *testing.T, f *rulesFixture, s *stub) (value, file string)
 	worker := func(t *testing.T, f *rulesFixture, _ *stub) (string, string) {
@@ -237,7 +237,7 @@ func TestDispatchRulesRefusals(t *testing.T) {
 		}},
 		{name: "edited after launch", setup: func(t *testing.T, f *rulesFixture, s *stub) (string, string) {
 			v, p := worker(t, f, s)
-			f.write(t, p, "# worker house rules\n\n- An edit made after the window launched.\n")
+			f.write(t, p, "# worker role rules\n\n- An edit made after the window launched.\n")
 			return v, p
 		}},
 		{name: "malformed value", setup: func(t *testing.T, f *rulesFixture, s *stub) (string, string) {
@@ -324,5 +324,52 @@ func TestDispatchRulesRefusals(t *testing.T) {
 	}
 	if strings.Contains(string(src), "func sessionWritablePlace") {
 		t.Error("cellctl's rolecontext.go still defines its own sessionWritablePlace")
+	}
+}
+
+// TestDispatchRulesRepoWorktrees pins the listing the custody re-check adds for the target
+// repository: the main work tree and every linked one, read from the common git directory, so a
+// dispatch-instruction file inside any of them is refused.
+func TestDispatchRulesRepoWorktrees(t *testing.T) {
+	gitRun := func(dir string, args ...string) {
+		t.Helper()
+		if r := runCmd(dir, "git", args...); r.err != nil {
+			t.Fatalf("git %v: %v: %s", args, r.err, r.stderr)
+		}
+	}
+	main := t.TempDir()
+	gitRun(main, "init", "-q")
+	gitRun(main, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "base")
+	linked := filepath.Join(t.TempDir(), "linked")
+	gitRun(main, "worktree", "add", "-q", "--detach", linked)
+	got, err := repoWorktrees(linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, d := range []string{main, linked} {
+		real, err := filepath.EvalSymlinks(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[real] = true
+	}
+	seen := map[string]bool{}
+	for _, d := range got {
+		real, err := filepath.EvalSymlinks(d)
+		if err != nil {
+			t.Fatalf("listed %s, which does not resolve: %v", d, err)
+		}
+		seen[real] = true
+	}
+	for d := range want {
+		if !seen[d] {
+			t.Errorf("work tree %s missing from %v", d, got)
+		}
+	}
+	bare := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(bare))
+	if outside, err := repoWorktrees(bare); err != nil || len(outside) != 0 {
+		t.Errorf("a directory outside any repository listed %v, err %v; want none", outside, err)
 	}
 }

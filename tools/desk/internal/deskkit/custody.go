@@ -2,7 +2,7 @@ package deskkit
 
 // custody.go — the file-identity custody check shared by cellctl (the role-context declaration
 // and every file it names) and deskdispatch (a role's dispatch-instruction file). Moved from
-// cellctl's rolecontext.go unchanged in behaviour (desk-containers/30); neither binary carries a
+// cellctl's rolecontext.go unchanged in behaviour; neither binary carries a
 // copy.
 
 import (

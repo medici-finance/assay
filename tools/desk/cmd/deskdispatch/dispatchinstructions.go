@@ -1,7 +1,7 @@
 package main
 
 // dispatchinstructions.go — a role's own dispatch-instruction file, quoted into the prompt of
-// every dispatch of one kit (desk-containers/30).
+// every dispatch of one kit.
 //
 // cellctl reads the role's `dispatch_instructions` declaration at launch and sets
 // ASSAY_DISPATCH_INSTRUCTIONS (deskkit.EnvDispatchInstructions) in the window: kit → absolute path
@@ -105,7 +105,7 @@ func resolveDispatchRules(o dispatchOpts) (*dispatchRules, error) {
 }
 
 // dispatchRulesPlaces is the run's own places added to the cell's: --root, the top level of the
-// git work tree this process runs in, and every worktree the target repository lists.
+// git work tree this process runs in, and every work tree of the target repository.
 func dispatchRulesPlaces(o dispatchOpts) ([]deskkit.CustodyPlace, error) {
 	var places []deskkit.CustodyPlace
 	if root := strings.TrimSpace(o.root); root != "" {
@@ -122,17 +122,61 @@ func dispatchRulesPlaces(o dispatchOpts) ([]deskkit.CustodyPlace, error) {
 		places = append(places, deskkit.CustodyPlace{Label: "the git work tree deskdispatch runs in " + dir, Dir: dir})
 	}
 	if root := strings.TrimSpace(o.root); root != "" {
-		list := runCmd(root, "git", "worktree", "list", "--porcelain")
-		if list.err != nil {
-			return nil, fmt.Errorf("git worktree list in %s: %s", root, firstLine(toolMessage(list.stderr)))
+		dirs, err := repoWorktrees(root)
+		if err != nil {
+			return nil, err
 		}
-		for _, line := range strings.Split(list.stdout, "\n") {
-			if dir, ok := strings.CutPrefix(strings.TrimSpace(line), "worktree "); ok && dir != "" {
-				places = append(places, deskkit.CustodyPlace{Label: "the target repository's worktree " + dir, Dir: dir})
-			}
+		for _, dir := range dirs {
+			places = append(places, deskkit.CustodyPlace{Label: "the target repository's worktree " + dir, Dir: dir})
 		}
 	}
 	return places, nil
+}
+
+// repoWorktrees lists the work trees of the repository at root without running `git worktree`:
+// the main work tree above the common git directory, and the tree each linked entry's
+// worktrees/<name>/gitdir file points into. Only `git rev-parse` runs, the one git shape the
+// subprocess guard admits for a read (reviewguard_test.go). A root outside any repository lists
+// nothing; a common directory or an entry that cannot be read refuses, since a place that cannot
+// be examined cannot be ruled out.
+func repoWorktrees(root string) ([]string, error) {
+	common := runCmd(root, "git", "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if common.err != nil {
+		if strings.Contains(common.stderr, "not a git repository") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("git rev-parse --git-common-dir in %s: %s", root, firstLine(toolMessage(common.stderr)))
+	}
+	dir := strings.TrimSpace(common.stdout)
+	if dir == "" {
+		return nil, nil
+	}
+	var trees []string
+	if filepath.Base(dir) == ".git" {
+		trees = append(trees, filepath.Dir(dir))
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "worktrees"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return trees, nil
+		}
+		return nil, fmt.Errorf("list the linked work trees of %s: %v", root, err)
+	}
+	for _, e := range entries {
+		raw, err := os.ReadFile(filepath.Join(dir, "worktrees", e.Name(), "gitdir"))
+		if err != nil {
+			return nil, fmt.Errorf("read the gitdir of linked work tree %s: %v", e.Name(), err)
+		}
+		gitdir := strings.TrimSpace(string(raw))
+		if gitdir == "" {
+			continue
+		}
+		if !filepath.IsAbs(gitdir) {
+			gitdir = filepath.Join(dir, "worktrees", e.Name(), gitdir)
+		}
+		trees = append(trees, filepath.Dir(gitdir))
+	}
+	return trees, nil
 }
 
 // writeDispatchRules appends the block after the class kit. Nothing is written when the run took
