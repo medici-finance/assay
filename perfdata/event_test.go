@@ -111,7 +111,7 @@ func TestEventPrivacy(t *testing.T) {
 	})
 
 	t.Run("raw locators are refused", func(t *testing.T) {
-		for _, loc := range []string{"medici-finance/assay#123", "session-1234", "https://example.test/x", "/home/user/repo"} {
+		for _, loc := range []string{"medici-finance/assay#123", "session-1234", "https://example.test/x", "/srv/checkout/repo"} {
 			c := wfCtx()
 			c.Session = loc
 			_, _, err := seal(t, perfdata.KindTool, perfdata.ProfileWorkflow, c, toolPayload("statusgen", 1, 1), 1)
