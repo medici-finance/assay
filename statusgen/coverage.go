@@ -162,11 +162,7 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 			}
 			obs, texts := observeBriefTexts(root, path, s.Name+"/"+num, bf)
 			if opts.readSets != nil {
-				for rowID, ws := range obs.Witnesses {
-					for i := range ws {
-						opts.readSets.observe(path, obs.BriefRel, rowID, &ws[i])
-					}
-				}
+				opts.readSets.observeBrief(path, obs.BriefRel, obs.Witnesses)
 			}
 			observed[obs.ID] = observedBrief{Path: path, Obs: obs, WitnessTexts: texts}
 			in.Briefs = append(in.Briefs, obs)

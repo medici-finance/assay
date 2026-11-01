@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"maps"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -844,7 +847,9 @@ func TestFloorEvalBudget(t *testing.T) {
 	defer func(r int, d time.Duration, b int64) { floorEvalRuns, floorEvalBudget, exportEvalBytes = r, d, b }(floorEvalRuns, floorEvalBudget, exportEvalBytes)
 	p := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
 	r := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./r"}}
-	floorEvalRuns = 1
+	// The control floor starts three go tool runs: the one read of the
+	// evaluator's tool, go env GOWORK and go list.
+	floorEvalRuns = 3
 	if fl := src.goFloor(commit, p); fl.Problem != "" {
 		t.Fatalf("control floor: %q", fl.Problem)
 	}
@@ -932,4 +937,395 @@ func TestFloorFakeGoBranches(t *testing.T) {
 			t.Errorf("want a problem for a run whose output was cut off; got %v", fl.Files)
 		}
 	})
+}
+
+// importHistory commits on top of root's HEAD, through one fast-import run,
+// one commit per entry of commits, each setting the named paths to the blob
+// at the given index of blobs. It returns the full commit ids in order.
+func importHistory(t *testing.T, root string, blobs []string, commits []map[string]int) []string {
+	t.Helper()
+	ref := gitPipe(t, root, "", "symbolic-ref", "HEAD")
+	var b strings.Builder
+	for i, body := range blobs {
+		fmt.Fprintf(&b, "blob\nmark :%d\ndata %d\n%s\n", i+1, len(body), body)
+	}
+	for i, c := range commits {
+		fmt.Fprintf(&b, "commit %s\nmark :%d\ncommitter f <f@example.com> %d +0000\ndata 7\nhistory\n", ref, len(blobs)+i+1, 1700000000+i)
+		if i == 0 {
+			fmt.Fprintf(&b, "from %s\n", gitFullHead(t, root))
+		}
+		paths := slices.Sorted(maps.Keys(c))
+		for _, p := range paths {
+			fmt.Fprintf(&b, "M 100644 :%d %s\n", c[p]+1, p)
+		}
+	}
+	for i := range commits {
+		fmt.Fprintf(&b, "get-mark :%d\n", len(blobs)+i+1)
+	}
+	b.WriteString("done\n")
+	marks := strings.Fields(gitPipe(t, root, b.String(), "fast-import", "--quiet", "--done"))
+	if len(marks) != len(commits) {
+		t.Fatalf("fast-import named %d commits, want %d", len(marks), len(commits))
+	}
+	return marks
+}
+
+// historicRows is a brief version of n witness rows numbered from first,
+// none carrying a read-set token, padded with blank lines to size bytes when
+// size is larger.
+func historicRows(first, n, size int) string {
+	var b strings.Builder
+	b.WriteString("# Brief\n\n## Evidence\n\n" + witnessHeader + "\n")
+	for i := first; i < first+n; i++ {
+		fmt.Fprintf(&b, "| %d | `true` | pass exit=0 | sha256:6f1a0b3c9d22 | 2026-08-13 | r |\n", i)
+	}
+	if pad := size - b.Len(); pad > 0 {
+		b.WriteString(strings.Repeat("\n", pad))
+	}
+	return b.String()
+}
+
+// tokenRows is a brief whose n Evidence rows each carry the read-set token
+// for digest, with the witnesses that go with them keyed by row id.
+func tokenRows(digest string, n int) (string, map[string][]evaluation.Witness) {
+	token := evaluation.ReadSetCellToken(digest, "")
+	ws := map[string][]evaluation.Witness{}
+	var rows []string
+	for i := 1; i <= n; i++ {
+		id := strconv.Itoa(i)
+		rows = append(rows, "| "+id+" | `true` | pass exit=0 | sha256:6f1a0b3c9d22 | 2026-08-13 | "+vfRunner+" @ b988d175ab12 "+token+" |")
+		ws[id] = []evaluation.Witness{{Command: "true", Date: "2026-08-13", Runner: vfRunner + " @ b988d175ab12 " + token}}
+	}
+	return "# Brief\n\n## Evidence\n\n" + witnessTableFor(rows...) + "\n", ws
+}
+
+// regression: #2026
+// TestCoverageObserveBudgetReadSet — one read-set file named by many token
+// rows is read once, and every row's content is charged to the evaluation's
+// budget: past it a row is refused, so the bytes the observations allocate
+// together stay near one file however many rows name it.
+func TestCoverageObserveBudgetReadSet(t *testing.T) {
+	const fileCap, rows = 1 << 20, 64
+	defer func(a, b int64) { readSetMaxBytes, observeEvalBytes = a, b }(readSetMaxBytes, observeEvalBytes)
+	readSetMaxBytes, observeEvalBytes = fileCap, 8*fileCap
+	digest := strings.Repeat("a1", 32)
+	brief, ws := tokenRows(digest, rows)
+	const briefRel = "docs/streams/s/brief-01-x.md"
+	root := t.TempDir()
+	writes(briefRel, brief, "docs/streams/s/reads/"+digest, strings.Repeat("\n", fileCap-1))(t, root)
+	mustGitInit(t, root)
+	src := newReadSetSource(root)
+	defer src.close()
+	got := allocated(func() { src.observeBrief(filepath.Join(root, filepath.FromSlash(briefRel)), briefRel, ws) })
+	t.Logf("%d rows naming one %d-byte read-set file allocated %d bytes", rows, fileCap-1, got)
+	if got > 6*fileCap {
+		t.Errorf("the observations allocated %d bytes, want under %d: the file was read per row", got, 6*fileCap)
+	}
+	var ok, refused int
+	var first *byte
+	for id, w := range ws {
+		o := w[0].ReadSet
+		switch {
+		case o == nil:
+			t.Fatalf("row %s: no observation", id)
+		case o.Problem == "" && o.Found:
+			ok++
+			if first == nil {
+				first = &o.Content[0]
+			} else if &o.Content[0] != first {
+				t.Errorf("row %s holds its own copy of the read-set file", id)
+			}
+		case strings.Contains(o.Problem, "observations already hold the cap"):
+			refused++
+		default:
+			t.Errorf("row %s: %s", id, obsText(o))
+		}
+	}
+	if ok == 0 || ok > 8 || ok+refused != rows {
+		t.Errorf("%d rows observed and %d refused, want between 1 and 8 observed and the rest refused", ok, refused)
+	}
+}
+
+// regression: #2026
+// TestCoverageObserveBudgetIntroTouches — the introduction walk keeps only
+// the keys the brief's token rows ask for: a history that brings a version of
+// many rows back across many touching commits allocates about one read of
+// that version, whatever the number of touches.
+func TestCoverageObserveBudgetIntroTouches(t *testing.T) {
+	const touches = 200
+	digest := strings.Repeat("b2", 32)
+	head, ws := tokenRows(digest, 1)
+	wide := historicRows(1000, 20000, 0)
+	const briefRel = "docs/streams/s/brief-01-x.md"
+	root := t.TempDir()
+	writes(briefRel, head)(t, root)
+	mustGitInit(t, root)
+	var commits []map[string]int
+	for i := 0; i < touches; i++ {
+		commits = append(commits, map[string]int{briefRel: i % 2})
+	}
+	importHistory(t, root, []string{wide, head}, commits)
+	src := newReadSetSource(root)
+	defer src.close()
+	got := allocated(func() { src.observeBrief(filepath.Join(root, filepath.FromSlash(briefRel)), briefRel, ws) })
+	t.Logf("%d touches of a %d-byte version allocated %d bytes", touches, len(wide), got)
+	// Parsing a version allocates about fifteen times its size (each row is
+	// split into cells and keyed); the bound is two such reads, whatever the
+	// number of touches.
+	if limit := 30 * len(wide); got > uint64(limit) {
+		t.Errorf("the introduction walk allocated %d bytes, want under %d: it held every row of every touch", got, limit)
+	}
+	if o := ws["1"][0].ReadSet; o == nil || o.Problem != "" {
+		t.Errorf("observation %s: want no problem", obsText(o))
+	}
+	// The budget is charged the two versions once and, per touch, only the
+	// one wanted key: a walk keeping every row is charged every row's key at
+	// every touch.
+	if limit := int64(len(wide)+len(head)) + touches*1024; src.observed > limit {
+		t.Errorf("the walk charged %d bytes to the budget, want at most %d: it compared keys the head does not ask for", src.observed, limit)
+	}
+}
+
+// regression: #2026
+// TestCoverageObserveBudgetSharedHistory — the history bytes of every brief
+// are charged to one evaluation budget, versions shared between briefs
+// charged for each: many briefs over the same near-cap history are refused
+// past the budget, so the bytes they parse together stay near the budget.
+func TestCoverageObserveBudgetSharedHistory(t *testing.T) {
+	const blob, versions, briefs = 256 << 10, 4, 24
+	defer func(a, b, c int64) { introMaxBlobBytes, introMaxHistoryBytes, observeEvalBytes = a, b, c }(introMaxBlobBytes, introMaxHistoryBytes, observeEvalBytes)
+	introMaxBlobBytes, introMaxHistoryBytes, observeEvalBytes = blob, versions*blob+(64<<10), 3*versions*blob
+	digest := strings.Repeat("c3", 32)
+	head, _ := tokenRows(digest, 1)
+	var blobs []string
+	for v := 0; v < versions; v++ {
+		blobs = append(blobs, historicRows(1000+v*4000, 3000, blob-1))
+	}
+	blobs = append(blobs, head)
+	rel := func(i int) string { return fmt.Sprintf("docs/streams/s/brief-%02d-x.md", i+1) }
+	root := t.TempDir()
+	for i := 0; i < briefs; i++ {
+		writes(rel(i), head)(t, root)
+	}
+	mustGitInit(t, root)
+	var commits []map[string]int
+	for v := 0; v <= versions; v++ {
+		c := map[string]int{}
+		for i := 0; i < briefs; i++ {
+			c[rel(i)] = v
+		}
+		commits = append(commits, c)
+	}
+	importHistory(t, root, blobs, commits)
+	src := newReadSetSource(root)
+	defer src.close()
+	all := map[string]map[string][]evaluation.Witness{}
+	for i := 0; i < briefs; i++ {
+		_, all[rel(i)] = tokenRows(digest, 1)
+	}
+	start := time.Now()
+	got := allocated(func() {
+		for i := 0; i < briefs; i++ {
+			src.observeBrief(filepath.Join(root, filepath.FromSlash(rel(i))), rel(i), all[rel(i)])
+		}
+	})
+	t.Logf("%d briefs sharing a %d-byte history allocated %d bytes in %s", briefs, versions*blob, got, time.Since(start))
+	// Parsing allocates about fifteen times the bytes parsed; the bound is
+	// the budget's worth of parsing, whatever the number of briefs.
+	if limit := 16 * observeEvalBytes; got > uint64(limit) {
+		t.Errorf("the observations allocated %d bytes, want under %d: shared history was parsed past the budget", got, limit)
+	}
+	var ok, refused int
+	for i := 0; i < briefs; i++ {
+		switch o := all[rel(i)]["1"][0].ReadSet; {
+		case o != nil && o.Problem == "":
+			ok++
+		case o != nil && strings.Contains(o.Problem, "observations already hold the cap"):
+			refused++
+		default:
+			t.Errorf("%s: %s", rel(i), obsText(o))
+		}
+	}
+	if ok == 0 || ok > 3 || ok+refused != briefs {
+		t.Errorf("%d briefs observed and %d refused, want between 1 and 3 observed and the rest refused", ok, refused)
+	}
+}
+
+// regression: #2026
+// TestCoverageObserveBudgetTouchCompares — each touching commit's comparison
+// of the kept keys is charged to the evaluation's budget: a history touching
+// the brief's token rows more times than the budget allows is refused, while
+// the same versions touched a few times are observed.
+func TestCoverageObserveBudgetTouchCompares(t *testing.T) {
+	digest := strings.Repeat("d4", 32)
+	head, ws := tokenRows(digest, 500)
+	defer func(n int64) { observeEvalBytes = n }(observeEvalBytes)
+	observeEvalBytes = int64(16 * len(head))
+	for _, c := range []struct {
+		touches int
+		refused bool
+	}{{4, false}, {200, true}} {
+		root := t.TempDir()
+		const briefRel = "docs/streams/s/brief-01-x.md"
+		writes(briefRel, head)(t, root)
+		mustGitInit(t, root)
+		var commits []map[string]int
+		for i := 0; i < c.touches; i++ {
+			commits = append(commits, map[string]int{briefRel: (i + 1) % 2})
+		}
+		importHistory(t, root, []string{head, head + "\n"}, commits)
+		src := newReadSetSource(root)
+		w := maps.Clone(ws)
+		for id := range w {
+			w[id] = slices.Clone(w[id])
+		}
+		src.observeBrief(filepath.Join(root, filepath.FromSlash(briefRel)), briefRel, w)
+		src.close()
+		o := w["1"][0].ReadSet
+		if got := o != nil && strings.Contains(o.Problem, "observations already hold the cap"); got != c.refused {
+			t.Errorf("%d touches: observation %s, want refused %v", c.touches, obsText(o), c.refused)
+		}
+	}
+}
+
+// regression: #2026
+// TestCoverageFloorBudgetCharges — the floor's per-evaluation budgets are
+// charged as each step starts, failed or not: every go tool run (the read of
+// the evaluator's tool, go env GOWORK, go list) counts against floorEvalRuns;
+// an export that fails after it began writing is charged its bytes, and the
+// floor its time; and a link target is checked before anything is written.
+func TestCoverageFloorBudgetCharges(t *testing.T) {
+	defer func(r int, b int64) { floorEvalRuns, exportEvalBytes = r, b }(floorEvalRuns, exportEvalBytes)
+	t.Run("each go tool run as it starts", func(t *testing.T) {
+		src, commit := goFloorFixture(t)
+		floorEvalRuns = 2
+		fl := src.goFloor(commit, evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}})
+		if !strings.Contains(fl.Problem, "go tool 2 times, its cap") {
+			t.Errorf("want the floor refused at its third go tool run; got %v (%q)", fl.Files, fl.Problem)
+		}
+		floorEvalRuns = 64
+	})
+
+	repo := t.TempDir()
+	writes("seed.txt", "seed\n")(t, repo)
+	mustGitInit(t, repo)
+	rng := rand.New(rand.NewPCG(1, 2))
+	noise := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = byte(rng.Uint32())
+		}
+		return string(b)
+	}
+	const size = 256 << 10
+	good := gitPipe(t, repo, noise(size), "hash-object", "-w", "--stdin")
+	torn := gitPipe(t, repo, noise(size), "hash-object", "-w", "--stdin")
+	obj := filepath.Join(repo, ".git", "objects", torn[:2], torn[2:])
+	b, err := os.ReadFile(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(obj, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj, b[:len(b)/2], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitOf := func(lines ...string) string {
+		return gitPipe(t, repo, "", "commit-tree", gitPipe(t, repo, strings.Join(lines, "\n")+"\n", "mktree"), "-m", "fixture: budget")
+	}
+	bad := commitOf("100644 blob "+good+"\tf1", "100644 blob "+torn+"\tf2")
+	small := commitOf("100644 blob " + gitPipe(t, repo, "x\n", "hash-object", "-w", "--stdin") + "\tf")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	t.Run("a failed export's bytes and time", func(t *testing.T) {
+		exportEvalBytes = 2 * size
+		src := newReadSetSource(repo)
+		defer src.close()
+		if _, why := src.export(bad); why == "" {
+			t.Fatal("want the export of a torn object to fail")
+		}
+		if _, why := src.export(small); !strings.Contains(why, "already hold the cap") {
+			t.Errorf("want the failed export charged to the evaluation; got %q", why)
+		}
+		timed := newReadSetSource(repo)
+		defer timed.close()
+		if fl := timed.goFloor(bad, evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./..."}}); fl.Problem == "" {
+			t.Fatalf("want a problem for a floor whose export failed; got %v", fl.Files)
+		}
+		if timed.floorSpent <= 0 {
+			t.Errorf("a floor whose export failed charged %s of wall time, want more than none", timed.floorSpent)
+		}
+	})
+
+	t.Run("a link target before any write", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("a read-only directory is POSIX-only here")
+		}
+		locked := t.TempDir()
+		if err := os.Chmod(locked, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(locked, 0o755)
+		t.Setenv("TMPDIR", locked)
+		climb := commitOf("100644 blob "+good+"\tf1", "120000 blob "+gitPipe(t, repo, "../../outside", "hash-object", "-w", "--stdin")+"\tl")
+		_, n, err := exportTreeWithin(repo, climb, exportMaxBytes)
+		if err == nil || !strings.Contains(err.Error(), "symbolic link whose target") || n != 0 {
+			t.Errorf("want the link refused before the export directory is made, nothing charged; got %d bytes, %v", n, err)
+		}
+	})
+}
+
+// regression: #2026
+// TestCoverageFloorOutputCapped — a floor go tool run's output is read as it
+// arrives: standard output past floorMaxOutputBytes stops the run and is a
+// problem, and standard error is kept only to floorMaxStderrBytes, each having
+// allocated far less than the tool wrote.
+func TestCoverageFloorOutputCapped(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a shell-script go tool on PATH is POSIX-only")
+	}
+	const wrote = 16 << 20
+	defer func(o int64, d time.Duration) { floorMaxOutputBytes, floorWaitDelay = o, d }(floorMaxOutputBytes, floorWaitDelay)
+	floorMaxOutputBytes, floorWaitDelay = 1<<20, 200*time.Millisecond
+	pkg := `{\"ImportPath\":\"example.com/fl/p\",\"Dir\":\"$PWD/p\",\"GoFiles\":[\"p.go\"],\"Module\":{\"GoMod\":\"$PWD/go.mod\",\"Main\":true}}`
+	g := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
+	for _, c := range []struct{ name, before, want string }{
+		{"standard output", "/usr/bin/head -c " + strconv.Itoa(wrote) + ` /dev/zero | /usr/bin/tr '\0' ' '`, "go list wrote more than the cap of 1048576 bytes"},
+		{"standard error", "/usr/bin/head -c " + strconv.Itoa(wrote) + " /dev/zero >&2; exit 1", "go list failed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fakeGo(t, c.before, pkg)
+			src, commit := goFloorFixture(t)
+			var fl evaluation.GoFloor
+			got := allocated(func() { fl = src.goFloor(commit, g) })
+			t.Logf("a go list writing %d bytes to %s allocated %d bytes", wrote, c.name, got)
+			if !strings.Contains(fl.Problem, c.want) {
+				t.Errorf("want %q; got %v (%q)", c.want, fl.Files, fl.Problem)
+			}
+			if got > wrote/4 {
+				t.Errorf("the floor allocated %d bytes, want under %d: the output was read whole", got, wrote/4)
+			}
+		})
+	}
+}
+
+// regression: #2026
+// TestCoverageFloorOutsideTree — a recorded working directory that resolves,
+// through a link in the tree, to a directory outside it is a problem before
+// any go tool run starts.
+func TestCoverageFloorOutsideTree(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating a symbolic link needs a privilege there")
+	}
+	tree, outside := t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(tree, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	scratch := t.TempDir()
+	tool := &floorTool{goroot: filepath.Join(scratch, "goroot"), modcache: filepath.Join(scratch, "mod")}
+	fl := runFloor(tool, scratch, tree, floorPlan{dir: "sub"}, func() string { return "a go tool run started" })
+	if fl.Problem != "the recorded working directory is outside the tree" {
+		t.Errorf("want the outside-tree problem before any run; got %v (%q)", fl.Files, fl.Problem)
+	}
 }

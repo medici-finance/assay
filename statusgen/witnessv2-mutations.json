@@ -1,5 +1,5 @@
 {
- "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness|CandidateCoverage' -count=1 -timeout 280s",
+ "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff|IntroIgnoresCommitDate' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness|CandidateCoverage' -count=1 -timeout 280s",
  "control": {
   "name": "CONTROL \u2014 the v2 judge never compares a recorded blob digest (a changed input still releases)",
   "file": "evaluation/witness.go",
@@ -492,6 +492,84 @@
    "file": "evaluation/witness.go",
    "old": "\t\t\t\t\tif flag != 0 && rest == \"\" && i < len(words) {",
    "new": "\t\t\t\t\tif false && flag != 0 && rest == \"\" && i < len(words) {"
+  },
+  {
+   "name": "budget: a charge over the evaluation's observation budget taken (review S12)",
+   "file": "readset_adapter.go",
+   "old": "\tif n > observeEvalBytes-s.observed {",
+   "new": "\tif false && n > observeEvalBytes-s.observed {"
+  },
+  {
+   "name": "budget: the read-set file read again for every token row (review S12)",
+   "file": "readset_adapter.go",
+   "old": "\tr, ok := s.files[p]\n",
+   "new": "\tr, ok := s.files[p]\n\tok = false\n"
+  },
+  {
+   "name": "budget: a row sharing a read-set file not charged its content (review S12)",
+   "file": "readset_adapter.go",
+   "old": "\tif why := s.charge(int64(len(r.content))); why != \"\" {\n\t\treturn nil, false, why\n",
+   "new": "\tif why := s.charge(0); why != \"\" {\n\t\treturn nil, false, why\n"
+  },
+  {
+   "name": "budget: a brief's history bytes not charged to the evaluation (review S13)",
+   "file": "readset_adapter.go",
+   "old": "\tif why := s.charge(total); why != \"\" {",
+   "new": "\tif why := s.charge(0); why != \"\" {"
+  },
+  {
+   "name": "budget: a touching commit's key comparison not charged (review S11)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif why := s.charge(cost); why != \"\" {",
+   "new": "\t\tif why := s.charge(0); why != \"\" {"
+  },
+  {
+   "name": "budget: the introduction walk keeps every row, not only the wanted keys (review S11)",
+   "file": "readset_adapter.go",
+   "old": "\t\t\tif !wanted[key] {",
+   "new": "\t\t\tif false && !wanted[key] {"
+  },
+  {
+   "name": "budget: a row with two introducers read as introduced once (review S11)",
+   "file": "readset_adapter.go",
+   "old": "!inParent && in.n < 2 {",
+   "new": "!inParent && in.n < 1 {"
+  },
+  {
+   "name": "budget: a go tool run not counted as it starts (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\ts.floorRuns++\n\treturn \"\"\n",
+   "new": "\treturn \"\"\n"
+  },
+  {
+   "name": "budget: a failed export not charged its bytes (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\ts.exported += n\n\tif err != nil {",
+   "new": "\tif err == nil {\n\t\ts.exported += n\n\t}\n\tif err != nil {"
+  },
+  {
+   "name": "budget: a floor whose export fails not charged its time (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\tdefer func() { s.floorSpent += time.Since(start) }()\n",
+   "new": "\tdefer func() {}()\n"
+  },
+  {
+   "name": "budget: a climbing link target not checked before the export writes (review S14)",
+   "file": "readset_adapter.go",
+   "old": "\t\tif e.Mode == \"120000\" && !linkTargetInTree(targets[e.OID]) {",
+   "new": "\t\tif false && e.Mode == \"120000\" && !linkTargetInTree(targets[e.OID]) {"
+  },
+  {
+   "name": "budget: a floor go tool run's output read whole (review S15)",
+   "file": "readset_adapter.go",
+   "old": "\tif left := c.max - int64(c.buf.Len()); int64(len(p)) > left {",
+   "new": "\tif left := c.max - int64(c.buf.Len()); false && int64(len(p)) > left {"
+  },
+  {
+   "name": "floor: a working directory linked outside the tree run (review f-floor-branches-unpinned)",
+   "file": "readset_adapter.go",
+   "old": "\tif _, ok := inRoots(roots, real); !ok {",
+   "new": "\tif _, ok := inRoots(roots, real); false && !ok {"
   }
  ]
 }

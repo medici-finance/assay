@@ -58,12 +58,47 @@ type readSetSource struct {
 	tool    *floorTool
 	toolWhy string
 	scratch string
-	// exported is the bytes every export so far wrote; floorRuns and
-	// floorSpent count the floor's go tool runs and their wall time, for the
+	// exported is the bytes every export so far may have written, charged
+	// when its writing starts; floorRuns counts the go tool runs started and
+	// floorSpent the wall time of floors, exports included, for the
 	// per-evaluation caps.
 	exported   int64
 	floorRuns  int
 	floorSpent time.Duration
+	// wanted is, per brief, the identity keys of its token rows at head: the
+	// only keys introductions keeps. files memoizes each read-set file read,
+	// by path. observed is the bytes the evaluation's observations have read
+	// or parsed together, held under observeEvalBytes (charge).
+	wanted   map[string]map[string]bool
+	files    map[string]readSetRead
+	observed int64
+}
+
+// readSetRead is one read-set file read: its content, whether it was found,
+// and why it was refused.
+type readSetRead struct {
+	content []byte
+	found   bool
+	problem string
+}
+
+// observeEvalBytes bounds, across one evaluation, the bytes the read-set
+// observations read and parse together, whatever the number of briefs, rows
+// or touching commits: every brief's history (its distinct versions, sized
+// before any is read, charged again for each brief even when briefs share
+// versions), the row keys each touching commit compares, and the read-set
+// content each token row hands the library to digest and parse. Past it an
+// observation is refused, which the library judges could-not-check.
+var observeEvalBytes int64 = 256 << 20
+
+// charge takes n bytes from the evaluation's observation budget, or returns
+// the refusal when they do not fit; a refused charge takes nothing.
+func (s *readSetSource) charge(n int64) string {
+	if n > observeEvalBytes-s.observed {
+		return fmt.Sprintf("the evaluation's read-set observations already hold the cap of %d bytes", observeEvalBytes)
+	}
+	s.observed += n
+	return ""
 }
 
 // introRow is the commit that introduced a witness row with a given identity
@@ -74,7 +109,8 @@ type introRow struct {
 }
 
 func newReadSetSource(root string) *readSetSource {
-	return &readSetSource{root: root, exports: map[string]string{}, failed: map[string]string{}, intro: map[string]map[string]introRow{}, introWhy: map[string]string{}, floors: map[string]evaluation.GoFloor{}}
+	return &readSetSource{root: root, exports: map[string]string{}, failed: map[string]string{}, intro: map[string]map[string]introRow{}, introWhy: map[string]string{}, floors: map[string]evaluation.GoFloor{},
+		wanted: map[string]map[string]bool{}, files: map[string]readSetRead{}}
 }
 
 // close removes every exported tree and the floor runs' scratch directory.
@@ -90,19 +126,50 @@ func (s *readSetSource) close() {
 	if s.scratch != "" {
 		_ = os.RemoveAll(s.scratch)
 	}
-	s.exports, s.failed, s.floors = map[string]string{}, map[string]string{}, map[string]evaluation.GoFloor{}
+	s.exports, s.failed, s.floors, s.files = map[string]string{}, map[string]string{}, map[string]evaluation.GoFloor{}, map[string]readSetRead{}
 	s.tool, s.toolWhy, s.scratch = nil, "", ""
 	s.exported, s.floorRuns, s.floorSpent = 0, 0, 0
+}
+
+// observeBrief fills w.ReadSet for every witness of one brief whose Runner
+// cell carries a `reads sha256:` token (observe), in row order. It first
+// names the brief's token row keys, so the history walk keeps those keys
+// only.
+func (s *readSetSource) observeBrief(briefPath, briefRel string, witnesses map[string][]evaluation.Witness) {
+	ids := make([]string, 0, len(witnesses))
+	wanted := map[string]bool{}
+	for id, ws := range witnesses {
+		ids = append(ids, id)
+		for _, w := range ws {
+			if d, _, ok := evaluation.ReadSetToken(w.Runner); ok && d != "" {
+				wanted[evaluation.WitnessRowKey(id, w.Command, w.Date, w.Runner)] = true
+			}
+		}
+	}
+	if s.wanted[briefRel] == nil {
+		s.wanted[briefRel] = wanted
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		ws := witnesses[id]
+		for i := range ws {
+			s.observe(briefPath, briefRel, id, &ws[i])
+		}
+	}
 }
 
 // observe fills w.ReadSet for a witness whose Runner cell carries a
 // `reads sha256:` token. briefPath is the brief file on disk, briefRel its
 // repository path, rowID/date the witness's `#` and Date cells. Nothing it
 // reads is unbounded: the read-set file is read only when it is a regular
-// file within readSetMaxBytes, the introduction's history within its caps
-// (introductions), and the file's existence at the introduction commit is a
-// batch check that reads no content. A refusal is the observation's Problem,
-// which the library judges could-not-check.
+// file within readSetMaxBytes, once per path, and each row's content is
+// charged to the evaluation's budget (readSet); the introduction's history is
+// read within its caps and that budget (introductions), and the file's
+// existence at the introduction commit is a batch check that reads no
+// content. A refusal is the observation's Problem, which the library judges
+// could-not-check. A brief observed row by row, not through observeBrief,
+// keeps the key of the first row observed; a later row's introduction is then
+// not found, so its read set is ignored, never bound.
 func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation.Witness) {
 	digest, _, ok := evaluation.ReadSetToken(w.Runner)
 	if !ok || digest == "" {
@@ -110,11 +177,14 @@ func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation
 	}
 	o := &evaluation.ReadSetObservation{}
 	w.ReadSet = o
-	o.Content, o.Found, o.Problem = readSetFile(filepath.Join(filepath.Dir(briefPath), evaluation.ReadSetDir, digest))
+	key := evaluation.WitnessRowKey(rowID, w.Command, w.Date, w.Runner)
+	if s.wanted[briefRel] == nil {
+		s.wanted[briefRel] = map[string]bool{key: true}
+	}
+	o.Content, o.Found, o.Problem = s.readSet(filepath.Join(filepath.Dir(briefPath), evaluation.ReadSetDir, digest))
 	if o.Problem != "" {
 		return
 	}
-	key := evaluation.WitnessRowKey(rowID, w.Command, w.Date, w.Runner)
 	intro, problem := s.introductions(briefRel)
 	if problem != "" {
 		o.Problem = problem
@@ -139,10 +209,35 @@ var (
 	introMaxHistoryBytes int64 = 64 << 20
 )
 
+// readSet is the read-set file at p for one token row. The file is read
+// once per evaluation (readSetFile), no further than the bytes the budget has
+// left, and the rows naming it share that one content; each row's content is
+// charged to the budget, since the library digests and parses it per row.
+func (s *readSetSource) readSet(p string) ([]byte, bool, string) {
+	r, ok := s.files[p]
+	if !ok {
+		r.content, r.found, r.problem = readSetFile(p, observeEvalBytes-s.observed)
+		if r.found {
+			if why := s.charge(int64(len(r.content))); why != "" {
+				r = readSetRead{problem: why}
+			}
+		}
+		s.files[p] = r
+		return r.content, r.found, r.problem
+	}
+	if !r.found || r.problem != "" {
+		return nil, r.found, r.problem
+	}
+	if why := s.charge(int64(len(r.content))); why != "" {
+		return nil, false, why
+	}
+	return r.content, true, ""
+}
+
 // readSetFile reads the read-set file at p: absent is not found, and a file
-// that is not a regular file or is over readSetMaxBytes is a problem, read
-// no further than the cap.
-func readSetFile(p string) (content []byte, found bool, problem string) {
+// that is not a regular file, is over readSetMaxBytes or over left (what the
+// evaluation's budget has left) is a problem, read no further than the cap.
+func readSetFile(p string, left int64) (content []byte, found bool, problem string) {
 	fi, err := os.Lstat(p)
 	if err != nil {
 		return nil, false, ""
@@ -152,6 +247,9 @@ func readSetFile(p string) (content []byte, found bool, problem string) {
 	}
 	if fi.Size() > readSetMaxBytes {
 		return nil, false, fmt.Sprintf("the read-set file holds %d bytes, over the cap of %d", fi.Size(), readSetMaxBytes)
+	}
+	if fi.Size() > left {
+		return nil, false, fmt.Sprintf("the evaluation's read-set observations already hold the cap of %d bytes", observeEvalBytes)
 	}
 	f, err := os.Open(p)
 	if err != nil {
@@ -175,14 +273,19 @@ func readSetFile(p string) (content []byte, found bool, problem string) {
 // part, so a commit date (which its author sets) cannot choose the
 // introduction. A key more than one commit introduces (two branches that
 // each added it, or a row removed and added again) has no introduction: an
-// ambiguous history never binds a read set.
+// ambiguous history never binds a read set. Only the keys the brief's token
+// rows ask for (s.wanted) are kept, and each is counted to two introducers at
+// most, so what the walk holds follows the head brief, not its history.
 //
 // The history is walked in process (gitcore PathHistory: replacement objects
 // are never read). Each distinct brief blob, the parents' included, is sized
 // first by one batch check that reads no content: one over
 // introMaxBlobBytes, or all of them together over introMaxHistoryBytes, is
-// the returned problem and nothing is read. The blobs are then streamed once
-// through the coverage port and parsed line by line, never held whole. A
+// the returned problem and nothing is read; the distinct blobs' bytes are
+// then charged to the evaluation's budget (charge), and so is each touching
+// commit's comparison, the bytes of the kept keys its version holds. The blobs
+// are streamed once through the coverage port and parsed line by line, never
+// held whole. A
 // repository whose profile the in-process reader does not cover (a shallow
 // clone, a native discovery or config environment), or a blob that cannot be
 // read, yields no introduction, so every read set there is ignored: a history
@@ -245,7 +348,12 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 			return none, s.introWhy[briefRel]
 		}
 	}
-	rowsOf := map[string]map[string]string{} // blob -> key -> Runner cell (only a cell carrying a read-set token is kept)
+	if why := s.charge(total); why != "" {
+		s.introWhy[briefRel] = why
+		return none, why
+	}
+	wanted := s.wanted[briefRel]
+	rowsOf := map[string]map[string]string{} // blob -> wanted key -> Runner cell (only a cell carrying a read-set token is kept)
 	err = repo.StreamObjects(blobs, func(oid, typ string, size int64, body io.Reader) error {
 		if typ != "blob" || size != sizes[oid].Size {
 			return fmt.Errorf("%s changed between the size check and the read", oid)
@@ -260,8 +368,11 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 				continue
 			}
 			key := evaluation.WitnessRowKey(cells[0], witnessCommandOf(line), cells[witnessCellDate], cells[witnessCellRunner])
+			if !wanted[key] {
+				continue
+			}
 			if _, seen := r[key]; !seen {
-				runner := strings.TrimSpace(cells[witnessCellRunner])
+				runner := strings.Clone(strings.TrimSpace(cells[witnessCellRunner]))
 				if _, _, tok := evaluation.ReadSetToken(runner); !tok {
 					runner = "" // a row with no token can bind no read set
 				}
@@ -277,9 +388,21 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 	if err != nil {
 		return none, ""
 	}
-	introducers := map[string][]introRow{}
+	type introducer struct {
+		row introRow
+		n   int // introducers seen, counted to 2
+	}
+	introducers := map[string]introducer{}
 	for _, t := range touches {
 		held := rowsOf[t.blob]
+		var cost int64
+		for key := range held {
+			cost += int64(len(key))
+		}
+		if why := s.charge(cost); why != "" {
+			s.introWhy[briefRel] = why
+			return none, why
+		}
 		var parents []map[string]string
 		for _, p := range t.parents {
 			if p == "" {
@@ -295,15 +418,19 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 					break
 				}
 			}
-			if !inParent {
-				introducers[key] = append(introducers[key], introRow{commit: t.commit, runner: runner})
+			if in := introducers[key]; !inParent && in.n < 2 {
+				if in.n == 0 {
+					in.row = introRow{commit: t.commit, runner: runner}
+				}
+				in.n++
+				introducers[key] = in
 			}
 		}
 	}
 	m := map[string]introRow{}
-	for key, ins := range introducers {
-		if len(ins) == 1 {
-			m[key] = ins[0]
+	for key, in := range introducers {
+		if in.n == 1 {
+			m[key] = in.row
 		}
 	}
 	s.intro[briefRel] = m
@@ -329,35 +456,59 @@ func (s *readSetSource) GoFloor(commit, entry string) (evaluation.GoFloor, bool)
 
 // goFloor reads the recorded invocation through the allow-list, exports the
 // commit's tree and lists, through the go tool, every in-tree file the
-// invocation compiles.
+// invocation compiles. Its wall time, the export's included, is charged to
+// floorSpent whether it succeeds or not, and each go tool run is charged to
+// floorRuns as it starts (startGo).
 func (s *readSetSource) goFloor(commit string, g evaluation.GoRun) evaluation.GoFloor {
 	plan, problem := planFloor(g)
 	if problem != "" {
 		return evaluation.GoFloor{Problem: problem}
 	}
-	tool, why := s.goTool()
+	start := time.Now()
+	defer func() { s.floorSpent += time.Since(start) }()
+	gate := func() string { return s.startGo(time.Since(start)) }
+	tool, why := s.goTool(gate)
 	if why != "" {
 		return evaluation.GoFloor{Problem: why}
 	}
-	if s.floorRuns >= floorEvalRuns {
-		return evaluation.GoFloor{Problem: fmt.Sprintf("the evaluation has already run the compile-input floor %d times, its cap", floorEvalRuns)}
-	}
-	if s.floorSpent >= floorEvalBudget {
-		return evaluation.GoFloor{Problem: fmt.Sprintf("the evaluation has already spent %s on compile-input floors, its cap", floorEvalBudget)}
+	if why := s.floorLeft(time.Since(start)); why != "" {
+		return evaluation.GoFloor{Problem: why}
 	}
 	dir, why := s.export(commit)
 	if why != "" {
 		return evaluation.GoFloor{Problem: why}
 	}
-	start := time.Now()
-	f := runFloor(tool, s.scratch, dir, plan)
+	return runFloor(tool, s.scratch, dir, plan, gate)
+}
+
+// floorLeft is the refusal once the evaluation's floor budget is spent: the
+// go tool runs already started, or the wall time floors have taken, running
+// (the current floor's time so far) included.
+func (s *readSetSource) floorLeft(running time.Duration) string {
+	if s.floorRuns >= floorEvalRuns {
+		return fmt.Sprintf("the evaluation has already run the floor's go tool %d times, its cap", floorEvalRuns)
+	}
+	if s.floorSpent+running >= floorEvalBudget {
+		return fmt.Sprintf("the evaluation has already spent %s on compile-input floors, its cap", floorEvalBudget)
+	}
+	return ""
+}
+
+// startGo charges one go tool run to the evaluation as it starts, or returns
+// the refusal when the budget is spent; running is the current floor's time
+// so far.
+func (s *readSetSource) startGo(running time.Duration) string {
+	if why := s.floorLeft(running); why != "" {
+		return why
+	}
 	s.floorRuns++
-	s.floorSpent += time.Since(start)
-	return f
+	return ""
 }
 
 // export writes commit's tree, byte for byte as git stores it (no checkout
-// filters, no export-ignore), to a fresh temporary directory.
+// filters, no export-ignore), to a fresh temporary directory. The bytes an
+// export may write are charged to s.exported when its writing starts, whether
+// it then succeeds or fails.
 func (s *readSetSource) export(commit string) (string, string) {
 	if d, ok := s.exports[commit]; ok {
 		return d, s.failed[commit]
@@ -368,12 +519,12 @@ func (s *readSetSource) export(commit string) (string, string) {
 		return "", s.failed[commit]
 	}
 	d, n, err := exportTreeWithin(s.root, commit, min(left, exportMaxBytes))
+	s.exported += n
 	if err != nil {
 		s.exports[commit], s.failed[commit] = "", "the witness tree could not be exported: "+err.Error()
 		return "", s.failed[commit]
 	}
 	s.exports[commit] = d
-	s.exported += n
 	return d, ""
 }
 
@@ -383,9 +534,11 @@ func (s *readSetSource) export(commit string) (string, string) {
 // bytes, so the listing held in memory is bounded by them. exportMaxBytes
 // bounds the bytes the export writes, every entry counted, a repeated object
 // once per entry; the bytes read from git are each distinct object once,
-// never more than that. exportMaxLinkBytes bounds the link targets, the only
-// object content held in memory. exportEvalBytes bounds the bytes every
-// export of one evaluation writes together, the floor's scratch disk.
+// never more than that (a link's object twice: once to check its target
+// before any write, once more if a file shares it). exportMaxLinkBytes bounds
+// the link targets, the only object content held in memory. exportEvalBytes
+// bounds the bytes every export of one evaluation may write together, the
+// floor's scratch disk, each export charged when its writing starts.
 var (
 	exportMaxEntries         = 200000
 	exportMaxListBytes int64 = 64 << 20
@@ -395,9 +548,12 @@ var (
 )
 
 // floorEvalRuns and floorEvalBudget bound the floor across one evaluation,
-// whatever the number of read sets: at most floorEvalRuns go tool runs, and
-// none starts once floorEvalBudget of wall time has gone to floor runs (one
-// run already started finishes within its own floorTimeout).
+// whatever the number of read sets: at most floorEvalRuns go tool runs, each
+// counted as it starts (the one `go env -json` read of the evaluator's tool,
+// each `go env GOWORK` and each `go list`), and no run or export starts once
+// floorEvalBudget of wall time has gone to floors, exports included (a run
+// already started finishes within its own floorTimeout, an export within its
+// byte caps).
 var (
 	floorEvalRuns   = 64
 	floorEvalBudget = 10 * time.Minute
@@ -408,10 +564,11 @@ var (
 // read (`git cat-file --batch-check`, then `--batch`, replacement objects
 // disabled). The listing stops at its own caps as it is read; the byte caps
 // are checked against the listed sizes before any content is read; each
-// distinct object is then read once and streamed to its first file, and a
-// repeated object is copied from that file, so object content in memory is a
-// copy buffer and the link targets, and the listing in memory is bounded by
-// the listing caps. Every write stays under that
+// link's object is read and its target checked before anything is written;
+// each distinct file object is then read once and streamed to its first
+// file, and a repeated object is copied from that file, so object content in
+// memory is a copy buffer and the link targets, and the listing in memory is
+// bounded by the listing caps. Every write stays under that
 // directory: exportPlan refuses an entry path that is absolute, has an
 // empty, `.`, `..` or `.git` component, or collides with another entry (the
 // same path ignoring case, or one entry below another); every file is
@@ -426,7 +583,9 @@ func exportTree(root, commit string) (string, error) {
 }
 
 // exportTreeWithin is exportTree with maxBytes (at most exportMaxBytes) as
-// the byte cap; it also returns the bytes the export wrote.
+// the byte cap; it also returns the bytes the export may have written: the
+// tree's total once writing starts, on success or failure, and 0 for a tree
+// refused before any write.
 func exportTreeWithin(root, commit string, maxBytes int64) (string, int64, error) {
 	repo := coverageRepo{root: root}
 	listed, over, ok := repo.listTree(commit, exportMaxEntries, exportMaxListBytes)
@@ -477,13 +636,43 @@ func exportTreeWithin(root, commit string, maxBytes int64) (string, int64, error
 			}
 		}
 	}
+	var linkOIDs, fileOIDs []string
+	for _, oid := range distinct {
+		if isLink[oid] {
+			linkOIDs = append(linkOIDs, oid)
+		}
+		if len(files[oid]) > 0 {
+			fileOIDs = append(fileOIDs, oid)
+		}
+	}
+	targets := map[string]string{} // oid -> link target
+	err = repo.StreamObjects(linkOIDs, func(oid, typ string, size int64, body io.Reader) error {
+		if typ != "blob" || size != sizes[oid].Size {
+			return fmt.Errorf("%s changed between the size check and the read", oid)
+		}
+		var link bytes.Buffer
+		n, err := io.Copy(&link, body)
+		if err == nil && n != size {
+			err = fmt.Errorf("%s: read %d of %d bytes", oid, n, size)
+		}
+		targets[oid] = link.String()
+		return err
+	})
+	if err != nil {
+		return "", 0, err
+	}
+	for _, e := range ents {
+		if e.Mode == "120000" && !linkTargetInTree(targets[e.OID]) {
+			return "", 0, fmt.Errorf("%s is a symbolic link whose target is absolute or climbs with ..", e.Path)
+		}
+	}
 	dir, err := os.MkdirTemp("", "readset-floor-")
 	if err != nil {
 		return "", 0, err
 	}
 	fail := func(err error) (string, int64, error) {
 		_ = os.RemoveAll(dir)
-		return "", 0, err
+		return "", total, err
 	}
 	create := func(p string, mode os.FileMode) (*os.File, error) {
 		dst := filepath.Join(dir, filepath.FromSlash(p))
@@ -499,35 +688,21 @@ func exportTreeWithin(root, commit string, maxBytes int64) (string, int64, error
 			modes[e.Path] = 0o755
 		}
 	}
-	targets := map[string]string{} // oid -> link target
-	err = repo.StreamObjects(distinct, func(oid, typ string, size int64, body io.Reader) error {
+	err = repo.StreamObjects(fileOIDs, func(oid, typ string, size int64, body io.Reader) error {
 		if typ != "blob" || size != sizes[oid].Size {
 			return fmt.Errorf("%s changed between the size check and the read", oid)
 		}
-		var link bytes.Buffer
-		var sink io.Writer = io.Discard
-		var f *os.File
-		if ps := files[oid]; len(ps) > 0 {
-			var err error
-			if f, err = create(ps[0], modes[ps[0]]); err != nil {
-				return err
-			}
-			sink = f
+		ps := files[oid]
+		f, err := create(ps[0], modes[ps[0]])
+		if err != nil {
+			return err
 		}
-		if isLink[oid] {
-			sink = io.MultiWriter(sink, &link)
-		}
-		n, err := io.Copy(sink, body)
-		if f != nil {
-			if cerr := f.Close(); err == nil {
-				err = cerr
-			}
+		n, err := io.Copy(f, body)
+		if cerr := f.Close(); err == nil {
+			err = cerr
 		}
 		if err == nil && n != size {
 			err = fmt.Errorf("%s: read %d of %d bytes", oid, n, size)
-		}
-		if isLink[oid] {
-			targets[oid] = link.String()
 		}
 		return err
 	})
@@ -546,9 +721,6 @@ func exportTreeWithin(root, commit string, maxBytes int64) (string, int64, error
 			continue
 		}
 		target := targets[e.OID]
-		if !linkTargetInTree(target) {
-			return fail(fmt.Errorf("%s is a symbolic link whose target is absolute or climbs with ..", e.Path))
-		}
 		dst := filepath.Join(dir, filepath.FromSlash(e.Path))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fail(err)
@@ -901,13 +1073,17 @@ type floorTool struct {
 // cache live. It runs in an empty scratch directory and reads no tree.
 var goToolPassThrough = []string{"PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "GOENV", "GOROOT", "GOPATH", "GOMODCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "CC", "SYSTEMROOT", "TMPDIR"}
 
-// goTool reads the evaluator's go tool once: its GOROOT, module cache and
+// goTool reads the evaluator's go tool once, the read charged to the
+// evaluation's go tool runs through start: its GOROOT, module cache and
 // default platform. The floor runs the same `go` the evaluator's PATH names
 // (looked up by the process, never in the exported tree), pinned to that
 // GOROOT with no toolchain switch.
-func (s *readSetSource) goTool() (*floorTool, string) {
+func (s *readSetSource) goTool(start func() string) (*floorTool, string) {
 	if s.tool != nil || s.toolWhy != "" {
 		return s.tool, s.toolWhy
+	}
+	if why := start(); why != "" {
+		return nil, why // not memoized: the budget refused this floor, not the tool
 	}
 	t, why := s.readGoTool()
 	s.tool, s.toolWhy = t, why
@@ -935,7 +1111,13 @@ func (s *readSetSource) readGoTool() (*floorTool, string) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "env", "-json", "GOROOT", "GOMODCACHE", "GOOS", "GOARCH", "CGO_ENABLED")
 	cmd.Dir, cmd.Env, cmd.WaitDelay = filepath.Join(scratch, "home"), env, floorWaitDelay
-	out, err := cmd.Output()
+	stdout := &cappedOutput{max: floorMaxOutputBytes, stop: cancel}
+	cmd.Stdout = stdout
+	err = cmd.Run()
+	out := stdout.buf.Bytes()
+	if stdout.over {
+		err = fmt.Errorf("it wrote more than the cap of %d bytes", floorMaxOutputBytes)
+	}
 	if err != nil {
 		return nil, "the evaluator's go tool could not be read (go env failed: " + firstLine(err.Error()) + ")"
 	}
@@ -980,23 +1162,64 @@ func floorEnv(t *floorTool, scratch string, p floorPlan) []string {
 	return env
 }
 
-// runFloorGo runs the evaluator's go tool once, bounded by floorTimeout,
-// in dir with env. The problem names what failed, the tree path shown as `.`.
-func runFloorGo(t *floorTool, tree, dir string, env []string, what string, args ...string) ([]byte, string) {
+// floorMaxOutputBytes caps what one go tool run of the floor may write to
+// its standard output, read as it arrives: past it the run is killed and the
+// floor is a problem. floorMaxStderrBytes is what is kept of its standard
+// error, the rest discarded as it arrives.
+var (
+	floorMaxOutputBytes int64 = 64 << 20
+	floorMaxStderrBytes int64 = 64 << 10
+)
+
+// cappedOutput holds at most max bytes written to it. Past max, a capped
+// output (stop set) stops the run and refuses the write, and a kept prefix
+// (stop nil) discards the rest.
+type cappedOutput struct {
+	buf  bytes.Buffer
+	max  int64
+	over bool
+	stop func()
+}
+
+func (c *cappedOutput) Write(p []byte) (int, error) {
+	if left := c.max - int64(c.buf.Len()); int64(len(p)) > left {
+		c.over = true
+		if c.stop != nil {
+			c.stop()
+			return 0, errors.New("output over the cap")
+		}
+		c.buf.Write(p[:max(left, 0)])
+		return len(p), nil
+	}
+	return c.buf.Write(p)
+}
+
+// runFloorGo runs the evaluator's go tool once, bounded by floorTimeout and
+// floorMaxOutputBytes, in dir with env, once start has charged the run. The
+// problem names what failed, the tree path shown as `.`.
+func runFloorGo(t *floorTool, tree, dir string, env []string, start func() string, what string, args ...string) ([]byte, string) {
+	if why := start(); why != "" {
+		return nil, why
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), floorTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", args...)
 	// WaitDelay: a child that keeps the output pipes open past the timeout
 	// is not waited for without end.
 	cmd.Dir, cmd.Env, cmd.WaitDelay = dir, env, floorWaitDelay
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	stdout := &cappedOutput{max: floorMaxOutputBytes, stop: cancel}
+	stderr := &cappedOutput{max: floorMaxStderrBytes}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	err := cmd.Run()
+	out := stdout.buf.Bytes()
+	if stdout.over {
+		return nil, fmt.Sprintf("%s wrote more than the cap of %d bytes", what, floorMaxOutputBytes)
+	}
 	if ctx.Err() != nil {
 		return nil, what + " did not finish within " + floorTimeout.String()
 	}
 	if err != nil {
-		msg := firstLine(stderr.String())
+		msg := firstLine(stderr.buf.String())
 		if msg == "" {
 			msg = err.Error()
 		}
@@ -1047,8 +1270,9 @@ func withReal(dir string) []string {
 // partial is a problem, never a narrower floor: a package go list reports
 // incomplete, a package compiled from outside the tree, the module cache and
 // GOROOT, a main module whose go.mod is outside the tree, a go.work outside
-// the tree, or no in-tree file at all.
-func runFloor(t *floorTool, scratch, tree string, p floorPlan) evaluation.GoFloor {
+// the tree, or no in-tree file at all. Each go tool run starts only once
+// start has charged it.
+func runFloor(t *floorTool, scratch, tree string, p floorPlan, start func() string) evaluation.GoFloor {
 	roots := withReal(tree)
 	dir := filepath.Join(tree, filepath.FromSlash(p.dir))
 	real, err := filepath.EvalSymlinks(dir)
@@ -1078,7 +1302,7 @@ func runFloor(t *floorTool, scratch, tree string, p floorPlan) evaluation.GoFloo
 	}
 	own := withReal(scratch)
 	if p.gowork != "off" {
-		out, why := runFloorGo(t, tree, dir, env, "go env GOWORK", "env", "GOWORK")
+		out, why := runFloorGo(t, tree, dir, env, start, "go env GOWORK", "env", "GOWORK")
 		if why != "" {
 			return evaluation.GoFloor{Problem: why}
 		}
@@ -1091,7 +1315,7 @@ func runFloor(t *floorTool, scratch, tree string, p floorPlan) evaluation.GoFloo
 			}
 		}
 	}
-	out, why := runFloorGo(t, tree, dir, env, "go list", p.args...)
+	out, why := runFloorGo(t, tree, dir, env, start, "go list", p.args...)
 	if why != "" {
 		return evaluation.GoFloor{Problem: why}
 	}
