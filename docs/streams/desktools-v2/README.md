@@ -139,6 +139,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
 | 78 | [Migrate the release object transport adapter to the shared CLI contract](brief-78-migrate-the-release-object-transport-adapter.md) | 4 | M | blocked | — | — |
 | 79 | [Migrate the release object client bootstrap to the shared CLI contract](brief-79-migrate-the-release-object-client-bootstrap.md) | 4 | S | blocked | — | — |
+| 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -267,8 +268,10 @@ withdrawn brief is never satisfied.
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
   admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter, deskperf, intake-eval). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
-- **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
-  it; /54 adds token renewal to the GitLab command /30 creates.
+- **Wave 4 — /29, /54, /80:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
+  it; /54 adds token renewal to the GitLab command /30 creates; /80 ports the release
+  spec-header stamp script into the command /52 creates, beside the check it reads back through
+  (its registry row was routed to /47, which never covered it; #5009).
 - **Routing:** [cli-migration.json](cli-migration.json) maps every discovered entrypoint to its
   owning brief or to a classified exclusion; [cli-contract.md](cli-contract.md) is the shared
   command and configuration contract. TestCLIInventory fails on any unrouted, orphaned or

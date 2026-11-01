@@ -544,5 +544,57 @@ RISK-VALUE: DERIVED — digest form = 64-hex @ tools/desk/cmd/deskdispatch/refer
 
 **VERIFY: BLOCKED** — 9 of 10 Verify rows pass at merged main 99627c1b8084 (rows 1-9), 0 fail, 1 could-not-run: row 10 (check:ci), because the container bracket refused admission. The host read of row 10's test carries no acceptance credit.
 
+### Re-verification — 2026-11-01 (merged main 3758084fc1f0)
+
+Source 3758084fc1f0d63c28457fc1aebf0c518a7c55e5. Rows 1-9 are witnessed on the host by `statusgen verifyrun --rows 1,2,3,4,5,6,7,8,9 --timeout 50m`, with a non-symlink TMPDIR outside the verifier home; row 10 (check:ci) is witnessed in a network-off container inside an admission bracket. Both tables follow. This pass reuses no earlier witness.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-21.json` | pass exit=0 | sha256:dbea09a7232f | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdispatch/...` | pass exit=0 | sha256:7ec4a6ca5f50 | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskdispatch` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/21 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:5730f1e3ed8c | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:0e2b399741fc | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:f6f2da1449fe | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5130 run=435cda4ef53c812a39b91fa86b906f244d3c21d558deda9a930c6ddaa5d9b426 source=3758084fc1f0d63c28457fc1aebf0c518a7c55e5 brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskdispatch/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | pass exit=0 sandbox=container-netns | sha256:b5d6770a652c | 2026-11-01 | assay-verifier-app[bot] @ 3758084fc1f0 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:b7303e1d73585f85f1f067f8ea8af8dcb6b1e19f69024838663872f06caa5138
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5130 run=435cda4ef53c812a39b91fa86b906f244d3c21d558deda9a930c6ddaa5d9b426 source=3758084fc1f0d63c28457fc1aebf0c518a7c55e5 brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=435cda4ef53c812a39b91fa86b906f244d3c21d558deda9a930c6ddaa5d9b426 source=3758084fc1f0d63c28457fc1aebf0c518a7c55e5 tree=sha256:b7303e1d73585f85f1f067f8ea8af8dcb6b1e19f69024838663872f06caa5138 witness=sha256:f1cab527d53576a88ebdfedc4e708531aa1f51e21d6d03a706edece8f6667a55 opened=2026-11-01T02:58:22Z closed=2026-11-01T03:01:02Z before=receipt after=check-verifier
+
+The fail-first pass was left out on purpose. The brief's risk block has every field "no", and no Verify row carries a risk-bearing, live, mutating or end-to-end tag, so no row has a fail-first obligation. The `--timeout` flags change only the per-row time limit; no row command was changed, filtered or shortened.
+
+Row 4 supplemental read, no acceptance credit: the mutation harness exits 0 unless it is broken, so the witnessed exit 0 does not show the Expect's Totals line by itself. A labelled re-run of the exact row 4 command at the same source and home, after the bracket closed, printed "Harness healthy: baseline GREEN, positive control CAUGHT." and last line "Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate.". The spec lists 10 mutations, so N equals the spec's count. The witness row above stays row 4's acceptance record and this read only discharges the Totals clause of its Expect. The re-run left no file changed in the home beyond this Evidence.
+
+Row 10 ran in the release-pinned runner image named by the v1.0.67 release asset verify-runner-image.txt (checksum matched against checksums.txt): verify-runner v1.0.67 at sha256:f073d208c69e, go1.27.3 linux/amd64, statusgen v1.0.67, the same version as the host install. The container ran with `--network none`, the engine's default seccomp profile, a read-only root, GOPROXY=off and GOTOOLCHAIN=local, using the image's own module cache. The verifier home and its git directory were bind-mounted read-only at their host paths and the receipt was mounted read-only. No App keys, tokens or roster were mounted, and the row needed none. The bracket closed with a tree digest match, and `--bracket-digest` reported verdict=match with one each of tree-digest, container-image and attestation in the span.
+
+Attempts disclosed: no bracket step refused and no witness or row result was discarded; each table above comes from the only run of its command under this admission, apart from the labelled row 4 read. Before the container row ran, on the same open receipt, mount probes that ran no Verify row found a spelling error of mine: the shell read the read-only suffix on the home's mount as a path modifier, so the home landed at a wrong path, writable, and the intended path did not exist in the container. The probes ran only git and listing commands and wrote nothing there; the home stayed clean. The mount was respelled and re-probed (home read-only, git toplevel and source correct, a write refused) before the bracket's container step ran. This same fault could also explain the earlier run's empty mounted root recorded in medici-finance/assay PR 5128, though that was not confirmed.
+
+The admission check returned 0 before any row ran and at both bracket ends.
+
+No row failed, so no failure classification applies.
+
+Risk-bearing values were enumerated over the change since the last landed pass (40925e8233c8..3758084fc1f0), covering the deskdispatch package, the shared CLI package, the clicontract mutation specs, the CLI contract and the CLI registry. The shared CLI package, the CLI contract, this brief's mutation spec and the deskdispatch files cli.go and brief.go are unchanged. The registry diff flips five rows owned by desktools-v2/46 to migrated; this brief's rows are unchanged. A new mutation spec belongs to that same brief. The deskdispatch change is the embedded review prompt and its test, which add text for a security fail resting only on the PR body. The only new literal there is the 64-hex digest form below. The standing values are:
+- body digest form = SHA-256 / 64-hex @ tools/desk/cmd/deskdispatch/references/review-prompt.md:322 and :325. New in this range; prompt text only, enforced elsewhere.
+- ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20. Unchanged.
+- tier default = "any" and kit default = "worker" @ tools/desk/cmd/deskdispatch/cli.go:73. Unchanged.
+- unreadable-frontmatter gate = "human" @ tools/desk/cmd/deskdispatch/brief.go:58 and :62. Unchanged.
+Each can be reversed with an edit and a redeploy.
+
+RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20 — the shared CLI contract fixes exit 2 for unknown input before any handler runs (docs/streams/desktools-v2/cli-contract.md, "Unknown input" row); domain refusals keep their own codes, so callers keyed on custody outcomes see no change.
+RISK-VALUE: DERIVED — unreadable-frontmatter gate = "human" @ tools/desk/cmd/deskdispatch/brief.go:58 — a brief whose metadata cannot be parsed cannot show it is model-gated, so reading it as human-gated fails closed. The cost is a spurious decision issue, which is visible and reversible; "" would let a malformed human-gated brief skip its gate.
+RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:73 — identical to the pre-migration default; the brief requires the same worktree, branch and claim per invocation, and this default is part of that.
+RISK-VALUE: DERIVED — body digest form = 64-hex @ tools/desk/cmd/deskdispatch/references/review-prompt.md:322 — a SHA-256 digest is 256 bits, which is 64 hex characters; the prompt names that algorithm for the same digest at line 325.
+
+**VERIFY: PASS** — all 10 Verify rows pass at merged main 3758084fc1f0: rows 1-9 in the host witness, row 10 in the bracketed network-off container witness (bracket verdict match). 0 fail, 0 could-not-run.
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
