@@ -425,7 +425,7 @@ decision nodes, is human-gated, and edits the same schema and lint files. The ch
 [Brief 35](brief-35-signal-pattern-runtime.md) closes the gap #5144 reports. /34 and /08 define the
 signal pattern, and nothing reads one at run time. /35 adds one stateless check, called before each <!-- graph: encoded graph-execution/34→graph-execution/35 -->
 node, that refuses a run failing its class's admission, refuses a node off its class's route, and
-holds a run whose source is dead or could not be checked. It reads the pattern with its own decoder and
+holds a run whose source is dead or could not be checked. It reads the pattern with its own strict decoder and
 refuses the faults it lists with no lint run. It doesn't enforce the other lint rules at run time, among
 them the remedy set and refused paths, the replay rule, effect limits by role and the containment set; the
 brief lists them all. It trusts its caller for every input and pins the pattern revision to a digest the
@@ -435,5 +435,6 @@ carries that decision, and no ruling exists yet.
 Any brief that activates a signal pattern depends on /35. auto-triage/02 and /03 now carry that edge. <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
 /08 ships a definition and activates nothing, so it carries no edge to /35. The chains are `33 → 34 → 08` and <!-- graph: encoded graph-execution/34→graph-execution/35 -->
 `33 → 34 → 35 → auto-triage/02, /03 → auto-triage/04`. Effect limits stay with the activating brief; only <!-- graph: encoded graph-execution/35→auto-triage/02,auto-triage/03 -->
-auto-triage/02 and /03 own them today. No brief owns a liveness result for any source, so the gate holds every
-run until one does.
+auto-triage/02 and /03 own them today. No brief owns a liveness result for any source (#5148), so a caller following
+the spec has none to pass and every such run holds. The gate can't tell an observed result from a constant,
+so the spec text requires each activating brief to name the source and the brief owning its result.
