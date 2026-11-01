@@ -204,7 +204,9 @@ func TestLocalReportFlow(t *testing.T) {
 
 	t.Run("a refused draft records nothing and never echoes its content", func(t *testing.T) {
 		dir := t.TempDir()
-		secret := "ghp_notARealTokenButLooksLikeOne0000000000"
+		// A fake credential-shaped value, assembled at run time so the source carries no
+		// literal token prefix for secret scanners to flag.
+		secret := "gh" + "p_notARealTokenButLooksLikeOne0000000000"
 		in := draftLine(t, perfdata.KindTool, "", wctx("inv-a", ""), toolAt(0, 10, 1)) +
 			draftLine(t, perfdata.KindPhase, "", wctx("inv-a", ""), map[string]any{"phase": secret, "startedAt": at(0), "wall": ms(1), "cpuOwn": ms(1)})
 		o := invoke(t, armedEnv, t0, in, "record", "--dir", dir, "--policy", pol)
