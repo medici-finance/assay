@@ -1,0 +1,83 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$' ./cmd/deskdisable/ ./cmd/deskmigrate/ ./cmd/deskaudit/ ./cmd/deskversion/",
+  "control": {
+    "name": "CONTROL — deskaudit: a parse failure exits with the wrong code (usage exit 5 becomes 6)",
+    "file": "cmd/deskaudit/main.go",
+    "old": "UsageExit: deskkit.ExitRefused,",
+    "new": "UsageExit: deskkit.ExitUnverifiable,"
+  },
+  "mutations": [
+    {
+      "name": "deskversion: help runs after the startup's config read (roster echo and activation check before the command line is parsed)",
+      "file": "cmd/deskversion/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskversion: an undeclared environment source (root also read from DESKVERSION_ROOT)",
+      "file": "cmd/deskversion/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKVERSION_ROOT\"},"
+    },
+    {
+      "name": "deskversion: the legacy single-dash spellings dropped (-root -fetch -version stop parsing)",
+      "file": "cmd/deskversion/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskmigrate: help runs after the startup's config read (roster echo and activation check before the command line is parsed)",
+      "file": "cmd/deskmigrate/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskmigrate: an undeclared environment source (root also read from DESKMIGRATE_ROOT)",
+      "file": "cmd/deskmigrate/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKMIGRATE_ROOT\"},"
+    },
+    {
+      "name": "deskmigrate: the legacy single-dash spellings dropped (-from -to -dry-run stop parsing)",
+      "file": "cmd/deskmigrate/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskaudit: help runs after the kill-switch read (Guard before the command line is parsed)",
+      "file": "cmd/deskaudit/main.go",
+      "old": "return cli.Run(func() *cobra.Command { return newTree(stdout, stderr) }, args, cli.Options{",
+      "new": "_ = guardFn()\n\treturn cli.Run(func() *cobra.Command { return newTree(stdout, stderr) }, args, cli.Options{"
+    },
+    {
+      "name": "deskaudit: an undeclared setting (a --ledger flag the registry and bindings do not know)",
+      "file": "cmd/deskaudit/main.go",
+      "old": "root.Args = cobra.NoArgs",
+      "new": "root.Args = cobra.NoArgs\n\troot.Flags().String(\"ledger\", \"\", \"audit ledger path\")"
+    },
+    {
+      "name": "deskaudit: the legacy single-dash spelling dropped (-version stops parsing)",
+      "file": "cmd/deskaudit/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "deskdisable: help runs the disable (manifests read before the command line is parsed)",
+      "file": "cmd/deskdisable/main.go",
+      "old": "return cli.Run(func() *cobra.Command { return newTree(stdout, stderr) }, args, cli.Options{",
+      "new": "_ = disableFn(Options{Root: \".\", Target: \"x\", DryRun: true}, stdout, stderr)\n\treturn cli.Run(func() *cobra.Command { return newTree(stdout, stderr) }, args, cli.Options{"
+    },
+    {
+      "name": "deskdisable: an undeclared environment source (root also read from DESKDISABLE_ROOT)",
+      "file": "cmd/deskdisable/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Default: \".\", Env: []string{\"DESKDISABLE_ROOT\"},"
+    },
+    {
+      "name": "deskdisable: the legacy single-dash spellings dropped (comp -root -dry-run -cascade stop parsing)",
+      "file": "cmd/deskdisable/main.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    }
+  ]
+}
