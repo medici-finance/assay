@@ -315,6 +315,41 @@ func TestCLIRoutingMutations(t *testing.T) {
 		{name: "unrelated-go-row",
 			edit: func(r *Registry) { unnamedGoRow(t, r, portOwner).Owner = portOwner },
 			want: "owner " + portOwner + " over budget"},
+		// Registry metadata alone never makes a target: the same unrelated rows, given a
+		// migrated_to that only Go or pending rows carry, still count.
+		{name: "go-row-names-itself",
+			edit: func(r *Registry) { selfNamed(unnamedGoRows(t, r, portOwner, 1), portOwner) },
+			want: "owner " + portOwner + " over budget"},
+		{name: "four-go-rows-name-selves",
+			edit: func(r *Registry) { selfNamed(unnamedGoRows(t, r, portOwner, 4), portOwner) },
+			want: "owner " + portOwner + " over budget"},
+		{name: "go-rows-name-each-other",
+			edit: func(r *Registry) {
+				es := unnamedGoRows(t, r, portOwner, 2)
+				for i, e := range es {
+					e.Owner, e.MigratedTo = portOwner, es[1-i].Path
+				}
+			},
+			want: "owner " + portOwner + " over budget"},
+		{name: "pending-script-names-go-row",
+			// The owner keeps its five simple pending scripts; one of them names the moved Go
+			// row, which only a migrated script could make a target.
+			edit: func(r *Registry) {
+				var script *Entry
+				for _, e := range ownerRows(r, fullOwner) {
+					if e.Kind == "script" && e.State == StatePending {
+						script = e
+						break
+					}
+				}
+				if script == nil {
+					t.Fatalf("owner %s has no pending script", fullOwner)
+				}
+				g := unnamedGoRows(t, r, fullOwner, 1)[0]
+				g.Owner = fullOwner
+				script.MigratedTo = g.Path
+			},
+			want: "owner " + fullOwner + " over budget"},
 		{name: "target-named-by-other-owner",
 			edit: func(r *Registry) { rowFor(t, r, targetPath).Owner = fullOwner },
 			want: "owner " + fullOwner + " over budget"},
@@ -494,20 +529,36 @@ func anyPendingScript(t *testing.T, r *Registry, o string) *Entry {
 // unnamedGoRow is a simple migrated Go row of another owner that no row names in migrated_to.
 func unnamedGoRow(t *testing.T, r *Registry, o string) *Entry {
 	t.Helper()
+	return unnamedGoRows(t, r, o, 1)[0]
+}
+
+// unnamedGoRows is n distinct rows of the kind unnamedGoRow picks.
+func unnamedGoRows(t *testing.T, r *Registry, o string, n int) []*Entry {
+	t.Helper()
 	named := map[string]bool{}
 	for _, e := range r.Entrypoints {
 		if e.MigratedTo != "" {
 			named[e.MigratedTo] = true
 		}
 	}
+	var out []*Entry
 	for i := range r.Entrypoints {
 		e := &r.Entrypoints[i]
-		if e.Kind == "go" && e.State == StateMigrated && e.Complexity == "simple" && e.Owner != o && !named[e.Path] {
-			return e
+		if len(out) < n && e.Kind == "go" && e.State == StateMigrated && e.Complexity == "simple" && e.Owner != o && !named[e.Path] {
+			out = append(out, e)
 		}
 	}
-	t.Fatal("registry has no unnamed simple migrated Go row")
-	return nil
+	if len(out) < n {
+		t.Fatalf("registry has %d unnamed simple migrated Go rows, want %d", len(out), n)
+	}
+	return out
+}
+
+// selfNamed moves each row to owner o and has it name itself in migrated_to.
+func selfNamed(es []*Entry, o string) {
+	for _, e := range es {
+		e.Owner, e.MigratedTo = o, e.Path
+	}
 }
 
 func rowFor(t *testing.T, r *Registry, p string) *Entry {

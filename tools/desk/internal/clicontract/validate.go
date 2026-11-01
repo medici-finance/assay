@@ -282,11 +282,14 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 	return problems
 }
 
-// portTargets is every (owner, path) pair that a row of that owner names in migrated_to.
+// portTargets is every (owner, path) pair that a migrated script row of that owner names in
+// migrated_to. Only such a row is a port already counted against its owner, and only
+// validateMigrated checks its migrated_to, so a Go row's or a pending row's migrated_to is
+// registry metadata alone and names nothing here: no Go row can qualify itself or another.
 func portTargets(entries []Entry) map[[2]string]bool {
 	t := map[[2]string]bool{}
 	for _, e := range entries {
-		if e.Owner != "" && e.MigratedTo != "" {
+		if e.Kind == "script" && e.State == StateMigrated && e.Owner != "" && e.MigratedTo != "" {
 			t[[2]string{e.Owner, e.MigratedTo}] = true
 		}
 	}
@@ -294,12 +297,13 @@ func portTargets(entries []Entry) map[[2]string]bool {
 }
 
 // portTarget reports whether e is the Go entrypoint its own owner's port lands in: a
-// migrated Go row that at least one row with the SAME owner names in migrated_to. Such a row
-// is the destination of rows already counted against that owner, not a further entrypoint to
-// route, so it carries no budget of its own. A complex target is exempt only while it is the
-// owner's sole complex row (ownerComplex counts e itself). A row named only by another
-// owner's rows, a pending or script row, a Go row no same-owner row names, and a complex
-// target beside a second complex row all still count.
+// migrated Go row that at least one migrated script row with the SAME owner names in
+// migrated_to. Such a row is the destination of rows already counted against that owner, not
+// a further entrypoint to route, so it carries no budget of its own. A complex target is
+// exempt only while it is the owner's sole complex row (ownerComplex counts e itself). A row
+// named only by another owner's rows, only by Go or pending rows (itself included), a pending
+// or script row, a Go row no same-owner row names, and a complex target beside a second
+// complex row all still count.
 func portTarget(e *Entry, targets map[[2]string]bool, ownerComplex int) bool {
 	return e.Kind == "go" && e.State == StateMigrated && targets[[2]string{e.Owner, e.Path}] && (e.Complexity == "simple" || ownerComplex == 1)
 }

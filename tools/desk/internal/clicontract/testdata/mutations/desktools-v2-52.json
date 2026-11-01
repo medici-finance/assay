@@ -104,6 +104,24 @@
       "new": "\t\t\tfor _, x := range entries {\n\t\t\t\tt[[2]string{x.Owner, e.MigratedTo}] = true\n\t\t\t}\n"
     },
     {
+      "name": "any row with a migrated_to names a target again (registry metadata on Go or pending rows qualifies, so a Go row can exempt itself)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {",
+      "new": "if e.Owner != \"\" && e.MigratedTo != \"\" {"
+    },
+    {
+      "name": "a Go row's migrated_to names a target (Go rows qualify themselves or each other)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner",
+      "new": "if e.State == StateMigrated && e.Owner"
+    },
+    {
+      "name": "a pending script's migrated_to names a target (a script not yet ported qualifies a Go row)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner",
+      "new": "if e.Kind == \"script\" && e.Owner"
+    },
+    {
       "name": "any migrated Go row is exempted, named in migrated_to or not",
       "file": "internal/clicontract/validate.go",
       "old": " && targets[[2]string{e.Owner, e.Path}] && (",
