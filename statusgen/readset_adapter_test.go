@@ -593,6 +593,12 @@ func TestExportCapBeforeRead(t *testing.T) {
 	if _, err := exportTree(repo, under); err == nil || !strings.Contains(err.Error(), "link targets") {
 		t.Errorf("want the link-target cap refusal; got %v", err)
 	}
+
+	defer func(n int) { exportMaxEntries = n }(exportMaxEntries)
+	exportMaxLinkBytes, exportMaxEntries = 1<<20, 17
+	if _, err := exportTree(repo, under); err == nil || !strings.Contains(err.Error(), "entries, over the export cap") {
+		t.Errorf("want the entry cap refusal; got %v", err)
+	}
 }
 
 // regression: #2026
