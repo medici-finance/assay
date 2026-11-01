@@ -12,7 +12,9 @@ Two runners execute it. The step itself runs it on the rest shard. The Go
 regression TestReleaseGoCache (tools/desk/internal/regression) discovers every
 tools/release/*_test.py, so the desk shards and the release workflow's
 desk-tools leg run it too. That second runner is the backstop for a step that
-stops running both suites, so the whole test function is pinned here as well.
+stops running both suites, so its whole file is pinned here as well. Another
+file in that Go package (a TestMain, say) can still stop it from running; the
+pin does not read those.
 """
 import importlib.util
 from pathlib import Path
@@ -31,8 +33,25 @@ KEYS.loader.exec_module(workflow_keys)
 BACKSTOP = ROOT / 'tools/desk/internal/regression/releasecache_test.go'
 BACKSTOP_RUN = ('\tcmd := exec.CommandContext(ctx, "python3", "-B", "-m", "unittest", "discover", '
                 '"-s", "tools/release", "-p", "*_test.py", "-v")\n')
-# The whole backstop test. A skip, an early return, an ignored failure or a
-# rename each changes this text, so it is pinned whole rather than by one line.
+# The whole backstop file. A skip, an early return, an ignored failure or a
+# rename changes the test's text. Wrapping it in a block comment or a string,
+# or any other change that leaves the text but stops Go from compiling it as
+# a test, changes the file around it. So the file is pinned whole, not by
+# one line or by the function alone.
+BACKSTOP_HEAD = (
+    'package regression\n'
+    '\n'
+    'import (\n'
+    '\t"context"\n'
+    '\t"os/exec"\n'
+    '\t"path/filepath"\n'
+    '\t"runtime"\n'
+    '\t"testing"\n'
+    '\t"time"\n'
+    ')\n'
+    '\n'
+    '// regression: #138\n'
+    '// Includes the release-owned image producer/consumer contract.\n')
 BACKSTOP_TEST = (
     'func TestReleaseGoCache(t *testing.T) {\n'
     '\tif runtime.GOOS == "windows" {\n'
@@ -54,6 +73,7 @@ BACKSTOP_TEST = (
     '\t}\n'
     '\tt.Log(string(out))\n'
     '}\n')
+STEP_KEYS = ('name', 'if', 'timeout-minutes', 'run')
 
 
 def job_block(text, name):
@@ -113,6 +133,13 @@ def step_problems(text):
         problems.append('the step must run in the default shell')
     if any(entry.key == 'exclude' for entry in job):
         problems.append('the ' + JOB + ' matrix must not exclude a shard')
+    if sorted(own) != sorted(STEP_KEYS) or any(entry.path != ('jobs', JOB, 'steps') for entry in step):
+        problems.append('the step must hold only ' + ', '.join(STEP_KEYS))
+    if [(entry.key, entry.value) for entry in entries if not entry.path and entry.key == 'env'] \
+            != [('env', '')] or [entry.key for entry in entries if entry.path == ('env',)] != ['go_version']:
+        problems.append('the workflow environment must hold only GO_VERSION')
+    if any(entry.path == ('jobs', JOB) and entry.key == 'env' for entry in job):
+        problems.append('the ' + JOB + ' job must not set its own environment')
     deadlines = own.get('timeout-minutes', [])
     if len(deadlines) != 1 or not re.fullmatch(r'[0-9]+', deadlines[0]) \
             or not 0 < int(deadlines[0]) <= MAX_MINUTES:
@@ -135,7 +162,7 @@ def backstop_problems(text):
     problems = []
     if not text.startswith('package regression\n') or re.search(r'(?m)^//\s*(?:go:build|\+build)', text):
         problems.append('TestReleaseGoCache must build on every platform')
-    if text.count(BACKSTOP_TEST) != 1 or text.count('func TestReleaseGoCache(') != 1:
+    if text != BACKSTOP_HEAD + BACKSTOP_TEST:
         problems.append('TestReleaseGoCache must run every suite and fail when one fails')
     return problems
 
@@ -239,14 +266,46 @@ class ReleaseContractStepTest(unittest.TestCase):
         # A workflow-level default placed after the jobs still reaches every step.
         self.assertIn(shell, step_problems(text + "defaults:\n  run:\n    shell: bash -c 'exit 0' {0}\n"))
 
+    # regression: #5091 — settings the step or job could inherit or change.
+    def test_ci_step_settings_closed(self):
+        text = CI.read_text()
+        self.assertEqual(step_problems(text), [])
+        job = job_block(text, JOB)
+        step = step_block(job, STEP)
+        deadline = re.search(r'(?m)^        timeout-minutes: .*$', step).group(0) + '\n'
+        header = '    runs-on: medici-builder-public\n'
+        top = '  GO_VERSION: "1.27.3"\n\njobs:\n'
+        keys = 'the step must hold only ' + ', '.join(STEP_KEYS)
+        workflow = 'the workflow environment must hold only GO_VERSION'
+        plants = {
+            'step-directory': (step, deadline, deadline + '        working-directory: tools/desk\n', keys),
+            'step-env': (step, deadline, deadline + '        env:\n          PYTHONPATH: ci/extra\n', keys),
+            'step-id': (step, deadline, deadline + '        id: contract\n', keys),
+            'job-env': (job, header, header + '    env:\n      BASH_ENV: ci/prelude.sh\n',
+                        'the ' + JOB + ' job must not set its own environment'),
+            'workflow-env': (text, top, '  BASH_ENV: ci/prelude.sh\n' + top, workflow),
+        }
+        for name, (scope, old, new, problem) in plants.items():
+            with self.subTest(name=name):
+                self.assertEqual(scope.count(old), 1, 'control target is not unique')
+                self.assertEqual(text.count(scope), 1, 'control scope is not unique')
+                self.assertIn(problem, step_problems(text.replace(scope, scope.replace(old, new, 1), 1)))
+
     # regression: #5091
     def test_reader_reads_one_form(self):
         read = workflow_keys.read
-        entries, unread = read('a:\n  b: c # d\n  e: |\n    f: g\n  h: [i, j]\nk:\n  - l\n  - M: n\n')
+        entries, unread = read('a:\n  b: c # d\n  h: [i, j]\nk:\n  - l\n  - M: n\n'
+                               'steps:\n  - run: |\n      f: g\n    with:\n      p: >-\n        q: r\n')
         self.assertEqual([(e.path, e.key, e.value, e.item) for e in entries],
-                         [((), 'a', '', False), (('a',), 'b', 'c', False), (('a',), 'e', '|', False),
-                          (('a',), 'h', '[i, j]', False), ((), 'k', '', False), (('k',), 'm', 'n', True)])
+                         [((), 'a', '', False), (('a',), 'b', 'c', False),
+                          (('a',), 'h', '[i, j]', False), ((), 'k', '', False), (('k',), 'm', 'n', True),
+                          ((), 'steps', '', False), (('steps',), 'run', '|', True),
+                          (('steps',), 'with', '', False), (('steps', 'with'), 'p', '>-', False)])
         self.assertEqual(unread, [])
+        # A block scalar anywhere else is refused, and its body is still not read.
+        entries, unread = read('a:\n  e: |\n    - name: f\n      g: h\n')
+        self.assertEqual([(e.path, e.key) for e in entries], [((), 'a')])
+        self.assertEqual([(path, number) for path, number, line in unread], [(('a',), 2)])
         for name, line in {
             'quoted-key': '  "b": c', 'spaced-colon': '  b : c', 'flow-mapping': '  b: {c: d}',
             'anchor': '  b: &x c', 'alias': '  b: *x', 'merge-key': '  <<: *x', 'tag': '  b: !!str c',
@@ -283,6 +342,16 @@ class ReleaseContractStepTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(text.count(old), 1, 'control target is not unique')
                 self.assertIn(problem, backstop_problems(text.replace(old, new, 1)))
+        # The test's text unchanged, but no longer a Go test: imports kept in use
+        # so the package still compiles, and go test finds nothing to run.
+        used = ('\nvar (\n\t_ = context.Background\n\t_ exec.Cmd\n\t_ = filepath.Abs\n'
+                '\t_ = runtime.GOOS\n\t_ testing.TB\n\t_ = time.Second\n)\n')
+        for name, (start, end) in {'commented-out': ('/*\n', '*/\n'),
+                                   'in-a-string': ('var _ = `\n', '`\n')}.items():
+            with self.subTest(name=name):
+                inert = text.replace(BACKSTOP_TEST, start + BACKSTOP_TEST + end + used, 1)
+                self.assertEqual(inert.count(BACKSTOP_TEST), 1)
+                self.assertIn(whole, backstop_problems(inert))
 
 
 if __name__ == '__main__':

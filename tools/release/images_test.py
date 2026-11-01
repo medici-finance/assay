@@ -43,13 +43,69 @@ def native_archive(path, ref='ghcr.io/example/verify-runner:v1.2.3-linux-arm64',
             archive.addfile(info, io.BytesIO(content))
 
 
+def spans(text, starts, bounds):
+    """{key: text} for each STARTS entry, from the line after it to the line
+    before the next of BOUNDS (line numbers): where workflow_keys ends it."""
+    lines = text.splitlines(True)
+    found = {}
+    for entry in starts:
+        end = min([number for number in bounds if number > entry.line], default=len(lines) + 1)
+        found[entry.value if entry.item else entry.key] = ''.join(lines[entry.line:end - 1])
+    return found
+
+
 def workflow_jobs(text):
-    return dict(re.findall(r'(?ms)^  ([a-zA-Z0-9_-]+):\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)',
-                           text.split('\njobs:\n', 1)[1]))
+    """Each job's text, cut where workflow_keys ends the job.
+
+    A job ends at the next job or top-level key, or at a line in that position
+    the reader cannot read, so text after the jobs never joins the last one.
+    """
+    entries, unread = workflow_keys.read(text)
+    return spans(text, [entry for entry in entries if entry.path == ('jobs',)],
+                 [entry.line for entry in entries if len(entry.path) <= 1]
+                 + [number for path, number, line in unread if len(path) <= 1])
 
 
 def workflow_steps(block):
-    return dict(re.findall(r'(?ms)^      - name: ([^\n]+)\n(.*?)(?=^      - |\Z)', block))
+    """Each named step of a job's BLOCK, cut where workflow_keys ends the step.
+
+    A step ends at the next step or job key, or at a line in that position the
+    reader cannot read. A name that two steps share maps to '', so no check
+    reads either copy as the step it looks for.
+    """
+    entries, unread = workflow_keys.read(block)
+    heads = [entry for entry in entries if entry.path == ('steps',) and entry.item]
+    named = [entry for entry in heads if entry.key == 'name']
+    steps = spans(block, named, [entry.line for entry in heads]
+                  + [entry.line for entry in entries if not entry.path]
+                  + [number for path, number, line in unread if not path])
+    for name, count in Counter(entry.value for entry in named).items():
+        if count > 1:
+            steps[name] = ''
+    return steps
+
+
+def step_entries(entries, job):
+    """JOB's steps as [name, entries] pairs, read from workflow_keys' structure."""
+    where = ('jobs', job, 'steps')
+    steps = []
+    for entry in entries:
+        if entry.path == where and entry.item:
+            steps.append([None, []])
+        if steps and entry.under(*where):
+            steps[-1][1].append(entry)
+            if entry.path == where and entry.key == 'name':
+                steps[-1][0] = entry.value
+    return steps
+
+
+def step_setting(entries, job, step, key, under=()):
+    """The values of KEY in JOB's one step named STEP; [] unless one step has that name."""
+    named = [found for name, found in step_entries(entries, job) if name == step]
+    if len(named) != 1:
+        return []
+    where = ('jobs', job, 'steps') + under
+    return [entry.value for entry in named[0] if entry.path == where and entry.key == key]
 
 
 # The release jobs that build and publish run on fixed, reviewed labels; the
@@ -117,15 +173,15 @@ def publication_problems(text):
     positions = [publisher.find('      - name: ' + name + '\n') for name in names]
     if min(positions) < 0 or positions != sorted(positions):
         problems.append('images and validated references must precede tag and release writes')
-    if re.search(r'^\s*continue-on-error: true$', publisher, re.M):
-        problems.append('a failed image or reference check must stop publication')
-    steps = workflow_steps(publisher)
+    entries, unread = workflow_keys.read(text)
+    problems += workflow_keys.unread_problems(unread, *TEST_DEPENDENTS)
+    problems += tolerance_problems(entries)
     for name, guard in {
         'Create and push the dispatched tag': "github.event_name == 'workflow_dispatch' && !inputs.dry_run",
         'Create GitHub release and upload assets': "${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
         'Validate and checksum the published image references': "${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
     }.items():
-        if not re.search(r'^        if: ' + re.escape(guard) + '$', steps.get(name, ''), re.M):
+        if step_setting(entries, 'release', name, 'if') != [guard]:
             problems.append('missing dry-run guard on ' + name)
     required = [
         'git checkout --detach "$SOURCE_SHA"',
@@ -160,6 +216,30 @@ MUTATION_REPORTS = {
 DESKMERGE = 'cmd/deskmerge/mutations.json'
 UPLOAD = 'Upload captured mutation reports (tool-validation pack)'
 TEST_DEPENDENTS = ('artifacts', 'runner-arm64', 'release')
+# The only publishing-path steps whose failure may be tolerated: the optional
+# release Go cache, which readers accept only from a successful main dispatch.
+OPTIONAL_STEPS = {('artifacts', 'Package release Go cache'), ('artifacts', 'Save release Go cache')}
+
+
+def tolerance_problems(entries):
+    """No publishing job, and no step in one, may tolerate its own failure.
+
+    Any `continue-on-error`, whatever its value, is refused: true, an
+    expression or a quoted value each let a failed build, check or upload pass
+    on toward publication. OPTIONAL_STEPS are the one exception.
+    """
+    problems = []
+    for job in TEST_DEPENDENTS:
+        if any(entry.path == ('jobs', job) and entry.key == 'continue-on-error' for entry in entries):
+            problems.append(job + ' must not tolerate its own failure')
+        for name, step in step_entries(entries, job):
+            if (job, name) in OPTIONAL_STEPS:
+                continue
+            if any(entry.path == ('jobs', job, 'steps') and entry.key == 'continue-on-error'
+                   for entry in step):
+                problems.append('a publishing step must not tolerate failure: %s: %s'
+                                % (job, name or 'unnamed step'))
+    return problems
 # Every release test leg, in order; muhar-light and the deskmerge shards are the
 # mutation harnesses, the rest are the suites a release must also pass.
 TEST_MATRIX = [('statusgen', ''), ('desk-tools', ''), ('drainloop', ''), ('qualgen', ''),
@@ -209,6 +289,21 @@ def publish_wait_problems(entries):
     return problems
 
 
+def environment_problems(entries, job):
+    """JOB sets no environment of its own, and the workflow sets only GO_VERSION.
+
+    A variable such as BASH_ENV at either level reaches every step of the job
+    without changing a line of the steps the other checks read.
+    """
+    problems = []
+    if [(entry.key, entry.value) for entry in entries if not entry.path and entry.key == 'env'] \
+            != [('env', '')] or [entry.key for entry in entries if entry.path == ('env',)] != ['go_version']:
+        problems.append('the workflow environment must hold only GO_VERSION')
+    if any(entry.path == ('jobs', job) and entry.key == 'env' for entry in entries):
+        problems.append('the %s job must not set its own environment' % job)
+    return problems
+
+
 def matrix_legs(entries):
     """The test job's matrix as (leg, shard) pairs, or None if it is not one list."""
     where = ('jobs', 'test', 'strategy', 'matrix')
@@ -242,15 +337,20 @@ def mutation_routing_problems(text):
     that the test matrix is exactly TEST_MATRIX, that scheduling neither omits
     nor duplicates a full harness or a deskmerge shard, that every scheduled
     harness uploads its report, that each harness keeps its verdict gate and
-    report name, and that no failure in the test job can be tolerated on the
-    way to publication. Settings are read with workflow_keys, so a setting kept
-    only in a comment counts as absent, and any line at top level or in the
-    test or publishing jobs written in a form the reader does not accept is
-    refused instead of being skipped.
+    report name, and that neither the test job nor one of its steps is set to
+    tolerate failure. It also refuses a job-level environment on the test job
+    and any workflow-level variable but GO_VERSION. It does not read what an
+    earlier step of the job writes to GITHUB_ENV or GITHUB_PATH, so a step
+    that changes the environment the harness steps inherit is not refused
+    here. Settings are read with workflow_keys, so a setting kept only in a
+    comment counts as absent, and any line at top level or in the test or
+    publishing jobs written in a form the reader does not accept is refused
+    instead of being skipped.
     """
     entries, unread = workflow_keys.read(text)
     problems = workflow_keys.unread_problems(unread, 'test', *TEST_DEPENDENTS)
     problems += publish_wait_problems(entries)
+    problems += environment_problems(entries, 'test')
     jobs = workflow_jobs(text)
     test = live_lines(jobs.get('test', ''))
     keys = [entry for entry in entries if entry.under('jobs', 'test')]
@@ -342,8 +442,10 @@ def native_transport_problems(text):
     if not any(re.search(r'(?m)^          pattern: release-build-\*$', step)
                and re.search(r'(?m)^          merge-multiple: true$', step) for step in downloads):
         problems.append('runner-arm64 must download every release-build-* artifact, merged')
-    upload = workflow_steps(native).get('Upload checked native arm64 image', '')
-    if not re.search(r'(?m)^          if-no-files-found: error$', upload):
+    entries, unread = workflow_keys.read(text)
+    problems += workflow_keys.unread_problems(unread, 'runner-arm64')
+    if step_setting(entries, 'runner-arm64', 'Upload checked native arm64 image',
+                    'if-no-files-found', ('with',)) != ['error']:
         problems.append('the native arm64 upload must fail when it finds no files')
     return problems
 
@@ -373,11 +475,11 @@ SPELLING_PLANTS = {
     'release-if-block-scalar': (
         'release', '    needs: [resolve, guard, test, artifacts, runner-arm64]\n',
         '    needs: [resolve, guard, test, artifacts, runner-arm64]\n    if: >-\n      always()\n',
-        'release must not run past a failed test job'),
+        UNREAD + 'if: >-'),
     'artifacts-if-block-scalar': (
         'artifacts', '    needs: [resolve, guard, test]\n',
         '    needs: [resolve, guard, test]\n    if: >-\n      !cancelled()\n',
-        'artifacts must not run past a failed test job'),
+        UNREAD + 'if: >-'),
     'native-if-spaced-call': (
         'runner-arm64', '    needs: [resolve, guard, test, artifacts]\n',
         '    needs: [resolve, guard, test, artifacts]\n    if: always ()\n',
@@ -1097,14 +1199,14 @@ if args[:2] == ['image', 'inspect']:
                                     'not load-bearing as written (docs/desk-tools-gate-bar.md)"\n'
                                     '            exit 0\n',
                                     'a surviving mutation must fail its harness step: ' + harness),
-            'grep-weakened-shadowed': ('test', grep,
+            'grep-weakened-behind-scalar': ('test', grep,
                                        grep.replace('          if', '          # if', 1)
                                        .replace('\n            echo', "\n          if ! grep -qE 'Totals:' "
                                                 '<<<"$report"; then\n            echo', 1),
                                        'mutation verdict gate changed: ' + harness),
             'harness-shell-override': ('test', light, light + "        shell: bash -c 'exit 0' {0}\n",
                                        'the test job must run its steps in the default shell'),
-            'fail-fast-shadowed': ('test', '      fail-fast: false\n',
+            'fail-fast-behind-scalar': ('test', '      fail-fast: false\n',
                                    '      fail-fast: true\n      # fail-fast: false\n',
                                    'all matrix verdicts must run without fail-fast cancellation'),
             'leg-excluded': ('test', '      matrix:\n',
@@ -1113,7 +1215,7 @@ if args[:2] == ['image', 'inspect']:
             'upload-warns-inline': ('test', '          if-no-files-found: error\n',
                                     '          if-no-files-found: warn # if-no-files-found: error\n',
                                     'the report upload must fail when it finds no files'),
-            'upload-warns-shadowed': ('test', '          if-no-files-found: error\n',
+            'upload-warns-behind-scalar': ('test', '          if-no-files-found: error\n',
                                       '          if-no-files-found: warn\n          # if-no-files-found: error\n',
                                       'the report upload must fail when it finds no files'),
             'upload-disabled': ('test', upload_if,
@@ -1192,6 +1294,111 @@ if args[:2] == ['image', 'inspect']:
             with self.subTest(name=name):
                 self.assertTrue(native_transport_problems(mutate_job(text, 'runner-arm64', old, new)))
 
+    # regression: #5091
+    def test_publisher_tolerance(self):
+        build = '      - name: Build, verify and publish the release images\n'
+        native = '      - name: Build and check native arm64 verify-runner\n'
+        preflight = '      - name: Preflight — required tooling\n'
+        step = 'a publishing step must not tolerate failure: '
+        plants = {
+            'publish-step-commented': ('release', build, build + '        continue-on-error: true # for now\n',
+                                       step + 'release: Build, verify and publish the release images'),
+            'publish-step-expression': ('release', build,
+                                        build + '        continue-on-error: ${{ inputs.dry_run || true }}\n',
+                                        step + 'release: Build, verify and publish the release images'),
+            'release-job': ('release', '    runs-on: medici-builder-public-release\n',
+                            '    runs-on: medici-builder-public-release\n    continue-on-error: true # for now\n',
+                            'release must not tolerate its own failure'),
+            'artifacts-job': ('artifacts', '    needs: [resolve, guard, test]\n',
+                              '    needs: [resolve, guard, test]\n    continue-on-error: "true"\n',
+                              'artifacts must not tolerate its own failure'),
+            'native-job': ('runner-arm64', '    runs-on: ubuntu-24.04-arm\n',
+                           '    runs-on: ubuntu-24.04-arm\n    Continue-On-Error: true\n',
+                           'runner-arm64 must not tolerate its own failure'),
+            'native-step': ('runner-arm64', native, native + '        continue-on-error: true\n',
+                            step + 'runner-arm64: Build and check native arm64 verify-runner'),
+            'artifacts-step': ('artifacts', preflight, preflight + '        continue-on-error: true\n',
+                               step + 'artifacts: Preflight — required tooling'),
+        }
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            self.assertEqual(publication_problems(text), [])
+            for name, (job, old, new, problem) in plants.items():
+                with self.subTest(path=path, plant=name):
+                    self.assertIn(problem, publication_problems(mutate_job(text, job, old, new)))
+
+    # regression: #5091 — text the reader skips, or text outside a job, never
+    # stands in for a step the guards read.
+    def test_skipped_text_refused(self):
+        tag = "        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run\n"
+        weak_tag = "        if: github.event_name == 'workflow_dispatch'\n"
+        tag_step = '      - name: Create and push the dispatched tag\n'
+        upload = '          if-no-files-found: error\n'
+        weak_upload = '          if-no-files-found: warn\n'
+        native_upload = '      - name: Upload checked native arm64 image\n'
+        empty = 'the native arm64 upload must fail when it finds no files'
+        scalar = UNREAD + 'name: |'
+        cover = '      - name: Report leg\n        run: echo done\n    name: |\n'
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            harness = re.search(r'(?ms)^      - name: Gate bar — mutate every desksourceguard.*?^          fi\n',
+                                text).group(0)
+            weak_harness = harness.replace('            exit 1\n', '            exit 0\n')
+            self.assertNotEqual(weak_harness, harness)
+            plants = {
+                'harness-exit-behind-scalar': (
+                    mutation_routing_problems, 'test', harness, weak_harness, cover + harness,
+                    [scalar, 'a surviving mutation must fail its harness step: cmd/desksourceguard/mutations.json']),
+                'tag-guard-behind-scalar': (
+                    publication_problems, 'release', tag, weak_tag, cover + tag_step + tag,
+                    [scalar, 'missing dry-run guard on Create and push the dispatched tag']),
+                'native-upload-behind-scalar': (
+                    native_transport_problems, 'runner-arm64', upload, weak_upload,
+                    cover + native_upload + upload, [scalar, empty]),
+            }
+            for name, (guard, job, old, new, tail, problems) in plants.items():
+                with self.subTest(path=path, plant=name):
+                    self.assertEqual(guard(text), [])
+                    mutant = mutate_job(text, job, old, new)
+                    block = workflow_jobs(mutant)[job]
+                    self.assertEqual(mutant.count(block), 1, 'control target is not unique')
+                    found = guard(mutant.replace(block, block.rstrip('\n') + '\n' + tail + '\n', 1))
+                    for problem in problems:
+                        self.assertTrue(any(problem in line for line in found), found)
+            with self.subTest(path=path, plant='text-after-jobs'):
+                after = ('x-copy:\n  runner-arm64:\n    steps:\n'
+                         '      - uses: actions/download-artifact@v8\n        with:\n'
+                         '          pattern: release-build-*\n          merge-multiple: true\n'
+                         '      - name: Upload checked native arm64 image\n        with:\n' + upload)
+                mutant = mutate_job(text, 'runner-arm64', upload, weak_upload)
+                self.assertEqual(native_transport_problems(mutant + after), [empty])
+            with self.subTest(path=path, plant='tag-step-twice'):
+                second = '      - name: Create GitHub release and upload assets\n'
+                mutant = mutate_job(mutate_job(text, 'release', tag, weak_tag), 'release', second,
+                                    tag_step + tag + '        run: echo tag\n' + second)
+                self.assertIn('missing dry-run guard on Create and push the dispatched tag',
+                              publication_problems(mutant))
+
+    # regression: #5091
+    def test_harness_environment(self):
+        problem = 'the workflow environment must hold only GO_VERSION'
+        top = '  GO_VERSION: "1.27.3"\n\njobs:\n'
+        for path in ('.github/workflows/release.yml', 'ci/staged-workflows/release.yml'):
+            text = (HERE.parents[1] / path).read_text()
+            self.assertEqual(text.count(top), 1, 'control target is not unique')
+            with self.subTest(path=path, plant='test-job-env'):
+                self.assertIn('the test job must not set its own environment', mutation_routing_problems(
+                    mutate_job(text, 'test', '    runs-on: medici-builder-release\n',
+                               '    runs-on: medici-builder-release\n    env:\n      BASH_ENV: ci/prelude.sh\n')))
+            with self.subTest(path=path, plant='workflow-env'):
+                self.assertIn(problem, mutation_routing_problems(
+                    text.replace(top, '  BASH_ENV: ci/prelude.sh\n' + top, 1)))
+            with self.subTest(path=path, plant='workflow-env-expression'):
+                mutant = re.sub(r'(?ms)^env:\n.*?\n\njobs:\n',
+                                'env: ${{ fromJSON(vars.RELEASE_ENV) }}\n\njobs:\n', text, count=1)
+                self.assertNotEqual(mutant, text)
+                self.assertIn(problem, mutation_routing_problems(mutant))
+
     # regression: #5091 — the CI step must also run the suite that checks the
     # step from outside this file (tools/release/ci_step_test.py).
     def test_ci_runs_step_suite(self):
@@ -1239,7 +1446,7 @@ if args[:2] == ['image', 'inspect']:
                                                  '    runs-on: medici-builder-public\n', 1),
             'publisher-label-suffix': main.replace('    runs-on: medici-builder-public-release\n',
                                                    '    runs-on: ' + RELEASE_RUNNERS['release'] + '-shared\n', 1),
-            'publisher-label-shadowed': main.replace('    runs-on: medici-builder-public-release\n',
+            'publisher-label-behind-scalar': main.replace('    runs-on: medici-builder-public-release\n',
                                                      '    runs-on: medici-builder-public\n'
                                                      '    # runs-on: medici-builder-public-release\n', 1),
         }

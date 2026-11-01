@@ -11,10 +11,13 @@ setting it does not understand.
 Accepted lines: blank lines and comment lines; `key:` and `key: value` (also as
 a `- ` sequence item) with a plain key, where the value is a plain scalar, a
 single-line quoted scalar, a one-line flow sequence or a `|`/`>` block scalar
-header; and plain scalar sequence items. Block scalar bodies are skipped, a
-trailing ` #` comment is dropped from every value, and keys are read in lower
-case so that no two spellings of one key differ only by case. Stdlib only;
-offline.
+header; and plain scalar sequence items. A block scalar is accepted only as a
+step's `run` value or as a value under a step's `with`, the two places the
+workflows use one. Anywhere else it is refused: this reader skips a block
+scalar's body, and that body could hold text shaped like steps or settings.
+A trailing ` #` comment is dropped from every value, and keys are read in
+lower case so that no two spellings of one key differ only by case. Stdlib
+only; offline.
 """
 import re
 
@@ -62,7 +65,8 @@ def read(text):
 
     A key repeated within one mapping (in any case), or a key or item nested
     under a key that already has a value, is unread too: YAML would reject or
-    overwrite it.
+    overwrite it. So is a block scalar header that scalar_allowed refuses; its
+    body is still skipped, so no line of it is read as a key.
     """
     entries, unread = [], []
     root = [-1, None, '', set()]
@@ -93,12 +97,21 @@ def read(text):
         if value is None or parent[2] or key in parent[3]:
             unread.append((path, number, line))
             continue
+        if SCALAR.fullmatch(value):
+            scalar = depth
+            if not scalar_allowed(path, key):
+                unread.append((path, number, line))
+                continue
         parent[3].add(key)
         entries.append(Entry(number, path, key, value, bool(match.group(2))))
         stack.append([depth, key, value, set()])
-        if SCALAR.fullmatch(value):
-            scalar = depth
     return entries, unread
+
+
+def scalar_allowed(path, key):
+    """Whether a block scalar may stand at PATH under KEY: a step's `run` value,
+    or a value under a step's `with`."""
+    return (path[-1:] == ('steps',) and key == 'run') or path[-2:] == ('steps', 'with')
 
 
 def unread_problems(unread, *jobs):

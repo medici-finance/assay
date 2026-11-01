@@ -156,7 +156,17 @@ CI still runs it on the `rest` shard, fails the shard when it fails and stops
 it within 15 minutes. Both read workflow settings through
 `tools/release/workflow_keys.py`, a strict reader of plain block-style YAML: a
 line in a checked job, or at top level, that is not in that one plain form is
-refused, so keep these workflows in it. The scan suites separately prove real-key and
+refused, so keep these workflows in it. A `|` or `>` block scalar is accepted
+only as a step's `run` value or a value under a step's `with`; anywhere else it
+is refused, because the reader skips its body. Job and step text is cut where
+the reader ends the job or step, and a step name used twice in one job counts
+as no step at all. The publishing jobs (`artifacts`, `runner-arm64`, `release`) and their
+steps must not set `continue-on-error` in any form, except the two optional
+release Go cache steps. The workflow environment must hold only `GO_VERSION`,
+and the test and CI shard jobs must not set their own. The CI step must hold
+only `name`, `if`, `timeout-minutes` and `run`, and the Go regression test file
+that runs every release suite is pinned whole. Not checked: other files in that
+Go package, and earlier steps that write `GITHUB_ENV` or `GITHUB_PATH`. The scan suites separately prove real-key and
 hidden-layer detection, fail-closed errors and exact-label precision. The
 complete release workflow must still be exercised after maintainer promotion.
 
