@@ -535,3 +535,47 @@ func ChooseHotfixShim(overlay, pinnedDir, tool, pin string, now time.Time, owner
 	c.Hotfix, c.Entry, c.Bin = true, e, HotfixBinaryPath(overlay, tool)
 	return c
 }
+
+// StatusgenArtifact is statusgen's pin-line artifact name. statusgen ships as its own release
+// asset with its own pin lines, so a statusgen hotfix is built over, and checked against, that
+// line and never the desk-tools line.
+const StatusgenArtifact = "statusgen"
+
+// HotfixToolPin is the release tag a hotfix of tool is built over and checked against, read
+// from dir's `.assay-versions`: for statusgen its own line (the bare `statusgen` line, else
+// this platform's `statusgen-<platform>` line, `.exe` first on Windows); for every other tool
+// the desk-tools line (DeskToolsReleasePin). found=false when no such line resolves, or when
+// the line that would win is malformed: a broken record is never skipped in favour of another
+// line, and every layer treats not-found as could-not-check.
+func HotfixToolPin(dir, tool, platform string) (tag string, found bool) {
+	if tool != StatusgenArtifact {
+		tag, _, found = DeskToolsReleasePin(dir, platform)
+		return tag, found
+	}
+	if dir == "" {
+		return "", false
+	}
+	path := filepath.Join(dir, AssayVersionsFile)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	names := []string{StatusgenArtifact}
+	if p := strings.TrimSpace(platform); p != "" {
+		base := StatusgenArtifact + "-" + p
+		if strings.HasPrefix(p, "windows-") {
+			names = append(names, base+".exe")
+		}
+		names = append(names, base)
+	}
+	for _, n := range names {
+		t, _, ok, err := lookupPin(raw, path, n)
+		if err != nil {
+			return "", false
+		}
+		if ok {
+			return t, t != ""
+		}
+	}
+	return "", false
+}

@@ -100,15 +100,16 @@ var (
 	hotfixClock = time.Now
 )
 
-// cellDeskToolsPin is the desk-tools pin of the cell's repo checkout.
-func (c *Cell) cellDeskToolsPin() string {
-	tag, _, _ := deskkit.DeskToolsReleasePin(c.Repo, runtime.GOOS+"-"+runtime.GOARCH)
+// cellHotfixPin is the pin of the cell's repo checkout that tool's hotfix is checked against:
+// statusgen's own pin line for statusgen, the desk-tools line for every other tool.
+func (c *Cell) cellHotfixPin(tool string) string {
+	tag, _ := deskkit.HotfixToolPin(c.Repo, tool, runtime.GOOS+"-"+runtime.GOARCH)
 	return tag
 }
 
 // hotfixShimChoice decides one tool's shim target and prints the NOTICE for a retired hotfix.
 func (c *Cell) hotfixShimChoice(tool, pinnedDir string, stderr io.Writer) deskkit.HotfixShimChoice {
-	ch := deskkit.ChooseHotfixShim(deskkit.HotfixOverlayDir(), pinnedDir, tool, c.cellDeskToolsPin(), hotfixClock(), hotfixOwner())
+	ch := deskkit.ChooseHotfixShim(deskkit.HotfixOverlayDir(), pinnedDir, tool, c.cellHotfixPin(tool), hotfixClock(), hotfixOwner())
 	if ch.Notice != "" {
 		fmt.Fprintln(stderr, "cellctl NOTICE: "+ch.Notice)
 	}

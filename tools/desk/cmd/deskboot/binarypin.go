@@ -173,12 +173,29 @@ func binaryPinCheck(o bootOpts) (lines []string, hotfix bool, err error) {
 		return []string{"all pinned (" + pin + ")"}, false, nil
 	}
 	sort.Slice(hots, func(i, j int) bool { return hots[i].tool < hots[j].tool })
-	if !pinFound {
-		return nil, true, binaryPinRefusal(hots[0].tool, "%s: no desk-tools pin line at or above %s to compare the hotfix's base against", deskkit.HotfixReasonNoPin, o.root)
+	// Each hotfix is checked against its own tool's pin line: statusgen's own line for
+	// statusgen, the desk-tools line for every desk tool. A missing line refuses that tool.
+	pinRoot := deskkit.NearestPinRoot(o.root)
+	toolPin := func(tool string) (string, bool) {
+		t, ok := deskkit.HotfixToolPin(pinRoot, tool, hostPlatform)
+		if i := strings.LastIndex(t, "/"); i >= 0 {
+			t = t[i+1:]
+		}
+		return t, ok
+	}
+	for _, h := range hots {
+		if _, ok := toolPin(h.tool); !ok {
+			name := deskkit.DeskToolsArtifact
+			if h.tool == deskkit.StatusgenArtifact {
+				name = deskkit.StatusgenArtifact
+			}
+			return nil, true, binaryPinRefusal(h.tool, "%s: no %s pin line at or above %s to compare the hotfix's base against", deskkit.HotfixReasonNoPin, name, o.root)
+		}
 	}
 	owner, now, forge := binaryPinOwner(), binaryPinClock(), binaryPinForge()
 	for _, h := range hots {
-		e, verr := deskkit.ValidateHotfix(overlay, h.tool, pin, now, owner)
+		hpin, _ := toolPin(h.tool)
+		e, verr := deskkit.ValidateHotfix(overlay, h.tool, hpin, now, owner)
 		if verr == nil && deskkit.HotfixNeverTarget(h.tool) {
 			verr = &deskkit.HotfixError{Reason: deskkit.HotfixReasonTampered, Detail: h.tool + " is never a hotfix target", Code: 1}
 		}
