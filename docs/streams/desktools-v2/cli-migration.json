@@ -128,6 +128,11 @@
     },
     {
       "class": "test",
+      "pattern": "tools/release/ci_step_test.py",
+      "reason": "offline checks that the release test suites are named in the CI step that runs them, executed by build-test through the regression package; never an operator entrypoint (#5091)"
+    },
+    {
+      "class": "test",
       "pattern": "tools/forge-import-check",
       "reason": "source-only verification instrument run explicitly by go run or go test from forge-neutral briefs 37 and 38 verify rows; it parses a target tree, never builds or executes it, and is never installed or released as an operator CLI (#2743)"
     },
