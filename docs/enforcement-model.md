@@ -211,3 +211,13 @@ enforced.
 | Contract | Enforced boundary and attribution limit |
 |---|---|
 | drainloop declared-effect recovery | Before every Apply, reconcile the authoritative receipt; require durable EFFECT-INTENT (or an atomic intent/claim-generation handoff), then record completion. The adapter-specific idempotency/fencing guarantee depends on the provider's actual dedupe and ownership enforcement. Unknown outcomes hold wherever deduplication or authoritative absence cannot be enforced; stale pending generations reconcile or hold. Bypasses are only attributed, never an unconditional exactly-once guarantee. |
+
+### GE/16 record-contract preparation
+
+The passive Cell checkpoint and operator-incarnation contracts are not active
+enforcement layers. The pure record comparison in drainloop is exercised through
+an offline fake boundary; no dispatch, launch, live effect or credential path calls
+it. Current operator custody, signature authentication, durable ownership and
+reservation transactions, real provider fencing and restore admission remain
+required implementation/qualification. Existing human gates and the whole GE/16
+Verify table stand; these tests are not independent acceptance Evidence.
