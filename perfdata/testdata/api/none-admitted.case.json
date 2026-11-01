@@ -1,0 +1,29 @@
+{
+  "description": "When no event is admitted the batch is rejected and nothing is committed.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "a111356cc0277ca13a9db9f4d7d38e934025c4116a3da41793bac0b27988beb2",
+    "committed": false,
+    "status": "rejected",
+    "reason": "none-admitted",
+    "results": [
+      {
+        "index": 0,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s3",
+        "status": "outside-horizon",
+        "digest": "5870f45e467b02faa5bcc5320af1599a15ccd3a60500be5327a6dd3608cbcc54"
+      }
+    ]
+  }
+}

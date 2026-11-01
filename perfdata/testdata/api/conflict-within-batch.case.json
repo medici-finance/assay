@@ -1,0 +1,34 @@
+{
+  "description": "Two records with one identity inside one batch: the first is admitted, the second conflicts.",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {},
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "a00abbe119c7a64fef815eece84b5d43485cc1865194d53f3fc8dae9b124adb4",
+    "committed": true,
+    "status": "partial",
+    "results": [
+      {
+        "index": 0,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s2",
+        "status": "acknowledged",
+        "digest": "2a933b4644f3691caf71b36412ad09c282a3bba41bb49d57ae7cb134cad69ca3"
+      },
+      {
+        "index": 1,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s2",
+        "status": "conflicting",
+        "digest": "6aea144d84739cf8b95e2e9b8c80514c9e105f9f14e8a68963f5b6f9e690dbec"
+      }
+    ]
+  }
+}

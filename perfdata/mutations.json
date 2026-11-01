@@ -1,0 +1,90 @@
+{
+  "test": "GOWORK=off go test -count=1 -timeout 180s -run '^(TestEventPrivacy|TestSpoolRecovery|TestLocalReportFlow|TestLocalCostAndBounds|TestReportDistributionRetention|TestPhaseCostSchema|TestAPIContractFixtures)$' ./...",
+  "schemata": true,
+  "control": {
+    "name": "tool profile admits linked workflow identity",
+    "file": "context.go",
+    "old": "if p == ProfileTool && c.linked() {",
+    "new": "if false && p == ProfileTool && c.linked() {"
+  },
+  "mutations": [
+    {
+      "name": "free-text phase names pass the closed vocabulary",
+      "file": "payload.go",
+      "old": "if !phases[p.Phase] {",
+      "new": "if false && !phases[p.Phase] {"
+    },
+    {
+      "name": "recording arms without the exact telemetry opt-in",
+      "file": "consent.go",
+      "old": "if getenv(EnvTelemetry) != \"1\" {",
+      "new": "if getenv(EnvTelemetry) == \"never\" {"
+    },
+    {
+      "name": "the sink propagates a failed write (full disk) into the caller result",
+      "file": "local/sink.go",
+      "old": "\treturn v, err\n}",
+      "new": "\tif s.Health().WriteFailed > 0 {\n\t\terr = ErrOff\n\t}\n\treturn v, err\n}"
+    },
+    {
+      "name": "a full queue blocks the producer instead of dropping and counting",
+      "file": "local/sink.go",
+      "old": "\tselect {\n\tcase s.ch <- d:\n\tdefault:\n\t\ts.queueFull.Add(1)\n\t}",
+      "new": "\ts.ch <- d"
+    },
+    {
+      "name": "an orphaned live marker (crash) reads as a clean termination",
+      "file": "local/read.go",
+      "old": "c.UncleanTerminations = cov.Unclean + orphaned",
+      "new": "c.UncleanTerminations = cov.Unclean"
+    },
+    {
+      "name": "aged-out raw events are dropped instead of rolled up",
+      "file": "local/retire.go",
+      "old": "r.RolledUp = true",
+      "new": "r.RolledUp = false"
+    },
+    {
+      "name": "repeated cumulative usage snapshots are summed",
+      "file": "report/report.go",
+      "old": "case modes[perfdata.UsageCumulative]:",
+      "new": "case false && modes[perfdata.UsageCumulative]:"
+    },
+    {
+      "name": "nested invocation wall time is summed as elapsed",
+      "file": "report/report.go",
+      "old": "c.ElapsedMs = union(iv)",
+      "new": "c.ElapsedMs = c.SummedWallMs"
+    },
+    {
+      "name": "pooled statistics average the daily statistics",
+      "file": "report/report.go",
+      "old": "\tfor _, row := range all.Rows {\n\t\tpooled = append(pooled, rowOf(\"\", row))\n\t}",
+      "new": "\tfor _, row := range all.Rows {\n\t\tpr := rowOf(\"\", row)\n\t\tvar sa, sp float64\n\t\tvar n int\n\t\tfor _, d := range perDay {\n\t\t\tif d.Tool == pr.Tool && d.Wall.AvgMs != nil && d.Wall.P95Ms != nil {\n\t\t\t\tsa += *d.Wall.AvgMs\n\t\t\t\tsp += float64(*d.Wall.P95Ms)\n\t\t\t\tn++\n\t\t\t}\n\t\t}\n\t\tif n > 0 {\n\t\t\ta, p := sa/float64(n), int64(sp/float64(n))\n\t\t\tpr.Wall.AvgMs, pr.Wall.P95Ms = &a, &p\n\t\t}\n\t\tpooled = append(pooled, pr)\n\t}"
+    },
+    {
+      "name": "a report with no coverage manifest reads as a complete empty window",
+      "file": "report/report.go",
+      "old": "\t\treturn perfdata.CoverageMissing\n",
+      "new": "\t\treturn perfdata.CoverageEmptyComplete\n"
+    },
+    {
+      "name": "a missing store directory reads as a complete empty window",
+      "file": "local/read.go",
+      "old": "rr.Coverage = []perfdata.SourceCoverage{{State: perfdata.CoverageMissing,",
+      "new": "rr.Coverage = []perfdata.SourceCoverage{{State: perfdata.CoverageEmptyComplete,"
+    },
+    {
+      "name": "the collector acknowledges events whose commit failed",
+      "file": "batch.go",
+      "old": "if ac.Commit == nil || ac.Commit(accepted) != nil {",
+      "new": "if ac.Commit == nil || (ac.Commit(accepted) != nil && false) {"
+    },
+    {
+      "name": "a conflicting identity is acknowledged as a duplicate",
+      "file": "batch.go",
+      "old": "if prev == r.Digest {",
+      "new": "if prev != \"\" {"
+    }
+  ]
+}
