@@ -97,7 +97,11 @@ any input it takes: trigger, ref, liveness state and source, class, culprit clas
 pattern name or expected digest. Each activating brief binds every one of them to a value the run cannot
 choose, and its review checks that. Most come from its platform or reviewed source. Liveness can't: it is
 an observation made at run time, so a value fixed in source is not a result, and the gate can't tell the
-two apart. A run that can write its root can change the file the gate reads, so the expected digest has to
+two apart. Culprit class can't either: auto-triage/02 and /03 take it from auto-triage/01's classifier
+record, which the run's own classifier produces, so that condition doesn't cover it until the activating
+brief supplies a binding. No brief supplies one today, and the gate can't tell a bound value from an
+unbound one. Anything but exactly `mechanical` selects the judgement exit, so the exposure is a value that
+reads `mechanical` when it shouldn't. A run that can write its root can change the file the gate reads, so the expected digest has to
 come from outside any root the run can write, and reading it from a writable checkout doesn't count.
 auto-triage/01's `origin` check stands behind trigger and ref for the gate-red class.
 Nothing stands behind the other inputs, or behind any input of another class, which is why activation
@@ -135,8 +139,9 @@ layering: one new rule file in `deskkit`, with one thin CLI mode as its adapter.
 the pure verdict (Task 2-5) and one file read (Task 1); `deskdispatch` parses flags and maps the
 verdict to an exit code. `tools/desk/internal/` cannot be imported from another module, and
 `tools/autotriage/` is planned as its own package, so activating briefs call the CLI mode. No store,
-no scheduler and no forge call: the gate is stateless and is called again for each node, so a source
-that dies mid-run holds the next node.
+no scheduler and no forge call: the gate is stateless and is called again for each node. A source that
+dies mid-run holds the next node when the caller observes liveness again for that node, as Task 10
+requires. A caller reusing an earlier result gets past the gate, which can't tell the difference.
 
 design-fit:
   owner: tools/desk/internal/deskkit (dispatch-side pattern reading, beside admission.go)
@@ -149,7 +154,7 @@ design-fit:
 
 Decision-trigger: creation. What is being decided is whether a run-time check may lift the rule that a signal-triggered workflow pattern is a reviewed definition only and must not be activated.
 
-The check refuses a run that fails its class's admission, leaves its class's route or reads an unexpected revision of the pattern, and holds a run whose source is dead or unchecked. It trusts its caller for every input, enforces only a listed subset of the authoring rules, and has no owner yet for a liveness result. A caller following the spec has no result to pass until one exists, so every such run holds. The check can't tell an observed result from a constant.
+The check refuses a run that fails its class's admission, leaves its class's route or reads an unexpected revision of the pattern, and holds a run whose source is dead or unchecked. It trusts its caller for every input, enforces only a listed subset of the authoring rules, and has no owner yet for a liveness result and no binding yet for culprit class, which the run's own classifier produces. A caller following the spec has no result to pass until one exists, so every such run holds. The check can't tell an observed result from a constant.
 
 Why it matters: this rule is the only thing keeping signal patterns from going live, and later activations will rely on what replaces it.
 
@@ -287,10 +292,13 @@ Default if no answer: none — blocks until answered.
     caller binds "trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest"
     each to "a value the run cannot choose", where liveness is "an observation made at run time, never a
     value fixed in source" and the expected digest comes "from outside any root the run can write, and
-    reading it from a writable checkout does not count", and the others come from its platform or reviewed
-    source; a caller "MUST proceed only on the admit exit"; a hold "never blocks a person"; an activating
-    brief "MUST name the source whose result it passes and the brief that owns that result, and a constant
-    or otherwise unprobed value is not a liveness result". Keep the statement that limits are the
+    reading it from a writable checkout does not count", culprit class is "a classifier's output produced
+    during the run, so that condition does not cover it until the activating brief supplies the binding",
+    and the others come from its platform or reviewed source; a caller "MUST proceed only on the admit
+    exit"; a hold "never blocks a person"; an activating brief "MUST name the source whose result it passes
+    and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness
+    result"; a caller "MUST observe liveness again for each node, and a result from an earlier node does
+    not count". Keep the statement that limits are the
     activating implementation's. Name no particular brief in the spec text.
 11. **Changelog.** Add `changelog/graph-execution-35-signal-gate.md` (planned) with `### Added` and one `- ` bullet.
 
@@ -320,7 +328,7 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | 15 | check | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS" |
 | 16 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGatePatternPin$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGatePatternPin (' "$T/out" \|\| exit 4)` | exit 0; an absent, malformed or differing expected digest is refused with `pattern-revision`, an absent one even when the file is missing; a right digest admits; a file changed between two calls with the same expected digest admits the first and refuses the second, so a run cannot change its own route by rewriting the pattern |
 | 17 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGateUnlintedEdges$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGateUnlintedEdges (' "$T/out" \|\| exit 4)` | exit 0; `no-effects-no-admission.yaml` is refused with `admission-missing` for its class with no `admission`, and `half-pair.yaml`, `empty-source.yaml`, `duplicate-key.yaml`, `two-documents.yaml`, `unknown-class-key.yaml`, `merge-key-class.yaml` and `merge-key-node.yaml` are refused with `pattern-invalid`, so these eight shapes fail closed |
-| 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; §4.3 carries Task 10's six statements and the binding's words for liveness and the digest, across line wraps, and 34's hold wording is gone |
+| 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'output produced during the run, so that condition does not cover it until the activating brief supplies the binding' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result' 'MUST observe liveness again for each node, and a result from an earlier node does not count'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; §4.3 carries Task 10's seven statements and the binding's words for liveness, culprit class and the digest, across line wraps, and 34's hold wording is gone |
 
 ## Pre-mortem
 
@@ -344,6 +352,8 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | A caller skips the gate or passes a false value for any input | not caught here: each activating brief's review, and auto-triage/01's `origin` check for trigger and ref on gate-red. The single-point-of-failure note states the gap |
 | An activating brief passes no liveness result | the gate holds (row 6). No brief owns a source today (#5148), so that hold stands |
 | An activating brief passes a constant or unprobed `live` | not caught by the gate, which can't tell it from an observation. Row 18 shows the spec forbids it, and the activating brief's human gate and review are what catch it |
+| An activating brief passes its run's classifier output as culprit class with no binding, so a value reading `mechanical` selects the mechanical exit | not caught by the gate, which can't tell a bound value from an unbound one. Row 18 shows the spec requires the activating brief to supply the binding, and that brief's human gate and review are what catch it. No brief supplies one today |
+| A caller reuses an earlier node's liveness result, so a source that died mid-run doesn't hold the next node | not caught by the gate, which holds no state. Row 18 shows the spec requires a fresh observation for each node, and the activating brief's human gate and review are what catch it |
 | A class with no limits owner goes live | not caught here: limits are the activating brief's, and only auto-triage/02 and /03 own them today |
 
 ## Evidence
