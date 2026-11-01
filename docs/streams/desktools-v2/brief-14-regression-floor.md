@@ -51,10 +51,10 @@ id: 4f2e1b7a-9c3d-4e5f-8a6b-1d2c3b4a5967
 ## Context
 
 files:
-- NEW `tools/desk/internal/regression/` (planned) — `MANIFEST.md`, the manifest test, its `testdata/` fixture, and desk-half regression tests.
+- **NEW** `tools/desk/internal/regression/` (planned) — `MANIFEST.md`, the manifest test, its `testdata/` fixture, and desk-half regression tests.
 - `statusgen/` — NEW statusgen-half regression tests (tests only).
 - `docs/streams/desktools-v2/README.md` — the `## Regression floor` section.
-- `changelog/<branch>.md` — the per-PR fragment this repository requires.
+- **`changelog/<branch>.md`** — the per-PR fragment this repository requires.
 
 v2's premise is that the flows have solidified. What has solidified is recorded in the
 resolved-issue register: every closed Windows/GitLab/desk-tools bug is a behavior someone

@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
 
 jobs:
   # Decides whether this run needs the skippable jobs below. The ONE case it
@@ -123,7 +123,7 @@ jobs:
           # The compiled surface: the tools/desk module (its go.mod/go.sum
           # included), the sibling modules it pulls in through replace directives
           # in tools/desk/go.mod, any go.work, and this workflow.
-          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|deskcore)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
+          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|gitcore|deskcore)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
           if [ "$EVENT" != "pull_request" ]; then
             echo "event '$EVENT': always compile"
           elif ! files="$(git diff --no-renames --name-only HEAD^1 HEAD)"; then
@@ -184,6 +184,10 @@ jobs:
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The statusgen ratchet compares the immutable merge base to origin/main.
+          # Keep the check fail-closed by supplying its full comparison history.
+          fetch-depth: 0
 
       - name: Install Go
         run: |
@@ -198,6 +202,15 @@ jobs:
       - name: Test release image contract
         if: matrix.shard == 'rest'
         run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
+
+      # The witness skew tests (statusgen/36 Verify rows 5 and 6) compare against
+      # a real prior release binary and FAIL when SG_OLD_BIN is unset. The
+      # script downloads the pinned baseline, checks its sha256 against that
+      # release's own checksums.txt (never a typed digest) and exports
+      # SG_OLD_BIN through GITHUB_ENV. Ruling: medici-finance/assay#4459.
+      - name: Fetch the statusgen skew baseline (checksum-verified)
+        if: matrix.shard == 'rest'
+        run: bash statusgen/fetch-baseline.sh statusgen-linux-amd64 "${RUNNER_TEMP}/sg-baseline"
 
       # Run before the all-module sweep: statusgen alone does not depend on the
       # desk child compiled by its offline bridge test. Match the release gate.
@@ -253,6 +266,8 @@ jobs:
               # must execute on PRs; build/vet and rendering existing artifacts
               # do not reach the trace append path (review F-m2-ci).
               */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
+              # Lifted Git owner and its canonical fixture harness leave the desk shard.
+              */gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest" ;;
               */deskcore|deskcore) extra="GOWORK=off go test -count=1 ./..." ;;
               */deskd|deskd) extra="GOWORK=off go test -count=1 -timeout=180s ./..." ;;
               # tools/desk: build+vet here; `go test` in the desk-K legs.
@@ -472,7 +487,7 @@ jobs:
       - name: Install Go
         env:
           # Keep this download pin in sync with GO_VERSION, as in release.yml.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"

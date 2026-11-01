@@ -179,10 +179,15 @@ func ReadMonitorState(dir string, scope []string) (*MonitorState, error) {
 // Inbound is one event the poller reported: an issue that is new, or whose updatedAt moved (a new
 // comment — a parked worker resuming, or a human answering a decision request).
 type Inbound struct {
-	Repo      string
-	Number    int
-	UpdatedAt time.Time
-	Raw       string
+	// Replayed observations require judgment, never another mechanical scan.
+	HandoffState     string
+	HandoffRoute     string
+	HandoffSuccessor string
+	Replayed         bool
+	Repo             string
+	Number           int
+	UpdatedAt        time.Time
+	Raw              string
 }
 
 // ID is the stable claim key. It carries the repo prefix because two repos routinely own issue
@@ -214,6 +219,15 @@ type MonitorReport struct {
 	// Unparsed are lines the parser did not recognise. An unknown line is surfaced rather than
 	// discarded: a poller that grew a new line kind must not be silently half-read.
 	Unparsed []string
+	// Deferred names, per repo, retained observations held back by the replay cap. They are
+	// retained (not lost) and presented oldest first once an earlier retained event is
+	// discharged or retired; the surface WAS read.
+	Deferred []string
+	// Retired names the terminal dispositions the drain recorded for retained events this pass.
+	Retired []string
+	// retire records terminal dispositions in the retained observation history. Only the
+	// production retaining monitor sets it; a captured or offline poll has nothing to retire.
+	retire func([]observationRetirement) error
 }
 
 // Blind reports whether this cycle could not see the whole surface — a degraded repo or a

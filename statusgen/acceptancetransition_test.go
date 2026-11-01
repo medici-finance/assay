@@ -20,6 +20,11 @@ func transitionFixtureAt(t *testing.T, merge ...bool) transitionFixture {
 
 func contextFixture(t *testing.T, merge []bool, edit func(string, string) string) transitionFixture {
 	t.Helper()
+	return contextHistoryFixture(t, merge, edit, nil)
+}
+
+func contextHistoryFixture(t *testing.T, merge []bool, edit func(string, string) string, historyEdit func(string) string) transitionFixture {
+	t.Helper()
 	change := func(stage, body string) string {
 		if edit != nil {
 			return edit(stage, body)
@@ -63,6 +68,9 @@ func contextFixture(t *testing.T, merge []bool, edit func(string, string) string
 	delivery := vfRev(t, root, "HEAD")
 	history := "Historical result: row 2 failed; retained for diagnosis.\n"
 	body = strings.Replace(body, "## Evidence\n", "## Evidence\n"+history, 1)
+	if historyEdit != nil {
+		body = historyEdit(body)
+	}
 	if e = os.WriteFile(path, []byte(body), 0644); e != nil {
 		t.Fatal(e)
 	}
@@ -340,6 +348,40 @@ func TestTransitionCISkip(t *testing.T) {
 	}
 	if cov := evaluateCoverage(f.root, streams, coverageOptions{Revision: f.amendment}); cov["vf/01"].Released {
 		t.Fatalf("CI skip conferred coverage: %+v", cov["vf/01"])
+	}
+}
+
+// regression: #4596
+func TestTransitionRootPaths(t *testing.T) {
+	for _, mode := range []string{"dot", "nested", "symlink"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			root := "."
+			cwd := f.root
+			switch mode {
+			case "nested":
+				cwd = filepath.Join(f.root, "docs", "streams", "vf")
+				root = "../../.."
+			case "symlink":
+				root = filepath.Join(t.TempDir(), "checkout")
+				if err := os.Symlink(f.root, root); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+			}
+			t.Chdir(cwd)
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if problems := protectedClosureProblems(streams); len(problems) != 0 {
+				t.Fatalf("relative-root lint: %v", problems)
+			}
+			code, out, diag := captureVerifyclosure(t, []string{"--root", root, "--brief", "vf/01", "--acceptance-forge"})
+			if code != 0 {
+				t.Fatalf("relative-root closure: %d %s %s", code, out, diag)
+			}
+		})
 	}
 }
 

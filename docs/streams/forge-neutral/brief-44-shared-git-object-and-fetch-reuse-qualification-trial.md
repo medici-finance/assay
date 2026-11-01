@@ -47,8 +47,7 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/gitcore/sharedreuse_test.go` (planned), `tools/desk/internal/gitcore/testdata/sharedreuse/` (planned), `docs/research/2026-10-14-scion-git-reuse/README.md` (planned), `docs/cellctl-maintenance.md`, `changelog/scion-git-reuse-trial.md` (planned), `tools/desk/internal/gitcore/reviewreuse_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files: `tools/desk/internal/gitcore/sharedreuse_test.go` (planned), `tools/desk/internal/gitcore/testdata/sharedreuse/` (planned), `docs/research/2026-10-14-scion-git-reuse/README.md` (planned), `docs/cellctl-maintenance.md`, `changelog/scion-git-reuse-trial.md` (planned), `tools/desk/internal/gitcore/reviewreuse_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - gitcore already has alternate readers and object-store helpers; worktree allocation/retirement and maintenance have existing owners.

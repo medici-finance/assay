@@ -38,13 +38,11 @@ consumers:
 ## Context
 
 files:
-- NEW `qualgen/regressionlink.go` (planned) + `regressionlink_test.go` (planned) — the
-  pluggable `RegressionLinkage` seam and its reference adapter.
-- NEW `qualgen/refix.go` (planned) + `refix_test.go` (planned) — the re-fix join and metric.
+- **add** `qualgen/regressionlink.go` (planned) + `qualgen/regressionlink_test.go` (planned) — the pluggable `RegressionLinkage` seam and its reference adapter.
+- **add** `qualgen/refix.go` (planned) + `qualgen/refix_test.go` (planned) — the re-fix join and metric.
 - `qualgen/report.go` — a `## Re-fix rate (regression-suite effectiveness)` section in `renderReport`.
-- NEW `qualgen/testdata/refix/` (planned) — fixture DefectFix / DefectTrace records and
-  brief files.
-- `changelog/<branch-slug>.md` — the per-PR fragment.
+- **add** `qualgen/testdata/refix/` (planned) — fixture DefectFix / DefectTrace records and brief files.
+- **add** — `changelog/<branch-slug>.md`, the per-PR fragment.
 
 facts:
 - **Records (frozen contracts — do not rename fields):** `DefectFix` in

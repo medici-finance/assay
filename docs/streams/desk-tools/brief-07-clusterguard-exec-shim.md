@@ -66,11 +66,11 @@ an additive recognised-key entry is non-sensitive, the correction is to flip `se
 yes and take the human gate — not to leave the answers as-is with the disagreement unrecorded.
 
 files:
-- `tools/desk/cmd/clusterguard/` (NEW — a Go command in the existing `tools/desk` module)
+- `tools/desk/cmd/clusterguard/` (NEW: a Go command in the existing `tools/desk` module)
 - `tools/desk/internal/deskkit/rosterconfig.go` (declare + recognise the opt-in variable name)
 - `tools/desk/internal/forgeban/allowlist.go` (register the one pass-through exec site)
 - `tools/desk/README.md` (contract, verdict table, stated limits)
-- `docs/adopting-assay.md` (§ install-desk-tools — installing the shim directory, and the opt-in)
+- `docs/adopting-assay.md` (§ install-desk-tools: installing the shim directory, and the opt-in)
 
 facts:
 - guard-family precedent: `tools/desk/cmd/{writeguard,deskpushguard,desksourceguard,repohardenguard}`;
@@ -823,6 +823,81 @@ RISK-VALUE: DERIVED — ExitDisabled = 3, ExitRefused = 5, ExitUnverifiable = 6 
 RISK-VALUE: NAMED, NOT DERIVED (shown WRONG) — one readOnlyVerbs entry in tools/desk/cmd/clusterguard/shim.go:43-52 — detail filed privately; human-gated
 
 **VERIFY: FAIL** — 13 of 15 rows meet their Expect. Row 7 fails — detail filed privately; human-gated. The #2179 false pass is fixed. Row 12 exits 1 because of a load-dependent race in internal/cellcadence TestBudgetAndGuard/guard, outside this brief's files; clusterguard and forgeban are ok in every run. Status stays implemented.
+### Non-implementer verifier run — 2026-10-29 (UTC) claude-opus-5-5 verifier at 711d8740e8ca (VERIFY: FAIL — 13 of 15 rows meet their Expect; row 7 fails on a read-only allowlist entry, row 12 exits 1 on the witness)
+
+Re-verify on merged main at 711d8740e8caf8aa561113ec54c97fc06c021784. Since the 2026-10-16 receipt at 95721190af84, the guard source changed in one commit: #3468 (fa29aa727) adds a bare-form rule for allowlisted verbs (bareOnlyVerbs and hasPositional in shim.go), its tests, and new mutation entries. The other in-scope changes are outside the verdict path: #4445 moves the recognised-key list for the opt-in into the shared trust package, and the forgeban allowlist and this brief's Context grammar were edited. The runner is not the implementer. Admission: `deskdispatch --check-verifier` exited 0 before the first row, again on resume, and again after this write-up.
+
+Execution witness: every row is check:ci, and all fifteen ran in one closed container-netns admission bracket. The bracket was opened on the host, the rows ran in the release-pinned verify-runner image for v1.0.65, pulled by digest (linux/amd64, emulated on an arm64 host), and the bracket was closed on the host. The container ran with network none (only loopback and a down tunnel interface present), a read-only root, all capabilities dropped, KUBECONFIG=/dev/null, GOPROXY=off and the image's baked module cache. The tree under test was a disposable full copy of the admitted source checked out at the same commit and byte-identical to the verifier home outside .git, with its git metadata mounted read-only. `statusgen verifyrun --bracket-digest` on the closed witness reports verdict=match. The witness bytes follow unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/clusterguard/... -count=1` | pass exit=0 sandbox=container-netns | sha256:ac4211ca6500 | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesWithoutOptIn$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:cd01cb9c0ecb | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesScriptWrappedCall$' -count=1` | pass exit=0 sandbox=container-netns | sha256:fb9ba012aeed | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestPassesThroughWithOptIn$' -count=1 && go test ./cmd/clusterguard/ -run '^TestPassThroughSkipsTheShimDirectory$' -count=1` | pass exit=0 sandbox=container-netns | sha256:46c8486998fd | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestSymlinkNameDispatch$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:2536af0981e2 | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestVerbClassification$' -count=1 && go test ./cmd/clusterguard/ -run '^TestReadOnlyTierRefusesMutatingVerbs$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnlistedFlagNotReadOnly$' -count=1 && go test ./cmd/clusterguard/ -run '^TestROTierUnlistedFlagRefuses$' -count=1` | pass exit=0 sandbox=container-netns | sha256:5f4aa81dd58e | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestUnrecognisedOptInValueRefuses$' -count=1 && go test ./cmd/clusterguard/ -run '^TestNoRealBinaryIsUnverifiable$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnknownInvocationNameIsUnverifiable$' -count=1` | pass exit=0 sandbox=container-netns | sha256:aee86db0c086 | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestStopFlagRefusesEvenWithOptIn$' -count=1` | pass exit=0 sandbox=container-netns | sha256:e650d0cc7f0f | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestAbsolutePathInvocationBypassesTheShim$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRecordsBothVerdicts$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRedactsCredentialArguments$' -count=1` | pass exit=0 sandbox=container-netns | sha256:cb4c5b0f46d7 | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && d=$(mktemp -d) && go build -o "$d/clusterguard" ./cmd/clusterguard && "$d/clusterguard" > "$d/usage.out" 2>&1; rc=$?; grep -q 'ASSAY_ALLOW_CLUSTER' "$d/usage.out"; g1=$?; grep -q 'talosctl' "$d/usage.out"; g2=$?; [ "$rc" -eq 0 ] && [ "$g1" -eq 0 ] && [ "$g2" -eq 0 ]` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./... -count=1` | fail exit=1 sandbox=container-netns | sha256:9510eae2e4c9 | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 13 | `gofmt -l tools/desk/cmd/clusterguard > /tmp/cg-fmt.out; test ! -s /tmp/cg-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:9883240f29ee | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && go run ./cmd/muhar -spec cmd/clusterguard/mutations.json` | pass exit=0 sandbox=container-netns | sha256:677d38c95971 | 2026-10-29 | assay-verifier-app[bot] @ 711d8740e8ca (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:6becf45565b3507f2a6d7a9bace7779b5382ebc55eaf8ac5e6e9ad08f2a4ef9c
+Container-Image: sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f
+Verification-Attestation: medici-finance/assay#4880 run=4ad93e424b189a2ae69692c418a741c7ba7ca5fca9c4dc56d2d06e726f97075b source=711d8740e8caf8aa561113ec54c97fc06c021784 brief=docs/streams/desk-tools/brief-07-clusterguard-exec-shim.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=4ad93e424b189a2ae69692c418a741c7ba7ca5fca9c4dc56d2d06e726f97075b source=711d8740e8caf8aa561113ec54c97fc06c021784 tree=sha256:6becf45565b3507f2a6d7a9bace7779b5382ebc55eaf8ac5e6e9ad08f2a4ef9c witness=sha256:36a8c8094ea3a28b2f05c9498b523e10ec18d788065c772ca12b35d3ca5eaf7a opened=2026-10-29T20:28:10Z closed=2026-10-29T22:03:26Z before=receipt after=check-verifier
+
+Witness reading. Rows 1–11 and 13–15 pass with exit 0 in the container. Row 12 exits 1. The per-package output of the row stayed in the container's tmpfs and was not retained, so the failing package set inside the bracket cannot be recovered. The host runs below diagnose it. They are supplemental observations and discharge no row.
+
+| # | Supplemental observation (no acceptance credit) | Result | Date | Runner |
+|---|---|---|---|---|
+| S1 | Adversarial probe of the read-only tier (described below) | One read-only-tier allowlist entry admits a mutating invocation: exit 0, fixture reached. Every other probed shape behaves as specified | 2026-10-29 | claude-opus-5-5 verifier @ 711d8740e8ca (model, supplemental) |
+| S2 | Row 12's command on the host against the same disposable copy, under env -i with GOPROXY=off, GOFLAGS=-mod=readonly, GOTOOLCHAIN=local, KUBECONFIG=/dev/null, a throwaway HOME and a short TMPDIR | exit 1. 114 packages ok, including cmd/clusterguard and internal/forgeban. Seven FAIL: cmd/deskboard, cmd/deskdispatch, cmd/deskperf, cmd/deskwt, cmd/scanloop, internal/deskkit and internal/regression. Most of the failing tests stop on "cannot resolve which forge serves …: … the origin remote's host is absent", because the disposable copy's origin remote was a local path. That is an artifact of this verifier's setup, and the container run used the same copy. cmd/deskwt and internal/deskkit hit the 10-minute package timeout on a heavily loaded host | 2026-10-29 | claude-opus-5-5 verifier @ 711d8740e8ca (model, supplemental) |
+| S3 | The seven failing packages again, after the copy's origin remote was set to the forge URL the verifier home carries, with -timeout 30m | exit 1. cmd/deskboard, cmd/deskdispatch, cmd/deskwt, cmd/scanloop and internal/deskkit are ok. Two tests still fail: cmd/deskperf TestV4ReadReportFlow and internal/regression TestReleaseGoCache | 2026-10-29 | claude-opus-5-5 verifier @ 711d8740e8ca (model, supplemental) |
+| S4 | cmd/deskperf alone, with the module cache reachable at the throwaway HOME's default path | exit 0. TestV4ReadReportFlow builds a child deskperf with GOPROXY=off and resolves the Go cache paths from an environment that carries only PATH and HOME. A runner that sets its module cache only through GOMODCACHE, as the verify-runner image does, therefore hands the child an empty cache whenever HOME is redirected, which this run did. That is the offline-child cache class tracked in #4238 | 2026-10-29 | claude-opus-5-5 verifier @ 711d8740e8ca (model, supplemental) |
+| S5 | internal/regression TestReleaseGoCache alone | exit 0. Its 60 Python fixture tests ran in 45.2s against the test's fixed 60-second budget. Under whole-module load, and under amd64 emulation in the container, the child is killed at 60s | 2026-10-29 | claude-opus-5-5 verifier @ 711d8740e8ca (model, supplemental) |
+
+Row 12 therefore fails on the witness. Part of the cause is this verifier's own disposable copy. The rest is two tests outside this brief's files that fail in this environment class. cmd/clusterguard and internal/forgeban, the forge-surface ledger check this row names, are ok in every run.
+
+Adversarial probe (supplemental, no acceptance credit). A guard was built from 711d8740e8ca and symlinked under all five CLI names in a shim directory placed ahead of fixture /bin/sh scripts that echo their argv. The probe ran under env -i with a throwaway HOME, KUBECONFIG=/dev/null, and PATH limited to the shim directory, the fixture directory, /usr/bin and /bin. The CLI names were data in a script file, never typed on a command line. Results:
+
+- no opt-in, kubectl get pods: exit 5, fixture not reached
+- ASSAY_ALLOW_CLUSTER=1, kubectl get pods and kubectl --username=u get pods: exit 0, fixture reached (controls)
+- ASSAY_ALLOW_CLUSTER=1, kubectl delete pod x, kubectl -n get delete pod x, and the #2179 shapes (kubectl --username get delete pod x, kubectl --insecure-skip-tls-verify drain get, helm --debug uninstall list, flux --warnings-as-errors delete events): every one exits 5, fixture not reached. #2179 stays fixed
+- ASSAY_ALLOW_CLUSTER=1, the bare-form rule #3468 adds: every mutating shape probed exits 5 with the fixture not reached, and the bare read-only forms exit 0. The mis-classification found on 2026-10-16 is fixed
+- ASSAY_ALLOW_CLUSTER=1, k9s with and without arguments: exit 5 (no read-only lane, as specified)
+- ASSAY_ALLOW_CLUSTER=bogus, kubectl get pods: exit 5; ASSAY_ALLOW_CLUSTER=mutate, kubectl delete pod x: exit 0, fixture reached (the mutate tier passes everything, as specified)
+- One other read-only-tier allowlist entry still admits a mutating invocation: exit 0, fixture reached. Detail filed privately; human-gated. This is the observed failure of row 7's Expect ("the read-only tier refuses a mutating verb with exit 5 without reaching the CLI"); the four tests row 7 runs do not cover it, so the row's command exits 0
+
+Risk-bearing value. The trigger fires for two reasons: the brief declares the risk-classed path tools/desk/internal/deskkit/rosterconfig.go, and the read-only tier decides what reaches a live cluster. The enumeration covered every literal #3468 introduces or changes, the gate literals and tables in cmd/clusterguard (shim.go at 711d8740e8ca), the opt-in declaration in deskkit rosterconfig and the shared recognised-key list, and the exit-code contract:
+
+- new in #3468: the bare-only verb table, bareOnlyVerbs @ tools/desk/cmd/clusterguard/shim.go:60-61; its positional test, hasPositional @ shim.go:206 (listed-flag value skip @ shim.go:212); the check that applies it, @ shim.go:232; and the new entries in cmd/clusterguard/mutations.json
+- default tier → refuse: v.code = deskkit.ExitRefused @ shim.go:304
+- invalid opt-in → refuse: return tierInvalid @ shim.go:148; ExitRefused @ shim.go:296
+- accepted opt-in values: read-only "1", "ro", "read-only", "readonly" @ shim.go:143; mutate "mutate", "rw", "write" @ shim.go:145
+- read-only tier: allowed → ExitOK @ shim.go:265; off the allowlist → ExitRefused @ shim.go:269; refusal-text guard @ shim.go:270; mutate tier → ExitOK @ shim.go:258
+- unlisted-flag stop, return verbScan{unlisted: a} @ shim.go:187; listed-flag value skip, i++ @ shim.go:184
+- read-only allowlists, readOnlyVerbs @ shim.go:43-52, including "k9s": {} @ shim.go:51; isReadOnly @ shim.go:224-236
+- valueFlags @ shim.go:80
+- exit codes: ExitOK = 0, ExitDisabled = 3, ExitRefused = 5, ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:41,44,51,55
+- opt-in name: EnvAllowCluster = "ASSAY_ALLOW_CLUSTER" @ tools/desk/internal/deskkit/rosterconfig.go:290, recognised @ deskcore/trust/roster.go:13 (reached through knownRosterKeys @ rosterconfig.go:586), bound @ shim.go:19 and read only through os.LookupEnv @ shim.go:492
+- reversible knobs: shimmedCLIs @ shim.go:33, credentialFlags @ shim.go:95, log perms 0o700 @ shim.go:413 and 0o600 @ shim.go:417
+
+Ranked by irreversibility, the gate literals and the classification tables come first: a wrong entry lets a guarded session mutate a cluster, and an edit and a redeploy cannot undo that. The reversible knobs rank last.
+
+RISK-VALUE: DERIVED — bareOnlyVerbs @ tools/desk/cmd/clusterguard/shim.go:60-61 with hasPositional @ shim.go:206 and its check @ shim.go:232 — an allowlisted verb that is read-only only in its bare form is refused once any positional follows it, and a listed flag's value is skipped first (@ shim.go:212), so a flag value is not mistaken for a positional. The mutation spec reddens the weakened forms (row 15) and the probe refuses every mutating shape. Right value.
+RISK-VALUE: DERIVED — return verbScan{unlisted: a} @ shim.go:187 — an unlisted flag's arity is unknown, so neither the boolean nor the one-value guess is safe. Unchanged since the 2026-10-16 receipt; the probe still refuses both arity directions. With the stop in place a valueFlags entry only skips the next token (i++ @ shim.go:184), and a missing entry costs a false refusal, never a false pass. Right value.
+RISK-VALUE: DERIVED — default tier → ExitRefused @ shim.go:304, and invalid opt-in → tierInvalid @ shim.go:148, refused @ shim.go:296 — these match the brief's table: absent → exit 5, any other value → exit 5. The accepted lists @ shim.go:143,145 add only the read-only spelling "readonly", which cannot widen to mutate. Right values.
+RISK-VALUE: DERIVED — len(readOnlyVerbs[cli]) > 0 @ shim.go:270 — it chooses only which refusal text is shown, and the branch has already set ExitRefused @ shim.go:269. It cannot change a verdict. Right value.
+RISK-VALUE: DERIVED — "k9s": {} @ shim.go:51 — an empty allowlist makes isReadOnly false, and the brief gives k9s no read-only lane on purpose; the probe refuses k9s with and without arguments. Right value.
+RISK-VALUE: DERIVED — ExitOK = 0, ExitDisabled = 3, ExitRefused = 5, ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:41,44,51,55, and EnvAllowCluster = "ASSAY_ALLOW_CLUSTER" @ tools/desk/internal/deskkit/rosterconfig.go:290 — these match the brief's exit-code contract and opt-in name. The opt-in is recognised @ deskcore/trust/roster.go:13 and read only through LookupEnv @ shim.go:492. Right values.
+RISK-VALUE: NAMED, NOT DERIVED (shown WRONG) — one readOnlyVerbs entry in tools/desk/cmd/clusterguard/shim.go:43-52 — detail filed privately; human-gated
+
+**VERIFY: FAIL** — 13 of 15 rows meet their Expect. Row 7 fails: one read-only-tier allowlist entry still admits a mutating invocation, though the four tests the row runs pass. Detail filed privately; human-gated. Row 12 exits 1 on the witness, for the reasons traced in S2–S5, all outside this brief's files. The #2179 false pass and the 2026-10-16 mis-classification are both fixed. Status stays implemented.
 
 ## Review
 

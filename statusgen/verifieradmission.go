@@ -16,14 +16,7 @@ import (
 // (cross-repository) receipt, the admitted deliverable home the rows must run
 // in; a version-1 or unadmitted run returns no home.
 func verifierAdmission(root, brief string) (string, string, string, error) {
-	required := strings.Contains(strings.ToLower(os.Getenv("DESK_LOOP")), "verify")
-	meta, e := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "assay-verifier-attestation.json").Output()
-	if e == nil {
-		if _, err := os.Stat(strings.TrimSpace(string(meta))); err == nil {
-			required = true
-		}
-	}
-	if !required {
+	if !verifierAdmissionMarked(root) {
 		return "", brief, "", nil
 	}
 	out, err := exec.Command("deskdispatch", "--check-verifier", "--root", root, "--brief", brief).Output()
@@ -123,11 +116,33 @@ func sameDirectory(a, b string) bool {
 // a form that narrows what git reads (admittedRowGlobal). Variables the row's
 // shell would run or act on at startup are removed (admittedRowShellStartup),
 // since they can set any of the above before the row's own command runs.
+// Forge credential variables are removed (admittedRowForgeToken), so a row no
+// longer inherits one from the invoking environment. That is hygiene against
+// ambient inheritance, not containment. The invoking process keeps them: its
+// own forge reads (the acceptance-approval read) happen there, from
+// os.Getenv, and this function only builds the rows' copy. With none of them
+// set, neither the invoking process nor a statusgen started inside a row
+// falls back to a stored forge login (storedLoginRefusal, forgecredential.go):
+// such a read is a could-not-check.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
-// config, exactly as admission does) and SSH_ASKPASS pass through unchanged.
-// An unadmitted run keeps the caller's environment.
+// config, exactly as admission does, and where a forge CLI or a git
+// credential helper keeps its stored login), GH_CONFIG_DIR (the forge CLI's
+// config directory, which holds that login), SSH_AUTH_SOCK (an agent a row's
+// git can authenticate through) and SSH_ASKPASS pass through unchanged, as do
+// forge credential variables other than the four above, such as the GitLab
+// ones this repository reads (STATUSGEN_GITLAB_TOKEN, GITLAB_TOKEN,
+// CI_JOB_TOKEN). The invoking process's own environment also stays reachable:
+// a row runs as the same user, and a same-user process can generally read
+// another's startup environment (ps -E on macOS, /proc/<pid>/environ on
+// Linux), which keeps the forge credential variables. A row that looks for a
+// credential can therefore still find one; this removal does not stop it.
+// Nor does the stored-login refusal above: it governs statusgen's own reads,
+// its markers live in a row's environment and working tree, where the row
+// can remove them, and a row that runs the forge CLI itself still finds the
+// stored login. Containment is a runner that holds no credential but the
+// verifier's own. An unadmitted run keeps the caller's environment.
 func admittedRowEnv(environ []string) []string {
 	home := ""
 	for _, kv := range environ {
@@ -140,6 +155,7 @@ func admittedRowEnv(environ []string) []string {
 		key, _, _ := strings.Cut(kv, "=")
 		switch {
 		case admittedRowShellStartup(key):
+		case admittedRowForgeToken(key):
 		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):
 		default:
 			env = append(env, kv)
@@ -169,4 +185,12 @@ func admittedRowGlobal(kv, home string) bool {
 func admittedRowShellStartup(key string) bool {
 	key = strings.ToUpper(key)
 	return strings.HasPrefix(key, "BASH_FUNC_") || slices.Contains([]string{"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4"}, key)
+}
+
+// admittedRowForgeToken reports whether a variable is one the forge CLI reads
+// as a credential: GH_TOKEN and GITHUB_TOKEN for github.com, GH_ENTERPRISE_TOKEN
+// and GITHUB_ENTERPRISE_TOKEN for an enterprise host. Matched whatever its case,
+// as the GIT_* and shell startup variables are.
+func admittedRowForgeToken(key string) bool {
+	return slices.Contains([]string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}, strings.ToUpper(key))
 }

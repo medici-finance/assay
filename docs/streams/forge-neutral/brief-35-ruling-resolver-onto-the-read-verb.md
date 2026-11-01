@@ -18,7 +18,7 @@ why: >-
   those refusals on.
 wave: 6
 depends: ["forge-neutral/18", "forge-neutral/33"]
-unblocks: ["desktools-v2/08"]
+unblocks: ["desktools-v2/08", "desktools-v2/77"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -119,16 +119,6 @@ a change to what the lanes accept, so it moves here too.
 forge-neutral/33 adds transport only: kinds, targets and envelope fields. Every mapping of an
 author type, an edit flag or a target to an accept or refuse outcome is made in this brief.
 
-files:
-- `statusgen/decisionruling.go` — `resolveRuling` (`:228`); its comment read (`:262`) and the status switch after it; the comment-to-issue binding (`:285-292`); the edit check (`:296-307`); the bot check (`:311-313`); its issue read (`:354`); `resolveDecisionRulings` (`:620`); `rulingForgeClient` (`:633-648`), whose `gh auth token` fallback is at `:643`.
-- `statusgen/decisionruling_test.go` and `statusgen/decisionruling-mutations.json` — its tests and mutation manifest.
-- `statusgen/corroborate.go:1481` — the one caller, which builds the client today.
-- `statusgen/ghfetch.go` — `GetIssueComment` (`:198`) and `GetIssue` (`:205`), the two raw reads the resolver uses.
-- `statusgen/transcribescan.go` — `ghCommentResolver` (`:104-129`), whose one `gh` launch is at `:109`, and `parseCommentURL` (`:136-159`), which today keeps only the repository and the comment id. `ghAuthorResolver` (`:76`) in the same file is a trust-predicate read and stays forge-neutral/18's.
-- `statusgen/transcribeverdict.go` — `ghVerdictIssueResolver` (`:505-531`), whose one `gh` launch is at `:506`. `ghVerdictMainHealth` (`:573`) in the same file is forge-neutral/18's.
-- `statusgen/main.go` — the three `ghCommentResolver` arguments (`:1980`, `:1987`, `:1995`) and the two `ghVerdictIssueResolver` arguments (`:1987`, `:1994`).
-- `statusgen/transcribescan_test.go` and `statusgen/transcribeverdict_test.go` — the gate tests; they inject `commentResolver` and `verdictIssueResolver` fixtures, so they keep passing unchanged.
-
 **What changes for the ruling control.** This brief changes no accept or refuse rule's meaning, and no
 outcome that refuses today may pass afterwards. What it changes is every input those rules read:
 - **Deleted comment.** Today an HTTP 404 or 410 on the comment read. After: the comment's id is
@@ -189,6 +179,16 @@ edited. What changes is how the resolver fills `verdictIssue`:
   response. An edit made between two reads is then seen by the edit read; it can never leave an
   edited body paired with `Edited == false`.
 - **Credential.** Today the ambient `gh` login. After: none of its own.
+
+files:
+- `statusgen/decisionruling.go` — `resolveRuling` (`:228`); its comment read (`:262`) and the status switch after it; the comment-to-issue binding (`:285-292`); the edit check (`:296-307`); the bot check (`:311-313`); its issue read (`:354`); `resolveDecisionRulings` (`:620`); `rulingForgeClient` (`:633-648`), whose `gh auth token` fallback is at `:643`.
+- `statusgen/decisionruling_test.go` and `statusgen/decisionruling-mutations.json` — its tests and mutation manifest.
+- `statusgen/corroborate.go` (line 1481) — the one caller, which builds the client today.
+- `statusgen/ghfetch.go` — `GetIssueComment` (`:198`) and `GetIssue` (`:205`), the two raw reads the resolver uses.
+- `statusgen/transcribescan.go` — `ghCommentResolver` (`:104-129`), whose one `gh` launch is at `:109`, and `parseCommentURL` (`:136-159`), which today keeps only the repository and the comment id. `ghAuthorResolver` (`:76`) in the same file is a trust-predicate read and stays forge-neutral/18's.
+- `statusgen/transcribeverdict.go` — `ghVerdictIssueResolver` (`:505-531`), whose one `gh` launch is at `:506`. `ghVerdictMainHealth` (`:573`) in the same file is forge-neutral/18's.
+- `statusgen/main.go` — the three `ghCommentResolver` arguments (`:1980`, `:1987`, `:1995`) and the two `ghVerdictIssueResolver` arguments (`:1987`, `:1994`).
+- `statusgen/transcribescan_test.go` and `statusgen/transcribeverdict_test.go` — the gate tests; they inject `commentResolver` and `verdictIssueResolver` fixtures, so they keep passing unchanged.
 
 single-point-of-failure: for each resolver, the control is its mapping from a `deskread`
 result to an outcome, and every unknown must map to a refusal. Go does not make a caller handle
@@ -293,6 +293,22 @@ adapter from the shared module, so the resolvers neither hold a credential nor b
 queries. Every author-type, edit-history, subject-binding and sign-off refusal and the human
 gate stay as written. A later move of these reads into the shared module would be its own
 human-gated brief.
+
+## Shared forge library amendment — 2026-10-25 (ruled: `DR-forge-library`)
+
+The driver's ruling of 2026-10-25 on #2395 supersedes `DR-forge-neutral-36`
+(`docs/streams/decisions/DR-forge-library.md`): statusgen links one shared forge library for
+its forge calls, and that library alone holds the role-and-repo credential. **This amendment
+adds no deliverable here and changes no row.** The ruling resolvers' reads still move onto
+statusgen's `forgeReader` seam as Task 1 says, with `deskread` as the online reader behind it.
+desktools-v2/77 later replaces that reader with a library-backed one; that is the "later move"
+the paragraph above names, and it is human-gated. What stays here regardless of transport:
+
+- the author-type, edit-history, subject-binding and sign-off mappings stay in statusgen and
+  are never pushed into the library or the verb;
+- the resolvers hold no credential of their own, and the `gh auth token` fallback and the direct
+  HTTP client still retire in this brief;
+- the human gate stays as written.
 
 ## Task
 

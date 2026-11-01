@@ -23,11 +23,13 @@ const (
 	QueryCoverageScope  = "coverage-scope"        // what kind of alignment the receipt covers
 	queryVersion        = "v1"
 	coverageScopeResult = "architecture"
+	productScopeResult  = "product-binding"
 )
 
-// ArchitectureOnly is the prerequisite every receipt carries until product
-// target binding is supported: an architecture receipt is never a product
-// alignment result, and no product binding means unchecked, not aligned.
+// ArchitectureOnly is the prerequisite every receipt over a snapshot with no
+// product input carries: an architecture receipt is never a product alignment
+// result, and no product binding means unchecked, not aligned. A receipt with
+// a product section carries ProductAssessed instead.
 const ArchitectureOnly = "architecture-only coverage: product alignment unchecked (no product binding is unchecked, not aligned)"
 
 const unavailableReason = "source unavailable to this run: could-not-check, scoped to this source"
@@ -314,7 +316,11 @@ func (ix *index) discover() (*Handoff, error) {
 	}
 	queries = append(queries, capped(QueryProposals, map[string]string{"state": TargetApproved}, res, max))
 	queries = append(queries, capped(QueryReadSet, map[string]string{"files": "regular .md files under each available source"}, readSet, max))
-	queries = append(queries, capped(QueryCoverageScope, map[string]string{"scope": "architecture", "product-alignment": "unchecked"}, []string{coverageScopeResult}, max))
+	if s.Product == nil {
+		queries = append(queries, capped(QueryCoverageScope, map[string]string{"scope": "architecture", "product-alignment": "unchecked"}, []string{coverageScopeResult}, max))
+	} else {
+		queries = append(queries, capped(QueryCoverageScope, map[string]string{"scope": "architecture,product-binding", "product-alignment": "assessed"}, []string{coverageScopeResult, productScopeResult}, max))
+	}
 
 	h := &Handoff{
 		Schema:     HandoffSchema,
@@ -346,6 +352,9 @@ func (ix *index) discover() (*Handoff, error) {
 	}
 	h.ActiveWork = ix.activeWork(h.Impacts)
 	h.Discovery.DependencySlice = ix.dependencySlice()
+	if h.Product = ix.product(h); h.Product != nil {
+		h.Schema = HandoffSchemaV3
+	}
 	h.Readiness = ix.readiness(h, unresolved)
 	return roundTrip(h)
 }
@@ -521,7 +530,7 @@ func (ix *index) readiness(h *Handoff, unresolved []string) Readiness {
 // prerequisites are the discovery-derived lines every receipt over this
 // snapshot carries.
 func (ix *index) prerequisites(h *Handoff) []string {
-	out := []string{ArchitectureOnly}
+	out := withProductScope(nil, h.Product)
 	for _, src := range ix.s.Sources {
 		if src.Unavailable {
 			req := ""

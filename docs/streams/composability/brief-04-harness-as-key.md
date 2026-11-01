@@ -37,18 +37,9 @@ id: 6f59838c-f425-439d-a22c-41de87728705
 ## Context
 
 files:
-- **create** `components/harness-claude-code/component.yaml` (planned),
-  `components/harness-codex/component.yaml` (planned), `components/harness-cursor/component.yaml` (planned) — each
-  `provides: [assay.harness]` with `flavour: <name>`, and `apply` steps that install that
-  harness's delivery shape (plugin manifest and hook wiring; codex manifest; `harnessgen`
-  output). Their reverses are inside-boundary (files) and trivial.
-- **edit** `plugins/assay/skills/*/component.yaml` and `plugins/assay/hooks/component.yaml` (planned) —
-  `inject.required` gains `assay.harness`; hooks additionally require `flavour: claude-code`
-  (the SessionStart/PreToolUse mechanism is Claude Code's).
-- **edit** `tools/desk/cmd/deskmanifest/` — `provides` entries MAY carry attributes
-  (`flavour`); `inject` entries MAY constrain them (`flavour: claude-code`); exclusive keys
-  (declared in `components/KEYS.md` (planned) with `exclusive: true`) MUST have at most one ACTIVE
-  provider — a second is a lint PROBLEM.
+- **create** `components/harness-claude-code/component.yaml` (planned), `components/harness-codex/component.yaml` (planned), `components/harness-cursor/component.yaml` (planned) — each `provides: [assay.harness]` with `flavour: <name>`, and `apply` steps that install that harness's delivery shape (plugin manifest and hook wiring; codex manifest; `harnessgen` output). Their reverses are inside-boundary (files) and trivial.
+- **edit** `plugins/assay/skills/*/component.yaml` and `plugins/assay/hooks/component.yaml` (planned) — `inject.required` gains `assay.harness`; hooks additionally require `flavour: claude-code` (the SessionStart/PreToolUse mechanism is Claude Code's).
+- **edit** `tools/desk/cmd/deskmanifest/` — `provides` entries MAY carry attributes (`flavour`); `inject` entries MAY constrain them (`flavour: claude-code`); exclusive keys (declared in `components/KEYS.md` (planned) with `exclusive: true`) MUST have at most one ACTIVE provider — a second is a lint PROBLEM.
 - **edit** `components/KEYS.md` (planned) — `assay.harness` marked `exclusive: true`.
 - **edit** `docs/streams/harness-portability/README.md` — one paragraph pointing at the seam.
 

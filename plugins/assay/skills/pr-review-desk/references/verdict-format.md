@@ -158,6 +158,36 @@ unedited body, or over a body edited again after you read it, clears nothing. It
 judges CI green itself; your `CI-Green-At:` line is the documentation, not the check. The same
 fence and ambiguity rules as the check-only lines apply.
 
+### A security fail whose ONLY basis is the PR body
+
+A `Security-Review: fail` is never cleared by a correctness APPROVE. At `deskflip`, an unmarked
+one standing as a CHANGES_REQUESTED at the head is cleared only by a new commit; `deskpost ready`
+does not apply that rule. When the fail's **whole** basis is the PR body (the description claims
+a control the diff does not add, say) and no code at head would change, mark it the same way:
+
+1. **On the `Security-Review: fail`**, add `Blocked-On-Body: f-body-1 <64-hex digest of the body
+   as you read it>`. Never add it when any part of the fail rests on code, config or a check:
+   that fail stays unmarked. `Blocked-On-Check:` and `External-Prereq-Only:` are not security-lane
+   clearances: at `deskflip`, rule 2 refuses a security fail carrying either one while it stands
+   as a CHANGES_REQUESTED at the head; `deskpost ready` does not apply that rule.
+2. **After the author edits the body**, re-read it via the API and post a `Security-Review: pass`
+   at the same head carrying `Body-Reread-Digest: <64-hex digest of the live body you re-read>`.
+   It needs no `Resolved-Body-Finding:` or `CI-Green-At:` line, because the pass is the whole
+   security lane's verdict and CI stays the gate's own check.
+
+`deskflip` reads your newest pass at that head after the last fail that stands as a COMMENTED or
+APPROVED review; a later pass in another review state (dismissed or pending, say) does not
+displace it and clears nothing itself. It clears the fail when that pass's digest equals the
+live body's and differs from every fail's, and the forge records a body edit after the last
+fail. Neither the fail, nor a later fail in its chain, nor a pass at that head after the fail
+may also carry a correctness `Verdict:` line, read the way `deskpost ready`'s lane classifier
+reads it; `deskflip` refuses the clearance when one does.
+A later unmarked fail blocks again, and a clearance applies only at its own head: after any head
+move the fail stands until a pass at the new head.
+
+The gate cannot check that your marker is true. "The basis was only the body" is your claim; the
+later pass and the forge's body-edit record back it up, and nothing else does.
+
 ## The secret scan
 
 The scan refuses any run of 32+ base64ish characters, plus token prefixes, `AKIA…`, PEM and JWT

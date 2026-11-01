@@ -76,6 +76,8 @@ func TestInstanceFixtures(t *testing.T) {
 		rules              []string
 	}{
 		{"valid.yaml", "", "checked-clean", nil},
+		{"human-node-actor.yaml", "", "checked-failed", []string{ruleInstanceSchema, ruleInstanceHumanNode}},
+		{"merge-desk-actor.yaml", "", "checked-failed", []string{ruleInstanceNodeMismatch, ruleInstanceEffectPattern, ruleInstanceHumanNode}},
 		{"superseding.yaml", "valid.yaml", "checked-clean", nil},
 		{"rewrite-same-id.yaml", "valid.yaml", "checked-failed", []string{ruleInstanceRewrite}},
 		{"stale-acceptance.yaml", "", "checked-failed", []string{ruleInstanceAcceptStale}},
@@ -158,7 +160,9 @@ func bindingFrom(inst workflowInstance) instanceBinding {
 		Inputs: inst.Inputs, Dependencies: inst.Dependencies, Actors: map[string]instanceActor{},
 	}
 	for _, n := range inst.Nodes {
-		b.Actors[n.Role] = n.Actor
+		if n.Actor != nil {
+			b.Actors[n.Role] = *n.Actor
+		}
 	}
 	return b
 }
@@ -1010,4 +1014,60 @@ func TestInstanceSchemaParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertValidatorCoversKeywords(t, schema)
+}
+
+// regression: #1933
+func TestInstanceHumanNodeActor(t *testing.T) {
+	base := mustDecodeInstance(t, instPath("valid.yaml"))
+	raw, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	nodes := doc["nodes"].([]any)
+	for _, value := range nodes {
+		n := value.(map[string]any)
+		if n["node"] != "merge" {
+			continue
+		}
+		n["role"] = "human"
+		delete(n, "actor")
+		delete(n, "attempts")
+		n["effects"] = []any{}
+		// Test the lower document boundary without schema or pattern lint.
+		for _, field := range []string{"clean", "actor", "effects", "attempts"} {
+			t.Run(field, func(t *testing.T) {
+				switch field {
+				case "actor":
+					n[field] = map[string]any{"binding": "roster/example-cell/desk", "cell": "example-cell", "capabilities": []string{"dispatch"}}
+				case "effects":
+					n[field] = []any{map[string]any{"kind": "dispatch", "target": "merge-commit"}}
+				case "attempts":
+					n[field] = []any{map[string]any{"id": "inst-example-07-a.merge.a1", "ordinal": 1}}
+				}
+				b, err := json.Marshal(doc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var inst workflowInstance
+				if err := json.Unmarshal(b, &inst); err != nil {
+					t.Fatal(err)
+				}
+				fs := checkInstanceRules(inst)
+				if field == "clean" {
+					if len(fs) != 0 {
+						t.Errorf("actorless human node refused: %v", fs)
+					}
+				} else if !anyContains(ruleSet(fs), "instance-human-node-actor") {
+					t.Errorf("missing human-node refusal: %v", fs)
+				}
+				delete(n, "actor")
+				delete(n, "attempts")
+				n["effects"] = []any{}
+			})
+		}
+	}
 }

@@ -231,10 +231,37 @@ Rules for any reader, enforced by `deskperf`:
 - A CPU or counter distribution is over the records that MEASURED it; `unavailable`,
   `unsupported`, `failed` and `missing` are coverage to report, never zeros to average in.
 - `perf-v1` totals and `perf-v2` totals are not comparable and are reported as separate
-  groups; a perf-v1-only history renders exactly as it did before perf-v2.
+  groups; the detailed legacy group retains its original fields and meaning.
 
-`deskperf report` therefore prints the legacy perf-v1 group first (unchanged lines and JSON
-`summary`), then a perf-v2 group (JSON `perfV2`) with its boundary and CPU-state counts,
+`deskperf report` leads with a **command performance** overview (JSON `commands`):
+one row per tool, command and timing cohort, largest accumulated invocation costs first.
+This exposes expensive `statusgen verifyrun` calls beside `statusgen --lint`, and
+`issueboard issues` beside its cheaper projections, without letting frequent cheap commands
+dilute the expensive command's median. Rows show count, summed wall, nearest-rank p50/p90/max,
+exact outcome counts, own measured CPU and direct HTTP attempts with measured/missing counts.
+The overview uses readable durations; JSON retains exact milliseconds. Text durations of
+a minute or more omit subsecond detail.
+A measured zero differs from unavailable. Legacy CPU is unavailable in this view because
+its process-wide total is not a delta over its wrapper interval.
+
+Each timing cohort retains the source record family and declared boundary. Its share uses
+only that cohort's total; separate rows do not pool caller intervals, process-initialization
+intervals or legacy wrapper intervals. Summed invocation work includes overlapping parent,
+child and concurrent runs, so it is neither unique elapsed time nor human time saved. Phases,
+subprocess/request durations and non-process service observations are never added to wall.
+Workflow filters exclude unattributed old records from this overview; default output carries
+no workflow identifiers. V3 identity selection precedes tool filtering, so a conflicting copy
+under another tool cannot disappear from the selection. `--top 0` still suppresses the
+individual slowest list; the overview is independent of that list. `--by-day` retains its
+existing tool-by-day view. The committed command-summary fail-first map is
+`tools/desk/cmd/deskperf/command-mutations.json`; from `tools/desk`, run
+`go run ./cmd/muhar -j 1 -spec cmd/deskperf/command-mutations.json`. It uses a distinct
+count-conservation control and checks verb separation, whole-window identity selection,
+exclusion of nested service observations, unfiltered conflict-only detail retention and
+filtered unattributed counts. This is local qualification, not a claim
+that the map is wired into the truth-suite CI matrix.
+
+The detailed legacy perf-v1 group follows (unchanged lines and JSON `summary`), then a perf-v2 group (JSON `perfV2`) with its boundary and CPU-state counts,
 phase-overlap count, per-tool wall and measured-CPU distributions, per-counter
 measured/unavailable counts with totals over measured records only, and per-phase
 distributions. The `perfrec` module's README documents the recorder API for other
@@ -252,7 +279,7 @@ the budget whichever schema recorded it. Its rules:
   calls and sits in no distribution, and a row with no measured run prints `-`, never `0`.
 - Older `statusgen` builds wrote perf-v1 with `forgeCalls` always `0`, meaning "not
   counted", so a `statusgen` perf-v1 record is an unavailable run too; perf-v1 has no
-  unavailable state of its own. Current `statusgen` writes perf-v2, whose `http` counter is
+  unavailable state of its own. Without a selected profile, current `statusgen` writes perf-v2, whose `http` counter is
   read like any other perf-v2 record.
 - Steps are never read (their calls belong to the invocation), and perf-v3 records stay in
   their own section.
@@ -276,8 +303,8 @@ environment value, and asserts none of them appears in the written bytes.
 
 ### statusgen writes the same local record
 
-`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported, each `statusgen`
-process writes one `perf-v2` record on exit into the same `~/.config/assay/perf/` day files,
+`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported and no selected
+profile, each process writes one `perf-v2` record on exit into the same `~/.config/assay/perf/` day files,
 with `tool` set to `statusgen`, `verb` the mode that ran (a positional sub-command such as
 `verifyrun`, else the first mode flag such as `--lint`, else `regen` for a plain run; a token
 outside that compiled-in roster is `other`), `exit` the process exit code and `result` its
@@ -341,11 +368,20 @@ whatever profile context is set.
   processes a switch-off run starts. The one addition is the offline `deskread --help` check,
   made only when a `deskread` child is started.
 
-A future context resolver (statusgen/20) may consume explicit, source-bound, immutable input
-snapshots that a run already holds; it may not weaken independent membership enumeration — a
-new file outside an earlier read set still invalidates completeness, and HEAD equality alone
-never makes a dirty working-tree parse reusable. The snapshot-reuse inventory and the
-repeatable workload bench for these phases are follow-up work under statusgen/26.
+The offline context resolver (statusgen/20, #3839) now consumes explicit source snapshots
+and independently enumerates their available files on discovery and recheck. It does not share
+an index with these modes or expose a reusable context-index API. Any later reuse must be
+source-bound and immutable, with compatible parser/evaluator versions; a new file outside an
+earlier read set still invalidates completeness, and HEAD equality alone never makes a dirty
+working-tree parse reusable.
+
+Statusgen's existing brief parser already reuses results by path and content hash, over its
+stamp-validated invocation-local read/directory memos. No second parser or persistent semantic
+cache is introduced. The [workload and inventory](../statusgen/bench/README.md) document the
+four mode owners, repeatable small/large corpora, fresh-reference output/exit/coverage checks,
+and fake deskread boundary. Cold/warm owner replays and fresh-process CLI measurements have
+different boundaries. File/directory counts cover only the shared memo seam; other reads are
+unmeasured, and neither fixture timings nor child-inclusive totals establish fleet savings.
 
 ## Dependency posture
 

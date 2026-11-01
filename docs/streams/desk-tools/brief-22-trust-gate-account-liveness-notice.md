@@ -65,23 +65,14 @@ consequence, which is exactly why auto-revocation is named in the issue as separ
 explicitly human-gated follow-up rather than bundled into this brief.
 
 files:
-- `tools/desk/internal/deskkit/trustliveness.go` (new) — `AccountFetcher`, `RosterIdentity`,
-  `RosterIdentities`, `LivenessClass` + its five values, `LivenessFinding`,
-  `CheckRosterLiveness`, `RenderLivenessNotices`.
+- `tools/desk/internal/deskkit/trustliveness.go` (new) — `AccountFetcher`, `RosterIdentity`, `RosterIdentities`, `LivenessClass` + its five values, `LivenessFinding`, `CheckRosterLiveness`, `RenderLivenessNotices`.
 - `tools/desk/internal/deskkit/trustliveness_test.go` (new).
-- `tools/desk/internal/deskkit/forge_github.go` (existing file) — `GetAccount`, a new plain
-  method on `*GitHubForge`, NOT added to the `Forge` interface.
-- `tools/desk/internal/deskkit/forge_github_getaccount_test.go` (new) — hermetic httptest,
-  modeled on `repovis_http_test.go`; no golden-corpus entry needed since `GetAccount` is
-  outside the frozen interface.
-- `tools/desk/internal/deskkit/trust.go` (existing file) — ONE doc-comment addition, no code
-  change: a cross-reference from the package comment to `trustliveness.go`/
-  `deskroster liveness`, stating explicitly that no `Trusted*`/`Blessed`/`ItemTrusted*`
-  function reads it.
+- `tools/desk/internal/deskkit/forge_github.go` (existing file) — `GetAccount`, a new plain method on `*GitHubForge`, NOT added to the `Forge` interface.
+- `tools/desk/internal/deskkit/forge_github_getaccount_test.go` (new) — hermetic httptest, modeled on `repovis_http_test.go`; no golden-corpus entry needed since `GetAccount` is outside the frozen interface.
+- `tools/desk/internal/deskkit/trust.go` (existing file) — ONE doc-comment addition, no code change: a cross-reference from the package comment to `trustliveness.go`/ `deskroster liveness`, stating explicitly that no `Trusted*`/`Blessed`/`ItemTrusted*` function reads it.
 - `tools/desk/cmd/deskroster/liveness.go` (new) — `cmdLiveness`.
 - `tools/desk/cmd/deskroster/liveness_test.go` (new).
-- `tools/desk/cmd/deskroster/main.go` (existing file) — the `usage` text and the `liveness`
-  case in the subcommand switch.
+- `tools/desk/cmd/deskroster/main.go` (existing file) — the `usage` text and the `liveness` case in the subcommand switch.
 - `tools/desk/README.md` (existing file) — a short "Roster liveness" subsection.
 - `changelog/desk-tools-22-trust-liveness.md` (planned) (new).
 

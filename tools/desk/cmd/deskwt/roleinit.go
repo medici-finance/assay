@@ -1,14 +1,13 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // roleinit.go adds two verbs that provision and tear down a DESK ROLE's own git worktree in
@@ -187,21 +186,11 @@ type roleInitParams struct {
 // either vocabulary — token role or loop name (resolveRoleKey). The positional form is what
 // lets a launcher write `cd "$(deskwt role-init <role> --repo-root <path>)"` and what deskboot
 // prints in its isolate-first remediation.
-func parseRoleParams(verb string, args []string) (roleInitParams, error) {
-	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	role := fs.String("role", "", "desk role to provision a worktree for (token role or loop name; may also be given positionally)")
-	session := fs.String("session", "", "session id (default $DESK_SESSION, then $CLAUDE_SESSION_ID)")
-	repoRoot := fs.String("repo-root", "", "checkout of the repo to provision from (default: the working directory)")
-	noFetch := fs.Bool("no-fetch", false, "start from the local origin/main as-is instead of fetching it fresh first")
-	positionals, perr := parseInterspersed(fs, args)
-	if perr != nil {
-		// TIER TWO — see deskkit/helprequest.go.
-		if deskkit.IsHelpRequest(perr) {
-			return roleInitParams{}, deskkit.ErrHelpRequested
-		}
-		return roleInitParams{}, deskkit.Refused("refused: bad flags: " + perr.Error())
-	}
+func parseRoleParams(verb string, f roleFlags) (roleInitParams, error) {
+	// The one Cobra tree (cli.go) parsed the flags and refused a second positional before
+	// this ran; the role, session and checkout rules below are the domain's.
+	role, session, repoRoot, noFetch := &f.role, &f.session, &f.repoRoot, &f.noFetch
+	positionals := f.positionals
 	rawRole := strings.TrimSpace(*role)
 	switch len(positionals) {
 	case 0:
@@ -276,13 +265,13 @@ func roleRepoDir(p roleInitParams) (string, error) {
 	return dir, nil
 }
 
-// cmdRoleInit implements `deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]`
+// runRoleInit implements `deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]`
 // (`--role <role>` is the same role spelled as a flag).
-func cmdRoleInit(args []string) (err error) {
+func runRoleInit(f roleFlags) (err error) {
 	ac := &auditCtx{verb: "role-init"}
 	defer func() { ac.finalize(err) }()
 
-	p, perr := parseRoleParams("role-init", args)
+	p, perr := parseRoleParams("role-init", f)
 	if perr != nil {
 		return perr
 	}
@@ -568,13 +557,13 @@ func wireRoleCredential(target, role, repo, username string) error {
 	return nil
 }
 
-// cmdRoleClean implements `deskwt role-clean --role <role> [--session <s>]`: unlock then
+// runRoleClean implements `deskwt role-clean --role <role> [--session <s>]`: unlock then
 // remove the role's worktree, with the same tracked-clean / pushed guards as `remove`.
-func cmdRoleClean(args []string) (err error) {
+func runRoleClean(f roleFlags) (err error) {
 	ac := &auditCtx{verb: "role-clean"}
 	defer func() { ac.finalize(err) }()
 
-	p, perr := parseRoleParams("role-clean", args)
+	p, perr := parseRoleParams("role-clean", f)
 	if perr != nil {
 		return perr
 	}

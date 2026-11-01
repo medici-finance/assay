@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -11,28 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type frontmatter struct {
-	Stream        string  `yaml:"stream"`
-	Status        string  `yaml:"status"`
-	Priority      string  `yaml:"priority"`
-	Track         string  `yaml:"track"`
-	Issues        []int   `yaml:"issues"`
-	External      string  `yaml:"external"`
-	Tiering       *string `yaml:"tiering"`        // optional; nil when absent, non-nil (incl. "") when present.
-	MaxConcurrent *int    `yaml:"max-concurrent"` // optional; nil when absent; 1..perStreamCap when present.
-	Serves        string  `yaml:"serves"`         // optional; example-app | example-service | assay | platform | "" (untagged).
-	Theme         string  `yaml:"theme"`          // optional render-style selector for cadenced artifacts; unmapped values render as a visible marker.
-	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—".
-	Repo          string  `yaml:"repo"`           // optional owning repo, <owner>/<name>; "" when absent.
-	Board         string  `yaml:"board"`          // optional; "generated" opts the Briefs table into the marker-wrapped generated region (derived-board/04).
-	Traced        *bool   `yaml:"traced"`         // optional; true opts the stream INTO the untraced-brief traceability check (registers-v1 §6.5). nil/false = out (the default): the check never fires over a corpus that has not opted in.
-	Spec          string  `yaml:"spec"`           // optional; the repo-relative scoping doc this stream was scaffolded FROM (attention-budget/04). An active stream must cite one whose §8.1 header is `**Status:** approved` (the `stream-source` lint); a parked stream may cite a draft.
-	// Mission is the optional authored mission block, kept as a raw node so a
-	// malformed block never fails the README parse (the board must keep
-	// working); parseMissionBlock validates it and returns diagnostics.
-	// Kind == 0 when the key is absent.
-	Mission yaml.Node `yaml:"mission"`
-}
+type frontmatter = briefdoc.StreamFields
 
 // splitFrontmatter is the SINGLE canonical frontmatter splitter for the whole
 // tool (stream READMEs, brief files, and — in a later revision — the
@@ -43,19 +24,7 @@ type frontmatter struct {
 // LF file instead of silently missing the "---\n" byte-prefix and having its
 // entire content — fence lines included — swallowed as "frontmatter" with an
 // empty body (the exact register-entry data-loss bug).
-func splitFrontmatter(content string) (string, string, error) {
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return "", "", fmt.Errorf("no frontmatter: first line must be ---")
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return strings.Join(lines[1:i], "\n"), strings.Join(lines[i+1:], "\n"), nil
-		}
-	}
-	return "", "", fmt.Errorf("unterminated frontmatter")
-}
+func splitFrontmatter(content string) (string, string, error) { return briefdoc.Split(content) }
 
 var linkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 

@@ -142,6 +142,79 @@ RISK-VALUE: DERIVED — ExitRateLimited = 4, ExitRefused = 5, ExitUnverifiable =
 The implementation meets the brief's contract: the Derivation block is present and correct, the pinning test passes, and the corpus catches the new mutant. The defect is in the Verify table. Row 4 pipes go test into `grep -q`, which is the same SIGPIPE-under-pipefail class as #2241 (measured-status/04). Remedy: re-baseline row 4 to the pipefail-safe form, e.g. `… 2>&1 | grep -c -- '--- PASS: TestExitCodeTableMatchesDerivation'` with Expect "prints 1, exit 0". Then re-verify.
 
 **VERIFY: FAIL** — row 4 exits 141 under the canonical `bash -o pipefail -c` shell (6/6 runs); rows 1, 2, 3 and 5 pass (4/5); the code meets the contract; the defect is in the Verify-table check definition (blocker: #4170).
+### Re-verification — VERIFY: FAIL (row 4, check definition, unchanged) — 2026-10-27
+
+Non-implementer re-verification on merged main 384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 (work delivered by 26bf76fc31618e542867b7c9758de74285899d46, #1726, a single-parent merge whose parent b326e9202ed8f8c57eb1adcd629f80d6a4850ad0 was passed as the fail-first base). Gate: model; all four risk answers no. Witness below is `statusgen verifyrun --fail-first --base b326e9202ed8f8c57eb1adcd629f80d6a4850ad0` (statusgen v1.0.63) run on the host (darwin/arm64, go1.27.2) from the admitted detached home; every row is class `check` (none is `check:ci`), so no network sandbox applies. The table carries no risk-bearing row tag and the brief-wide risk answers are all no, so the fail-first pass recorded every row not-selected at base. The Verify table at this source is byte-identical to the one the 2026-10-21 run used: the row 4 check definition has not been re-baselined since blocker #4170 was filed.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1` | pass exit=0 | sha256:0ab33ad3e93d | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=384d5eda2ca2 |
+| 2 | `cd tools/desk && go vet ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=384d5eda2ca2 |
+| 3 | `cd tools/desk && grep -q 'Derivation:' internal/deskkit/exitcodes.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=384d5eda2ca2 |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1 -v 2>&1 \| grep -q -- '--- PASS: TestExitCodeTableMatchesDerivation'` | fail exit=141 | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=384d5eda2ca2 |
+| 5 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` | pass exit=0 | sha256:aa9557f366e7 | 2026-10-27 | assay-verifier-app[bot] @ 384d5eda2ca2 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=384d5eda2ca2 |
+Verification-Attestation: medici-finance/assay#4712 run=170345a8766eb08198ec356a8ffe05681b30a8b38305acd748f04c37e729a761 source=384d5eda2ca230e7e748750fdaed6ba4d1d50ed8 brief=docs/streams/measured-status/brief-01-exit-code-derivation.md model=claude-opus-5-5 tier=strong
+
+Supplemental host observation (no acceptance credit; diagnoses row 4 only): from tools/desk at the same source, the row 4 pipeline under `bash -o pipefail -c` exited 141 on 3 of 3 runs; the same pipeline under plain `bash -c` exited 0; the `grep -c` form under `bash -o pipefail -c` printed 1 and exited 0. So the named test does print its own "--- PASS: TestExitCodeTableMatchesDerivation" line (row 1 also passes), and the row fails because `grep -q` exits on its first match and go test then takes SIGPIPE writing its trailing lines. This is the defect #4170 records.
+
+Risk-bearing values. Risk metadata is present and all four answers are no, including irreversible: no. Enumerated over the delivering diff (exitcodes.go, exitcodes_test.go, mutations.json under tools/desk/internal/deskkit), re-located at 384d5eda2ca2:
+- ExitOK = 0 @ tools/desk/internal/deskkit/exitcodes.go:41
+- ExitDisabled = 3 @ tools/desk/internal/deskkit/exitcodes.go:44
+- ExitRateLimited = 4 @ tools/desk/internal/deskkit/exitcodes.go:48
+- ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51
+- ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55
+- the test's want literals 0/3/4/5/6 @ tools/desk/internal/deskkit/exitcodes_test.go:90-94, the shell-reserved literals 1 and 2 @ exitcodes_test.go:105, and the contiguous range 3..6 @ exitcodes_test.go:132 (these mirror the table)
+- the mutant's replacement literal ExitRateLimited = 5 @ tools/desk/internal/deskkit/mutations.json:531 (test data only)
+
+Since delivery, exitcodes.go gained a ReadClass field, a ReadClassOf helper and a semantic tag; no constant value or line in the const block moved. The delivering diff changes no value; it records a derivation for values already in place. Each is a reversible caller contract, fixed by an edit and a release; a wrong value costs a caller branching on the wrong integer, a cost that grows with every script that hard-codes the integers. The four refusal codes rank first, ExitOK last.
+
+RISK-VALUE: DERIVED — ExitDisabled = 3 @ tools/desk/internal/deskkit/exitcodes.go:44 — the lowest status that collides with no status the shell itself reports: 0 is success, 1 is the general-error status most utilities use, 2 is the status the bash manual documents for a builtin's incorrect usage, and POSIX XCU 2.8.2 reserves 126, 127 and above 128. A tool's first own code is therefore 3.
+RISK-VALUE: DERIVED — ExitRateLimited = 4, ExitRefused = 5, ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:48, :51, :55 — one code per caller-distinguishable class (stop / wait and retry the same call / fix the input and re-run / fail closed), assigned contiguously in handling order from 3, all below the 126 floor. A per-reason split of ExitRefused would add no branch a caller could take differently, because every compiled-in refusal gets the same action. Rows 1 and 5 witness the pin and the CAUGHT neighbour-swap mutant at this source.
+
+The implementation meets the brief's contract (rows 1, 2, 3 and 5 pass). The defect is in the Verify table: row 4 as written exits 141 under the canonical `bash -o pipefail -c` row shell. Remedy (unchanged): re-baseline row 4 to a pipefail-safe form, e.g. the `grep -c` form with Expect "prints 1, exit 0", then re-verify.
+
+**VERIFY: FAIL** — row 4 exits 141 under the canonical `bash -o pipefail -c` row shell (statusgen verifyrun witness; 3/3 supplemental runs); rows 1, 2, 3 and 5 pass (4/5); the code meets the contract; the defect is the unchanged Verify-table check definition (blocker: #4170).
+The implementation meets the brief's contract (rows 1, 2, 3 and 5 pass). The defect is in the Verify table: row 4 as written exits 141 under the canonical `bash -o pipefail -c` row shell. Remedy (unchanged): re-baseline row 4 to a pipefail-safe form, e.g. the `grep -c` form with Expect "prints 1, exit 0", then re-verify.
+
+**VERIFY: FAIL** — row 4 exits 141 under the canonical `bash -o pipefail -c` row shell (statusgen verifyrun witness; 3/3 supplemental runs); rows 1, 2, 3 and 5 pass (4/5); the code meets the contract; the defect is the unchanged Verify-table check definition (blocker: #4170).
+
+### Re-verification — VERIFY: FAIL (row 4, check definition, unchanged) — 2026-10-30
+
+Non-implementer re-verification on merged main c0327f233dd19132a59e20ab815ba059578db4ae (work delivered by 26bf76fc31618e542867b7c9758de74285899d46, #1726). Gate: model; all four risk answers no. Both witness tables below are `statusgen verifyrun` (statusgen v1.0.66) written in place on the host (darwin/arm64, go1.27.2) from the admitted detached home; every row is class `check` (none is `check:ci`), so no network sandbox applies. The Verify table at this source is byte-identical to the one the 2026-10-21 and 2026-10-27 runs used: row 4 has not been re-baselined since blocker #4170 was filed, and #4170 is still open.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1` | pass exit=0 | sha256:3c5179398889 | 2026-10-30 | assay-verifier-app[bot] @ c0327f233dd1 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go vet ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ c0327f233dd1 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && grep -q 'Derivation:' internal/deskkit/exitcodes.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ c0327f233dd1 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1 -v 2>&1 \| grep -q -- '--- PASS: TestExitCodeTableMatchesDerivation'` | fail exit=141 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ c0327f233dd1 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` | could-not-run exit=- — timed out after 10m0s — no verdict was produced | sha256:1aed0f467366 | 2026-10-30 | assay-verifier-app[bot] @ c0327f233dd1 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4938 run=167a56cf7432443c1fc90699750e0e696628c340fd670b7258687488bf08af54 source=c0327f233dd19132a59e20ab815ba059578db4ae brief=docs/streams/measured-status/brief-01-exit-code-derivation.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` | pass exit=0 | sha256:f71ddd71f67f | 2026-10-30 | assay-verifier-app[bot] @ c0327f233dd1 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4938 run=167a56cf7432443c1fc90699750e0e696628c340fd670b7258687488bf08af54 source=c0327f233dd19132a59e20ab815ba059578db4ae brief=docs/streams/measured-status/brief-01-exit-code-derivation.md model=claude-opus-5-5 tier=strong
+
+Row 5 accounting. The first witness hit verifyrun's default 10m per-row limit on a heavily loaded host (load average about 28) and produced no verdict. The second witness re-ran row 5 alone (`--rows 5`) with only the per-row limit raised to 45m; the row's Command is unchanged, and the later witness is the one that counts for row 5. The interrupted first run left one muhar mutant planted in the deskkit review-lane table; that file was restored to the attested bytes and `deskdispatch --check-verifier` re-admitted the home before the second witness. The witness records the exit and an output digest only, and muhar exits 0 whenever the harness is healthy, so the "every mutation CAUGHT" half of the Expect was read from a hand run of the same command:
+
+- **Row 5** (2026-10-30): `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/mutations.json` under `bash -o pipefail -c` at the same source — expected baseline GREEN, positive control CAUGHT, every mutation CAUGHT including the exit-code-convention mutant; observed exit 0, "Harness healthy: baseline GREEN, positive control CAUGHT.", "CAUGHT swap a refusal-class code onto its neighbour (rate-limited takes the constraint-refused code …)", "Totals: 135 caught, 0 NOT CAUGHT, 0 could-not-mutate."; home tree clean afterwards apart from this Evidence edit.
+
+Supplemental host observation (no acceptance credit; diagnoses row 4 only): from tools/desk at the same source, the row 4 pipeline under `bash -o pipefail -c` exited 141 on 3 of 3 runs; under plain `bash -c` it exited 0; the `grep -c` form under `bash -o pipefail -c` printed 1 and exited 0. The named test does print its own PASS line (row 1 passes too). The row fails because `grep -q` exits on its first match and go test then takes SIGPIPE writing its trailing lines, which is the defect #4170 records.
+
+Risk-bearing values. Risk metadata is present and all four answers are no, including irreversible: no. Enumerated over the delivering diff (exitcodes.go, exitcodes_test.go, mutations.json under tools/desk/internal/deskkit), re-located at c0327f233dd1:
+- ExitOK = 0 @ tools/desk/internal/deskkit/exitcodes.go:41
+- ExitDisabled = 3 @ tools/desk/internal/deskkit/exitcodes.go:44
+- ExitRateLimited = 4 @ tools/desk/internal/deskkit/exitcodes.go:48
+- ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51
+- ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55
+- the test's want literals 0/3/4/5/6 @ tools/desk/internal/deskkit/exitcodes_test.go:90-94, the shell-reserved literals 1 and 2 @ exitcodes_test.go:105, and the contiguous range 3..6 @ exitcodes_test.go:132 (these mirror the table)
+- the mutant's replacement literal ExitRateLimited = 5 @ tools/desk/internal/deskkit/mutations.json:531 (test data only)
+
+No constant value or line in the const block has moved since the 2026-10-27 run. The delivering diff changes no value; it records a derivation for values already in place. Each is a reversible caller contract, fixed by an edit and a release; a wrong value costs a caller branching on the wrong integer, a cost that grows with every script that hard-codes the integers. The four refusal codes rank first, ExitOK last.
+
+RISK-VALUE: DERIVED — ExitDisabled = 3 @ tools/desk/internal/deskkit/exitcodes.go:44 — the lowest status that collides with no status the shell itself reports: 0 is success, 1 is the general-error status most utilities use, 2 is the status the bash manual documents for a builtin's incorrect usage, and POSIX XCU 2.8.2 reserves 126, 127 and above 128. A tool's first own code is therefore 3.
+RISK-VALUE: DERIVED — ExitRateLimited = 4, ExitRefused = 5, ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:48, :51, :55 — one code per caller-distinguishable class (stop / wait and retry the same call / fix the input and re-run / fail closed), assigned contiguously in handling order from 3, all below the 126 floor. A per-reason split of ExitRefused would add no branch a caller could take differently, because every compiled-in refusal gets the same action. Rows 1 and 5 witness the pin and the CAUGHT neighbour-swap mutant at this source.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

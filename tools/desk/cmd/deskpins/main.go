@@ -18,25 +18,29 @@
 //
 // `absent` (2) and `malformed` (3) are deliberately distinct: "the file is not
 // there" and "a line in the file does not parse" are different facts, and the
-// desk must be able to tell them apart.
+// desk must be able to tell them apart. A command line deskpins cannot parse is
+// refused with 5, outside the verdict codes.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskpins — validate an .assay-versions pin file against its published contract.
+// helpLong is the root help's prose. The flags are generated from the command tree
+// (desktools-v2/46); this is what the tree cannot say on its own.
+const helpLong = `deskpins — validate an .assay-versions pin file against its published contract.
 
-usage:
   deskpins --check [--root <dir>]   validate <dir>/.assay-versions (default <dir> = ".")
-  deskpins --version                print the build stamp
-  deskpins -h | --help             this text
 
-exit: 0 checked-clean · 1 checked-failed · 2 could-not-check · 3 malformed
+exit: 0 checked-clean · 1 checked-failed · 2 could-not-check · 3 malformed · 5 refused (bad command line)
 
 The contract is docs/distribution.md § The ` + "`.assay-versions`" + ` pin file.`
 
@@ -49,46 +53,112 @@ const (
 )
 
 func main() {
-	os.Exit(deskkit.PerfRun("deskpins", nil, os.Args[1:], func([]string) int { return run(os.Args[1:], os.Stdout, os.Stderr) }))
+	os.Exit(deskkit.PerfRun("deskpins", nil, os.Args[1:], func(a []string) int { return run(a, os.Stdout, os.Stderr) }))
 }
 
+// run is one invocation: deskpins has no process startup (it reads no roster), so the
+// command tree is the whole of it.
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version" || args[0] == "version") {
-		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "deskpins sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(stderr, usage)
-		if len(args) == 0 {
-			return deskkit.ExitRefused
-		}
-		return deskkit.ExitOK
-	}
+	return execute(args, stdout, stderr)
+}
 
-	root := "."
-	check := false
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--check":
-			check = true
-		case "--root":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "deskpins: --root needs a directory")
-				return deskkit.ExitRefused
-			}
-			i++
-			root = args[i]
-		default:
-			fmt.Fprintf(stderr, "deskpins: unknown argument %q\n%s\n", args[i], usage)
-			return deskkit.ExitRefused
-		}
+// pinsFn is the typed handler the command tree calls; the contract tests replace it to observe
+// the values that reach it.
+var pinsFn = checkPins
+
+// onResolve, when set, sees every invocation's resolved settings.
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
 	}
-	if !check {
-		fmt.Fprintln(stderr, "deskpins: nothing to do — pass --check\n"+usage)
+	return exitErr(code)
+}
+
+// versionLine is what --version, -version and the legacy `version` word print.
+func versionLine() string {
+	sha, built := deskkit.Version()
+	return fmt.Sprintf("deskpins sourceSHA=%s builtAt=%s releaseTag=%s", sha, built, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting deskpins declares: flags and defaults only, no environment
+// variable and no configuration file.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "check", Kind: cli.Bool, Flag: "check", Default: false, Usage: "validate <root>/.assay-versions"},
+		{Key: "root", Kind: cli.String, Flag: "root", Default: ".", Usage: "the `dir` whose .assay-versions is checked"},
+	}
+}
+
+// execute runs one invocation against a fresh command tree.
+func execute(args []string, stdout, stderr io.Writer) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskpins", "validate an .assay-versions pin file against its published contract")
+		root.Long = helpLong
+		set := cli.Declare(root, bindings()...)
+		// deskpins takes no positional argument; a stray word is refused before anything runs.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("unknown argument %q", args[0])
+			}
+			return nil
+		}
+		root.RunE = func(cmd *cobra.Command, _ []string) error {
+			return codeErr(pins(cmd, set, stdout, stderr))
+		}
+		// `deskpins version` printed the build stamp before the migration; it still does.
+		root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
+			RunE: func(*cobra.Command, []string) error {
+				fmt.Fprintln(stdout, versionLine())
+				return nil
+			}})
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy refusal code (5), outside the verdict codes.
+		UsageExit: deskkit.ExitRefused,
+		// -version was a legacy spelling and stays accepted. The same rewrite newly accepts
+		// -check and -root (and pflag accepts --check=V and --root=D), which the hand-rolled
+		// loop refused with 5: a declared widening, not a preserved spelling.
+		GoFlagCompat: true,
+	})
+}
+
+// pins resolves the settings and runs the check. With nothing asked of it, deskpins still
+// prints its usage to stderr and refuses (exit 5), as the hand-rolled reader did.
+func pins(cmd *cobra.Command, set *cli.Set, stdout, stderr io.Writer) int {
+	v, err := set.Resolve(cli.Inputs{})
+	if err != nil {
+		fmt.Fprintf(stderr, "deskpins: refused: %v\n", err)
 		return deskkit.ExitRefused
 	}
+	if onResolve != nil {
+		onResolve(v)
+	}
+	if !v.Bool("check") {
+		if cmd.Flags().NFlag() > 0 {
+			fmt.Fprintln(stderr, "deskpins: nothing to do — pass --check")
+		}
+		cmd.SetOut(stderr)
+		_ = cmd.Help()
+		return deskkit.ExitRefused
+	}
+	return pinsFn(v.String("root"), stdout, stderr)
+}
 
+// checkPins is the check itself: deskkit.CheckPins on <root>/.assay-versions, its verdict as the
+// exit code.
+func checkPins(root string, stdout, stderr io.Writer) int {
 	res := deskkit.CheckPins(root)
 	switch res.State {
 	case deskkit.PinCheckedClean:

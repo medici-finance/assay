@@ -25,9 +25,32 @@ roll remains a separate downstream job under its own existing identity.
    desk-base from that newly built version, and the five desks from that base.
    Build assay-harness with the same binaries and prepared plugin source, and
    verify-runner from the release statusgen plus its digest-pinned Go base and
-   the Python packages pinned in `images/verify-runner/Dockerfile`.
-3. Check statusgen's version in all nine images. Execute the release-owned
-   `images/verify-runner/check.py` inside the built runner: import PyYAML and
+   the Debian packages (Python libraries and row tools) pinned in
+   `images/verify-runner/Dockerfile`.
+   verify-runner is multi-arch: it is built once for `linux/amd64` and once for
+   `linux/arm64`, each from the matching `statusgen-linux-<arch>` release
+   binary, and each build's OS/architecture is read back before any check.
+   No job registers emulation. The `linux/arm64` image is built and checked by
+   the `runner-arm64` job on a native `ubuntu-24.04-arm` runner
+   ([issue 4784](https://github.com/medici-finance/assay/issues/4784)). That
+   job holds `contents: read` only, has no registry login and an empty
+   `DOCKER_CONFIG`, and never pushes. It uploads two files as the
+   `release-runner-arm64` artifact: the saved image archive and a
+   `native-runner-v1` receipt naming the release version, source revision,
+   platform, tag, image ID and archive checksum.
+
+   The approved publisher downloads that artifact into a directory of its own,
+   never into the workspace holding the checksum-verified release inputs, and
+   admits only a directory holding exactly the archive and the receipt, both
+   regular files. Before it runs `docker load` it checks the receipt against
+   this release, the archive checksum, a single Docker save manifest naming
+   only the expected tag, and a single config whose digest is the receipt's
+   image ID. After the load it re-reads the platform and image ID. Any
+   mismatch stops the release before a registry write. The other eight images
+   stay `linux/amd64`.
+3. Check statusgen's version in all nine images, and in both runner
+   platforms. Execute the release-owned
+   `images/verify-runner/check.py` inside each built runner platform: import PyYAML and
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
    valid instance passes and an invalid one raises a validation error. It also
    checks the cluster backend's baked entrypoints (`stage-source.sh`,
@@ -35,7 +58,9 @@ roll remains a separate downstream job under its own existing identity.
    `root:root` directory that neither its group nor others can write, and each
    script is a `root:root` regular file, executable, with no set-user-id or
    set-group-id bit, that neither its group nor others can write, and,
-   executed directly with no argument, prints its usage and exits 2. The probe
+   executed directly with no argument, prints its usage and exits 2. It runs
+   the row tools `jq`, `shellcheck` and `tmux` from `PATH`, so a release whose
+   runner lacks one stops before any push. The probe
    prints Python and distribution versions into the release build log. It uses
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp
@@ -46,7 +71,11 @@ roll remains a separate downstream job under its own existing identity.
    absence checks, including dispatches with or without a leading `v`.
    Publish the versioned images and read their registry digests. Refuse an
    existing image tag, an indeterminate registry lookup, or a missing/wrong
-   digest. Attach the references and their checksums to the draft GitHub release
+   digest. verify-runner is pushed as two per-platform tags
+   (`<umbrella-tag>-linux-amd64`, `<umbrella-tag>-linux-arm64`, both
+   absence-checked with the rest), then joined under the umbrella tag as one
+   image index naming those two pushed digests. The index is read back by its
+   digest and must list exactly those two platforms and digests. Attach the references and their checksums to the draft GitHub release
    before its single immutable publish. A partial registry push is not atomic:
    if a later push fails, no complete image manifest or GitHub release is
    published; recover by fixing forward with the next version.
@@ -73,8 +102,16 @@ future workflow runs; an already-running release keeps its original job graph.
 - intake-desk, worker-desk, pr-review-desk, verify-desk and the-desk;
 - verify-runner.
 
-Each record has `name`, `platform` (`linux/amd64`) and a complete
+Each record has `name`, `platform` and a complete
 `<repository>:<umbrella-tag>@sha256:<registry-manifest-digest>` reference.
+`platform` is `linux/amd64` for eight images; verify-runner records
+`linux/amd64,linux/arm64` and its digest is the image index (manifest list)
+digest, not a per-platform one. One reference then serves both host
+architectures: the engine selects the native platform, and the index bytes the
+digest covers name each per-platform manifest digest, so the pin stays
+immutable for both. Records from releases before the multi-arch runner carry
+`linux/amd64` for verify-runner; the contract still accepts them when a consumer
+validates an older release, while a new release must record both platforms.
 `verify-runner-image.txt` contains exactly its matching reference plus a newline.
 Both files are listed in `checksums.txt`. `tools/release/images_contract.py`
 rejects missing/duplicate images, wrong tags, repositories, platforms or source
@@ -90,7 +127,10 @@ Download the selected release's checksums and reference artifacts, verify the
 artifact bytes, validate the manifest against the selected version, source
 revision and release repository, then update repository/cell pins together.
 For a verify-runner consumer, copy `verify-runner-image.txt` into its image lock
-and move the accompanying tool-version marker in the same change.
+and move the accompanying tool-version marker in the same change. Do not force
+`--platform linux/amd64` when running a multi-arch runner reference: let the
+engine pick the host's platform, or pass the host's own platform, so an arm64
+host runs the native image instead of an emulated one.
 The Kubernetes desk package keeps the selected release's `release-images.json`
 byte for byte beside its manifests; its offline check pins that record's sha256,
 validates it with this contract and requires every role reference to equal the recorded one
@@ -121,10 +161,18 @@ variable in the protected `board-writer` environment; the existing
 `BOARD_APP_PRIVATE_KEY` secret remains the signing key. The client ID is not the
 numeric App ID.
 
-## Runner Python dependencies
+## Runner Debian dependencies
 
 The Dockerfile owns the direct Debian bookworm package pins. Their risk assessment
 is recorded on [issue 3469](https://github.com/medici-finance/assay/issues/3469#issuecomment-6272973965).
+The row tools `jq`, `shellcheck` and `tmux` are separate direct Debian pins, added because
+rows run offline and cannot fetch a tool they call
+([issue 4684](https://github.com/medici-finance/assay/issues/4684),
+[issue 4318](https://github.com/medici-finance/assay/issues/4318)). Issue 3469 does not
+cover them; their risk summary (publisher, exact versions and release dates, permissions,
+persistence, transitive packages) is recorded on #4771. The `jq` pin is a
+`bookworm-security` version, which the archive drops once superseded, so that build fails
+closed and needs a reviewed pin update sooner than the others.
 Apt resolves transitive dependencies from the base suite during the approved build;
 `/usr/local/share/verify-runner/packages.txt` records every installed Debian package
 and version in the immutable image, including transitive dependencies and Python.
@@ -155,3 +203,26 @@ package, so it does not appear in `packages.txt`. The last layer runs
 image whose git is below the floor fails the build. The image stays offline at
 runtime: the tarball is fetched only during the build. A git bump changes the
 pair in both Dockerfiles in one change.
+
+## Runner Go module cache
+
+Rows run with no network, a read-only root and `GOPROXY=off`, so the image bakes
+the Go modules they resolve: its Dockerfile runs `go mod download` for
+`tools/desk` and `statusgen` from the release's own `go.mod` and `go.sum`, and
+records those roots, one per line, in
+`/usr/local/share/verify-runner/go-module-roots.txt`. The cache is pinned by the
+image digest like everything else in the image; nothing is mounted or fetched at
+row time.
+
+The cache matches the source the release was built from, not a tree verified
+later. When main moves a requirement after a release, a row that builds that
+module in an older image stops on module resolution before its check runs
+(#4683). A container-netns `statusgen verifyrun` reads the roots file, compares
+each root's `go.mod` in the verified tree with the cache before any row, and
+prints the gap once. A row that exits non-zero naming a missing module is
+recorded could-not-run with `image module cache predates go.sum (<module> <want>
+vs <have>)` rather than as a failure; rows that do not touch a missing module
+keep their own verdict. The remedy is to run in the image of a release whose
+`go.mod` and `go.sum` for those roots match the verified tree, normally the
+first release that contains the verified commit. A requirement bump on main
+that no release contains yet cannot be verified offline until the next release.

@@ -122,6 +122,28 @@ override this accounting. The execution command does not automatically rewrite a
 current-table run into a re-derived run: the verifier must retain the original
 commands and results before producing the closure record.
 
+When the delivery added supplemental rows but changed no original row, the
+independent verifier records that run with a protected record: a file holding
+only the `Verification-Table:` line above, passed as `--acceptance-record` (host
+execution and same-repository admission only; no `--acceptance-forge`, since it
+reads no approval):
+
+```sh
+statusgen verifyrun --root . --brief docs/streams/example/brief-01-example.md \
+  --acceptance-record record.txt
+```
+
+It refuses before any row runs unless the current Verify section equals the
+delivered one and every original row's delivered definition (command, Expect,
+class) equals its original definition; a changed original row is an acceptance
+transition (below) with its own approval. Which rows are supplemental is derived
+from git at the recorded coordinates, never read from the record, and a record
+with any other line refuses. The run writes the marker, witnesses the original
+rows on their delivered (and original) commands, and labels every supplemental
+row `author-added; … no acceptance credit`. The audit above then applies unchanged:
+original credit still needs a fresh passing witness of each original row, and a
+supplemental witness reworded as a pass, or a run without the marker, does not close.
+
 `verifyrun --check`, `brief --check-verified`, `verifyclosure`, the verified flip,
 the reconciliation fold and lint use the same protected-table evaluator. Lint's
 fail-first and row-strength checks retain the original acceptance table. Human row
@@ -160,21 +182,34 @@ that comment removal is idempotent grants an exemption or older-row credit.
 ### Explicit human-approved acceptance transitions
 
 The immutable-delivery rule above remains the default. A versioned brief may opt
-into one later, separately landed command correction. This is a new human act,
+into one later, separately landed command or Expect correction. This is a new human act,
 not an authority inferred from merging a source edit, incrementing `version:`, a
 label, a local record, an APPROVED review, or a bot relaying a person's words.
 
-The bounded first implementation supports changing commands of existing original
-rows while retaining their exact Expect, class, shell, order and obligations.
-Each changed command must occupy exactly one unambiguous code span, with
-byte-identical surrounding context in the original, delivered and amended
-Command cells. The delivered row must match the entire original row definition.
-Tables must have explicit row IDs under a first-column `#` header. Original rows cannot
-be added, dropped or renumbered. Supplemental rows cannot change or gain credit.
-An unchanged row still owes its original command and Expect even if the delivering
-worker edited it. Coverage records acceptance sources per row: original revision
-for unchanged obligations, approved amendment for the corrected ones.
+The transition supports a command-only or an Expect-only correction to an existing
+original row. A command correction retains its exact Expect, class, shell, order and
+obligations. It must occupy one unambiguous code span with byte-identical surrounding
+context, and its delivered row must still match the complete original definition.
+An Expect-only correction retains the complete original Command, class, shell, order
+and obligations. A command and Expect cannot both change in the same approved row.
+Original rows cannot be added, dropped or renumbered; tables retain the explicit
+first-column `#` IDs. Supplemental rows cannot change or gain acceptance credit.
 
+Every command correction must be named by the exact human approval's `rows=` list.
+That list may also explicitly name original rows whose only difference from the
+original is their Expect, including an Expect strengthened at delivery. An older
+command-only approval does **not** acquire that new scope: an unnamed Expect change
+continues to owe the original Expect. Unknown, supplemental, duplicate, reordered
+row IDs and an omitted command correction refuse. The immutable amendment SHA binds
+the exact columns and values; no approval of an arbitrary future assertion is inferred.
+Coverage records the original revision for retained obligations and the approved
+amendment for explicitly selected corrections.
+
+The runner prints a derived diagnostic such as
+`Acceptance-Changes: 2=Expect,3=Command` in its generated closure record. This names
+the approved columns in table order; it is output only, never descriptor input or
+an authority supplied by a witness. Audits still derive effective obligations from
+immutable Git snapshots and re-corroborate the exact approval.
 The amendment must be on the observed HEAD's first-parent chain after delivery.
 A squash amendment has one parent. A two-parent amendment needs a unique merge
 base whose acceptance table equals pre-merge main. Intermediate acceptance edits,
@@ -182,12 +217,23 @@ ambiguous bases and octopus merges refuse. The amendment increments the existing
 brief-v2 `version:` by exactly one; the current version and Verify section must
 still match it. Historical Evidence must survive unchanged through amendment and
 remain a prefix of the current record. No earlier result receives new credit.
+The delivery-to-pre-amendment prefix check has one bounded exception, approved in
+[the #4563 ruling](https://github.com/medici-finance/assay/issues/4563#issuecomment-6528575948):
+when the complete delivered Evidence is exactly the generated comment
+`<!-- Independent verifier appends one row per Verify command after implementation. -->`
+(ignoring surrounding whitespace), that same exact comment may survive as a
+Markdown quotation in pre-amendment history. A missing or edited placeholder,
+another comment, or any substantive delivered result still requires the ordinary
+byte prefix. The amendment must still preserve its parent's entire Evidence
+exactly, and current Evidence must still retain that entire history as its prefix.
+This exception grants no witness, approval, admission or lifecycle credit.
 
 A human recognized by the existing external human-login roster posts an unedited
 comment on a same-repository decision issue. That issue contains
 `<!-- acceptance-transition: docs/streams/example/brief-01-example.md -->`.
 The comment contains exactly the following payload, with actual full Git IDs and
-all changed row IDs in table order:
+every changed Command row and each Expect-only row being approved, in table order.
+An unnamed Expect-only row retains its original assertion:
 
 ```text
 Approve acceptance-transition v1
@@ -209,7 +255,7 @@ GitHub HTTPS, SCP-style SSH and SSH URL origins remain supported.
 Missing, edited, stale, bot-authored, cross-brief or unverifiable approval refuses.
 The human approves a specific immutable amendment, not arbitrary future changes.
 
-A coordinate-only descriptor contains these two literal lines:
+A coordinate-only transition descriptor contains these two literal lines:
 
 ```text
 Verification-Table: delivery=<sha> base=<sha> original=<sha>
@@ -250,7 +296,14 @@ CI invocation** that will read that record: lint, coverage/status regeneration,
 model auto-flip, reconciliation and their retry commands. Supply the existing
 `GH_TOKEN`/`GITHUB_TOKEN` read credential and external mapped-human configuration
 through that workflow's established credential boundary; do not expose privileged
-credentials to untrusted branch code. The repository's workflow approval is the
+credentials to untrusted branch code. Those two variables are the ruling read's
+only credential inside an admitted `statusgen verifyrun` and in any process its
+Verify rows start: there it never falls back to a stored forge login (`gh auth
+token` or the cell's ambient copy of it), and with neither variable set the read
+is a could-not-check. The same holds wherever verifier admission would be
+required, even with no verifyrun running: a `DESK_LOOP` naming a verify loop, or
+a working repository holding the verifier attestation file. Where none of those
+signals holds, the stored-login fallback is unchanged. The repository's workflow approval is the
 opt-in. A desk command's flag does not change later CI jobs. An old pinned binary
 cannot receive this flag, and a default offline CI invocation will hold the record
 or fail lint. Verify the upgraded workflow can corroborate the exact ruling before
@@ -259,6 +312,6 @@ repository's workflows or provide any actual amendment approval.
 
 Transition execution inside `--in-container` or with cross-repository admission is
 unsupported and refuses. The fenced runner gains no network access. Chained
-transitions, row retirement, changed assertions/classes and table-layout migrations
-also remain unsupported. Human closure gates, independent review and release/pin
+transitions, row retirement, class changes, combined command-and-Expect changes in
+one row, and table-layout migrations also remain unsupported. Human closure gates, independent review and release/pin
 requirements remain separate; this mechanism performs none of those actions.

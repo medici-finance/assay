@@ -33,11 +33,9 @@ id: e4b0a613-87e6-4798-916c-5ba0a89c62b2
 
 ## Context
 files:
-- `tools/desk/cmd/deskavatar/` (new): `main.go`, `compose.go` (SVG templates), `raster.go`,
-  `proof.go` (20 px pairwise check), `testdata/golden/`.
-- `tools/desk/internal/avatar/` (new, importable by `deskapps`): `Generate(org, tier, hueSeed)
-  ([]Avatar, error)`.
-- `tools/desk/go.mod`, `go.sum`.
+- `tools/desk/cmd/deskavatar/` (new): `main.go`, `compose.go` (SVG templates), `raster.go`, `proof.go` (20 px pairwise check), `testdata/golden/`.
+- `tools/desk/internal/avatar/` (new, importable by `deskapps`): `Generate(org, tier, hueSeed) ([]Avatar, error)`.
+- `tools/desk/go.mod`, `tools/desk/go.sum`.
 - `docs/desk-tools/deskavatar.md` (new).
 
 single-point-of-failure: the pairwise proof is the ONE control against an indistinguishable set.

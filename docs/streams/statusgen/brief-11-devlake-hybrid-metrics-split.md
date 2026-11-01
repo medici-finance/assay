@@ -63,23 +63,10 @@ id: 4b88697a-8ba8-48b9-8ca9-a69169deef31
 ## Context
 
 files:
-- **remove from `statusgen/`** (with their tests): `codeefficiency.go` (710), `trend.go` (298) —
-  after rehoming trend.go's awaiting-verification backlog curve (see facts) — and `dora.go`'s
-  **standalone commodity `--dora` CLI surface** (org-wide DORA report + git/gh gathering + series
-  renderers). The `dora.go` file is removed, but its grouped-DORA core is rehomed, not deleted
-  (next bullet).
-- **retain in `statusgen/`**: `roadmap.go` + `roadmap_streampage.go` (the internal roadmap-page
-  subsystem DevLake feeds INTO); the grouped-DORA core the roadmap consumes (`computeDoraGrouped` +
-  `DoraGroup`/`DoraGroupedReport` + brief-history helpers + `medianDur`/`p90Duration`), rehomed
-  from `dora.go` into `roadmapdora.go`; the newer `--autonomy`/`--issues`/`--cynefin` modes;
-  `bottleneck.go` (391 — factory-floor WIP×dwell), `emit.go` debtCounts (verification-debt),
-  `unrun.go` (‡ derivation), the board/lint/registers spine — untouched
-- **create** `docs/streams/statusgen/devlake/` — DevLake deployment spec for the platform k8s
-  cluster (helm values / manifest set + connection config for the configured GitHub orgs) — staged
-  here, applied platform-side (cross-repo follow-up)
-- **create** the one-page mapping doc `docs/streams/statusgen/metric-map-11.md` (planned) — every
-  current metric → DevLake | ours | dropped (the retained curve is rehomed to
-  `statusgen/methmetrics.go` (planned) as the `--verif-backlog` mode)
+- **remove from `statusgen/` (with their tests):** statusgen/codeefficiency.go (710), statusgen/trend.go (298), statusgen/dora.go — `trend.go` only after rehoming trend.go's awaiting-verification backlog curve (see facts); and from `dora.go`, its **standalone commodity `--dora` CLI surface** (org-wide DORA report + git/gh gathering + series renderers). The `dora.go` file is removed, but its grouped-DORA core is rehomed, not deleted (next bullet).
+- **retain in `statusgen/`:** `statusgen/roadmap.go`, `statusgen/roadmap_streampage.go`, `statusgen/roadmapdora.go`, `statusgen/bottleneck.go`, `statusgen/emit.go`, `statusgen/unrun.go` — `roadmap.go` + `roadmap_streampage.go` (the internal roadmap-page subsystem DevLake feeds INTO); the grouped-DORA core the roadmap consumes (`computeDoraGrouped` + `DoraGroup`/`DoraGroupedReport` + brief-history helpers + `medianDur`/`p90Duration`), rehomed from `dora.go` into `roadmapdora.go`; the newer `--autonomy`/`--issues`/`--cynefin` modes; `bottleneck.go` (391 — factory-floor WIP×dwell), `emit.go` debtCounts (verification-debt), `unrun.go` (‡ derivation), the board/lint/registers spine — untouched
+- **create** `docs/streams/statusgen/devlake/` — DevLake deployment spec for the platform k8s cluster (helm values / manifest set + connection config for the configured GitHub orgs) — staged here, applied platform-side (cross-repo follow-up)
+- **create the one-page mapping doc** `docs/streams/statusgen/metric-map-11.md` (planned) — every current metric → DevLake | ours | dropped (the retained curve is rehomed to `statusgen/methmetrics.go` (planned) as the `--verif-backlog` mode)
 
 facts:
 - **Operator direction (Ian, 2026-08-12) is the charter: hybrid, NOT deletion.** DevLake serves the

@@ -8,6 +8,31 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "statusgen/scripts/count-git-launch.sh",
+      "reason": "desktools-v2/76 source-only offline Git-launch ratchet invoked by its original Verify row 4; no arguments, never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "statusgen/internal/gitlaunch",
+      "reason": "desktools-v2/76 source-only AST inventory and ratchet implementation invoked by count-git-launch.sh and bounded tests; inspects source only and is never installed or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/desk-session.test.sh",
+      "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/desk-session.test.py",
+      "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/fake-agent.fixture.py",
+      "reason": "desk-containers/31 synthetic offline agent used only by the bounded PID1 fixture, never packaged or released as an agent"
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s",
       "reason": "desk-containers/06 source-only YAML-to-JSON test adapter invoked by the offline packaging checker; Go main is run from the existing desk module, never installed or released as an operator CLI"
     },
@@ -30,6 +55,11 @@
       "class": "test",
       "pattern": "docs/research/criterion-evidence-freshness/replay.py",
       "reason": "source-only offline replay and negative controls for graph-execution/32's frozen synthetic evidence study; explicitly invoked by its brief Verify rows and research README, never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
+      "pattern": "statusgen/bench/perfworkload.sh",
+      "reason": "statusgen/26 source-only launcher for the opt-in TestPerfWorkloadSamples synthetic offline acceptance and measurement test; never installed, packaged or released as an operator CLI"
     },
     {
       "class": "test",
@@ -82,6 +112,16 @@
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
     },
     {
+      "class": "library",
+      "pattern": "tools/release/bundles.py",
+      "reason": "internal release provenance-bundle check imported by fixed release workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3094)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/bundles_test.py",
+      "reason": "offline provenance-bundle and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#3094)"
+    },
+    {
       "class": "test",
       "pattern": "tools/release/images_test.py",
       "reason": "offline image producer and manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#3204)"
@@ -105,6 +145,16 @@
       "class": "test",
       "pattern": "tools/release/go_cache_mutation.py",
       "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/sbom.py",
+      "reason": "internal release SBOM writer imported by the fixed release workflow Python call; no shebang, main guard, argument parser or independent operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/sbom_test.py",
+      "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
     },
     {
       "class": "test",
@@ -195,6 +245,16 @@
       "class": "test",
       "pattern": "containers/scripts/layer-secret-scan.mutate.sh",
       "reason": "developer mutation runner for the layer-secret-scan fixtures (issue #2256); runs layer-secret-scan.test.sh against mutated copies of the scan, not an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/postgres/drill.sh",
+      "reason": "throwaway-server verification drill for the local PostgreSQL scripts (desk-containers/26 Verify row 7): starts its own two disposable compose projects, runs one pass of about 21 checks against provision-cell.sh and restore.sh and exits non-zero on any failure (it carries no mutation code: the five mutations are manual edit-and-rerun steps in the brief's Verify row 7); a test instrument, never the operator's backup, restore or provisioning path"
+    },
+    {
+      "class": "library",
+      "pattern": "containers/postgres/lib.sh",
+      "reason": "shared helper sourced by the containers/postgres operator scripts (desk-containers/26); no shebang, no main guard, no argument parser and never run on its own"
     },
     {
       "class": "test",
@@ -505,13 +565,16 @@
         "docs/cellctl-model-policy.md",
         "docs/cellctl-provider-defaults.md",
         "tools/cellctl/tests/provider.test.sh",
-        "tools/cellctl/tests/parity.test.sh"
+        "tools/cellctl/tests/parity.test.sh",
+        "containers/k8s/compatibility/cellctl-config.schema.json",
+        "containers/k8s/components/compatibility-cellctl/README.md"
       ],
-      "parser": "manual os.Args parsing",
+      "parser": "Cobra typed command tree",
       "complexity": "complex",
       "basis": "8889 LOC, ~34 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/16",
-      "state": "migrated"
+      "state": "migrated",
+      "reason": "desk-containers/31 adds explicitly selected Kubernetes compatibility transport and attach-only command; legacy routes remain"
     },
     {
       "executable": "clusterguard",
@@ -717,7 +780,7 @@
       "complexity": "simple",
       "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskclaim",
@@ -926,11 +989,11 @@
         "tools/desk/README.md",
         "tools/desk/internal/regression/MANIFEST.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "1980 LOC, ~8 verbs, ~15 flags at 3ad1ad83c871",
       "owner": "desktools-v2/23",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskflip",
@@ -1024,7 +1087,7 @@
       "complexity": "simple",
       "basis": "1057 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/35",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "desklabel",
@@ -1058,7 +1121,7 @@
       "complexity": "simple",
       "basis": "861 LOC, ~1 verbs, ~2 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskmerge",
@@ -1168,7 +1231,7 @@
       "complexity": "simple",
       "basis": "115 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskpost",
@@ -1242,7 +1305,7 @@
       "complexity": "simple",
       "basis": "268 LOC, ~0 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskpushguard",
@@ -1297,7 +1360,7 @@
       "complexity": "simple",
       "basis": "1283 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskreconcile",
@@ -1313,7 +1376,7 @@
       "complexity": "simple",
       "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrelease",
@@ -1333,7 +1396,7 @@
       "complexity": "simple",
       "basis": "1154 LOC, ~3 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/46",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskreply",
@@ -1577,11 +1640,11 @@
         "tools/desk/internal/deskkit/pushtransport-mutations.json",
         "docs/cellctl.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "4684 LOC, ~7 verbs, ~18 flags at 3ad1ad83c871",
       "owner": "desktools-v2/22",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "fanoutloop",
@@ -1641,7 +1704,7 @@
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar-action.sh",
@@ -1659,7 +1722,8 @@
       "complexity": "simple",
       "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/muhar"
     },
     {
       "executable": "opmetrics",
@@ -1675,7 +1739,7 @@
       "complexity": "simple",
       "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
       "owner": "desktools-v2/44",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "repohardenguard",
@@ -2082,6 +2146,91 @@
       "state": "pending"
     },
     {
+      "executable": "provision-cell.sh",
+      "path": "containers/postgres/provision-cell.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "184 lines at 176847f81475",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "restore.sh",
+      "path": "containers/postgres/restore.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "247 lines at 176847f81475",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "check-isolation.sh",
+      "path": "containers/postgres/check-isolation.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "96 lines at 176847f81475",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "backup.sh",
+      "path": "containers/postgres/backup.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "123 lines at 176847f81475",
+      "owner": "desktools-v2/57",
+      "state": "pending"
+    },
+    {
+      "executable": "scram-verifier.py",
+      "path": "containers/postgres/scram-verifier.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "containers/postgres/provision-cell.sh",
+        "containers/postgres/drill.sh",
+        "docs/postgres.md"
+      ],
+      "parser": "Python sys.argv (one subcommand, selftest; password on stdin)",
+      "complexity": "simple",
+      "basis": "85 lines at 176847f81475",
+      "owner": "desktools-v2/57",
+      "state": "pending"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",
@@ -2329,6 +2478,25 @@
       "state": "pending"
     },
     {
+      "executable": "fetch-baseline.sh",
+      "path": "statusgen/fetch-baseline.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by ci.yml and release.yml",
+      "consumers": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "statusgen/witnessv2_skew_test.go"
+      ],
+      "parser": "bash positional arguments; --from-source mode word",
+      "complexity": "simple",
+      "basis": "109 lines at ec9f8f04e6fe",
+      "owner": "statusgen/36",
+      "state": "exempt",
+      "reason": "CI and release-gate helper that provides the v1.0.52 statusgen baseline (checksum-verified download, or a source build at the pinned commit) as SG_OLD_BIN for the statusgen/36 witness skew tests (#4459); never installed as an operator CLI; retires with those skew tests"
+    },
+    {
       "executable": "aggregate.py",
       "path": "tools/changelog/aggregate.py",
       "kind": "script",
@@ -2569,7 +2737,7 @@
       "parser": "bash positional arguments",
       "complexity": "simple",
       "basis": "104 lines at 53e432b36c75",
-      "owner": "desktools-v2/47",
+      "owner": "desktools-v2/80",
       "state": "pending"
     },
     {
@@ -2656,6 +2824,46 @@
       "basis": "2 verbs (record, summary), 11 command flags; record semantics belong to desk-supervision/34, shared CLI qualification to this owner",
       "owner": "desktools-v2/56",
       "state": "pending"
+    },
+    {
+      "executable": "desk-session.sh",
+      "path": "containers/k8s/compatibility/desk-session.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "image-owned compatibility PID1 launcher in the five role images",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/k8s/components/compatibility-cellctl/workloads.yaml",
+        "tools/desk/internal/kubecompat/native/client.go",
+        "docs/cellctl.md",
+        "docs/docker.md"
+      ],
+      "parser": "POSIX fixed argv forwarding",
+      "complexity": "simple",
+      "basis": "bounded launch/retained-history/PTY/stop adapter; no scheduler or work authority",
+      "owner": "desk-containers/31",
+      "state": "exempt",
+      "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
+    },
+    {
+      "executable": "desk-session.py",
+      "path": "containers/k8s/compatibility/desk-session.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "image-owned compatibility PID1 launcher in the five role images",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/k8s/components/compatibility-cellctl/workloads.yaml",
+        "tools/desk/internal/kubecompat/native/client.go",
+        "docs/cellctl.md",
+        "docs/docker.md"
+      ],
+      "parser": "Python argparse typed boot/readiness/preparation protocol",
+      "complexity": "simple",
+      "basis": "bounded launch/retained-history/PTY/stop adapter; no scheduler or work authority",
+      "owner": "desk-containers/31",
+      "state": "exempt",
+      "reason": "image-owned PID1 boot, readiness and explicit cold-volume preparation adapter; never installed as a host operator CLI; existing cellctl owns the operator command and cell-op contract"
     }
   ]
 }

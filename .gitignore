@@ -56,3 +56,6 @@
 /tools/go-analysis/__pycache__/
 /scripts/tests/__pycache__/
 /actions/go-analysis/__pycache__/
+
+# Compiled Python bytecode anywhere in the tree (never reviewable, never source).
+__pycache__/

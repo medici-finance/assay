@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/gitcore/gitstub"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -108,9 +109,7 @@ func TestCompiledStartupDiscoveryWorkload(t *testing.T) {
 		observed := build(tool.name, true)
 		for _, size := range []int{4, 256} {
 			root := filepath.Join(scratch, fmt.Sprintf("%s-%d", tool.name, size))
-			if err := os.MkdirAll(filepath.Join(root, ".git"), 0700); err != nil {
-				t.Fatal(err)
-			}
+			gitstub.Repo(t, root)
 			for i := 0; i < size; i++ {
 				snapshotFile(t, filepath.Join(root, fmt.Sprintf("d%04d", i), "leaf.txt"), "fixture\n")
 			}

@@ -129,8 +129,11 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // the row's own, inherited), the container hand-off (which runs no row on
 // the host) and the provenance git reads' environment (historyGitEnv: it only
 // wraps historyGit's literal `git` reads, which start no Verify row, and adds
-// GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway).
-var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv"}
+// GIT_GRAFT_FILE to what a fixed-tool launch would inherit anyway) and the
+// forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
+// which start no Verify row, and only ever removes CELLCTL_GH_AMBIENT and adds
+// a placeholder for an unset token family).
+var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
 var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
@@ -141,7 +144,7 @@ var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
 // diff-lint audits, the forge reader binary, the merge check (which runs the
 // operator's own command line, not a Verify row) and the probes that run only
 // `exit 0` or `true` to learn what the host supports.
-var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readItem", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
+var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readItem", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
 
 // environCallers returns "file: func" for every os.Environ call outside the
 // allowed functions in the given sources, and for every function outside
@@ -367,6 +370,64 @@ func TestAdmittedEnvNarrowOnly(t *testing.T) {
 		}
 		if want := map[string]string{"GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": ""}[key]; !slices.Equal(vals, []string{want}) {
 			t.Errorf("%s: row environment carries %s=%q, want only %q", kv, key, vals, want)
+		}
+	}
+}
+
+// forgeTokenVars are the forge credential variables the forge CLI reads.
+var forgeTokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// regression: #4612
+// TestAdmittedRowsDropForgeTokens: an admitted run's rows no longer inherit
+// the forge credential variables the invoking process holds, while that
+// process keeps them, so its own forge read (the acceptance-approval client)
+// still resolves the token after the rows ran. The unadmitted control proves
+// the plant lands: the same row inherits the variables there. This pins the
+// row's own environment only; a same-user row can still read the invoking
+// process's environment (admittedRowEnv's out-of-scope list).
+func TestAdmittedRowsDropForgeTokens(t *testing.T) {
+	row := "test -z \"${GH_TOKEN+x}${GITHUB_TOKEN+x}${GH_ENTERPRISE_TOKEN+x}${GITHUB_ENTERPRISE_TOKEN+x}\""
+	for _, admit := range []bool{true, false} {
+		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
+			root, _ := admittedFixture(t, admit)
+			for _, name := range forgeTokenVars {
+				t.Setenv(name, "fixture-"+strings.ToLower(name))
+			}
+			code := verifyrunRow(t, root, row)
+			if admit && code != verifyrunExitPass {
+				t.Fatalf("admitted row saw a forge credential variable (exit %d)", code)
+			}
+			if !admit && code != verifyrunExitFail {
+				t.Fatalf("plant did not land: unadmitted row did not see the variables (exit %d)", code)
+			}
+			for _, name := range forgeTokenVars {
+				if got, want := os.Getenv(name), "fixture-"+strings.ToLower(name); got != want {
+					t.Errorf("invoking process lost %s: %q, want %q", name, got, want)
+				}
+			}
+			if got := rulingForgeClient().token; got != "fixture-gh_token" {
+				t.Errorf("approval client token after the run = %q, want the invoking GH_TOKEN", got)
+			}
+		})
+	}
+}
+
+// TestAdmittedEnvDropsForgeTokens pins the removal one variable at a time,
+// whatever its case, beside a variable that only shares a prefix.
+func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
+	in := []string{"PATH=/bin", "GH_TOKEN_FILE=kept", "Gh_Token=x"}
+	for _, name := range forgeTokenVars {
+		in = append(in, name+"=x")
+	}
+	for _, kv := range admittedRowEnv(in) {
+		key, _, _ := strings.Cut(kv, "=")
+		if slices.ContainsFunc(forgeTokenVars, func(n string) bool { return strings.EqualFold(n, key) }) {
+			t.Errorf("admitted row environment carries %s", kv)
+		}
+	}
+	for _, kv := range []string{"PATH=/bin", "GH_TOKEN_FILE=kept"} {
+		if !slices.Contains(admittedRowEnv(in), kv) {
+			t.Errorf("admitted row environment dropped %s", kv)
 		}
 	}
 }

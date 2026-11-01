@@ -35,12 +35,10 @@ id: 9d723eff-d406-457a-9846-994c0d606902
 files:
 - **create** `plugins/assay/resident-rules.md` (planned) — the single source (ten rules, versioned)
 - **create** `tools/harnessgen` — Go module, first verb: `resident` (emit + `--check`)
-- **create** `plugins/assay/codex/AGENTS-assay.md` (planned) — generated Codex fragment (path
-  contingent on 03's ruling; adjust with the ruling, not silently)
-- **amend** the inject-resident-rules.sh hook — thin emitter of generated content (same
-  JSON `systemMessage` contract, byte-identical rules text)
-- **amend** the CI workflows — regenerate-and-diff CI check; `go.work`
-- **amend** the `plugins/assay` SOURCES coverage roster — entries for the new artifacts
+- **create** `plugins/assay/codex/AGENTS-assay.md` (planned) — generated Codex fragment (path contingent on 03's ruling; adjust with the ruling, not silently)
+- **amend** `plugins/assay/hooks/inject-resident-rules.sh` — the inject-resident-rules.sh hook: thin emitter of generated content (same JSON `systemMessage` contract, byte-identical rules text)
+- **amend the CI workflows (regenerate-and-diff CI check);** `go.work`
+- **amend** `plugins/assay/SOURCES.yaml` — the `plugins/assay` SOURCES coverage roster: entries for the new artifacts
 
 facts:
 - Current state: the ten rules live ONLY as a heredoc inside the inject-resident-rules.sh

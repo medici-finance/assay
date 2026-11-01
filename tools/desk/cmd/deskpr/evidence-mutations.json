@@ -1,23 +1,24 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskpr && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/deskkit && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskevidence && (cd ../../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
   "test": "go test ./cmd/deskpr ./internal/deskkit -run 'TestCreate(RemoteEvidence|Evidence|Proof)|TestUpdateSourceSnapshot|TestPubSourceSnapshot|TestPubIdentityCallersTip|TestPubClassGuardSeesPlant' -count=1 -timeout 90s",
   "control": {
     "name": "identity gate bypassed",
     "file": "cmd/deskpr/createpublish.go",
-    "old": "if err := publishIdentityGate(s.dir, base, tip, head.String()); err != nil {",
-    "new": "if err := publishIdentityGate(s.dir, base, tip, head.String()); false && err != nil {"
+    "old": "if err := publishIdentityGate(s.dir, base, tip, \"\", head.String()); err != nil {",
+    "new": "if err := publishIdentityGate(s.dir, base, tip, \"\", head.String()); false && err != nil {"
   },
   "mutations": [
     {
       "name": "live create loses confirmed range",
       "file": "cmd/deskpr/createpublish.go",
-      "old": "publishIdentityGate(s.dir, base, tip, head.String())",
-      "new": "publishIdentityGate(s.dir, base, \"\", head.String())"
+      "old": "publishIdentityGate(s.dir, base, tip, \"\", head.String())",
+      "new": "publishIdentityGate(s.dir, base, \"\", \"\", head.String())"
     },
     {
       "name": "local tracking ref hides a new foreign commit",
       "file": "cmd/deskpr/createpublish.go",
-      "old": "publishIdentityGate(s.dir, base, tip, head.String())",
-      "new": "publishIdentityGate(s.dir, base, remoteTrackingTip(s.dstBranch), head.String())"
+      "old": "publishIdentityGate(s.dir, base, tip, \"\", head.String())",
+      "new": "publishIdentityGate(s.dir, base, func() string { t, _ := deskkit.PublishTrackingTip(s.dir, s.dstBranch); return t }(), \"\", head.String())"
     },
     {
       "name": "remote-read failure admitted",
@@ -33,7 +34,7 @@
     },
     {
       "name": "push ignores checked-ref precondition",
-      "file": "internal/gitcore/gitcore.go",
+      "file": "../../gitcore/gitcore.go",
       "old": "RequireRemoteRefs: requires,",
       "new": "RequireRemoteRefs: requires[:0],"
     },
@@ -52,7 +53,7 @@
     {
       "name": "second caller offers an unreviewed exclusion",
       "file": "cmd/deskevidence/github.go",
-      "old": "RemoteTip: \"\", Role: \"verifier\",",
+      "old": "RemoteTip: remoteTip, Role: \"verifier\",",
       "new": "RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
     },
     {
@@ -64,8 +65,8 @@
     {
       "name": "create drops immutable source at identity gate",
       "file": "cmd/deskpr/createpublish.go",
-      "old": "publishIdentityGate(s.dir, base, tip, head.String())",
-      "new": "publishIdentityGate(s.dir, base, tip, \"\")"
+      "old": "publishIdentityGate(s.dir, base, tip, \"\", head.String())",
+      "new": "publishIdentityGate(s.dir, base, tip, \"\", \"\")"
     },
     {
       "name": "create admits a source outside current HEAD",

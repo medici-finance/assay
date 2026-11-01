@@ -65,13 +65,23 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION", "ASSAY_PERF_PROFILE", "ASSAY_PERF_SESSION_ID", "ASSAY_PERF_AGENT_ID", "ASSAY_PERF_PARENT_AGENT_ID", "ASSAY_PERF_PARENT_INVOCATION_ID", "ASSAY_PERF_ROLE", "ASSAY_PERF_WORK"} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION", "ASSAY_PERF_PROFILE", "ASSAY_PERF_SESSION_ID", "ASSAY_PERF_AGENT_ID", "ASSAY_PERF_PARENT_AGENT_ID", "ASSAY_PERF_PARENT_INVOCATION_ID", "ASSAY_PERF_ROLE", "ASSAY_PERF_WORK", envCellDBDSN, envCellDBPassfile} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {
 				values[key] = value
 			}
 		}
+	}
+	// The cell-declared endpoint is the only additional credential-path value
+	// admitted here. Resolve it directly rather than copying an inherited endpoint
+	// onto argv; the operator process keeps its original environment.
+	base, err := c.forgeEndpointExportBase()
+	if err != nil {
+		return nil, err
+	}
+	if base != "" {
+		values["GITLAB_API_BASE"] = base
 	}
 	return values, nil
 }

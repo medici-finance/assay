@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -32,6 +34,7 @@ const verifyReviewer = "human:reviewer"
 // sign-off (verified → done gate). The workflow feeds title/labels/body
 // straight to `gh issue create`; marker is the idempotency key.
 type verifyIssue struct {
+	Card   gateCard `json:"card"`
 	Brief  string   `json:"brief"`
 	Title  string   `json:"title"`
 	Labels []string `json:"labels"`
@@ -175,28 +178,7 @@ func briefBody(path string) string {
 // heading and the next `## ` heading (or EOF). Unlike extractEvidence (which
 // requires an exact heading), this matches a decorated heading such as
 // `## Verify (executable — no prose-only DoD items)` via its prefix.
-func extractSectionByPrefix(body, prefix string) string {
-	lines := strings.Split(body, "\n")
-	start := -1
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if rest, ok := strings.CutPrefix(t, "## "); ok && strings.HasPrefix(rest, prefix) {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	var out []string
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
-			break
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
-}
+func extractSectionByPrefix(body, prefix string) string { return briefdoc.Section(body, prefix, true) }
 
 // verifyVerdictBoldRe is the ratified regex for a BOLD VERIFY verdict marker:
 // `**VERIFY: PASS**` or `**VERIFY: FAIL**`, with
@@ -355,7 +337,9 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 //     a bare list marker, right after a count label and its colon ("summary:
 //     0 HELD"), or right after ", " / "; " that closes another count item
 //     whose noun is a verdict count (heldCountItemRe: "7 PASS, 0 HELD", "5/5
-//     rows, 0 HELD"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
+//     rows, 0 HELD"), or a ratio item that passed every row or check it
+//     counts (heldCountRatioRe: "2 of 2 required rows passed; 0
+//     could-not-check", never "1 of 2 rows passed;"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
 //     1, 0", "row 3 exit, 0"), a row label ("row 0"), a decimal or version
 //     ("2.0", "v1.0") or a parenthesis ("(0 HELD)") is not a count position
 //     and never excuses.
@@ -402,6 +386,12 @@ var (
 	// "5/5 rows,"). The noun is a short allowlist of verdict counts, so a
 	// number followed by an arbitrary word ("row 3 exit,") is not a count.
 	heldCountItemRe = regexp.MustCompile(`(?i)\b\d+[ \t]+(?:pass(?:ed|es)?|fail(?:ed|s|ures?)?|held|could-not-check|checked-clean|checked-failed|unrun|skip(?:ped|s)?|rows?|checks?)[,;]$`)
+	// heldCountRatioRe is a prior count item that passed every row or check
+	// it counts, closed by "," or ";" ("2 of 2 required rows passed;",
+	// #4294): at most one qualifier word before the noun, and both counts the
+	// same and above zero (heldDetailCounts), so "1 of 2 rows passed;" is not
+	// a count position.
+	heldCountRatioRe = regexp.MustCompile(`(?i)\b(\d+)[ \t]+of[ \t]+(\d+)[ \t]+(?:[a-z]+[ \t]+)?(?:rows?|checks?)[ \t]+(?:pass(?:ed)?|ran|green)[,;]$`)
 	// heldCuePrevWordRe is a linking word allowed directly before a word cue.
 	heldCuePrevWordRe = regexp.MustCompile(`(?i)\b(?:is|are|was|were|has|have|had|with|and|but|otherwise|means)$`)
 	// heldReasonAfterRe is a hold reason after the marker, past any run of
@@ -444,6 +434,9 @@ func heldWordCueAllowed(before string) bool {
 // heldZeroCueAllowed reports whether before — the trimmed text in front of a
 // "0" cue — is a count position.
 func heldZeroCueAllowed(before string) bool {
+	if m := heldCountRatioRe.FindStringSubmatch(before); m != nil && heldDetailCounts(m[1:]) {
+		return true
+	}
 	return before == "" || heldListMarkerRe.MatchString(before) ||
 		heldCountLabelRe.MatchString(before) || heldCountItemRe.MatchString(before)
 }
@@ -1027,6 +1020,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		keywordLocs := routingKeywordRe.FindAllStringIndex(view, -1)
 		refLocs := routingRefRe.FindAllStringIndex(view, -1)
 		for _, h := range heldLocs {
+			// A sourced derivation may name a product state without observing
+			// a verification hold. Classify only this occurrence, never the
+			// whole RISK-VALUE line or a neighbouring Result cell (#4536).
+			if cuts == nil && read.key == "" && len(read.blank) == 0 && heldRiskDefinition(clean, h) {
+				continue
+			}
 			// A negated or zero-counted occurrence ("no could-not-check",
 			// "summary: 0 HELD") is not a live disposition at all — it is
 			// excused outright, the same as a routed one, without needing a
@@ -1040,6 +1039,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			// means ("could-not-check → exit 6") is not a disposition; the
 			// row's own result cell is (heldScanScope rule 2, #1894).
 			if read.prose && heldExitMapping(clean, h) {
+				continue
+			}
+			// A passing row's Result cell that records the product's own
+			// could-not-check output ("a could-not-check mission section")
+			// is not the row's disposition (heldScanScope rule 4, #4294).
+			if cuts == nil && heldObservedOutput(line, clean, read, h) {
 				continue
 			}
 			keywordAfter := false
@@ -1180,10 +1185,18 @@ func prLinks(body string) []string {
 // awaiting human sign-off. Fully offline: everything is lifted from the brief
 // file plus the static repo slug.
 func renderVerifyBody(root string, bf *BriefFile) string {
+	return renderVerifyWith(root, bf, makeGateCard(root, bf, cardAcceptance))
+}
+
+// renderVerifyWith renders the body around a card the caller built once.
+func renderVerifyWith(root string, bf *BriefFile, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
+	b.WriteString(renderCardLinks(card))
 	fmt.Fprintf(&b, "## Human sign-off required — %s\n\n", bf.Brief)
 	fmt.Fprintf(&b, "**%s**\n\n", bf.Title)
+	head := b.String()
+	b.Reset() // authored rationale is cuttable; card identity and close prompts are not
 
 	// gate-why (gate-why-rationale): the authored reason THIS brief is gated,
 	// surfaced above the mechanical yes-key list so the human reads a real
@@ -1217,7 +1230,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	// The lifted sections are unbounded; capIssueBody holds the whole body
 	// under the forge limit without touching the header above or the
 	// checklist below (#4091).
-	sections := verifySections(body, bf.Evidence)
+	sections := append([]string{b.String()}, verifySections(body, bf.Evidence)...)
 
 	var tail strings.Builder
 	tail.WriteString("### Before you close\n\n")
@@ -1226,7 +1239,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	tail.WriteString("- [ ] I accept this brief as done\n\n")
 	tail.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
 		"`). Only a human closer is honored.\n")
-	return capIssueBody(b.String(), sections, tail.String(), briefLinkAtCommit(root, rel))
+	return capIssueBody(head, sections, tail.String(), briefLinkAtCommit(root, rel))
 }
 
 // verifySections renders the Verify and Evidence sections a verify-gate card
@@ -1267,9 +1280,10 @@ func briefLinkAtCommit(root, rel string) func() string {
 // card by the same route (implemented + recorded **VERIFY: PASS**) and close the
 // same way — the Verified cell is stamped from the recorded model run, the Reviewed
 // cell from the human closer — so the body is otherwise identical.
-func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) string {
+func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool, card gateCard) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
+	b.WriteString(renderCardLinks(card))
 	if irreversible {
 		fmt.Fprintf(&b, "## Human sign-off required (irreversible) — %s\n\n", bf.Brief)
 	} else {
@@ -1285,6 +1299,12 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	} else {
 		fmt.Fprintf(&b, "The recorded model verify pass becomes the Verified stamp; the human closer becomes the Reviewed stamp.\n\n")
 	}
+
+	// Preserve the generated identity/transition header. Authored rationale
+	// can be as large as the brief itself and must share the section budget,
+	// otherwise adding card links can evict the mandatory close prompts.
+	head := b.String()
+	b.Reset()
 
 	// gate-why
 	if gw := strings.TrimSpace(bf.GateWhy); gw != "" {
@@ -1310,12 +1330,12 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	}
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
-	head := b.String()
+	intro := b.String()
 
 	// Every section below is lifted from the brief and unbounded; each is a
 	// cuttable unit for capIssueBody, which keeps the header above and the
 	// generated prompts and checklist below whole (#4091).
-	sections := verifySections(body, bf.Evidence)
+	sections := append([]string{intro}, verifySections(body, bf.Evidence)...)
 
 	// UNRUN/deferred rows — surfaced prominently.
 	if ur := unrunRowsText(bf.Evidence); ur != "" {
@@ -1410,12 +1430,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				if existing[marker] {
 					continue
 				}
+				card := makeGateCard(root, bf, cardAcceptance)
 				out = append(out, verifyIssue{
+					Card:   card,
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderVerifyBody(root, bf),
+					Body:   renderVerifyWith(root, bf, card),
 				})
 				continue
 			}
@@ -1437,12 +1459,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				if existing[marker] {
 					continue
 				}
+				card := makeGateCard(root, bf, cardAcceptance)
 				out = append(out, verifyIssue{
+					Card:   card,
 					Brief:  bf.Brief,
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes"),
+					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes", card),
 				})
 			}
 		}

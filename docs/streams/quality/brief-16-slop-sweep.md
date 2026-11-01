@@ -39,42 +39,15 @@ id: 5692cc1a-d83b-4e36-8194-bd603acc348b
 ## Context
 
 files:
-- `qualgen/main.go` — register the `sweep` mode in `dispatch` + `usage` (sibling of
-  `mine` / `report` / `pr` / `check`).
-- NEW `qualgen/sweep.go` (planned) (+ `sweep_test.go` (planned)) — the `sweep` mode
-  orchestrator: runs the
-  three legs in order, computes the standing-lane diff (new / persistent / cleared
-  suspects) against prior artifacts, writes only under `--out`.
-- NEW `qualgen/suspects.go` (planned) (+ `suspects_test.go` (planned)) — leg 1, the
-  deterministic suspects
-  front-end: runs the CONFIGURED set of existing external linters against `--repo`
-  and normalizes their output into the suspect record schema. No new parser.
-- NEW `qualgen/verifier/verifier.go` (planned) — the pluggable `AgentVerifier`
-  interface:
-  `Verify(suspect, contextPack) → Verdict`. Same convention as the stream's existing
-  pluggable adapters (`LinkageAdapter` in `qualgen/fixlinkage.go`, reference adapter
-  in `qualgen/adapters/`).
-- NEW `qualgen/verifier/fixture.go` (planned) (+ `fixture_test.go` (planned)) — the
-  deterministic
-  scripted-verdict reference adapter (reads verdicts from testdata), so the lane is
-  fully testable offline. A live adapter (a headless coding-agent CLI) is
-  CONFIGURATION, shipped separately — not in this brief.
-- NEW `qualgen/verdicts.go` (planned) (+ `verdicts_test.go` (planned)) — leg 2, agent
-  verification:
-  assembles the size-capped context pack per NEW suspect (the suspect's file region,
-  the linter's raw evidence, related caller/callee excerpts), invokes the configured
-  `AgentVerifier` with the per-category prompt, validates and records the verdict.
-- NEW `qualgen/sweepreport.go` (planned) (+ `sweepreport_test.go` (planned)) — leg 3,
-  the evidenced
-  report emitter: renders the per-run markdown report from suspects + verdicts.
-- NEW `qualgen/testdata/sweep/` (planned) — planted fixtures: a minimal target tree
-  containing
-  one known dead function, one known swallowed error, one oversized module, one
-  duplicated block; canned linter outputs per category; scripted verdicts.
-- Artifacts (under the `--out` tracking root, spec §3.1/§9.4 discipline — NEVER in
-  the target repo): `docs/quality/sweep/suspects.jsonl` (append-only),
-  `docs/quality/sweep/verdicts.jsonl` (append-only),
-  `docs/quality/sweep/report-<run-date>.md` (one per run).
+- `qualgen/main.go` — register the `sweep` mode in `dispatch` + `usage` (sibling of `mine` / `report` / `pr` / `check`).
+- **add** `qualgen/sweep.go` (planned), `qualgen/sweep_test.go` (planned) — the `sweep` mode orchestrator: runs the three legs in order, computes the standing-lane diff (new / persistent / cleared suspects) against prior artifacts, writes only under `--out`.
+- **add** `qualgen/suspects.go` (planned), `qualgen/suspects_test.go` (planned) — leg 1, the deterministic suspects front-end: runs the CONFIGURED set of existing external linters against `--repo` and normalizes their output into the suspect record schema. No new parser.
+- **add** `qualgen/verifier/verifier.go` (planned) — the pluggable `AgentVerifier` interface: `Verify(suspect, contextPack) → Verdict`. Same convention as the stream's existing pluggable adapters (`LinkageAdapter` in `qualgen/fixlinkage.go`, reference adapter in `qualgen/adapters/`).
+- **add** `qualgen/verifier/fixture.go` (planned), `qualgen/verifier/fixture_test.go` (planned) — the deterministic scripted-verdict reference adapter (reads verdicts from testdata), so the lane is fully testable offline. A live adapter (a headless coding-agent CLI) is CONFIGURATION, shipped separately — not in this brief.
+- **add** `qualgen/verdicts.go` (planned), `qualgen/verdicts_test.go` (planned) — leg 2, agent verification: assembles the size-capped context pack per NEW suspect (the suspect's file region, the linter's raw evidence, related caller/callee excerpts), invokes the configured `AgentVerifier` with the per-category prompt, validates and records the verdict.
+- **add** `qualgen/sweepreport.go` (planned), `qualgen/sweepreport_test.go` (planned) — leg 3, the evidenced report emitter: renders the per-run markdown report from suspects + verdicts.
+- **add** `qualgen/testdata/sweep/` (planned) — planted fixtures: a minimal target tree containing one known dead function, one known swallowed error, one oversized module, one duplicated block; canned linter outputs per category; scripted verdicts.
+- **artifacts** — (under the `--out` tracking root, spec §3.1/§9.4 discipline — NEVER in the target repo): `docs/quality/sweep/suspects.jsonl` (append-only), `docs/quality/sweep/verdicts.jsonl` (append-only), `docs/quality/sweep/report-<run-date>.md` (one per run).
 
 facts:
 - **Pattern (public prior art, Brokk's SlopCop writeup):** static analysis finds

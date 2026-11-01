@@ -61,8 +61,8 @@ failing for a different reason in a different component:
 - **Mechanical-class-only guard (this responder).** It acts only when `class == mechanical`
   and refuses every other class; leak-sweep and judgement reds can never reach the auto-fix
   path.
-- **Never-weaken-gate invariant (this responder).** The generated fix edits the culprit
-  `file:line` only; a culprit whose path resolves into the refused-path allow-list is
+- **Never-weaken-gate invariant (this responder).** The generated fix edits
+  the culprit `file:line` only; a culprit whose path resolves into the refused-path allow-list is
   refused, not "fixed".
 - **Credential scope (identity layer).** The forge-write identity holds no merge,
   review-submission, branch-protection-bypass, or workflow-write/dispatch authority — a
@@ -89,8 +89,8 @@ facts:
   refuse it too — see brief 03), so this responder refuses it outright instead of manufacturing
   a hand-off that ends in the same no-op.
 - On `class == mechanical`: (a) compose a bug issue body naming the check + `file:line` +
-  the deterministic remedy; (b) produce a fix on a fresh branch editing ONLY the culprit
-  `file:line`; (c) open the PR as a **draft**. Filing + PR-open go through the sanctioned
+  the deterministic remedy; (b) produce a fix on a fresh branch editing ONLY
+  the culprit `file:line`; (c) open the PR as a **draft**. Filing + PR-open go through the sanctioned
   desk write path — never a hand-rolled token mint, never a merge or ready-flip.
 - **Closed remedy enumeration.** The "deterministic remedy" in (a)/(b) above is one of
   exactly three named transforms, never a freely generated patch: (1) **gofmt** — apply

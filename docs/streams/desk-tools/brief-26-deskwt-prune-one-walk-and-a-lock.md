@@ -38,11 +38,11 @@ sources:
   - "freshness-checked 2026-09-14 @ e428134c (origin/main) — every line reference and every claim below re-read against the source at that commit."
   - "`tools/desk/cmd/deskwt/prune.go` § `pruneSweep` (L292) — the sweep body and the exact gate ORDER this brief reorders: lock (L344) → shared-checkout/cwd/prefix (L349–359) → `dirtyTracked` (L362) → `headAtOriginMainTip` (L381) → `mergedToOriginMain` (L392) → `unmergedReason` (L398) → dry-run check (L404) → `removeWorktreeDir` (L419)."
   - "`tools/desk/cmd/deskwt/prune.go` § `unmergedReason` (L441) — the ~36 % block: `repo.UpstreamRef()` then `repo.AheadCount(upstream, \"HEAD\")` (L451) whose only use is the `%d` in a skip string. No gate reads the number."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `AheadCount` (L717) — walks `Log(base)` into `baseAncestors` to exhaustion, then walks head. Two full history walks per call."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `IsAncestor` (L401) — resolves both ends, decodes both commits, and delegates to go-git's `object.Commit.IsAncestor`, which is unmemoized: a fresh preorder walk per call, nothing shared across calls."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `Open` (L87) — builds `cache.NewObjectLRUDefault()` fresh on every call, so nothing decoded by one Open is visible to the next."
-  - "`tools/desk/internal/gitcore/gitcore.go` § `Log` (L348) — already returns the reachable hashes of a rev, newest first; the ancestor SET this brief needs is `Log` plus three lines, not a new primitive."
-  - "`tools/desk/internal/gitcore/contains.go` § package header — the in-repo precedent for exactly this defect class, written up at length: `RefsContaining` once called go-git's unmemoized `IsAncestor` once per ref (~10 million commit visits, ~108 s where the git binary answered in ~15 ms) and was fixed by ONE shared walk plus a commit-graph generation-number cut-off. Same package, same cause, opposite direction of the question."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `AheadCount` (L717) — walks `Log(base)` into `baseAncestors` to exhaustion, then walks head. Two full history walks per call."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `IsAncestor` (L401) — resolves both ends, decodes both commits, and delegates to go-git's `object.Commit.IsAncestor`, which is unmemoized: a fresh preorder walk per call, nothing shared across calls."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `Open` (L87) — builds `cache.NewObjectLRUDefault()` fresh on every call, so nothing decoded by one Open is visible to the next."
+  - "[pre-lift Git implementation](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/gitcore.go) § `Log` (L348) — already returns the reachable hashes of a rev, newest first; the ancestor SET this brief needs is `Log` plus three lines, not a new primitive."
+  - "[pre-lift containment reader](https://github.com/medici-finance/assay/blob/e428134c6c3668b56e44302720ab704d1ea6e5c3/tools/desk/internal/gitcore/contains.go) § package header — the in-repo precedent for exactly this defect class, written up at length: `RefsContaining` once called go-git's unmemoized `IsAncestor` once per ref (~10 million commit visits, ~108 s where the git binary answered in ~15 ms) and was fixed by ONE shared walk plus a commit-graph generation-number cut-off. Same package, same cause, opposite direction of the question."
   - "`tools/desk/cmd/deskwt/deskwt.go` § `dirtyTracked` (L236) → `gitcore.DirtyTrackedPorcelain` (gitcore.go L815) → go-git `wt.Status()` — the ~25 % block, and the SINGLE implementation shared by `remove` and `prune`."
   - "`tools/desk/cmd/deskwt/deskwt.go` § `removeWorktreeDir` (L256) — `os.RemoveAll`, then `git worktree prune`, then a full `guard.worktreePaths(dir)` (a `git worktree list --porcelain` parse) to positively verify deregistration — all three PER removal. Shared with `remove`."
   - "`tools/desk/cmd/deskwt/deskwt.go` § `lockedWorktrees` (doc comment L204, signature L215) — the porcelain lock read, already done ONCE per sweep; the shape every other per-sweep read in this brief follows."
@@ -145,11 +145,11 @@ files:
 - `tools/desk/cmd/deskwt/prune.go` (existing) — `pruneSweep` restructured around a per-sweep `sweepCtx` (the ancestor set, the shared object cache, the per-worktree `*gitcore.Repo` cache); the gate reorder; `unmergedReason`'s count removed; the batched removal tail; the read-only `--dry-run` arm; the singleton acquisition; two new flags.
 - `tools/desk/cmd/deskwt/prunesingleton.go` (planned) (new) — the stamp file, its flock, the TTL debounce, the held/recent report strings, and the stamp's read/write/parse.
 - `tools/desk/cmd/deskwt/deskwt.go` (existing) — `removeWorktreeDir` split into `removeWorktreeTree` (the `os.RemoveAll` alone) and the existing prune-and-verify tail; `remove`'s call site keeps both halves in the order it has today.
-- `tools/desk/internal/gitcore/gitcore.go` (existing) — `OpenWith(dir string, objects cache.Object) (*Repo, error)`; `Open` becomes `OpenWith(dir, cache.NewObjectLRUDefault())`.
+- **edit** — [pre-lift Git implementation](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore.go) (existing) — `OpenWith(dir string, objects cache.Object) (*Repo, error)`; `Open` becomes `OpenWith(dir, cache.NewObjectLRUDefault())`.
 - `tools/desk/cmd/deskwt/prunesingleton_test.go` (planned) (new).
 - `tools/desk/cmd/deskwt/pruneperf_test.go` (planned) (new) — the synthetic-repo fixture builder, the N-scaling test, the concurrency test and the per-candidate benchmark.
 - `tools/desk/cmd/deskwt/prune_test.go` (existing) — new rows for the gate order, the read-only dry run and the fail-closed ancestor set; `TestPruneSkipsDirtyTracked`'s fixture made unambiguous (see the facts).
-- `tools/desk/internal/gitcore/gitcore_test.go` (existing) — the shared-cache row.
+- **edit** — [pre-lift Git tests](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/gitcore_test.go) (existing) — the shared-cache row.
 - `tools/desk/cmd/deskwt/prune-mutations.json` (planned) (new) — the `muhar` spec for row 11.
 - `tools/desk/README.md` (existing) — the prune singleton, its two flags, and the statement that `--dry-run` is read-only.
 - `changelog/desk-tools-26-prune-perf.md` (planned) (new).
@@ -190,7 +190,7 @@ facts (read at `e428134c`, 2026-09-14):
   candidates unmerged, so the common case is the exhaustive one, repeated per candidate,
   inflating the same 5,779 commits out of a ~920 MB pack every time.
 - **This exact defect has been diagnosed and fixed once already in this package.**
-  `tools/desk/internal/gitcore/contains.go`'s header records `RefsContaining` calling the same unmemoized
+  [pre-lift containment reader](https://github.com/medici-finance/assay/blob/ee2b42102c5f57e7737379bc88dc5902f0624f83/tools/desk/internal/gitcore/contains.go)'s header records `RefsContaining` calling the same unmemoized
   `IsAncestor` once per ref — ~10 million commit visits, ~108 s where the git binary answered
   in ~15 ms — and its fix is the same shape this brief takes: one shared walk instead of N.
   The direction of the question differs (which tips contain one commit, versus is this one
@@ -1099,6 +1099,299 @@ RISK-VALUE: DERIVED (reversible, ranks last) — defaultSingletonTTL = 10 * time
 The brief is gate: model with all four risk answers no. Its status is left where it is.
 
 **VERIFY: BLOCKED** — 17/21 rows pass on merged main 385cb29e, 0 fail on the deliverable. Row 11 is could-not-check: its 55-mutation run exited 0, but its Totals line was not retained, so it does not show every mutation caught, and it predates the stricter row 11 command from #4361. Rows 17, 19 and 20 are instrument limits. Row 17: the container lane leaks the runner identity through `GIT_CONFIG_*`, the git directory is unmounted, and the package hit the 600s timeout under emulation (blocker: #4179). Rows 19 and 20: the darwin host has no `unshare --net`, and the container has no git history.
+
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 20/21 — 2026-10-25 claude-opus-5-5-verifier
+
+The runner did not implement this brief: assay-verifier-app[bot] (claude-opus-5-5), dispatched by verify-desk against merged main 4aeecf71626f485c4938dec3165e887a2f74e20d. That commit has the deliverable squash b02ea2b35 (PR #1064) as an ancestor. `deskdispatch --check-verifier` exited 0 before any row ran.
+
+Verification-Attestation: medici-finance/assay#4433 run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Why this re-run: the 2026-10-24 pass ended blocked at 17/21. Its row 11 run exited 0, but the Totals line was not retained, so it did not show every mutation caught. PR #4361 (commit d0f322021, merged 2026-10-25) then repaired row 11: the harness now fails closed and fails fast, and the row's command requires the literal line `Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.`. This pass witnesses row 11 under that repaired command and witnesses every other row fresh. Row 11 was amended after delivery by an ordinary repair PR, not a `wrote-to-the-test` change. The amended row is stricter than the original (the original exited 0 on the harness's exit code alone), so a pass under it also meets the original row.
+
+How the rows were run. Every table below is the tools' own output, with nothing hand-edited. The home stayed clean throughout (`git status --short` empty before and after each lane, including after row 11's in-place mutations). The order was:
+1. Bracket 1: host `--open-bracket` at 18:46:41Z, then container `--sandbox=container-netns --rows 1,2,3,4,5,6,7,8,9,10,12,13,14,15,16,16b,17,18,19,20` from 18:46Z to 19:05Z, then host `--close-bracket`.
+2. Bracket 2: host `--open-bracket` at 19:09:04Z, then container `--rows 19` with the operator's roster file mounted read-only at the container's `$HOME/.config/assay/roster.env`, then host `--close-bracket`.
+3. Host `--rows 11 --dry-run --timeout 8h`, captured outside the home, from 19:17Z to 20:57Z, exit 0.
+4. Bracket 3: host `--open-bracket` at 20:58:23Z, then container `--rows 17` (a retry at lower host load), then host `--close-bracket`.
+
+All three container lanes used the release-pinned verify-runner v1.0.60 image (digest in each Container-Image line). It ran as linux/amd64 under emulation on an arm64 darwin host, with `--network none --cap-drop ALL`, default seccomp, the home mounted read-only, and this repository's git directory mounted read-only at its own path, so rows that read history could run. Go modules came from a pre-filled cache mounted read-only, with `GOPROXY=off`. `--bracket-digest` reports `verdict=match` for all three Admission-Bracket lines. Host 1-minute load average was 22 to 97 during bracket 1, 20 to 60 during row 11, and 9 to 18 during bracket 3.
+
+Container lane, bracket 1:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneRemovalSetUnchanged$' -count=1 -timeout 300s` | pass exit=0 sandbox=container-netns | sha256:88b09ad3f215 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneHoldsAll' -count=1` | pass exit=0 sandbox=container-netns | sha256:5e002a8b1529 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestMergeGateBeforeStatus$' -count=1` | pass exit=0 sandbox=container-netns | sha256:f40687b70a92 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSkips' -count=1 && go test ./cmd/deskwt/ -run '^TestPruneRefusesSharedCheckout$' -count=1` | pass exit=0 sandbox=container-netns | sha256:1a942e1c9dc5 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneDryRunIsReadOnly$' -count=1` | pass exit=0 sandbox=container-netns | sha256:5e5f3f34e776 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneBatch' -count=1` | pass exit=0 sandbox=container-netns | sha256:8617130617cd | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRemove' -count=1` | pass exit=0 sandbox=container-netns | sha256:48e21edec359 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/gitcore/ -run '^TestOpenWithShares' -count=1 && go test ./internal/gitcore/ -run '^TestOpenStillBuilds' -count=1` | pass exit=0 sandbox=container-netns | sha256:9e72cd6ae17c | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSingleton' -count=1 -timeout 120s` | pass exit=0 sandbox=container-netns | sha256:06e1de5816a7 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneInterval' -count=1 -timeout 120s` | pass exit=0 sandbox=container-netns | sha256:d8233c5796b9 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && DESKWT_PERF_N=50 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 600s` | pass exit=0 sandbox=container-netns | sha256:addb49e70be1 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s && DESKWT_PERF_N=600 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s` | pass exit=0 sandbox=container-netns | sha256:12a94807fc29 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestConcurrentPrunes' -count=1 -timeout 900s` | pass exit=0 sandbox=container-netns | sha256:0595dc9a8973 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go test -bench '^BenchmarkPruneSweepPer' -benchtime 10x -run '^$' ./cmd/deskwt/ > /tmp/dt26-bench.out 2>&1; grep -q 'BenchmarkPruneSweepPerCandidate' /tmp/dt26-bench.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 16b | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestLegacyPerCandidate' -count=1 -timeout 600s` | pass exit=0 sandbox=container-netns | sha256:637d004be0db | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 17 | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | fail exit=1 sandbox=container-netns | sha256:fa0cfbdbddae | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 18 | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:9883240f29ee | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+| 20 | `o=$(statusgen --root . --consumers --brief desk-tools/26 --delivery b02ea2b35e9f74b8331478dd59490bb7a8e906dd --base 86e3a434e5f17c4260efda925404b214df48ba74); s=$?; printf '%s\n' "$o"; test "$s" -eq 0` | pass exit=0 sandbox=container-netns | sha256:12e196106941 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a07e75f04765056587c4d1b5228d8647eb4d6d748c59de45455e49d7f64f4e9b
+Container-Image: sha256:4cb3f129e71ff220b62995c587fd4716e2c73c81267bc583df3f544f6fdd5ae3
+Verification-Attestation: medici-finance/assay#4433 run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d tree=sha256:a07e75f04765056587c4d1b5228d8647eb4d6d748c59de45455e49d7f64f4e9b witness=sha256:2336617118718fa8709834e97691abb7481ca24c4220ce6adde2dd022bfc4ae5 opened=2026-10-25T18:46:41Z closed=2026-10-25T19:06:00Z before=receipt after=check-verifier
+
+Container lane, bracket 2 (row 19 with the operator roster present; this witness supersedes row 19 in bracket 1, see below):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:9acb66b081d4 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a07e75f04765056587c4d1b5228d8647eb4d6d748c59de45455e49d7f64f4e9b
+Container-Image: sha256:4cb3f129e71ff220b62995c587fd4716e2c73c81267bc583df3f544f6fdd5ae3
+Verification-Attestation: medici-finance/assay#4433 run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d tree=sha256:a07e75f04765056587c4d1b5228d8647eb4d6d748c59de45455e49d7f64f4e9b witness=sha256:922c10fb81e1f0ce4d2c2285d18cd0f421d3458c6b377efec99033802b6e6b34 opened=2026-10-25T19:09:04Z closed=2026-10-25T19:11:16Z before=receipt after=check-verifier
+
+Container lane, bracket 3 (row 17 retry):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 17 | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | fail exit=1 sandbox=container-netns | sha256:dbc292c7bade | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a07e75f04765056587c4d1b5228d8647eb4d6d748c59de45455e49d7f64f4e9b
+Container-Image: sha256:4cb3f129e71ff220b62995c587fd4716e2c73c81267bc583df3f544f6fdd5ae3
+Verification-Attestation: medici-finance/assay#4433 run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d tree=sha256:a07e75f04765056587c4d1b5228d8647eb4d6d748c59de45455e49d7f64f4e9b witness=sha256:26ab4ab553405e1ad4af1aa8474c187f85a618c08b9dacd85f1346c70ef4f79d opened=2026-10-25T20:58:23Z closed=2026-10-25T21:07:36Z before=receipt after=check-verifier
+
+Host lane (row 11, class `check +mutation`; the harness mutates the tree in place, so it cannot run on the read-only container mount):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 11 | `cd tools/desk && report=$(go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json) && printf '%s\n' "$report" && case "$report" in *'Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:22d7325d6a33 | 2026-10-25 | assay-verifier-app[bot] @ 4aeecf71626f (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4433 run=c5acf6df1fa430b6d3b64451c4f0e61c63d957eee4427e49a1b32de6d47dd087 source=4aeecf71626f485c4938dec3165e887a2f74e20d brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Totals: 20 of 21 rows meet their Expect, including the SPOF row 2, the fail-closed row 3 and the mutation row 11. 0 rows fail on the deliverable. Row 17 has no pass witness and is could-not-check.
+
+- **Row 11** (host witness `pass exit=0`, counted pass). The witnessed command is the repaired one. It exits 0 only if the harness succeeds AND its report contains the literal `Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.`. Otherwise the `case` arm runs `exit 1`. So exit 0 under this command shows that the line was printed: all 55 mutations caught, none NOT CAUGHT, none could-not-mutate. The run took about 1h40m.
+- **Row 17** (container witness `fail exit=1` in brackets 1 and 3, counted could-not-check). This is not a deliverable failure:
+  - A same-image diagnostic of bracket 1's run printed `panic: test timed out after 10m0s` in deskwt while `TestMaintenanceWarningsFailClosed` was running. gitcore passed in 239.080s. No test reported a failure.
+  - Bracket 3 ran row 17 alone, at load average 9 to 18, and hit the same 600s budget.
+  - The 2026-10-24 git-identity and unmounted-gitdir failures did not recur.
+  - The cause is capacity: under amd64 emulation the deskwt package does not fit the row's fixed `-timeout 600s` (open as #4179, with this pass's data attached).
+  - A supplemental native host run of the same command passed: `ok .../cmd/deskwt 445.602s`, `ok .../internal/gitcore 89.181s`, exit 0, at load average 50 to 65. It is not credited: it ran outside any network-off sandbox, and check:ci requires one.
+- **Row 19** (counted pass on bracket 2). Bracket 1's row-19 witness reads `pass exit=0`, but the row always exits 0 because of its trailing `echo $?`, so only its output can decide it. A same-image capture of that output hashes to the witnessed `sha256:9883240f29ee`. It ends `LINT: REFUSED configuration; trust-dependent checks could-not-check` and prints `1`, because the container had no roster file. Bracket 1's row 19 is therefore not counted. Bracket 2 re-ran row 19 with the operator's roster mounted read-only. A same-image capture of that configuration hashes to the witnessed `sha256:9acb66b081d4`. It ends `LINT: PASS` and prints `0`, which meets the Expect.
+- **Row 20** (container witness `pass exit=0`, counted pass with a hand binding). The row's Command cell contains unescaped `||`, so table readers end the cell at the first `||`. The witnessed command is truncated before the exact-summary check, and `deskpathguard rederive` reports could-not-check for this table ("row width differs from header"). Filed as #4453. The full command, run separately in the same image and home, exited 0 and printed `summary: 3 corroborated, 0 disproved, 6 unchecked, 0 brief(s) claiming nothing`. Its output hashes to the witnessed `sha256:12e196106941`, so the witnessed run printed that exact summary.
+- **Rows 1, 16 and 18** print nothing on success (`sha256:e3b0c44298fc` is the empty-output hash), which is what their Expect asks for.
+
+Risk-bearing value. Enumeration over the non-test files of squash b02ea2b35 (prune.go, prunesingleton.go, deskwt.go, lockreclaim.go, gitcore.go) plus the test gates the Deliverables name. Re-read at 4aeecf71: the deskwt changes since the previous pass do not touch these lines.
+
+- merge-gate baseline ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:765 (the one walk, in logOriginMain)
+- fresh-at-tip guard ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1498 (headAtOriginMainTip, deliberately independent of the walk)
+- defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57
+- pruneStampSchema = "deskwt-prune-singleton-v1" @ prunesingleton.go:51
+- stamp dir mode 0o700 @ prunesingleton.go:177; stamp file mode 0o600 @ prunesingleton.go:182
+- lock-ttl flag default "0" @ prune.go:236; singleton-ttl flag default defaultSingletonTTL @ prune.go:248
+- perf budget at N>=600 = 30 * time.Second @ tools/desk/cmd/deskwt/pruneperf_test.go:58; concurrency budget = 2*single + 5*time.Second @ pruneperf_test.go:332 (test gates only)
+
+Ranked by irreversibility:
+1. The merge-gate baseline ref ranks first. If it is wrong, an unmerged worktree reads as merged and is removed.
+2. The fresh-at-tip guard ref ranks second. It is a hold, so an error there removes a worktree only if the merge gate also errs.
+3. Every other entry ranks below these: each is a reversible knob for efficiency, hygiene or a test budget.
+
+RISK-VALUE: DERIVED — merge-gate baseline = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:765 — HEAD is an ancestor of origin/main exactly when HEAD is in the set of commits reachable from origin/main. logOriginMain resolves this ref once and Logs from its tip, which includes the tip itself. The set is built at prune.go:745–749 and the membership test is at prune.go:819. A nil set returns Unverifiable, which holds every candidate (prune.go:806–810). The full spelling avoids a stray local branch named `origin/main` (#885). Row 2 (set equality over a mixed fixture) and row 11's inversion and empty-set mutations bind it.
+
+RISK-VALUE: DERIVED (second) — fresh-at-tip guard = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1498 — the same full spelling, read per candidate from the worktree's own refs, not from the walk. A resolve failure returns Unverifiable, which holds the worktree (prune.go:1500).
+
+RISK-VALUE: DERIVED (reversible, ranks last) — defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57 — this is a debounce only. A wrong value delays or repeats a sweep by at most one TTL and never removes anything.
+
+The brief is gate: model with all four risk answers no. Its status is left where it is.
+
+**VERIFY: BLOCKED** — 20/21 rows pass on merged main 4aeecf71, 0 fail on the deliverable. Row 11 passes under the repaired command: all 55 mutations caught. Row 17 is could-not-check: the deskwt package exceeds the row's fixed 600s budget under amd64 emulation (#4179). A native supplemental run passed in 445.602s but cannot be credited for a check:ci row. Row 20 passes, with its summary check bound by output hash because of the unescaped-pipe defect #4453.
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 20/21 — 2026-10-27 claude-opus-5-5-verifier
+
+The runner did not implement this brief: assay-verifier-app[bot] (claude-opus-5-5), dispatched by verify-desk against merged main f955b97c11baa28bc9a0b8c1b378111311e5c2a4. That commit has the deliverable squash b02ea2b35 (PR #1064) as an ancestor. `deskdispatch --check-verifier` exited 0 before any row ran and again before this Evidence landed.
+
+Verification-Attestation: medici-finance/assay#4668 run=3778a789cf8dae210025eeac7ad0f245b83d557d1553b6b4b73be4bd2f14e370 source=f955b97c11baa28bc9a0b8c1b378111311e5c2a4 brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Why this re-run: the 2026-10-25 pass ended blocked at 20/21 on row 17 alone. Since then deskwt moved to Cobra and declared bindings (#4460, commit 0d9cb2522), and the flag declarations moved out of prune.go into cli.go. This pass witnesses every row fresh at f955b97 and re-reads the risk-bearing literals there.
+
+How the rows were run. Every table below is the tools' own output, with nothing hand-edited. The home stayed clean throughout (`git status --porcelain` empty before and after each lane, including after row 11's in-place mutations). The order was:
+1. Bracket A: host `--open-bracket` at 21:48:24Z, then container `--sandbox=container-netns --rows 1,2,3,4,5,6,7,8,9,10,12,13,14,15,16,16b,17,18,19,20` from 21:48Z to 22:10Z, then host `--close-bracket` at 22:10:35Z. The operator's roster file was mounted read-only at the container's `$HOME/.config/assay/roster.env` from the start, so row 19 needed no second bracket.
+2. Host `--rows 11 --dry-run --timeout 8h`, captured outside the home, from 22:24:54Z to 23:33:10Z, exit 0 (an earlier attempt under a throwaway HOME refused at admission before any row ran; see below).
+
+The container lane used the release-pinned verify-runner v1.0.63 image (digest in the Container-Image line; the release's image-reference asset matched its published checksum). It ran as linux/amd64 under emulation on an arm64 darwin host, with `--network none --cap-drop ALL`, default seccomp, the home mounted read-only, and this repository's git directory mounted read-only at its own path, so rows that read history could run. Go modules came from a pre-filled cache mounted read-only, with `GOPROXY=off`. `--bracket-digest` reports `verdict=match` for the Admission-Bracket line. Host 1-minute load average was 8 to 12 during bracket A.
+
+The host row-11 lane ran with the operator's normal HOME. The host verifyrun's pre-work admission mints the verifier App installation token, which a throwaway HOME holding only the roster cannot do; the first attempt under a throwaway HOME refused before executing any row ("no App ID for App \"verifier-app\""). The deskwt test package's own TestMain re-points HOME to a temporary fixture roster for every test, and the Go build and module caches were the real ones, set explicitly.
+
+Container lane, bracket A:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneRemovalSetUnchanged$' -count=1 -timeout 300s` | pass exit=0 sandbox=container-netns | sha256:4f7f308455ef | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneHoldsAll' -count=1` | pass exit=0 sandbox=container-netns | sha256:8a093a18bdac | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestMergeGateBeforeStatus$' -count=1` | pass exit=0 sandbox=container-netns | sha256:67a96b8980e0 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSkips' -count=1 && go test ./cmd/deskwt/ -run '^TestPruneRefusesSharedCheckout$' -count=1` | pass exit=0 sandbox=container-netns | sha256:54619fb38bdf | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneDryRunIsReadOnly$' -count=1` | pass exit=0 sandbox=container-netns | sha256:77d752377ed3 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneBatch' -count=1` | pass exit=0 sandbox=container-netns | sha256:31eaf63673c1 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRemove' -count=1` | pass exit=0 sandbox=container-netns | sha256:56f1c785520d | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/gitcore/ -run '^TestOpenWithShares' -count=1 && go test ./internal/gitcore/ -run '^TestOpenStillBuilds' -count=1` | pass exit=0 sandbox=container-netns | sha256:6fa07efaa61e | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSingleton' -count=1 -timeout 120s` | pass exit=0 sandbox=container-netns | sha256:a09b47e05f28 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneInterval' -count=1 -timeout 120s` | pass exit=0 sandbox=container-netns | sha256:91731a834dd6 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && DESKWT_PERF_N=50 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 600s` | pass exit=0 sandbox=container-netns | sha256:4bffa1301e93 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s && DESKWT_PERF_N=600 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s` | pass exit=0 sandbox=container-netns | sha256:d223472d13a4 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestConcurrentPrunes' -count=1 -timeout 900s` | pass exit=0 sandbox=container-netns | sha256:f98988806c7d | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go test -bench '^BenchmarkPruneSweepPer' -benchtime 10x -run '^$' ./cmd/deskwt/ > /tmp/dt26-bench.out 2>&1; grep -q 'BenchmarkPruneSweepPerCandidate' /tmp/dt26-bench.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 16b | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestLegacyPerCandidate' -count=1 -timeout 600s` | pass exit=0 sandbox=container-netns | sha256:b2c19d6d3df4 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 17 | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | fail exit=1 sandbox=container-netns | sha256:3ae647dbcc87 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 18 | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:8a98c18c7f17 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+| 20 | `o=$(statusgen --root . --consumers --brief desk-tools/26 --delivery b02ea2b35e9f74b8331478dd59490bb7a8e906dd --base 86e3a434e5f17c4260efda925404b214df48ba74); s=$?; printf '%s\n' "$o"; test "$s" -eq 0` | pass exit=0 sandbox=container-netns | sha256:5fd23df1e032 | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:e246e2605cc9a34e8ac832e904102d03825ea85faaad825f6eb2eb0f8dc761bc
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4668 run=3778a789cf8dae210025eeac7ad0f245b83d557d1553b6b4b73be4bd2f14e370 source=f955b97c11baa28bc9a0b8c1b378111311e5c2a4 brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=3778a789cf8dae210025eeac7ad0f245b83d557d1553b6b4b73be4bd2f14e370 source=f955b97c11baa28bc9a0b8c1b378111311e5c2a4 tree=sha256:e246e2605cc9a34e8ac832e904102d03825ea85faaad825f6eb2eb0f8dc761bc witness=sha256:f38f2c38a3f5983959674b0b86a888fa66ae20a5e9011748dc0f79839585a5bb opened=2026-10-27T21:48:24Z closed=2026-10-27T22:10:35Z before=receipt after=check-verifier
+
+Host lane (row 11, class `check +mutation`; the harness mutates the tree in place, so it cannot run on the read-only container mount):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 11 | `cd tools/desk && report=$(go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json) && printf '%s\n' "$report" && case "$report" in *'Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:48fdaee4d96a | 2026-10-27 | assay-verifier-app[bot] @ f955b97c11ba (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4668 run=3778a789cf8dae210025eeac7ad0f245b83d557d1553b6b4b73be4bd2f14e370 source=f955b97c11baa28bc9a0b8c1b378111311e5c2a4 brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Totals: 20 of 21 rows meet their Expect, including the SPOF row 2, the fail-closed row 3 and the mutation row 11. 0 rows fail on the deliverable. Row 17 has no pass witness and is could-not-check.
+
+- **Row 11** (host witness `pass exit=0`, counted pass). The witnessed command exits 0 only if the harness succeeds AND its report contains the literal `Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; otherwise the `case` arm runs `exit 1`. So exit 0 under this command shows that the line was printed: all 55 mutations caught, none NOT CAUGHT, none could-not-mutate. The run took about 1h08m, and `git status --porcelain` in the home was empty afterwards.
+- **Row 17** (container witness `fail exit=1`, counted could-not-check). This is not a deliverable failure:
+  - A bounded same-image diagnostic of the same command at the same tree, uncredited, printed `panic: test timed out after 10m0s` in deskwt, while `TestRoleInitLeavesSharedCheckoutConfigAndIndexUntouched` had just started. `FAIL .../cmd/deskwt 600.088s`; gitcore passed (`ok .../internal/gitcore 141.541s`). No test reported a failure (zero `--- FAIL` lines).
+  - The cause is capacity, the same as the 2026-10-25 pass: under amd64 emulation the deskwt package does not fit the row's fixed `-timeout 600s` (open as #4179, with this pass's data attached).
+- **Row 19** (container witness `pass exit=0`, counted pass). The row always exits 0 because of its trailing `echo $?`, so its output decides it. The roster was mounted for this bracket, and a bounded same-image diagnostic of the same command at the same tree ended `LINT: PASS` then `0`, which meets the Expect. That diagnostic captured under a plain shell, not verifyrun's sandbox, so its byte hash is not compared with the witnessed `sha256:8a98c18c7f17`.
+- **Row 20** (container witness `pass exit=0`, counted pass with a diagnostic binding). The row's Command cell contains unescaped `||`, so table readers end the cell at the first `||` and the witnessed command is truncated before the exact-summary check (#4453). The full command, including the `case` check, run in the same image at the same tree, exited 0 and printed `summary: 3 corroborated, 0 disproved, 6 unchecked, 0 brief(s) claiming nothing`. As with row 19, that capture's byte hash is not compared with the witnessed `sha256:5fd23df1e032`.
+- **Rows 1, 16 and 18** print nothing on success (`sha256:e3b0c44298fc` is the empty-output hash), which is what their Expect asks for.
+
+Fail-first: no Verify row is risk-bearing. The brief's four risk answers are all no, and no row's tag carries risk-bearing, live, mutating or end-to-end. So no `--fail-first` witness is owed.
+
+Risk-bearing value. ENUMERATE over the non-test files of squash b02ea2b35 (prune.go, prunesingleton.go, deskwt.go, lockreclaim.go, gitcore.go) plus the test gates the Deliverables name, re-read at f955b97. Since the 2026-10-25 pass the Cobra migration moved the flag declarations into cli.go and shifted prune.go's line numbers; the values are unchanged.
+
+- merge-gate baseline ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:705 (the one walk, in logOriginMain)
+- fresh-at-tip guard ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1438 (headAtOriginMainTip, deliberately independent of the walk)
+- defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57
+- pruneStampSchema = "deskwt-prune-singleton-v1" @ prunesingleton.go:51
+- stamp dir mode 0o700 @ prunesingleton.go:177; stamp file mode 0o600 @ prunesingleton.go:182
+- lock-ttl flag default "0" @ tools/desk/cmd/deskwt/cli.go:110; singleton-ttl flag default defaultSingletonTTL @ cli.go:113
+- perf budget at N>=600 = 30 * time.Second @ tools/desk/cmd/deskwt/pruneperf_test.go:58; concurrency budget = 2*single + 5*time.Second @ pruneperf_test.go:332 (test gates only)
+
+RANK by irreversibility:
+1. The merge-gate baseline ref ranks first. If it is wrong, an unmerged worktree reads as merged and is removed.
+2. The fresh-at-tip guard ref ranks second. It is a hold, so an error there removes a worktree only if the merge gate also errs.
+3. Every other entry ranks below these: each is a reversible knob for efficiency, hygiene or a test budget.
+
+RISK-VALUE: DERIVED — merge-gate baseline = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:705 — HEAD is an ancestor of origin/main exactly when HEAD is in the set of commits reachable from origin/main. logOriginMain resolves this ref once and Logs from its tip, which includes the tip itself. The set is assigned at prune.go:689 and the membership test is at prune.go:759. A nil set returns Unverifiable, which holds every candidate (prune.go:746–750). The full spelling avoids a stray local branch named `origin/main` (#885). Row 2 (set equality over a mixed fixture) and row 11's inversion and empty-set mutations bind it.
+
+RISK-VALUE: DERIVED (second) — fresh-at-tip guard = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1438 — the same full spelling, read per candidate from the worktree's own refs, not from the walk. A resolve failure returns Unverifiable, which holds the worktree (prune.go:1439–1441).
+
+RISK-VALUE: DERIVED (reversible, ranks last) — defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57 — this is a debounce only. A wrong value delays or repeats a sweep by at most one TTL and never removes anything.
+
+The brief is gate: model with all four risk answers no. Its status is left where it is.
+
+**VERIFY: BLOCKED** — 20/21 rows pass on merged main f955b97, 0 fail on the deliverable. Row 11 passes: all 55 mutations caught. Row 17 is could-not-check: the deskwt package exceeds the row's fixed 600s budget under amd64 emulation (#4179). Row 20 passes, with its summary check shown by a same-image diagnostic because of the unescaped-pipe defect #4453.
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 17/21 — 2026-10-30 claude-opus-5-5-verifier
+
+The runner did not implement this brief: assay-verifier-app[bot] (claude-opus-5-5), dispatched by verify-desk against merged main 40925e8233c8a63d70682e77ca333e665f1f955e. That commit has the deliverable squash b02ea2b35 (PR #1064) as an ancestor. `deskdispatch --check-verifier` exited 0 before any row ran and again before this Evidence landed.
+
+Verification-Attestation: medici-finance/assay#4967 run=2ba73d35bdcce6558e435dbb1d188c6e7a5ade49e1922b4596a5d8fb6d8d978c source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Why this re-run: the 2026-10-27 pass at f955b97 ended blocked at 20/21 on row 17 alone (#4179). Since then the canonical Git reads were lifted out of the desk module into the repository's top-level gitcore module (commit d3a464391, 2026-10-27). The package that rows 9, 17 and 18 name, internal/gitcore under the desk module, no longer exists at 40925e8. A pass at 1304d40 on 2026-10-29 was not landed, because the pinned tools moved from v1.0.65 to v1.0.66 before it could be. This pass witnesses every row fresh at 40925e8 under v1.0.66 and re-reads the risk-bearing literals there. Neither deskwt nor the lifted gitcore module changed between 1304d40 and 40925e8.
+
+How the rows were run. Every table below is the tools' own output, with nothing hand-edited. The home stayed clean throughout (`git status --porcelain --ignored` empty before and after each lane, including after row 11's in-place mutations). The order was:
+1. Bracket A: host `--open-bracket` at 02:49:28Z, then container `--sandbox=container-netns --rows 1,2,3,4,5,6,7,8,9,10,12,13,14,15,16,16b,17,18,19,20` from 02:50:48Z to 03:02:42Z, then host `--close-bracket` at 03:02:49Z. The operator's roster file was mounted read-only at the container's roster path from the start.
+2. Host `--rows 11 --dry-run --timeout 8h`, captured outside the home, from 03:02:58Z to 03:54:45Z, exit 0.
+
+The container lane used the release-pinned verify-runner v1.0.66 image. The release's image-reference asset names the multi-arch index `sha256:29494cbeca30…`, and that asset matched the release's published checksum. This pass ran the index's linux/arm64 manifest natively on an arm64 darwin host; the Container-Image line records that manifest's digest. The container ran with `--network none --cap-drop ALL`, default seccomp, the home mounted read-only, and this repository's git directory mounted read-only at its own path, so rows that read history could run. Every mount used Docker's `--mount` form, because the short `-v` form misreads a target path ending in `Z` as an SELinux option. Go modules came from the image's pre-filled module cache, with `GOPROXY=off`. `--bracket-digest` reports `verdict=match` for the Admission-Bracket line. Host 1-minute load average was 10 to 15 during the lanes.
+
+The host row-11 lane ran with the operator's normal HOME, because the host verifyrun's pre-work admission mints the verifier App installation token. The deskwt test package's own TestMain re-points HOME to a temporary fixture roster for every test. No GH_TOKEN was in either lane's environment, and KUBECONFIG was `/dev/null` in both.
+
+Container lane, bracket A:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneRemovalSetUnchanged$' -count=1 -timeout 300s` | pass exit=0 sandbox=container-netns | sha256:e2be315501a5 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneHoldsAll' -count=1` | pass exit=0 sandbox=container-netns | sha256:4112977b042d | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestMergeGateBeforeStatus$' -count=1` | pass exit=0 sandbox=container-netns | sha256:83771ff6fa3c | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSkips' -count=1 && go test ./cmd/deskwt/ -run '^TestPruneRefusesSharedCheckout$' -count=1` | pass exit=0 sandbox=container-netns | sha256:5ccc5f93c547 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneDryRunIsReadOnly$' -count=1` | pass exit=0 sandbox=container-netns | sha256:ed8cea74a2a9 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneBatch' -count=1` | pass exit=0 sandbox=container-netns | sha256:c49630e3f692 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRemove' -count=1` | pass exit=0 sandbox=container-netns | sha256:7d270f8a0c94 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/gitcore/ -run '^TestOpenWithShares' -count=1 && go test ./internal/gitcore/ -run '^TestOpenStillBuilds' -count=1` | fail exit=1 sandbox=container-netns | sha256:c67699aba934 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSingleton' -count=1 -timeout 120s` | pass exit=0 sandbox=container-netns | sha256:bfc72a534f71 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneInterval' -count=1 -timeout 120s` | pass exit=0 sandbox=container-netns | sha256:d5312b84a95a | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && DESKWT_PERF_N=50 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 600s` | pass exit=0 sandbox=container-netns | sha256:0456ab90c0fe | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s && DESKWT_PERF_N=600 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s` | pass exit=0 sandbox=container-netns | sha256:f77ea762eb47 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestConcurrentPrunes' -count=1 -timeout 900s` | pass exit=0 sandbox=container-netns | sha256:60210f9b95e6 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go test -bench '^BenchmarkPruneSweepPer' -benchtime 10x -run '^$' ./cmd/deskwt/ > /tmp/dt26-bench.out 2>&1; grep -q 'BenchmarkPruneSweepPerCandidate' /tmp/dt26-bench.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 16b | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestLegacyPerCandidate' -count=1 -timeout 600s` | pass exit=0 sandbox=container-netns | sha256:484da6a1b2ee | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 17 | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | fail exit=1 sandbox=container-netns | sha256:cc65d78dfd89 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 18 | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | pass exit=0 sandbox=container-netns | sha256:dd008be03068 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:49047dff7fcf | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+| 20 | `o=$(statusgen --root . --consumers --brief desk-tools/26 --delivery b02ea2b35e9f74b8331478dd59490bb7a8e906dd --base 86e3a434e5f17c4260efda925404b214df48ba74); s=$?; printf '%s\n' "$o"; test "$s" -eq 0` | pass exit=0 sandbox=container-netns | sha256:6716bc9a73aa | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#4967 run=2ba73d35bdcce6558e435dbb1d188c6e7a5ade49e1922b4596a5d8fb6d8d978c source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=2ba73d35bdcce6558e435dbb1d188c6e7a5ade49e1922b4596a5d8fb6d8d978c source=40925e8233c8a63d70682e77ca333e665f1f955e tree=sha256:a661369244ed8355ed5de43fd37a5f06b998c2d984bad8d9609bf6f80f234465 witness=sha256:a209e67c6a62434b34dd61ca9ffb5e88b9204c0b63bd4417583e35518ed49e8f opened=2026-10-30T02:49:28Z closed=2026-10-30T03:02:49Z before=receipt after=check-verifier
+
+Host lane (row 11, class `check +mutation`; the harness mutates the tree in place, so it cannot run on the read-only container mount):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 11 | `cd tools/desk && report=$(go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json) && printf '%s\n' "$report" && case "$report" in *'Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:103543330b98 | 2026-10-30 | assay-verifier-app[bot] @ 40925e8233c8 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4967 run=2ba73d35bdcce6558e435dbb1d188c6e7a5ade49e1922b4596a5d8fb6d8d978c source=40925e8233c8a63d70682e77ca333e665f1f955e brief=docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md model=claude-opus-5-5 tier=strong
+
+Totals: 17 of 21 rows meet their Expect, including the SPOF row 2, the fail-closed row 3 and the mutation row 11. 0 rows fail on the deliverable. Rows 9, 17, 18 and 19 are could-not-check, and none of them is counted as a pass.
+
+- **Row 11** (host witness `pass exit=0`, counted pass). The witnessed command exits 0 only if the harness succeeds AND its report contains the literal `Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; otherwise the `case` arm runs `exit 1`. So exit 0 under this command shows that the line was printed: all 55 mutations caught, none NOT CAUGHT, none could-not-mutate. The run took about 52 minutes, and `git status --porcelain --ignored` in the home was empty afterwards.
+- **Row 9** (container witness `fail exit=1`, counted could-not-check). The row names a package that no longer exists. A bounded same-image diagnostic of the row's first command on a clean copy of the same commit, uncredited, printed `directory not found` for the desk module's internal/gitcore and `FAIL ./internal/gitcore [setup failed]`. Both named tests now live in the top-level gitcore module, in its opencache_test.go. The same diagnostic ran them there (`go test . -run '^TestOpenWithShares' -count=1` in that module, then the same for `'^TestOpenStillBuilds'`): `TestOpenWithSharesCache` and `TestOpenStillBuildsItsOwnCache` each printed `--- PASS`. That relocated run discharges nothing: the row needs re-authoring to name the lifted module.
+- **Row 17** (container witness `fail exit=1`, counted could-not-check). `go` rejects the row's second package pattern (`pattern ./internal/gitcore/...: lstat ./internal/gitcore/: no such file or directory`), so the row cannot pass as written. Bounded same-image diagnostics, uncredited, split the row and found the cause of the deskwt timeout that #4179 records:
+  - The deskwt half alone, with the row's `-timeout 600s` kept, ended `panic: test timed out after 10m0s` and `FAIL .../tools/desk/cmd/deskwt 600.041s`. The goroutine dump shows `TestHelpWritesNoAuditRow/prune_--help` blocked for 8 minutes in a write of Cobra's help text to stdout. The deskwt test helper that captures stdout replaces it with an `os.Pipe` and reads the pipe only after the command returns. The prune help screen is 9,330 bytes.
+  - Inside the container (`--cap-drop ALL`, uid 0, sharing one Linux VM kernel with other containers), a new pipe's capacity was 8,192 bytes, because that user is over the kernel's `pipe-user-pages-soft` limit. With `--cap-add SYS_RESOURCE`, which exempts the process from that limit, a new pipe's capacity was 65,536 bytes and `TestHelpWritesNoAuditRow` passed in 0.055s. Without it, the same test alone hit a 2-minute timeout, so the hang is deterministic and not load.
+  - The deskwt half with `-skip '^TestHelpWritesNoAuditRow$'` and the row's 600s budget printed `ok .../tools/desk/cmd/deskwt 96.062s`, so the package is not short of time once that deadlock is removed.
+  - The lifted module (`go test -timeout 600s ./... -count=1` in it) printed `ok` for gitcore and gitcore/gittest.
+  - This is a test-harness fragility (an unread capture pipe plus a help screen larger than the smallest pipe a container can be given), not a defect in this brief's deliverable. It is the likely cause of the 0%-CPU timeouts recorded on #4179, which earlier passes read as capacity.
+- **Row 18** (container witness `pass exit=0`, counted could-not-check). The witness's exit 0 does not cover the gitcore half. In the same image, `gofmt -l cmd/deskwt internal/gitcore` prints `lstat internal/gitcore: no such file or directory` to stderr and exits 2. The row sends only stdout to its output file and tests only that the file is empty, so the missing directory passes silently, and the witnessed output hash is not the empty-output hash. The row's exit 0 therefore covers cmd/deskwt only. A diagnostic `gofmt -l cmd/deskwt` plus the lifted module printed nothing and exited 0, which does not discharge the row.
+- **Row 19** (container witness `pass exit=0`, counted could-not-check). The row always exits 0 because of its trailing `echo $?`, so its output decides it. A same-image diagnostic of the row's lint on a clean copy of the same commit, with the roster mounted, origin/main at 40925e8 and the real origin URL, ended `LINT: FAIL 1 problem(s)` and exit 1. The one PROBLEM is `desktools-v2/65: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`. No PROBLEM names this brief. Offline lint cannot check that neighbour's human authority, which is the open main-wide defect #4823, so the row's Expect of `0` cannot be met at this tree.
+- **Row 20** (container witness `pass exit=0`, counted pass with a diagnostic binding). The row's Command cell contains unescaped `||`, so table readers end the cell at the first `||` and the witnessed command is truncated before the exact-summary check (#4453). The full command, including the `case` check, run in the same image on a clean copy of the same commit, exited 0 and printed `summary: 3 corroborated, 0 disproved, 6 unchecked, 0 brief(s) claiming nothing`. That capture's byte hash is not compared with the witnessed `sha256:6716bc9a73aa`.
+- **Rows 1 and 16** print nothing on success (`sha256:e3b0c44298fc` is the empty-output hash), which is what their Expect asks for.
+
+Owed repair (check-definition, next actor: brief author via the re-authoring tracker #1927). Rows 9, 17 and 18 need to name the top-level gitcore module instead of the desk module's internal/gitcore. Row 18 also needs to fail when gofmt itself errors. Row 17's deskwt half also needs the capture-pipe deadlock fixed or the container lane given 64 KiB pipes; this pass's diagnosis belongs on #4179. Row 19 waits on #4823, and row 20's pipe defect is #4453.
+
+Fail-first: no Verify row is risk-bearing. The brief's four risk answers are all no, and no row's tag carries risk-bearing, live, mutating or end-to-end. So no `--fail-first` witness is owed.
+
+Risk-bearing value. ENUMERATE over the non-test files of squash b02ea2b35 (prune.go, prunesingleton.go, deskwt.go, lockreclaim.go, gitcore.go) plus the test gates the Deliverables name, re-read at 40925e8. Since the 2026-10-27 pass, gitcore.go moved with the lift into the top-level gitcore module, and deskwt's changes are the lift's import-path edits plus mutation-spec testdata. The values and their line numbers are unchanged.
+
+- merge-gate baseline ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:705 (the one walk, in logOriginMain)
+- fresh-at-tip guard ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1438 (headAtOriginMainTip, deliberately independent of the walk)
+- defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57
+- pruneStampSchema = "deskwt-prune-singleton-v1" @ prunesingleton.go:51
+- stamp dir mode 0o700 @ prunesingleton.go:177; stamp file mode 0o600 @ prunesingleton.go:182
+- lock-ttl flag default "0" @ tools/desk/cmd/deskwt/cli.go:110; singleton-ttl flag default defaultSingletonTTL @ cli.go:113
+- perf budget at N>=600 = 30 * time.Second @ tools/desk/cmd/deskwt/pruneperf_test.go:58; concurrency budget = 2*single + 5*time.Second @ pruneperf_test.go:332 (test gates only)
+
+RANK by irreversibility:
+1. The merge-gate baseline ref ranks first. If it is wrong, an unmerged worktree reads as merged and is removed.
+2. The fresh-at-tip guard ref ranks second. It is a hold, so an error there removes a worktree only if the merge gate also errs.
+3. Every other entry ranks below these: each is a reversible knob for efficiency, hygiene or a test budget.
+
+RISK-VALUE: DERIVED — merge-gate baseline = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:705 — HEAD is an ancestor of origin/main exactly when HEAD is in the set of commits reachable from origin/main. logOriginMain resolves this ref once and Logs from its tip, which includes the tip itself. The set is assigned at prune.go:689 and the membership test is at prune.go:759. A nil set returns Unverifiable, which holds every candidate (prune.go:746–750). The full spelling avoids a stray local branch named `origin/main` (#885). Row 2 (set equality over a mixed fixture) and row 11's inversion and empty-set mutations bind it.
+
+RISK-VALUE: DERIVED (second) — fresh-at-tip guard = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:1438 — the same full spelling, read per candidate from the worktree's own refs, not from the walk. A resolve failure returns Unverifiable, which holds the worktree (prune.go:1439–1441).
+
+RISK-VALUE: DERIVED (reversible, ranks last) — defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57 — this is a debounce only. A wrong value delays or repeats a sweep by at most one TTL and never removes anything.
+
+The brief is gate: model with all four risk answers no. Its status is left where it is.
+
+**VERIFY: BLOCKED** — 17/21 rows pass on merged main 40925e8, 0 fail on the deliverable. Row 11 passes: all 55 mutations caught. Rows 9, 17 and 18 are could-not-check because they name the desk module's internal/gitcore, which was lifted to the top-level gitcore module (check-definition, #1927). Row 17's deskwt half also deadlocks in TestHelpWritesNoAuditRow on the container's 8 KiB pipes, which is the cause behind #4179. Row 19 is could-not-check on the main-wide lint defect #4823. Row 20 passes, with its summary check shown by a same-image diagnostic because of the unescaped-pipe defect #4453.
 
 ## Review
 

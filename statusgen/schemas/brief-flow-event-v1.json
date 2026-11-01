@@ -5,19 +5,180 @@
   "description": "One brief lifecycle fact, one JSON object per line of a portable JSONL export (spec/brief-flow-event-v1.md). The accounting unit is the brief's stable uuid (the brief-v2 `id:`); pull requests, commits and board rows are evidence about a brief, never a unit of their own. This schema is the SHAPE contract only. The semantic rules a schema cannot express live in the reference validator (statusgen/briefevent.go, ParseBriefEvent): occurrence bounds, receipt-not-before-occurrence, the per-milestone required members, the `must_understand` refusal, the person-identifier refusal and canonical fact digests. Unknown top-level members are allowed so a later optional extension round-trips unchanged through an older reader; an extension a reader MUST understand is named in `must_understand`, and a reader that does not know it refuses the event. A member named like a person identifier (login, name, email, author and similar) is refused at any depth by the validator: actors are recorded as roles only.",
   "type": "object",
   "additionalProperties": true,
-  "required": [
-    "schema",
-    "fact_id",
-    "brief_uuid",
-    "alias",
-    "milestone",
-    "occurred_at",
-    "received_at",
-    "initiator_role",
-    "executor_role",
-    "coverage"
-  ],
+  "required": ["schema"],
+  "if": {
+    "required": ["record"],
+    "properties": { "record": { "enum": ["wait", "human_intervention"] } }
+  },
+  "then": {
+    "not": { "required": ["milestone"] },
+    "if": { "properties": { "record": { "const": "wait" } } },
+    "then": {
+      "required": ["schema", "record", "fact_id", "brief_uuid", "wait", "received_at", "coverage"]
+    },
+    "else": {
+      "required": ["schema", "record", "act_id", "category", "taxonomy", "initiator_role", "executor_role", "outcome", "occurred_at"]
+    }
+  },
+  "else": {
+    "required": [
+      "schema",
+      "fact_id",
+      "brief_uuid",
+      "alias",
+      "milestone",
+      "occurred_at",
+      "received_at",
+      "initiator_role",
+      "executor_role",
+      "coverage"
+    ]
+  },
   "properties": {
+    "record": {
+      "description": "The record kind (spec §14). Absent or `fact` is a milestone fact, exactly as before this member existed. `wait` is a qualified wait receipt (§15) and `human_intervention` is one evidenced human act (§16). Neither of the two later kinds carries `milestone`, so a reader that predates them refuses them instead of reading them as milestone facts, and a milestone-fact reader refuses them too.",
+      "type": "string",
+      "enum": ["fact", "wait", "human_intervention"]
+    },
+    "context": {
+      "description": "Optional measurement-context links (spec §14.2). An observation member: it describes how a fact or wait was measured, never what happened, so it is excluded from the fact digest. Every absent part is unknown and stays unknown; nothing here is inferred, and nothing here is an adoption, economics or acceptance verdict.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "purpose": {
+          "description": "The work's purpose classification under a named taxonomy and the taxonomy revision in effect. `unknown` is an explicit value.",
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["value"],
+          "properties": {
+            "value": { "type": "string" },
+            "taxonomy": { "type": "string" },
+            "effective_revision": { "type": "string" }
+          }
+        },
+        "policy_revision": { "description": "The revision of the policy in force (gates, routing).", "type": "string" },
+        "harness": { "description": "The agent harness or runner that executed the work.", "type": "string" },
+        "build": { "description": "The tool build that measured or produced the observation.", "type": "string" },
+        "model": {
+          "description": "The model as requested, as resolved by configuration and as actually served. Three distinct facts: none is ever filled in from another.",
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "requested": { "type": "string" },
+            "resolved": { "type": "string" },
+            "served": { "type": "string" }
+          }
+        },
+        "finding_ref": { "description": "A restricted reference to the finding this work addresses.", "type": "string" },
+        "fix_ref": { "description": "A restricted reference to the change that fixes that finding.", "type": "string" },
+        "external": {
+          "description": "References to external quality, cost or adoption sources. A reference only: it records where a figure lives, never the figure or a verdict about it.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["kind", "source"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["quality", "cost", "adoption"] },
+              "source": { "type": "string" },
+              "ref": { "type": "string" },
+              "revision": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "wait": {
+      "description": "On a `wait` record: one inter-stage wait (spec §15). An absent `ended_at` is an open wait, reported as aging and never as a completed duration.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["edge", "started_at"],
+      "properties": {
+        "edge": {
+          "description": "`intake_dispatch` (ready → claim acquired), `dispatch_worker` (claim → draft pull request opened), `worker_review` (pull request opened → first reviewer verdict), `review_verify` (merged → Evidence row landed), `finding_remediation` (finding filed → the fixing change's Evidence row landed).",
+          "type": "string",
+          "enum": ["intake_dispatch", "dispatch_worker", "worker_review", "review_verify", "finding_remediation"]
+        },
+        "started_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        },
+        "ended_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        },
+        "start_fact": { "description": "Restricted pointer: the fact id that opened the wait.", "type": "string" },
+        "end_fact": { "description": "Restricted pointer: the fact id that closed the wait.", "type": "string" }
+      }
+    },
+    "act_id": {
+      "description": "On a `human_intervention` record: the act's stable id, assigned once at the source. A transport retry or a mirror of one act carries the same id and counts once; a deliberate resubmission is a new act with a new id.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"
+    },
+    "category": {
+      "description": "The act's primary category under `taxonomy`: `decision` (a choice between options), `ruling` (a binding answer to a disputed or gated question), `console` (an operator action taken through a console), or `unclassified`, which is never counted as a precise category.",
+      "type": "string",
+      "enum": ["decision", "ruling", "console", "unclassified"]
+    },
+    "taxonomy": {
+      "description": "The category taxonomy version the classification was made under.",
+      "type": "string"
+    },
+    "brief_uuids": {
+      "description": "The briefs the act is explicitly associated with. An act linked to several briefs counts once per brief and once in a fleet total. Exactly one of `brief_uuids` and `scope` is present.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      }
+    },
+    "scope": {
+      "description": "`unallocated`: the act is real but tied to no brief. It counts in the fleet total and in no brief's count.",
+      "type": "string",
+      "enum": ["unallocated"]
+    },
+    "outcome": {
+      "description": "What became of the act: `applied`, `rejected`, `failed`, `withdrawn`, `pending` or `unknown`. A failed act is still an act.",
+      "type": "string",
+      "enum": ["applied", "rejected", "failed", "withdrawn", "pending", "unknown"]
+    },
+    "submission": {
+      "description": "How the act was submitted.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "submitted_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        },
+        "channel": { "type": "string", "enum": ["console", "forge", "cli", "unknown"] }
+      }
+    },
+    "effects": {
+      "description": "Restricted pointers to the effects correlated with the act, each with its own outcome.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["ref"],
+        "properties": {
+          "ref": { "type": "string" },
+          "outcome": { "type": "string", "enum": ["applied", "rejected", "failed", "withdrawn", "pending", "unknown"] }
+        }
+      }
+    },
+    "attribution": {
+      "description": "What establishes that a human performed the act. Only `authenticated_source` (the authorized source authenticated the act itself) qualifies an act for a precise count; `on_behalf_of_metadata` (an app acting with a note naming a human) and `unknown` do not. `evidence_ref` points at the source owner's evidence; the evidence itself never enters a record.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["basis"],
+      "properties": {
+        "basis": { "type": "string", "enum": ["authenticated_source", "on_behalf_of_metadata", "unknown"] },
+        "evidence_ref": { "type": "string" }
+      }
+    },
     "schema": {
       "description": "The event contract and its major version. A reader refuses any other value: a later major version may change a meaning this reader would silently misread.",
       "const": "brief-flow-event/v1"

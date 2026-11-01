@@ -1,0 +1,5 @@
+# A baked all-interfaces bind turns a local build into an exposure.
+want: non-loopback-bind
+file: Dockerfile
+replace: "ENTRYPOINT [\"/deskd\"]"
+with: "ENTRYPOINT [\"/deskd\", \"-addr\", \"0.0.0.0:8787\"]"

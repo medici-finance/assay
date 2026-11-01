@@ -31,14 +31,14 @@ exec-tier: strong
 exec-tier-why: "It changes what releases a verification gate. Negative controls (a changed byte, a missing digest, an unknown schema, an old reader) must each be shown to refuse at more than one site, and the v1 rule must be proven byte-for-byte unchanged."
 domain: complicated
 consumers:
-  - "statusgen/evaluation/ (coverage_api.go, coverage.go, coverage_inputs.go, declared_api.go, coverage_repo.go; new witness.go): follow-up statusgen/36"
-  - "statusgen/coverage.go, statusgen/coverage_repo.go, statusgen/coverage_repomemo.go (adapter: batched per-revision listing, one dependency source for all call sites): follow-up statusgen/36"
-  - "statusgen/autoflip.go and statusgen/reconcilefold.go (two of the three evaluateCoverage call sites, none of which passes Dependencies today; the third, coverage.go, is routed on the line above): follow-up statusgen/36"
-  - "statusgen/verifyrun.go (reader side only: witnessCells and witnessTreeOf hand the cell to the library; the writer is statusgen/37): follow-up statusgen/36"
-  - "statusgen/main.go (the `witnessdigest --json` verb and the versioned witness field on `--coverage --json`): follow-up statusgen/36"
-  - "statusgen readers of the Runner cell or witness state — attribution.go, citationcorroborate.go, evidenceactor.go, principal.go, verifyflip.go, verifyissues.go, verifyclosure.go, verifyoutcomes.go, outcomessplit.go, awaiting_bucket.go, evidenceshape.go, protectedclosure.go, failfirst.go, acceptancetransition.go, lifecycle.go, load.go, verifysandbox.go, verifiedrunneragree.go: follow-up statusgen/36 (each gets a disposition in the reader census)"
-  - "docs/contracts.md (S-evidence-coverage row and a new R-witness-schema row): follow-up statusgen/36"
-  - "spec/brief-v1.md, docs/brief-template.md and docs/declared-input-scope.md (the `inputs:` Context field): follow-up statusgen/36"
+  - "statusgen/evaluation/ (coverage_api.go, coverage.go, coverage_inputs.go, declared_api.go, coverage_repo.go; new witness.go): fixed-here"
+  - "statusgen/coverage.go, statusgen/coverage_repo.go, statusgen/coverage_repomemo.go (adapter: batched per-revision listing, one dependency source for all call sites): fixed-here"
+  - "statusgen/autoflip.go and statusgen/reconcilefold.go (two of the three evaluateCoverage call sites, none of which passes Dependencies today; the third, coverage.go, is routed on the line above): fixed-here"
+  - "statusgen/verifyrun.go (reader side only: witnessCells and witnessTreeOf hand the cell to the library; the writer is statusgen/37): fixed-here"
+  - "statusgen/main.go (the `witnessdigest --json` verb and the versioned witness field on `--coverage --json`): fixed-here"
+  - "statusgen readers of the Runner cell or witness state — attribution.go, citationcorroborate.go, evidenceactor.go, principal.go, verifyflip.go, verifyissues.go, verifyclosure.go, verifyoutcomes.go, outcomessplit.go, awaiting_bucket.go, evidenceshape.go, protectedclosure.go, failfirst.go, acceptancetransition.go, lifecycle.go, load.go, verifysandbox.go, verifiedrunneragree.go: fixed-here (each gets a disposition in the reader census)"
+  - "docs/contracts.md (S-evidence-coverage row and a new R-witness-schema row): fixed-here"
+  - "spec/brief-v1.md, docs/brief-template.md and docs/declared-input-scope.md (the `inputs:` Context field): fixed-here"
   - "tools/desk readers and writers: follow-up statusgen/37"
 ---
 

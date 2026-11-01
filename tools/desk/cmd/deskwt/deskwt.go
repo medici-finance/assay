@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,8 +8,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // getwd is the seam for the tool's working directory (the worktree it runs in).
@@ -371,7 +370,7 @@ func survivingGitDir(guard *pathGuard, dir string, removed []string) string {
 	return dir
 }
 
-// cmdAdd implements `deskwt add <name> [--branch B | --detach] [--base origin/main]`: create a
+// runAdd implements `deskwt add <name> [--branch B | --detach] [--base origin/main]`: create a
 // worktree at `<tmpBaseDir>/tracker-<name>` on a NEW branch that TRACKS the base (so a
 // fresh worktree is immediately clean & up-to-date, satisfying remove's upstream check).
 //
@@ -382,44 +381,15 @@ func survivingGitDir(guard *pathGuard, dir string, removed []string) string {
 // `deskwt remove` already accepts a detached HEAD whose commit is proven on a remote (#851),
 // so the lifecycle closes. --detach and --branch are mutually exclusive.
 // semantic: S-worktree
-func cmdAdd(args []string) (err error) {
+func runAdd(o addOpts) (err error) {
 	ac := &auditCtx{verb: "add"}
 	defer func() { ac.finalize(err) }()
 
-	fs := flag.NewFlagSet("add", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	branch := fs.String("branch", "", "new branch name for the worktree (default: the worktree name)")
-	detach := fs.Bool("detach", false, "check the base out as a DETACHED HEAD — no branch created or touched (the verifier shape)")
-	base := fs.String("base", "origin/main", "start-point ref for the new worktree")
-	upstream := fs.String("upstream", "", "with a full commit --base: the fully qualified remote branch to track; its tip must match the commit")
-	role := fs.String("role", "", "stamp this desk role's App commit identity (token role or loop name) into the new "+
-		"worktree's own config; omitted, the new worktree's user.name/user.email are CLEARED so it can never inherit "+
-		"the shared checkout's identity")
-	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing")
-	// --lock-session locks the new worktree for a live session at creation, in the same
-	// reason format role-init writes, so prune holds it from its first second and the
-	// lock-reclaim / dead-session passes can retire it once that session's beacon is stale.
-	lockSession := fs.String("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format")
-	// --adopt-run hands back a FINISHED home of this run key instead of refusing it
-	// (adoptfinished.go, #4272). Resume-only: it needs --upstream's pinned head as its proof.
-	adoptRun := fs.String("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
-		"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it")
-	// Usage puts <name> first, but Go's flag stops at the first positional;
-	// parse in a loop so flags may appear before OR after the name (a stray/unknown flag
-	// still errors → refused).
-	positionals, perr := parseInterspersed(fs, args)
-	if perr != nil {
-		// TIER TWO: `-h`/`--help` reaches the parser as flag.ErrHelp. A help screen is
-		// not a refusal and writes no audit row (deskkit/helprequest.go).
-		if deskkit.IsHelpRequest(perr) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("refused: bad flags: " + perr.Error())
-	}
-	if len(positionals) != 1 {
-		return deskkit.Refused("refused: add takes exactly one <name> argument")
-	}
-	name := positionals[0]
+	// The one Cobra tree (cli.go) parsed every flag and the single <name> before this
+	// handler ran. The body reads the parsed values through the names it always used.
+	branch, detach, base, upstream := &o.branch, &o.detach, &o.base, &o.upstream
+	role, dryRun, lockSession, adoptRun := &o.role, &o.dryRun, &o.lockSession, &o.adoptRun
+	name := o.name
 	if !nameRe.MatchString(name) || strings.Contains(name, "..") {
 		return deskkit.Refused("refused: <name> must be a single safe segment (no slashes, no leading dash/dot, no '..')")
 	}
@@ -722,31 +692,18 @@ func cmdAdd(args []string) (err error) {
 	return nil
 }
 
-// cmdRemove implements `deskwt remove <path>`: refuse unless the RESOLVED path is a
+// runRemove implements `deskwt remove <path>`: refuse unless the RESOLVED path is a
 // sanctioned, registered worktree that is clean (tracked), fully pushed, and NOT the
 // shared checkout; then `git worktree remove` + prune. There is no --force flag.
-func cmdRemove(args []string) (err error) {
+func runRemove(o removeOpts) (err error) {
 	ac := &auditCtx{verb: "remove"}
 	defer func() { ac.finalize(err) }()
 
-	fs := flag.NewFlagSet("remove", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
 	// The ONLY flag is --dry-run (report the before_remove hook plan, touch nothing). A stray
-	// flag — e.g. --force — still makes Parse error → refused. There is NO force / override
-	// flag anywhere in this tool.
-	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing")
-	positionals, perr := parseInterspersed(fs, args)
-	if perr != nil {
-		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
-		if deskkit.IsHelpRequest(perr) {
-			return deskkit.ErrHelpRequested
-		}
-		return deskkit.Refused("refused: remove takes no flags but --dry-run (there is no --force): " + perr.Error())
-	}
-	if len(positionals) != 1 {
-		return deskkit.Refused("refused: remove takes exactly one <path> argument")
-	}
-	path := positionals[0]
+	// flag — e.g. --force — is a parse error in the Cobra tree (cli.go) before this handler
+	// runs. There is NO force / override flag anywhere in this tool.
+	dryRun := &o.dryRun
+	path := o.path
 
 	// --dry-run: report the before_remove hook plan and touch nothing.
 	if *dryRun {
@@ -866,6 +823,49 @@ func cmdRemove(args []string) (err error) {
 	// the only thing lost is untracked artifacts. removeWorktreeDir does the plain recursive
 	// remove + prune + positive-gone verification — the SAME primitive `prune` uses;
 	// there is no code path that overrides a failed guard.
+
+	// OWNER — judged BEFORE anything is deleted. git never prunes a locked registration, so
+	// deleting a locked tree stranded its registration (exit 6, branch still held) — and did
+	// so to a tree another live session had locked. A session's own end-of-PR remove of its
+	// own locked home is the normal case: the caller's OWN session's lock is retired just
+	// before the delete. Every other lock on the target is refused with the tree untouched — including one
+	// whose roster beacon looks old: a beacon is stamped only when its session mutates the
+	// roster, so a long-quiet beacon is no evidence the owner is gone, and this tree still
+	// holds content (untracked files the gates above do not count) with no open-handle probe
+	// behind it. A dead session's tree goes through `deskwt prune --reap-dead-sessions`, which
+	// holds on untracked files. Because the session id is self-asserted and inherited, the
+	// own-lock arm also refuses a tree whose `git status` lists anything. The lock check covers the
+	// TARGET's lock only: what git ignores (including a worktree nested under an ignored path,
+	// whose own lock, if it has one, is not judged) is deleted with the tree.
+	locked, lerr := guard.lockedWorktrees(dir)
+	if lerr != nil {
+		return lerr
+	}
+	lockReason, isLocked := locked[rt]
+	lockNote := ""
+	if isLocked {
+		ok, why := ownLockOwner(lockReason)
+		if !ok {
+			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
+		}
+		// The same read the recipe tells the session to run: git's own status, with untracked
+		// files forced on whatever status.showUntrackedFiles says and submodules compared in
+		// full. go-git's status is NOT used here: it ignores core.excludesFile and, in a linked
+		// worktree, info/exclude, so it refused a tree the recipe's command reports clean.
+		// The read is bound to the target: every inherited GIT_* variable (GIT_DIR,
+		// GIT_WORK_TREE, GIT_CONFIG_*) is dropped, which would otherwise point this destructive
+		// gate at another tree or another exclude file (deadsession.go states the rule). The
+		// fsmonitor hook is turned off so the gate runs no configured program.
+		dirty, derr := targetGitStatus(rt)
+		if derr != nil {
+			return deskkit.Unverifiable("cannot check "+rt+" for untracked files before retiring its lock", derr)
+		}
+		if rows := strings.Trim(dirty, "\r\n"); strings.TrimSpace(rows) != "" {
+			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first:\n" + capRows(rows, 10))
+		}
+		lockNote = "; lock retired: " + why
+	}
+
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported
 	// but the deletion PROCEEDS (a cleanup hook that fails must never strand a worktree the
 	// caller asked to remove). The hook runs with cwd = the worktree about to be removed.
@@ -877,10 +877,21 @@ func cmdRemove(args []string) (err error) {
 		fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
 	}
 
+	if isLocked {
+		if _, uerr := runGit(dir, "worktree", "unlock", rt); uerr != nil {
+			return deskkit.Unverifiable("could not unlock "+rt+" before removing it", uerr)
+		}
+	}
 	if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
+		if isLocked {
+			if _, relErr := runGit(survivingGitDir(guard, dir, []string{rt}), "worktree", "lock", "--reason", lockReason, rt); relErr != nil {
+				return deskkit.Unverifiable("could not remove "+rt+" and could not restore its lock: "+rmErr.Error(), relErr)
+			}
+			fmt.Fprintln(os.Stderr, "deskwt: removal failed; the original lock on "+rt+" was restored")
+		}
 		return rmErr
 	}
-	ac.detail = "removed " + rt
+	ac.detail = "removed " + rt + lockNote
 	fmt.Println("removed " + path)
 	return nil
 }
@@ -914,26 +925,6 @@ func detachedHeadOnRemote(rt string) (bool, error) {
 		return false, deskkit.Unverifiable("cannot check whether the detached HEAD commit is present on any remote", err)
 	}
 	return len(names) != 0, nil
-}
-
-// parseInterspersed parses fs allowing flags to appear before OR after positional
-// arguments (Go's flag package otherwise stops at the first positional). It returns the
-// collected positionals; an unknown/malformed flag surfaces as the Parse error.
-func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
-	var positionals []string
-	rest := args
-	for {
-		if err := fs.Parse(rest); err != nil {
-			return nil, err
-		}
-		rest = fs.Args()
-		if len(rest) == 0 {
-			break
-		}
-		positionals = append(positionals, rest[0])
-		rest = rest[1:]
-	}
-	return positionals, nil
 }
 
 // resolvePath returns p with symlinks resolved on its longest EXISTING ancestor and the
@@ -1030,4 +1021,49 @@ func lockForSession(guard *pathGuard, dir, rt, session string) error {
 		return deskkit.Unverifiable("git worktree lock reported success but "+rt+" is not locked", nil)
 	}
 	return nil
+}
+
+// ownLockOwner decides whether `remove` may retire a live tree's lock: only when the lock is the
+// caller's own session's. It never retires git's in-flight "initializing" lock, nor a lock naming
+// no session, and it does not read the roster: a beacon's age says when its session last wrote
+// the roster, not whether the session is alive, so no beacon state makes another session's lock
+// the caller's to retire. The way out for a dead session's tree is `deskwt prune
+// --reap-dead-sessions`.
+func ownLockOwner(reason string) (bool, string) {
+	if strings.TrimSpace(reason) == gitInitLockReason {
+		return false, `it is git's in-flight "initializing" add lock — never retired`
+	}
+	sess := sessionFromLockReason(reason)
+	if sess == "" {
+		return false, "it names no session, so no owner can be matched"
+	}
+	if caller := resolveSession(""); caller == sess {
+		return true, "the caller is the locking session " + sess
+	}
+	return false, "it belongs to session " + sess + ", not the caller — a roster beacon is not proof that session is gone (a clean, pushed tree of a dead session is reaped by `deskwt prune --reap-dead-sessions` once it has been idle past --min-idle, 1h by default; try --dry-run first, it sweeps every ownerless tree)"
+}
+
+// capRows keeps the first n lines of a multi-line report and says how many it left out, so a
+// refusal names the files without printing a whole build tree.
+func capRows(rows string, n int) string {
+	lines := strings.Split(rows, "\n")
+	if len(lines) <= n {
+		return rows
+	}
+	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... and %d more (git status --porcelain)", len(lines)-n)
+}
+
+// targetGitStatus runs git's own `status --porcelain` in the target with the caller's GIT_*
+// variables dropped, and returns the output UNTRIMMED: the first row's leading status column
+// (" M vendor") is part of the row, and deskkit.Run would strip it.
+func targetGitStatus(rt string) (string, error) {
+	cmd := execCommand("git", "-c", "core.fsmonitor=false", "status", "--porcelain",
+		"--untracked-files=normal", "--ignore-submodules=none")
+	cmd.Dir = rt
+	cmd.Env = scrubbedGitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

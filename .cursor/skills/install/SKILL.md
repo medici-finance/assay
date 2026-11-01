@@ -83,7 +83,7 @@ Every file the flow writes lands on a branch and reaches `main` by a draft PR/MR
 | `install-statusgen` | yes | HTTPS fetch + pin-file sha256 (step 2) | identical — the release assets are public; no GitLab account or CLI is involved | `assay-install.sh acquire` (not a forge operation) |
 | `scaffold-streams` | yes | files written by `statusgen init` | identical | `statusgen init` |
 | `scaffold-registers` | yes | files written by `statusgen init` | identical | `statusgen init` |
-| `add-statusgen-ci` | no — delegated | `init` writes the GitHub workflow | `init` writes `.gitlab-ci.yml`; the runner, `STATUSGEN_PUSH_TOKEN` and `STATUSGEN_ROSTER_ENV` are *human* (`docs/adopting-assay-gitlab.md` §2a, §2c, §2e) | `statusgen init` (forge from `origin`, or `--forge`) — never re-authored here |
+| `add-statusgen-ci` | no — delegated | `init` writes the GitHub workflow | `init` writes `.gitlab-ci.yml`; the runner and `STATUSGEN_ROSTER_ENV` are *human* (`docs/adopting-assay-gitlab.md` §2a, §2e); `STATUSGEN_PUSH_TOKEN` is minted by the human-run fleet provisioning with `--project`, or set by hand where the forge cannot mint access tokens (§2c) | `statusgen init` (forge from `origin`, or `--forge`) — never re-authored here |
 | `install-desk-plugin` | yes (harness-specific, not forge-specific) | Claude Code `/plugin`; Cursor: `deskinstall --harness cursor --forge github --repo <path>` places skills + references + `AGENTS.md` bindings; Codex copies the skills | identical, with `--forge gitlab` for Cursor | `deskinstall --harness cursor` (Cursor; `--check` reads it back); none for Claude Code / Codex |
 | `install-main-guard` | the client hook, yes; its server-side counterpart, no | `.githooks/pre-commit` + `core.hooksPath`; server side: a ruleset / branch protection on `main` — *human* | the same hook; server side: a protected branch with a push-access list — *human*, set by `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`) | the hook is plain git; `repohardenguard` reads the server-side setting back on either forge (a per-forge checklist) |
 | `first-board` | yes | `statusgen --root <target> --lint` then `statusgen --root <target>` | identical | `statusgen` |
@@ -271,8 +271,9 @@ never got the bypass. With protection off, the regen pushes as the automation ac
 board-writer App is needed. App creation + the ruleset-bypass edit are **human-gated** (see the
 NEVER-autonomous list below). **On GitLab** the same role is a board-writer service account on the
 protected branch's push-access list, and the regen job pushes with the `STATUSGEN_PUSH_TOKEN`
-the scaffolded `.gitlab-ci.yml` names — both human-provisioned (`docs/adopting-assay-gitlab.md`
-§2c).
+the scaffolded `.gitlab-ci.yml` names — both human-provisioned: the human-run fleet provisioning
+mints the token where the forge allows it, else the human sets it by hand
+(`docs/adopting-assay-gitlab.md` §2c).
 
 ### 5. Install the desk plugin + main-guard (scenario-appropriate)
 Apply `install-desk-plugin` and `install-main-guard` per the `adopt` runbook, as the scenario calls
@@ -353,7 +354,7 @@ prose, and never fall back to `latest`.
 
 The installer authors branches and opens **DRAFT PRs only**. An install or re-pin PR delivers no
 brief, so its body carries the `Issue: #<N>` link trailer — file a short tracking issue for the
-install/bump and name it — not a `Brief:` line; both forms satisfy `deskpr` and `pr-review-desk`
+install/bump and name it — not a `Brief:` line; `Issue: #<N>` and its resolving form `Fixes: #<N>` (use it only when merging should close that issue, never for one carrying `needs-decision` or `human-decided`, or any decision-gate issue) both satisfy `deskpr` and `pr-review-desk`
 (this repo's own front-door re-pin, PR #496, is the precedent). It never performs any of these — it
 hands the human the exact values and waits:
 

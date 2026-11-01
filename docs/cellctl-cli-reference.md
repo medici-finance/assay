@@ -12,6 +12,14 @@ one exception is a help flag after a `scratch` action (`scratch <cell> sweep -h`
 the cell and its scratch policy first, as it did. How this differs from the pre-Cobra surface
 is in [cellctl-cli-compat.md](cellctl-cli-compat.md).
 
+## `cellctl attach <cell> <role>`
+
+attach to an existing compatibility agent; never start or stop one
+
+```
+  (no flags)
+```
+
 ## `cellctl cache <cell> status|clean|wipe|recover`
 
 report or clean a cell's managed Go caches
@@ -89,6 +97,14 @@ tear a cell's session down
 ```
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
   --keep-deskd                        leave the cell's deskd running
+```
+
+## `cellctl hotfix install|status|clear`
+
+install, inspect or clear a local desk-tools hotfix (install and clear need sudo)
+
+```
+  (no flags)
 ```
 
 ## `cellctl ls`

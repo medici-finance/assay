@@ -50,23 +50,14 @@ reflected in the binding's capability→mechanism cells and the degradation colu
 (`plugins/assay/references/cursor.md`) and in the adopt flow (section 2c).
 
 files:
-- **create** `docs/research/cursor-harness-capabilities.md` (planned) — the §2.1–§2.10 capability
-  ground-truth matrix, re-measured for Cursor (documentary; live-confirm rows flagged).
-- **create** `plugins/assay/references/cursor.md` — binding file (capability→mechanism +
-  per-skill degradation), mirroring `codex.md`, carrying **fewer** degradations.
-- **create** `plugins/assay/cursor/packaging.md` (planned) — the coverage roster (SOURCES.yaml
-  discipline), and **create** `plugins/assay/cursor/assay.mdc` — the GENERATED
-  `.cursor/rules` resident-rules rule.
-- **amend** `tools/harnessgen/` — new verb `cursor` (+ `--check`), `cursorRules()`
-  generator, `readPackaging` marker param, cursor_test.go.
+- **create** `docs/research/cursor-harness-capabilities.md` (planned) — the §2.1–§2.10 capability ground-truth matrix, re-measured for Cursor (documentary; live-confirm rows flagged).
+- **create** `plugins/assay/references/cursor.md` — binding file (capability→mechanism + per-skill degradation), mirroring `codex.md`, carrying **fewer** degradations.
+- **create** `plugins/assay/cursor/packaging.md` (planned) — the coverage roster (SOURCES.yaml discipline), and
+- **create** `plugins/assay/cursor/assay.mdc` — the GENERATED `.cursor/rules` resident-rules rule.
+- **amend** `tools/harnessgen/` — new verb `cursor` (+ `--check`), `cursorRules()` generator, `readPackaging` marker param, cursor_test.go.
 - **amend** `plugins/assay/skills/adopt/SKILL.md` — Cursor install scenario (section 2c).
 - **amend** `docs/how-assay-works.md` — Cursor column in the capability table.
-- **amend** `freshness.yaml`, `docs/streams/harness-portability/README.md`. **CI needs
-  no workflow edit**: the tools workflow already triggers on `plugins/**` + `tools/**` +
-  this stream README, and its `go test` matrix runs `TestCursorCommittedRuleMatchesSource`
-  (`cursor --check`), exactly how `codex --check` is enforced (via the suite, no separate
-  step). Not editing `.github/workflows/**` also keeps the PR pushable by the worker App
-  (which has no `workflows` permission).
+- **amend** `freshness.yaml`, `docs/streams/harness-portability/README.md` — **CI needs no workflow edit**: the tools workflow already triggers on `plugins/**` + `tools/**` + this stream README, and its `go test` matrix runs `TestCursorCommittedRuleMatchesSource` (`cursor --check`), exactly how `codex --check` is enforced (via the suite, no separate step). Not editing `.github/workflows/**` also keeps the PR pushable by the worker App (which has no `workflows` permission).
 
 facts:
 - **Cursor is lighter than Codex.** Codex CLI's `workspace-isolation` was `absent`

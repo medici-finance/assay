@@ -20,6 +20,25 @@ func transitionFlags(fs *flag.FlagSet) func() {
 	return func() { transitionForge = old }
 }
 
+// transitionWitnessTree is the execution revision a fresh witness of the
+// current run names (#4299). A host transition run records the full HEAD; a
+// container bracket row of the same run records the receipt's 12-hex tree
+// token. The short token stands for the run's full sha only when it is at
+// least treeSHALen long, an exact prefix of runSHA, and git resolves it, on
+// its own, to exactly runSHA. Otherwise the token is returned unchanged and
+// the caller's full-object-id check refuses it.
+func transitionWitnessTree(dir, tree, runSHA string) string {
+	if isObjectID(tree) || !isObjectID(runSHA) || len(tree) < treeSHALen || !strings.HasPrefix(runSHA, tree) {
+		return tree
+	}
+	// tree is a hex prefix of runSHA here, so it can never read as an option.
+	out, err := historyGit(dir, "rev-parse", "--verify", "--quiet", tree+"^{commit}").Output()
+	if err != nil || strings.TrimSpace(string(out)) != runSHA {
+		return tree
+	}
+	return runSHA
+}
+
 func acceptanceTransition(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error)) (string, map[string]string, string) {
 	fail := func(s string) (string, map[string]string, string) { return "", nil, "acceptance transition: " + s }
 	// A relative spelling becomes exactly its absolute twin, working directory
@@ -57,8 +76,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if !found {
 		return fail("amendment is not after delivery on the observed first-parent chain")
 	}
-	parents, e := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", amendment).Output()
-	pp := strings.Fields(string(parents))
+	pp, e := provenanceParents(dir, amendment)
 	if e != nil || (len(pp) != 1 && len(pp) != 2) {
 		return fail("amendment must have one or two parents")
 	}
@@ -88,22 +106,29 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	for _, r := range briefVerifyRows(baseline) {
 		originals[r.ID] = r
 	}
-	changes := map[string]verifyRow{}
-	var ids []string
+	candidates := map[string]verifyRow{}
+	required := map[string]bool{}
+	columns := map[string]string{}
 	for i, old := range oldRows {
 		next := newRows[i]
 		if old.ID != next.ID {
 			return fail("row order or identity changed")
 		}
+		source, owed := originals[old.ID]
+		if owed && expectOnlyChange(source, next) {
+			// An Expect-only original change may have been delivered already or
+			// be introduced by the amendment. It receives no credit unless the
+			// exact human approval explicitly names this row. An older command-
+			// only approval therefore still owes the original Expect.
+			candidates[old.ID], columns[old.ID] = next, "Expect"
+			continue
+		}
 		if reflect.DeepEqual(old, next) {
 			continue
 		}
-		source, owed := originals[old.ID]
 		if !owed {
 			return fail("supplemental rows cannot be amended or promoted")
 		}
-		// Only a command changes. All acceptance assertions, classes, shell and
-		// obligations survive; delivered edits to other rows remain untrusted.
 		oldContext, oldOK := transitionContext(old)
 		nextContext, nextOK := transitionContext(next)
 		if !oldOK || !nextOK || oldContext != nextContext {
@@ -114,16 +139,15 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		comparable.CommandCell = old.CommandCell
 		comparable.RiskText = old.RiskText
 		if next.Command == old.Command || !reflect.DeepEqual(old, comparable) {
-			return fail("only command changes with identical assertions and obligations are supported")
+			return fail("only command-only or Expect-only original-row changes are supported")
 		}
 		if !reflect.DeepEqual(source, old) {
-			return fail("a changed row must still carry its complete original delivered definition")
+			return fail("a changed command must still carry its complete original delivered definition")
 		}
-		changes[old.ID] = next
-		ids = append(ids, old.ID)
+		candidates[old.ID], columns[old.ID], required[old.ID] = next, "Command", true
 	}
-	if len(ids) == 0 {
-		return fail("no changed original command")
+	if len(candidates) == 0 {
+		return fail("no changed original command or Expect")
 	}
 	// Bind the existing brief-v2 acceptance version, not an invented counter.
 	versions := map[string]int{}
@@ -150,7 +174,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("cannot read historical Evidence")
 	}
 	deliveredEvidence, err := flipEvidenceAt(dir, delivery, file)
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(deliveredEvidence)) {
+	if err != nil || !transitionDeliveredEvidencePreserved(historical, deliveredEvidence) {
 		return fail("pre-amendment history lost delivered Evidence")
 	}
 	atAmendment, e := flipEvidenceAt(dir, amendment, file)
@@ -175,7 +199,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 					latest = er.Text
 				}
 			}
-			tree := witnessTreeOf(latest)
+			tree := transitionWitnessTree(dir, witnessTreeOf(latest), p.SHA)
 			if !isObjectID(tree) {
 				return fail("fresh witnesses must name full immutable execution revisions")
 			}
@@ -188,12 +212,22 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 
 	// The ruling's body itself binds every immutable coordinate and changed row.
 	// A bot relay or a general APPROVED review cannot satisfy this exact act.
-	rootRaw, e := historyGit(dir, "rev-parse", "--show-toplevel").Output()
+	rootRaw, e := provenanceRepoTop(dir)
 	if e != nil {
 		return fail("cannot resolve repository")
 	}
-	root := strings.TrimSpace(string(rootRaw))
-	canonicalPath, e := filepath.EvalSymlinks(path)
+	// Git returns an absolute worktree root, while callers may supply a
+	// relative brief path (notably --root .). Compare physical absolute paths
+	// on both sides so aliases cannot change the ruling's repository coordinate.
+	root, e := filepath.EvalSymlinks(strings.TrimSpace(string(rootRaw)))
+	if e != nil {
+		return fail("cannot resolve canonical repository path")
+	}
+	absolutePath, e := filepath.Abs(path)
+	if e != nil {
+		return fail("cannot resolve absolute brief path")
+	}
+	canonicalPath, e := filepath.EvalSymlinks(absolutePath)
 	if e != nil {
 		return fail("cannot resolve canonical brief path")
 	}
@@ -210,7 +244,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if repo == "" {
 		return fail("cannot bind approval to the repository origin")
 	}
-	payload := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=%s", repo, rel, delivery, base, original, amendment, strings.Join(ids, ","))
+	payloadPrefix := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=", repo, rel, delivery, base, original, amendment)
 	if !transitionForge {
 		return fail("could-not-check human authority: --acceptance-forge is required")
 	}
@@ -226,13 +260,33 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if !out.Present || out.Reason != rulingOK {
 		return fail("human approval could not be corroborated: " + out.Detail)
 	}
-	if strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n")) != payload {
+	approvalBody := strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n"))
+	rawIDs, matched := strings.CutPrefix(approvalBody, payloadPrefix)
+	selected := map[string]bool{}
+	for _, id := range strings.Split(rawIDs, ",") {
+		if _, ok := candidates[id]; !ok || selected[id] {
+			return fail("human approval does not name the exact transition payload")
+		}
+		selected[id] = true
+	}
+	changes := map[string]verifyRow{}
+	var ids []string
+	for _, old := range oldRows {
+		if required[old.ID] && !selected[old.ID] {
+			return fail("human approval omits a changed original command")
+		}
+		if selected[old.ID] {
+			changes[old.ID] = candidates[old.ID]
+			ids = append(ids, old.ID)
+		}
+	}
+	if !matched || len(ids) == 0 || strings.Join(ids, ",") != rawIDs {
 		return fail("human approval does not name the exact transition payload")
 	}
-	// Replace only the unique command span in the original table. Unchanged commands,
-	// Expect, row classes and all extra columns retain the original text.
+	// Rewrite only approved columns in the original table. Unselected Expect
+	// drift retains its original obligation; a command change is never optional.
 	lines := strings.Split(baseline, "\n")
-	commandCol := -1
+	commandCol, expectCol := -1, -1
 	rewritten := map[string]bool{}
 	for i, line := range lines {
 		cells := splitRowEscaped(strings.TrimSpace(line))
@@ -247,6 +301,9 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 				if c == "Command" {
 					commandCol = j
 				}
+				if c == "Expect" {
+					expectCol = j
+				}
 			}
 			continue
 		}
@@ -257,11 +314,18 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		if commandCol < 0 || commandCol >= len(cells) {
 			return fail("cannot locate the original command cell")
 		}
-		originalCell := originals[cells[0]].CommandCell
-		if cells[commandCol] != originalCell {
-			return fail("original command cell does not match its parsed definition")
+		if columns[cells[0]] == "Expect" {
+			if expectCol < 0 || expectCol >= len(cells) || cells[expectCol] != originals[cells[0]].Expect {
+				return fail("cannot locate the original Expect cell")
+			}
+			cells[expectCol] = changed.Expect
+		} else {
+			originalCell := originals[cells[0]].CommandCell
+			if cells[commandCol] != originalCell {
+				return fail("original command cell does not match its parsed definition")
+			}
+			cells[commandCol] = strings.Replace(originalCell, codeSpanOf(originals[cells[0]].Command), codeSpanOf(changed.Command), 1)
 		}
-		cells[commandCol] = strings.Replace(originalCell, codeSpanOf(originals[cells[0]].Command), codeSpanOf(changed.Command), 1)
 		rewritten[cells[0]] = true
 		lines[i] = "| " + strings.Join(cells, " | ") + " |"
 	}
@@ -306,4 +370,44 @@ func transitionContext(row verifyRow) ([2]string, bool) {
 		return [2]string{}, false
 	}
 	return [2]string{before, after}, true
+}
+
+// expectOnlyChange retains the complete parsed command, class, shell and
+// obligations. RiskText is derived from the two authored cells, not independent
+// authority; it must be recomputed whenever the Expect cell changes.
+func expectOnlyChange(original, next verifyRow) bool {
+	if next.Expect == original.Expect {
+		return false
+	}
+	comparable := next
+	comparable.Expect, comparable.RiskText = original.Expect, original.RiskText
+	return reflect.DeepEqual(original, comparable)
+}
+
+// transitionDeliveredEvidencePreserved retains the byte-prefix rule for every
+// substantive result. Only the exact generated empty-Evidence placeholder may
+// instead survive as an exact Markdown quotation (#4563, human ruling
+// https://github.com/medici-finance/assay/issues/4563#issuecomment-6528575948).
+// Amendment and current-history preservation are checked separately, unchanged.
+func transitionDeliveredEvidencePreserved(historical, delivered string) bool {
+	if strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(delivered)) {
+		return true
+	}
+	const placeholder = "<!-- Independent verifier appends one row per Verify command after implementation. -->"
+	if strings.TrimSpace(delivered) != placeholder {
+		return false
+	}
+	for _, line := range strings.Split(historical, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, ">") {
+			continue
+		}
+		for strings.HasPrefix(line, ">") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+		}
+		if line == placeholder {
+			return true
+		}
+	}
+	return false
 }

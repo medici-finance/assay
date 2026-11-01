@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/readercaps"
 )
 
 // briefSchemaFirstRelease maps every recognized brief schema to the first
@@ -36,15 +38,31 @@ func isBriefV2Family(schema string) bool {
 
 // versionJSON is the `statusgen --version --json` document.
 type versionJSON struct {
-	Version      string            `json:"version"`
-	BriefSchemas []string          `json:"briefSchemas"`
-	FirstRelease map[string]string `json:"briefSchemaFirstRelease"`
+	Version            string                   `json:"version"`
+	BriefSchemas       []string                 `json:"briefSchemas"`
+	FirstRelease       map[string]string        `json:"briefSchemaFirstRelease"`
+	ReaderCapabilities readercaps.Advertisement `json:"readerCapabilities"`
+}
+
+// statusgenReaderCaps lists wired syntax and preflight, never future milestone,
+// operational typed-reference, dispatch or acceptance support.
+func statusgenReaderCaps() readercaps.Advertisement {
+	var schemas []string
+	for schema := range recognizedBriefSchemas {
+		schemas = append(schemas, schema)
+	}
+	sort.Strings(schemas)
+	return readercaps.Advertisement{Schema: readercaps.AdvertisementSchema, Provider: "statusgen", Version: statusgenVersion,
+		Operations: []readercaps.Operation{
+			{Operation: "syntax", Schemas: schemas, Semantics: []string{}},
+			{Operation: "preflight", Schemas: []string{readercaps.RequirementsSchema}, Semantics: []string{"required-semantics-v1"}},
+		}}
 }
 
 // printVersionJSON writes the machine-readable version + supported-schema set.
 // A "" first release is reported as this build's own version.
 func printVersionJSON() {
-	v := versionJSON{Version: statusgenVersion, FirstRelease: map[string]string{}}
+	v := versionJSON{Version: statusgenVersion, FirstRelease: map[string]string{}, ReaderCapabilities: statusgenReaderCaps()}
 	for s := range recognizedBriefSchemas {
 		v.BriefSchemas = append(v.BriefSchemas, s)
 		rel := briefSchemaFirstRelease[s]

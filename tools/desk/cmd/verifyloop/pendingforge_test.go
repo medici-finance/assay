@@ -127,6 +127,7 @@ func pendingRecord(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.Verif
 	in := deskkit.OutcomeReceiptInput{BriefPath: briefPath, LandedBrief: landed, ToolVersion: deskkit.ReleaseTagOrDev(), Repo: r.Binding.Repo}
 	if r.Binding.Version == 2 {
 		in.SourceRepo, in.Source = r.Binding.SourceRepo, r.Binding.Source
+		in.SiblingSources, _ = deskkit.VerifierSiblingSources(r.Binding)
 	}
 	out, e := deskkit.BuildOutcomeRecord(raw, in, pendingTree{root: v.Root, sha: r.BriefSource()})
 	if e != nil {
@@ -177,6 +178,30 @@ func pendingCross(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.Verifi
 	f.issue.Body = "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(raw) + "\n"
 	f.blobs[f.pr.HeadSHA+":"+p] = []byte(string(brief) + "\n" + r.EvidenceBinding() + "\n\n| 1 | check | FAIL | observed |\n")
 	return r, source
+}
+
+// pendingSibling is pendingCross for a brief that also declares ../other/,
+// bound to sibling (#4876): its configured root is fetched at origin/main.
+func pendingSibling(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p, sibling string) deskkit.VerifierReceipt {
+	t.Helper()
+	brief, _ := os.ReadFile(filepath.Join(v.Root, p))
+	os.WriteFile(filepath.Join(v.Root, p), []byte(strings.Replace(string(brief), "- `planned.go`", "- `planned.go`\n- `../other/x.go`", 1)), 0600)
+	r, source := pendingCross(t, v, f, r, p)
+	rosterPath := filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env")
+	roster, _ := os.ReadFile(rosterPath)
+	os.WriteFile(rosterPath, []byte(strings.Replace(string(roster), "example-org/source:ci:private", "example-org/source:ci:private,example-org/other:ci:private", 1)), 0600)
+	deskkit.ReloadConfig()
+	other := t.TempDir()
+	gitT(t, other, "init", "-q")
+	commitIn(t, other, "x.go")
+	gitT(t, other, "remote", "add", "origin", "https://github.com/example-org/other.git")
+	gitT(t, other, "update-ref", "refs/remotes/origin/main", "HEAD")
+	gitT(t, other, "checkout", "-q", "--detach")
+	t.Setenv(deskkit.RootsEnv, "example-org/tracker="+v.Root+",example-org/source="+source+",example-org/other="+other)
+	r.Binding.SiblingSources = sibling + "@" + gitT(t, other, "rev-parse", "HEAD")
+	raw, _ := json.MarshalIndent(r.Binding, "", "  ")
+	f.issue.Body = "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(raw) + "\n"
+	return r
 }
 
 // regression: #2939
@@ -266,6 +291,13 @@ func TestPendingForge(t *testing.T) {
 		// regression: A1 — the verifier App authored the Evidence AND is brief 01's declared
 		// implementer: no independent verifier, so no hold (could-not-check, never awaiting-merge).
 		{name: "implementer-is-verifier", want: "could-not-check", implementer: "example-verifier[bot]"},
+		// The same, with an inline comment after the declared implementer.
+		{name: "implementer-is-verifier-annotated", want: "could-not-check", implementer: "example-verifier[bot] # note"},
+		// The same, with the declared implementer quoted, in each quoting style and placement.
+		{name: "implementer-is-verifier-quoted-annotated", want: "could-not-check", implementer: `"example-verifier[bot]" # note`},
+		{name: "implementer-is-verifier-single-quoted-annotated", want: "could-not-check", implementer: `'example-verifier[bot]' # note`},
+		{name: "implementer-is-verifier-quoted-bare-annotation", want: "could-not-check", implementer: `"example-verifier[bot]"  #`},
+		{name: "implementer-is-verifier-quoted-next-line", want: "could-not-check", implementer: "\n  \"example-verifier[bot]\" # note"},
 		{name: "wrong-id", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.Author.ID = 123
 		}},
@@ -335,6 +367,16 @@ func TestPendingForge(t *testing.T) {
 			pendingRecord(t, v, f, r, p, nil)
 			commitIn(t, v.Root, "unrelated")
 			gitT(t, v.Root, "update-ref", "refs/remotes/origin/main", "HEAD")
+		}},
+		// regression: #4876 — the record re-derivation binds the attested sibling
+		// source; without it the declared ../other/ is uncovered and nothing holds.
+		{name: "cross-sibling-record", want: "awaiting-merge", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			pendingRecord(t, v, f, pendingSibling(t, v, f, r, p, "example-org/other"), p, nil)
+		}},
+		// regression: #4876 — a binding naming a sibling outside the configured
+		// set is refused at admission, before any record is read.
+		{name: "cross-sibling-outside", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			pendingSibling(t, v, f, r, p, "fork-org/other")
 		}},
 		// A declared input that exists but cannot be read leaves unchangedness unknown.
 		{name: "unreadable-input", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {

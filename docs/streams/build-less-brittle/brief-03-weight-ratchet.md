@@ -33,11 +33,9 @@ domain: clear
 
 files:
 - `tools/desk/internal/weight/weight.go` (planned): NEW. The counter. Pure functions over a directory tree.
-- `tools/desk/internal/weight/weight_test.go` (planned): NEW. `TestCeiling` (planned), `TestPrintWeight` (planned),
-  `TestCountsFixture` (planned), `TestCeilingRedOnGrowthFixture` (planned), and test-only flags `-root` and `-rev`.
-- `tools/desk/internal/weight/ceiling.txt` (planned): NEW. One `<dimension> <N>` line per ratcheted
-  dimension, plus `# grow …` annotation lines.
-- `tools/desk/internal/weight/testdata/tree/**` (planned): NEW. A fixture tree with known counts.
+- `tools/desk/internal/weight/weight_test.go` (planned): NEW. `TestCeiling` (planned), `TestPrintWeight` (planned), `TestCountsFixture` (planned), `TestCeilingRedOnGrowthFixture` (planned), and test-only flags `-root` and `-rev`.
+- `tools/desk/internal/weight/ceiling.txt` (planned): NEW. One `<dimension> <N>` line per ratcheted dimension, plus `# grow …` annotation lines.
+- `tools/desk/internal/weight/testdata/tree/` (planned): NEW. A fixture tree with known counts.
 - `changelog/build-less-brittle-03.md` (planned)
 
 single-point-of-failure: the review stage's check (06) that a `# grow` line cites a comment by the

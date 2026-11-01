@@ -69,6 +69,12 @@ from prerequisites for final outcome acceptance. If the source lacks a consequen
 outcome/scope decision, reconcile it with `author-spec` before committing affected work;
 continue independent authoring. Unsupported declarations remain proposals, not live YAML.
 
+For a source using simulated dependencies, apply the shared procedure's **Outcomes
+delivered with simulated dependencies** section. Preserve its real/substitute matrix
+and evidence limits in the affected briefs. Separate profile setup, contract/fake work
+and the joined real-consumer qualification where they have different owners; record
+actual producer prerequisites rather than adding another controller to hide a gap.
+
 ## The most important judgment call: find the REAL head of the critical path
 
 The critical path is the chain that, if it slips, slips everything. The recurring failure is putting
@@ -842,7 +848,7 @@ layer; the floor does not wait on one.)
    part of authoring the brief.
 8. **Link the authoring PR with `Authors:`, never `Brief:`.** The PR that writes brief files
    carries exactly one link line `Authors: <stream>/<NN>[, <stream>/<NN> …]` naming every brief it
-   adds (or `Issue: #<N>` when the authoring answers an issue). `Brief: <stream>/<NN>` means the
+   adds (or `Issue: #<N>` when the authoring answers an issue, or `Fixes: #<N>` when merging the authoring PR should close it — never for an issue carrying `needs-decision` or `human-decided`, or any decision-gate issue; those link with `Issue: #<N>`). `Brief: <stream>/<NN>` means the
    PR DELIVERS that brief: the dispatcher's phantom check, the planner and the derived board all
    read it that way, so an authoring PR carrying it makes the brief it just wrote look delivered
    the moment it merges, and the brief is never dispatched. `deskpr create` refuses a `Brief:`

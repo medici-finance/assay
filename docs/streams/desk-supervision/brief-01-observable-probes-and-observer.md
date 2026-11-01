@@ -40,11 +40,9 @@ id: 2070ddc5-4810-472d-9b27-2fb154f30907
 ## Context
 
 files:
-- `tools/desk/internal/loopengine/probes.go` (new) — the three house probes, each
-  implementing the existing `ObservableProbe` contract in `liveness.go`.
+- `tools/desk/internal/loopengine/probes.go` (new) — the three house probes, each implementing the existing `ObservableProbe` contract in `liveness.go`.
 - `tools/desk/internal/loopengine/probes_test.go` (new) — three-state tests per probe.
-- `tools/desk/cmd/desksupervise/main.go` (new) — the observer verb: `tick`, `run
-  --interval`, `--dry-run`, and the fixture flags the Verify rows use.
+- `tools/desk/cmd/desksupervise/main.go` (new) — the observer verb: `tick`, `run --interval`, `--dry-run`, and the fixture flags the Verify rows use.
 - `tools/desk/cmd/desksupervise/testdata/` (new) — claim + observation fixtures.
 - `tools/desk/README.md` — add the `desksupervise` row to the tool reference table.
 
