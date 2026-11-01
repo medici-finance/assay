@@ -1,0 +1,2 @@
+### Fixed
+- The forge-gitlab/13 brief's Verify table now fails on the tree before the fix and passes on the delivered one. Test rows use anchored selectors and assert their `--- PASS:` line. The mutation row builds a Go overlay copy instead of asking for a hand checkout. The consumers row requires the fix merge and asserts its summary line. The lint row checks only this brief and its board row, so another brief's could-not-check no longer turns it red.
