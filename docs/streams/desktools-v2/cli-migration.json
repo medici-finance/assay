@@ -2224,6 +2224,23 @@
       "state": "pending"
     },
     {
+      "executable": "desk-run.sh",
+      "path": "containers/desk-run.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator from a desktop checkout to start a desk image interactively (docs/docker.md); not released or built by a workflow",
+      "consumers": [
+        "docs/docker.md",
+        "containers/README.md",
+        "containers/desk-run.test.sh"
+      ],
+      "parser": "POSIX sh manual flag loop",
+      "complexity": "simple",
+      "basis": "309 lines at 28520095d (base of desk-containers/04); composes one docker run and passes credential paths, never values",
+      "owner": "desktools-v2/56",
+      "state": "pending"
+    },
+    {
       "executable": "scram-verifier.py",
       "path": "containers/postgres/scram-verifier.py",
       "kind": "script",

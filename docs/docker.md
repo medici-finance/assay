@@ -176,6 +176,79 @@ docker run -it "$PEM" "$ENVF" -v thedesk-work:/work \
 Run without the PEM mount or without a model credential and the desk exits
 non-zero, naming exactly what is missing — the fail-closed preflight.
 
+### Run a desk from your desktop
+
+[`containers/desk-run.sh`](../containers/desk-run.sh) composes that `docker run` for
+you, so the credentials are mounted the same way every time instead of being
+hand-assembled. It validates the desk name, checks that your credential files
+exist, and starts the desk interactively (`-it`) with a per-desk work volume.
+
+**Prerequisites**
+
+- docker, with the daemon running.
+- The bot App PEM for your desk's App, as a file on your machine. The default
+  location is `~/.config/assay/app.pem`.
+- A model env-file: `KEY=value` lines for the model endpoint (for example
+  `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` or `ANTHROPIC_MODEL` when you
+  use a gateway). The variables the container accepts are listed in
+  [`containers/secrets.md`](../containers/secrets.md) section 3. The default
+  location is `~/.config/assay/desk.env`.
+
+`~/.config` is `$XDG_CONFIG_HOME` when you set it. To keep the files elsewhere,
+pass `--pem <file>` and `--env-file <file>`, or export `ASSAY_DESK_PEM_FILE` and
+`ASSAY_DESK_ENV_FILE`. A flag wins over the environment variable, which wins over
+the default. Docker Desktop shares your files with the container for you. On a
+Linux host the container's `desk` user (UID 999) must be able to read the PEM, so
+give it a mode and group that allow that; the container reports an unreadable PEM
+at start.
+
+**First run**
+
+```sh
+containers/desk-run.sh worker-desk
+```
+
+The desk is one of `intake-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`
+or `the-desk`. The script runs `ghcr.io/medici-finance/assay/<desk-name>:latest`
+in a container named after the desk, with the work volume `<desk-name>-work` on
+`/work`. Pass `--version vX.Y.Z` (or `sha-<short>`) to run a pinned tag.
+
+To see the exact command without running it, add `--dry-run`. The output names the
+credential paths and never their contents:
+
+```sh
+containers/desk-run.sh pr-review-desk --dry-run
+```
+
+**Re-attach**
+
+The container keeps its name, its work volume and its session when you detach or
+restart your desktop. Resume it with `--attach`, which runs `docker start -ai`:
+
+```sh
+containers/desk-run.sh worker-desk --attach
+```
+
+Running the first-run command again while the container still exists is refused
+with this same hint. To start from scratch, remove the container with
+`docker rm <desk-name>`; the work volume stays until you remove it too. An
+existing container keeps the image version it was created with, so `--attach`
+does not take `--version`.
+
+**When it refuses**
+
+The script refuses before it starts docker, and names what it expected:
+
+| Exit | Meaning |
+|------|---------|
+| 2 | Unknown desk name or option (the five valid desks are listed), or an invalid `--version`. |
+| 3 | The PEM or env-file is missing, is not a regular file, or is not readable. The message gives the expected path and how to override it. |
+| 4 | docker is not installed or its daemon cannot be reached, or the container is in the wrong state for the request. |
+
+There is no fallback to other credentials on your machine: it uses the files named
+above or nothing. A model credential missing from inside the env-file is caught by
+the container's own start-up check.
+
 ### How they're built and published
 
 The approved job in `.github/workflows/release.yml` builds the base first, then

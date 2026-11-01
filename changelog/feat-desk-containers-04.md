@@ -1,0 +1,2 @@
+### Added
+- `containers/desk-run.sh <desk-name>` starts one of the five desk images interactively from a desktop: it validates the desk name and the PEM and env-file locations (refusing, with the expected path, rather than falling back to other credentials), mounts the PEM read-only and passes the env-file per the runtime credential contract, and never prints a credential value. `--dry-run` prints the exact `docker run`; `--attach` resumes an existing desk container with its work volume.
