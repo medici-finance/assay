@@ -208,6 +208,7 @@ func TestPrincipalStampReadsBodyNotFrontmatter(t *testing.T) {
 	for _, tc := range []struct {
 		name, base, content, want string
 		code                      int
+		stampOnly                 bool   // bypass outer preflight to retain the independent stamp refusal
 		why                       string // a refusal's detail must name it ("" = any refusal)
 	}{
 		{name: "different-human", base: head,
@@ -223,12 +224,29 @@ func TestPrincipalStampReadsBodyNotFrontmatter(t *testing.T) {
 		{name: "unclosed-frontmatter",
 			content: "---\nschema: brief-v1\n\n# Brief\n\n## Evidence\n\n| # | Result | Date | Runner |\n|---|---|---|---|\n" +
 				"| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (forge-identity) |\n",
-			code: deskkit.ExitRefused, why: "frontmatter block that never closes"},
+			code: deskkit.ExitRefused, why: "frontmatter block that never closes", stampOnly: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := setupStamp(t, true)
 			if tc.base != "" {
 				f.setFile(stampBrief, tc.base)
+			}
+			if tc.stampOnly {
+				// The CLI capability preflight now rejects unreadable records first.
+				// Bypass it here so it cannot mask removal of the stamp's own guard.
+				content := []byte(tc.content)
+				resolutions := 0
+				landed, stamps, err := stampEvidencePrincipal(content, []byte(tc.base), func() (string, error) {
+					resolutions++
+					return stampName, nil
+				})
+				if !deskkit.IsRefused(err) || deskkit.ExitCodeOf(err) != tc.code || !strings.Contains(err.Error(), tc.why) {
+					t.Fatalf("stamp refusal changed: %v", err)
+				}
+				if landed != nil || len(stamps) != 0 || resolutions != 0 || f.putCalls != 0 || string(content) != tc.content {
+					t.Fatal("unreadable body produced a principal, content, stamp or write")
+				}
+				return
 			}
 			root := rootWithFile(t, stampBrief, tc.content)
 			if code := run([]string{stampPublicRepo, "main", "--evidence-file", stampBrief, "--root", root}); code != tc.code {

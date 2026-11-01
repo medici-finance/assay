@@ -330,13 +330,20 @@ func ignoredReviewFiles(rt string) (string, error) {
 	return reviewInventory(rt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
 }
 
-func reviewInventory(rt string, args ...string) (string, error) {
+// scrubbedGitEnv is the caller's environment without any GIT_* variable (GIT_DIR, GIT_WORK_TREE,
+// GIT_INDEX_FILE, GIT_CONFIG_*), so a git read bound to a worktree reads that worktree.
+func scrubbedGitEnv() []string {
 	env := make([]string, 0, len(os.Environ()))
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
 			env = append(env, entry)
 		}
 	}
+	return env
+}
+
+func reviewInventory(rt string, args ...string) (string, error) {
+	env := scrubbedGitEnv()
 	result := deskkit.Run(deskkit.ToolCall{
 		Name: "git", Args: args,
 		Dir: rt, Env: env, Start: execCommand,
