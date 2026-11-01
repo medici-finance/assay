@@ -20,7 +20,8 @@ gate-why: >-
   capability.
 decision-trigger: creation
 decision-issue: 4511
-ruling: https://github.com/medici-finance/assay/issues/4511#issuecomment-6505759648
+ruling: https://github.com/medici-finance/assay/issues/4511#issuecomment-6560687132
+design: DR-graph-exec-33
 issues: [1933]
 schema: brief-v2
 version: 1
