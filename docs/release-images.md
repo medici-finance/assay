@@ -162,11 +162,23 @@ is refused, because the reader skips its body. Job and step text is cut where
 the reader ends the job or step, and a step name used twice in one job counts
 as no step at all. The publishing jobs (`artifacts`, `runner-arm64`, `release`) and their
 steps must not set `continue-on-error` in any form, except the two optional
-release Go cache steps. The workflow environment must hold only `GO_VERSION`,
+release Go cache steps, and each of those is exempt only while its whole content
+(every key and value, in order) matches its pin and no other step shares its
+name. The publisher's approval, needs, runner, step order, dry-run guards and
+native arm64 directory, the permissions of every job, `persist-credentials:
+false` on every checkout in the test and publishing jobs, and the upload and
+download settings are read from the reader's keys, never from job text, so a
+line in a comment, a run script or a `with` block scalar never counts. Only
+`release` may grant a write, the workflow default is `contents: read` alone,
+and no job may name its environment with an expression. The test and publishing
+jobs must not run in a `container`. The workflow environment must hold only `GO_VERSION`,
 and the test and CI shard jobs must not set their own. The CI step must hold
 only `name`, `if`, `timeout-minutes` and `run`, and the Go regression test file
-that runs every release suite is pinned whole. Not checked: other files in that
-Go package, and earlier steps that write `GITHUB_ENV` or `GITHUB_PATH`. The scan suites separately prove real-key and
+that runs every release suite is pinned whole. The publisher's script checks
+look for fixed lines among the live, non-comment lines of one named step's
+`run` script. Not checked: whether the shell executes such a line (a trailing
+shell comment, an `echo`, a heredoc or a dead branch can hold one), other files
+in that Go package, and earlier steps that write `GITHUB_ENV` or `GITHUB_PATH`. The scan suites separately prove real-key and
 hidden-layer detection, fail-closed errors and exact-label precision. The
 complete release workflow must still be exercised after maintainer promotion.
 
