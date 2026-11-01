@@ -328,6 +328,59 @@ There is no fallback to other credentials on your machine: it uses the files nam
 above or nothing. A model credential missing from inside the env-file is caught by
 the container's own start-up check.
 
+### Run the desks with docker compose
+
+[`containers/compose.yaml`](../containers/compose.yaml) defines the same five desks as one
+compose project, so a machine hosting several desks manages them as a stack. It is the
+declarative form of the `docker run` recipe in
+[`containers/secrets.md`](../containers/secrets.md) section 4.2, and
+`docker compose run <desk-name>` gives the same interactive session, work volume and
+credential surface as `containers/desk-run.sh <desk-name>`. The commands below run from the
+checkout root.
+
+Each service is named exactly by its desk (`intake-desk`, `worker-desk`, `pr-review-desk`,
+`verify-desk`, `the-desk`) and runs
+`ghcr.io/medici-finance/assay/<desk-name>:${DESK_VERSION:-latest}`, with `stdin_open` and
+`tty` set. Shared configuration lives in one YAML anchor (`x-desk-common`).
+
+- **Work volume.** One named volume per desk on `/work`, named `<desk-name>-work`: the volume
+  `desk-run.sh` uses, so a desk started by either surface sees the same files. No volume is
+  shared across desks.
+- **App PEM.** A top-level `secrets:` entry per desk binds a host file to
+  `/run/secrets/assay/app.pem`, read-only, owned by the container's `desk` user (UID/GID 999)
+  with mode `0400`. Each desk has its own entry and its own file, never one key for all five
+  (see the prerequisites above). The files default to `~/.config/assay/<desk-name>.pem`, the
+  same per-desk defaults as the launcher; set `ASSAY_DESK_PEM_FILE_DIR` to read them from
+  another directory.
+- **Model environment.** `env_file` reads `~/.config/assay/desk.env`, the launcher's default;
+  set `ASSAY_DESK_ENV_FILE` to use another file.
+  [`containers/desk.env.example`](../containers/desk.env.example) lists every model variable
+  from [`containers/secrets.md`](../containers/secrets.md) section 3 with placeholder values
+  only. Copy it, fill in your copy, and keep it out of version control.
+- **Version.** `DESK_VERSION=vX.Y.Z` (or `sha-<short>`) pins every desk to one tag.
+
+No credential value is in `compose.yaml` or in the example env-file, and none is in an image
+layer.
+
+```sh
+# One interactive desk, removed when you exit. The work volume stays.
+docker compose -f containers/compose.yaml run --rm worker-desk
+
+# A standing session: start it detached, attach, and re-attach later.
+docker compose -f containers/compose.yaml up -d worker-desk
+docker compose -f containers/compose.yaml attach worker-desk
+
+# Pin a released version.
+DESK_VERSION=vX.Y.Z docker compose -f containers/compose.yaml run --rm worker-desk
+```
+
+Three things differ from `desk-run.sh`. Compose does not repeat the launcher's own checks
+(exit codes 2, 3 and 4 above); a missing model env-file is reported by compose itself, and
+the container's start-up check still refuses a desk with no usable PEM or model credential.
+`docker compose config` resolves the file without checking that each PEM file exists, so it
+is not a credential check. And it prints the resolved env-file values in clear, so do not
+paste its output anywhere if your env-file holds a real credential.
+
 ### How they're built and published
 
 The approved job in `.github/workflows/release.yml` builds the base first, then

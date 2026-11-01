@@ -1,0 +1,119 @@
+# docker compose definition for the five desks (desk-containers/05).
+#
+# One `docker compose run <desk-name>` gives the same interactive session, work volume and
+# credential surface as `containers/desk-run.sh <desk-name>` (docs/docker.md). It implements the
+# runtime credential contract in containers/secrets.md section 4.2 and invents nothing beyond it.
+#
+# Run one desk (interactive, removed on exit):
+#   docker compose -f containers/compose.yaml run --rm worker-desk
+# Or keep a standing session and attach to it:
+#   docker compose -f containers/compose.yaml up -d worker-desk
+#   docker compose -f containers/compose.yaml attach worker-desk
+#
+# Nothing in this file is a credential. The App PEM is a compose secret read from a host file at
+# runtime, and the model environment comes from an operator-held env-file. Neither is committed;
+# containers/desk.env.example names the variables with placeholder values only.
+#
+# Host inputs (all optional; the defaults match desk-run.sh):
+#   DESK_VERSION             image tag for every desk (default: latest)
+#   ASSAY_DESK_ENV_FILE      the model env-file (default: $XDG_CONFIG_HOME/assay/desk.env)
+#   ASSAY_DESK_PEM_FILE_DIR  directory holding one <desk-name>.pem per desk
+#                            (default: $XDG_CONFIG_HOME/assay, itself defaulting to $HOME/.config)
+name: assay-desks
+
+x-desk-common: &desk-common
+  stdin_open: true
+  tty: true
+  # The model variables of containers/secrets.md section 3, supplied at runtime from the operator's
+  # env-file. Keep that file to model settings: it reaches every desk started on its default path.
+  env_file:
+    - ${ASSAY_DESK_ENV_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay/desk.env}
+
+services:
+  intake-desk:
+    <<: *desk-common
+    image: ghcr.io/medici-finance/assay/intake-desk:${DESK_VERSION:-latest}
+    secrets:
+      - source: intake-desk-pem
+        target: /run/secrets/assay/app.pem
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - intake-desk-work:/work
+
+  worker-desk:
+    <<: *desk-common
+    image: ghcr.io/medici-finance/assay/worker-desk:${DESK_VERSION:-latest}
+    secrets:
+      - source: worker-desk-pem
+        target: /run/secrets/assay/app.pem
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - worker-desk-work:/work
+
+  pr-review-desk:
+    <<: *desk-common
+    image: ghcr.io/medici-finance/assay/pr-review-desk:${DESK_VERSION:-latest}
+    secrets:
+      - source: pr-review-desk-pem
+        target: /run/secrets/assay/app.pem
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - pr-review-desk-work:/work
+
+  verify-desk:
+    <<: *desk-common
+    image: ghcr.io/medici-finance/assay/verify-desk:${DESK_VERSION:-latest}
+    secrets:
+      - source: verify-desk-pem
+        target: /run/secrets/assay/app.pem
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - verify-desk-work:/work
+
+  the-desk:
+    <<: *desk-common
+    image: ghcr.io/medici-finance/assay/the-desk:${DESK_VERSION:-latest}
+    secrets:
+      - source: the-desk-pem
+        target: /run/secrets/assay/app.pem
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - the-desk-work:/work
+
+# One App PEM per desk, each its own host file (docs/docker.md: the implementer, reviewer and
+# verifier must never share a key). Supplied by the operator, never committed.
+secrets:
+  intake-desk-pem:
+    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/intake-desk.pem
+  worker-desk-pem:
+    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/worker-desk.pem
+  pr-review-desk-pem:
+    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/pr-review-desk.pem
+  verify-desk-pem:
+    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/verify-desk.pem
+  the-desk-pem:
+    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/the-desk.pem
+
+# Named exactly as desk-run.sh names them, so a desk started by either surface sees the same /work.
+# One volume per desk, never shared across desks.
+volumes:
+  intake-desk-work:
+    name: intake-desk-work
+  worker-desk-work:
+    name: worker-desk-work
+  pr-review-desk-work:
+    name: pr-review-desk-work
+  verify-desk-work:
+    name: verify-desk-work
+  the-desk-work:
+    name: the-desk-work
