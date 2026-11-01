@@ -59,7 +59,7 @@ component list, build/run topology, and open questions.
 | 27 | [PostgreSQL on Kubernetes with CloudNativePG — a Kustomize component with one Cluster, a database and role per cell, out-of-band Secrets, object-store backups, and the explicit local-to-CNPG migration procedure](brief-27-cnpg-kubernetes-postgres.md) | 4 | L | todo | — | — |
 | 28 | [Package in-cluster cellctl and bind the interactive desk profile](brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md) | 10 | M | todo | — | — |
 | 29 | [Qualify the Kubernetes desk cell and operator recovery end to end](brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md) | 11 | M | todo | — | — |
-| 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | todo | — | — |
+| 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | implemented | — | — |
 | 31 | [Operate trusted compatibility Kubernetes desks through cellctl](brief-31-operate-trusted-compatibility-kubernetes-desks-through-cellctl.md) | 8 | M | blocked | — | — |
 | 32 | [Qualify the compatibility Kubernetes desk cell](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | 9 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
