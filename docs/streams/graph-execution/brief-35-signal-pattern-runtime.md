@@ -69,8 +69,9 @@ write is authorised. Separately, Task 10's spec text requires a human gate on ev
 brief, and auto-triage/02 and /03 carry one today.
 
 **What the gate refuses with no lint run, and nothing beyond this:** a file whose sha256 is not the
-expected one, a schema other than `workflow-pattern-v1`, no signal input or more than one, a duplicate key,
-a second document, an unknown key in a signal class, its `admission` or the signal input, an empty
+expected one, a schema other than `workflow-pattern-v1`, no signal input or more than one, a duplicate
+key in a mapping it decodes, a merge key anywhere in the file, a second document, an unknown key in a
+signal class, its `admission` or the signal input, an empty
 `source`, an exit naming no node, a class with no exit or half of an exit pair, an `admission` wider
 than the compiled floor, a class with no `admission`, an undeclared or unlisted class, a trigger or
 ref its class doesn't admit, and a node off the route (rows 1, 2, 4, 16 and 17).
@@ -84,8 +85,11 @@ disconnected nodes, and the record a `mechanical-exit` implies). A pattern with 
 passes the gate, so the lint and review are the only layers for them. The pin (Task 1) limits a run
 to the revision its caller expected, and that is as far as it goes. The gate's decoder is separate
 from the lint's so that one parser bug can't defeat both. The cost is that the two can read one file
-differently. Strict decoding (Task 1, row 17) closes the duplicate-key, second-document and unknown-key
-cases, within the objects it covers. Row 12 shows the two agree on one fixture, and no row compares them
+differently. Strict decoding (Task 1, row 17) closes a duplicate key in a mapping the gate decodes, a
+merge key, a second document, and an unknown key in the three objects Task 1 lists. A duplicate under a
+key the gate doesn't read is not refused, unlike the lint's map decode, which refuses it, so such a file
+passes the gate with no lint run. The same goes for an anchor that contains itself under such a key. The
+gate doesn't read either value, so neither changes its route. Row 12 shows the two agree on one fixture, and no row compares them
 on every pattern.
 
 **What no layer here catches:** a caller that never calls the gate, or that passes a false value for
@@ -196,7 +200,18 @@ Default if no answer: none — blocks until answered.
    one run stays on one revision: the caller passes the same expected digest for every node, and the
    digest it passes comes from outside any root the run can write. Reading it from a writable checkout
    doesn't count. A bad document is `Refused`. The loader refuses, whatever the lint said, a pattern with:
-   - a duplicate key (`yaml.v3` refuses one by default, and row 17 pins that), a second document in the
+   - a duplicate key in a mapping the gate decodes: the top level, each class and its `admission`, each
+     node, the signal input and each edge (`yaml.v3` refuses one by default in a typed decode, and row 17
+     pins that). A duplicate under a key the gate doesn't read is never visited, so it is not refused; the
+     lint's map decode refuses that one, and this loader doesn't decode the whole file to match it;
+   - a merge key (`<<`) anywhere in the file, including one reached through an alias. A typed decode applies
+     a merge key silently, and one inside a class reaches a value the gate reads. So the loader parses the
+     bytes into a `yaml.Node`, walks that tree refusing any key whose `ShortTag()` is `!!merge`, and only
+     then decodes the node into its typed fields. Both steps are needed, because a `yaml.Node` parse alone
+     refuses no duplicate. The walk covers the whole file because that costs less than tracking which
+     mappings are decoded. The lint's map decode applies a merge key and doesn't refuse it, so the gate is
+     the stricter of the two here;
+   - a second document in the
      file, including an empty one after a trailing `---` (read past the first with a `Decoder`; anything
      but `io.EOF` refuses), or a key outside 34's closed list in a signal class, its `admission` or the
      signal input. Unknown keys elsewhere are ignored: the gate decodes only what it reads, and a list of
@@ -253,13 +268,15 @@ Default if no answer: none — blocks until answered.
    `lint-bad-branch-ref.yaml` (`push-refs: [refs/heads/feature]`),
    `lint-bad-no-admission.yaml` (`admission` removed from `example-alert`),
    `lint-bad-two-inputs.yaml` (a second signal input on `contain`),
-   `lint-bad-exit-unknown.yaml` (`example-alert`'s `exit` names no node). Six more, outside row 3's list:
+   `lint-bad-exit-unknown.yaml` (`example-alert`'s `exit` names no node). Eight more, outside row 3's list:
    `no-effects-no-admission.yaml` (no node declares effects and one class has no `admission`),
    `half-pair.yaml` (`judgement-exit` removed from `example-gate-red`),
    `empty-source.yaml` (the signal input's `source` is empty),
    `duplicate-key.yaml` (`exit` twice in `example-alert`),
    `two-documents.yaml` (a second document after `good-signal.yaml`'s content),
-   `unknown-class-key.yaml` (an unknown key in `example-alert`).
+   `unknown-class-key.yaml` (an unknown key in `example-alert`),
+   `merge-key-class.yaml` (`example-alert`'s `exit` moved into a `<<` merge key in that class),
+   `merge-key-node.yaml` (the `id` of the node holding the signal input moved into a `<<` merge key in that node, outside the three closed lists).
 9. **Tests**, each named in Verify. Add `signalgate-mutations.json` with a failing control and one mutant
    per branch of Task 1-6, in the shape of `admission-mutations.json`.
 10. **Spec.** In `spec/workflow-pattern-v1.md` §4.3 replace the sentences saying no runtime exists and
@@ -302,7 +319,7 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | 14 | check | `statusgen --root . --consumers --brief assay:assay:graph-execution:35 --base "$(git merge-base HEAD refs/remotes/origin/main)"` | pre-merge only, on the implementing branch with its merge-base pinned: exit 0, and every `follow-up graph-execution/35` entry has flipped to `fixed-here` and is corroborated by the diff |
 | 15 | check | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS" |
 | 16 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGatePatternPin$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGatePatternPin (' "$T/out" \|\| exit 4)` | exit 0; an absent, malformed or differing expected digest is refused with `pattern-revision`, an absent one even when the file is missing; a right digest admits; a file changed between two calls with the same expected digest admits the first and refuses the second, so a run cannot change its own route by rewriting the pattern |
-| 17 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGateUnlintedEdges$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGateUnlintedEdges (' "$T/out" \|\| exit 4)` | exit 0; `no-effects-no-admission.yaml` is refused with `admission-missing` for its class with no `admission`, and `half-pair.yaml`, `empty-source.yaml`, `duplicate-key.yaml`, `two-documents.yaml` and `unknown-class-key.yaml` are refused with `pattern-invalid`, so these six shapes fail closed |
+| 17 | check:ci +mutation | `(cd tools/desk && T=$(mktemp -d) && GOWORK=off go test -count=1 -v -run '^TestSignalGateUnlintedEdges$' ./internal/deskkit/ > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; grep -Fq -- '--- PASS: TestSignalGateUnlintedEdges (' "$T/out" \|\| exit 4)` | exit 0; `no-effects-no-admission.yaml` is refused with `admission-missing` for its class with no `admission`, and `half-pair.yaml`, `empty-source.yaml`, `duplicate-key.yaml`, `two-documents.yaml`, `unknown-class-key.yaml`, `merge-key-class.yaml` and `merge-key-node.yaml` are refused with `pattern-invalid`, so these eight shapes fail closed |
 | 18 | check:ci | `(f=spec/workflow-pattern-v1.md; test -f "$f" \|\| exit 3; T=$(mktemp) \|\| exit 3; tr '\n' ' ' < "$f" \| tr -s ' ' > "$T" \|\| exit 3; for p in 'MUST NOT be activated except through the signal gate' 'MUST carry its own human gate' 'trigger, ref, liveness, class, culprit class, node, root, pattern and expected digest' 'a value the run cannot choose' 'an observation made at run time, never a value fixed in source' 'from outside any root the run can write, and reading it from a writable checkout does not count' 'MUST proceed only on the admit exit' 'never blocks a person' 'MUST name the source whose result it passes and the brief that owns that result, and a constant or otherwise unprobed value is not a liveness result'; do grep -Fq -- "$p" "$T" \|\| exit 4; done; for p in 'until a dispatch brief' 'no runtime in this version'; do if grep -Fq -- "$p" "$T"; then exit 1; fi; done)` | exit 0; §4.3 carries Task 10's six statements and the binding's words for liveness and the digest, across line wraps, and 34's hold wording is gone |
 
 ## Pre-mortem
@@ -319,9 +336,9 @@ and 12 exit 3 on the missing file or fixture; row 18 exits 4 on the missing text
 | The evaluator is right and the mode maps its verdict to exit 0 | row 8 |
 | A test passes because no assertion can fail | row 9 |
 | The brief quietly activates a pattern by wiring a caller | row 11 |
-| A run rewrites the pattern in its own root to change its route | row 16, when the expected digest comes from outside that root; each activating brief's review checks where it comes from |
+| A run rewrites the pattern in its own root to change its route | row 16, when the expected digest comes from outside any root the run can write; each activating brief's review checks where it comes from |
 | A class with no `admission`, or half an exit pair, slips past a rule keyed on declared effects | row 17 |
-| A duplicate key, a second document or a misspelt class key makes the gate and the lint read different patterns | row 17, for those shapes. Other differentials between the two decoders aren't caught: the note says so |
+| A duplicate key, a merge key, a second document or a misspelt class key makes the gate and the lint read different patterns | row 17, for a duplicate in a mapping the gate decodes and for the other shapes. A duplicate under a key the gate doesn't read passes the gate, and the lint refuses it; the gate's route doesn't change. Other differentials between the two decoders aren't caught: the note says so |
 | A caller reads a usage error, a disabled tool or a missing binary as "not refused" and proceeds | row 8 shows only an admit exits 0; the contract notes on auto-triage/02 and /03 say the same, and no Verify row on those briefs tests it (a Verify change there is the owner's) |
 | The spec keeps 34's hold, or lands without the human gate or the liveness owner statement | row 18 |
 | A caller skips the gate or passes a false value for any input | not caught here: each activating brief's review, and auto-triage/01's `origin` check for trigger and ref on gate-red. The single-point-of-failure note states the gap |
