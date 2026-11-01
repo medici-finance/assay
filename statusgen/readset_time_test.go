@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -138,10 +139,51 @@ func TestCoverageObserveDeadline(t *testing.T) {
 		}
 		importHistory(t, root, []string{historicRows(2, 3, 0), head}, commits)
 		// The steps outside the walk read the clock five times; tripping at
-		// the twentieth read falls inside the walk, one read per commit.
+		// the twentieth read falls inside the walk, which reads it before
+		// each tree and at each visit.
 		observe(root, ws, 20)
 		if o := ws["1"][0].ReadSet; !timed(o) {
 			t.Errorf("observation %s: want the walk cut short at the limit", obsText(o))
+		}
+	})
+	t.Run("a merge of many parents", func(t *testing.T) {
+		// One merge of 60 parents, each with its own root tree: the clock is
+		// read before every tree the walk reads, the merge's parents
+		// included, so the walk reads it at least once per commit and per
+		// parent edge on top of once per visit, and a limit passed inside
+		// the merge's parents ends the walk there.
+		const parents = 60
+		merged := func(t *testing.T) (string, map[string][]evaluation.Witness) {
+			root, ws := committed(t, 1, true)
+			ref := gitPipe(t, root, "", "symbolic-ref", "HEAD")
+			from := gitFullHead(t, root)
+			var b strings.Builder
+			for i := 1; i <= parents; i++ {
+				fmt.Fprintf(&b, "commit refs/heads/p%d\nmark :%d\ncommitter f <f@example.com> %d +0000\ndata 6\nchild\nfrom %s\nM 100644 inline p%d.txt\ndata 2\np\n\n", i, i, 1700000000+i, from, i)
+			}
+			fmt.Fprintf(&b, "commit %s\ncommitter f <f@example.com> %d +0000\ndata 6\nmerge\nfrom :1\n", ref, 1700000001+parents)
+			for i := 2; i <= parents; i++ {
+				fmt.Fprintf(&b, "merge :%d\n", i)
+			}
+			b.WriteString("\ndone\n")
+			gitPipe(t, root, b.String(), "fast-import", "--quiet", "--done", "--force")
+			return root, ws
+		}
+		root, ws := merged(t)
+		reads, _ := observe(root, ws, 0)
+		if o := ws["1"][0].ReadSet; o == nil || o.Problem != "" || !o.IntroFile {
+			t.Fatalf("within the limit: observation %s: want the file found at its introduction", obsText(o))
+		}
+		commits, edges := parents+2, 2*parents
+		if reads < 2*commits+edges {
+			t.Errorf("the clock was read %d times over %d commits and %d parent edges; want at least %d, once per tree the walk reads and once per visit", reads, commits, edges, 2*commits+edges)
+		}
+		root, ws = merged(t)
+		// The steps before the walk read the clock five times; the tenth read
+		// falls among the merge's parents.
+		observe(root, ws, 10)
+		if o := ws["1"][0].ReadSet; !timed(o) {
+			t.Errorf("observation %s: want the walk cut short inside the merge's parents", obsText(o))
 		}
 	})
 	t.Run("the batch check past the limit", func(t *testing.T) {

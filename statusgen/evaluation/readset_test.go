@@ -582,7 +582,8 @@ func TestReadSetFailedListingCouldNotCheck(t *testing.T) {
 // TestReadSetReleaseControlsPinned — the refusals between an admitted read
 // set and a release each bind on their own: an introducing row whose token
 // names another digest, a witness tree that never landed on the item's
-// history, and a stat-ed directory the item's tree no longer holds.
+// history, and a stat-ed directory the item's tree no longer holds, removed
+// or replaced by a file.
 func TestReadSetReleaseControlsPinned(t *testing.T) {
 	market := edit(".claude-plugin/marketplace.json", "{\"v\":2}\n")
 	intro := newRsFx(t)
@@ -600,6 +601,10 @@ func TestReadSetReleaseControlsPinned(t *testing.T) {
 	wantReleased(t, "stat-ed directory still present", gone.item(edit("tools/x/testdata/in.txt", "fixture-2\n")))
 	wantResult(t, "stat-ed directory removed", gone.item(func(tr map[string]fakeEntry, _ map[string][]string) {
 		delete(tr, "tools/x/testdata/in.txt")
+	}), ResultWrongRevision, "which no longer exists", "tools/x/testdata")
+	wantResult(t, "stat-ed directory now a file", gone.item(func(tr map[string]fakeEntry, _ map[string][]string) {
+		delete(tr, "tools/x/testdata/in.txt")
+		tr["tools/x/testdata"] = fakeEntry{"100644", "now a file\n"}
 	}), ResultWrongRevision, "which no longer exists", "tools/x/testdata")
 }
 

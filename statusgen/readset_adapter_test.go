@@ -111,7 +111,8 @@ func TestGoFloorFromWitnessTree(t *testing.T) {
 
 // afReadSetFixture builds the af fixture with a go module, commits it, and
 // lands af/01's witness at that commit carrying a read-set token and file
-// recording `recorded`. It returns the root.
+// recording `recorded`: each a read path, or a "dir <path>" entry kept as is.
+// It returns the root.
 func afReadSetFixture(t *testing.T, recorded []string, extra ...string) string {
 	t.Helper()
 	root, _ := loadAFStreams(t)
@@ -141,7 +142,10 @@ func afReadSetFixture(t *testing.T, recorded []string, extra ...string) string {
 	full := gitFullHead(t, root)
 	entries := []string{evaluation.GoRunEntry(evaluation.GoRun{Dir: ".", Args: []string{"go", "vet", "./..."}})}
 	for _, p := range recorded {
-		entries = append(entries, "read "+p)
+		if !strings.HasPrefix(p, "dir ") {
+			p = "read " + p
+		}
+		entries = append(entries, p)
 	}
 	content := evaluation.FormatReadSet(evaluation.ReadSetHeader{
 		Commit: full, Command: evaluation.ReadSetCommandDigest("go vet ./..."), Brief: briefRel, Row: "1",
@@ -238,6 +242,52 @@ func TestCoverageCallersApplyFloor(t *testing.T) {
 			t.Errorf("--coverage: want af/01 held with the floor reason; got %q", line)
 		}
 	})
+}
+
+// regression: #2026
+// TestCoverageStatDirNowFile — a directory the row stat-ed, replaced by a
+// later commit with a file of the same name, is gone as a directory: the
+// row is refused through --coverage as it is when the directory is removed,
+// never released because the name still exists. A file added under the
+// directory still releases.
+func TestCoverageStatDirNowFile(t *testing.T) {
+	for name, change := range map[string]func(root string){
+		"still present": func(root string) { mustWriteFile(t, root, "sub/y.txt", "added\n") },
+		"removed": func(root string) {
+			if err := os.Remove(filepath.Join(root, "sub", "x.txt")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"now a file": func(root string) {
+			if err := os.RemoveAll(filepath.Join(root, "sub")); err != nil {
+				t.Fatal(err)
+			}
+			mustWriteFile(t, root, "sub", "now a file\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := afReadSetFixture(t, []string{"a.go", "b.go", "go.mod", "dir sub"}, "sub/x.txt", "fixture\n")
+			change(root)
+			mustGitCommitAll(t, root, "fixture: the stat-ed directory "+name)
+			resetReadMemo()
+			out := captureStdout(t, func() { runCoverage(root, false) })
+			line := ""
+			for _, l := range strings.Split(out, "\n") {
+				if strings.HasPrefix(l, "af/01 ") {
+					line = l
+				}
+			}
+			if name == "still present" {
+				if !strings.HasPrefix(line, "af/01 released ") {
+					t.Errorf("--coverage: want af/01 released; got %q", line)
+				}
+				return
+			}
+			if !strings.HasPrefix(line, "af/01 held ") || !strings.Contains(line, "which no longer exists") {
+				t.Errorf("--coverage: want af/01 held naming the gone directory; got %q", line)
+			}
+		})
+	}
 }
 
 // TestReadSetIntroObservation — the adapter's introduction observation, read

@@ -636,6 +636,18 @@
    "file": "evaluation/readset.go",
    "old": "\t\tif seen[e] {\n\t\t\tcontinue // a repeated entry is judged once",
    "new": "\t\tif false && seen[e] {\n\t\t\tcontinue // a repeated entry is judged once"
+  },
+  {
+   "name": "release: a stat-ed directory replaced by a file counted as present (review f-recorded-dir-kind-change-released)",
+   "file": "evaluation/readset.go",
+   "old": "d != \".\" && !holdsBelow(tf, d) {",
+   "new": "d != \".\" && !holds(tf, d) {"
+  },
+  {
+   "name": "time: a merge's parents read with no clock (review S19)",
+   "file": "readset_adapter.go",
+   "old": "stop := func() bool { late = s.overdue(); return late != \"\" }",
+   "new": "stop := func() bool { return false }"
   }
  ]
 }

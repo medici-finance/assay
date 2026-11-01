@@ -704,9 +704,9 @@ func (x *evalCtx) readSetApplies(sc witnessScope, rs *readSet, w, t, landedNoun 
 // stale reports why a change to path p stales the read set ("" when it does
 // not): a recorded or stat-ed file changed; a listed directory's direct
 // children gained or lost a name; a path recorded absent now exists; a
-// directory recorded present is gone. unread is set instead when a tree
-// listing the answer needs could not be read: a failed listing is never
-// read as "unchanged" or "gone".
+// directory recorded present is gone, removed or replaced by a file. unread
+// is set instead when a tree listing the answer needs could not be read: a
+// failed listing is never read as "unchanged" or "gone".
 //
 // Its work follows p's depth, never the read set's size or the tree's: only
 // p's own ancestors are looked up in the read set, and a directory's entry is
@@ -764,7 +764,7 @@ func (rs *readSet) stale(x *evalCtx, p, w, t string) (why, unread string) {
 		if bad != "" {
 			return "", bad
 		}
-		if d == "." && len(tf) == 0 || d != "." && !holds(tf, d) {
+		if d == "." && len(tf) == 0 || d != "." && !holdsBelow(tf, d) {
 			return "the row stat-ed the directory " + d + ", which no longer exists", ""
 		}
 	}
@@ -799,14 +799,21 @@ func (x *evalCtx) sortedFiles(rev string) []string {
 }
 
 // holds reports whether a sorted file listing holds path e as a file or as a
-// directory with a file below it.
+// directory with a file below it: a listed directory's entry exists either way.
 func holds(sorted []string, e string) bool {
 	i := sort.SearchStrings(sorted, e)
 	if i < len(sorted) && sorted[i] == e {
 		return true
 	}
-	j := sort.SearchStrings(sorted, e+"/")
-	return j < len(sorted) && strings.HasPrefix(sorted[j], e+"/")
+	return holdsBelow(sorted, e)
+}
+
+// holdsBelow reports whether a sorted file listing holds a file below
+// directory d. A stat-ed directory still exists only this way: d replaced by a
+// file of the same name is gone as a directory.
+func holdsBelow(sorted []string, d string) bool {
+	j := sort.SearchStrings(sorted, d+"/")
+	return j < len(sorted) && strings.HasPrefix(sorted[j], d+"/")
 }
 
 // attrsChanged compares the content attributes of every recorded file at w

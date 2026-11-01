@@ -390,7 +390,10 @@ func (s *readSetSource) introductions(briefRel string) (map[string]introRow, str
 	}
 	var touches []touch
 	late := ""
-	err := read.repo.PathHistory("HEAD", read.prefix+briefRel, func(pc gitcore.PathCommit) bool {
+	// The clock is read before every tree the walk reads, a merge's parents
+	// included, not only between commits.
+	stop := func() bool { late = s.overdue(); return late != "" }
+	err := read.repo.PathHistoryStop("HEAD", read.prefix+briefRel, stop, func(pc gitcore.PathCommit) bool {
 		if late = s.overdue(); late != "" {
 			return false // a walk cut short binds nothing: the brief is refused
 		}
