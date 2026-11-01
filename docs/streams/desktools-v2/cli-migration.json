@@ -258,6 +258,11 @@
     },
     {
       "class": "test",
+      "pattern": "containers/desk-run.mutate.sh",
+      "reason": "developer mutation runner for the desk-run.sh launcher suite (desk-containers/04); runs desk-run.test.sh against mutated copies of the launcher, one guard removed each, not an operator entrypoint"
+    },
+    {
+      "class": "test",
       "pattern": "containers/postgres/drill.sh",
       "reason": "throwaway-server verification drill for the local PostgreSQL scripts (desk-containers/26 Verify row 7): starts its own two disposable compose projects, runs one pass of about 21 checks against provision-cell.sh and restore.sh and exits non-zero on any failure (it carries no mutation code: the five mutations are manual edit-and-rerun steps in the brief's Verify row 7); a test instrument, never the operator's backup, restore or provisioning path"
     },
@@ -2236,7 +2241,7 @@
       ],
       "parser": "POSIX sh manual flag loop",
       "complexity": "simple",
-      "basis": "309 lines at 28520095d (base of desk-containers/04); composes one docker run and passes credential paths, never values",
+      "basis": "375 lines at desk-containers/04 round 1; composes one docker run and passes credential paths, never values",
       "owner": "desktools-v2/57",
       "state": "pending"
     },

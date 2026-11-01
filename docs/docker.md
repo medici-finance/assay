@@ -182,12 +182,19 @@ non-zero, naming exactly what is missing — the fail-closed preflight.
 you, so the credentials are mounted the same way every time instead of being
 hand-assembled. It validates the desk name, checks that your credential files
 exist, and starts the desk interactively (`-it`) with a per-desk work volume.
+The script comes from a checkout of this repository
+(`git clone https://github.com/medici-finance/assay.git && cd assay`); the
+commands below run from the checkout root.
 
 **Prerequisites**
 
 - docker, with the daemon running.
 - The bot App PEM for your desk's App, as a file on your machine. The default
-  location is `~/.config/assay/app.pem`.
+  location is `~/.config/assay/app.pem`. That one default serves every desk, so
+  if your desks use different Apps, pass `--pem <file>` for each desk (or export
+  `ASSAY_DESK_PEM_FILE` in each desk's own window): the launcher does not check
+  which App a PEM belongs to, and two desks started on the default run as the
+  same App.
 - A model env-file: `KEY=value` lines for the model endpoint (for example
   `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL` or `ANTHROPIC_MODEL` when you
   use a gateway). The variables the container accepts are listed in
@@ -197,7 +204,10 @@ exist, and starts the desk interactively (`-it`) with a per-desk work volume.
 `~/.config` is `$XDG_CONFIG_HOME` when you set it. To keep the files elsewhere,
 pass `--pem <file>` and `--env-file <file>`, or export `ASSAY_DESK_PEM_FILE` and
 `ASSAY_DESK_ENV_FILE`. A flag wins over the environment variable, which wins over
-the default. Docker Desktop shares your files with the container for you. On a
+the default. An override you give but leave empty (for example
+`--pem "$MY_PEM"` with `MY_PEM` unset, or an exported empty variable) is
+refused, never skipped, so a desk cannot start on a different credential than
+the one you named. Docker Desktop shares your files with the container for you. On a
 Linux host the container's `desk` user (UID 999) must be able to read the PEM, so
 give it a mode and group that allow that; the container reports an unreadable PEM
 at start.
@@ -222,8 +232,11 @@ containers/desk-run.sh pr-review-desk --dry-run
 
 **Re-attach**
 
-The container keeps its name, its work volume and its session when you detach or
-restart your desktop. Resume it with `--attach`, which runs `docker start -ai`:
+The container keeps its name and its work volume, and its filesystem, when you
+detach or restart your desktop. Resume it with `--attach`, which runs
+`docker start -ai`. That starts the container again: its entrypoint runs into a
+NEW shell, so `/work` and the container filesystem are kept and earlier
+processes are not.
 
 ```sh
 containers/desk-run.sh worker-desk --attach
@@ -233,7 +246,9 @@ Running the first-run command again while the container still exists is refused
 with this same hint. To start from scratch, remove the container with
 `docker rm <desk-name>`; the work volume stays until you remove it too. An
 existing container keeps the image version it was created with, so `--attach`
-does not take `--version`.
+does not take `--version`, `--pem` or `--env-file`: its image and mounts are
+fixed, so those flags are refused with `--attach` rather than ignored. To change
+a mount or an image, remove the container and start it again.
 
 **When it refuses**
 
@@ -241,8 +256,8 @@ The script refuses before it starts docker, and names what it expected:
 
 | Exit | Meaning |
 |------|---------|
-| 2 | Unknown desk name or option (the five valid desks are listed), or an invalid `--version`. |
-| 3 | The PEM or env-file is missing, is not a regular file, or is not readable. The message gives the expected path and how to override it. |
+| 2 | Unknown desk name or option (the five valid desks are listed), an invalid `--version`, or `--pem` / `--env-file` / `--version` together with `--attach`. The message gives the argument's position and length, not its text, because stderr often lands in shell logs. |
+| 3 | The PEM or env-file is missing, is not a regular file, or is not readable; an override (`--pem`, `--env-file`, `ASSAY_DESK_PEM_FILE`, `ASSAY_DESK_ENV_FILE`) was given empty; or the PEM path holds a comma, a double quote or a newline. The message names the override and the expected path, and how to fix it. |
 | 4 | docker is not installed or its daemon cannot be reached, or the container is in the wrong state for the request. |
 
 There is no fallback to other credentials on your machine: it uses the files named

@@ -182,9 +182,26 @@ name="two desk names are refused"
 desk worker-desk the-desk --dry-run
 if [ "$rc" -eq 2 ]; then pass "$name"; else fail "$name" "rc=$rc"; fi
 
-name="an unknown option is refused"
-desk worker-desk --dry-run --privileged
-if [ "$rc" -eq 2 ] && has "$tmp/err" '--privileged'; then pass "$name"; else fail "$name" "rc=$rc"; fi
+# A value put where an option, desk name or tag belongs must not come back on
+# stderr (shell logs): the refusal names the position and length, not the text.
+leak="MISUSE-ECHO-SENTINEL-$$"
+
+name="an unknown option is refused and its text is not echoed"
+: >"$log"
+desk worker-desk --dry-run "--$leak"
+if [ "$rc" -eq 2 ] && has "$tmp/err" 'unknown option' && ! combined | grep -F -q -- "$leak" && [ "$(docker_calls)" -eq 0 ]; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="an unknown desk name is refused and its text is not echoed"
+desk "$leak" --dry-run
+if [ "$rc" -eq 2 ] && has "$tmp/err" 'valid desks' && ! combined | grep -F -q -- "$leak"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="a second desk name is refused and its text is not echoed"
+desk worker-desk "$leak" --dry-run
+if [ "$rc" -eq 2 ] && ! combined | grep -F -q -- "$leak"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="an invalid image tag is refused and its text is not echoed"
+desk worker-desk --dry-run --version "$leak!"
+if [ "$rc" -eq 2 ] && ! combined | grep -F -q -- "$leak"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
 name="a flag missing its value is refused"
 desk worker-desk --version
@@ -199,6 +216,16 @@ done
 desk worker-desk --dry-run --version=
 [ "$rc" -eq 2 ] || bad="$bad [empty]"
 if [ -z "$bad" ]; then pass "$name"; else fail "$name" "accepted:$bad"; fi
+
+# docker's tag limit is 128 characters: 128 is accepted, 129 is refused.
+tag128=$(awk 'BEGIN { for (i = 0; i < 128; i++) printf "a" }')
+name="a 128-character image tag is accepted"
+desk worker-desk --dry-run --version "$tag128"
+if [ "$rc" -eq 0 ] && has "$tmp/out" "assay/worker-desk:$tag128"; then pass "$name"; else fail "$name" "rc=$rc"; fi
+
+name="a 129-character image tag is refused (the 128-character limit)"
+desk worker-desk --dry-run --version "${tag128}a"
+if [ "$rc" -eq 2 ] && has "$tmp/err" 'invalid --version' && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 
 name="--help prints usage and exits 0"
 desk --help
@@ -253,10 +280,116 @@ else
   if [ "$rc" -eq 3 ] && has "$tmp/err" 'not readable'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
 fi
 
+name="an env-file path that is a directory is refused"
+drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/adir" /bin/sh "$run" worker-desk --dry-run
+if [ "$rc" -eq 3 ] && has "$tmp/err" 'not a regular file' && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="an unreadable env-file is refused"
+if [ "$(id -u)" -eq 0 ]; then
+  printf 'SKIP (could-not-check): %s: root reads any file\n' "$name"
+else
+  cp "$envf" "$creds/locked.env"
+  chmod 000 "$creds/locked.env"
+  drun ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$creds/locked.env" /bin/sh "$run" worker-desk --dry-run
+  if [ "$rc" -eq 3 ] && has "$tmp/err" 'not readable' && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+fi
+
+# --mount takes comma-separated key=value pairs on one line, so each of these
+# characters in the PEM path is refused on its own: one case per character, so
+# deleting any one branch of the guard turns exactly its case red.
 name="a PEM path with a comma is refused, not passed to --mount"
 cp "$pem" "$creds/a,b.pem"
 drun ASSAY_DESK_PEM_FILE="$creds/a,b.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
 if [ "$rc" -eq 3 ] && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="a PEM path with a double quote is refused, not passed to --mount"
+cp "$pem" "$creds/a\"b.pem"
+drun ASSAY_DESK_PEM_FILE="$creds/a\"b.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
+if [ "$rc" -eq 3 ] && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="a PEM path with a newline is refused, not passed to --mount"
+nl=$(printf '\n_')
+nl=${nl%_}
+cp "$pem" "$creds/a${nl}b.pem"
+drun ASSAY_DESK_PEM_FILE="$creds/a${nl}b.pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run
+if [ "$rc" -eq 3 ] && ! has "$tmp/out" 'docker'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+# --- an override given EMPTY is refused, never read as "not given" -----------
+# Default credentials are planted so a fall-through would succeed and show.
+mkdir -p "$home/.config/assay"
+cp "$pem" "$home/.config/assay/app.pem"
+cp "$envf" "$home/.config/assay/desk.env"
+
+# empty_refused <name> <override named in the message> <script args and env as for drun>
+empty_refused() {
+  name=$1
+  want=$2
+  shift 2
+  : >"$log"
+  drun "$@"
+  if [ "$rc" -eq 3 ] && has "$tmp/err" "$want" && has "$tmp/err" 'given empty' \
+    && ! has "$tmp/out" 'docker' && [ "$(docker_calls)" -eq 0 ]; then
+    pass "$name"
+  else
+    fail "$name" "rc=$rc $(combined)"
+  fi
+}
+empty_refused "an empty --pem value (spaced) is refused, not replaced by the default" '--pem was given empty' \
+  /bin/sh "$run" worker-desk --dry-run --pem ""
+empty_refused "an empty --pem= value is refused, not replaced by the default" '--pem was given empty' \
+  /bin/sh "$run" worker-desk --dry-run --pem=
+empty_refused "an empty --env-file value (spaced) is refused, not replaced by the default" '--env-file was given empty' \
+  /bin/sh "$run" worker-desk --dry-run --env-file ""
+empty_refused "an empty --env-file= value is refused, not replaced by the default" '--env-file was given empty' \
+  /bin/sh "$run" worker-desk --dry-run --env-file=
+empty_refused "an empty ASSAY_DESK_PEM_FILE is refused, not replaced by the default" 'ASSAY_DESK_PEM_FILE was given empty' \
+  ASSAY_DESK_PEM_FILE= /bin/sh "$run" worker-desk --dry-run
+empty_refused "an empty ASSAY_DESK_ENV_FILE is refused, not replaced by the default" 'ASSAY_DESK_ENV_FILE was given empty' \
+  ASSAY_DESK_ENV_FILE= /bin/sh "$run" worker-desk --dry-run
+empty_refused "an empty --pem is refused although ASSAY_DESK_PEM_FILE names a file" '--pem was given empty' \
+  ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run --pem=
+empty_refused "an empty --env-file is refused although ASSAY_DESK_ENV_FILE names a file" '--env-file was given empty' \
+  ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --dry-run --env-file ""
+empty_refused "a real run with an empty --pem is refused before docker is called" '--pem was given empty' \
+  ASSAY_DESK_PEM_FILE="$pem" ASSAY_DESK_ENV_FILE="$envf" /bin/sh "$run" worker-desk --pem ""
+
+name="both empty overrides are reported in one pass"
+drun /bin/sh "$run" worker-desk --dry-run --pem= --env-file=
+if [ "$rc" -eq 3 ] && has "$tmp/err" '--pem was given empty' && has "$tmp/err" '--env-file was given empty'; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+
+name="an empty XDG_CONFIG_HOME falls back to HOME/.config (the XDG convention)"
+drun XDG_CONFIG_HOME= /bin/sh "$run" worker-desk --dry-run
+if [ "$rc" -eq 0 ] && has "$tmp/out" "src=$home/.config/assay/app.pem,"; then pass "$name"; else fail "$name" "rc=$rc $(combined)"; fi
+rm -rf "$home/.config"
+
+# --- the dry-run line is safe to paste ---------------------------------------
+# A path with a space, a single quote and a command substitution must come out
+# quoted so that pasting the line gives docker the same arguments and runs
+# nothing. The line is evaluated here with a stand-in `docker` that prints one
+# argument per line; a marker file would appear in the working directory if the
+# substitution ran.
+name="the dry-run line pastes back to the same arguments and runs nothing"
+qd="$creds/q d'x \$(touch pwned-marker)"
+mkdir -p "$qd" "$tmp/cw"
+cp "$pem" "$qd/k.pem"
+cp "$envf" "$qd/m.env"
+drun ASSAY_DESK_PEM_FILE="$qd/k.pem" ASSAY_DESK_ENV_FILE="$qd/m.env" /bin/sh "$run" the-desk --dry-run
+rc_dry=$rc
+(
+  cd "$tmp/cw" || exit 1
+  # shellcheck disable=SC2329  # called by the eval below
+  docker() {
+    for a in "$@"; do printf '%s\n' "$a"; done
+  }
+  eval "$(cat "$tmp/out")"
+) >"$tmp/pasted" 2>>"$all"
+if [ "$rc_dry" -eq 0 ] && [ ! -e "$tmp/cw/pwned-marker" ] && [ "$(wc -l <"$tmp/pasted" | tr -d ' ')" -eq 11 ] \
+  && grep -q -x -F -- "type=bind,src=$qd/k.pem,dst=/run/secrets/assay/app.pem,ro" "$tmp/pasted" \
+  && grep -q -x -F -- "$qd/m.env" "$tmp/pasted"; then
+  pass "$name"
+else
+  fail "$name" "rc=$rc_dry marker=$([ -e "$tmp/cw/pwned-marker" ] && echo ran || echo none) pasted: $(cat "$tmp/pasted")"
+fi
 
 # --- no credential value in any output ---------------------------------------
 name="dry-run prints credential paths, never contents (row 6: BEGIN count is 0)"
@@ -274,8 +407,18 @@ name="--attach with --version is refused"
 desk worker-desk --attach --version v1
 if [ "$rc" -eq 2 ]; then pass "$name"; else fail "$name" "rc=$rc"; fi
 
+# --attach starts a container whose mounts are fixed, so a credential flag
+# would be ignored while looking as if it took effect. Each form is refused.
+for form in '--pem /nonexistent' '--pem=/nonexistent' '--env-file /nonexistent' '--env-file=/nonexistent' '--pem= --env-file='; do
+  name="--attach with $form is refused, not ignored"
+  : >"$log"
+  # shellcheck disable=SC2086  # $form is a few simple words
+  drun STUB_EXISTING=worker-desk /bin/sh "$run" worker-desk --attach $form
+  if [ "$rc" -eq 2 ] && has "$tmp/err" '--attach' && [ "$(docker_calls)" -eq 0 ]; then pass "$name"; else fail "$name" "rc=$rc calls=$(docker_calls) $(combined)"; fi
+done
+
 # --- real-run path against the stub docker -----------------------------------
-name="a real run execs the same docker run that --dry-run prints"
+name="a real run hands docker the exact run arguments the secrets.md command lists"
 : >"$log"
 desk the-desk --version v9.9.9
 want="run $(expect the-desk v9.9.9 | sed 's/^docker //; s/^run //')"

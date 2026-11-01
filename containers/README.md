@@ -19,7 +19,8 @@ land, the per-desk images and launch surfaces.
 | `the-desk/Dockerfile` | Thin per-desk image for the coordinator `the-desk`. |
 | `entrypoint.sh` | Shared interactive boot baked into all five desk images: fail-closed credential preflight, then desk identity + skill pointer, then the interactive session. |
 | `desk-run.sh` | Interactive desktop launcher: validates the desk name and the credential files, then runs the desk image with the secrets.md mounts (`--dry-run` prints the command, `--attach` resumes a container). |
-| `desk-run.test.sh` | Offline tests for the launcher (dry-run output, refusal paths, no credential value in any output); no docker daemon needed. |
+| `desk-run.test.sh` | Offline tests for the launcher (dry-run output, refusal paths, no credential value in any output); no docker daemon needed. Run in CI by `TestDeskRunLauncherSuite` in `tools/desk/internal/regression`. |
+| `desk-run.mutate.sh` | Negative controls: runs the launcher suite against mutated copies of the launcher, one guard removed each, and requires the fixture that pins it to go red. |
 | `scripts/layer-secret-scan.sh` | Fails a built image that carries key-shaped material in any layer/config/history. |
 | `scripts/layer-secret-scan.test.sh` | Mutation proof for the scan: fixture images with baked fake keys must go red, a clean one green. |
 | `scripts/layer-secret-scan.mutate.sh` | Negative controls: runs the test against mutated copies of the scan (a merged-view scan, and each fail-closed step reverted) and requires each fixture to fail against its own mutant and no other assertion to break. |
