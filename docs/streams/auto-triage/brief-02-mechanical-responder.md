@@ -54,7 +54,7 @@ id: 739df04b-fc17-473d-8697-32ecdc7a3c36
 
 > What it passes, and from where. Trigger and the fully qualified ref come from the values the CI platform sets for the run, never from model output or a log (auto-triage/01's `origin.ref` may hold a short branch or a sha, and the gate needs the full ref). Class is the literal `gate-red`. Culprit class comes from auto-triage/01's classifier record, and is absent when there is none. Node, pattern name and expected sha256 come from this brief's reviewed source or configuration, never computed from a checkout the run can write. Root is the CI workspace value. The gate's origin has no repository term and reads the ref only on `push`, so this responder itself refuses a fork's run and a scheduled run on any other branch than the default.
 
-> Liveness. No brief owns a liveness result for gate-red's source today. Until one does, this responder passes none, the gate holds and the responder stays out of live mode. That hold stands, and this note doesn't close it. A hold stops this responder only, never a person acting on the red gate. This brief's own controls stay as written, and the stricter rule applies.
+> Liveness. No brief owns a liveness result for gate-red's source today. Until one does, this responder passes none, the gate holds and the responder stays out of live mode. That hold stands, and this note doesn't close it. A hold stops this responder only, never a person acting on the red gate. A held responder has acted on nothing, so auto-triage/04's watchdog escalates the red gate to a person, as it does for any red no responder acted on. This brief's own controls stay as written, and the stricter rule applies.
 
 ## Context
 
