@@ -242,7 +242,7 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 		ownerIDs = append(ownerIDs, o)
 	}
 	sort.Strings(ownerIDs)
-	targets := portTargets(reg.Entrypoints)
+	targets := portTargets(fsys, reg.Entrypoints)
 	for _, o := range ownerIDs {
 		es := owners[o]
 		b, err := LoadBrief(fsys, o)
@@ -283,27 +283,77 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 }
 
 // portTargets is every (owner, path) pair that a migrated script row of that owner names in
-// migrated_to. Only such a row is a port already counted against its owner, and only
-// validateMigrated checks its migrated_to, so a Go row's or a pending row's migrated_to is
-// registry metadata alone and names nothing here: no Go row can qualify itself or another.
-func portTargets(entries []Entry) map[[2]string]bool {
+// migrated_to and whose code builds (buildsTarget). Only such a row is a port already counted
+// against its owner. A Go row's or a pending row's migrated_to is registry metadata alone and
+// names nothing here, so no Go row can qualify itself or another; and a migrated script that
+// only mentions the target, in a comment or by calling a binary of that name, names nothing
+// either, so flipping a script's state and moving a Go row's owner is not a port.
+func portTargets(fsys fs.FS, entries []Entry) map[[2]string]bool {
 	t := map[[2]string]bool{}
 	for _, e := range entries {
 		if e.Kind == "script" && e.State == StateMigrated && e.Owner != "" && e.MigratedTo != "" {
+			if !buildsTarget(fsys, e.Path, e.MigratedTo) {
+				continue
+			}
 			t[[2]string{e.Owner, e.MigratedTo}] = true
 		}
 	}
 	return t
 }
 
+// buildOperand is the package argument that builds the Go entrypoint at dir from its module
+// root: "./" and dir's path below the nearest ancestor that holds a go.mod. The module is read
+// from the tree, never from a row's module field. A main package at its module's own root, or
+// under no module, has none.
+func buildOperand(fsys fs.FS, dir string) string {
+	for m := dir; ; m = path.Dir(m) {
+		if _, err := fs.Stat(fsys, path.Join(m, "go.mod")); err == nil {
+			switch m {
+			case dir:
+				return ""
+			case ".":
+				return "./" + dir
+			}
+			return "./" + strings.TrimPrefix(dir, m+"/")
+		}
+		if m == "." {
+			return ""
+		}
+	}
+}
+
+// buildsTarget reports whether the script at p builds the Go entrypoint at target: a line of
+// it that is not a comment carries target's build operand (buildOperand) as a whole word, as
+// in `go build -o "$bin" ./cmd/<name>`. The registry cannot supply this: it is the script's
+// own code. A mention of the name, the operand inside a comment, or a call of a binary of
+// that name from PATH is not that proof.
+func buildsTarget(fsys fs.FS, p, target string) bool {
+	op := buildOperand(fsys, target)
+	raw, err := fs.ReadFile(fsys, p)
+	if op == "" || err != nil {
+		return false
+	}
+	word := regexp.MustCompile(`(^|[^A-Za-z0-9_./-])` + regexp.QuoteMeta(op) + `($|[^A-Za-z0-9_./-])`)
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if word.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
 // portTarget reports whether e is the Go entrypoint its own owner's port lands in: a
 // migrated Go row that at least one migrated script row with the SAME owner names in
-// migrated_to. Such a row is the destination of rows already counted against that owner, not
+// migrated_to and builds (portTargets). Such a row is the destination of rows already counted against that owner, not
 // a further entrypoint to route, so it carries no budget of its own. A complex target is
 // exempt only while it is the owner's sole complex row (ownerComplex counts e itself). A row
-// named only by another owner's rows, only by Go or pending rows (itself included), a pending
-// or script row, a Go row no same-owner row names, and a complex target beside a second
-// complex row all still count.
+// named only by another owner's rows, only by Go or pending rows (itself included), only by
+// scripts that do not build it, a pending or script row, a Go row no same-owner row names, and
+// a complex target beside a second complex row all still count.
 func portTarget(e *Entry, targets map[[2]string]bool, ownerComplex int) bool {
 	return e.Kind == "go" && e.State == StateMigrated && targets[[2]string{e.Owner, e.Path}] && (e.Complexity == "simple" || ownerComplex == 1)
 }

@@ -248,6 +248,48 @@ func TestCLIRoutingMutations(t *testing.T) {
 	if p := Validate(base, simpleReg); len(p) > 0 {
 		t.Fatalf("a simple port target is no longer exempt:\n  %s", strings.Join(p, "\n  "))
 	}
+	// A port is proved by the script's own code, never by the registry. The route this closes:
+	// a pending script that merely mentions a migrated Go row of another owner is flipped to
+	// migrated and names that row, and the row moves to the script's owner, with no script or Go
+	// file changed. The pair is picked from the real tree, among pairs that would put the
+	// owner over budget if the row counted.
+	mentionScript, mentionTarget, mentionOwner := metadataOnlyPair(t, base, ref)
+	// One of the port owner's own migrated scripts is pointed at an unrelated Go row moved to
+	// that owner, and carries one planted line naming the row. Only a line that builds the row
+	// makes it a port target.
+	const namer = "tools/changelog/check.sh"
+	strayGo := unnamedGoRow(t, ref, portOwner).Path
+	strayOp := buildOperand(base, strayGo)
+	namerSrc, err := fs.ReadFile(base, namer)
+	if err != nil || strayOp == "" {
+		t.Fatalf("%s (%v) or a build operand for %s (%q) is missing; the build-proof cases test nothing", namer, err, strayGo, strayOp)
+	}
+	pointAtStray := func(r *Registry) {
+		rowFor(t, r, strayGo).Owner = portOwner
+		rowFor(t, r, namer).MigratedTo = strayGo
+	}
+	withLine := func(line string) map[string]string {
+		return map[string]string{namer: string(namerSrc) + "\n" + line + "\n"}
+	}
+	// The proof is not a refuse-all: the same edit, with a line that builds the row, is clean.
+	builtReg := decode(t, raw)
+	pointAtStray(builtReg)
+	if p := Validate(newOverlay(base, withLine(`go -C "$desk_dir" build -o "$build_dir/x" `+strayOp)), builtReg); len(p) > 0 {
+		t.Fatalf("a migrated script whose code builds its target no longer makes it a port target:\n  %s", strings.Join(p, "\n  "))
+	}
+	// The pending-script case below plants a build line, so only the pending state refuses it.
+	var fullScript string
+	for _, e := range ownerRows(ref, fullOwner) {
+		if e.Kind == "script" && e.State == StatePending {
+			fullScript = e.Path
+			break
+		}
+	}
+	fullGo := unnamedGoRows(t, ref, fullOwner, 1)[0].Path
+	fullSrc, err := fs.ReadFile(base, fullScript)
+	if fullScript == "" || err != nil || buildOperand(base, fullGo) == "" {
+		t.Fatalf("owner %s has no readable pending script (%q, %v), or %s has no build operand", fullOwner, fullScript, err, fullGo)
+	}
 	// The imports check needs a Go row whose code imports neither cobra nor the adapter. It is
 	// picked from the pending rows, so migrating any one row (deskaudit was the fixed pick until
 	// desktools-v2/47 migrated it) never breaks this case.
@@ -333,23 +375,35 @@ func TestCLIRoutingMutations(t *testing.T) {
 			want: "owner " + portOwner + " over budget"},
 		{name: "pending-script-names-go-row",
 			// The owner keeps its five simple pending scripts; one of them names the moved Go
-			// row, which only a migrated script could make a target.
+			// row and its code builds it, so only its pending state stops it making a target.
+			files: map[string]string{fullScript: string(fullSrc) + "\ngo build " + buildOperand(base, fullGo) + "\n"},
 			edit: func(r *Registry) {
-				var script *Entry
-				for _, e := range ownerRows(r, fullOwner) {
-					if e.Kind == "script" && e.State == StatePending {
-						script = e
-						break
-					}
-				}
-				if script == nil {
-					t.Fatalf("owner %s has no pending script", fullOwner)
-				}
-				g := unnamedGoRows(t, r, fullOwner, 1)[0]
-				g.Owner = fullOwner
-				script.MigratedTo = g.Path
+				rowFor(t, r, fullGo).Owner = fullOwner
+				rowFor(t, r, fullScript).MigratedTo = fullGo
 			},
 			want: "owner " + fullOwner + " over budget"},
+		// A migrated script that does not build its target names nothing: not by a registry
+		// edit alone, not by a comment, not by calling a binary of that name, not by building a
+		// longer name.
+		{name: "metadata-only-migrated-script",
+			edit: func(r *Registry) {
+				s := rowFor(t, r, mentionScript)
+				s.State, s.MigratedTo = StateMigrated, mentionTarget
+				rowFor(t, r, mentionTarget).Owner = mentionOwner
+			},
+			want: "owner " + mentionOwner + " over budget"},
+		{name: "script-builds-target-in-comment-only",
+			files: withLine("# go build " + strayOp),
+			edit:  pointAtStray,
+			want:  "owner " + portOwner + " over budget"},
+		{name: "script-calls-target-from-path",
+			files: withLine(path.Base(strayGo) + ` --help "$@"`),
+			edit:  pointAtStray,
+			want:  "owner " + portOwner + " over budget"},
+		{name: "script-builds-a-longer-name",
+			files: withLine("go build " + strayOp + "-old"),
+			edit:  pointAtStray,
+			want:  "owner " + portOwner + " over budget"},
 		{name: "target-named-by-other-owner",
 			edit: func(r *Registry) { rowFor(t, r, targetPath).Owner = fullOwner },
 			want: "owner " + fullOwner + " over budget"},
@@ -492,6 +546,45 @@ func ownerAtBudget(t *testing.T, r *Registry, skip string) string {
 	}
 	t.Fatalf("no owner holds exactly %d simple pending scripts", MaxSimple)
 	return ""
+}
+
+// metadataOnlyPair is a pending script row, a migrated Go row of another owner that no row
+// names, and the script's owner, such that the script's text mentions the row's name (so the
+// delegation check of a migrated script passes with no file changed) and the owner would be
+// over budget if the row counted against it.
+func metadataOnlyPair(t *testing.T, fsys fs.FS, r *Registry) (script, target, owner string) {
+	t.Helper()
+	named := map[string]bool{}
+	for _, e := range r.Entrypoints {
+		named[e.MigratedTo] = true
+	}
+	for _, s := range r.Entrypoints {
+		if s.Kind != "script" || s.State != StatePending || s.Owner == "" {
+			continue
+		}
+		src, err := fs.ReadFile(fsys, s.Path)
+		if err != nil {
+			continue
+		}
+		for _, g := range r.Entrypoints {
+			if g.Kind != "go" || g.State != StateMigrated || g.Owner == s.Owner || named[g.Path] || !strings.Contains(string(src), path.Base(g.Path)) {
+				continue
+			}
+			simple, complex := 0, 0
+			for _, e := range append(ownerRows(r, s.Owner), &g) {
+				if e.Complexity == "complex" {
+					complex++
+				} else {
+					simple++
+				}
+			}
+			if complex > 1 || (complex == 1 && simple > 0) || simple > MaxSimple {
+				return s.Path, g.Path, s.Owner
+			}
+		}
+	}
+	t.Fatal("no pending script mentions a migrated Go row whose move would put its owner over budget; plant one with an overlay")
+	return "", "", ""
 }
 
 // soleComplexNamer leaves owner o with the target and exactly one other row: a complex script

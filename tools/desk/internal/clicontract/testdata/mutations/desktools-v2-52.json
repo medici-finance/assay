@@ -104,16 +104,46 @@
       "new": "\t\t\tfor _, x := range entries {\n\t\t\t\tt[[2]string{x.Owner, e.MigratedTo}] = true\n\t\t\t}\n"
     },
     {
-      "name": "any row with a migrated_to names a target again (registry metadata on Go or pending rows qualifies, so a Go row can exempt itself)",
+      "name": "the build proof is dropped (a migrated script that only mentions its target names it, so a registry-only edit qualifies a Go row)",
       "file": "internal/clicontract/validate.go",
-      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {",
-      "new": "if e.Owner != \"\" && e.MigratedTo != \"\" {"
+      "old": "\t\t\tif !buildsTarget(fsys, e.Path, e.MigratedTo) {\n",
+      "new": "\t\t\tif false && !buildsTarget(fsys, e.Path, e.MigratedTo) {\n"
     },
     {
-      "name": "a Go row's migrated_to names a target (Go rows qualify themselves or each other)",
+      "name": "a commented-out build line counts as a build",
       "file": "internal/clicontract/validate.go",
-      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner",
-      "new": "if e.State == StateMigrated && e.Owner"
+      "old": "\t\tif strings.HasPrefix(line, \"#\") {\n",
+      "new": "\t\tif false && strings.HasPrefix(line, \"#\") {\n"
+    },
+    {
+      "name": "calling a binary of the target's name counts as a build (the base name stands in for the build operand)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\top := buildOperand(fsys, target)\n",
+      "new": "\top := path.Base(target)\n"
+    },
+    {
+      "name": "the build operand need not end at a word boundary (building a longer name counts)",
+      "file": "internal/clicontract/validate.go",
+      "old": "regexp.QuoteMeta(op) + `($|[^A-Za-z0-9_./-])`)",
+      "new": "regexp.QuoteMeta(op))"
+    },
+    {
+      "name": "the build operand ignores the module root (the real scripts' ./cmd/<name> no longer proves their port, so the owner goes over budget)",
+      "file": "internal/clicontract/validate.go",
+      "old": "\t\t\treturn \"./\" + strings.TrimPrefix(dir, m+\"/\")\n",
+      "new": "\t\t\treturn \"./\" + dir\n"
+    },
+    {
+      "name": "any row with a migrated_to names a target again, with no build proof (registry metadata on Go or pending rows qualifies, so a Go row can exempt itself)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif !buildsTarget(",
+      "new": "if e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif e.Kind == \"script\" && !buildsTarget("
+    },
+    {
+      "name": "a Go row's migrated_to names a target, with no build proof (Go rows qualify themselves or each other)",
+      "file": "internal/clicontract/validate.go",
+      "old": "if e.Kind == \"script\" && e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif !buildsTarget(",
+      "new": "if e.State == StateMigrated && e.Owner != \"\" && e.MigratedTo != \"\" {\n\t\t\tif e.Kind == \"script\" && !buildsTarget("
     },
     {
       "name": "a pending script's migrated_to names a target (a script not yet ported qualifies a Go row)",
