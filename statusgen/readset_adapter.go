@@ -11,7 +11,6 @@ package main
 // library either way).
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -20,9 +19,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -78,36 +78,68 @@ func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation
 		return
 	}
 	o.IntroFound, o.IntroRunner = true, in.runner
-	file := evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(briefRel)), digest)
-	o.IntroFile = coverageGit(s.root, "cat-file", "-e", in.commit+":"+file).Run() == nil
+	spec := in.commit + ":" + evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(briefRel)), digest)
+	got, ok := coverageRepo{root: s.root}.CatObjects([]string{spec})
+	_, o.IntroFile = got[spec]
+	o.IntroFile = o.IntroFile && ok
 }
 
 // introductions maps each witness row identity key in the brief's history to
 // the earliest commit (first-parent or not: every commit touching the file)
-// whose brief file holds it, with that commit's Runner cell.
+// whose brief file holds it, with that commit's Runner cell. The history is
+// walked in process (gitcore PathHistory: replacement objects are never
+// read) and each distinct brief blob is read once through the coverage
+// port's batch object read. A repository whose profile the in-process reader
+// does not cover (a shallow clone, a native discovery or config environment)
+// yields no introduction, so every read set there is ignored: a history this
+// reader cannot see never binds a read set.
 func (s *readSetSource) introductions(briefRel string) map[string]introRow {
 	if m, ok := s.intro[briefRel]; ok {
 		return m
 	}
 	m := map[string]introRow{}
 	s.intro[briefRel] = m
-	out, err := coverageGit(s.root, "log", "--reverse", "--format=%H", "--", briefRel).Output()
+	read := gitCoreFor(s.root)
+	if read.err != nil || read.native != "" {
+		return m
+	}
+	type touch struct{ commit, blob string }
+	var touches []touch
+	err := read.repo.PathHistory("HEAD", read.prefix+briefRel, func(pc gitcore.PathCommit) bool {
+		if pc.PathID != "" && !slices.Contains(pc.ParentPathIDs, pc.PathID) {
+			touches = append(touches, touch{pc.Hash, pc.PathID})
+		}
+		return true
+	})
 	if err != nil {
 		return m
 	}
-	for _, c := range strings.Fields(string(out)) {
-		body, err := coverageGit(s.root, "show", c+":"+briefRel).Output()
-		if err != nil {
+	slices.Reverse(touches) // oldest first
+	var blobs []string
+	listed := map[string]bool{}
+	for _, t := range touches {
+		if !listed[t.blob] {
+			listed[t.blob] = true
+			blobs = append(blobs, t.blob)
+		}
+	}
+	objs, ok := coverageRepo{root: s.root}.CatObjects(blobs)
+	if !ok {
+		return m
+	}
+	for _, t := range touches {
+		obj, found := objs[t.blob]
+		if !found || obj.Type != "blob" {
 			continue
 		}
-		for _, line := range strings.Split(string(body), "\n") {
+		for _, line := range strings.Split(string(obj.Content), "\n") {
 			cells := witnessCells(line)
 			if cells == nil {
 				continue
 			}
 			key := evaluation.WitnessRowKey(cells[0], witnessCommandOf(line), cells[witnessCellDate], cells[witnessCellRunner])
 			if _, seen := m[key]; !seen {
-				m[key] = introRow{commit: c, runner: strings.TrimSpace(cells[witnessCellRunner])}
+				m[key] = introRow{commit: t.commit, runner: strings.TrimSpace(cells[witnessCellRunner])}
 			}
 		}
 	}
@@ -170,65 +202,52 @@ func (s *readSetSource) export(commit string) (string, string) {
 	return d, ""
 }
 
-// exportTree writes the tree of commit to a new temporary directory using
-// `git ls-tree` and `git cat-file --batch`. Symbolic links are recreated;
-// submodule entries are skipped.
+// exportTree writes the tree of commit to a new temporary directory through
+// the coverage port's tree listing and batch object read (`git ls-tree` and
+// `git cat-file --batch`, replacement objects disabled). Symbolic links are
+// recreated; submodule entries are skipped.
 func exportTree(root, commit string) (string, error) {
-	ls, err := coverageGit(root, "ls-tree", "-r", "-z", "--full-tree", commit).Output()
-	if err != nil {
-		return "", fmt.Errorf("git ls-tree %s: %w", commit, err)
+	repo := coverageRepo{root: root}
+	listed, ok := repo.ListTree(commit)
+	if !ok {
+		return "", fmt.Errorf("git ls-tree %s failed", commit)
 	}
-	type ent struct{ mode, sha, path string }
-	var ents []ent
-	for _, rec := range strings.Split(strings.TrimSuffix(string(ls), "\x00"), "\x00") {
-		meta, p, ok := strings.Cut(rec, "\t")
-		f := strings.Fields(meta)
-		if !ok || len(f) != 3 || f[1] != "blob" {
-			continue
+	var ents []evaluation.TreeBlob
+	var oids []string
+	for _, e := range listed {
+		if e.Mode == "160000" {
+			continue // a submodule commit, not a blob
 		}
-		ents = append(ents, ent{f[0], f[2], p})
+		ents = append(ents, e)
+		oids = append(oids, e.OID)
+	}
+	objs, ok := repo.CatObjects(oids)
+	if !ok {
+		return "", errors.New("git cat-file --batch failed")
 	}
 	dir, err := os.MkdirTemp("", "readset-floor-")
 	if err != nil {
 		return "", err
 	}
-	cmd := coverageGit(root, "cat-file", "--batch")
-	var in bytes.Buffer
 	for _, e := range ents {
-		in.WriteString(e.sha + "\n")
-	}
-	cmd.Stdin = &in
-	raw, err := cmd.Output()
-	if err != nil {
-		_ = os.RemoveAll(dir)
-		return "", fmt.Errorf("git cat-file --batch: %w", err)
-	}
-	r := bufio.NewReader(bytes.NewReader(raw))
-	for _, e := range ents {
-		head, err := r.ReadString('\n')
-		f := strings.Fields(head)
-		if err != nil || len(f) != 3 {
+		obj, found := objs[e.OID]
+		if !found || obj.Type != "blob" {
 			_ = os.RemoveAll(dir)
-			return "", errors.New("short git cat-file --batch output")
+			return "", fmt.Errorf("git cat-file --batch: %s (%s) is not a readable blob", e.Path, e.OID)
 		}
-		n, _ := strconv.Atoi(f[2])
-		body := make([]byte, n+1)
-		if _, err := io.ReadFull(r, body); err != nil {
-			_ = os.RemoveAll(dir)
-			return "", err
-		}
-		dst := filepath.Join(dir, filepath.FromSlash(e.path))
+		body := obj.Content
+		dst := filepath.Join(dir, filepath.FromSlash(e.Path))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			_ = os.RemoveAll(dir)
 			return "", err
 		}
-		switch e.mode {
+		switch e.Mode {
 		case "120000":
-			err = os.Symlink(string(body[:n]), dst)
+			err = os.Symlink(string(body), dst)
 		case "100755":
-			err = os.WriteFile(dst, body[:n], 0o755)
+			err = os.WriteFile(dst, body, 0o755)
 		default:
-			err = os.WriteFile(dst, body[:n], 0o644)
+			err = os.WriteFile(dst, body, 0o644)
 		}
 		if err != nil {
 			_ = os.RemoveAll(dir)

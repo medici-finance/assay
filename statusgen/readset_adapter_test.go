@@ -215,3 +215,61 @@ func TestCoverageCallersApplyFloor(t *testing.T) {
 		}
 	})
 }
+
+// TestReadSetIntroObservation — the adapter's introduction observation, read
+// through the in-process history walk and the batch object read: the earliest
+// commit holding the row names its Runner cell and whether the read-set file
+// arrived in that same commit. A file or token a later commit added never
+// moves the introduction.
+func TestReadSetIntroObservation(t *testing.T) {
+	const briefRel = "docs/streams/s/brief-01-x.md"
+	digest := strings.Repeat("ab", 32)
+	token := evaluation.ReadSetCellToken(digest, "")
+	rowWith := func(tok string) string {
+		r := "| 1 | `true` | pass exit=0 | sha256:6f1a0b3c9d22 | 2026-08-13 | " + vfRunner + " @ b988d175ab12"
+		if tok != "" {
+			r += " " + tok
+		}
+		return r + " |"
+	}
+	brief := func(row string) string { return "# Brief\n\n## Evidence\n\n" + witnessTableFor(row) + "\n" }
+	fileRel := "docs/streams/s/reads/" + digest
+	cases := []struct {
+		name              string
+		first, second     map[string]string // files written before each commit
+		wantFile, wantTok bool
+	}{
+		{"row and file in one commit", map[string]string{briefRel: brief(rowWith(token)), fileRel: "x\n"}, nil, true, true},
+		{"file a commit later", map[string]string{briefRel: brief(rowWith(token))}, map[string]string{fileRel: "x\n"}, false, true},
+		{"token and file a commit later", map[string]string{briefRel: brief(rowWith(""))}, map[string]string{briefRel: brief(rowWith(token)), fileRel: "x\n"}, false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			for p, body := range c.first {
+				mustWriteFile(t, root, p, body)
+			}
+			mustGitInit(t, root)
+			if c.second != nil {
+				for p, body := range c.second {
+					mustWriteFile(t, root, p, body)
+				}
+				mustGitCommitAll(t, root, "fixture: later")
+			}
+			src := newReadSetSource(root)
+			defer src.close()
+			w := evaluation.Witness{Command: "true", Date: "2026-08-13", Runner: vfRunner + " @ b988d175ab12 " + token}
+			src.observe(filepath.Join(root, filepath.FromSlash(briefRel)), briefRel, "1", &w)
+			o := w.ReadSet
+			if o == nil || !o.Found || !o.IntroFound {
+				t.Fatalf("observation %+v: want the file found and the row's introduction found", o)
+			}
+			if o.IntroFile != c.wantFile {
+				t.Errorf("IntroFile = %v, want %v", o.IntroFile, c.wantFile)
+			}
+			if got := strings.Contains(o.IntroRunner, token); got != c.wantTok {
+				t.Errorf("introduction Runner %q carries the token = %v, want %v", o.IntroRunner, got, c.wantTok)
+			}
+		})
+	}
+}

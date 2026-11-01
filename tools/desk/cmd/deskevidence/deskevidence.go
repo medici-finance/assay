@@ -410,7 +410,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 	// A witness row naming a read-set file lands only with that file in one
-	// commit (build-less-brittle/15); refuse before any forge call.
+	// commit (the read-set introduction binding); refuse before any forge call.
 	readSetRoot := evidenceRoot
 	if readSetRoot == "" {
 		readSetRoot = "."

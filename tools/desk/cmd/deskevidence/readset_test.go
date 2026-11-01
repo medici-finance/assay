@@ -12,8 +12,8 @@ import (
 )
 
 // regression: #2026
-// TestDeskevidenceRefusesUnpairedReadSet — build-less-brittle/15 Task step 7,
-// landing half: a row naming a read-set file whose local copy is absent or
+// TestDeskevidenceRefusesUnpairedReadSet — the read-set introduction
+// binding, landing half: a row naming a read-set file whose local copy is absent or
 // hashes to another digest is refused before any forge call, and so is a
 // matching one, because this tool's one-file write cannot pair the row and
 // its file in one commit. A could-not-check token names no file and lands.

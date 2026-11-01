@@ -1,7 +1,7 @@
 package main
 
-// readset.go — the landing half of build-less-brittle/15's read-set
-// introduction binding. A witness row whose Runner cell carries a
+// readset.go — the landing half of the read-set introduction binding. A
+// witness row whose Runner cell carries a
 // `(reads sha256:<hex>)` token names a read-set file
 // `<brief dir>/reads/<hex>`; coverage honours that file only when it
 // arrives in the same commit as the row. The Contents-API write this tool
@@ -77,5 +77,5 @@ func refuseUnpairedReadSets(content []byte, root, target string) error {
 	}
 	return deskkit.Refused("refused: " + target + " names read-set file(s) " + dir + "/{" + strings.Join(digests, ",") +
 		"} and this landing commits one file, so the row and its read-set file cannot land in one commit " +
-		"(build-less-brittle/15 Task step 7) — land them through an Evidence PR that adds both in one commit")
+		"(the read-set introduction binding) — land them through an Evidence PR that adds both in one commit")
 }

@@ -1,16 +1,15 @@
 package evaluation
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	pathpkg "path"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // readset.go — a witness's RECORDED read set (build-less-brittle/15).
@@ -107,18 +106,131 @@ type GoRun struct {
 	CGOEnabled string   `json:"cgo_enabled,omitempty"`
 }
 
-// GoRunEntry renders g as a read-set entry line.
+// GoRunEntry renders g as a read-set entry line. The body is the JSON
+// encoding/json gives the struct, written without it (the purity boundary):
+// fields in declaration order, an empty optional field left out, a nil Args
+// as null, and strings escaped as encoding/json escapes them.
 func GoRunEntry(g GoRun) string {
-	b, _ := json.Marshal(g)
-	return EntryGoRun + " " + string(b)
+	var b strings.Builder
+	b.WriteString(EntryGoRun + ` {"dir":`)
+	writeGoJSONString(&b, g.Dir)
+	b.WriteString(`,"args":`)
+	if g.Args == nil {
+		b.WriteString("null")
+	} else {
+		b.WriteByte('[')
+		for i, a := range g.Args {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			writeGoJSONString(&b, a)
+		}
+		b.WriteByte(']')
+	}
+	for _, f := range []struct{ key, val string }{
+		{"goflags", g.GOFLAGS}, {"gowork", g.GOWORK}, {"goos", g.GOOS}, {"goarch", g.GOARCH}, {"cgo_enabled", g.CGOEnabled},
+	} {
+		if f.val != "" {
+			b.WriteString(`,"` + f.key + `":`)
+			writeGoJSONString(&b, f.val)
+		}
+	}
+	b.WriteByte('}')
+	return b.String()
 }
 
-// ParseGoRun reads a `go-run` entry line.
+// writeGoJSONString writes s as encoding/json's Marshal does: HTML escaping
+// on, `\b` and `\f` short forms, U+2028 and U+2029 escaped, and each invalid
+// UTF-8 byte replaced by the rune U+FFFD.
+func writeGoJSONString(b *strings.Builder, s string) {
+	const hexDigits = "0123456789abcdef"
+	b.WriteByte('"')
+	for i := 0; i < len(s); {
+		if c := s[i]; c < utf8.RuneSelf {
+			switch {
+			case c == '"' || c == '\\':
+				b.WriteByte('\\')
+				b.WriteByte(c)
+			case c == '\b':
+				b.WriteString(`\b`)
+			case c == '\f':
+				b.WriteString(`\f`)
+			case c == '\n':
+				b.WriteString(`\n`)
+			case c == '\r':
+				b.WriteString(`\r`)
+			case c == '\t':
+				b.WriteString(`\t`)
+			case c < 0x20 || c == '<' || c == '>' || c == '&':
+				b.WriteString(`\u00`)
+				b.WriteByte(hexDigits[c>>4])
+				b.WriteByte(hexDigits[c&0xf])
+			default:
+				b.WriteByte(c)
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size == 1:
+			b.WriteRune(utf8.RuneError)
+		case r == '\u2028' || r == '\u2029':
+			b.WriteString(`\u202`)
+			b.WriteByte(hexDigits[r&0xf])
+		default:
+			b.WriteString(s[i : i+size])
+		}
+		i += size
+	}
+	b.WriteByte('"')
+}
+
+// ParseGoRun reads a `go-run` entry line. The body must be one JSON object
+// whose keys are GoRun's own field names, each a string (args: an array of
+// strings) or null; any other key, type or spelling is malformed, so an entry
+// this reader cannot fully read never narrows a scope.
 func ParseGoRun(entry string) (GoRun, bool) {
-	var g GoRun
 	body, ok := strings.CutPrefix(entry, EntryGoRun+" ")
-	if !ok || json.Unmarshal([]byte(body), &g) != nil {
+	if !ok {
 		return GoRun{}, false
+	}
+	v, err := decodeJSON([]byte(body))
+	obj, isObj := v.(map[string]any)
+	if err != nil || !isObj {
+		return GoRun{}, false
+	}
+	var g GoRun
+	fields := map[string]*string{"dir": &g.Dir, "goflags": &g.GOFLAGS, "gowork": &g.GOWORK, "goos": &g.GOOS, "goarch": &g.GOARCH, "cgo_enabled": &g.CGOEnabled}
+	for k, val := range obj {
+		if k == "args" {
+			switch t := val.(type) {
+			case nil:
+			case []any:
+				g.Args = make([]string, 0, len(t))
+				for _, e := range t {
+					s, ok := e.(string)
+					if !ok {
+						return GoRun{}, false
+					}
+					g.Args = append(g.Args, s)
+				}
+			default:
+				return GoRun{}, false
+			}
+			continue
+		}
+		dst, known := fields[k]
+		if !known {
+			return GoRun{}, false
+		}
+		switch t := val.(type) {
+		case nil:
+		case string:
+			*dst = t
+		default:
+			return GoRun{}, false
+		}
 	}
 	return g, true
 }
@@ -250,7 +362,7 @@ func WitnessRowKey(id, command, date, runner string) string {
 // FormatReadSet renders a read-set file: the header, then the sorted, de-
 // duplicated entries, newline-terminated.
 func FormatReadSet(h ReadSetHeader, entries []string) []byte {
-	var b bytes.Buffer
+	var b strings.Builder
 	fmt.Fprintf(&b, "witness-commit %s\ncommand %s\nbrief %s\nrow %s\n", h.Commit, h.Command, h.Brief, h.Row)
 	seen := map[string]bool{}
 	sorted := append([]string(nil), entries...)
@@ -263,7 +375,7 @@ func FormatReadSet(h ReadSetHeader, entries []string) []byte {
 		b.WriteString(e)
 		b.WriteByte('\n')
 	}
-	return b.Bytes()
+	return []byte(b.String())
 }
 
 var (
