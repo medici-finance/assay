@@ -352,8 +352,8 @@
   {
    "name": "tree listing failure read as an empty listing",
    "file": "coverage_witness.go",
-   "old": "out, err := witnessGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev).Output()\n\tif err != nil {\n\t\treturn nil, false\n\t}",
-   "new": "out, err := witnessGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev).Output()\n\tif err != nil {\n\t\treturn nil, true\n\t}"
+   "old": "if err := cmd.Wait(); err != nil {\n\t\treturn nil, \"\", false\n\t}",
+   "new": "if err := cmd.Wait(); err != nil {\n\t\treturn nil, \"\", true\n\t}"
   },
   {
    "name": "implementerAttributed reads the text after the @ marker",

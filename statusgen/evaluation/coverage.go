@@ -375,13 +375,14 @@ func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses [
 			return ResultCouldNotCheck, r.ProseLedNote, wrev
 		}
 		// The recorded read set (build-less-brittle/15, readset.go): a token
-		// naming a file that is absent or whose digest differs is
+		// naming a file that is absent or whose digest differs, or one the
+		// caller could not observe within its bounds, is
 		// could-not-check whatever the scope says; a set that counts replaces
 		// the scope, except on a `+dirty` / `+unknown` witness, which keeps the
 		// conservative one.
-		rs, unreadable := x.judgeReadSet(scope, r, latest)
-		if unreadable {
-			return ResultCouldNotCheck, ReasonReadSetUnreadable, wrev
+		rs, couldNot := x.judgeReadSet(scope, r, latest)
+		if couldNot != "" {
+			return ResultCouldNotCheck, couldNot, wrev
 		}
 		scope.reads = rs
 		rel, exact, detail := classifyRevisionDetail(x, scope, wrev, targetRevision)

@@ -661,3 +661,275 @@ func TestIntroIgnoresCommitDate(t *testing.T) {
 		}
 	})
 }
+
+// boundsBrief is a brief whose one Evidence row carries a read-set token,
+// and the paths and witness that go with it.
+func boundsBrief(digest string) (briefRel, fileRel, brief string, w evaluation.Witness) {
+	token := evaluation.ReadSetCellToken(digest, "")
+	briefRel = "docs/streams/s/brief-01-x.md"
+	fileRel = "docs/streams/s/reads/" + digest
+	brief = "# Brief\n\n## Evidence\n\n" + witnessTableFor("| 1 | `true` | pass exit=0 | sha256:6f1a0b3c9d22 | 2026-08-13 | "+vfRunner+" @ b988d175ab12 "+token+" |") + "\n"
+	w = evaluation.Witness{Command: "true", Date: "2026-08-13", Runner: vfRunner + " @ b988d175ab12 " + token}
+	return briefRel, fileRel, brief, w
+}
+
+// obsText is an observation without its content.
+func obsText(o *evaluation.ReadSetObservation) string {
+	if o == nil {
+		return "<none>"
+	}
+	return "found=" + strconv.FormatBool(o.Found) + " intro=" + strconv.FormatBool(o.IntroFound) + " introFile=" + strconv.FormatBool(o.IntroFile) + " problem=" + strconv.Quote(o.Problem)
+}
+
+// observeAlloc observes w's read set in root and returns the observation and
+// the bytes the observation allocated.
+func observeAlloc(root, briefRel string, w evaluation.Witness) (*evaluation.ReadSetObservation, uint64) {
+	src := newReadSetSource(root)
+	defer src.close()
+	got := allocated(func() { src.observe(filepath.Join(root, filepath.FromSlash(briefRel)), briefRel, "1", &w) })
+	return w.ReadSet, got
+}
+
+// regression: #2026
+// TestIntroHistoryBounded — finding an introduction reads history within
+// caps checked before any content is read: a brief version over the per-blob
+// cap in reachable history (added, then removed again), or a history over the
+// total cap, is the observation's problem, having allocated far less than
+// that version; and the read-set file's existence at the introduction commit
+// is a batch check that reads none of its content.
+func TestIntroHistoryBounded(t *testing.T) {
+	const big = 8 << 20
+	briefRel, fileRel, brief, w := boundsBrief(strings.Repeat("ef", 32))
+	defer func(a, b int64) { introMaxBlobBytes, introMaxHistoryBytes = a, b }(introMaxBlobBytes, introMaxHistoryBytes)
+	introMaxBlobBytes, introMaxHistoryBytes = big/8, 64*big
+
+	t.Run("an over-size brief version in history", func(t *testing.T) {
+		root := t.TempDir()
+		writes(briefRel, brief, fileRel, "x\n")(t, root)
+		mustGitInit(t, root)
+		mustWriteFile(t, root, briefRel, brief+strings.Repeat("\n", big))
+		mustGitCommitAll(t, root, "fixture: an over-size version")
+		mustWriteFile(t, root, briefRel, brief)
+		mustGitCommitAll(t, root, "fixture: restored")
+		o, got := observeAlloc(root, briefRel, w)
+		t.Logf("the refused history read allocated %d bytes", got)
+		if o == nil || !strings.Contains(o.Problem, "over the cap") {
+			t.Errorf("observation %s: want the per-version cap problem", obsText(o))
+		}
+		if got > big/4 {
+			t.Errorf("the refused history read allocated %d bytes, want under %d: content was read before the cap", got, big/4)
+		}
+	})
+	t.Run("a history over the total cap", func(t *testing.T) {
+		root := t.TempDir()
+		writes(briefRel, brief, fileRel, "x\n")(t, root)
+		mustGitInit(t, root)
+		mustWriteFile(t, root, briefRel, brief+"\n")
+		mustGitCommitAll(t, root, "fixture: a second version")
+		defer func(n int64) { introMaxHistoryBytes = n }(introMaxHistoryBytes)
+		introMaxHistoryBytes = int64(len(brief)) + 1
+		if o, _ := observeAlloc(root, briefRel, w); o == nil || !strings.Contains(o.Problem, "history holds more than") {
+			t.Errorf("observation %s: want the total cap problem", obsText(o))
+		}
+	})
+	t.Run("the read-set file at the introduction", func(t *testing.T) {
+		root := t.TempDir()
+		writes(briefRel, brief, fileRel, strings.Repeat("\x00", big))(t, root)
+		mustGitInit(t, root)
+		mustWriteFile(t, root, fileRel, "x\n")
+		mustGitCommitAll(t, root, "fixture: the file replaced")
+		o, got := observeAlloc(root, briefRel, w)
+		t.Logf("the existence check allocated %d bytes", got)
+		if o == nil || o.Problem != "" || !o.Found || !o.IntroFound || !o.IntroFile {
+			t.Fatalf("observation %s: want the file found at its introduction", obsText(o))
+		}
+		if got > big/4 {
+			t.Errorf("the existence check allocated %d bytes, want under %d: it read the file's content", got, big/4)
+		}
+	})
+}
+
+// regression: #2026
+// TestReadSetFileBounded — the read-set file on disk is read only as a
+// regular file within readSetMaxBytes: an over-size file is a problem having
+// allocated far less than it, and a symbolic link is a problem, never
+// followed.
+func TestReadSetFileBounded(t *testing.T) {
+	const big = 8 << 20
+	briefRel, fileRel, brief, w := boundsBrief(strings.Repeat("ab", 32))
+	defer func(n int64) { readSetMaxBytes = n }(readSetMaxBytes)
+	readSetMaxBytes = big / 8
+
+	root := t.TempDir()
+	writes(briefRel, brief, fileRel, strings.Repeat("\x00", big))(t, root)
+	mustGitInit(t, root)
+	o, got := observeAlloc(root, briefRel, w)
+	t.Logf("the refused read-set file read allocated %d bytes", got)
+	if o == nil || o.Found || !strings.Contains(o.Problem, "over the cap") {
+		t.Errorf("observation %s: want the read-set file cap problem", obsText(o))
+	}
+	if got > big/4 {
+		t.Errorf("the refused read allocated %d bytes, want under %d", got, big/4)
+	}
+
+	if runtime.GOOS == "windows" {
+		return // creating a symbolic link needs a privilege there
+	}
+	linked := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(outside, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writes(briefRel, brief)(t, linked)
+	if err := os.MkdirAll(filepath.Join(linked, filepath.FromSlash(filepath.Dir(fileRel))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(linked, filepath.FromSlash(fileRel))); err != nil {
+		t.Fatal(err)
+	}
+	mustGitInit(t, linked)
+	if o, _ := observeAlloc(linked, briefRel, w); o == nil || o.Found || !strings.Contains(o.Problem, "not a regular file") {
+		t.Errorf("observation %s: want a linked read-set file refused", obsText(o))
+	}
+}
+
+// regression: #2026
+// TestListingCapStreams — the export's listing is read as it arrives and
+// stops at its caps: a tree listing far more entries, or far more bytes, than
+// the caps is refused having allocated far less than the listing.
+func TestListingCapStreams(t *testing.T) {
+	const n = 40000
+	repo := t.TempDir()
+	writes("seed.txt", "seed\n")(t, repo)
+	mustGitInit(t, repo)
+	blob := gitPipe(t, repo, "x\n", "hash-object", "-w", "--stdin")
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		name := strconv.Itoa(i)
+		b.WriteString("100644 blob " + blob + "\t" + strings.Repeat("n", 200-len(name)) + name + "\n")
+	}
+	listing := b.Len()
+	commit := gitPipe(t, repo, "", "commit-tree", gitPipe(t, repo, b.String(), "mktree"), "-m", "fixture: a wide tree")
+	t.Setenv("TMPDIR", t.TempDir())
+	defer func(e int, l int64) { exportMaxEntries, exportMaxListBytes = e, l }(exportMaxEntries, exportMaxListBytes)
+
+	exportMaxEntries = 100
+	var err error
+	got := allocated(func() { _, err = exportTree(repo, commit) })
+	t.Logf("a %d-byte listing: the entry cap refusal allocated %d bytes", listing, got)
+	if got > uint64(listing/4) {
+		t.Errorf("the entry cap refusal allocated %d bytes, want under %d: the listing was buffered first", got, listing/4)
+	}
+	if err == nil || !strings.Contains(err.Error(), "entries, over the export cap") {
+		t.Errorf("want the entry cap refusal; got %v", err)
+	}
+	exportMaxEntries, exportMaxListBytes = 2*n, 256<<10
+	got = allocated(func() { _, err = exportTree(repo, commit) })
+	t.Logf("the listing byte cap refusal allocated %d bytes", got)
+	if got > uint64(listing/4) {
+		t.Errorf("the listing byte cap refusal allocated %d bytes, want under %d", got, listing/4)
+	}
+	if err == nil || !strings.Contains(err.Error(), "listing holds more than") {
+		t.Errorf("want the listing byte cap refusal; got %v", err)
+	}
+}
+
+// regression: #2026
+// TestFloorEvalBudget — the floor is bounded across one evaluation, whatever
+// the number of read sets: past floorEvalRuns go tool runs, or once
+// floorEvalBudget has gone to them, a floor is a problem with no run; and
+// every export of the evaluation together writes at most exportEvalBytes.
+func TestFloorEvalBudget(t *testing.T) {
+	src, commit := goFloorFixture(t)
+	defer func(r int, d time.Duration, b int64) { floorEvalRuns, floorEvalBudget, exportEvalBytes = r, d, b }(floorEvalRuns, floorEvalBudget, exportEvalBytes)
+	p := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
+	r := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./r"}}
+	floorEvalRuns = 1
+	if fl := src.goFloor(commit, p); fl.Problem != "" {
+		t.Fatalf("control floor: %q", fl.Problem)
+	}
+	if fl := src.goFloor(commit, r); !strings.Contains(fl.Problem, "times, its cap") {
+		t.Errorf("want the run cap problem; got %v (%q)", fl.Files, fl.Problem)
+	}
+	floorEvalRuns, floorEvalBudget = 64, time.Nanosecond
+	if fl := src.goFloor(commit, r); !strings.Contains(fl.Problem, "on compile-input floors, its cap") {
+		t.Errorf("want the time budget problem; got %v (%q)", fl.Files, fl.Problem)
+	}
+
+	root := src.root
+	mustWriteFile(t, root, "r/s.go", "package r\n")
+	mustGitCommitAll(t, root, "fixture: a second commit")
+	second := gitFullHead(t, root)
+	d, n, err := exportTreeWithin(root, commit, exportMaxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.RemoveAll(d)
+	exportEvalBytes = n
+	both := newReadSetSource(root)
+	defer both.close()
+	if _, why := both.export(commit); why != "" {
+		t.Fatalf("first export within the evaluation cap: %s", why)
+	}
+	if _, why := both.export(second); !strings.Contains(why, "already hold the cap") {
+		t.Errorf("want the evaluation export cap problem; got %q", why)
+	}
+	exportEvalBytes = n - 1
+	short := newReadSetSource(root)
+	defer short.close()
+	if _, why := short.export(commit); !strings.Contains(why, "export cap of "+strconv.FormatInt(n-1, 10)+" bytes") {
+		t.Errorf("want the export bounded by what the evaluation has left; got %q", why)
+	}
+}
+
+// fakeGo puts first on PATH a go tool whose `go env -json` names its own
+// GOROOT and whose `go list` runs before, then prints listJSON ($PWD
+// substituted). A floor run's PATH is that GOROOT's bin only, so before names
+// any other program by its absolute path.
+func fakeGo(t *testing.T, before, listJSON string) {
+	t.Helper()
+	goroot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(goroot, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\ncase \"$1\" in\nenv)\n  if [ \"$2\" = -json ]; then\n    printf '{\"GOROOT\":\"%s\",\"GOMODCACHE\":\"%s\",\"GOOS\":\"linux\",\"GOARCH\":\"amd64\",\"CGO_ENABLED\":\"0\"}\\n' '" +
+		goroot + "' '" + filepath.Join(goroot, "modcache") + "'\n  else\n    echo\n  fi ;;\nlist)\n  " + before + "\n  printf '%s\\n' \"" + listJSON + "\" ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(goroot, "bin", "go"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Join(goroot, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// regression: #2026
+// TestFloorFakeGoBranches — the floor's own refusals of what the go tool
+// says, with a go tool that says it: a listed file the witness tree does not
+// hold is a problem, and a tool that exits while a child keeps its output
+// open is not waited for past floorWaitDelay.
+func TestFloorFakeGoBranches(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a shell-script go tool on PATH is POSIX-only")
+	}
+	pkg := `{\"ImportPath\":\"example.com/fl/p\",\"Dir\":\"$PWD/p\",\"GoFiles\":[\"p.go\",\"ghost.go\"],\"Module\":{\"GoMod\":\"$PWD/go.mod\",\"Main\":true}}`
+	g := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
+	t.Run("a listed file the tree does not hold", func(t *testing.T) {
+		fakeGo(t, ":", pkg)
+		src, commit := goFloorFixture(t)
+		if fl := src.goFloor(commit, g); !strings.Contains(fl.Problem, "p/ghost.go, which the witness tree does not hold") {
+			t.Errorf("want the phantom problem; got %v (%q)", fl.Files, fl.Problem)
+		}
+	})
+	t.Run("a child holding the output open", func(t *testing.T) {
+		fakeGo(t, "/bin/sleep 20 &", pkg)
+		src, commit := goFloorFixture(t)
+		defer func(d time.Duration) { floorWaitDelay = d }(floorWaitDelay)
+		floorWaitDelay = 200 * time.Millisecond
+		start := time.Now()
+		fl := src.goFloor(commit, g)
+		if took := time.Since(start); took > 10*time.Second {
+			t.Errorf("the floor waited %s for a child holding its output", took)
+		}
+		if fl.Problem == "" {
+			t.Errorf("want a problem for a run whose output was cut off; got %v", fl.Files)
+		}
+	})
+}

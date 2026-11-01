@@ -46,6 +46,7 @@ const (
 	ReasonReadSetHistory    = "the row read repository history (.git), so only a witness at the item's exact revision speaks for it"
 	ReasonFloorOmits        = "the recorded read set omits a file the go toolchain compiles for this row"
 	ReasonFloorMissing      = "the read set records a go build but no compile-input floor was supplied"
+	ReasonReadSetBounds     = "the witness's recorded read set or its introduction could not be observed within the reader's bounds"
 )
 
 // Read-set entry kinds. A path is slash-separated, relative to the
@@ -75,12 +76,16 @@ type ReadSetHeader struct {
 // the brief file, read from ancestry (its brief file holds the row and no
 // parent's does; a row more than one commit introduced has none), and, there,
 // the row's Runner cell and whether the read-set file existed in that commit.
+// Problem is non-empty when the caller refused to observe the file or the
+// introduction within its own bounds (an over-size file or history object):
+// the claim is then could-not-check, never today's scope.
 type ReadSetObservation struct {
 	Content     []byte
 	Found       bool
 	IntroFound  bool
 	IntroRunner string
 	IntroFile   bool
+	Problem     string
 }
 
 // GoFloor is the compile-input floor for one `go-run` entry at one witness
@@ -322,10 +327,17 @@ func ReadSetCellToken(digest, couldNot string) string {
 var maxFloorRuns = 16
 
 // reasonText is recorded or tree-supplied text made safe for a reason: no
-// control byte, no cell separator, no backtick, at most one parenthesis level.
+// control byte, no bidirectional format character or Unicode line separator,
+// no cell separator, no backtick, at most one parenthesis level.
 func reasonText(s string) string {
 	return sanitizeReason(strings.Map(func(r rune) rune {
-		if r < 0x20 || (r >= 0x7f && r < 0xa0) { // C0, DEL and C1 controls
+		switch {
+		case r < 0x20 || (r >= 0x7f && r < 0xa0): // C0, DEL and C1 controls
+			return ' '
+		case r == 0x061c || r == 0x200e || r == 0x200f, // arabic letter, left-to-right and right-to-left marks
+			r >= 0x202a && r <= 0x202e, // embeddings, overrides and their pop
+			r >= 0x2066 && r <= 0x2069, // isolates and their pop
+			r == 0x2028 || r == 0x2029: // line and paragraph separators
 			return ' '
 		}
 		return r
@@ -493,36 +505,41 @@ func (sc witnessScope) exempt(p string) bool {
 }
 
 // judgeReadSet decides whether witness w's read set counts for row r. It
-// returns the counted set, or nil (today's scope stands); unreadable is set
-// when the token names a file that is absent or whose digest differs, which
-// resolves the claim could-not-check whatever its scope would say.
-func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *readSet, unreadable bool) {
+// returns the counted set, or nil (today's scope stands); couldNot is the
+// reason when the token names a file that is absent or whose digest differs,
+// or when the caller could not observe the file or its introduction within
+// its bounds, which resolves the claim could-not-check whatever its scope
+// would say.
+func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *readSet, couldNot string) {
 	digest, _, ok := ReadSetToken(w.Runner)
 	if !ok || digest == "" {
-		return nil, false
+		return nil, ""
 	}
 	o := w.ReadSet
+	if o != nil && o.Problem != "" {
+		return nil, ReasonReadSetBounds + " (" + reasonText(o.Problem) + ")"
+	}
 	if o == nil || !o.Found || ReadSetDigest(o.Content) != digest {
-		return nil, true
+		return nil, ReasonReadSetUnreadable
 	}
 	h, entries, err := ParseReadSet(o.Content)
 	if err != nil {
-		return nil, false
+		return nil, ""
 	}
 	full, why := x.resolveCommitToken(witnessBaseRevision(w.Tree))
 	if why != "" || h.Commit != full {
-		return nil, false
+		return nil, ""
 	}
 	if h.Command != ReadSetCommandDigest(r.Command) || h.Brief != sc.briefRel || h.Row != r.ID {
-		return nil, false
+		return nil, ""
 	}
 	// The introduction binding: the row arrived carrying this token, with its
 	// file, in one commit. A token or file a later commit added is ignored.
 	if !o.IntroFound || !o.IntroFile {
-		return nil, false
+		return nil, ""
 	}
 	if d, _, ok := ReadSetToken(o.IntroRunner); !ok || d != digest {
-		return nil, false
+		return nil, ""
 	}
 	rs = &readSet{files: map[string]bool{}, all: map[string]bool{}}
 	for _, e := range entries {
@@ -554,9 +571,9 @@ func (x *evalCtx) judgeReadSet(sc witnessScope, r VerifyRow, w Witness) (rs *rea
 		}
 	}
 	if rs.paths == 0 {
-		return nil, false
+		return nil, ""
 	}
-	return rs, false
+	return rs, ""
 }
 
 // describe says what a read-set scope covers, for a reason.

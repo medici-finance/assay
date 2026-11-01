@@ -628,3 +628,26 @@ func TestFloorReasonTextAndBudget(t *testing.T) {
 		t.Errorf("floors were asked for over the budget: %d", len(src.asked))
 	}
 }
+
+// regression: #2026
+// TestReadSetBoundsCouldNotCheck — a read set the caller could not observe
+// within its bounds is could-not-check with the caller's reason, never
+// today's scope, whatever else the observation holds; and a reason carries
+// no bidirectional format character or Unicode line separator.
+func TestReadSetBoundsCouldNotCheck(t *testing.T) {
+	fx := newRsFx(t)
+	fx.obs = func(o *ReadSetObservation) { o.Problem = "a historic version holds 9 bytes\u202e, over the cap" }
+	c := fx.item(unreadOnly)
+	wantResult(t, "an observation over the caller's bounds", c, ResultCouldNotCheck, ReasonReadSetBounds, "over the cap")
+	if strings.ContainsRune(c.Reason, 0x202e) {
+		t.Errorf("the reason carries a bidirectional override: %q", c.Reason)
+	}
+	for _, r := range []rune{0x061c, 0x200e, 0x200f, 0x202a, 0x202e, 0x2066, 0x2069, 0x2028, 0x2029} {
+		if got := reasonText("a" + string(r) + "b"); strings.ContainsRune(got, r) {
+			t.Errorf("reasonText kept U+%04X: %q", r, got)
+		}
+	}
+	if got := reasonText("plain é text"); got != "plain é text" {
+		t.Errorf("reasonText changed ordinary text: %q", got)
+	}
+}

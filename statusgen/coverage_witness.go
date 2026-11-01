@@ -40,20 +40,66 @@ func witnessGit(root string, args ...string) *exec.Cmd {
 }
 
 func (r coverageRepo) ListTree(rev string) ([]evaluation.TreeBlob, bool) {
-	out, err := witnessGit(r.root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
+	entries, over, ok := r.listTree(rev, -1, -1)
+	return entries, ok && over == ""
+}
+
+// listTree reads rev's `ls-tree -r -z` listing as it arrives. With maxEntries
+// or maxBytes not negative it stops once the listing holds more entries or
+// more bytes than that (over names the cap, "entries" or "bytes"; git is
+// killed), so memory never holds more of the listing than the caps allow. A
+// malformed record fails the read.
+func (r coverageRepo) listTree(rev string, maxEntries int, maxBytes int64) (entries []evaluation.TreeBlob, over string, ok bool) {
+	cmd := witnessGit(r.root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev)
+	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
-	var entries []evaluation.TreeBlob
-	for _, e := range splitNUL(out) {
-		meta, name, found := strings.Cut(e, "\t")
+	if err := cmd.Start(); err != nil {
+		return nil, "", false
+	}
+	var src io.Reader = out
+	if maxBytes >= 0 {
+		src = io.LimitReader(out, maxBytes+1)
+	}
+	br := bufio.NewReader(src)
+	var read int64
+	ok = true
+	for {
+		rec, err := br.ReadString(0)
+		read += int64(len(rec))
+		if maxBytes >= 0 && read > maxBytes {
+			over = "bytes"
+			break
+		}
+		if err == io.EOF && rec == "" {
+			break
+		}
+		if err != nil {
+			ok = false // a record not NUL-terminated, or a read error
+			break
+		}
+		meta, name, found := strings.Cut(strings.TrimSuffix(rec, "\x00"), "\t")
 		f := strings.Fields(meta)
 		if !found || len(f) != 3 {
-			return nil, false
+			ok = false
+			break
+		}
+		if maxEntries >= 0 && len(entries) == maxEntries {
+			over = "entries"
+			break
 		}
 		entries = append(entries, evaluation.TreeBlob{Mode: f[0], OID: f[2], Path: name})
 	}
-	return entries, true
+	if over != "" || !ok {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, over, ok
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, "", false
+	}
+	return entries, "", true
 }
 
 func (r coverageRepo) CheckAttr(rev string, paths []string) (map[string][]string, bool) {

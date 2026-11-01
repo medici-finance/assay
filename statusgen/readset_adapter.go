@@ -20,6 +20,7 @@ package main
 // a fresh HOME and build cache, no network, no toolchain switch, no GOFLAGS.
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -48,13 +49,21 @@ type readSetSource struct {
 	exports map[string]string // full commit -> exported tree dir ("" when the export failed)
 	failed  map[string]string // full commit -> why the export failed
 	intro   map[string]map[string]introRow
-	floors  map[string]evaluation.GoFloor // GoFloorKey -> the floor computed for it
+	// introWhy is why a brief's history was refused (introductions).
+	introWhy map[string]string
+	floors   map[string]evaluation.GoFloor // GoFloorKey -> the floor computed for it
 	// tool is the evaluator's go tool, read once on first use; toolWhy says
 	// why it could not be read. scratch holds the floor runs' HOME, GOPATH,
 	// build cache and temporary directory.
 	tool    *floorTool
 	toolWhy string
 	scratch string
+	// exported is the bytes every export so far wrote; floorRuns and
+	// floorSpent count the floor's go tool runs and their wall time, for the
+	// per-evaluation caps.
+	exported   int64
+	floorRuns  int
+	floorSpent time.Duration
 }
 
 // introRow is the commit that introduced a witness row with a given identity
@@ -65,7 +74,7 @@ type introRow struct {
 }
 
 func newReadSetSource(root string) *readSetSource {
-	return &readSetSource{root: root, exports: map[string]string{}, failed: map[string]string{}, intro: map[string]map[string]introRow{}, floors: map[string]evaluation.GoFloor{}}
+	return &readSetSource{root: root, exports: map[string]string{}, failed: map[string]string{}, intro: map[string]map[string]introRow{}, introWhy: map[string]string{}, floors: map[string]evaluation.GoFloor{}}
 }
 
 // close removes every exported tree and the floor runs' scratch directory.
@@ -83,11 +92,17 @@ func (s *readSetSource) close() {
 	}
 	s.exports, s.failed, s.floors = map[string]string{}, map[string]string{}, map[string]evaluation.GoFloor{}
 	s.tool, s.toolWhy, s.scratch = nil, "", ""
+	s.exported, s.floorRuns, s.floorSpent = 0, 0, 0
 }
 
 // observe fills w.ReadSet for a witness whose Runner cell carries a
 // `reads sha256:` token. briefPath is the brief file on disk, briefRel its
-// repository path, rowID/date the witness's `#` and Date cells.
+// repository path, rowID/date the witness's `#` and Date cells. Nothing it
+// reads is unbounded: the read-set file is read only when it is a regular
+// file within readSetMaxBytes, the introduction's history within its caps
+// (introductions), and the file's existence at the introduction commit is a
+// batch check that reads no content. A refusal is the observation's Problem,
+// which the library judges could-not-check.
 func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation.Witness) {
 	digest, _, ok := evaluation.ReadSetToken(w.Runner)
 	if !ok || digest == "" {
@@ -95,19 +110,62 @@ func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation
 	}
 	o := &evaluation.ReadSetObservation{}
 	w.ReadSet = o
-	if b, err := os.ReadFile(filepath.Join(filepath.Dir(briefPath), evaluation.ReadSetDir, digest)); err == nil {
-		o.Content, o.Found = b, true
+	o.Content, o.Found, o.Problem = readSetFile(filepath.Join(filepath.Dir(briefPath), evaluation.ReadSetDir, digest))
+	if o.Problem != "" {
+		return
 	}
 	key := evaluation.WitnessRowKey(rowID, w.Command, w.Date, w.Runner)
-	in, found := s.introductions(briefRel)[key]
+	intro, problem := s.introductions(briefRel)
+	if problem != "" {
+		o.Problem = problem
+		return
+	}
+	in, found := intro[key]
 	if !found {
 		return
 	}
 	o.IntroFound, o.IntroRunner = true, in.runner
 	spec := in.commit + ":" + evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(briefRel)), digest)
-	got, ok := coverageRepo{root: s.root}.CatObjects([]string{spec})
-	_, o.IntroFile = got[spec]
-	o.IntroFile = o.IntroFile && ok
+	sizes, ok := coverageRepo{root: s.root}.ObjectSizes([]string{spec})
+	o.IntroFile = ok && sizes[spec].Type == "blob"
+}
+
+// readSetMaxBytes caps one read-set file; introMaxBlobBytes one historic
+// brief blob and introMaxHistoryBytes every historic brief blob of one brief
+// together. A brief or read set over them is refused, never read.
+var (
+	readSetMaxBytes      int64 = 16 << 20
+	introMaxBlobBytes    int64 = 4 << 20
+	introMaxHistoryBytes int64 = 64 << 20
+)
+
+// readSetFile reads the read-set file at p: absent is not found, and a file
+// that is not a regular file or is over readSetMaxBytes is a problem, read
+// no further than the cap.
+func readSetFile(p string) (content []byte, found bool, problem string) {
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return nil, false, ""
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, false, "the read-set file is not a regular file"
+	}
+	if fi.Size() > readSetMaxBytes {
+		return nil, false, fmt.Sprintf("the read-set file holds %d bytes, over the cap of %d", fi.Size(), readSetMaxBytes)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, false, ""
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, readSetMaxBytes+1))
+	if err != nil {
+		return nil, false, ""
+	}
+	if int64(len(b)) > readSetMaxBytes {
+		return nil, false, fmt.Sprintf("the read-set file holds more than the cap of %d bytes", readSetMaxBytes)
+	}
+	return b, true, ""
 }
 
 // introductions maps each witness row identity key in the brief's history to
@@ -120,21 +178,24 @@ func (s *readSetSource) observe(briefPath, briefRel, rowID string, w *evaluation
 // ambiguous history never binds a read set.
 //
 // The history is walked in process (gitcore PathHistory: replacement objects
-// are never read) and each distinct brief blob, the parents' included, is read
-// once through the coverage port's batch object read. A repository whose
-// profile the in-process reader does not cover (a shallow clone, a native
-// discovery or config environment), or a blob that cannot be read, yields no
-// introduction, so every read set there is ignored: a history this reader
-// cannot see never binds a read set.
-func (s *readSetSource) introductions(briefRel string) map[string]introRow {
+// are never read). Each distinct brief blob, the parents' included, is sized
+// first by one batch check that reads no content: one over
+// introMaxBlobBytes, or all of them together over introMaxHistoryBytes, is
+// the returned problem and nothing is read. The blobs are then streamed once
+// through the coverage port and parsed line by line, never held whole. A
+// repository whose profile the in-process reader does not cover (a shallow
+// clone, a native discovery or config environment), or a blob that cannot be
+// read, yields no introduction, so every read set there is ignored: a history
+// this reader cannot see never binds a read set.
+func (s *readSetSource) introductions(briefRel string) (map[string]introRow, string) {
 	if m, ok := s.intro[briefRel]; ok {
-		return m
+		return m, s.introWhy[briefRel]
 	}
 	none := map[string]introRow{}
 	s.intro[briefRel] = none
 	read := gitCoreFor(s.root)
 	if read.err != nil || read.native != "" {
-		return none
+		return none, ""
 	}
 	type touch struct {
 		commit, blob string
@@ -148,7 +209,7 @@ func (s *readSetSource) introductions(briefRel string) map[string]introRow {
 		return true
 	})
 	if err != nil {
-		return none
+		return none, ""
 	}
 	var blobs []string
 	listed := map[string]bool{}
@@ -164,50 +225,67 @@ func (s *readSetSource) introductions(briefRel string) map[string]introRow {
 			want(p)
 		}
 	}
-	objs, ok := coverageRepo{root: s.root}.CatObjects(blobs)
+	repo := coverageRepo{root: s.root}
+	sizes, ok := repo.ObjectSizes(blobs)
 	if !ok {
-		return none
+		return none, ""
 	}
-	rowsOf := map[string]map[string]string{} // blob -> key -> Runner cell
-	rows := func(blob string) (map[string]string, bool) {
-		if r, done := rowsOf[blob]; done {
-			return r, r != nil
+	var total int64
+	for _, b := range blobs {
+		sz, found := sizes[b]
+		if !found || sz.Type != "blob" {
+			return none, ""
 		}
-		obj, found := objs[blob]
-		if !found || obj.Type != "blob" {
-			rowsOf[blob] = nil
-			return nil, false
+		if sz.Size > introMaxBlobBytes {
+			s.introWhy[briefRel] = fmt.Sprintf("a historic version of the brief holds %d bytes, over the cap of %d", sz.Size, introMaxBlobBytes)
+			return none, s.introWhy[briefRel]
+		}
+		if total += sz.Size; total > introMaxHistoryBytes {
+			s.introWhy[briefRel] = fmt.Sprintf("the brief's history holds more than the cap of %d bytes", introMaxHistoryBytes)
+			return none, s.introWhy[briefRel]
+		}
+	}
+	rowsOf := map[string]map[string]string{} // blob -> key -> Runner cell (only a cell carrying a read-set token is kept)
+	err = repo.StreamObjects(blobs, func(oid, typ string, size int64, body io.Reader) error {
+		if typ != "blob" || size != sizes[oid].Size {
+			return fmt.Errorf("%s changed between the size check and the read", oid)
 		}
 		r := map[string]string{}
-		for _, line := range strings.Split(string(obj.Content), "\n") {
+		sc := bufio.NewScanner(body)
+		sc.Buffer(nil, int(introMaxBlobBytes)+1)
+		for sc.Scan() {
+			line := sc.Text()
 			cells := witnessCells(line)
 			if cells == nil {
 				continue
 			}
 			key := evaluation.WitnessRowKey(cells[0], witnessCommandOf(line), cells[witnessCellDate], cells[witnessCellRunner])
 			if _, seen := r[key]; !seen {
-				r[key] = strings.TrimSpace(cells[witnessCellRunner])
+				runner := strings.TrimSpace(cells[witnessCellRunner])
+				if _, _, tok := evaluation.ReadSetToken(runner); !tok {
+					runner = "" // a row with no token can bind no read set
+				}
+				r[key] = runner
 			}
 		}
-		rowsOf[blob] = r
-		return r, true
+		if err := sc.Err(); err != nil {
+			return err
+		}
+		rowsOf[oid] = r
+		return nil
+	})
+	if err != nil {
+		return none, ""
 	}
 	introducers := map[string][]introRow{}
 	for _, t := range touches {
-		held, ok := rows(t.blob)
-		if !ok {
-			return none
-		}
+		held := rowsOf[t.blob]
 		var parents []map[string]string
 		for _, p := range t.parents {
 			if p == "" {
 				continue // the brief is absent in that parent
 			}
-			pr, ok := rows(p)
-			if !ok {
-				return none
-			}
-			parents = append(parents, pr)
+			parents = append(parents, rowsOf[p])
 		}
 		for key, runner := range held {
 			inParent := false
@@ -229,7 +307,7 @@ func (s *readSetSource) introductions(briefRel string) map[string]introRow {
 		}
 	}
 	s.intro[briefRel] = m
-	return m
+	return m, ""
 }
 
 // GoFloor is the floor the library asks for one build-family `go-run` entry
@@ -261,11 +339,21 @@ func (s *readSetSource) goFloor(commit string, g evaluation.GoRun) evaluation.Go
 	if why != "" {
 		return evaluation.GoFloor{Problem: why}
 	}
+	if s.floorRuns >= floorEvalRuns {
+		return evaluation.GoFloor{Problem: fmt.Sprintf("the evaluation has already run the compile-input floor %d times, its cap", floorEvalRuns)}
+	}
+	if s.floorSpent >= floorEvalBudget {
+		return evaluation.GoFloor{Problem: fmt.Sprintf("the evaluation has already spent %s on compile-input floors, its cap", floorEvalBudget)}
+	}
 	dir, why := s.export(commit)
 	if why != "" {
 		return evaluation.GoFloor{Problem: why}
 	}
-	return runFloor(tool, s.scratch, dir, plan)
+	start := time.Now()
+	f := runFloor(tool, s.scratch, dir, plan)
+	s.floorRuns++
+	s.floorSpent += time.Since(start)
+	return f
 }
 
 // export writes commit's tree, byte for byte as git stores it (no checkout
@@ -274,33 +362,56 @@ func (s *readSetSource) export(commit string) (string, string) {
 	if d, ok := s.exports[commit]; ok {
 		return d, s.failed[commit]
 	}
-	d, err := exportTree(s.root, commit)
+	left := exportEvalBytes - s.exported
+	if left <= 0 {
+		s.exports[commit], s.failed[commit] = "", fmt.Sprintf("the evaluation's exports already hold the cap of %d bytes", exportEvalBytes)
+		return "", s.failed[commit]
+	}
+	d, n, err := exportTreeWithin(s.root, commit, min(left, exportMaxBytes))
 	if err != nil {
 		s.exports[commit], s.failed[commit] = "", "the witness tree could not be exported: "+err.Error()
 		return "", s.failed[commit]
 	}
 	s.exports[commit] = d
+	s.exported += n
 	return d, ""
 }
 
-// exportMaxEntries, exportMaxBytes and exportMaxLinkBytes cap one exported
-// witness tree. exportMaxBytes bounds the bytes the export writes, every
-// entry counted, a repeated object once per entry; the bytes read from git
-// are each distinct object once, never more than that. exportMaxLinkBytes
-// bounds the link targets, the only content held in memory.
+// exportMaxEntries, exportMaxListBytes, exportMaxBytes and
+// exportMaxLinkBytes cap one exported witness tree. The listing is read as it
+// arrives and stops past exportMaxEntries entries or exportMaxListBytes
+// bytes, so the listing held in memory is bounded by them. exportMaxBytes
+// bounds the bytes the export writes, every entry counted, a repeated object
+// once per entry; the bytes read from git are each distinct object once,
+// never more than that. exportMaxLinkBytes bounds the link targets, the only
+// object content held in memory. exportEvalBytes bounds the bytes every
+// export of one evaluation writes together, the floor's scratch disk.
 var (
 	exportMaxEntries         = 200000
+	exportMaxListBytes int64 = 64 << 20
 	exportMaxBytes     int64 = 4 << 30
 	exportMaxLinkBytes int64 = 1 << 20
+	exportEvalBytes    int64 = 8 << 30
+)
+
+// floorEvalRuns and floorEvalBudget bound the floor across one evaluation,
+// whatever the number of read sets: at most floorEvalRuns go tool runs, and
+// none starts once floorEvalBudget of wall time has gone to floor runs (one
+// run already started finishes within its own floorTimeout).
+var (
+	floorEvalRuns   = 64
+	floorEvalBudget = 10 * time.Minute
 )
 
 // exportTree writes the tree of commit to a new temporary directory through
-// the coverage port's tree listing, size check and streamed object read
-// (`git cat-file --batch-check`, then `--batch`, replacement objects
-// disabled). The caps are checked against the listed sizes before any
-// content is read; each distinct object is then read once and streamed to
-// its first file, and a repeated object is copied from that file, so memory
-// stays a copy buffer whatever the tree holds. Every write stays under that
+// the coverage port's streamed tree listing, size check and streamed object
+// read (`git cat-file --batch-check`, then `--batch`, replacement objects
+// disabled). The listing stops at its own caps as it is read; the byte caps
+// are checked against the listed sizes before any content is read; each
+// distinct object is then read once and streamed to its first file, and a
+// repeated object is copied from that file, so object content in memory is a
+// copy buffer and the link targets, and the listing in memory is bounded by
+// the listing caps. Every write stays under that
 // directory: exportPlan refuses an entry path that is absolute, has an
 // empty, `.`, `..` or `.git` component, or collides with another entry (the
 // same path ignoring case, or one entry below another); every file is
@@ -310,17 +421,27 @@ var (
 // out of the tree. Submodule entries are skipped. A refused tree is an
 // error, and the directory is removed.
 func exportTree(root, commit string) (string, error) {
+	dir, _, err := exportTreeWithin(root, commit, exportMaxBytes)
+	return dir, err
+}
+
+// exportTreeWithin is exportTree with maxBytes (at most exportMaxBytes) as
+// the byte cap; it also returns the bytes the export wrote.
+func exportTreeWithin(root, commit string, maxBytes int64) (string, int64, error) {
 	repo := coverageRepo{root: root}
-	listed, ok := repo.ListTree(commit)
-	if !ok {
-		return "", fmt.Errorf("the tree of %s could not be listed", commit)
+	listed, over, ok := repo.listTree(commit, exportMaxEntries, exportMaxListBytes)
+	switch over {
+	case "entries":
+		return "", 0, fmt.Errorf("the tree has more than %d entries, over the export cap of %d", exportMaxEntries, exportMaxEntries)
+	case "bytes":
+		return "", 0, fmt.Errorf("the tree's listing holds more than %d bytes, over the export cap", exportMaxListBytes)
 	}
-	if len(listed) > exportMaxEntries {
-		return "", fmt.Errorf("the tree has %d entries, over the export cap of %d", len(listed), exportMaxEntries)
+	if !ok {
+		return "", 0, fmt.Errorf("the tree of %s could not be listed", commit)
 	}
 	ents, err := exportPlan(listed)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	var distinct []string
 	seen := map[string]bool{}
@@ -339,30 +460,30 @@ func exportTree(root, commit string) (string, error) {
 	}
 	sizes, ok := repo.ObjectSizes(distinct)
 	if !ok {
-		return "", errors.New("git cat-file --batch-check failed")
+		return "", 0, errors.New("git cat-file --batch-check failed")
 	}
 	var total, linkTotal int64
 	for _, e := range ents {
 		sz, found := sizes[e.OID]
 		if !found || sz.Type != "blob" {
-			return "", fmt.Errorf("%s (%s) is not a readable blob", e.Path, e.OID)
+			return "", 0, fmt.Errorf("%s (%s) is not a readable blob", e.Path, e.OID)
 		}
-		if total += sz.Size; total > exportMaxBytes {
-			return "", fmt.Errorf("the tree holds more than the export cap of %d bytes", exportMaxBytes)
+		if total += sz.Size; total > maxBytes {
+			return "", 0, fmt.Errorf("the tree holds more than the export cap of %d bytes", maxBytes)
 		}
 		if e.Mode == "120000" {
 			if linkTotal += sz.Size; linkTotal > exportMaxLinkBytes {
-				return "", fmt.Errorf("the tree's link targets hold more than the export cap of %d bytes", exportMaxLinkBytes)
+				return "", 0, fmt.Errorf("the tree's link targets hold more than the export cap of %d bytes", exportMaxLinkBytes)
 			}
 		}
 	}
 	dir, err := os.MkdirTemp("", "readset-floor-")
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	fail := func(err error) (string, error) {
+	fail := func(err error) (string, int64, error) {
 		_ = os.RemoveAll(dir)
-		return "", err
+		return "", 0, err
 	}
 	create := func(p string, mode os.FileMode) (*os.File, error) {
 		dst := filepath.Join(dir, filepath.FromSlash(p))
@@ -436,7 +557,7 @@ func exportTree(root, commit string) (string, error) {
 			return fail(err)
 		}
 	}
-	return dir, nil
+	return dir, total, nil
 }
 
 // copyExported copies the exported file from to a fresh file at p, both
