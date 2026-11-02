@@ -220,8 +220,14 @@
     {
       "name": "widen abandoned build names",
       "file": "internal/cellscratch/store.go",
-      "old": "return strings.HasPrefix(name, \"go-build\") ||",
-      "new": "return true ||"
+      "old": "if digits, ok := strings.CutPrefix(name, prefix); ok && digits != \"\" && strings.Trim(digits, \"0123456789\") == \"\" {",
+      "new": "if prefix != \"\" {"
+    },
+    {
+      "name": "accept any name after a build prefix",
+      "file": "internal/cellscratch/store.go",
+      "old": "if digits, ok := strings.CutPrefix(name, prefix); ok && digits != \"\" && strings.Trim(digits, \"0123456789\") == \"\" {",
+      "new": "if _, ok := strings.CutPrefix(name, prefix); ok {"
     },
     {
       "name": "skip abandoned child proof",
@@ -240,6 +246,42 @@
       "file": "internal/cellscratch/store.go",
       "old": "targets = c.build",
       "new": "targets = append(c.build, c.r.ID)"
+    },
+    {
+      "name": "plan through a linked workspace",
+      "file": "internal/cellscratch/store.go",
+      "old": "err := s.realDir(r.ID + \"/work\")",
+      "new": "err := error(nil)"
+    },
+    {
+      "name": "delete through a linked workspace",
+      "file": "internal/cellscratch/store.go",
+      "old": "linkErr = errors.Join(linkErr, s.realDir(filepath.Dir(next)))",
+      "new": "linkErr = errors.Join(linkErr, error(nil)); _ = next"
+    },
+    {
+      "name": "trust a linked path component",
+      "file": "internal/cellscratch/store.go",
+      "old": "\t\tif !st.IsDir() {\n\t\t\treturn errNotRealDir",
+      "new": "\t\tif false && !st.IsDir() {\n\t\t\treturn errNotRealDir"
+    },
+    {
+      "name": "stamp an incomplete sweep",
+      "file": "internal/cellscratch/store.go",
+      "old": "if err == nil && !rep.Partial {",
+      "new": "if true {"
+    },
+    {
+      "name": "wait on maintenance like a launch",
+      "file": "internal/cellscratch/store.go",
+      "old": "s.lockWait, s.lockLog = MaintenanceLockWait, nil",
+      "new": "s.lockWait, s.lockLog = SweepLockWait, nil"
+    },
+    {
+      "name": "print maintenance lock waits",
+      "file": "internal/cellscratch/store.go",
+      "old": "s.lockWait, s.lockLog = MaintenanceLockWait, nil",
+      "new": "s.lockWait, s.lockLog = MaintenanceLockWait, io.Writer(os.Stderr)"
     },
     {
       "name": "ignore maintenance stop",

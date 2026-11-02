@@ -77,7 +77,8 @@ func (c *Cell) startScratchMaintenance(parent context.Context, role string, log 
 }
 
 // deferredScratchSweep runs one periodic sweep on its own store handle, so the
-// launch's admission handle never walks history.
+// launch's admission handle never walks history. The maintenance handle bounds its
+// lock waits and writes no lock-wait lines to a terminal the child may own.
 func (c *Cell) deferredScratchSweep(ctx context.Context, role string, interval time.Duration, log io.Writer) (ran bool, err error) {
 	began := time.Now()
 	var rep cellscratch.Report
@@ -94,12 +95,11 @@ func (c *Cell) deferredScratchSweep(ctx context.Context, role string, interval t
 	if err != nil {
 		return false, err
 	}
-	s, err := cellscratch.Open(filepath.Join(c.Dir, "run", "scratch"))
+	s, err := cellscratch.OpenMaintenance(ctx, filepath.Join(c.Dir, "run", "scratch"))
 	if err != nil {
 		return false, err
 	}
 	s.Label(c.Name, role)
-	s.Bind(ctx)
 	rep, ran, err = s.SweepIfDue(p, interval, true)
 	return ran, errors.Join(err, s.Close())
 }

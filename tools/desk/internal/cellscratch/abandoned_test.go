@@ -2,6 +2,8 @@ package cellscratch
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +53,11 @@ func TestScratchAbandonedBuild(t *testing.T) {
 	p := DefaultPolicy()
 	old := scratchRun(t, s)
 	plantBuild(t, old)
+	for _, name := range []string{"go-builder/main.go", "go-build-notes", "cellctl-bin-/x"} {
+		path := filepath.Join(old.Work(), name)
+		must(t, os.MkdirAll(filepath.Dir(path), 0700))
+		must(t, os.WriteFile(path, []byte("ordinary work"), 0600))
+	}
 	finish(t, old, 1)
 	backdate(t, s, old, p.MaxAge+time.Hour)
 	fresh := scratchRun(t, s)
@@ -88,7 +95,7 @@ func TestScratchAbandonedBuild(t *testing.T) {
 			t.Fatal("abandoned build output retained", gone)
 		}
 	}
-	for _, kept := range []string{filepath.Join(old.Work(), "build"), filepath.Join(old.Work(), "deskpins-bin-3"), filepath.Join(s.Path, old.Record.ID, "record.json"), filepath.Join(s.Path, old.Record.ID, "diagnostic.txt")} {
+	for _, kept := range []string{filepath.Join(old.Work(), "build"), filepath.Join(old.Work(), "deskpins-bin-3"), filepath.Join(old.Work(), "go-builder"), filepath.Join(old.Work(), "go-build-notes"), filepath.Join(old.Work(), "cellctl-bin-"), filepath.Join(s.Path, old.Record.ID, "record.json"), filepath.Join(s.Path, old.Record.ID, "diagnostic.txt")} {
 		if !exists(t, kept) {
 			t.Fatal("abandoned task lost more than build output", kept)
 		}
@@ -153,5 +160,166 @@ func TestScratchSweepStops(t *testing.T) {
 	rep, ran, err := s.SweepIfDue(DefaultPolicy(), time.Hour, true)
 	if !ran || err == nil || !rep.Partial || rep.Reclaimed != 0 || !exists(t, r.Work()) {
 		t.Fatalf("stopped sweep reclaimed: ran=%v err=%v %+v", ran, err, rep)
+	}
+	if exists(t, filepath.Join(s.Path, maintenanceStampName)) {
+		t.Fatal("stopped sweep stamped the interval as done")
+	}
+}
+
+// Only a finished sweep stamps the interval, and only after its work: a partial pass
+// must not hold sibling supervisors off for a whole interval.
+//
+// regression: #5353
+func TestScratchSweepIfDueStampsCompletion(t *testing.T) {
+	s := scratchStore(t)
+	r := scratchRun(t, s)
+	acknowledge(t, r)
+	finish(t, r, 0)
+	stamp := filepath.Join(s.Path, maintenanceStampName)
+	original := s.remove
+	s.remove = func(string) error { return errors.New("injected deletion failure") }
+	rep, ran, err := s.SweepIfDue(DefaultPolicy(), time.Hour, true)
+	if !ran || err == nil || !rep.Partial {
+		t.Fatalf("injected failure did not leave a partial sweep: ran=%v err=%v %+v", ran, err, rep)
+	}
+	if exists(t, stamp) {
+		t.Fatal("partial sweep stamped the interval as done")
+	}
+	stampedEarly := false
+	s.remove = func(path string) error {
+		stampedEarly = stampedEarly || exists(t, stamp)
+		return original(path)
+	}
+	rep, ran, err = s.SweepIfDue(DefaultPolicy(), time.Hour, true)
+	if !ran || err != nil || rep.Partial || rep.Reclaimed == 0 {
+		t.Fatalf("sibling retry after a partial sweep did not run: ran=%v err=%v %+v", ran, err, rep)
+	}
+	if stampedEarly || !exists(t, stamp) {
+		t.Fatalf("stamp not written after the finished sweep: early=%v", stampedEarly)
+	}
+	if _, ran, err = s.SweepIfDue(DefaultPolicy(), time.Hour, true); ran || err != nil {
+		t.Fatal("finished sweep did not hold siblings off", ran, err)
+	}
+}
+
+// The supervisor's maintenance handle gives up on a busy sweep lock well before a
+// launch would, and never writes the lock-wait line to a terminal the child may own.
+//
+// regression: #5353
+func TestScratchOpenMaintenanceQuiet(t *testing.T) {
+	s := scratchStore(t)
+	held, err := s.sweepLock()
+	must(t, err)
+	defer func(launch, maintenance time.Duration) {
+		SweepLockWait, MaintenanceLockWait = launch, maintenance
+	}(SweepLockWait, MaintenanceLockWait)
+	SweepLockWait, MaintenanceLockWait = 5*time.Second, 200*time.Millisecond
+	began := time.Now()
+	if o, err := OpenMaintenance(context.Background(), s.Path); !errors.Is(err, deskkit.ErrLockBusy) {
+		if err == nil {
+			o.Close()
+		}
+		t.Fatal("busy sweep lock not reported to periodic maintenance", err)
+	}
+	if waited := time.Since(began); waited > 2*time.Second {
+		t.Fatal("periodic maintenance waited like a launch", waited)
+	}
+	MaintenanceLockWait = 5 * time.Second
+	read, write, err := os.Pipe()
+	must(t, err)
+	stderr := os.Stderr
+	os.Stderr = write
+	defer func() { os.Stderr = stderr }()
+	time.AfterFunc(1200*time.Millisecond, func() { _ = held.Release() })
+	o, err := OpenMaintenance(context.Background(), s.Path)
+	os.Stderr = stderr
+	must(t, write.Close())
+	out, readErr := io.ReadAll(read)
+	must(t, readErr)
+	must(t, err)
+	must(t, o.Close())
+	if strings.Contains(string(out), "deskkit: lock") {
+		t.Fatalf("lock-wait line written to stderr: %q", out)
+	}
+}
+
+// linkWork replaces a task's work with a link to a sibling's work. os.Root follows a
+// link that stays inside the scratch root, so only an explicit Lstat sees it.
+func linkWork(t *testing.T, r, sibling *Run) {
+	t.Helper()
+	must(t, os.Symlink(filepath.Join("..", sibling.Record.ID, "work"), r.Work()))
+}
+
+// An abandoned task whose work is a link to a live task's work must neither plan nor
+// delete the live task's build output.
+//
+// regression: #5353
+func TestScratchAbandonedBuildLink(t *testing.T) {
+	s := scratchStore(t)
+	p := DefaultPolicy()
+	live := scratchRun(t, s)
+	plantBuild(t, live)
+	linked := scratchRun(t, s)
+	finish(t, linked, 1)
+	backdate(t, s, linked, p.MaxAge+time.Hour)
+	must(t, os.RemoveAll(linked.Work()))
+	linkWork(t, linked, live)
+	for _, apply := range []bool{false, true} {
+		got := sweep(t, s, p, apply)
+		for _, e := range got.Entries {
+			if e.ID == linked.Record.ID && (e.Action != "keep" || e.Reason != "workspace is not a real directory; retained") {
+				t.Fatalf("linked workspace planned for reclaim (apply=%v): %+v", apply, e)
+			}
+		}
+		if got.Reclaimed != 0 {
+			t.Fatal("reclaimed through a linked workspace", got)
+		}
+	}
+	for _, kept := range []string{"go-build1", "cellctl-bin-2"} {
+		if !exists(t, filepath.Join(live.Work(), kept)) {
+			t.Fatal("live task lost build output through a sibling's link", kept)
+		}
+	}
+}
+
+// A workspace that becomes a link after planning is caught again right before removal.
+//
+// regression: #5353
+func TestScratchAbandonedBuildLinkAtDeletion(t *testing.T) {
+	s := scratchStore(t)
+	p := DefaultPolicy()
+	live := scratchRun(t, s)
+	plantBuild(t, live)
+	older, swapped := scratchRun(t, s), scratchRun(t, s)
+	for _, r := range []*Run{older, swapped} {
+		plantBuild(t, r)
+		finish(t, r, 1)
+	}
+	backdate(t, s, older, p.MaxAge+2*time.Hour)
+	backdate(t, s, swapped, p.MaxAge+time.Hour)
+	original, once := s.remove, false
+	s.remove = func(path string) error {
+		if !once {
+			once = true
+			must(t, os.Rename(swapped.Work(), swapped.Work()+".moved"))
+			linkWork(t, swapped, live)
+		}
+		return original(path)
+	}
+	got := sweep(t, s, p, true)
+	rows := map[string]Entry{}
+	for _, e := range got.Entries {
+		rows[e.ID] = e
+	}
+	if rows[older.Record.ID].Action != "reclaim-build" || exists(t, filepath.Join(older.Work(), "go-build1")) {
+		t.Fatal("unchanged abandoned task was not reclaimed", rows[older.Record.ID])
+	}
+	if row := rows[swapped.Record.ID]; row.Action != "keep" || row.Reason != "workspace is not a real directory at deletion" {
+		t.Fatal("workspace swapped to a link was not caught at deletion", row)
+	}
+	for _, kept := range []string{"go-build1", "cellctl-bin-2"} {
+		if !exists(t, filepath.Join(live.Work(), kept)) {
+			t.Fatal("live task lost build output through a swapped link", kept)
+		}
 	}
 }
