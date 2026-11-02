@@ -778,6 +778,70 @@ RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts
 
 **VERIFY: PASS** — 9 of 9 rows witnessed passing on merged main 4aeecf71626f, 0 fail, 0 could-not-run; the check:ci rows 1, 3, 4 and 7 ran in a closed container-netns admission bracket, and risk-bearing row 10 carries a fail-first witness, red at base 060980aa0f1a and passing at head. The risk-input design question stays routed at #1933.
 
+### Non-implementer verifier re-witness — 2026-11-02, merged main 2c6c21336a606e64df057294f21177f16db7b9f8 — container-netns admission bracket and fail-first witness for row 10
+
+Why this run: a one-time batch re-witness of the whole Verify table at one pinned main commit, so the witness carries the current revision (the driver's ruling: https://github.com/medici-finance/assay/issues/2026#issuecomment-6563527111). Earlier blocks above are unchanged and are not relied on here.
+
+Run by a fresh, non-implementer verifier (claude-opus-5-5, strong tier) under attestation medici-finance/assay#5262. Admission: deskdispatch --check-verifier exit 0 at the home root before any row, with the home clean and detached at the attested source above; the open and close bracket steps each re-ran the check. Installed host tools: statusgen v1.0.69; git 2.56.0; host darwin. Container lane: OrbStack engine behind the default docker context, docker run --network none, image verify-runner pinned by digest (arm64, statusgen v1.0.66, go1.27.3), run as non-root uid 501, home and git common dir mounted read-only, GOPROXY=off, a new empty GOCACHE outside the home.
+
+Rows 1, 3, 4, 5 and 7 ran in ONE closed admission bracket, opened 2026-11-02T01:37:20Z and closed 2026-11-02T01:37:43Z. Rows 1, 3, 4 and 7 are check:ci and need the network-off sandbox the darwin host lacks. Row 5 is a plain check, run in the bracket because the host python3 has no yaml module; the command is unchanged. The table below is the closed witness file's bytes, unchanged. statusgen verifyrun --bracket-digest on that file printed bracket=L11 header=L1 verdict=match span-lines=tree-digest:1,container-image:1,attestation:1 (exit 0).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | pass exit=0 sandbox=container-netns | sha256:db258366086a | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | pass exit=0 sandbox=container-netns | sha256:db09082f012c | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | pass exit=0 sandbox=container-netns | sha256:8b001a800b58 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 sandbox=container-netns | sha256:dc51b8c96c2d | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | pass exit=0 sandbox=container-netns | sha256:7360f19c1196 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5262 run=c245270a3340b6caadfdcdeb0ea456a68a4d804ea31f7ab03a7856a1f2237c77 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c245270a3340b6caadfdcdeb0ea456a68a4d804ea31f7ab03a7856a1f2237c77 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:0db71c2e784442ef516c6a2c6fc7f0236522e2b45cf0d64e7086e2cfadd59327 opened=2026-11-02T01:37:20Z closed=2026-11-02T01:37:43Z before=receipt after=check-verifier
+
+Rows 2, 6, 8 and 10 ran on the host after the bracket closed, with the installed statusgen verifyrun --rows 2,6,8,10 --fail-first --base 060980aa0f1a34035b4ce47e9d4c932c0e829662 in its writing form; the table below is what that run appended, unchanged. The base is the parent of the delivering commit 5b384e52c (the squash merge of #1259).
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=2c6c21336a60 |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=2c6c21336a60 |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:e8f6b61956ee | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=2c6c21336a60 |
+| 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:7892be48ca29 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) | base=060980aa0f1a red rc=1 · head=2c6c21336a60 |
+Verification-Attestation: medici-finance/assay#5262 run=c245270a3340b6caadfdcdeb0ea456a68a4d804ea31f7ab03a7856a1f2237c77 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+
+Fail-first, row 10: base=060980aa0f1a red, head=2c6c21336a60 pass, as the run printed ("row 10: fail-first — red at base 060980aa0f1a, pass at head").
+
+Diagnostics, no separate credit. Rows 2, 8 and 10 were re-run in the home after the witness, and each output's sha256 equals the witnessed Output cell. Row 2 (e86054a2ccc7) printed "patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned)" then rc=0. Row 10 (7892be48ca29) printed "summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing"; the UNCHECKED entry is the out-of-scope skill-procedure routing, as the Expect states. Row 8 (e8f6b61956ee) reported 2 problem(s), then rc=1; its two PROBLEM lines are listed in the ruling paragraph below. Row 5's output hash dc51b8c96c2d is the sha256 of "ok" plus a newline.
+
+Delivered code since the previous re-run (4aeecf71626f): graph-execution/33 changed the implementation pattern to version 2 (risk-input elevated and human now include merge), added three human-floor fixtures and their tests in statusgen, and touched spec/workflow-pattern-v1.md, the schema, topology.yaml, docs/lifecycle.md and statusgen/main.go. Rows 1 to 7 and 10 pass on that tree.
+
+Row accounting: 9 required rows. 8 pass as written (rows 1, 3, 4, 5 and 7 in the container bracket; rows 2, 6 and 10 on the host, row 10 with its fail-first Base cell). Row 8 passes under the ruling below. 0 fail. 0 could-not-run.
+
+Risk-bearing value enumeration, re-read at 2c6c21336a60 (frontmatter irreversible: no; all values reversible by edit and redeploy):
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:110-115. Mirrored at spec/workflow-pattern-v1.md:191-194.
+2. Implementation risk-input: low = [review]; standard = [review, verify]; elevated = [review, merge, verify]; human = [review, merge, verify] @ spec/workflow-patterns/implementation-v1.yaml:15-18. Research risk-input: all four = [review-artifact] @ spec/workflow-patterns/research-v1.yaml:13-16.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:119.
+5. patternFloorMerge = "merge-commit", patternFloorRelease = "release", patternFloorDeploy = "deployment" @ statusgen/patterns.go:91-93.
+6. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+7. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+Ranking: entry 1 first (a wrong permission lets a pattern grant a role an effect it does not hold), then 2 (gate nodes per risk class), then 5, 3, 4 and 6; entry 7 is a retry knob and ranks last.
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:110-115 — equals Task 2's table exactly. Only the reviewer reviews and only the verifier commits evidence, which is the writer-certifier separation; no role holds a merge effect.
+RISK-VALUE: DERIVED — implementation risk-input elevated = [review, merge, verify], human = [review, merge, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — the spec's derivation table (spec/workflow-pattern-v1.md:151-159) makes elevated a strict superset of standard by adding the merge gate, and human monotone over elevated with the human merge decision, following the ruling that table cites; the mapping covers all four verdicts.
+RISK-VALUE: NAMED, NOT DERIVED — patternFloorMerge = "merge-commit", patternFloorRelease = "release", patternFloorDeploy = "deployment" @ statusgen/patterns.go:91-93 — these come from graph-execution/33, not this brief; this run did not derive them against /33's contract.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78 — equals the four apps: roles in topology.yaml (lines 238-252). Row 7, witnessed in the bracket above, pins the two together at this commit.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:119 — the stream's fixed risk-class vocabulary from the brief's Context.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 when it cannot check).
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+Ruling basis (row 8):
+https://github.com/medici-finance/assay/issues/4823#issuecomment-6566786700
+At medici-finance/assay 2c6c21336a60 the desk ran statusgen --root . --lint --acceptance-forge in a clean detached tree as the verifier App and it gave LINT: PASS, rc=0 (output sha256 a073bacbbef9ccb2c8acb0fd665c288b0aa4b07fddefb8aa57233bb6c13227d4), while plain statusgen --root . --lint gave rc=1 with exactly two PROBLEMs, for desk-tools/37 and desktools-v2/65. Row 8's witnessed output held only those two PROBLEM lines, "PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required" and the same line for desktools-v2/65, and neither names this brief.
+
+**VERIFY: PASS** — 9 of 9 rows pass (row 8 passing per the ruling above; all other rows pass as written)
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer questions: (1) can any node in either shipped pattern act with an authority the
