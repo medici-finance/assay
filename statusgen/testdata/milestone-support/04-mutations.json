@@ -39,6 +39,42 @@
       "test": "TestPrefixedBriefSchema"
     },
     {
+      "name": "v4-cross-root-edge-refused",
+      "target": "statusgen/briefv4.go",
+      "old": "if res.Cell != own.Cell || res.Repo != own.Repo {",
+      "new": "if false && (res.Cell != own.Cell || res.Repo != own.Repo) {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-own-root-error-propagated",
+      "target": "statusgen/briefv4.go",
+      "old": "own, err := workref.Resolve(sel.Ref.Stream",
+      "new": "own, _ := workref.Resolve(sel.Ref.Stream",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-envelope-required",
+      "target": "statusgen/briefv4.go",
+      "old": "if v, ok := data[\"reader-requirements\"]; !ok {",
+      "new": "if v, ok := data[\"reader-requirements\"]; false && !ok {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-envelope-holds-back-legacy",
+      "target": "statusgen/briefv4.go",
+      "old": "Advertisement: legacy}); r.State != readercaps.Unsupported {",
+      "new": "Advertisement: legacy}); false && r.State != readercaps.Unsupported {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
       "name": "legacy-refuses-requires-milestones",
       "target": "statusgen/brieffile.go",
       "old": "if _, ok := data[\"requires-milestones\"]; ok {",
