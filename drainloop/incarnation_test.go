@@ -145,6 +145,34 @@ func TestCellFenceBoundary(t *testing.T) {
 
 // regression: F-ge16-schema
 func TestIncarnationContractFields(t *testing.T) {
+	checkContractInventory(t, "incarnation-fields", reflect.TypeOf(OperatorIncarnation{}), IncarnationSchema)
+}
+
+// regression: F-custody-wire-names-unpinned
+func TestCustodyContractFields(t *testing.T) {
+	checkContractInventory(t, "control-grant-fields", reflect.TypeOf(ControlGrant{}), "")
+	checkContractInventory(t, "restored-control-fields", reflect.TypeOf(RestoredControl{}), "")
+}
+
+// regression: F-restriction-text-unpinned
+func TestRuledCustodyRestrictions(t *testing.T) {
+	body, err := os.ReadFile("../spec/operator-incarnation-v1.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(strings.Fields(string(body)), " ")
+	for _, restriction := range []string{
+		"**Role executors never read signing material on the volume they mount.**",
+		"**A snapshot or backup restore never presents operator-control state as current.**",
+	} {
+		if !strings.Contains(text, restriction) {
+			t.Errorf("ruled restriction missing or changed: %s", restriction)
+		}
+	}
+}
+
+func checkContractInventory(t *testing.T, marker string, typ reflect.Type, schema string) {
+	t.Helper()
 	body, err := os.ReadFile("../spec/operator-incarnation-v1.md")
 	if err != nil {
 		t.Fatal(err)
@@ -153,11 +181,11 @@ func TestIncarnationContractFields(t *testing.T) {
 	var names []string
 	inFields := false
 	for _, line := range strings.Split(string(body), "\n") {
-		if line == "<!-- incarnation-fields:begin -->" {
+		if line == "<!-- "+marker+":begin -->" {
 			inFields = true
 			continue
 		}
-		if line == "<!-- incarnation-fields:end -->" {
+		if line == "<!-- "+marker+":end -->" {
 			inFields = false
 			break
 		}
@@ -167,12 +195,11 @@ func TestIncarnationContractFields(t *testing.T) {
 				t.Fatalf("inventory line names no wire name: %q", line)
 			}
 			names = append(names, parts[1]+"="+parts[3])
-			if parts[1] == "Schema" && !strings.Contains(line, "`"+IncarnationSchema+"`") {
-				t.Fatalf("inventory Schema line does not state %q: %q", IncarnationSchema, line)
+			if parts[1] == "Schema" && !strings.Contains(line, "`"+schema+"`") {
+				t.Fatalf("inventory Schema line does not state %q: %q", schema, line)
 			}
 		}
 	}
-	typ := reflect.TypeOf(OperatorIncarnation{})
 	var exported []string
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -27,8 +28,8 @@ type CellOwnership struct {
 // Outstanding effects, cancellation, stop and overrides must survive ordinary
 // restart and restore. Missing history is retained as unknown, never new allowance.
 // A consumer must not use Activation to select the current operator incarnation.
-// Decode it with DecodeCellCheckpoint: a plain json.Unmarshal reads an absent
-// hold flag as not held.
+// Decode it with DecodeCellCheckpoint: a plain json.Unmarshal reads an absent,
+// null, repeated or case-variant hold flag as not held.
 type CellCheckpoint struct {
 	Schema          string         `json:"schema"`
 	Ownership       CellOwnership  `json:"ownership"`
@@ -41,26 +42,33 @@ type CellCheckpoint struct {
 }
 
 // DecodeCellCheckpoint decodes one checkpoint record. It refuses an absent field
-// at any depth, an unknown field, trailing data and an unsupported schema. A bool
-// or a zero count cannot say "absent", so absence is refused here instead of
-// decoding as not held or as zero. An explicit null nullable count stays unknown.
-// A decoded record grants no authority and selects no current incarnation.
+// at any depth, an explicit null where the field is not nullable, a repeated key,
+// a key that is not exactly a field name, trailing data and an unsupported
+// schema. A bool or a zero count cannot say "absent", and encoding/json reads a
+// null bool as false and keeps the last of two keys that match a field without
+// regard to case, so each of those shapes is refused here instead of decoding as
+// not held or as zero. An explicit null nullable count stays unknown. A decoded
+// record grants no authority and selects no current incarnation.
 func DecodeCellCheckpoint(body []byte) (CellCheckpoint, error) {
-	var raw any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	tree := json.NewDecoder(bytes.NewReader(body))
+	tree.UseNumber()
+	raw, err := readStrict(tree)
+	if err != nil {
 		return CellCheckpoint{}, err
+	}
+	if _, err := tree.Token(); !errors.Is(err, io.EOF) {
+		return CellCheckpoint{}, errors.New("checkpoint: trailing data")
 	}
 	if err := requireFields(raw, reflect.TypeOf(CellCheckpoint{}), "checkpoint"); err != nil {
 		return CellCheckpoint{}, err
 	}
+	// The first pass has refused trailing data, repeated keys and inexact keys,
+	// so this decode sees one value whose keys each name exactly one field.
 	var state CellCheckpoint
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&state); err != nil {
 		return CellCheckpoint{}, err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return CellCheckpoint{}, errors.New("checkpoint: trailing data")
 	}
 	if state.Schema != CellCheckpointSchema {
 		return CellCheckpoint{}, fmt.Errorf("checkpoint: unsupported schema %q", state.Schema)
@@ -68,24 +76,86 @@ func DecodeCellCheckpoint(body []byte) (CellCheckpoint, error) {
 	return state, nil
 }
 
-// requireFields reports the first JSON field of t that v leaves out. An object
-// or array position must hold an object or array; null is accepted only where
-// the Go field is a pointer, which is how this contract spells unknown.
+// readStrict reads one JSON value into a generic tree and refuses a key that
+// appears twice in one object. A map decode would keep the last one silently.
+func readStrict(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	switch tok {
+	case json.Delim('{'):
+		obj := map[string]any{}
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			key, ok := keyTok.(string)
+			if !ok {
+				return nil, errors.New("checkpoint: object key is not a string")
+			}
+			if _, seen := obj[key]; seen {
+				return nil, fmt.Errorf("checkpoint: repeated key %q", key)
+			}
+			if obj[key], err = readStrict(dec); err != nil {
+				return nil, err
+			}
+		}
+		_, err := dec.Token()
+		return obj, err
+	case json.Delim('['):
+		items := []any{}
+		for dec.More() {
+			item, err := readStrict(dec)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, item)
+		}
+		_, err := dec.Token()
+		return items, err
+	}
+	return tok, nil
+}
+
+// requireFields reports the first position of v that does not fit t: a null
+// where the Go field is not a pointer (a pointer is how this contract spells
+// unknown), an object or array position holding something else, an absent
+// field, or a key that is not exactly one of t's JSON field names.
 func requireFields(v any, t reflect.Type, path string) error {
+	if v == nil {
+		if t.Kind() == reflect.Pointer {
+			return nil
+		}
+		return fmt.Errorf("%s: null where the field is not nullable", path)
+	}
 	switch t.Kind() {
 	case reflect.Struct:
 		obj, ok := v.(map[string]any)
 		if !ok {
 			return fmt.Errorf("%s: want an object", path)
 		}
+		names := map[string]bool{}
 		for i := 0; i < t.NumField(); i++ {
 			name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+			names[name] = true
 			child, ok := obj[name]
 			if !ok {
 				return fmt.Errorf("%s.%s: field absent", path, name)
 			}
 			if err := requireFields(child, t.Field(i).Type, path+"."+name); err != nil {
 				return err
+			}
+		}
+		keys := make([]string, 0, len(obj))
+		for key := range obj {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if !names[key] {
+				return fmt.Errorf("%s.%s: not exactly a field name", path, key)
 			}
 		}
 	case reflect.Slice:

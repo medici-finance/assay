@@ -56,8 +56,8 @@ mutations += [
      "false", "TestCellFenceBoundary"),
     ("owner-generation-ignored", "incarnation.go", "if presented != owned {",
      "if false {", "TestCellFenceBoundary"),
-    ("contract-field-drift", "../spec/operator-incarnation-v1.md", "- `KeyRef` —",
-     "- `OldKeyRef` —", "TestIncarnationContractFields"),
+    ("contract-field-drift", "../spec/operator-incarnation-v1.md", "- `KeyRef` — `key_ref`; an authorized reference",
+     "- `OldKeyRef` — `key_ref`; an authorized reference", "TestIncarnationContractFields"),
     ("checkpoint-stop-lost", "ownership.go", '`json:"stopped"`',
      '`json:"stop_discarded"`', "TestCellCheckpointRoundTrip"),
 ]
@@ -126,6 +126,28 @@ mutations += [
      "false", "TestRestoredControlNotCurrent"),
     ("restored-key-empty-ok", "incarnation.go", 'restored.KeyRef == ""',
      "false", "TestRestoredControlNotCurrent"),
+]
+# GE/16 preparation, review round 2: strict decode and ruled contract text.
+mutations += [
+    ("checkpoint-null-accepted", "ownership.go", "if v == nil {",
+     "if false && v == nil {", "TestCheckpointNullPositionsHeld"),
+    ("checkpoint-duplicate-accepted", "ownership.go", "if _, seen := obj[key]; seen {",
+     "if _, seen := obj[key]; false && seen {", "TestCheckpointObjectKeysHeld"),
+    ("checkpoint-case-variant-accepted", "ownership.go", "if !names[key] {",
+     "if false && !names[key] {", "TestCheckpointObjectKeysHeld"),
+    ("custody-read-wire-drift", "incarnation.go", 'json:"read_signing"',
+     'json:"read_key"', "TestCustodyContractFields"),
+    ("custody-volume-wire-drift", "incarnation.go", 'json:"volume_ref"',
+     'json:"volume"', "TestCustodyContractFields"),
+    ("restore-snapshot-wire-drift", "incarnation.go", 'json:"snapshot_ref"',
+     'json:"snapshot"', "TestCustodyContractFields"),
+    ("custody-restriction-softened", "../spec/operator-incarnation-v1.md",
+     "Role executors never read signing material", "Role executors may read signing material",
+     "TestRuledCustodyRestrictions"),
+    ("restore-restriction-softened", "../spec/operator-incarnation-v1.md",
+     "A snapshot or backup restore never presents operator-control state",
+     "A snapshot or backup restore may present operator-control state",
+     "TestRuledCustodyRestrictions"),
 ]
 selected = sys.argv[1:]
 if selected:

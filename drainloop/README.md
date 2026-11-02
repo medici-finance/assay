@@ -226,3 +226,7 @@ use synthetic state and a fake boundary. They do not complete GE/16 or qualify
 durable reservation/concurrency, real restart/rollback, credential cutover,
 Kubernetes containment or brake/pacing enforcement. All existing GE/16 Task and
 Verify obligations remain pending for implementation and independent verification.
+
+The checkpoint decoder also refuses null at every nonnullable position, repeated
+keys and case-variant keys. These shapes cannot clear a persisted hold or zero
+a reservation. Explicit null nullable counts remain unknown.

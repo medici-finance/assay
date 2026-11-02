@@ -69,6 +69,29 @@ incarnation whose identity or key reference equals the restored one, and refuses
 incomplete provenance. It runs alongside `MatchCellFence`, because a database and
 volume restored together can agree with each other on the old incarnation.
 
+### ControlGrant field inventory
+
+<!-- control-grant-fields:begin -->
+- `Identity` — `identity`; accountable opaque principal reference.
+- `Role` — `role`; operator or executor.
+- `VolumeRef` — `volume_ref`; authorized control-volume reference.
+- `ReadSigning` — `read_signing`; whether signing material is readable.
+- `Write` — `write`; whether control state is writable.
+<!-- control-grant-fields:end -->
+
+### RestoredControl field inventory
+
+<!-- restored-control-fields:begin -->
+- `SnapshotRef` — `snapshot_ref`; retained restore provenance.
+- `IncarnationID` — `incarnation_id`; restored historical incarnation.
+- `KeyRef` — `key_ref`; restored historical key reference.
+<!-- restored-control-fields:end -->
+
+A production restore qualification must retain a trustworthy record outside the
+restored volume that exposes an in-place restore. Supplying no restore provenance
+to the passive predicate cannot prove that no restore happened. The authoritative
+anchor and the real rotation/stop procedure remain implementation obligations.
+
 Both checks compare passive records. They create no volume, mount, file-access
 rule, credential or Kubernetes policy, and a nil result authorizes nothing. The
 profile's own access layer enforces restriction 1 and the operator's rotation
@@ -117,7 +140,10 @@ it, along with a kept identity, a kept key reference and each incomplete
 provenance field. A rotated identity and key is the positive control.
 
 `TestIncarnationContractFields` compares the field inventory with the exported
-type in both directions, Go names and wire names together. The committed
+type in both directions, Go names and wire names together.
+`TestCustodyContractFields` does the same for `ControlGrant` and `RestoredControl`.
+`TestRuledCustodyRestrictions` pins both normative restrictions above; deleting
+or weakening their text must fail the test. The committed
 incarnation mutations in `drainloop/testdata/effect_mutations.py`, one per guard
 plus wire-name drift and one per custody-restriction check, must fail named
 runtime assertions.
