@@ -25,14 +25,15 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/milestones.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/milestones_test.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/parse.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/model.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/testdata/milestone-support/03/: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "schemas/milestone-v1.json: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "spec/milestone-v1.md: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "spec/stream-v1.md: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/milestones.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/milestones_test.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/parse.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/load.go: fixed-here milestone-support/03 (production loadStreams seam attaches plans after stream discovery)"
+  - "statusgen/model.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/testdata/milestone-support/03/: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "schemas/milestone-v1.json: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "spec/milestone-v1.md: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "spec/stream-v1.md: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
   - "docs/streams/milestone-support/brief-05-build-the-combined-milestone-and-brief-dependency-graph.md: follow-up milestone-support/05 (consumes this delivery; exact runtime readers enumerated at pickup)"
 ---
 
