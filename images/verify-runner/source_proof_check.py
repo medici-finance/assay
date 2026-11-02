@@ -53,10 +53,17 @@ def probe(helper, witness):
         script.write_text(Path(witness).read_text().replace(
             '/usr/local/lib/verify-runner/source_proof.py', str(helper)))
         marker = base / 'rows'
+        network = base / 'network-seams'
         # Bash reads this file; nothing under the scratch mount is exec'd. This
         # preserves the release's read-only root and noexec /tmp fence.
         seams = base / 'seams.sh'
-        seams.write_text('''unshare() { shift 3; "$@"; }
+        seams.write_text('''unshare() {
+  [ "${VR_TEST_KEY-}" != probe ] || return 1
+  shift 3; "$@"
+}
+# Never execute a network command, even when a candidate bypasses argv guards.
+timeout() { printf 'timeout\n' >> "$VR_TEST_NETWORK"; return 1; }
+getent() { printf 'getent\n' >> "$VR_TEST_NETWORK"; return 1; }
 statusgen() {
   if [ "$1" = __verifyrun-netns ]; then shift 2; "$@"; return $?; fi
   printf 'check\ncheck:ci\n' > "$VR_TEST_ROWS"
@@ -78,20 +85,27 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
         runenv = dict(env, PATH='/usr/bin:/bin', BASH_ENV=str(seams), VR_CACHE_DIR=str(base / 'cache'), VR_WORK_DIR=str(root),
                       VR_ADMISSION_DIR=str(admit), VR_SCRATCH_DIR=str(base),
                       VR_TEST_ROWS=str(marker), VR_TEST_DELIVERY=str(base / 'delivery'),
+                      VR_TEST_NETWORK=str(network),
                       ASSAY_DELIVERY_SHA='ambient-poison', ASSAY_DELIVERY_BASE_SHA='ambient-poison')
         def run(flags=(), good=True, case='source', source=None, proof=True, usage=False, key='proof/01'):
             marker.unlink(missing_ok=True)
+            network.unlink(missing_ok=True)
             args = [key]
             if proof:
                 args += ['--source-proof']
             if source is not False:
                 args += ['--sha=' + (sha if source is None else source)]
-            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=runenv, capture_output=True)
+            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=dict(runenv, VR_TEST_KEY=key), capture_output=True)
             if good:
                 if result.returncode:
                     raise RuntimeError('unexpected witness failure: ' + result.stderr.decode())
                 require(marker.is_file() and marker.read_text() == 'check\ncheck:ci\n', 'rows:' + case)
             else:
+                if key == 'probe' and not result.stderr.startswith(b'usage: '):
+                    # A probe-only guard regression must traverse the inert seams,
+                    # never execute their DNS/TCP arguments or the inner row runner.
+                    require(network.is_file() and network.read_text() == 'timeout\ntimeout\ntimeout\n',
+                            'seams:probe-network')
                 require(result.returncode == 2 and not marker.exists(), 'refusal:' + case)
                 if usage:
                     require(result.stderr.startswith(b'usage: '), 'usage:' + case)

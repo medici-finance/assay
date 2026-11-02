@@ -32,8 +32,12 @@ class ProofTests(unittest.TestCase):
             ('delivery proof guard', 'witness.sh', '[ -z "$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" ] || usage', ':', 'refusal:delivery-without-proof'),
             ('seed flags', 'witness.sh', '[ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage', ':', 'usage:seed-flags'),
             ('source shape', 'witness.sh', '[[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || usage', ':', 'usage:malformed-sha'),
+            ('probe-only flags', 'witness.sh',
+             'seed|seed-probe|probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;',
+             'seed|seed-probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;\n  probe) ;;',
+             'refusal:seed-flags'),
         ]
-        self.assertEqual(len(mutants), 12)
+        self.assertEqual(len(mutants), 13)
         for name, file, old, new, message in mutants:
             with self.subTest(name=name), tempfile.TemporaryDirectory(prefix='proof-mutant-') as tmp:
                 root = Path(tmp)
