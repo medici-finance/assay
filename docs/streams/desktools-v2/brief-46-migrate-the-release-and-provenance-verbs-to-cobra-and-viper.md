@@ -105,7 +105,7 @@ they already exist.
 | 6 | check | `cd tools/desk && GOOS=windows go vet ./cmd/deskrelease ./cmd/deskrebaseline ./cmd/deskmanifest ./cmd/deskprovenance ./cmd/deskpins` | exit 0; the owned packages compile for Windows (native Windows behaviour runs on the CI lane, not here) |
 | 7 | check +dereference | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/46 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS; every row this brief owns is migrated, the registry validates and the contract tests pass in each migrated package |
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
-| 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 9 | check | `statusgen --root . --consumers --brief desktools-v2/46 --base 02d17896bad026f191583de4100e783e89c01c33 --delivery 3f2b1fc589b4b7c6854a9cf84cb6745d4117c717` | exit 0; the delivery range reads this brief's declared consumers and no declared consumer routing is disproved by the change |
 
 ## Pre-mortem
 
