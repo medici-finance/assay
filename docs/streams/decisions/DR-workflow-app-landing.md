@@ -37,7 +37,8 @@ through that link (`spec/registers-v1.md` §7.5). No bot relay or PR approval st
 
 **What the ruling settles.** The record is accepted as proposed: exactly one dedicated
 workflow App holds `workflows: write`, no desk App is granted it, and every `accepted:` entry
-above holds as written.
+above holds as written. The Note below on the sixth entry also stays in force: neither a
+`workflow_dispatch` nor a desk run is human-initiated by itself.
 
 **Its scope on merge authority.** For the first cutover, merging the workflow-only PR stays a
 human act, and the App does not merge. This matches the earlier
@@ -126,8 +127,9 @@ once the path is proven.
 
 ## Note — neither `workflow_dispatch` nor a desk run is by itself human-initiated
 
-This note records a review finding against the sixth `accepted:` entry. It changes neither that
-entry nor this record's status, which stays `proposed` until a ruling is recorded above.
+This note records a review finding against the sixth `accepted:` entry. It does not change that
+entry. The 2026-11-02 ruling accepted the record as proposed, and this note was part of what it
+accepted, so the finding below still holds.
 
 That entry counts "an operator/desk run or an explicit `workflow_dispatch`" as a human-initiated
 invocation. Neither leg holds on its own. Any identity holding `actions: write` can fire
