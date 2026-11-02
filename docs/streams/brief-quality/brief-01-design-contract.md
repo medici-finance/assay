@@ -140,6 +140,33 @@ Risk-bearing values. Risk metadata is present and all four answers are "no" (bri
 
 **VERIFY: PASS** — 2/2 Verify rows passed under the execution witness.
 
+### 2026-11-02 — batch re-witness at pinned main (witnessed)
+
+Non-implementer verifier re-witness at pinned merged main 2c6c21336a60 (full source in the attestation line), admitted by the dispatcher-owned pre-work check, for the one-time batch re-witness ruled on medici-finance/assay#2026. Both Verify rows were executed by statusgen verifyrun (desk-tools v1.0.69) in write mode on the clean detached admitted tree; the witness table and attestation line below are exactly as the tool wrote them. Runner class: dispatched model verifier on a darwin-arm64 host, offline; both rows are class check (no check:ci row, so no network sandbox or container bracket applies).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 -c "from pathlib import Path; s=Path('docs/streams/brief-quality/spec.md').read_text(); assert all(x in s for x in ['Work size','Specification completeness','Reasoning difficulty','Coupling','Verification strength','Failure consequence'])"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 91 | `python3 -c "from pathlib import Path; assert Path('statusgen/briefv2.go').is_file(); assert 'parseBriefV2Keys' in Path('statusgen/briefv2.go').read_text(); assert Path('qualgen/telemetry/source.go').is_file()"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5232 run=6adc9526aebc91732573cef1b4b5b3867c71bbc6ead2193b80d01cec88e5a2fc source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/brief-quality/brief-01-design-contract.md model=claude-opus-5-5 tier=strong
+
+Rows: 2 of 2 required rows passed; 0 failed; 0 could-not-run.
+
+Supplemental probes (diagnostic only; they discharge no Verify row):
+
+- Row 1 discriminates: the same assertion against a scratch copy of the spec (outside the home) with "Coupling" altered exits 1 with AssertionError.
+- Row 91 seams: parseBriefV2Keys is defined at statusgen/briefv2.go line 203; qualgen/telemetry/source.go exists.
+- Task 3 graph: the frontmatter of all nine briefs in this stream parsed; 10 dependency edges, each with its inverse unblocks entry and a strictly earlier wave, so the dependency graph is acyclic.
+- Per the brief's Verify preamble, these rows establish presence only; semantic adequacy of the design contract stays with review.
+
+Risk-bearing values. Risk metadata is present and all four answers are "no" (brief line 10). Enumeration covered the delivering change #1719 (the last change to the spec at this source) plus this brief's Deliverables. Literals found: wave = 0 @ docs/streams/brief-quality/brief-01-design-contract.md:5; gate = "model" @ docs/streams/brief-quality/brief-01-design-contract.md:9; exec-tier = "strong" @ docs/streams/brief-quality/brief-01-design-contract.md:17; Version = 0.1-design @ docs/streams/brief-quality/spec.md:3; schema = brief-assessment-v1 @ docs/streams/brief-quality/spec.md:49; proposed qualgen briefs exit codes 0 complete / 2 invalid input / 3 report with gaps / 1 IO failure @ docs/streams/brief-quality/spec.md:112. Ranked: gate and exec-tier first as authority bindings; the exit-code contract next; version, schema name and wave last as reversible labels and ordering. All are reversible by a document edit in a proposed, non-enacted design.
+
+- RISK-VALUE: DERIVED — gate = "model" @ docs/streams/brief-quality/brief-01-design-contract.md:9 — the four risk answers (line 10) are all "no", and spec line 44 makes those answers the authority inputs for gate; a proposed design with no irreversible act does not require the human gate.
+- RISK-VALUE: DERIVED — exec-tier = "strong" @ docs/streams/brief-quality/brief-01-design-contract.md:17 — attribution errors in a cross-contract design can survive happy-path tests (exec-tier-why), and spec line 44 keeps strong as a hard lower bound; strong is the conservative floor.
+- RISK-VALUE: DERIVED — qualgen briefs exit codes = 0/2/3/1 @ docs/streams/brief-quality/spec.md:112 — a report with gaps (3) stays distinct from a complete report (0), as the stream's ground rule that unknown evidence is never a passing result requires.
+
+**VERIFY: PASS** — 2/2 Verify rows passed under the execution witness at 2c6c21336a60.
+
 ## Review
 
 Gate: model. Reviewer confirms the spec contract and the declared limitations. No hand-authored verified/done claim.
