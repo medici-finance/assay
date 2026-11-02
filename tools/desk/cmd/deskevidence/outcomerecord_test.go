@@ -150,7 +150,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 		}
 	})
 
-	// desk-supervision/37: the attempts list lands as validated, byte-for-byte; an invalid one is
+	// Issue #4163: the attempts list lands as validated, byte-for-byte; an invalid one is
 	// exit 5 and nothing is written.
 	attemptsLine := func(attempts string) string {
 		return completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"0000002",`+

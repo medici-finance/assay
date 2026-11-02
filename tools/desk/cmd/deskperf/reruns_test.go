@@ -14,16 +14,16 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// rerunsFixture is the committed graph-execution/02-shaped fixture: the brief file's frontmatter
+// rerunsFixture is the committed fixture, shaped like the case in issue #4163 under a synthetic stream: the brief file's frontmatter
 // and two outcome-record templates. Every date in it is the placeholder @DAY@, replaced with
 // yesterday's UTC date at test time so the attempt windows sit inside the 7-day perf window.
 // The perf rows are written at test time through the real perfrec resolver and writer
 // (fixtureRows), so they always carry the current schema.
 const rerunsFixture = "testdata/reruns"
 
-// skillPerfWork is the --perf-work value the verify-desk skill passes for graph-execution/02:
-// the frontmatter id assay:assay:graph-execution:02 through PerfBriefRef.
-const skillPerfWork = `{"kind":"brief","repo":"medici-finance/assay","brief":"assay:assay:graph-execution:2"}`
+// skillPerfWork is the --perf-work value the verify-desk skill passes for the fixture brief:
+// the frontmatter id assay:assay:example-stream:02 through PerfBriefRef.
+const skillPerfWork = `{"kind":"brief","repo":"medici-finance/assay","brief":"assay:assay:example-stream:2"}`
 
 func yesterday() string { return time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02") }
 
@@ -46,7 +46,7 @@ func rerunsHome(t *testing.T) (stateDir, perfDir string) {
 	return stateDir, perfDir
 }
 
-// rerunsRoot is a checkout whose origin is the public repo, holding the graph-execution/02
+// rerunsRoot is a checkout whose origin is the public repo, holding the example-stream/02
 // brief file and the fixture's two outcome records.
 func rerunsRoot(t *testing.T) string {
 	t.Helper()
@@ -62,11 +62,11 @@ func rerunsRoot(t *testing.T) string {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
-	brief := filepath.Join(root, "docs", "streams", "graph-execution", "brief-02-workflow-patterns.md")
+	brief := filepath.Join(root, "docs", "streams", "example-stream", "brief-02-workflow-patterns.md")
 	if err := os.MkdirAll(filepath.Dir(brief), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(brief, []byte(fixtureText(t, "graph-execution-02.frontmatter")), 0o644); err != nil {
+	if err := os.WriteFile(brief, []byte(fixtureText(t, "example-stream-02.frontmatter")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, rec := range []string{"record-legacy.json", "record-blocked.json"} {
@@ -93,7 +93,7 @@ func placeRecord(t *testing.T, root, line string) string {
 	return name
 }
 
-// fixtureRow is one perf row of the graph-execution/02 fixture: its ts (HH:MM:SS yesterday)
+// fixtureRow is one perf row of the example-stream/02 fixture: its ts (HH:MM:SS yesterday)
 // and own-process wall. Attempt windows: 1 09:00-09:20, 2 09:30-09:50, 3 10:00-10:30.
 type fixtureRow struct {
 	at     string
@@ -266,13 +266,13 @@ func TestReruns_GraphExecution02Fixture(t *testing.T) {
 	seedRerunsPerf(t, stateDir)
 	root := rerunsRoot(t)
 
-	rc, out, errOut := runDeskperf("reruns", "--root", root, "--brief", "graph-execution/02")
+	rc, out, errOut := runDeskperf("reruns", "--root", root, "--brief", "example-stream/02")
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc %d stderr %s", rc, errOut)
 	}
 	t.Logf("reruns output:\n%s", out)
 	lines := strings.Split(out, "\n")
-	if lines[0] != "graph-execution/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded" {
+	if lines[0] != "example-stream/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded" {
 		t.Fatalf("count line = %q", lines[0])
 	}
 	a1 := [2]time.Time{dayAt(t, "09:00:00"), dayAt(t, "09:20:00")}
@@ -287,7 +287,7 @@ func TestReruns_GraphExecution02Fixture(t *testing.T) {
 		"uncredited+discarded: own-process wall " + itoa64(wantWaste) + " ms",
 		"total: own-process wall " + itoa64(wantTotal) + " ms",
 		"share: ", "% of the measured total own-process wall",
-		"verifier tokens: could-not-check (desk-supervision/34 records worker dispatches only)",
+		"verifier tokens: could-not-check (token usage is recorded for worker dispatches only)",
 		"not counted: verifier dispatches that landed no outcome record",
 		"could-not-check (no window",
 	} {
@@ -296,7 +296,7 @@ func TestReruns_GraphExecution02Fixture(t *testing.T) {
 		}
 	}
 
-	got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+	got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 	if got.Runs != 4 || num(t, got.Waste.SumOwnProcessWallMs) != wantWaste || num(t, got.Total.SumOwnProcessWallMs) != wantTotal {
 		t.Fatalf("json: runs %d waste %v total %v", got.Runs, got.Waste.SumOwnProcessWallMs, got.Total.SumOwnProcessWallMs)
 	}
@@ -307,18 +307,18 @@ func TestReruns_GraphExecution02Fixture(t *testing.T) {
 	if s := stateOf(t, got.Waste.SumOwnCPUMs); s.State != stateCouldNotCheck || s.Reason != noCPU {
 		t.Fatalf("own CPU with no CPU-carrying row: %+v", s)
 	}
-	if got.VerifierTokens.State != stateCouldNotCheck || got.WorkRef.Brief != "assay:assay:graph-execution:2" {
+	if got.VerifierTokens.State != stateCouldNotCheck || got.WorkRef.Brief != "assay:assay:example-stream:2" {
 		t.Fatalf("tokens %+v ref %+v", got.VerifierTokens, got.WorkRef)
 	}
 
 	// Without --brief: one count line per brief.
 	rc, out, _ = runDeskperf("reruns", "--root", root)
-	if rc != deskkit.ExitOK || !strings.HasPrefix(out, "graph-execution/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded\n") {
+	if rc != deskkit.ExitOK || !strings.HasPrefix(out, "example-stream/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded\n") {
 		t.Fatalf("all-briefs view: rc %d\n%s", rc, out)
 	}
 	// No record for the brief: unverifiable.
-	if rc, _, errOut := runDeskperf("reruns", "--root", root, "--brief", "graph-execution/03"); rc != deskkit.ExitUnverifiable ||
-		!strings.Contains(errOut, "no record for graph-execution/03") {
+	if rc, _, errOut := runDeskperf("reruns", "--root", root, "--brief", "example-stream/03"); rc != deskkit.ExitUnverifiable ||
+		!strings.Contains(errOut, "no record for example-stream/03") {
 		t.Fatalf("missing brief: rc %d %s", rc, errOut)
 	}
 }
@@ -332,24 +332,24 @@ func TestReruns_InvalidStoredRecordNotCounted(t *testing.T) {
 	rerunsHome(t)
 	root := rerunsRoot(t)
 	day := yesterday()
-	bad := `{"ts":"` + day + `T15:00:00Z","brief":"graph-execution/02","outcome":"blocked","sha":"0000004",` +
+	bad := `{"ts":"` + day + `T15:00:00Z","brief":"example-stream/02","outcome":"blocked","sha":"0000004",` +
 		`"blocker_kind":"environment","blocker_ref":"example-org/example#12","started":"` + day + `T13:00:00Z",` +
 		`"finished":"` + day + `T14:00:00Z","rows_total":9,"attempts":[` +
 		`{"attempt":1,"disposition":"credited","started":"` + day + `T13:00:00Z","finished":"` + day + `T13:10:00Z","rows_run":9},` +
 		`{"attempt":2,"disposition":"uncredited","reason":"not-credited","started":"` + day + `T13:20:00Z","finished":"` + day + `T13:30:00Z","rows_run":9}]}`
 	path := placeRecord(t, root, bad)
 
-	rc, out, errOut := runDeskperf("reruns", "--root", root, "--brief", "graph-execution/02")
+	rc, out, errOut := runDeskperf("reruns", "--root", root, "--brief", "example-stream/02")
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc %d stderr %s", rc, errOut)
 	}
-	if !strings.HasPrefix(out, "graph-execution/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded\n") {
+	if !strings.HasPrefix(out, "example-stream/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded\n") {
 		t.Fatalf("the invalid record was counted:\n%s", out)
 	}
 	if want := "invalid " + path + ": refused: attempts: attempt 1: rule credited-last"; !strings.Contains(out, want) {
 		t.Fatalf("output lacks %q:\n%s", want, out)
 	}
-	got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+	got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 	if got.Runs != 4 || len(got.Invalid) != 1 || got.Invalid[0].Path != path {
 		t.Fatalf("json: runs %d invalid %+v", got.Runs, got.Invalid)
 	}
@@ -362,12 +362,12 @@ func TestReruns_NeverEstimates(t *testing.T) {
 	t.Run("empty perf dir", func(t *testing.T) {
 		rerunsHome(t)
 		root := rerunsRoot(t)
-		rc, out, _ := runDeskperf("reruns", "--root", root, "--brief", "graph-execution/02")
-		if rc != deskkit.ExitOK || !strings.HasPrefix(out, "graph-execution/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded\n") ||
+		rc, out, _ := runDeskperf("reruns", "--root", root, "--brief", "example-stream/02")
+		if rc != deskkit.ExitOK || !strings.HasPrefix(out, "example-stream/02: 4 verification runs, 1 uncredited, 1 discarded, 1 unrecorded\n") ||
 			!strings.Contains(out, "could-not-check (no perf rows: no perf history") {
 			t.Fatalf("rc %d\n%s", rc, out)
 		}
-		got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+		got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 		for _, v := range []any{got.Total.SumOwnProcessWallMs, got.Waste.SumOwnProcessWallMs, got.Share, got.Unassigned["rows"]} {
 			if s := stateOf(t, v); s.State != stateCouldNotCheck {
 				t.Fatalf("state %+v", s)
@@ -383,11 +383,11 @@ func TestReruns_NeverEstimates(t *testing.T) {
 		stateDir, _ := rerunsHome(t)
 		seedRerunsPerf(t, stateDir)
 		root := rerunsRoot(t)
-		rc, out, _ := runDeskperf("reruns", "--root", root, "--brief", "graph-execution/02", "--days", "1")
+		rc, out, _ := runDeskperf("reruns", "--root", root, "--brief", "example-stream/02", "--days", "1")
 		if rc != deskkit.ExitOK || !strings.Contains(out, "could-not-check (pruned") {
 			t.Fatalf("rc %d\n%s", rc, out)
 		}
-		got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02", "--days", "1")
+		got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02", "--days", "1")
 		for _, a := range got.Attempts {
 			if a.Attempt > 0 && (a.State != stateCouldNotCheck || !strings.HasPrefix(a.StateReason, "pruned")) {
 				t.Fatalf("attempt %d: %s %s", a.Attempt, a.State, a.StateReason)
@@ -405,11 +405,11 @@ func TestReruns_NeverEstimates(t *testing.T) {
 		writeVerifyRow(t, stateDir, dayAt(t, "09:10:00"), 7000, two, skillPerfWork)
 		writeVerifyRow(t, stateDir, dayAt(t, "09:40:00"), 2000, one, skillPerfWork)
 		writeVerifyRow(t, stateDir, dayAt(t, "10:10:00"), 3000, one, skillPerfWork)
-		rc, out, _ := runDeskperf("reruns", "--root", root, "--brief", "graph-execution/02")
+		rc, out, _ := runDeskperf("reruns", "--root", root, "--brief", "example-stream/02")
 		if rc != deskkit.ExitOK || !strings.Contains(out, "ambiguous (2 distinct agentIds in one window") {
 			t.Fatalf("rc %d\n%s", rc, out)
 		}
-		got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+		got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 		if got.Attempts[1].Attempt != 1 || got.Attempts[1].State != stateAmbiguous {
 			t.Fatalf("attempt 1: %+v", got.Attempts[1])
 		}
@@ -428,7 +428,7 @@ func TestReruns_NeverEstimates(t *testing.T) {
 		writeVerifyRow(t, stateDir, dayAt(t, "09:05:00"), 1000, agent, skillPerfWork)
 		writeVerifyRow(t, stateDir, dayAt(t, "10:10:00"), 3000, agent, skillPerfWork)
 		writeVerifyRow(t, stateDir, dayAt(t, "12:00:00"), 4400, agent, skillPerfWork)
-		got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+		got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 		if num(t, got.Unassigned["rows"]) != 1 || num(t, got.Unassigned["sumOwnProcessWallMs"]) != 4400 {
 			t.Fatalf("unassigned %+v", got.Unassigned)
 		}
@@ -443,7 +443,7 @@ func TestReruns_NeverEstimates(t *testing.T) {
 // real perfrec resolver with the skill's qualified --perf-work join; rows written with the
 // <stream>/<NN> id carry no work at all, so the attempt is could-not-check (no perf rows).
 func TestReruns_JoinsQualifiedWorkRefOnly(t *testing.T) {
-	ref, err := deskkit.PerfBriefRef("assay:assay:graph-execution:02")
+	ref, err := deskkit.PerfBriefRef("assay:assay:example-stream:02")
 	if err != nil || !strings.Contains(skillPerfWork, `"brief":"`+ref+`"`) {
 		t.Fatalf("the skill's value is not PerfBriefRef's: %q %v", ref, err)
 	}
@@ -453,7 +453,7 @@ func TestReruns_JoinsQualifiedWorkRefOnly(t *testing.T) {
 		agent := newAgent(t)
 		writeVerifyRow(t, stateDir, dayAt(t, "09:05:00"), 1500, agent, skillPerfWork)
 		writeVerifyRow(t, stateDir, dayAt(t, "10:05:00"), 2500, agent, skillPerfWork)
-		got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+		got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 		if num(t, got.Waste.SumOwnProcessWallMs) != 1500 || num(t, got.Total.SumOwnProcessWallMs) != 4000 {
 			t.Fatalf("qualified rows did not join: waste %v total %v", got.Waste.SumOwnProcessWallMs, got.Total.SumOwnProcessWallMs)
 		}
@@ -462,14 +462,14 @@ func TestReruns_JoinsQualifiedWorkRefOnly(t *testing.T) {
 		stateDir, perfDir := rerunsHome(t)
 		root := rerunsRoot(t)
 		agent := newAgent(t)
-		short := `{"kind":"brief","repo":"medici-finance/assay","brief":"graph-execution/02"}`
+		short := `{"kind":"brief","repo":"medici-finance/assay","brief":"example-stream/02"}`
 		writeVerifyRow(t, stateDir, dayAt(t, "09:05:00"), 1500, agent, short)
 		writeVerifyRow(t, stateDir, dayAt(t, "10:05:00"), 2500, agent, short)
 		b, err := os.ReadFile(filepath.Join(perfDir, yesterday()+".jsonl"))
-		if err != nil || strings.Contains(string(b), "graph-execution/02") || !strings.Contains(string(b), `"work":"invalid"`) {
+		if err != nil || strings.Contains(string(b), "example-stream/02") || !strings.Contains(string(b), `"work":"invalid"`) {
 			t.Fatalf("perfrec kept a <stream>/<NN> work ref (or wrote nothing): %v\n%s", err, b)
 		}
-		got := rerunsJSON(t, "--root", root, "--brief", "graph-execution/02")
+		got := rerunsJSON(t, "--root", root, "--brief", "example-stream/02")
 		for _, a := range got.Attempts {
 			if a.Attempt > 0 && (a.State != stateCouldNotCheck || !strings.HasPrefix(a.StateReason, "no perf rows: ")) {
 				t.Fatalf("attempt %d reported a cost from rows with no work: %s %s", a.Attempt, a.State, a.StateReason)

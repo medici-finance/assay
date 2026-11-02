@@ -87,7 +87,7 @@ func TestOutcomeRecords(t *testing.T) {
 		t.Fatalf("log-only and both-layouts plans differ (a record present in both layouts must count once):\n--- log-only ---\n%s\n--- both ---\n%s", logOnly, both)
 	}
 
-	// desk-supervision/37: a blocked record carrying attempts plans and wakes exactly as the same
+	// Issue #4163: a blocked record carrying attempts plans and wakes exactly as the same
 	// record without them — the planner never reads the new key.
 	blocked := `{"ts":"2026-09-08T03:00:00Z","brief":"example-stream/02","outcome":"blocked","sha":"0000003",` +
 		`"blocker_kind":"environment","blocker_ref":"example-org/tracker#9","started":"2026-09-08T02:00:00Z",` +

@@ -18,7 +18,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// `deskperf reruns` (desk-supervision/37): verification re-runs as waste. The run counts come
+// `deskperf reruns` (issue #4163): verification re-runs as waste. The run counts come
 // from the verify-outcome register (every record of a brief, each re-validated with
 // deskkit.CheckAttempts — the reader half of the attempt validator). The cost is NOT a new
 // measure: each attempt window is joined to the workflow perf rows deskperf report already
@@ -30,7 +30,7 @@ const (
 	stateCouldNotCheck = "could-not-check"
 	stateAmbiguous     = "ambiguous"
 
-	tokensReason = "desk-supervision/34 records worker dispatches only"
+	tokensReason = "token usage is recorded for worker dispatches only"
 	notCounted   = "verifier dispatches that landed no outcome record are not counted: the register is the only source of runs"
 )
 

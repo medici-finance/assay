@@ -1,6 +1,6 @@
 ---
-brief: assay:assay:graph-execution:02
-stream: graph-execution
+brief: assay:assay:example-stream:02
+stream: example-stream
 status: implemented
 ---
 

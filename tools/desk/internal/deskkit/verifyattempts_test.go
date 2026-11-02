@@ -186,7 +186,7 @@ func TestPerfBriefRef(t *testing.T) {
 			t.Fatalf("%q as a perf work ref: coverage %q work %+v", got, d.Coverage[perfrec.FieldWork], d.Work)
 		}
 	}
-	for _, bad := range []string{"desk-supervision/37", "a:b:c:0", "assay:assay:desk-supervision:", ""} {
+	for _, bad := range []string{"example-stream/37", "a:b:c:0", "assay:assay:desk-supervision:", ""} {
 		_, err := PerfBriefRef(bad)
 		if err == nil || ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), `"`+bad+`"`) {
 			t.Fatalf("PerfBriefRef(%q) not refused naming the value: %v", bad, err)

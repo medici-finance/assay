@@ -1,6 +1,6 @@
 package deskkit
 
-// Verification attempts (desk-supervision/37). A verifier dispatch lands ONE outcome record,
+// Verification attempts (issue #4163). A verifier dispatch lands ONE outcome record,
 // but inside that dispatch the Verify table may be run more than once: a run on locally built
 // tools is never credit, an environmental fault can throw a run away, the credit check can
 // fail. The optional `attempts` list on the record keeps every one of those runs with its

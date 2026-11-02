@@ -429,7 +429,7 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 			}
 		}
 	}
-	// attempts (desk-supervision/37): every verification run of this dispatch, validated
+	// attempts (issue #4163): every verification run of this dispatch, validated
 	// against the record's own window and row count checked above.
 	_, err = CheckAttempts(f)
 	return err
