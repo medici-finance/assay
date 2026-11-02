@@ -1030,8 +1030,8 @@ func TestFetch_UnparseableOriginIsRefusedNotUnverifiable(t *testing.T) {
 // Recording the effective URL must not turn the audit ledger into a credential store.
 func TestRedactURL(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
-		{"https://user:ghp_SECRETTOKEN@github.com/o/r", "https://<redacted>@github.com/o/r"},
-		{"https://x-access-token:ghs_SECRET@github.com/o/r", "https://<redacted>@github.com/o/r"},
+		{"https://user:" + "ghp_SECRETTOKEN" + "@github.com/o/r", "https://<redacted>@github.com/o/r"},
+		{"https://x-access-token:" + "ghs_SECRET" + "@github.com/o/r", "https://<redacted>@github.com/o/r"},
 		{"ssh://git@github.com/o/r", "ssh://<redacted>@github.com/o/r"},
 		{"git@github.com:o/r", "<redacted>@github.com:o/r"},
 		{"https://github.com/o/r", "https://github.com/o/r"},

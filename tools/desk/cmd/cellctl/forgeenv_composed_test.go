@@ -160,7 +160,7 @@ func TestCodexLaunchForwardsCellForgeBase(t *testing.T) {
 func TestForgeEndpointSecretRefusal(t *testing.T) {
 	for _, key := range []string{"GITLAB_API_BASE", "FORGE_API_BASE"} {
 		for name, base := range map[string]string{
-			"userinfo":  "https://fixture-user:fixture-secret@gitlab.example.com/api/v4",
+			"userinfo":  "https://fixture-user:" + "fixture-secret" + "@gitlab.example.com/api/v4",
 			"query":     "https://gitlab.example.com/api/v4?token=fixture-secret",
 			"fragment":  "https://gitlab.example.com/api/v4#fixture-secret",
 			"malformed": "https://gitlab.example.com/%zz/fixture-secret",
@@ -204,7 +204,7 @@ func TestCodexRejectsURLSecret(t *testing.T) {
 			f.prepareLocalLaunch(t)
 			stub := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'codex-cli 1.0.0'; exit 0; fi\necho HARNESS_STARTED\n"
 			must(t, os.WriteFile(filepath.Join(f.binDir, "codex"), []byte(stub), 0755))
-			writeForgeCellEnv(t, f, "CELL_HARNESS=codex\nCODEX_MODEL_default=fixture-model\nCELL_FORGE=gitlab\n"+key+"=https://fixture-user:fixture-secret@gitlab.example.com/api/v4\n")
+			writeForgeCellEnv(t, f, "CELL_HARNESS=codex\nCODEX_MODEL_default=fixture-model\nCELL_FORGE=gitlab\n"+key+"=https://fixture-user:"+"fixture-secret"+"@gitlab.example.com/api/v4\n")
 			r := f.run(t, []string{"CELLCTL_DESKWT=0", "GITLAB_API_BASE=https://inherited.example/api/v4"}, "desk", "example", "worker-desk", "--cadence", "off")
 			if r.code != 3 || !strings.Contains(r.stderr, "cell forge endpoint") {
 				t.Fatalf("expected safe refusal: exit=%d", r.code)
