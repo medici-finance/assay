@@ -40,7 +40,7 @@ consumers:
   - "tools/changelog/README.md: follow-up contributor-trust/09 (this brief; the credits map's shape and its three states)"
   - "tools/changelog/check.sh: out-of-scope (the PR-gate check decides whether a fragment EXISTS for a pull request; credit is an aggregate-time concern and the gate's verdict is unchanged — a fragment with no credit is exactly as valid as one with)"
   - "CHANGELOG.md sections already published: out-of-scope (forward-only by construction; a released section is a record of what was said at the time and is never rewritten to add a credit)"
-version: 1
+version: 2
 ---
 
 # Brief 09 — External-contributor credit in release notes
@@ -136,21 +136,21 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/changelog && ./aggregate_test.sh; echo rc=$?` | output contains `rc=0`; output does not contain `FAIL` | check |
-| 2 | `cd tools/changelog && AGG_IMPL=testdata/old-aggregate.py ./aggregate_test.sh; echo rc=$?` | output does not contain `rc=0`; output contains `FAIL` (the committed fail-first evidence: the new credit cases red against the retired engine) | check +mutation |
-| 3 | `cd tools/changelog && ./aggregate_test.sh 2>&1` | exit 0; output contains `C1` and `thanks` (an external-authored fragment's bullets carry the credit) | check |
-| 4 | `cd tools/changelog && ./aggregate_test.sh 2>&1` | exit 0; output contains `C2` (a roster-authored fragment gets no credit: the negative control) | check +mutation |
-| 5 | `cd tools/changelog && ./aggregate_test.sh 2>&1` | exit 0; output contains `C3` (the opt-out marker suppresses the credit) | check +mutation |
-| 6 | `cd tools/changelog && ./aggregate_test.sh 2>&1` | exit 0; output contains `C4` (an unresolvable fragment aggregates uncredited and the run still exits 0: a credit never fails a cut) | check +mutation |
-| 7 | `cd tools/changelog && python3 aggregate.py highlights testdata-none CHANGELOG-none 2>&1; echo rc=$?` | output contains `rc=2` (positive control: the existing empty-fragments refusal is unchanged) | check +neighbour |
-| 8 | `cd tools/changelog && git -C ../.. grep -n -c 'import ' -- tools/changelog/aggregate.py` | exit 0; output is `3` or fewer (the module gained no network or forge import; it still stands on os, re and sys) | check +dereference |
+| 1 | `cd tools/changelog && if grep -q -e 'C5 credits resolves' aggregate_test.sh; then ./aggregate_test.sh; rc=$?; echo rc=$rc; exit $rc; else exit 3; fi` | output contains `rc=0`; output does not contain `FAIL` | check |
+| 2 | `cd tools/changelog && if grep -q -e 'C1 external-authored' aggregate_test.sh; then AGG_IMPL=testdata/old-aggregate.py ./aggregate_test.sh; rc=$?; echo rc=$rc; test "$rc" != 0; else exit 3; fi` | output does not contain `rc=0`; output contains `FAIL` (the committed fail-first evidence: the new credit cases red against the retired engine) | check +mutation |
+| 3 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C1 ' <<<"$out"` | exit 0; output contains `C1` and `thanks` (an external-authored fragment's bullets carry the credit) | check |
+| 4 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C2 ' <<<"$out"` | exit 0; output contains `C2` (a roster-authored fragment gets no credit: the negative control) | check +mutation |
+| 5 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C3 ' <<<"$out"` | exit 0; output contains `C3` (the opt-out marker suppresses the credit) | check +mutation |
+| 6 | `cd tools/changelog && out=$(./aggregate_test.sh 2>&1); rc=$?; printf '%s\n' "$out"; test "$rc" = 0 && grep -q -E '^ok +- C4 ' <<<"$out"` | exit 0; output contains `C4` (an unresolvable fragment aggregates uncredited and the run still exits 0: a credit never fails a cut) | check +mutation |
+| 7 | `cd tools/changelog && out=$(python3 aggregate.py highlights testdata-none CHANGELOG-none --credits testdata-none.map 2>&1); rc=$?; case $out in *'nothing to aggregate'*) echo "rc=$rc"; test "$rc" = 2 ;; *) echo "rc=other:$rc"; exit 1 ;; esac` | output contains `rc=2` (positive control: the existing empty-fragments refusal is unchanged) | check +neighbour |
+| 8 | `cd tools/changelog && git -C ../.. grep -q -e '_resolve_fragment_pr' -- tools/changelog/aggregate.py && git -C ../.. grep -h -c 'import ' -- tools/changelog/aggregate.py` | exit 0; output is `3` or fewer (the module gained no network or forge import; it still stands on os, re and sys) | check +dereference |
 | 9 | `git -C . grep -n 'fetch-depth' -- .github/workflows/release.yml` | exit 0; at least one matching line (the release job's checkout is deep enough for the git half to resolve a fragment's adding commit) | check +dereference |
-| 10 | `grep -n -i 'thanks' changelog/README.md` | exit 0; at least one matching line (the proxy recipe says the aggregator credits an external author automatically) | check |
+| 10 | `grep -n -i 'need not credit the contributor by hand' changelog/README.md` | exit 0; at least one matching line (the proxy recipe says the aggregator credits an external author automatically) | check |
 | 11 | `grep -n -i 'opt-out' changelog/README.md tools/changelog/README.md` | exit 0; at least one matching line from each | check |
-| 12 | `cd tools/changelog && ./check_test.sh; echo rc=$?` | output contains `rc=0` (neighbour: the PR-gate check's own suite is untouched by the aggregate-time change) | check +neighbour |
-| 13 | `cd tools/changelog && python3 aggregate.py credits testdata/credits-fixture-repo/changelog 2>&1` | exit 0; output contains `unresolved` (a fragment with no merge commit reports an explicit unresolved marker, not an omission) | check +flow |
+| 12 | `cd tools/changelog && ./check_test.sh && python3 aggregate.py credits testdata-none >/dev/null; rc=$?; echo rc=$rc; exit $rc` | output contains `rc=0` (neighbour: the PR-gate check's own suite is untouched by the aggregate-time change) | check +neighbour |
+| 13 | `cd tools/changelog && test -x testdata/make-credits-fixture.sh && ./testdata/make-credits-fixture.sh >/dev/null && out=$(python3 aggregate.py credits testdata/credits-fixture-repo/changelog 2>&1) && printf '%s\n' "$out" && grep -q -E '^never-merged[.]md[[:space:]]+unresolved$' <<<"$out"` | exit 0; output contains `unresolved` (a fragment with no merge commit reports an explicit unresolved marker, not an omission) | check +flow |
 | 14 | `git -C . grep -n 'pull-requests: read' -- .github/workflows/release.yml` | exit 0; at least one matching line (the forge half can read a pull request's author and body) | check +dereference |
-| 15 | `git -C . grep -n 'pull-requests: write' -- .github/workflows/release.yml` | exit 1; no matching line (negative control: the pull-requests scope added is READ-only. The release job already carries `contents: write` to push the tag; that is unchanged and is not what this row is about) | check +mutation |
+| 15 | `if git -C . grep -q 'pull-requests: read' -- .github/workflows/release.yml; then git -C . grep -n 'pull-requests: write' -- .github/workflows/release.yml; else exit 3; fi` | exit 1; no matching line (negative control: the pull-requests scope added is READ-only. The release job already carries `contents: write` to push the tag; that is unchanged and is not what this row is about) | check +mutation |
 | 16 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:09` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The credit lands on the wrong person because the merge-commit

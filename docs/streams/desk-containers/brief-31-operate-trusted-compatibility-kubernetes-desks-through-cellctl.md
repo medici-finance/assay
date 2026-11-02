@@ -3,8 +3,8 @@ brief: assay:assay:desk-containers:31
 title: Operate trusted compatibility Kubernetes desks through cellctl
 why: Operators need interactive agents with retained files in Kubernetes without first replacing desk scheduling, verification or the whole managed runtime. The existing package opens shells; this bounded compatibility path starts the actual configured agents and makes reconnect and controlled stop explicit.
 wave: 8
-depends: ["desk-containers/06", "desk-containers/15"]
-unblocks: ["desk-containers/32"]
+depends: ["desk-containers/06", "desk-containers/15", "desktools-v2/16"]
+unblocks: ["desk-containers/32", "desktools-v2/17"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -29,6 +29,9 @@ consumers:
   - "tools/desk/internal/kubecompat/: follow-up desk-containers/31"
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-containers/31"
   - "containers/k8s/compatibility/: follow-up desk-containers/31"
+  - "containers/k8s/compatibility/prepare.py: fixed-here (operator-owned cold preparation through the existing image launcher)"
+  - "containers/k8s/compatibility/prepare.test.py: fixed-here (cold-preparation refusal and handoff flows)"
+  - "tools/desk/internal/kubecompat/profile_contract_test.go: fixed-here (preparation flow through CI)"
   - "containers/k8s/components/compatibility-cellctl/: follow-up desk-containers/31"
   - "containers/k8s/check.py: follow-up desk-containers/31"
   - "containers/k8s/testdata/: follow-up desk-containers/31"
@@ -49,6 +52,7 @@ files:
 - tools/desk/internal/kubecompat/ (planned config, identity, lifecycle, native API/stream adapters and fake-transport fixtures)
 - tools/desk/cmd/cellctl/kube_compat.go (planned routing and attach-only adapter)
 - tools/desk/cmd/cellctl/kube_compat_test.go (planned compiled-CLI flow tests)
+- tools/desk/cmd/cellctl/kube_compat_preparation_test.go (planned TestCLICompatPreparation for Task 7 shared-parser preparation parity)
 - tools/desk/cmd/cellctl/cobra.go (existing command registration)
 - tools/desk/cmd/cellctl/envkeys.go (existing configuration registry)
 - tools/desk/cmd/cellctl/cell.go (existing configuration loading)
@@ -61,6 +65,7 @@ files:
 - tools/desk/go.mod and tools/desk/go.sum (native Kubernetes SDK only if needed after the existing dependency assessment)
 - containers/k8s/compatibility/desk-session.sh (planned bounded PID-1 agent launcher)
 - containers/k8s/compatibility/desk-session.test.sh (planned launcher negative controls)
+- containers/k8s/compatibility/prepare.py and prepare.test.py (operator-owned Claude cold-preparation adapter; read-only plan default)
 - containers/k8s/compatibility/cellctl-config.schema.json (planned profile contract)
 - containers/k8s/components/compatibility-cellctl/ (planned opt-in paused workloads, launch wiring and custodian-only RBAC)
 - containers/base/Dockerfile (package the compatibility launcher in a newly identified candidate image)
@@ -123,8 +128,9 @@ history. Launch intent is retained before one pinned agent child starts. Only a 
 stop, after all processes in that private namespace have stopped and been reaped, records
 clean history. A later distinct Pod UID can start; same-Pod restart and unknown/dirty or
 missing history remain held. The record is trusted-custodian bookkeeping, not authorization.
-The pinned agent executable, package/version manifest, role instructions and work inputs are
-preinstalled by the custodian; there is no package installation during boot.
+The pinned agent executable, package/version manifest and work inputs are preinstalled
+by the custodian. Role instructions default to the baked image path, or an explicitly
+selected approved custom file; there is no package installation during boot.
 
 Attach uses the existing container stdin/TTY and does not start or signal an agent. A
 reserved, execution-bound supervisor control frame requests stop through the same native
@@ -196,6 +202,28 @@ is inferred from code completion, a merge, a Running Pod or a local bookkeeping 
 5. Retain run/kubecompat/<role>.json under the selected cell for operator observations, binding config digest, StatefulSet UID, Pod UID, container ID and restart count, image, role and observation state. Never treat the writable receipt as authorization. Validate the live tuple before streams and effects; same-Pod new-container identity invalidates an old stream/receipt. A controlled stop requires existing role quiescence/claim and effect reconciliation, or an explicitly disclosed custodian-confirmed interactive idle condition when no machine signal exists. If the role remains busy or cannot be measured, hold and name the manual stop procedure. The launcher signals and reaps the complete execution group, records clean stop only after it has stopped, and exits. Observe exact container termination before recording stop success or admitting a replacement. Scale/delete accepted, timeout, Ready/NotReady or an absent Pod is not termination proof. Lost acknowledgement, changed/lost UID, node partition and uncertain old background execution remain held; no force deletion, forced claim release, automatic retry or history reset.
 6. Update existing CLI/help/config/command-inventory routes, the profile-aware offline checker and operator docs. Keep non-selected registrations unchanged. Document all manual preparation and custody restrictions, including preinstalled pinned agent/toolchain/work inputs, explicitly qualified harness/model profile and role policies, cold initialization, install versus up, detach versus stop, and the held recovery procedure. Report filesystem retention, conversation continuation and process continuation separately; a PVC is not a promise of restored conversation or live process. Supply the package/image identity and config/receipt fixtures for the separate small-profile qualification brief. No runtime benefit, latency or recovery target is invented.
 
+   The initial namespace remains `assay-desks` and the first supported agent is
+   Claude through the existing compatible launcher. A thin operator-owned
+   preparation adapter may replace manual descriptor/identity construction: it
+   defaults to a read-only plan, measures the installed approved inputs, invokes
+   only the image-owned cold-preparation verb, and exports its validated binding
+   values. It never installs packages, contacts a cluster/model, resets history,
+   changes the runtime launcher or grants activation. Test the adapter through
+   the existing CI module; keep actual volume preparation with the custodian.
+
+7. This brief owns the preparation CLI migration required by
+   [the CLI contract, section 7](../desktools-v2/cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18).
+   Before /31 can complete, move the preparation argument boundary onto the shared
+   Cobra/Viper foundation through the existing cellctl operator boundary, and reduce
+   `prepare.py` to a transparent delegate to that registered Go entrypoint. Mark its
+   registry row `migrated` with the actual `migrated_to` target. Preserve the image-owned
+   initializer, descriptor/hash/history semantics, all existing operation forms and
+   refusal/exit behavior, offline help and plan/readback no-effect behavior; test those
+   forms through the compiled CLI in `TestCLICompatPreparation`. Pending registration
+   is a source checkpoint, not a waiver of section 7 or a completed parser migration.
+   The reference /16 supplies the foundation; it does not perform this migration.
+   The final gate /17 waits for /31 to deliver it; /17 does not implement it either.
+
 ## Interface contract
 
 - Profile: cell-kube-compat-v1, selected only by CELL_KUBERNETES_CONFIG; its schema and examples live under containers/k8s/compatibility/. Missing selection does not alter existing kinds.
@@ -203,6 +231,13 @@ is inferred from code completion, a merge, a Running Pod or a local bookkeeping 
 - Lifecycle: existing up/desk/status/down adapters; attach is presentation-only. The only supported recovery is a controlled, reconciled clean stop followed by a new Pod execution. Unknown old execution remains held for a custodian.
 - Observations: the existing cell-op-v1 result/plan plus operator receipts at run/kubecompat/<role>.json. The qualified profile publishes no new work/claim authority.
 - Qualification handoff: actual candidate image digest, rendered component, explicit config, initialized-volume provenance, fake transport cases and exact cold/start/attach/detach/status/stop/new-start CLI sequence. All named new paths and tests below are deliverables, not already-run evidence.
+
+The source-mounted preparation CLI is routed as `pending` under this brief in the
+existing CLI migration registry. It is an operator entrypoint, not a test or an image-only
+launcher exemption. **This brief owns its migration in Task 7 and must pass row 10 before
+completion.** The /16 foundation is a prerequisite, and /17 now waits on /31 as a final
+gate. Neither /16 nor /17 performs the migration. This checkpoint does not satisfy or
+waive the section 7 shared-foundation requirement; merging it cannot complete /31.
 
 ## Verify
 
@@ -217,10 +252,13 @@ Every named test must execute and emit its named PASS; a go test invocation matc
 | 5 | check:ci +mutation +dereference | `sh containers/k8s/check.sh --compatibility-cellctl --self-test` | exit 0; output contains "checked-clean: compatibility cellctl profile"; actual rendered component and candidate-image binding pass; hostile live replicas at installation, old shell-only digest, wildcard scope, foreign-role attach/log/debug, broad credential mounts, missing API-token isolation and missing network/terminal/log custody declarations are rejected offline; no discovery/API call. Effective RBAC/network/log custody remains separately human-qualified |
 | 6 | check:ci +neighbour | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./cmd/cellctl -run '^TestKubeCompatParity$' > "$o" && grep -F -- '--- PASS: TestKubeCompatParity ' "$o")` | exit 0, named PASS; non-selected k8s/house/container/scrubbed routing and current cell-op JSON/plan/confirmation contract remain unchanged; docs examples replay against the fake production transport |
 | 7 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/31 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the actual immutable implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved, and resolve unchecked required consumers rather than treating them as PASS |
+| 8 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./internal/kubecompat -run '^TestKubeCompatPreparation$' > "$o" && grep -F -- '--- PASS: TestKubeCompatPreparation ' "$o")` | exit 0, named PASS; all five cold-preparation handoffs use the actual launcher and canonical retained state without invoking an agent/model; plan writes nothing; readback reproduces unused prepared bindings without writes/children and refuses changed inputs/foreign state; package/version, preparer identity, missing inputs, existing descriptor/history and concurrent preparation refuse; bypassing the read-only default or version check fails |
+| 9 | check:ci +dereference | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./internal/clicontract -run '^TestCLIInventory$' > "$o" && grep -F -- '--- PASS: TestCLIInventory ' "$o")` | exit 0, named PASS; the preparation operator entrypoint has an explicit owned route and reference/final-gate links; this source checkpoint is pending, and row 10 separately requires migration before completion; no scanner exception |
+| 10 | check +flow +dereference | `python3 -c 'import json; r=json.load(open("docs/streams/desktools-v2/cli-migration.json")); e=next(x for x in r["entrypoints"] if x["path"]=="containers/k8s/compatibility/prepare.py"); assert e["state"]=="migrated", "preparation parser migration is incomplete"' && (cd tools/desk && o=$(mktemp) && GOWORK=off go test -count=1 -v ./internal/clicontract -run '^TestCLIInventory$' > "$o" && grep -F -- '--- PASS: TestCLIInventory ' "$o" && GOWORK=off go test -count=1 -v ./cmd/cellctl -run '^TestCLICompatPreparation$' > "$o" && grep -F -- '--- PASS: TestCLICompatPreparation ' "$o")` | exit 0 only after the preparation row is migrated to its actual shared-foundation Go entrypoint and both named tests PASS; pending state, a fictitious migration target, retained custom parser, absent parity test or mismatched argv/refusal/read-only behavior fails; this row is intentionally held at the source checkpoint and is required before /31 completes |
 
 ## Definition of Done
 
-The opt-in profile runs the actual configured agents through one cellctl backend, preserves current custody and cell-op/stop controls, and passes every offline row with discriminating negative controls. The candidate image and profile are identified for independent qualification. This brief does not establish effective cluster isolation, deployment, final human acceptance or unattended recovery support.
+The opt-in profile runs the actual configured agents through one cellctl backend, preserves current custody and cell-op/stop controls, and passes every offline row with discriminating negative controls. Task 7 and row 10 must also be complete: the preparation CLI is migrated to the shared foundation with compiled-CLI parity tests, not left pending for the final gate. The candidate image and profile are identified for independent qualification. This brief does not establish effective cluster isolation, deployment, final human acceptance or unattended recovery support.
 
 ## Pre-mortem
 

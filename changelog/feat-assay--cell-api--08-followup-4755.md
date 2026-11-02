@@ -1,0 +1,2 @@
+### Changed
+- cell-api/08: reworked the brief's Verify table so every offline row fails at the pre-delivery base and passes on the delivered tree. The CI-reachability row now runs the public-layout test instead of two sweeps that skip in this repository, the documentation row checks Task 5's deliverables instead of a whole-tree lint that unrelated briefs can redden, and the consumers row first proves the named delivery added the image files.

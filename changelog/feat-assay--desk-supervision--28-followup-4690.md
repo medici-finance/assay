@@ -1,0 +1,2 @@
+### Changed
+- The dispatch-record brief (desk-supervision/28) has a corrected Verify table at version 2. Rows 1, 7 and 8 now fail on the tree before the delivery: row 1 checks that the five delivered tests passed, row 7 also requires the worktree dispatch-ref test, and row 8 checks consumer corroboration against the pinned delivery commit. Row 9 now reads the record matching this worktree's dispatch ref instead of the last line of the shared record file. The amendment still needs a human acceptance-transition approval before verification can rely on it.
