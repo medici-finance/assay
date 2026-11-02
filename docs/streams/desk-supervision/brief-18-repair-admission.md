@@ -379,6 +379,47 @@ Verification-Attestation: medici-finance/assay#3614 run=0e4bb25af0dbca905238a9a2
 
 **VERIFY: PASS** — at b73d90d774fc all 4 rows pass on substance by hand, each with its Expect established, and in the container-netns execution witness (4 pass, 0 fail). The row 2 and row 4 coverage gaps behind the earlier FAIL are closed by 76ef477cc. The Task 1 planner preview is still absent and stays tracked in #1923; it is outside every Verify row.
 
+### Non-implementer verifier re-witness — 2026-11-02 @ merged main 2c6c21336a60
+
+Runner: assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong, dispatched by verify-desk), not the implementer. This is the one-time batch re-witness at a single main commit that the driver ruled on medici-finance/assay#2026. Source 2c6c21336a606e64df057294f21177f16db7b9f8, in the dispatch's own detached worktree. Pre-work admission: `deskdispatch --check-verifier` exit 0, attestation medici-finance/assay#5245, model claude-opus-5-5, tier strong. Earlier blocks above are left as they were; nothing from them is copied here. The rows ran in the closed admission bracket. The host opened it at 2026-11-02T00:31:28Z. The rows ran in a local docker container: image ghcr.io/medici-finance/verify-runner pinned by digest (statusgen v1.0.67, go1.27.3 linux/arm64), `--network none`, the engine's default seccomp profile, sandbox=container-netns, with the home and its git directory mounted read-only. The engine is OrbStack behind the `default` docker context, which the 2026-10-22 interim-runner ruling allows. The host closed the bracket at 2026-11-02T00:32:44Z after a fresh `--check-verifier`. `statusgen verifyrun --bracket-digest` reports verdict=match.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionDirectDispatch$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:fcf40341ceb0 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionConcurrentAndCrash$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:b604c33dc1a1 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionUnknownAndExternalWait$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:bd4fd5998313 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionFullCycleRestart$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:b861c4453180 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:5fa242b9d02a5f769fe9d541f5a8ad33ae291e418a735617faf4812ef21e8629
+Verification-Attestation: medici-finance/assay#5245 run=d5cae70f55d3b8611e0062880dd04c9dd95579bdc2a3ff35d46b21887e95a115 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desk-supervision/brief-18-repair-admission.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=d5cae70f55d3b8611e0062880dd04c9dd95579bdc2a3ff35d46b21887e95a115 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:f91d97e48efa1d133a1b5ef8b13e6f0ff13e912080e76e1fa39a8d1962a1ce22 opened=2026-11-02T00:31:28Z closed=2026-11-02T00:32:44Z before=receipt after=check-verifier
+
+**Named PASS lines (supplemental, no acceptance credit).** The witness table records each row's output digest, not its text. To see each named PASS line, the same four row commands were run again, unchanged, in the same image with `--network none` and the home mounted read-only. The output went to the verifier's scratch directory. All four exited 0:
+- row 1: `--- PASS: TestRepairAdmissionDirectDispatch (0.00s)`; `ok  github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 0.068s`
+- row 2: `--- PASS: TestRepairAdmissionConcurrentAndCrash (3.67s)`; `ok  github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 3.731s`
+- row 3: `--- PASS: TestRepairAdmissionUnknownAndExternalWait (0.00s)`; `ok  github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 0.036s`
+- row 4: `--- PASS: TestRepairAdmissionFullCycleRestart (2.40s)`; `ok  github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 2.429s`
+
+**Risk-bearing values: re-enumerated at 2c6c21336a60** over the deskkit and deskdispatch repairadmission sources and the dispatch.go wiring. Since b73d90d774fc only one commit touched these files, the deskclaim-ref alias-check fix 19e1c01d4. Risk metadata is present and every field is "no"; the gate is model and nothing is irreversible.
+- EnvRepairAdmission = "ASSAY_REPAIR_ADMISSION" @ tools/desk/internal/deskkit/repairadmission.go:39
+- RepairAdmissionPolicyVersion = "repair-admission-v1" @ tools/desk/internal/deskkit/repairadmission.go:46
+- repairAdmissionOn = "on" @ tools/desk/internal/deskkit/repairadmission.go:51
+- pool-full hold `free <= 0` @ tools/desk/internal/deskkit/repairadmission.go:134
+- fresh-hold boundary `free <= floor` @ tools/desk/internal/deskkit/repairadmission.go:154
+- admissionLoop = "worker-desk" @ tools/desk/cmd/deskdispatch/repairadmission.go:60
+- repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66
+- repairSidecarRel = docs/streams/repair-obligations.jsonl @ tools/desk/cmd/deskdispatch/repairadmission.go:71
+- lease-key leaf "--admission" @ tools/desk/cmd/deskdispatch/repairadmission.go:253
+- claimedClaimTTL = 20 * time.Minute @ tools/desk/cmd/deskdispatch/dispatch.go:1697. This value predates the item, and the line has moved since the last pass.
+
+Ranking: every value is reversible. The gate ships off, and rollback means unsetting one env var or pinning the previous binary. The two hold boundaries and the lease TTL rank highest.
+
+RISK-VALUE: DERIVED — fresh-hold boundary `free <= floor` @ tools/desk/internal/deskkit/repairadmission.go:154 — admitting fresh work only when free > floor leaves at least floor slots free afterwards, which is exactly the no-steal condition. At free == floor, an admission would leave floor-1.
+RISK-VALUE: DERIVED — pool-full hold `free <= 0` @ tools/desk/internal/deskkit/repairadmission.go:134 — free = width − occupancy, so at or below 0 any admission would push occupancy past the width ceiling.
+RISK-VALUE: DERIVED — repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66 — it must equal the planner's repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 so that the gate and the planner agree on which obligations are assignable. The two are equal at this head, but it is still a duplicated literal.
+
+**VERIFY: PASS** — at 2c6c21336a60 all 4 rows pass in the bracketed container-netns execution witness (4 pass, 0 fail, 0 could-not-run of 4), and the supplemental run showed each named PASS line.
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.
