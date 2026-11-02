@@ -693,15 +693,49 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 // The username half is never judged, and may be empty: a password-only userinfo
 // (scheme://:<password>@host) is judged on its password like any other. A username-only
 // form (user@host, x-access-token@…) has no ':' before the '@' and does not match at all.
+//
+// A skipped match does not end the search inside it: a URL nested in a longer one's path or
+// query (https://host:8080/cb?next=scheme://user:<password>@host) is judged on its own
+// userinfo. See userinfoResume.
 func urlUserinfoAt(s string) (int, string) {
-	for _, m := range reURLUserinfo.FindAllStringSubmatchIndex(s, -1) {
-		user, pw := s[m[2]:m[3]], s[m[4]:m[5]]
-		if strings.ContainsAny(user+pw, "/?#[]") || isUserinfoPlaceholder(pw) {
-			continue
+	for pos := 0; pos < len(s); {
+		m := reURLUserinfo.FindStringSubmatchIndex(s[pos:])
+		if m == nil {
+			break
 		}
-		return m[0], pw
+		for i := range m {
+			m[i] += pos // offsets into s, not into the searched tail
+		}
+		pw := s[m[4]:m[5]]
+		bad := strings.LastIndexAny(s[m[2]:m[5]], "/?#[]")
+		if bad >= 0 {
+			bad += m[2] // an offset into s
+		}
+		if bad < 0 && !isUserinfoPlaceholder(pw) {
+			return m[0], pw
+		}
+		pos = userinfoResume(s, m, bad)
 	}
 	return -1, ""
+}
+
+// userinfoResume returns where urlUserinfoAt searches next after skipping the match m
+// (submatch offsets into s). bad is the offset of the last '/', '?', '#', '[' or ']' inside
+// the match's user and password halves, or -1 when it has none.
+//
+// A skipped match can hold a further URL: a link whose own host:port is followed by a path
+// or query that carries another scheme://user:<password>@host. Every userinfo match that
+// begins inside the skipped one ends at the same '@', because the password half stops at the
+// first '@' or whitespace. Such an inner match is a credential only when its own halves hold
+// none of those characters, so it can only be the one whose "://" supplies the last of them:
+// the search resumes at that "://" when it is there, and after the whole match otherwise.
+// That reaches every match a rescan from each "://" in turn would, in one step and not one
+// per "://", so a long run of repeated "://a:" fragments costs a single extra search.
+func userinfoResume(s string, m []int, bad int) int {
+	if bad >= 0 && bad-2 > m[0] && s[bad-2:bad+1] == "://" {
+		return bad - 2
+	}
+	return m[1]
 }
 
 // reShellExpansion is a whole-value shell expansion: $NAME, $1, ${…} or $(…).
