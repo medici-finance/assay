@@ -1,0 +1,1 @@
+- Limit the shared email scanner’s URL-userinfo exception to the authority span. Valid Git remote userinfo stays allowed; non-allowlisted addresses beside URLs and in their paths, queries or fragments remain refused.
