@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -922,6 +923,13 @@ def move_step(text, job, name, before):
 
 
 class ImagesTest(unittest.TestCase):
+    def test_proof_joined(self):
+        suite = HERE.parents[1] / 'images/verify-runner/source_proof_test.py'
+        result = subprocess.run([sys.executable, '-I', str(suite)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Ran 2 tests', result.stderr)
+
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
