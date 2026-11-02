@@ -14,7 +14,7 @@ spec: docs/proposals/non-ci-architecture/21-cell-operator-surface.md
 
 Move the reusable deskd service, read model and client seam into public Assay, then
 package it for the interactive Kubernetes cell. This is R7's existing owner, not a
-second controller or forge-service programme. All eight briefs are authored work,
+second controller or forge-service programme. All nine briefs are authored work,
 not delivered code or deployment qualification. **The stream is active for implementation.**
 
 ## Authority and admission
@@ -67,6 +67,7 @@ parked on its own terms. A recorded dependency or passed unit test cannot lift t
 | 06 | [Bind the in-cluster cellctl operator to the public service](brief-06-bind-the-in-cluster-cellctl-operator-to-the-public-service.md) | 15 | M | todo | — | — |
 | 07 | [Qualify handover rollback and last-consumer retirement](brief-07-qualify-handover-rollback-and-last-consumer-retirement.md) | 16 | M | todo | — | — |
 | 08 | [Build the deskd binary and image from public source through the Makefile](brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md) | 0 | M | implemented | — | — |
+| 09 | [Publish the deskd image through the assay release](brief-09-publish-the-deskd-image-through-the-assay-release.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Bounded refactor map
@@ -134,7 +135,7 @@ stay intact, including verified work awaiting generated-board reconciliation.
 ## Dependency waves and critical path
 
 The generator-derived wave values include external prerequisites. Within this set:
-`01 -> 02 -> 03 -> 05 -> 06 -> 07`, `03 -> 04 -> 07` and `08 -> 05`; 07 joins 04 and 06.
+`01 -> 02 -> 03 -> 05 -> 06 -> 07`, `03 -> 04 -> 07` and `08 -> 09 -> 05`; 07 joins 04 and 06.
 
 - 01 consumes forge-neutral/39 and desk-containers/15: compatibility/source inventory
   and pure protocol work, with no running database prerequisite.
@@ -144,8 +145,11 @@ The generator-derived wave values include external prerequisites. Within this se
   R3/R4 serving boundary (forge-neutral/40). This preserves the R5/R6 activation path.
 - 08 builds the deskd binary and a local image from the already-public `deskd/` module
   through the root Makefile. It has no in-set prerequisite, so it can land ahead of 05.
-  05 adds that image definition to the release image set and pins the reference a
-  published release records; it never pins or deploys a local build.
+  09 adds that image definition to the umbrella release's image set and contract, so an
+  approved release publishes a pinnable deskd record. 05 pins the reference a published
+  release records; it never pins or deploys a local build. 09 also unblocks follow-ons
+  outside this repository: re-pinning the downstream deployment onto the published
+  image, then retiring the sibling console repository's own deskd release workflow.
 - 05 consumes the CNPG profile and desk-containers/29's existing qualification harness;
   06 consumes the dedicated in-cluster operator profile.
   05 owns the additive read-role/profile amendment and the service-specific disposable
@@ -157,8 +161,8 @@ The generator-derived wave values include external prerequisites. Within this se
 **Actual runtime head:** admitted R1 contracts → existing R2/R3 and R4 qualification →
 R5/R6 → 03 → 05 → 06 → 07. Local 01 is the smallest interface step after admission;
 it is not an available deployment shortcut. The earlier R7 estimate of two or three
-briefs grouped the whole API/cockpit; this eight-brief decomposition separates source
-compatibility, service, trust boundary, clients, image build, packaging, operator binding and retirement
+briefs grouped the whole API/cockpit; this nine-brief decomposition separates source
+compatibility, service, trust boundary, clients, image build, image publication, packaging, operator binding and retirement
 so each has one reviewable obligation. It adds no runtime owner.
 
 **Tempting dead end:** copying the legacy service and SQLite index into a Pod or letting

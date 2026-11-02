@@ -4,11 +4,11 @@ title: Build the deskd binary and image from public source through the Makefile
 why: "The deskd source is now a standalone public module, but nothing builds it into a reviewable artifact. A local, unprivileged, digest-pinned binary and image build through the root Makefile lets the service package be inspected before any profile, pin or release depends on it."
 wave: 0
 depends: []
-unblocks: ["cell-api/05"]
+unblocks: ["cell-api/05", "cell-api/09"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
-gate-why: "All four risk answers are no. The deliverable builds a binary and a local image from already-public source; it pushes, tags, publishes, deploys and provisions nothing, and handles no runtime data or credentials. Adding deskd to the release image set is cell-api/05's, publication remains the release workflow's separately approved act, and every deployment, profile and exposure decision stays behind cell-api/05's human gate."
+gate-why: "All four risk answers are no. The deliverable builds a binary and a local image from already-public source; it pushes, tags, publishes, deploys and provisions nothing, and handles no runtime data or credentials. Adding deskd to the release image set is cell-api/09's, publication remains the release workflow's separately approved act, and every deployment, profile and exposure decision stays behind cell-api/05's human gate."
 issues: []
 schema: brief-v2
 version: 1
@@ -41,7 +41,7 @@ consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up cell-api/08"
   - "changelog/deskd-image-build.md: follow-up cell-api/08"
   - "image artifact pin and supported service/client matrix: follow-up cell-api/05"
-  - "release image set (tools/release/images.py, its contract and docs/release-images.md): follow-up cell-api/05 (adds deskd to the release producer; publishing stays the release's separately approved act; this brief adds no image to the release set)"
+  - "release image set (tools/release/images.py, its contract and docs/release-images.md): follow-up cell-api/09 (adds deskd to the release producer; publishing stays the release's separately approved act; this brief adds no image to the release set)"
 ---
 
 # Brief 08 — Build the deskd binary and image from public source through the Makefile
@@ -61,7 +61,7 @@ facts:
 
 layering: This brief carves the image-build duty out of cell-api/05 Task 1 so it can proceed on the already-public source while 05's profile, database and qualification dependencies stay open. It packages the existing deskd closure unchanged. It adds no runtime behaviour, configuration or authority, and it neither pins nor publishes an artifact.
 
-single-point-of-failure: the static contract test (Verify 1) is the control that keeps an unpinned base, a credential or out-of-tree COPY, a widened default bind or a push out of the build definition. The built-image check (Verify 5) runs the existing layer-secret scan and inspects the actual image's user and contents on a different signal, A local image is never a pin: only the release job, once cell-api/05 adds deskd to its image set, produces a pinnable registry reference, under its own approval, pre-push checks and layer-secret gate.
+single-point-of-failure: the static contract test (Verify 1) is the control that keeps an unpinned base, a credential or out-of-tree COPY, a widened default bind or a push out of the build definition. The built-image check (Verify 5) runs the existing layer-secret scan and inspects the actual image's user and contents on a different signal, A local image is never a pin: only the release job, once cell-api/09 adds deskd to its image set, produces a pinnable registry reference, under its own approval, pre-push checks and layer-secret gate.
 
 design-fit:
   owner: R7 service host packaging (cell-api); the root Makefile owns local build entrypoints and `tools/winparity` owns their Windows parity
