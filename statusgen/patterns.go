@@ -600,8 +600,8 @@ func patternStringList(v any) []string {
 	return out
 }
 
-// checkPatternMustRules runs the five cross-field MUST rules a JSON schema
-// cannot express, over the resolved document. Each returned string names the
+// checkPatternMustRules runs the cross-field MUST rules a JSON schema cannot
+// express, over the resolved document. Each returned string names the
 // rule tag so it reads identically whether printed by the CLI or scraped by a
 // test.
 func checkPatternMustRules(path string, pat patternDoc) []string {
@@ -748,8 +748,8 @@ func checkSignalPatternRules(path string, pat patternDoc) []string {
 	for _, c := range pat.SignalClasses {
 		declared[c.ID]++
 	}
-	for id, count := range declared {
-		if count > 1 {
+	for _, id := range sortedKeys(declared) {
+		if count := declared[id]; count > 1 {
 			add(rulePatternSignalInput, "signal class %q is declared %d times — each class id MUST be declared once", id, count)
 		}
 	}

@@ -313,6 +313,19 @@ func lintSignalDoc(t *testing.T, doc string) []string {
 	return checkPatternMustRules("inline.yaml", pat)
 }
 
+// signalVariant lints good-signal-example.yaml with one text edit applied.
+func signalVariant(t *testing.T, old, repl string) []string {
+	t.Helper()
+	good, err := os.ReadFile(filepath.Join("testdata", "patterns", "good-signal-example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(good), old) {
+		t.Fatalf("anchor %q not found in the good fixture", old)
+	}
+	return lintSignalDoc(t, strings.Replace(string(good), old, repl, 1))
+}
+
 // regression: #4506
 func TestPatternsSignalInput(t *testing.T) {
 	assertSignalRule(t, rulePatternSignalInput,
@@ -349,6 +362,18 @@ func TestPatternsSignalAdmission(t *testing.T) {
 	assertSignalRule(t, rulePatternAdmissionOpen,
 		"bad-admission-pull-request", "bad-exit-effect-no-admission", "bad-judgement-class-no-admission",
 		"bad-artifact-effect-no-admission", "bad-disconnected-effect")
+
+	// push-refs MUST be exactly [refs/heads/main]: an extra ref or a bare
+	// branch name is refused, so the guard is more than a presence check.
+	for label, refs := range map[string]string{
+		"extra-tag-ref": "push-refs: [refs/heads/main, refs/tags/main]",
+		"bare-branch":   "push-refs: [main]",
+	} {
+		v := signalVariant(t, "push-refs: [refs/heads/main]", refs)
+		if !anyContains(v, "["+rulePatternAdmissionOpen+"]") {
+			t.Errorf("%s: push-refs not refused: %v", label, v)
+		}
+	}
 }
 
 // regression: #4506
@@ -366,6 +391,40 @@ func TestPatternsJudgementDefault(t *testing.T) {
 // regression: #4506
 func TestPatternsCulpritRecord(t *testing.T) {
 	assertSignalRule(t, rulePatternCulpritRecord, "bad-withheld-mechanical")
+
+	// Six entries with one duplicated and one missing: the field set MUST be
+	// compared as a set, never by length alone.
+	v := signalVariant(t, "fields: [check, file, line, problem, class, origin]",
+		"fields: [check, file, line, problem, class, class]")
+	if !anyContains(v, "["+rulePatternCulpritRecord+"]") {
+		t.Errorf("duplicated field with origin missing not refused: %v", v)
+	}
+}
+
+// regression: #4506
+func TestPatternsDupClassOrder(t *testing.T) {
+	// Two class ids each declared twice: the diagnostics MUST come out in a
+	// stable, sorted order on every run, not in map iteration order.
+	dup := "signal-classes:\n" +
+		"  - {id: example-gate-red, limits: {dedupe: per-culprit, open-ceiling: 3, rate: {count: 2, window: PT1H}, on-exceed: escalate}}\n" +
+		"  - {id: example-alert, limits: {dedupe: per-culprit, open-ceiling: 3, rate: {count: 2, window: PT1H}, on-exceed: escalate}}\n"
+	var first []string
+	for i := 0; i < 32; i++ {
+		var got []string
+		for _, line := range signalVariant(t, "signal-classes:\n", dup) {
+			if strings.Contains(line, "is declared 2 times") {
+				got = append(got, line)
+			}
+		}
+		if len(got) != 2 || !strings.Contains(got[0], `"example-alert"`) || !strings.Contains(got[1], `"example-gate-red"`) {
+			t.Fatalf("run %d: duplicate-id diagnostics not in sorted order: %v", i, got)
+		}
+		if i == 0 {
+			first = got
+		} else if strings.Join(got, "\n") != strings.Join(first, "\n") {
+			t.Fatalf("run %d: diagnostics differ from run 0:\n%v\n%v", i, got, first)
+		}
+	}
 }
 
 // regression: #4506
