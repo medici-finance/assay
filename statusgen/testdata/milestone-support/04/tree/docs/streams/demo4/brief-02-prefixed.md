@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v4
 version: 1
-id: 22222222-2222-4222-8222-222222222222
+id: 00000000-0000-4000-8000-000000000402
 requires-milestones: ["demo4:m-01@1"]
 reader-requirements:
   schema: reader-requirements-v1

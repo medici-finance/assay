@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v4
 version: 1
-id: 33333333-3333-4333-8333-333333333333
+id: 00000000-0000-4000-8000-000000000403
 authored: 2026-11-01 fixture
 sources: ["fixture: pinned"]
 ---

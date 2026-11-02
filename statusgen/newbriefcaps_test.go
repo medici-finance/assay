@@ -59,7 +59,7 @@ func v4ReaderCaps(provider string) readercaps.Advertisement {
 func TestNewbriefCaps(t *testing.T) {
 	saved := newBriefUUID
 	t.Cleanup(func() { newBriefUUID = saved })
-	newBriefUUID = func() (string, error) { return "44444444-4444-4444-8444-444444444444", nil }
+	newBriefUUID = func() (string, error) { return "00000000-0000-4000-8000-000000000404", nil }
 
 	supported := ms04WriteCaps(t, "supported.json", v4ReaderCaps("next-reader"))
 	wrapped := ms04WriteCaps(t, "wrapped.json", map[string]any{"version": "test", "readerCapabilities": v4ReaderCaps("wrapped-reader")})
@@ -147,7 +147,7 @@ func TestNewbriefCaps(t *testing.T) {
 		body := ms04Read(t, root, "brief-04-negotiated.md")
 		for _, want := range []string{
 			"\nbrief: assay:assay:demo4:b-04\n", "\nschema: brief-v4\n", "\nversion: 1\n",
-			"\nid: 44444444-4444-4444-8444-444444444444\n", "\nwave: 3\n",
+			"\nid: 00000000-0000-4000-8000-000000000404\n", "\nwave: 3\n",
 			"\ndepends: [\"demo4:b-01\", \"demo4:b-02\"]\n",
 			"\nrequires-milestones: [\"demo4:m-01@1\"]\n",
 			"\nreader-requirements:\n  schema: reader-requirements-v1\n  required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n",

@@ -84,7 +84,7 @@ func TestPrefixedBriefSchema(t *testing.T) {
 		if bf.Schema != briefSchemaV4 || bf.TypedID != "assay:assay:demo4:b-02" || bf.Brief != "assay:assay:demo4:02" {
 			t.Errorf("prefixed id: schema=%q typed=%q compat=%q", bf.Schema, bf.TypedID, bf.Brief)
 		}
-		if bf.Version != 1 || bf.ID != "22222222-2222-4222-8222-222222222222" {
+		if bf.Version != 1 || bf.ID != "00000000-0000-4000-8000-000000000402" {
 			t.Errorf("version/id: %d %q", bf.Version, bf.ID)
 		}
 		if len(bf.Depends) != 1 || bf.Depends[0] != "demo4/01" {
@@ -142,9 +142,9 @@ func TestPrefixedBriefSchema(t *testing.T) {
 	}{
 		{"legacy and prefixed alias read once", "brief-02-prefixed.md", `depends: ["demo4:b-01"]`, `depends: ["demo4/01", "demo4:b-01"]`, []string{"read once"}},
 		{"milestone in depends", "brief-02-prefixed.md", `depends: ["demo4:b-01"]`, `depends: ["demo4:m-01@1"]`, []string{"names a milestone", "requires-milestones"}},
-		{"duplicate uuid", "brief-03-pinned.md", "id: 33333333-3333-4333-8333-333333333333", "id: 11111111-1111-4111-8111-111111111111", []string{"is already used by"}},
+		{"duplicate uuid", "brief-03-pinned.md", "id: 00000000-0000-4000-8000-000000000403", "id: 00000000-0000-4000-8000-000000000401", []string{"is already used by"}},
 		{"version required", "brief-02-prefixed.md", "version: 1\n", "", []string{"version is required under brief-v4"}},
-		{"id required", "brief-02-prefixed.md", "id: 22222222-2222-4222-8222-222222222222\n", "", []string{"id is required under brief-v4"}},
+		{"id required", "brief-02-prefixed.md", "id: 00000000-0000-4000-8000-000000000402\n", "", []string{"id is required under brief-v4"}},
 		{"unprefixed definition id", "brief-02-prefixed.md", "brief: assay:assay:demo4:b-02", "brief: assay:assay:demo4:02", []string{"colon-only definition id"}},
 		{"revision in definition id", "brief-02-prefixed.md", "brief: assay:assay:demo4:b-02", "brief: assay:assay:demo4:b-02@1", []string{"colon-only definition id"}},
 		{"slash milestone", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["demo4/m-01@1"]`, []string{"requires-milestones"}},
@@ -186,7 +186,7 @@ func TestPrefixedBriefSchema(t *testing.T) {
 		// declared brief-v2) is the parser PROBLEM in the refusal table above.
 		for name, edit := range map[string][2]string{
 			"unprefixed id": {"brief: assay:assay:demo4:b-02", "brief: assay:assay:demo4:02"},
-			"no uuid":       {"id: 22222222-2222-4222-8222-222222222222\n", ""},
+			"no uuid":       {"id: 00000000-0000-4000-8000-000000000402\n", ""},
 			"no version":    {"version: 1\n", ""},
 		} {
 			mis := filepath.Join(dir, "mis.md")
@@ -247,7 +247,7 @@ func TestBriefV4SchemaCoverage(t *testing.T) {
 			data["requires-milestones"] = ms
 		}
 		bad := false
-		parseBriefV4Keys(data, &BriefFile{Brief: brief, ID: "44444444-4444-4444-8444-444444444444"}, func(string, ...any) { bad = true })
+		parseBriefV4Keys(data, &BriefFile{Brief: brief, ID: "00000000-0000-4000-8000-000000000404"}, func(string, ...any) { bad = true })
 		return !bad
 	}
 	briefRe := pattern("brief", false)
