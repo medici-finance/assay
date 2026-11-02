@@ -375,7 +375,7 @@ duplicates, coverage and provenance are the loader's cross-record rules.
 table whose first column is `ID`, one row per criterion, IDs `C<NN>`, unique.
 `Coverage` holds a `Criterion | Contributors | Evidence` table: contributors are
 comma-separated brief references that must appear in `contributes`; evidence is
-comma-separated repository-relative paths; `—` or `none` marks an empty cell. A
+comma-separated repository-relative paths; `—`, `-` or `none` marks an empty cell. A
 coverage row for an undefined criterion, a contributor not in `contributes` or a
 malformed table refuses the record.
 
