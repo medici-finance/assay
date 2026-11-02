@@ -130,6 +130,10 @@ PR does to its work item:
                                    PR into the default branch closes the issue. Closes: and
                                    Resolves: are accepted and mean the same; owner/repo#<N> names
                                    an issue in another repository. The # is required.
+PR TITLE (create). A Brief: trailer prefixes the title as "<stream>/<NN>: <title>", and a
+Cross-repo-brief: trailer prefixes its full value ("<alias>:<stream>/<NN>: <title>"), unless the
+title already names that id as a whole token (so x/4 never matches inside x/46). Authors:,
+Issue: and Fixes: PRs keep their title. --check prints the title it would use.
 Every brief named by Brief: or Authors: must resolve to docs/streams/<stream>/brief-<NN>-*.md
 under --root. Brief: is read as DELIVERY by the dispatcher's phantom check, the planner and
 the derived board, so an authoring PR must not carry it: create REFUSES a Brief: line when

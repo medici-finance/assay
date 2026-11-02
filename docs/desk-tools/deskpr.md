@@ -33,6 +33,21 @@ brief's delivery, so a docs-only PR that only WROTE a brief must carry `Authors:
 `Issue:`), never `Brief:` — otherwise the brief reads as delivered the moment the
 authoring PR merges and is never dispatched (#1339). No reader keys on `Authors:`.
 
+PR title (`create` only). When the link is a delivery trailer, `create` leads the title with the
+brief id, so the PR list shows which brief a PR delivers without opening it:
+
+- `Brief: <stream>/<NN>` (any accepted spelling) prefixes the title as `<stream>/<NN>: <title>`.
+- `Cross-repo-brief: <alias>:<stream>/<NN>` prefixes the full trailer value:
+  `<alias>:<stream>/<NN>: <title>`.
+- `Authors:`, `Issue:` and the resolving `Fixes:`/`Closes:`/`Resolves:` PRs keep their title.
+- Idempotent: a title that already names the id anywhere (`verify(<stream>/<NN>): ...`) is left
+  as is. The match is on whole-id token boundaries and case-insensitive, so `x/4` does not match
+  inside `x/46`, `my-x/4` or `other:x/4`; a title that only contains such a near-miss is still
+  prefixed.
+- The prefixed title is the one every later gate scans and the one sent to the forge, and
+  `--check` prints it as `check: title: <title>` before anything is created. `edit` and
+  `update` never rename an existing PR.
+
 Rules (derived-board/02):
 
 - Exactly one link per body. A second `Brief:`, `Issue:`, `Authors:` or `Cross-repo-brief:` line, or two
