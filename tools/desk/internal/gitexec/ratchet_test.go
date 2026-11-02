@@ -293,6 +293,19 @@ func TestRatchetSkipsTestFiles(t *testing.T) {
 	}
 }
 
+// TestRatchetTestExclusionIsPathOnly: the *_test.go exclusion matches the PATH field of
+// grep's path:line:content output only. A production line whose content carries the text
+// `_test.go:` (here, a trailing comment) is still counted, in both the direct and the seam
+// count.
+// regression: F-test-exclusion-content-spoof
+func TestRatchetTestExclusionIsPathOnly(t *testing.T) {
+	f := newFixture(t, "4\n")
+	f.write("cmd/tool/spoof.go", "package main\n\nimport \"os/exec\"\n\nfunc s() {\n\t_ = exec.Command(\"git\", \"status\") // see x_test.go: 12\n\trunGit() // see y_test.go: 3\n}\n")
+	if n, out, code := f.run(); n != 4 || code != 0 {
+		t.Fatalf("a non-test file whose content mentions _test.go: is counted: want count 4 exit 0, got %d exit %d: %s", n, code, out)
+	}
+}
+
 func TestRatchetNoteBelowPin(t *testing.T) {
 	f := newFixture(t, "5\r\n") // a CRLF pin still parses
 	n, out, code := f.run()
@@ -335,9 +348,13 @@ func TestRatchetCountModeNeedsNoPin(t *testing.T) {
 	}
 }
 
-// goGitFloor is the lowest go-git v5 release carrying the fixes for CVE-2025-21613
-// (argument injection) and CVE-2025-21614 (denial of service).
-var goGitFloor = [3]int{5, 13, 0}
+// goGitFloor is the lowest go-git v5 release carrying the fixes for every published
+// go-git advisory the floor tracks: CVE-2025-21613 (argument injection) and
+// CVE-2025-21614 (denial of service), both fixed in v5.13.0, and CVE-2026-33762
+// (GHSA-gm2x-2g9h-ccm8, GO-2026-4909: a panic decoding an Index v4 file), fixed in
+// v5.17.1. Dependabot moves the go.mod pin, never this constant: a new advisory raises
+// the floor by hand.
+var goGitFloor = [3]int{5, 17, 1}
 
 var goGitRequire = regexp.MustCompile(`^\s*(?:require\s+)?github\.com/go-git/go-git/v5\s+v(\d+)\.(\d+)\.(\d+)(\S*)`)
 
@@ -371,9 +388,9 @@ func goGitFloorHeld(gomod string) (string, bool, error) {
 		found = fmt.Sprintf("v%d.%d.%d%s", v[0], v[1], v[2], m[4])
 		held = v[0] > goGitFloor[0] ||
 			(v[0] == goGitFloor[0] && (v[1] > goGitFloor[1] || (v[1] == goGitFloor[1] && v[2] >= goGitFloor[2])))
-		// Semver orders a prerelease below its release, so v5.13.0-rc1 (or a
+		// Semver orders a prerelease below its release, so v5.17.1-rc1 (or a
 		// pseudo-version based on it) does not carry the floor release's fixes. A
-		// prerelease of a LATER release (v5.13.1-0.2025...) is still above v5.13.0.
+		// prerelease of a LATER release (v5.17.2-0.2026...) is still above v5.17.1.
 		if v == goGitFloor && strings.HasPrefix(m[4], "-") {
 			held = false
 		}
@@ -406,7 +423,8 @@ func TestGoGitCVEFloor(t *testing.T) {
 	}
 }
 
-// TestGoGitFloorRefusesBelow: the floor check refuses a pin below v5.13.0 and a replace.
+// TestGoGitFloorRefusesBelow: the floor check refuses a pin below v5.17.1 (including a
+// prerelease or pseudo-version of v5.17.1 itself) and a replace.
 // regression: F-go-git-cve-floor
 func TestGoGitFloorRefusesBelow(t *testing.T) {
 	cases := []struct {
@@ -416,10 +434,13 @@ func TestGoGitFloorRefusesBelow(t *testing.T) {
 	}{
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.12.0\n)\n", false, false},
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.4.2 // indirect\n)\n", false, false},
-		{"require github.com/go-git/go-git/v5 v5.13.0\n", true, false},
-		{"require github.com/go-git/go-git/v5 v5.13.0-rc1\n", false, false},
-		{"require github.com/go-git/go-git/v5 v5.13.0-0.20241201000000-abcdef123456\n", false, false},
-		{"require github.com/go-git/go-git/v5 v5.13.1-0.20250101000000-abcdef123456\n", true, false},
+		{"require github.com/go-git/go-git/v5 v5.13.0\n", false, false},
+		{"require github.com/go-git/go-git/v5 v5.17.0\n", false, false},
+		{"require github.com/go-git/go-git/v5 v5.17.1\n", true, false},
+		{"require github.com/go-git/go-git/v5 v5.17.1-rc1\n", false, false},
+		{"require github.com/go-git/go-git/v5 v5.17.1-0.20260101000000-abcdef123456\n", false, false},
+		{"require github.com/go-git/go-git/v5 v5.17.2-0.20260201000000-abcdef123456\n", true, false},
+		{"require github.com/go-git/go-git/v5 v5.18.0\n", true, false},
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.19.3\n)\n", true, false},
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.19.3\n)\nreplace github.com/go-git/go-git/v5 => ../fork\n", false, true},
 		{"require (\n\tgithub.com/go-git/go-billy/v5 v5.9.2\n)\n", false, true},

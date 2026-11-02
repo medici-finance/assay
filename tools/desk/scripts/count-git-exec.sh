@@ -14,7 +14,10 @@
 # and *_test.go files (fixture/harness noise, not production call sites). grep -r
 # prints paths relative to tools/desk (internal/gitexec/gitexec.go), so the
 # exclusion is anchored at the start of the line: an unanchored '/internal/gitexec/'
-# never matched and the sanctioned spawn used to be counted.
+# never matched and the sanctioned spawn used to be counted. The test-file exclusion
+# is anchored to the path field too ('^[^:]*_test\.go:'): grep prints
+# path:line:content, and an unanchored '_test\.go:' also matched that text in a
+# production line's CONTENT (a trailing comment), dropping a real site.
 #
 # RATCHET MODE (brief 08). The gate fails on GROWTH, not on a nonzero count. The
 # migrations stopped short of zero, so the count is pinned: scripts/git-exec-pin.txt
@@ -45,13 +48,13 @@ esac
 DIRECT=$(grep -rEn -e 'exec\.Command\("git"' -e 'exec\.CommandContext\([^,]+, *"git"' cmd internal \
   --include='*.go' \
   | grep -v '^internal/gitexec/' \
-  | grep -v '_test\.go:' \
+  | grep -v '^[^:]*_test\.go:' \
   | wc -l | tr -d ' ')
 
 SEAMS=$(grep -rEn '(runGit|gitOut|execCommand|execGit)\(' cmd internal \
   --include='*.go' \
   | grep -v '^internal/gitexec/' \
-  | grep -v '_test\.go:' \
+  | grep -v '^[^:]*_test\.go:' \
   | wc -l | tr -d ' ')
 
 TOTAL=$((DIRECT + SEAMS))

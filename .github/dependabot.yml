@@ -1,10 +1,12 @@
 # Dependency-update alerting for the desk tools' git stack.
 #
 # The desk tools and the lifted gitcore module build go-git in-process. go-git v5.13.0
-# fixed CVE-2025-21613 (argument injection) and CVE-2025-21614 (denial of service);
-# tools/desk/internal/gitexec/ratchet_test.go fails the build if either module pins
-# go-git below that floor. This file raises an update pull request when a newer go-git
-# family release (go-git, go-billy) ships, so the floor moves up rather than drifting.
+# fixed CVE-2025-21613 (argument injection) and CVE-2025-21614 (denial of service), and
+# v5.17.1 fixed CVE-2026-33762; tools/desk/internal/gitexec/ratchet_test.go fails the
+# build if either module pins go-git below v5.17.1. This file raises an update pull
+# request when a newer go-git family release (go-git, go-billy) ships, so the go.mod pin
+# keeps moving up. It does not move the floor constant in that test: a new advisory
+# raises the floor by hand.
 # Scoped to the go-git family on purpose: it is the dependency the floor covers.
 version: 2
 updates:
