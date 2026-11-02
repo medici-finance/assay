@@ -112,7 +112,7 @@ func TestScratchDeferredSweep(t *testing.T) {
 	}
 	must(t, os.WriteFile(filepath.Join(work, "go-build9"), []byte("live"), 0600))
 	stop := c.startScratchMaintenance(context.Background(), "worker-desk", nil)
-	if !scratchGone(build, 5*time.Second) {
+	if !scratchGone(build, 3*time.Second) {
 		stop()
 		t.Fatal("running supervisor never reclaimed abandoned build output")
 	}
@@ -145,7 +145,7 @@ func TestScratchMaintainFixture(t *testing.T) {
 		return
 	}
 	if mode == "child" {
-		if scratchGone(os.Getenv("CELL_MAINT_TARGET"), 8*time.Second) {
+		if scratchGone(os.Getenv("CELL_MAINT_TARGET"), 3*time.Second) {
 			os.Exit(0)
 		}
 		os.Exit(3)
@@ -198,10 +198,10 @@ func TestScratchMaintainWiring(t *testing.T) {
 					if err != nil {
 						t.Fatal("interactive child never saw maintenance:", err)
 					}
-				case <-time.After(15 * time.Second):
+				case <-time.After(10 * time.Second):
 					t.Fatal("interactive supervisor hung")
 				}
-			} else if !scratchGone(build, 8*time.Second) {
+			} else if !scratchGone(build, 3*time.Second) {
 				t.Fatal("cadenced supervisor never ran maintenance")
 			}
 			if scratchExists(t, build) || !scratchExists(t, record) || !scratchExists(t, kept) {
