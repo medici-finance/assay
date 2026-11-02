@@ -60,6 +60,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -92,36 +93,133 @@ func runnersAgree(cell, evidence string) bool {
 	if a == "" || b == "" {
 		return true
 	}
-	return a == b || strings.Contains(a, b) || strings.Contains(b, a)
+	// Two labels that each LEAD with a forge login name two actors when the
+	// logins differ. Neither containment nor a later alias can override that:
+	// "assay-worker-app (for assay-verifier-app[bot])" leads with the worker.
+	if x, y := leadingLogin(cell), leadingLogin(evidence); x != "" && y != "" && x != y {
+		return false
+	}
+	if a == b || strings.Contains(a, b) || strings.Contains(b, a) {
+		return true
+	}
+	// Historical rows can name a model and explicitly name its forge actor in
+	// parentheses. Compare that declared alias too; do not infer an actor from a
+	// model name or from the words "worker"/"verifier". This is label agreement,
+	// never proof of authority or implementer independence.
+	for _, x := range runnerBotAliases(cell) {
+		if runnerKey(x) == b {
+			return true
+		}
+		for _, y := range runnerBotAliases(evidence) {
+			if runnerKey(x) == runnerKey(y) {
+				return true
+			}
+		}
+	}
+	for _, y := range runnerBotAliases(evidence) {
+		if runnerKey(y) == a {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	runnerBotAliasRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9-]*\[bot\]`)
+	runnerLoginRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*-(app|bot)$`)
+)
+
+// leadingLogin returns the forge login a label's first word names, keyed like
+// runnerKey, or "" when that word is not login-shaped (a model or role label).
+// Login-shaped means a `[bot]` suffix, or an `-app`/`-bot` slug written without
+// one. A word that only might be a login reads as "" here; the alias rule below
+// then still refuses two distinct `[bot]` actors.
+func leadingLogin(label string) string {
+	f := strings.Fields(strings.ToLower(label))
+	if len(f) == 0 {
+		return ""
+	}
+	w := strings.TrimRight(f[0], ",;:")
+	if i := strings.IndexByte(w, '('); i >= 0 {
+		w = w[:i]
+	}
+	bot := strings.HasSuffix(w, "[bot]")
+	w = strings.TrimSuffix(w, "[bot]")
+	if w == "" || !bot && !runnerLoginRe.MatchString(w) {
+		return ""
+	}
+	return w
+}
+
+func runnerBotAliases(label string) []string {
+	connector := func(b byte) bool {
+		return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.ContainsRune("_./-", rune(b))
+	}
+	var aliases []string
+	seen := map[string]bool{}
+	for _, span := range runnerBotAliasRe.FindAllStringIndex(label, -1) {
+		if span[0] > 0 && connector(label[span[0]-1]) || span[1] < len(label) && connector(label[span[1]]) {
+			continue
+		}
+		alias := label[span[0]:span[1]]
+		seen[runnerKey(alias)] = true
+		aliases = append(aliases, alias)
+	}
+	if len(seen) > 1 {
+		return nil // several named actors are not one actor's declared alias
+	}
+	return aliases
 }
 
 // evidenceRunnerTally counts, over the COMPLETED Evidence rows that name a DECLARED
 // `Runner` column, how many rows each distinct runner ran, and returns the DOMINANT
 // runner (the most rows), a representative raw label for it, its count, and the
 // total number of such rows. ok is false when there is no completed, declared-runner
-// Evidence to compare against — the could-not-compare state, kept out of any
-// verdict rather than rounded to a false agreement.
+// Evidence to compare against, or its latest dates cannot distinguish actors —
+// could-not-compare, never a finding that the actors agree.
 //
 // A row credited across several tables is counted for its LATEST-dated completed
 // declared-runner entry only, so a re-run's runner — not the original — is the one
 // tallied. That is the whole point: the tally names who MOST RECENTLY ran each row,
 // which is the actor the Verified cell is supposed to track.
+// Conflicting same-day actors remain unknown and stay in the denominator, so
+// omitting their credit cannot create a false strict majority.
 func evidenceRunnerTally(evidence string) (dominantRaw string, dominantCount, total int, ok bool) {
 	rows := parseEvidenceRows(evidence)
 	counts := map[string]int{}
 	raw := map[string]string{}
 	for _, ers := range rows {
 		var best evidenceRow
+		var sameDay []evidenceRow // every entry on best.Date
 		have := false
+		ambiguous := false
 		for _, er := range ers {
 			if !evidenceRowComplete(er) || !er.RunnerFromColumn {
 				continue
 			}
 			if !have || er.Date > best.Date {
 				best, have = er, true
+				sameDay = []evidenceRow{er}
+				ambiguous = false
+			} else if er.Date == best.Date {
+				// Day-resolution dates cannot establish which actor ran last.
+				// Table position is not execution chronology. Compare with EVERY
+				// same-day entry: containment is not transitive.
+				for _, o := range sameDay {
+					if !runnersAgree(er.Runner, o.Runner) {
+						ambiguous = true
+					}
+				}
+				sameDay = append(sameDay, er)
 			}
 		}
 		if !have {
+			continue
+		}
+		total++
+		if ambiguous {
+			// Keep this row in the denominator: excluding it must not turn a
+			// minority of readable actors into a strict majority.
 			continue
 		}
 		k := runnerKey(best.Runner)
@@ -132,10 +230,9 @@ func evidenceRunnerTally(evidence string) (dominantRaw string, dominantCount, to
 		if raw[k] == "" {
 			raw[k] = strings.TrimSpace(best.Runner)
 		}
-		total++
 	}
-	if total == 0 {
-		return "", 0, 0, false
+	if len(counts) == 0 {
+		return "", 0, total, false
 	}
 	bestKey := ""
 	for k, c := range counts {
