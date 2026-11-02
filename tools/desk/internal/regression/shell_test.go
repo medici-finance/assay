@@ -75,6 +75,29 @@ func TestReg1145ShimCredential(t *testing.T) {
 	shellFloor(t, "tools/cellctl/tests/gen-shims-gh-token.test.sh")
 }
 
+// TestDeskRunLauncherSuite runs the offline suite for containers/desk-run.sh, the
+// desktop launcher that mounts the bot App PEM read-only and passes the model
+// env-file to docker. The suite is the only regression signal for that mount, for the
+// fail-closed credential preflight (including an empty override) and for the property
+// that no credential value reaches any output, so a change that weakens one must go
+// red here in pull-request CI instead of waiting for a hand run. It drives a stub
+// docker and needs no daemon. It runs under bash and under the platform sh, because
+// the launcher is POSIX sh and the suite starts it with /bin/sh. Its mutation runner,
+// containers/desk-run.mutate.sh, shows each guard is pinned; this test keeps the suite
+// itself from going unrun.
+func TestDeskRunLauncherSuite(t *testing.T) {
+	skipWindowsShellFixture(t)
+	const suite = "containers/desk-run.test.sh"
+	t.Run("bash", func(t *testing.T) { shellFloorWithBash(t, suite, requireBash(t)) })
+	t.Run("sh", func(t *testing.T) {
+		sh, err := exec.LookPath("sh")
+		if err != nil {
+			t.Skip("prerequisite: sh is required for the POSIX launcher suite; sh was not found on PATH")
+		}
+		shellFloorWithBash(t, suite, sh)
+	})
+}
+
 // runShellFixture runs one shell suite under a finite budget. The underlying shell
 // assertions are unchanged. The wrapped suites run git, so the child never inherits
 // the caller's GIT_* variables, and null global and system config keep a caller's

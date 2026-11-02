@@ -34,10 +34,10 @@ exec-tier-why: "(a) the exact key shapes and rule boundaries are design choices 
 domain: complicated
 outcome: none
 consumers:
-  - "schemas/workflow-pattern-v1.json, statusgen/schemas/workflow-pattern-v1.json (byte-identical twin): follow-up graph-execution/34 (this brief; flips to fixed-here when the implementation edits them)"
-  - "statusgen/patterns.go, statusgen/patterns_test.go, statusgen/testdata/patterns/: follow-up graph-execution/34 (this brief)"
-  - "spec/workflow-pattern-v1.md: follow-up graph-execution/34 (this brief)"
-  - "statusgen/enforcementstatus.go and the generated enforcement tables in plugins/assay/skills/author-brief/SKILL.md and .cursor/skills/author-brief/SKILL.md: follow-up graph-execution/34 (this brief; the tables are regenerated, never hand-edited)"
+  - "schemas/workflow-pattern-v1.json, statusgen/schemas/workflow-pattern-v1.json (byte-identical twin): fixed-here"
+  - "statusgen/patterns.go, statusgen/patterns_test.go, statusgen/testdata/patterns/: fixed-here"
+  - "spec/workflow-pattern-v1.md: fixed-here"
+  - "statusgen/enforcementstatus.go and the generated enforcement tables in plugins/assay/skills/author-brief/SKILL.md and .cursor/skills/author-brief/SKILL.md: fixed-here"
   - "spec/workflow-patterns/signal-triggered-v1.yaml (planned): follow-up graph-execution/08 (the first shipped pattern that uses these keys)"
   - "spec/workflow-patterns/implementation-v1.yaml, spec/workflow-patterns/research-v1.yaml: out-of-scope (unchanged; they use none of the new keys and Verify row 2 proves they still lint clean)"
   - "statusgen/instance.go, schemas/workflow-instance-v1.json: out-of-scope (no instance of a signal-instantiated pattern is produced until a brief activates one; graph-execution/35 produces none; instances of the two shipped patterns use no new key)"

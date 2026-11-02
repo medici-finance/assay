@@ -1,0 +1,2 @@
+### Changed
+- The contributor-trust/09 brief's Verify table now fails on the tree before the release-credit change and passes on the delivered one: each row's exit status carries its verdict, the import-count row prints a bare count, and the unresolved-marker row builds its own fixture instead of relying on rows run before it. No code changes. The amended rows still need a human acceptance-transition approval before a verifier can credit them.

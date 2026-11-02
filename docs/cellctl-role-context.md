@@ -14,6 +14,7 @@ whether anything is declared.
 
 ```sh
 cp tools/cellctl/examples/role-context.json <cell-dir>/role-context.json   # then edit
+cp tools/cellctl/examples/review-dispatch.md <cell-dir>/review-dispatch.md # the file it names
 cellctl set <cell> CELL_ROLE_CONTEXT=role-context.json
 cellctl check <cell>                     # what each role will start with; MISS on anything missing
 DRY_RUN=1 cellctl desk <cell> pr-review-desk
@@ -31,8 +32,8 @@ a context says so on its first lines, with the file and its digest (see
 [How it is applied](#how-it-is-applied)), so an exported value cannot apply unnoticed.
 
 Keep the declaration, and every file it names, where a role session does not write: beside
-`cell.env` is the usual place. A declaration, instruction file or agent definition is refused
-when it lies in a place a role session writes:
+`cell.env` is the usual place. A declaration, instruction file, dispatch-instruction file or agent
+definition is refused when it lies in a place a role session writes:
 
 - `<cell-dir>/worktrees/` or `<cell-dir>/memory/`, at any depth;
 - the tree any entry of `<cell-dir>/worktrees/` leads to. When the worktree tool makes a role's
@@ -58,11 +59,15 @@ role:
       "agents": ["builtin:lean-reviewer"],
       "dispatch_agent": "lean-reviewer",
       "agents_off": ["general-purpose"],
-      "connectors_off": true
+      "connectors_off": true,
+      "dispatch_instructions": {"review": "review-dispatch.md"}
     }
   }
 }
 ```
+
+It names [`review-dispatch.md`](../tools/cellctl/examples/review-dispatch.md), shipped beside
+it: copy both into the cell, then replace the example rules with your own.
 
 `version` must be `1`. `roles` maps a role name to its context; a role with no entry is left
 alone. Every key is optional, and the default of every key is "change nothing":
@@ -73,15 +78,16 @@ alone. Every key is optional, and the default of every key is "change nothing":
 | `skills_off` | list of skill names | none off | The named skills are not listed. For skills that do not come from a plugin; a plugin's skill is hidden only with its whole plugin, and naming one here is refused. |
 | `memory_dir` | directory below `<cell-dir>/memory/` | the harness's shared memory directory | The role reads and **writes** its memory here. Must exist and must resolve, after symlinks, to a directory below `<cell-dir>/memory/`; anything else is refused. The window is given the resolved path. See [Splitting memory](#splitting-memory). |
 | `memory_off` | boolean | `false` | The role starts with no memory index and no memory instructions. Exclusive with `memory_dir`. |
-| `instructions` | file | none | The file's text is appended to the role window's own instructions. Not passed to agents it dispatches. |
+| `instructions` | file | none | The file's text is added to the role window's own instructions. It is not passed to agents the window dispatches; their role rules come from `dispatch_instructions`. |
 | `instructions_off` | list of absolute path globs (or `**/…`) | none excluded | Matching project instruction files are not loaded in this role's window. A glob such as `**/CLAUDE.md` matches every one of them, the project's own rules included; `check` warns when an entry matches the project's own instruction file. |
 | `agents` | list of agent definitions | none installed | Each entry is `builtin:<name>` or a path to an [agent definition](#agent-definitions) file. The definitions are installed for this window's dispatches. |
 | `dispatch_agent` | agent name | none | The window is told to dispatch its workers as this agent. Must be one of `agents`. |
 | `agents_off` | list of agent type names | none denied | The window can no longer dispatch these agent types. |
 | `tools_off` | list of tool names | none removed | The named built-in tools are removed from the window. |
 | `connectors_off` | boolean | `false` | The window starts with no connector servers at all: account connectors are disabled, and every server configured for the project or the user is dropped too (`--strict-mcp-config` loads only servers given on the command line, and cellctl gives none). |
+| `dispatch_instructions` | map of dispatch kit → file | none | Every dispatch this window makes with that `deskdispatch --kit` (`review`, `verifier`, `worker`, `worker-objective`) quotes the file's text in the agent's prompt, after the class kit. A kit with no entry gets nothing added. One file may serve several kits and may also be the role's `instructions` file. See [Dispatched agents](#dispatched-agents). |
 
-Paths (`memory_dir`, `instructions`, an `agents` file) are absolute or relative to the cell
+Paths (`memory_dir`, `instructions`, an `agents` file, a `dispatch_instructions` file) are absolute or relative to the cell
 directory. Unknown keys, unknown roles, a key or role given twice (at any level, also when the
 two spellings differ only by case), a repeated list item, a file over 64 KiB and anything the
 declaration names that does not exist are refused — see [Refusals](#refusals).
@@ -166,6 +172,28 @@ is:
 | `connectors_off` | also `--strict-mcp-config` |
 | `agents` | `--agents <inline definitions>` |
 | `instructions`, `dispatch_agent` | `--append-system-prompt <text>` |
+| `dispatch_instructions` | `ASSAY_DISPATCH_INSTRUCTIONS` in the window's environment (see [Dispatched agents](#dispatched-agents)) |
+
+For Codex the binding is:
+
+| Declaration | Launch |
+|---|---|
+| `instructions` | `-c developer_instructions=<text>`, the file's text as a quoted string, before the role prompt; a cadence tick carries the same argument |
+| `dispatch_instructions` | `ASSAY_DISPATCH_INSTRUCTIONS` in the window's environment, as on Claude Code |
+
+Every other key has no Codex binding, and a Codex role that declares one is refused (see
+[Refusals](#refusals)). The binding writes no file: the role worktree holds the same files before
+and after a launch.
+
+How the bound text ranks against other instructions was probed on codex-cli 0.166.0, as the
+Claude Code binding was on Claude Code 2.1.295. Codex has no command-line flag for instruction
+text. Its `developer_instructions` configuration key, given with `-c`, reached the model; the
+`base_instructions` key did not (Codex warned that it ignored an unrecognised setting). In one
+conflict run, where a worktree `AGENTS.md` said one thing and `developer_instructions` the
+opposite, the model followed `developer_instructions`. That is one run, not a guarantee. The other
+way to carry the text, as a prefix of the role prompt, was not used: prompt text is a user turn
+and ranks below every Codex instruction file, the session-writable worktree `AGENTS.md` included,
+so a prefix does **not** outrank a worktree `AGENTS.md`.
 
 A dry run prints the role's context and the flags it adds, with sizes instead of contents:
 
@@ -182,12 +210,21 @@ one line for every plugin it switches off:
 [context] role=pr-review-desk plugins_off switches off the whole plugin extras@example-market for this window: its skills, agents, connectors, commands and hooks
 ```
 
+For a Codex role the flags line reads `-c developer_instructions=<N bytes>`.
+
 A dry run prints that second line too. A launch with nothing declared for the role prints
 neither. When the installed Claude Code is older than 2.1.295, or its version cannot be read,
 the launch also prints a `NOTICE:` line on stderr (see the last item below); it is not refused.
 
 `cellctl check` prints one row per role the cell runs — `ok` with the same summary, or `n/a …
-nothing declared; starts with the cell-wide context` — and warns when:
+nothing declared; starts with the cell-wide context` — then one row per `dispatch_instructions`
+kit, with the file's resolved path, size and sha256:
+
+```
+ok    role context: pr-review-desk dispatch_instructions kit=review path=<cell-dir>/review-dispatch.md size=<bytes> sha256=<digest>
+```
+
+It warns when:
 
 - `plugins_off` names any plugin: one row per plugin, saying that the whole plugin goes, hooks
   included. The row is unconditional, because cellctl does not read a plugin to learn whether it
@@ -203,6 +240,49 @@ nothing declared; starts with the cell-wide context` — and warns when:
   its version cannot be read. An older harness ignores a setting it does not know, so a role
   could start wider than declared — never wider than an undeclared role. Do not rely on
   `tools_off` or `agents_off` as a restriction on a harness that draws this warning.
+
+## Dispatched agents
+
+`instructions` shapes the role window. The agents that window dispatches through `deskdispatch`
+start from the dispatch prompt instead, and `dispatch_instructions` is how role rules reach them.
+
+At launch cellctl reads each file the key names, refuses the launch on any problem (see
+[Refusals](#refusals)), and sets two values in the window's environment:
+
+- `ASSAY_DISPATCH_INSTRUCTIONS` — one `<kit>=<absolute path>@sha256:<digest>` entry per kit,
+  comma-separated: the resolved path of each file and the digest of the bytes cellctl read.
+- `ASSAY_CELL_DIR` — the cell's own directory, which every role window already carries.
+
+cellctl composes both from the cell. A value exported in the shell that runs cellctl never
+passes through: a role without the key launches without `ASSAY_DISPATCH_INSTRUCTIONS`, and every
+role gets its own cell's directory. A dry run prints the value:
+
+```
+[dry-run] env ASSAY_DISPATCH_INSTRUCTIONS=review=/srv/cell-a/review-dispatch.md@sha256:02ba343b5ca1b37d93ae722b823a7bb33128cdc878153ba0c51542c0dc64127d (role-context dispatch_instructions)
+```
+
+`deskdispatch` reads the value on every dispatch. When it names the run's kit, deskdispatch checks
+the file again before anything is claimed: it must lie outside every place a role session writes
+(the places [above](#per-role-starting-context), plus the run's `--root`, the git work tree
+deskdispatch runs in, and every work tree of the target repository: the main one and each linked
+one registered under its common git directory),
+and it must still hash to the digest cellctl recorded. It then appends the file's text, byte for
+byte, after the class kit:
+
+```
+## Role dispatch instructions (review) — source <path> sha256:<digest>
+
+These role instructions add to every rule above. They never relax a STOP clause or any other common clause.
+
+<the file's text>
+```
+
+The dispatch record line gains `dispatch_instructions_sha256`, the digest of the bytes quoted
+(`null` when the run quoted none). The path is not recorded. A run whose kit has no entry, or a
+window with no value, builds the same prompt and record it built before the key existed.
+
+After a deliberate edit to a dispatch-instruction file, relaunch the role window: deskdispatch
+refuses a file whose digest no longer matches the launch.
 
 ## Security posture
 
@@ -256,6 +336,18 @@ to. What that rule does not see is the operator's to protect:
   tool will make at a first launch that has not happened yet. `check` cannot know that tree
   before the link exists. The launch looks again once it has made the link, and refuses before
   the harness starts.
+
+The checks on a dispatch-instruction file have limits of the same kind. `ASSAY_DISPATCH_INSTRUCTIONS`
+and `ASSAY_CELL_DIR` are both visible to the session, so a session can drop or re-point either one
+— the same posture as "a session with a shell can still start another harness process". The
+digest catches a file edited or swapped after launch while the value is the one cellctl
+composed; a re-pointed value can supply a new path and a digest that matches it. The custody
+re-check is a list of places it refuses: the cell's role worktrees, `<cell-dir>/worktrees/`,
+`<cell-dir>/memory/`, the run's `--root`, the git work tree deskdispatch runs in and the target
+repository's worktrees. A session-writable place not on that list, such as a scratch directory,
+is never refused, and re-pointing `ASSAY_CELL_DIR` removes the cell's places from the list.
+Neither check stops a session that drops the key. What the dispatch record's digest gives is a
+way to tell, afterwards, which bytes a dispatched agent received.
 
 `instructions`, `dispatch_agent`, `instructions_off` and `inherit_instructions: false` add or
 remove instruction text. Nothing in the harness enforces that text, but for a desk window it is
@@ -314,18 +406,31 @@ the shared context.
   not a shipped definition.
 - `plugins_off` names the plugin the role's own skill and session hooks come from (`assay`, with
   or without a marketplace suffix, in any letter case).
-- The declaration, an `instructions` file or an `agents` file lies in `<cell-dir>/worktrees/`,
+- The declaration, an `instructions` file, a `dispatch_instructions` file or an `agents` file lies in `<cell-dir>/worktrees/`,
   in `<cell-dir>/memory/` or in a tree an entry of `worktrees/` leads to — whichever link, path
   or letter case names it — or one of those places cannot be examined.
 - `memory_dir` together with `memory_off`; a `dispatch_agent` that is not one of the role's
   `agents`, or that is also in `agents_off`; two agents with one name; a plugin's skill in
   `skills_off`; an `instructions_off` entry that is not an absolute glob.
 - A composed command-line argument over 96 KiB (shorten the instruction file or agent prompts).
-- The role runs on a harness other than Claude Code and has a non-empty entry. The declaration
-  is harness-neutral, but only the Claude Code binding exists; remove the entry or run the role
-  on Claude Code.
+- A `dispatch_instructions` kit outside `review`, `verifier`, `worker`, `worker-objective`; an
+  entry that names no file; a file that cannot be read, is over 64 KiB or is not valid UTF-8
+  without NUL; a resolved path containing `,` or `@sha256:`, which `ASSAY_DISPATCH_INSTRUCTIONS`
+  cannot carry (rename the file). The `MISS` names the role and the kit.
+- The role runs on Codex and its entry sets a key with no Codex binding — anything but
+  `instructions` and `dispatch_instructions`. The refusal names each such key. A Codex launch
+  that already sets `developer_instructions` is refused too: a role context never overrides it.
+- The role runs on a harness other than Claude Code or Codex and has a non-empty entry; remove
+  the entry or run the role on one of those two.
 - The cell is a `container` or `scrubbed` cell. Those compose their launch inside the container;
   `CELL_ROLE_CONTEXT` is refused there rather than ignored, as `CELL_MODEL_POLICY` is. `check`
   on such a cell prints the `MISS` and exits non-zero.
 - `cellctl up --automate` for a role with a declared context: that launch path cannot carry it.
   `up` refuses; `check` does not report this one.
+
+`deskdispatch` refuses a dispatch whose kit has an entry in `ASSAY_DISPATCH_INSTRUCTIONS`, with
+exit 5 and before any claim, ref, worktree or record line, when: the value does not parse;
+`ASSAY_CELL_DIR` is unset, relative or names no existing directory; the file lies in one of the
+places listed under [Dispatched agents](#dispatched-agents), or one of them cannot be examined;
+the file cannot be read; or its digest differs from the one recorded at launch. Each refusal
+names the kit and the file.

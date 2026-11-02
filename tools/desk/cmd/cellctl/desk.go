@@ -373,6 +373,11 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
 		}
+		// The role's dispatch-instruction value, exactly as deskLaunch composes it, so the line can
+		// be fed to `deskdispatch --dry-run`. Absent when the role declares none.
+		if v := c.dispatchInstructionsValue(role, harness); v != "" {
+			fmt.Printf("[dry-run] env %s=%s (role-context dispatch_instructions)\n", deskkit.EnvDispatchInstructions, v)
+		}
 		// The cell database pointer, one line each, exactly as deskLaunch composes it: absent
 		// when CELL_DB_DSN is unset. Neither value is a password.
 		if dsn, passfile := c.cellDBComposed(); dsn != "" {

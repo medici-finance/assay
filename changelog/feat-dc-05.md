@@ -1,0 +1,2 @@
+### Added
+- A docker compose definition for the five desk containers (`containers/compose.yaml`) gives each desk the same interactive session, work volume and runtime-injected credentials as the desktop launcher, so `docker compose run <desk-name>` starts any desk and a host can manage several as one stack. A placeholder-only `containers/desk.env.example` lists the model variables, and `docs/docker.md` documents the flow.
