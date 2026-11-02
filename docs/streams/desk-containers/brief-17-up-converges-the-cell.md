@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
@@ -78,15 +78,15 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpConverge' -count=1 -v` | `--- PASS` — fixtures cover: all absent; two already up (lease held by a live fixture process); one stale (checkpoint `running=true`, no holder); `--role` subset |
-| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpConvergeNeverTouchesLiveRole' -count=1 -v` | `--- PASS` — with a live fixture holding one role's lease, `up` neither launches a second instance nor closes that role's window, and its table row reads `already-up` |
-| 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpConvergeSerialLaunch' -count=1 -v` | `--- PASS` — a recording cockpit stub shows role N+1's launch starting only after role N's lease step returned; a mutant that launches all roles at once fails this test |
-| 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestCLINonHelpParity\|TestCLICompatDoc' -count=1 -v` | `--- PASS` — the changed `up` plans are recorded deliberate diffs with a compat-doc section |
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run '^TestUpConverge$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r1.out" 2>&1 && grep -F -e '--- PASS: TestUpConverge (' "${TMPDIR:-/tmp}/b17-r1.out" && grep -F -e '--- PASS: TestUpConverge/all_absent' "${TMPDIR:-/tmp}/b17-r1.out" && grep -F -e '--- PASS: TestUpConverge/two_up,_one_stale,_two_absent' "${TMPDIR:-/tmp}/b17-r1.out" && grep -F -e '--- PASS: TestUpConverge/role_subset' "${TMPDIR:-/tmp}/b17-r1.out"` | `--- PASS` — fixtures cover: all absent; two already up (lease held by a live fixture process); one stale (checkpoint `running=true`, no holder); `--role` subset |
+| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run '^TestUpConvergeNeverTouchesLiveRole$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r2.out" 2>&1 && grep -F -e '--- PASS: TestUpConvergeNeverTouchesLiveRole' "${TMPDIR:-/tmp}/b17-r2.out"` | `--- PASS` — with a live fixture holding one role's lease, `up` neither launches a second instance nor closes that role's window, and its table row reads `already-up` |
+| 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run '^TestUpConvergeSerialLaunch$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r3.out" 2>&1 && grep -F -e '--- PASS: TestUpConvergeSerialLaunch' "${TMPDIR:-/tmp}/b17-r3.out"` | `--- PASS` — a recording cockpit stub shows role N+1's launch starting only after role N's lease step returned; a mutant that launches all roles at once fails this test |
+| 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run '^TestCLINonHelpParity$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r4a.out" 2>&1 && grep -F -e '--- PASS: TestCLINonHelpParity' "${TMPDIR:-/tmp}/b17-r4a.out" && go -C tools/desk test ./cmd/cellctl/ -run '^TestCLICompatDoc$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r4b.out" 2>&1 && grep -F -e '--- PASS: TestCLICompatDoc' "${TMPDIR:-/tmp}/b17-r4b.out" && grep -F -e 'now also a disposition line for a role that is already up or stale' docs/cellctl-cli-compat.md` | `--- PASS` — the changed `up` plans are recorded deliberate diffs with a compat-doc section |
 | 5 | check | `sh tools/cellctl/tests/parity.test.sh` with `PARITY_ONLY` set to each `up` cell | exit 0 for every claude cell; any pre-existing codex-cell differences are the same set as at base |
-| 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpEmitsCellOpV1' -count=1 -v` | `--- PASS` — `up --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
-| 6 | check | `statusgen --root . --lint` | exit 0 |
-| 6a | check | `statusgen --root . --consumers --brief desk-containers/17` | exit 0 — the `consumers:` routing holds against the branch diff |
-| 6b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpPlanApply' -count=1 -v` | `--- PASS` — `up --apply <id>` on a plan whose stale role came alive between plan and apply refuses with `plan-stale`, naming the role; `--json` output validates against the brief-15 schema |
+| 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run '^TestUpEmitsCellOpV1$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r6j.out" 2>&1 && grep -F -e '--- PASS: TestUpEmitsCellOpV1' "${TMPDIR:-/tmp}/b17-r6j.out"` | `--- PASS` — `up --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
+| 6 | check | `statusgen --root . --lint > "${TMPDIR:-/tmp}/b17-r6.out" 2>&1; grep -F -e 'LINT: ' "${TMPDIR:-/tmp}/b17-r6.out" && ! grep -q -E -e '^PROBLEM: .*desk-containers/17' -e '^PROBLEM: .*desk-containers:17' -e '^PROBLEM: .*desk-containers/brief-17-' "${TMPDIR:-/tmp}/b17-r6.out"` | exit 0 |
+| 6a | check | `statusgen --root . --consumers --brief desk-containers/17 --delivery ea4d3339cc4b187bdce86cb7cf73d49e6b94d883 --base 40523f81d6a0eed23eede1aa1175064e7fa2459c > "${TMPDIR:-/tmp}/b17-r6a.out" 2>&1 && grep -F -x -e 'summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing' "${TMPDIR:-/tmp}/b17-r6a.out"` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 6b | check | `go -C tools/desk test ./cmd/cellctl/ -run '^TestUpPlanApply$' -count=1 -v -timeout 300s > "${TMPDIR:-/tmp}/b17-r6b.out" 2>&1 && grep -F -e '--- PASS: TestUpPlanApply' "${TMPDIR:-/tmp}/b17-r6b.out"` | `--- PASS` — `up --apply <id>` on a plan whose stale role came alive between plan and apply refuses with `plan-stale`, naming the role; `--json` output validates against the brief-15 schema |
 | 7 | gate:model +flow +dereference | On a disposable house cell with stub harnesses: `cellctl up <cell>`, kill one role's harness, run `cellctl up <cell> --plan`, then `cellctl up <cell> --apply <plan-id>` on a TTY and type the plan's confirm code | the second run's table shows four `already-up` and one `reconciled+up`; exit 0. Record both tables. |
 
 ## Evidence
