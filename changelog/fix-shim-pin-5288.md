@@ -1,0 +1,2 @@
+### Fixed
+- The verifier's instrument pin check now hashes the binary a cellctl shim runs instead of the shim script itself, so a host whose pinned tools sit behind cellctl shims no longer reads as pin drift. A shim that still runs a different build fails as drift naming that binary, and a shim whose binary cannot be read from its text (a hotfix shim, two different targets, a missing or relative path) reports could-not-check rather than passing.
