@@ -5,6 +5,7 @@ network, model, forge admission or acceptance is exercised by this probe.
 """
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -19,6 +20,11 @@ class ProbeFailure(AssertionError):
 def require(condition, code):
     if not condition:
         raise ProbeFailure(code)
+
+
+# The argument fixture never executes the operational probe body. Install the
+# sentinel after function definitions, immediately before the fixed dispatch.
+_PROBE_SENTINEL = 'probe() { printf "probe body substituted\\n" > "$VR_TEST_ROWS"; } || exit 2\n'
 
 
 def probe(helper, witness):
@@ -50,13 +56,28 @@ def probe(helper, witness):
         # Install-style fixed path in production; replace that literal only in the local
         # scratch copy when probing a source checkout rather than the installed image.
         script = base / 'witness.sh'
-        script.write_text(Path(witness).read_text().replace(
-            '/usr/local/lib/verify-runner/source_proof.py', str(helper)))
+        candidate = Path(witness).read_text().replace(
+            '/usr/local/lib/verify-runner/source_proof.py', str(helper))
+        dispatch = '\ncase $1 in\n  seed)'
+        if candidate.count(dispatch) != 1:
+            raise RuntimeError('cannot isolate the operational probe dispatch')
+        operation = candidate[candidate.index(dispatch):]
+        probe_arm = '\n  probe)\n    probe\n    ;;'
+        if operation.count(probe_arm) != 1 or len(re.findall(r'(?m)^[ \t]*probe[ \t]*\)', operation)) != 1:
+            raise RuntimeError('cannot isolate the operational probe arm')
+        script.write_text(candidate.replace(dispatch, '\n' + _PROBE_SENTINEL + dispatch, 1))
         marker = base / 'rows'
+        network = base / 'network-seams'
         # Bash reads this file; nothing under the scratch mount is exec'd. This
         # preserves the release's read-only root and noexec /tmp fence.
         seams = base / 'seams.sh'
-        seams.write_text('''unshare() { shift 3; "$@"; }
+        seams.write_text('''unshare() {
+  [ "${VR_TEST_KEY-}" != probe ] || return 1
+  shift 3; "$@"
+}
+# Never execute a network command, even when a candidate bypasses argv guards.
+timeout() { printf 'timeout\n' >> "$VR_TEST_NETWORK"; return 1; }
+getent() { printf 'getent\n' >> "$VR_TEST_NETWORK"; return 1; }
 statusgen() {
   if [ "$1" = __verifyrun-netns ]; then shift 2; "$@"; return $?; fi
   printf 'check\ncheck:ci\n' > "$VR_TEST_ROWS"
@@ -78,15 +99,20 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
         runenv = dict(env, PATH='/usr/bin:/bin', BASH_ENV=str(seams), VR_CACHE_DIR=str(base / 'cache'), VR_WORK_DIR=str(root),
                       VR_ADMISSION_DIR=str(admit), VR_SCRATCH_DIR=str(base),
                       VR_TEST_ROWS=str(marker), VR_TEST_DELIVERY=str(base / 'delivery'),
+                      VR_TEST_NETWORK=str(network),
                       ASSAY_DELIVERY_SHA='ambient-poison', ASSAY_DELIVERY_BASE_SHA='ambient-poison')
         def run(flags=(), good=True, case='source', source=None, proof=True, usage=False, key='proof/01'):
             marker.unlink(missing_ok=True)
+            network.unlink(missing_ok=True)
             args = [key]
             if proof:
                 args += ['--source-proof']
             if source is not False:
                 args += ['--sha=' + (sha if source is None else source)]
-            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=runenv, capture_output=True)
+            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=dict(runenv, VR_TEST_KEY=key), capture_output=True)
+            # No fixture path, including a guard regression, may attempt a
+            # network seam. The operational probe is a local sentinel instead.
+            require(not network.exists(), 'seams:probe-network')
             if good:
                 if result.returncode:
                     raise RuntimeError('unexpected witness failure: ' + result.stderr.decode())

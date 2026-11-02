@@ -54,7 +54,9 @@ roll remains a separate downstream job under its own existing identity.
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
    valid instance passes and an invalid one raises a validation error. It also
    exercises the installed shared source-proof library and witness call site with local
-   synthetic source and sourced Bash process seams. The scratch files are read by their
+   synthetic source and sourced Bash process seams. Argument tests substitute a local
+   sentinel for the operational probe body while preserving the real argument parser.
+   The scratch files are read by their
    installed interpreters, preserving the existing noexec tmpfs fence; this does not
    establish real namespace confinement. The probe also
    checks the cluster backend's baked entrypoints (`stage-source.sh`,

@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 WITNESS = HERE / 'witness.sh' if (HERE / 'witness.sh').is_file() else HERE / 'k8s/witness.sh'
@@ -32,8 +33,12 @@ class ProofTests(unittest.TestCase):
             ('delivery proof guard', 'witness.sh', '[ -z "$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" ] || usage', ':', 'refusal:delivery-without-proof'),
             ('seed flags', 'witness.sh', '[ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage', ':', 'usage:seed-flags'),
             ('source shape', 'witness.sh', '[[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || usage', ':', 'usage:malformed-sha'),
+            ('probe-only flags', 'witness.sh',
+             'seed|seed-probe|probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;',
+             'seed|seed-probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;\n  probe) ;;',
+             'refusal:seed-flags'),
         ]
-        self.assertEqual(len(mutants), 12)
+        self.assertEqual(len(mutants), 13)
         for name, file, old, new, message in mutants:
             with self.subTest(name=name), tempfile.TemporaryDirectory(prefix='proof-mutant-') as tmp:
                 root = Path(tmp)
@@ -49,6 +54,51 @@ class ProofTests(unittest.TestCase):
                     check.probe(root / 'source_proof.py', root / 'witness.sh')
                 self.assertEqual(message, failure.exception.code)
                 print('RED ' + name + ' code=' + failure.exception.code)
+
+    def test_probe_isolation_and_network_detector(self):
+        with tempfile.TemporaryDirectory(prefix='proof-seam-red-') as tmp:
+            witness = Path(tmp) / 'witness.sh'
+            old = 'seed|seed-probe|probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;'
+            new = 'seed|seed-probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;\n  probe) ;;'
+            text = WITNESS.read_text()
+            self.assertEqual(text.count(old), 1)
+            text = text.replace(old, new, 1)
+            # A harmless canary stands for any operational probe body, including
+            # absolute-path commands. The fixture must never invoke that body.
+            begin = text.index('\nprobe() {')
+            end = text.index('\n# resolve_key', begin)
+            canary = '\nprobe() { printf "real probe body reached\\n" >> "$VR_TEST_NETWORK"; }\n'
+            witness.write_text(text[:begin] + canary + text[end:])
+            with self.assertRaises(check.ProbeFailure) as failure:
+                check.probe(HERE / 'source_proof.py', witness)
+            self.assertEqual(failure.exception.code, 'refusal:seed-flags')
+
+            # Code directly in the dispatch arm is outside the fixture contract
+            # and must be refused before executing even a harmless canary.
+            original = witness.read_text()
+            arm = '\n  probe)\n    probe\n    ;;'
+            self.assertEqual(original.count(arm), 1)
+            bad_arm = '\n  probe)\n    printf "dispatch reached\\n" >> "$VR_TEST_NETWORK"\n    probe\n    ;;'
+            witness.write_text(original.replace(arm, bad_arm, 1))
+            with self.assertRaisesRegex(RuntimeError, 'operational probe arm'):
+                check.probe(HERE / 'source_proof.py', witness)
+            print('DISPATCH-GUARD RED unsupported arm refused before execution')
+            witness.write_text(original)
+
+            # Removing the substitution reaches the canary and must go red.
+            with mock.patch.object(check, '_PROBE_SENTINEL', ':'):
+                with self.assertRaises(check.ProbeFailure) as failure:
+                    check.probe(HERE / 'source_proof.py', witness)
+            self.assertEqual(failure.exception.code, 'seams:probe-network')
+            print('SEAM-GUARD RED body-substitution code=' + failure.exception.code)
+
+            # A planted inert seam call also fails the zero-call assertion.
+            sentinel = check._PROBE_SENTINEL.replace('probe() {', 'probe() { timeout 1 true;', 1)
+            with mock.patch.object(check, '_PROBE_SENTINEL', sentinel):
+                with self.assertRaises(check.ProbeFailure) as failure:
+                    check.probe(HERE / 'source_proof.py', witness)
+            self.assertEqual(failure.exception.code, 'seams:probe-network')
+            print('SEAM-GUARD RED network-call code=' + failure.exception.code)
 
     def test_invalid_candidates(self):
         with tempfile.TemporaryDirectory(prefix='proof-invalid-') as tmp:
