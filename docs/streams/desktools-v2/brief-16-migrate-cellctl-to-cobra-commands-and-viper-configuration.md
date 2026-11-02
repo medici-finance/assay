@@ -7,10 +7,12 @@ why: >-
   keeping launch plans, model selection and credential boundaries compatible.
 wave: 2
 depends: ["desktools-v2/15"]
-unblocks: ["desktools-v2/17", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "comms-core/04", "desktools-v2/78", "desktools-v2/79", "desktools-v2/80"]
+unblocks: ["desktools-v2/17", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57", "comms-core/04", "desktools-v2/78", "desktools-v2/79", "desktools-v2/80", "desk-containers/31"]
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
+decision-issue: 2240
+ruling: https://github.com/medici-finance/assay/issues/2240#issuecomment-6561342796
 design: DR-cellctl-cobra
 issues: [2111]
 schema: "brief-v2"

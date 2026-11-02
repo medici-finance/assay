@@ -84,6 +84,8 @@ upstream bug — tracked elsewhere — was fixed; that bug was the true head and
 Before you finalize the order: for each "smallest unblocking move," **verify it actually works** —
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
+State the head and how you established it in one passage: what you read to confirm it, or that it
+is unproven and is the head for that reason.
 
 ## Carry quality obligations into execution
 
