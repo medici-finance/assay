@@ -126,7 +126,7 @@ _Held by per-stream caps: 28 brief(s) across 3 stream(s) — top: desktools-v2. 
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3500 |
 | statusgen | 28 — Separate frozen historical notices from actionable lint findings [exec:strong] | 1 | 3000 |
-| composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2500 |
+| composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2510 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 2500 |
 | statusgen | 27 — Reject newly introduced actionable lint notices on changed briefs [exec:strong] | 1 | 2500 |
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
@@ -139,7 +139,7 @@ _Held by per-stream caps: 28 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (10 for the desk · 46 for the driver · 57 for workers · 18 for an operator · 44 runner-pending — of 179 total; 4 could-not-check)
+## Awaiting verification / review (10 for the desk · 46 for the driver · 57 for workers · 18 for an operator · 45 runner-pending — of 180 total; 4 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -231,8 +231,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite #3388 | — | — |
 | measured-status | 01 | implemented | 2000 | 0 | — | worker | fix, cite #4170 | — | — |
+| composability | 01 | implemented | 1510 | 1 | — | worker | fix, cite #1843 | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite #4823 | — | — |
-| composability | 01 | implemented | 1500 | 1 | — | worker | fix, cite #1843 | — | — |
 | desk-supervision | 32 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite #4176 | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite #1306 | — | — |
 | desktools-v2 | 19 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite #4117 | — | — |
@@ -281,7 +281,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 | desktools-v2 | 72 | implemented | 1000 | 0 | — | operator | environment blocker, cite #4327 | — | — |
 
-### Runner-pending (44)
+### Runner-pending (45)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -300,6 +300,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | milestone-support | 04 [exec:strong] | implemented | 6000 | 10 | — | verify runner | none | — | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | desktools-v2 | 65 [exec:strong] | verified | 5500 | 9 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ e25479a69d69 (forge-identity) | — |
+| milestone-support | 03 [exec:strong] | implemented | 5500 | 9 | — | verify runner | none | — | — |
 | windows-port | 00 | verified | 5000 | 8 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8bc28e8edf84 (claude-opus-5-5) | — |
 | build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
 | build-less-brittle | 06 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
@@ -856,7 +857,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### milestone-support (13 open)
 
 - 02 Negotiate reader capabilities through one shared contract — implemented (wave 1)
-- 03 Load and validate versioned milestone records — todo (wave 2)
+- 03 Load and validate versioned milestone records — implemented (wave 2)
 - 04 Add negotiated brief schema and prefixed authoring — implemented (wave 2)
 - 05 Build the combined milestone and brief dependency graph — todo (wave 3)
 - 06 Bind milestone acceptance to existing evidence and decisions — todo (wave 4)
