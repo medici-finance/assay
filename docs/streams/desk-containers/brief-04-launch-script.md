@@ -19,7 +19,7 @@ why: >-
   This is the primary aim of the request: one command on a desktop that fires up a
   chosen desk interactively, exactly like today's terminal sessions, with the
   credentials mounted correctly every time instead of hand-assembled docker flags.
-version: 2
+version: 3
 id: 8d6363a5-d747-4a47-b4da-52137ebcc3b9
 ---
 
@@ -76,8 +76,8 @@ facts:
 | 1 | `shellcheck containers/desk-run.sh` | exit 0 |
 | 2 | `sh containers/desk-run.test.sh` | exit 0; prints a PASS line per case listed in Task 2 |
 | 3 | `containers/desk-run.sh pr-review-desk --dry-run` (with fixture PEM + env-file paths exported) | exit 0; output contains `-it`, `--name pr-review-desk`, `/work`, `/run/secrets/assay/app.pem`, `ro`, `--env-file`, `ghcr.io/medici-finance/assay/pr-review-desk` |
-| 4 | `containers/desk-run.sh nonsense-desk --dry-run` | exit non-zero; output lists the five valid desk names (negative-path row) |
-| 5 | `containers/desk-run.sh worker-desk --dry-run` with the PEM path pointing at a missing file | exit non-zero; output names the expected PEM location (fail-closed row) |
+| 4 | `containers/desk-run.sh nonsense-desk --dry-run` | exit 2; output lists the five valid desk names (negative-path row) |
+| 5 | `containers/desk-run.sh worker-desk --dry-run` with the PEM path pointing at a missing file | exit 3; output names the expected PEM location (fail-closed row) |
 | 6 | `test -x containers/desk-run.sh && containers/desk-run.sh worker-desk --dry-run \| { grep -c 'BEGIN' \|\| [ $? -eq 1 ]; }` (fixture PEM in place) | output is `0` — the script prints credential PATHS, never contents. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. While the script is absent the `test -x` leg fails the row. |
 
 ## Definition of Done
