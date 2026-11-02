@@ -12,10 +12,6 @@ import tempfile
 import zlib
 
 
-class Refused(Exception):
-    pass
-
-
 FIXED = '/usr/bin:/bin:/usr/sbin:/sbin'
 
 
