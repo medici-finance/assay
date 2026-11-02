@@ -93,6 +93,21 @@
     },
     {
       "class": "test",
+      "pattern": "images/verify-runner/source_proof.py",
+      "reason": "fixed-path image verification instrument called by witness.sh to prove local Git source before executing Verify rows; also imported as a shared library; no independent operator CLI or acceptance authority (#5338)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/source_proof_check.py",
+      "reason": "release-owned joined source and witness capability probe invoked by check.py; uses local synthetic Git trees and process seams, never exposed as an operator CLI (#5338)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/source_proof_test.py",
+      "reason": "offline joined source proof and mutation-oracle regression suite run by release-producer CI tests; never installed as an operator CLI (#5338)"
+    },
+    {
+      "class": "test",
       "pattern": "images/verify-runner/stage-source.sh",
       "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's init container with the argument list the admission policy fixes, to stage the source a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
     },

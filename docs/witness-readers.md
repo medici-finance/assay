@@ -62,6 +62,8 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/cmd/deskevidence/receiptvalidate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/rowattribution.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/verifiedgate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskperf/main.go` | reads informational fields only | usage text naming the verify-outcome register that `deskperf reruns` reads; reads no cell, record or revision itself |
+| `tools/desk/cmd/deskperf/reruns.go` | reads informational fields only | reads a verify-outcome record's `attempts`, `started`, `finished` and timestamp to count re-runs and join their windows to perf rows; never a revision, tree token, record id or staleness verdict |
 | `tools/desk/cmd/fanoutloop/repair.go` | reads informational fields only | mentions a verify-outcomes sidecar in a repair marker; reads no cell, record or revision |
 | `tools/desk/cmd/verifyloop/briefscan.go` | migrates in statusgen/37 | reads verify-outcome records and Evidence rows to queue verification; migrates with the record in statusgen/37 |
 | `tools/desk/cmd/verifyloop/dispatch.go` | migrates in statusgen/37 | reads verify-outcome records and Evidence rows to queue verification; migrates with the record in statusgen/37 |
@@ -73,6 +75,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/internal/deskkit/repairobligation.go` | reads informational fields only | mentions a verify-outcomes sidecar in a repair marker; reads no cell, record or revision |
 | `tools/desk/internal/deskkit/roleworktreeidentity.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
 | `tools/desk/internal/deskkit/verifierattestation.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
+| `tools/desk/internal/deskkit/verifyattempts.go` | reads informational fields only | validates and counts a verify-outcome record's optional `attempts` list, using `started`, `finished` and the timestamp only for ordering and windows; never a revision, tree token, record id or staleness verdict |
 | `tools/desk/internal/deskkit/verifyoutcomejoin.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
 | `tools/desk/internal/deskkit/verifyoutcomes.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |
 | `tools/desk/internal/deskkit/verifywake.go` | migrates in statusgen/37 | verify-outcome record layer and join keys; adopts the witness reference in statusgen/37 |

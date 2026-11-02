@@ -291,10 +291,12 @@ A conforming milestone implementation MUST demonstrate at least:
 This is a specification draft, not a rollout. First implement explicit capability
 advertisement/refusal for milestone records, stream opt-in and brief start requirements.
 Old readers currently tolerate unknown keys in several places: inserting new YAML keys
-alone is unsafe because they may silently ignore a required gate. A future negotiated
-brief schema (provisionally `brief-v4`, subject to allocation at implementation) MUST
-be used for `requires-milestones`; supported brief schemas remain v1–v3 today.
-No JSON schema, release support entry or live declaration is added by this draft.
+alone is unsafe because they may silently ignore a required gate. The negotiated
+brief schema `brief-v4` (allocated in brief §3.5 with `schemas/brief-v4.json`; no
+supporting release yet) MUST be used for `requires-milestones`, and a conforming linter
+refuses the key on brief-v1–v3. No release support entry or live declaration is added
+by this draft; the record loader below adds `schemas/milestone-v1.json` for the record
+frontmatter only.
 
 The implementation handoff MUST enumerate parser/schema/lint, graph resolution, eligibility,
 Next-up/dispatch, board/deskboard, historian/export and trace report consumers. Unsupported
@@ -327,6 +329,73 @@ they do not prevent reviewing this proposed semantic contract.
 
 The envelope/stream opt-in allocation from §10 is now defined by
 [reader-capabilities-v1](reader-capabilities-v1.md). The shared pure assessment and
-named legacy consumer preflights do not implement milestone loading, assessment,
-dispatch or acceptance. Those capabilities remain unadvertised. Operational milestone
-declarations and adoption remain held until coordinated readers are qualified.
+named legacy consumer preflights do not implement milestone assessment, dispatch or
+acceptance; the record loader below reads records only. Those capabilities remain
+unadvertised. Operational milestone declarations and adoption remain held until
+coordinated readers are qualified.
+
+## Record loader implementation
+
+statusgen milestone discovery (`statusgen/milestones.go`) is the record reader for §2–§3.
+It is not advertised: statusgen's reader-capabilities document still omits
+`milestone-v1`. The loader assesses each opted-in stream's `reader-requirements`
+against that same advertisement before reading anything, so until the capability is
+advertised every command that loads streams leaves the records unread and the
+stream's milestone coverage unknown. Separately, the lint and write paths' tree gate
+refuses an opted-in tree. Graph, readiness, report and acceptance consumers are
+later work; the loader grants no dispatch, approval or acceptance.
+
+**Opt-in.** A stream opts in only through its README's top-level `reader-requirements`
+envelope: any required operation that lists `milestone-v1` as a schema or semantic.
+Body prose never opts in. A stream without that envelope entry is legacy: its
+`milestones/` directory, if any, is not read, and its lifecycle, dependency and
+dispatch behavior are unchanged. An unreadable envelope leaves milestone coverage unknown.
+
+**Location.** Records are regular files named `m-<NN>-<slug>.md` directly under
+`docs/streams/<stream>/milestones/`; a `README.md` index there is ignored. The host
+adapter reads through a root-confined filesystem view. A symlink, nested directory or
+special entry is refused; any other unrecognized entry leaves coverage unknown
+because it may hide a record. A missing or unreadable `milestones/` directory of an
+opted-in stream is unknown coverage, never an empty plan.
+
+**Identity and version.** The owning root is the graph alias registry's cell and its
+`self:` alias (or its single published alias). The `milestone` key resolves through the
+shared typed reference resolver with the milestone profile; it must carry no `@`
+selector and must name the owning cell, repository and stream. The earlier draft
+`<cell>:<repo>:<stream>/m-<NN>` spelling and registered repository aliases normalize
+to the same identity. The graph alias registry does not yet list historical aliases
+for a repository, so in production only the registered alias itself matches; a record
+naming an older alias is refused as an ownership mismatch. The version is `contract-version`; filenames and `-vN` suffixes
+are never read for identity or version. Two records with the same identity and version,
+including through an alias, are both refused with both locations named; other records
+still load. Distinct versions of one identity are all retained.
+
+**Fields.** The §3 key set is closed; missing, unknown or wrongly typed keys refuse the
+record. `contributes` resolves with the brief profile and keeps each exact optional
+authored-brief revision; a milestone reference there is a wrong-kind refusal, as is a
+brief reference in `requires-milestones`. A title that is only an ID or wave label is
+refused. `schemas/milestone-v1.json` describes the frontmatter shape; ownership,
+duplicates, coverage and provenance are the loader's cross-record rules.
+
+**Body.** Each §3 section must be present with content. `Acceptance` holds a Markdown
+table whose first column is `ID`, one row per criterion, IDs `C<NN>`, unique.
+`Coverage` holds a `Criterion | Contributors | Evidence` table: contributors are
+comma-separated brief references that must appear in `contributes`; evidence is
+comma-separated repository-relative paths; `—`, `-` or `none` marks an empty cell. A
+coverage row for an undefined criterion, a contributor not in `contributes` or a
+malformed table refuses the record.
+
+**Coverage states.** The loaded plan is `known` only when no record was refused and no
+gap was found. These gaps leave it `unknown`, with the record still loaded: a criterion
+with no coverage row (uncovered, not satisfied); a criterion with neither a contributor
+nor evidence (unmapped work — an empty `contributes` is justified only when every
+criterion cites existing evidence); a contribution mapped to no criterion; a source or
+evidence path that is missing, unreadable or not checkable offline (URLs and issue
+references); and a prerequisite version that is not a loaded record. A source or
+evidence path that is absolute or escapes the repository refuses the record. Records
+carry identities, versions, criterion IDs and paths only: no body text, credentials,
+or private repository names behind unpublished aliases enter the plan.
+
+The tests `TestMilestoneRecords` and `TestMilestoneUnknownCoverage` exercise this
+contract; `statusgen/testdata/milestone-support/03-mutations.json` holds their executable
+mutation controls.

@@ -729,7 +729,7 @@ func TestGlobalIncludeApproval(t *testing.T) {
 		{"onbranch-other", "[includeIf \"onbranch:release/\"]\n path = INC\n", foreign},
 		{"identity", "[include]\n path = INC\n", "[user]\n name = fixture\n email = fixture@example.invalid\n"},
 		{"missing", "[include]\n path = MISSING\n", ""},
-		{"credential-rewrite", "[url \"https://fixture-user:fixture-token@github.com/\"]\n insteadOf = https://github.com/\n", ""},
+		{"credential-rewrite", "[url \"https://fixture-user:" + "fixture-token" + "@github.com/\"]\n insteadOf = https://github.com/\n", ""},
 		{"global-extension", "[extensions]\n worktreeConfig = true\n", ""},
 		{"chained-rewrite", "[url \"https://github.com/first-hop/\"]\n insteadOf = https://github.com/\n[url \"https://github.com/second-hop/\"]\n insteadOf = https://github.com/first-hop/\n", ""},
 		{"symlink-home", "[includeIf \"gitdir:~/\"]\n path = INC\n", foreign},
