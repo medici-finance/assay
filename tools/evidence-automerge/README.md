@@ -1,57 +1,38 @@
-# Evidence merge completion
+# Evidence auto-merge
 
 The scheduled poll discovers ready, verifier-authored Evidence PRs on main.
 Drafts still require review and a ready flip. The existing author and changed-file
 guards remain in force; no PR source is checked out or executed.
 
-GitHub refuses an auto-merge request when the PR is already in clean status.
-The refusal classifier marks that outcome `clean=true`. The proposed workflow
-then calls `merge_clean.run()` with the normal workflow token, not the
-board-writer App token that bypasses main's rulesets.
+For each eligible PR the workflow asks GitHub to enable auto-merge, using a token
+minted from the board-writer App. That is a request: GitHub merges only once every
+branch requirement is satisfied, and the merge is attributed to the identity that
+enabled it. `automerge-refusal.sh` decides which refusals of that request are
+benign and which redden the run.
 
-The helper re-reads the PR, all changed-file and review pages, and its check
-check suites. It requires both reviewer-App lanes at the current head, GitHub's
-APPROVED/CLEAN/MERGEABLE state, successful leak-sweep and completed non-failing
-checks. It refuses drafts, another author/base/repository, generated views,
-non-docs files and renamed source files. The REST merge specifies the inspected
-head SHA and merge method `merge`. GitHub independently enforces branch
-protection at the write; a changed head or a newly unsatisfied requirement is
-not bypassed. Read failures and rejected writes fail the job.
+## Clean PRs wait for a human merge
 
-A workflow-token merge does not trigger push or pull-request-closed workflows
-([GitHub token event rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)).
-The merged Evidence is immediately available on main, but the push-only board
-regeneration and model-path flips wait for a subsequent independent main push.
-The hourly reconcile only updates stream README tables through its own PR; it
-does not replace those push-only jobs. This tradeoff avoids merging with the
-board-writer bypass credential.
+GitHub refuses the auto-merge request when a PR is already in clean status,
+because nothing is left to wait on. The classifier treats that refusal as benign
+(exit 0, no step output) and the PR waits for a human merge.
+
+An earlier version completed those merges directly with the workflow token. Main's
+push/merge restriction now refuses that token. The recorded ruling on #997 chose
+to drop the direct merge rather than give it a bypass-capable credential, so this
+workflow holds no write permission on the workflow token and never merges a PR
+itself.
 
 ## Activation
 
-The staged and live workflow copies are identical. The maintainer promotion grants
-only the main-only enable job the workflow-token write permissions needed for
-protected merges. It changes no App permissions or ruleset bypass.
-
-The completion step becomes live after this PR is reviewed again and merged by
-the normal maintainer process. Scheduled main runs then use the merged workflow.
+The staged copy in `ci/staged-workflows/` and the live workflow are identical.
+A workflow-file change is promoted by a maintainer, because no App may push a
+`.github/workflows/*` file.
 
 ## Offline checks
 
-`python3 tools/evidence-automerge/automerge-poll_test.py` exercises scope,
-current-head review lanes, paginated files, pending/failing checks, changed-head
-and server-refusal cases. The existing live build-test regression entrypoint
-runs this suite. The shell classifier and real-step suites run alongside it.
-
-The completion adapter reads GitHub's `LATEST` checks within each check suite
-and uses suite creation time across ordinary runs of the same workflow and App.
-It never compares job completion with another attempt's start. Duplicate rerun
-suites or missing ordering metadata retain all reports; any unresolved or failed
-report withholds completion. Suite counts and pagination are reconciled.
-
-Review markers and declaration parsing are checked against the canonical desk
-readers by the live Go regression floor. Both distinct lane artifacts must grant
-at the current head, and standing blockers remain effective. Candidate metadata,
-files, reviews and checks are read again immediately before the expected-head
-write. These are snapshots: GitHub's merge endpoint atomically binds the head and
-enforces repository protection, not arbitrary review-body predicates added after
-that last read.
+`python3 tools/evidence-automerge/automerge-poll_test.py` runs the discovery and
+guard steps against a stub API and pins the workflow's jobs, steps, tokens and
+permissions, including the absence of any direct-merge step.
+`automerge-refusal_test.sh` and `automerge-step_test.sh` cover the refusal
+classifier and the real request step. The live build-test regression entrypoint
+runs all three.
