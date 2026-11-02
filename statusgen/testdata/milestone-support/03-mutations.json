@@ -136,6 +136,42 @@
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "keep-refused-record",
+      "target": "statusgen/milestones.go",
+      "old": "escapes or is not a clean repository-relative path\", what, ref)\n\t\treturn false",
+      "new": "escapes or is not a clean repository-relative path\", what, ref)\n\t\treturn true",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "keep-refused-source",
+      "target": "statusgen/milestones.go",
+      "old": "where, \"source\", src) {\n\t\t\tok = false",
+      "new": "where, \"source\", src) {\n\t\t\tok = ok",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "keep-refused-evidence",
+      "target": "statusgen/milestones.go",
+      "old": "\" evidence\", ev) {\n\t\t\t\tok = false",
+      "new": "\" evidence\", ev) {\n\t\t\t\tok = ok",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "loader-ungated",
+      "target": "statusgen/milestones.go",
+      "old": "res.State != readercaps.Supported {",
+      "new": "res.State != readercaps.Supported && false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
     }
   ]
 }

@@ -9,6 +9,7 @@ import (
 	"testing/fstest"
 
 	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/workref"
 	"gopkg.in/yaml.v3"
 )
@@ -226,6 +227,7 @@ func TestMilestoneRecords(t *testing.T) {
 	})
 
 	t.Run("production loader reads opted-in streams and leaves legacy streams untouched", func(t *testing.T) {
+		advertiseMilestones(t)
 		root := milestoneTree(t)
 		writeMilestoneFile(t, root, "docs/streams/delivery/milestones/m-03-build-less-brittle-v2.md", canonical)
 		writeMilestoneFile(t, root, "docs/streams/delivery/milestones/m-01-runner.md", compatible)
@@ -251,7 +253,7 @@ func TestMilestoneRecords(t *testing.T) {
 			"---\nstream: s\nreader-requirements: {schema: reader-requirements-v1, required: []}\n---\n":                                                              false,
 			"---\nstream: s\nwhy: milestone-v1 named only in prose\n---\nreader-requirements: milestone-v1\n":                                                         false,
 		} {
-			if got, err := milestoneOptIn([]byte(raw)); err != nil || got != want {
+			if _, got, err := milestoneOptIn([]byte(raw)); err != nil || got != want {
 				t.Fatalf("opt-in(%q) = %v, %v; want %v", raw, got, err, want)
 			}
 		}
@@ -315,9 +317,32 @@ func TestMilestoneUnknownCoverage(t *testing.T) {
 	t.Run("unrecognized entry may hide a record", func(t *testing.T) {
 		unknown(t, loadMilestoneTest(t, milestoneTestSource(t, milestoneEntry("m-01.markdown", compatible))), "unrecognized entry")
 	})
-	t.Run("escaping evidence path is refused", func(t *testing.T) {
-		escaping := strings.Replace(compatible, "`docs/evidence/runner.md`", "`../outside/runner.md`", 1)
-		unknown(t, loadMilestoneTest(t, milestoneTestSource(t, milestoneEntry("m-01-runner.md", escaping))), "escapes or is not a clean repository-relative path")
+	t.Run("escaping evidence or source path refuses the record", func(t *testing.T) {
+		for _, c := range []struct{ name, old, new string }{
+			{"relative evidence", "`docs/evidence/runner.md`", "`../outside/runner.md`"},
+			{"absolute evidence", "`docs/evidence/runner.md`", "`/etc/passwd`"},
+			{"relative source", `sources: ["docs/spec.md#runner"]`, `sources: ["../outside/spec.md"]`},
+			{"absolute source", `sources: ["docs/spec.md#runner"]`, `sources: ["/etc/passwd"]`},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				if strings.Count(compatible, c.old) != 1 {
+					t.Fatalf("fixture anchor %q not unique", c.old)
+				}
+				escaping := strings.Replace(compatible, c.old, c.new, 1)
+				plan := loadMilestoneTest(t, milestoneTestSource(t, milestoneEntry("m-01-runner.md", escaping)))
+				unknown(t, plan, "escapes or is not a clean repository-relative path")
+				if len(plan.Records) != 0 {
+					t.Fatalf("refused record still loaded: %v", milestoneRefs(plan))
+				}
+				// The refused record must not satisfy a dependant's prerequisite.
+				plan = loadMilestoneTest(t, milestoneTestSource(t,
+					milestoneEntry("m-01-runner.md", escaping), milestoneEntry("m-03-x.md", canonical)))
+				if got := strings.Join(milestoneRefs(plan), ","); got != "assay:assay:delivery:m-03@1" {
+					t.Fatalf("records = %s, want only the dependant m-03@1", got)
+				}
+				unknown(t, plan, "prerequisite assay:assay:delivery:m-01@1 is not a loaded record version")
+			})
+		}
 	})
 	t.Run("missing evidence or source is unknown", func(t *testing.T) {
 		missing := strings.Replace(compatible, "docs/evidence/runner.md", "docs/evidence/gone.md", 1)
@@ -350,7 +375,32 @@ func TestMilestoneUnknownCoverage(t *testing.T) {
 		unknown(t, loadMilestoneTest(t, milestoneTestSource(t, milestoneEntry("m-03-x.md", v2), milestoneEntry("m-01-runner.md", compatible))), "prerequisite assay:assay:delivery:m-01@2")
 	})
 
+	t.Run("unadvertised reader does not read an opted-in stream's records", func(t *testing.T) {
+		// This statusgen does not advertise milestone-v1, so on every command
+		// path that loads streams the records stay unread and coverage unknown.
+		root := milestoneTree(t)
+		writeMilestoneFile(t, root, "docs/streams/delivery/milestones/m-01-runner.md", compatible)
+		streams, _, err := loadStreams(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d *Stream
+		for _, s := range streams {
+			if s.Name == "delivery" {
+				d = s
+			}
+		}
+		if d == nil || d.Milestones == nil {
+			t.Fatalf("opted-in stream has no plan: %+v", d)
+		}
+		unknown(t, d.Milestones, "does not support this stream's reader-requirements")
+		if len(d.Milestones.Records) != 0 {
+			t.Fatalf("records read by a reader that does not advertise milestone-v1: %v", milestoneRefs(d.Milestones))
+		}
+	})
+
 	t.Run("production loader keeps a real tree's gaps unknown", func(t *testing.T) {
+		advertiseMilestones(t)
 		root := milestoneTree(t)
 		writeMilestoneFile(t, root, "docs/streams/delivery/milestones/m-01-runner.md", compatible)
 		outside := filepath.Join(t.TempDir(), "m-02-outside.md")
@@ -403,6 +453,24 @@ func TestMilestoneUnknownCoverage(t *testing.T) {
 
 // milestoneTree builds a minimal checkout: an opted-in stream "delivery", a
 // legacy stream "legacy", the graph alias registry and the cited evidence.
+// advertiseMilestones stands in for the release that advertises milestone-v1:
+// the production loader reads an opted-in stream's records only when this
+// statusgen supports the stream's reader-requirements.
+func advertiseMilestones(t *testing.T) {
+	t.Helper()
+	prev := milestoneReader
+	milestoneReader = func() readercaps.Advertisement {
+		ad := statusgenReaderCaps()
+		for i, op := range ad.Operations {
+			if op.Operation == "syntax" {
+				ad.Operations[i].Schemas = append(append([]string{}, op.Schemas...), "milestone-v1")
+			}
+		}
+		return ad
+	}
+	t.Cleanup(func() { milestoneReader = prev })
+}
+
 func milestoneTree(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

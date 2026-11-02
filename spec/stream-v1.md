@@ -103,5 +103,6 @@ envelope lists `milestone-v1` as a schema or semantic. statusgen then reads
 `docs/streams/<stream>/milestones/` with the loader described in
 [milestone-v1 § Record loader implementation](milestone-v1.md#record-loader-implementation);
 every other stream keeps its legacy reading and its `milestones/` directory is not
-read. The capability remains unadvertised, so the tree gate still refuses an opted-in
-tree in production until the later milestone-support rollout.
+read. The capability remains unadvertised, so until the later milestone-support
+rollout the loader reads no records (coverage stays unknown) on any command, and the
+lint and write paths' tree gate still refuses an opted-in tree.

@@ -337,8 +337,11 @@ coordinated readers are qualified.
 
 statusgen milestone discovery (`statusgen/milestones.go`) is the record reader for §2–§3.
 It is not advertised: statusgen's reader-capabilities document still omits
-`milestone-v1`, so the existing tree gate refuses an opted-in tree before any
-production command reads it. Graph, readiness, report and acceptance consumers are
+`milestone-v1`. The loader assesses each opted-in stream's `reader-requirements`
+against that same advertisement before reading anything, so until the capability is
+advertised every command that loads streams leaves the records unread and the
+stream's milestone coverage unknown. Separately, the lint and write paths' tree gate
+refuses an opted-in tree. Graph, readiness, report and acceptance consumers are
 later work; the loader grants no dispatch, approval or acceptance.
 
 **Opt-in.** A stream opts in only through its README's top-level `reader-requirements`
@@ -359,7 +362,9 @@ opted-in stream is unknown coverage, never an empty plan.
 shared typed reference resolver with the milestone profile; it must carry no `@`
 selector and must name the owning cell, repository and stream. The earlier draft
 `<cell>:<repo>:<stream>/m-<NN>` spelling and registered repository aliases normalize
-to the same identity. The version is `contract-version`; filenames and `-vN` suffixes
+to the same identity. The graph alias registry does not yet list historical aliases
+for a repository, so in production only the registered alias itself matches; a record
+naming an older alias is refused as an ownership mismatch. The version is `contract-version`; filenames and `-vN` suffixes
 are never read for identity or version. Two records with the same identity and version,
 including through an alias, are both refused with both locations named; other records
 still load. Distinct versions of one identity are all retained.

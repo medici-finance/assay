@@ -22,9 +22,13 @@ package main
 // milestones" or "nothing left to do".
 //
 // NOT ADVERTISED. statusgen's reader-capabilities advertisement does not list
-// milestone-v1 (briefschemaversions.go); the tree version gate therefore still
-// refuses an opted-in tree before this loader is reached in production. The loader
-// is the qualified reader the later milestone-support briefs build on.
+// milestone-v1 (briefschemaversions.go). attachMilestonePlans assesses each
+// opted-in stream's reader-requirements against that advertisement (milestoneReader)
+// before it reads anything, so while milestone-v1 is unadvertised every command
+// that loads streams leaves an opted-in stream's records unread and its coverage
+// unknown; the lint/write path's tree gate (refuseIfTreeTooNew) refuses the tree
+// as well. The loader is the qualified reader the later milestone-support briefs
+// build on.
 
 import (
 	"errors"
@@ -172,14 +176,21 @@ var (
 )
 
 // milestoneOptIn reports whether a stream README negotiated milestone-v1 through
-// its reader-requirements envelope. A README without the envelope is legacy.
-func milestoneOptIn(readme []byte) (bool, error) {
+// its reader-requirements envelope, and returns that envelope for the reader
+// assessment in attachMilestonePlans. A README without the envelope is legacy.
+func milestoneOptIn(readme []byte) (readercaps.Requirements, bool, error) {
 	req, err := record.Requirements(readme)
 	if err != nil {
-		return false, err
+		return req, false, err
 	}
-	return requiresMilestoneSchema(req), nil
+	return req, requiresMilestoneSchema(req), nil
 }
+
+// milestoneReader is the reader-capabilities advertisement an opted-in stream's
+// reader-requirements are assessed against before its records are read. It is the
+// same advertisement the tree gate uses; tests substitute one that lists
+// milestone-v1 to exercise the loader behind it.
+var milestoneReader = statusgenReaderCaps
 
 // An operation that names milestone-v1 as a required schema or semantic opts the
 // stream in: a stream that requires milestone meaning anywhere has its records read.
@@ -375,9 +386,11 @@ func parseMilestoneRecord(plan *MilestonePlan, in MilestoneSource, where string,
 		return rec, false
 	}
 	for _, src := range rec.Sources {
-		checkMilestoneProvenance(plan, in, where, "source", src)
+		if !checkMilestoneProvenance(plan, in, where, "source", src) {
+			ok = false
+		}
 	}
-	return rec, true
+	return rec, ok
 }
 
 // milestoneCoverage reads the Acceptance criterion IDs and the Coverage mapping.
@@ -459,7 +472,9 @@ func milestoneCoverage(plan *MilestonePlan, in MilestoneSource, where, body stri
 			plan.unknown(where, "criterion %s has neither a contributing brief nor existing evidence (unmapped work)", c.ID)
 		}
 		for _, ev := range c.Evidence {
-			checkMilestoneProvenance(plan, in, where, "criterion "+c.ID+" evidence", ev)
+			if !checkMilestoneProvenance(plan, in, where, "criterion "+c.ID+" evidence", ev) {
+				ok = false
+			}
 		}
 	}
 	var unmapped []string
@@ -472,34 +487,39 @@ func milestoneCoverage(plan *MilestonePlan, in MilestoneSource, where, body stri
 	for _, key := range unmapped {
 		plan.unknown(where, "contribution %s maps to no acceptance criterion (unmapped work)", key)
 	}
+	if !ok {
+		return nil, false
+	}
 	return criteria, true
 }
 
 // checkMilestoneProvenance resolves a repository-relative source/evidence path.
-// A path that escapes the repository refuses; a missing, unreadable or
-// non-path reference is unknown, never assumed present.
-func checkMilestoneProvenance(plan *MilestonePlan, in MilestoneSource, where, what, ref string) {
+// A path that is absolute or escapes the repository refuses the record: it returns
+// false and the caller must not load the record. A missing, unreadable or non-path
+// reference is unknown, never assumed present; the record stays loaded (true).
+func checkMilestoneProvenance(plan *MilestonePlan, in MilestoneSource, where, what, ref string) bool {
 	p, _, _ := strings.Cut(ref, "#")
 	if strings.Contains(p, "://") || strings.ContainsAny(ref, " \t") || p == "" {
 		plan.unknown(where, "%s %q is not a repository path; it cannot be checked offline", what, ref)
-		return
+		return true
 	}
 	if strings.HasPrefix(p, "/") || !fs.ValidPath(path.Clean(p)) || path.Clean(p) != strings.TrimSuffix(p, "/") {
 		plan.refuse(where, "%s %q escapes or is not a clean repository-relative path", what, ref)
-		return
+		return false
 	}
 	if in.Repo == nil {
 		plan.unknown(where, "%s %q: repository tree unavailable; provenance unknown", what, ref)
-		return
+		return true
 	}
 	if _, err := fs.Stat(in.Repo, path.Clean(p)); err != nil {
 		plan.unknown(where, "%s %q could not be read: %v", what, ref, err)
 	}
+	return true
 }
 
 // resolveMilestonePrerequisites checks every exact prerequisite version against
-// the plans loaded in this run. A prerequisite outside them, or a plan whose
-// own coverage is unknown, leaves the dependant's coverage unknown.
+// the records loaded in this run. A prerequisite version that is not a loaded
+// record (absent, refused or never read) leaves the dependant's coverage unknown.
 func resolveMilestonePrerequisites(plans []*MilestonePlan) {
 	have := map[string]bool{}
 	for _, p := range plans {
@@ -661,7 +681,9 @@ func readMilestoneSource(root, stream string, reg *graphRepos, regErr error) (Mi
 	return in, func() { r.Close() }
 }
 
-// attachMilestonePlans loads a plan for every stream that negotiated milestone-v1.
+// attachMilestonePlans loads a plan for every stream that negotiated milestone-v1
+// and whose reader-requirements this statusgen supports (milestoneReader); an
+// unsupported opted-in stream gets an unknown plan with no records read.
 // Legacy streams are left untouched (Milestones stays nil). The alias registry is
 // read only when at least one stream opted in, so legacy trees are unaffected.
 func attachMilestonePlans(root string, streams []*Stream) {
@@ -677,6 +699,15 @@ func attachMilestonePlans(root string, streams []*Stream) {
 			continue
 		}
 		if !s.MilestoneOptIn {
+			continue
+		}
+		if res := readercaps.Assess(s.MilestoneReqs, readercaps.Observation{State: readercaps.Current, Advertisement: milestoneReader()}); res.State != readercaps.Supported {
+			// The same assessment the tree gate makes: a reader that does not
+			// support the stream's requirements never reads its records.
+			s.Milestones = &MilestonePlan{Stream: filepath.Base(s.Dir), OptedIn: true}
+			s.Milestones.unknown("README.md", "this statusgen does not support this stream's reader-requirements (%s: %s); milestone records are not read, coverage unknown", res.State, res.Reason)
+			s.Milestones.settle()
+			plans = append(plans, s.Milestones)
 			continue
 		}
 		if !loaded {
