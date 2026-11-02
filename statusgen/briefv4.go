@@ -9,6 +9,9 @@ package main
 //     <cell>:<repo>:<stream>:b-<NN> (no revision, no slash);
 //   - `version:` (the authored Task/Verify revision) and `id:` (the uuid) are
 //     REQUIRED — a reference may pin the revision, so it is never defaulted;
+//   - `reader-requirements:` is REQUIRED and must hold back a reader that
+//     advertises only the legacy schemas (the shared preflight reads a record
+//     with no envelope as carrying no requirement);
 //   - `requires-milestones:` carries exact versioned milestone start
 //     requirements, interpreted by the shared statusgen/workref resolver;
 //   - `depends:` / `unblocks:` may be written <stream>:b-<NN>[@<version>] (or a
@@ -24,10 +27,13 @@ package main
 // binds an existing brief at the selected source snapshot or stays unknown.
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/workref"
 )
 
@@ -54,6 +60,15 @@ func parseBriefV4Keys(data map[string]any, bf *BriefFile, addBad func(string, ..
 	}
 	if strings.TrimSpace(bf.ID) == "" {
 		addBad("id is required under brief-v4 (every alias and revision selector normalizes to this one uuid; none mints another)")
+	}
+
+	// reader-requirements: REQUIRED. It is the only thing that makes a reader
+	// advertising just the legacy schemas refuse this record: the shared preflight
+	// reads a record with no envelope as carrying no requirement.
+	if v, ok := data["reader-requirements"]; !ok {
+		addBad("reader-requirements is required under brief-v4 (the envelope is what makes a reader that does not advertise brief-v4 syntax refuse the record; without it a legacy reader sees no requirement)")
+	} else if msg := briefV4EnvelopeProblem(v); msg != "" {
+		addBad("reader-requirements: %s", msg)
 	}
 
 	// brief: the full colon-only prefixed definition id.
@@ -102,6 +117,45 @@ func parseBriefV4Keys(data map[string]any, bf *BriefFile, addBad func(string, ..
 	// depends/unblocks: brief references only; normalized, each brief once.
 	bf.Depends = normalizeBriefV4Edges("depends", bf.Depends, bf, addBad)
 	bf.Unblocks = normalizeBriefV4Edges("unblocks", bf.Unblocks, bf, addBad)
+}
+
+// legacyBriefReaderAdvertisement is the advertisement a reader that predates
+// brief-v4 gives the shared preflight: the operations statusgen's own
+// advertisement lists (syntax and requirements preflight, the same operation
+// set the desk-tools readers advertise), with the syntax schemas limited to the
+// shared legacy registry. Deriving it from statusgenReaderCaps keeps the
+// operation set in step with the real advertisement instead of a stand-in.
+func legacyBriefReaderAdvertisement() readercaps.Advertisement {
+	adv := statusgenReaderCaps()
+	ops := make([]readercaps.Operation, 0, len(adv.Operations))
+	for _, op := range adv.Operations {
+		if op.Operation == "syntax" {
+			op.Schemas = briefdoc.SchemaVersions()
+		}
+		ops = append(ops, op)
+	}
+	adv.Operations = ops
+	adv.Provider, adv.Version = "legacy-brief-reader", "legacy"
+	return adv
+}
+
+// briefV4EnvelopeProblem decodes a brief-v4 reader-requirements envelope and
+// checks it does its one job: a reader advertising only the shared legacy
+// schemas (and the preflight every real reader advertises) must assess it
+// unsupported. It returns "" when it does.
+func briefV4EnvelopeProblem(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err.Error()
+	}
+	req, err := readercaps.DecodeRequirements(raw)
+	if err != nil {
+		return err.Error()
+	}
+	if r := readercaps.Assess(req, readercaps.Observation{State: readercaps.Current, Advertisement: legacyBriefReaderAdvertisement()}); r.State != readercaps.Unsupported {
+		return "must require syntax support for " + briefSchemaV4 + " so a reader advertising only " + strings.Join(briefdoc.SchemaVersions(), ", ") + " refuses the record (a legacy reader was assessed " + string(r.State) + ")"
+	}
+	return ""
 }
 
 // normalizeBriefV4Edges parses each written edge with the shared resolver,
@@ -214,7 +268,11 @@ func checkBriefV4Semantics(add, notice func(string, ...any), path string, bf *Br
 			add("%s: %s %q does not resolve: %v", path, sel.Field, sel.Spelling, err)
 			continue
 		}
-		own, _ := workref.Resolve(sel.Ref.Stream+":b-"+sel.Ref.Number, declaring, wr, workref.TypedBrief)
+		own, err := workref.Resolve(sel.Ref.Stream+":b-"+sel.Ref.Number, declaring, wr, workref.TypedBrief)
+		if err != nil {
+			add("%s: %s %q cannot be compared with this brief's own root: %v", path, sel.Field, sel.Spelling, err)
+			continue
+		}
 		if res.Cell != own.Cell || res.Repo != own.Repo {
 			add("%s: %s %q names brief work in another root (%s:%s) — %s is same-root; declare a cross-root brief edge in gates:/feathers:", path, sel.Field, sel.Spelling, res.Cell, res.Repo, sel.Field)
 		}

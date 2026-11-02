@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -147,6 +148,13 @@ func TestPrefixedBriefSchema(t *testing.T) {
 		{"id required", "brief-02-prefixed.md", "id: 00000000-0000-4000-8000-000000000402\n", "", []string{"id is required under brief-v4"}},
 		{"unprefixed definition id", "brief-02-prefixed.md", "brief: assay:assay:demo4:b-02", "brief: assay:assay:demo4:02", []string{"colon-only definition id"}},
 		{"revision in definition id", "brief-02-prefixed.md", "brief: assay:assay:demo4:b-02", "brief: assay:assay:demo4:b-02@1", []string{"colon-only definition id"}},
+		{"envelope required", "brief-02-prefixed.md", "reader-requirements:\n  schema: reader-requirements-v1\n  required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "", []string{"reader-requirements is required under brief-v4"}},
+		{"envelope that holds back no legacy reader", "brief-02-prefixed.md", "required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "required: []\n", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
+		{"envelope naming only a legacy schema", "brief-02-prefixed.md", "schemas: [brief-v4]", "schemas: [brief-v3]", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
+		// regression: milestone-support/04-followup: the envelope is judged against the
+		// operations the real legacy readers advertise (syntax AND preflight), not a syntax-only stand-in.
+		{"envelope requiring only preflight", "brief-02-prefixed.md", "required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "required:\n    - operation: preflight\n      schemas: [reader-requirements-v1]\n      semantics: [required-semantics-v1]\n", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
+		{"envelope requiring legacy syntax and preflight", "brief-02-prefixed.md", "required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "required:\n    - operation: syntax\n      schemas: [brief-v3]\n      semantics: []\n    - operation: preflight\n      schemas: [reader-requirements-v1]\n      semantics: [required-semantics-v1]\n", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
 		{"slash milestone", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["demo4/m-01@1"]`, []string{"requires-milestones"}},
 		{"unversioned milestone", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["demo4:m-01"]`, []string{"requires-milestones", "not an exact versioned milestone"}},
 		{"unknown milestone root", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["other:demo4:m-01@1"]`, []string{"does not resolve"}},
@@ -163,6 +171,52 @@ func TestPrefixedBriefSchema(t *testing.T) {
 			}
 		})
 	}
+
+	// regression: milestone-support/04-followup F4 — the same-root rule for
+	// depends/unblocks had no test: a qualified edge naming another registered
+	// root must be refused, and the same qualified form naming this root must not.
+	t.Run("cross-root brief edge refuses", func(t *testing.T) {
+		withOther := func(t *testing.T, spelling string) []string {
+			t.Helper()
+			root := ms04Tree(t, map[string]func(string) string{
+				"brief-02-prefixed.md": ms04Replace(`depends: ["demo4:b-01"]`, `depends: ["`+spelling+`"]`),
+			})
+			reg := filepath.Join(root, "docs", "streams", "graph-repos.yaml")
+			raw, err := os.ReadFile(reg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(reg, append(raw, []byte("  other: {cell: assay, repo: medici-finance/other}\n")...), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			problems, _, _ := ms04Check(t, root)
+			return problems
+		}
+		if p := withOther(t, "other:demo4:b-01"); !hasProblem(p, "brief-02-prefixed.md", "depends", "names brief work in another root (assay:other)", "gates:/feathers:") {
+			t.Errorf("a depends edge naming another registered root must be refused as cross-root; problems:\n%s", strings.Join(p, "\n"))
+		}
+		if p := withOther(t, "assay:demo4:b-01"); hasProblem(p, "brief-02-prefixed.md", "another root") {
+			t.Errorf("a qualified edge naming THIS root must not be refused as cross-root; problems:\n%s", strings.Join(p, "\n"))
+		}
+	})
+
+	// regression: milestone-support/04-followup F3 — a failure to resolve the
+	// brief's own root used to be discarded and reported as a cross-root edge.
+	t.Run("own-root resolve failure names its cause", func(t *testing.T) {
+		root := ms04Tree(t, map[string]func(string) string{
+			"brief-02-prefixed.md": func(s string) string {
+				s = ms04Replace("brief: assay:assay:demo4:b-02", "brief: assay:ghost:demo4:b-02")(s)
+				return ms04Replace(`depends: ["demo4:b-01"]`, `depends: ["assay:demo4:b-01"]`)(s)
+			},
+		})
+		problems, _, _ := ms04Check(t, root)
+		if !hasProblem(problems, "brief-02-prefixed.md", "depends", "assay:demo4:b-01", "unknown owning root assay:ghost") {
+			t.Errorf("the own-root resolve error must be surfaced; problems:\n%s", strings.Join(problems, "\n"))
+		}
+		if hasProblem(problems, "brief-02-prefixed.md", "another root") {
+			t.Errorf("a failure that is not cross-root must not be reported as cross-root; problems:\n%s", strings.Join(problems, "\n"))
+		}
+	})
 
 	t.Run("mismatched schema contract and legacy reader refuse", func(t *testing.T) {
 		raw, err := os.ReadFile("testdata/milestone-support/04/tree/docs/streams/demo4/brief-02-prefixed.md")
@@ -188,6 +242,7 @@ func TestPrefixedBriefSchema(t *testing.T) {
 			"unprefixed id": {"brief: assay:assay:demo4:b-02", "brief: assay:assay:demo4:02"},
 			"no uuid":       {"id: 00000000-0000-4000-8000-000000000402\n", ""},
 			"no version":    {"version: 1\n", ""},
+			"no envelope":   {"reader-requirements:\n  schema: reader-requirements-v1\n  required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", ""},
 		} {
 			mis := filepath.Join(dir, "mis.md")
 			if err := os.WriteFile(mis, []byte(strings.Replace(string(raw), edit[0], edit[1], 1)), 0o644); err != nil {
@@ -224,9 +279,9 @@ func TestBriefV4SchemaCoverage(t *testing.T) {
 			problems = append(problems, p)
 		}
 	}
-	want := append(append([]string{}, requiredBriefKeys...), "schema", "version", "id")
+	want := append(append([]string{}, requiredBriefKeys...), "schema", "version", "id", "reader-requirements")
 	if got := anyStringList(raw["required"]); !sameSet(got, want) {
-		problems = append(problems, "required set does not equal brief-v1 required + schema + version + id")
+		problems = append(problems, "required set does not equal brief-v1 required + schema + version + id + reader-requirements")
 	}
 	props, _ := raw["properties"].(map[string]any)
 	pattern := func(prop string, items bool) *regexp.Regexp {
@@ -242,7 +297,10 @@ func TestBriefV4SchemaCoverage(t *testing.T) {
 		return re
 	}
 	parses := func(brief string, ms []any) bool {
-		data := map[string]any{"version": 1}
+		data := map[string]any{"version": 1, "reader-requirements": map[string]any{
+			"schema":   readercaps.RequirementsSchema,
+			"required": []any{map[string]any{"operation": "syntax", "schemas": []any{briefSchemaV4}, "semantics": []any{}}},
+		}}
 		if ms != nil {
 			data["requires-milestones"] = ms
 		}
@@ -275,5 +333,21 @@ func TestBriefV4SchemaCoverage(t *testing.T) {
 	}
 	if len(problems) > 0 {
 		t.Fatalf("committed brief-v4 schema drifted from the validated contract:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+}
+
+// regression: milestone-support/04-followup
+// The envelope check is only as honest as the legacy advertisement it assesses
+// against. This pins that advertisement to the operation set the desk-tools
+// readers advertise (tools/desk/internal/deskkit TestLegacyReaderOperations holds
+// the same literal), so the two cannot drift apart unnoticed.
+func TestLegacyBriefReaderAdvertisementMatchesRealReaders(t *testing.T) {
+	want := []readercaps.Operation{
+		{Operation: "syntax", Schemas: briefdoc.SchemaVersions(), Semantics: []string{}},
+		{Operation: "preflight", Schemas: []string{"reader-requirements-v1"}, Semantics: []string{"required-semantics-v1"}},
+	}
+	got := legacyBriefReaderAdvertisement().Operations
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy advertisement operations %+v, want %+v", got, want)
 	}
 }
