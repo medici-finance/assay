@@ -126,7 +126,7 @@ Risk-bearing values. The brief carries risk metadata, all no, and is not irrever
 - RISK-VALUE: DERIVED — requires-milestones item pattern = "^([a-z0-9][a-z0-9-]*:){1,3}m-[0-9]{2,}@[1-9][0-9]*$" @ schemas/brief-v4.json:186 — the {1,3} prefix count matches the three colon-only forms in spec/milestone-v1.md:49-51, and @[1-9][0-9]* matches the positive-integer contract-version in spec/milestone-v1.md:82.
 - RISK-VALUE: NAMED, NOT DERIVED — brief id pattern = "^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:b-[0-9]{2,4}[a-z]?$" @ schemas/brief-v4.json:32 — the four-segment colon-only b- shape matches spec/brief-v1.md:312, but the spec writes only <NN> and names no source for the 2-4 digit bound or the optional letter suffix. The schema is descriptive and the validator owns the semantic rule, so a too-loose bound is caught there.
 
-This brief is gate: model with every risk answer no; this pass records Evidence only and changes no lifecycle cell.
+This brief is gate: model with every risk answer no; on this PASS, the same branch flips the stream index row 04 from implemented to verified (the verifier makes that flip; CI owns verified to done).
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
