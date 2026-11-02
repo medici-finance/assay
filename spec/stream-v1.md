@@ -97,3 +97,11 @@ legacy streams unchanged. The milestone contract's §9 cases also apply.
 preflights. No operational stream opts in through this change. This does not make
 old binaries safe: coordinated readers, operation support and adoption qualification
 remain prerequisites for operational milestone declarations under §5.
+
+A stream README opts into milestone records only when a required operation in that
+envelope lists `milestone-v1` as a schema or semantic. statusgen then reads
+`docs/streams/<stream>/milestones/` with the loader described in
+[milestone-v1 § Record loader implementation](milestone-v1.md#record-loader-implementation);
+every other stream keeps its legacy reading and its `milestones/` directory is not
+read. The capability remains unadvertised, so the tree gate still refuses an opted-in
+tree in production until the later milestone-support rollout.
