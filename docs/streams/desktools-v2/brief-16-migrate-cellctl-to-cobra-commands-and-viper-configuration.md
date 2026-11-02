@@ -115,7 +115,7 @@ coordinate overlapping files with the extraction owner when both changes are in 
 | 4 | check | `cd tools/desk && go test -count=1 ./cmd/cellctl/... ./internal/cli/...` | exit 0; all existing launcher, custody, hook, cadence and model-policy regressions retained; no empty package/test selection |
 | 5 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/cellctl -run '^TestCLINonHelpParity$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLINonHelpParity " "$f"` | exit 0 with TestCLINonHelpParity PASS; current Go binary matches the pre-migration Go fixture transcripts for non-help commands through the existing fake/DRY_RUN harness, with no live launch or oracle-versus-itself comparison |
 | 6 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
-| 7 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 7 | check | `statusgen --root . --consumers --brief desktools-v2/16 --delivery e7b14f343b6798b7980df1d0d9117509841e3224 --base 4232320131bfb97b31dcf62aa6d36f7dbf60049c` | exit 0; no declared consumer routing disproved by the change |
 | 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-16.json` | exit 0 and the last line reads `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count; the harness proves the baseline green and its positive control caught, then plants: help running after the roster echo or cell load, an undeclared config key binding, one legacy flag form dropped, and a refusal moved out of the domain check into the adapter; each reddens the cellctl owner tests |
 
 ## Pre-mortem
