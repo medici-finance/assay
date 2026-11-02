@@ -37,12 +37,17 @@ ratified brief 10's option A:
 
 > Ratified: A — add pull_requests:write to the workflow App (relay above).
 
-That comment settles brief 10's provisioning choice and the merge-authority sub-decision
-(merge stays a human act). It does not name `DR-workflow-app-landing`, so it is not asserted
-to satisfy §7.5 for this record. No `ruling:` is supplied, and `decided-by` above stays the
-unconfirmed placeholder, until a qualifying unedited human comment naming
-`DR-workflow-app-landing` exists on decision #1245. No bot relay or PR approval is
-substituted for it.
+That comment adopts the
+[relay above it](https://github.com/medici-finance/assay/issues/1245#issuecomment-5985758145).
+It settles brief 10's provisioning choice, and it sets merge authority for the first cutover
+only: for the first cutover a human merges the workflow-only PR, and the App does not merge.
+The decision issue's recommendation revisits that once the path is proven, so the
+merge-authority sub-decision in the last `accepted:` entry above stays open beyond the first
+cutover. The comment does not name `DR-workflow-app-landing`, so it is not asserted to satisfy
+§7.5 for this record. No `ruling:` is supplied, and `decided-by` above stays the unconfirmed
+placeholder, until a qualifying unedited human comment naming `DR-workflow-app-landing`
+exists on decision #1245, or on another decision issue whose gate marker names a brief that
+cites this record. No bot relay or PR approval is substituted for it.
 
 **This record is NOT yet ruled.** Until that comment exists, the board rule below still
 holds: the citing briefs' rows stay `blocked`. When the comment exists, its exact URL is bound
