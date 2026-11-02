@@ -79,8 +79,11 @@ mutation probe. The over-count is tracked in #5325.
 The counter also UNDER-counts. It sees only direct spawns and calls through the four seam
 names (`runGit(`, `gitOut(`, `execCommand(`, `execGit(`). A tool's own git wrapper under
 another name counts once, at its spawn line; its callers do not. Today that covers
-`verifierGitBytes(` (`tools/desk/internal/deskkit/verifierattestation.go`, 14 call sites)
-and `pendingGit(` (`tools/desk/cmd/verifyloop/pending.go`, 4 call sites): a new call
+`verifierGitBytes(` (defined in `tools/desk/internal/deskkit/verifierattestation.go`; 14
+call sites across five `internal/deskkit` files: `verifiersource.go` 8,
+`verifierattestation.go` 2, `verifierassociation.go` 2, `verifiercrossrepo.go` 1,
+`preflight.go` 1) and `pendingGit(` (defined and called in
+`tools/desk/cmd/verifyloop/pending.go`, 4 call sites): a new call
 through either adds nothing to the count. The ratchet therefore stops new spawn sites and
 new seam calls, not every new git invocation. Migrating those wrappers, or adding their
 names to the seam pattern with a matching pin change, is part of the same follow-on.
