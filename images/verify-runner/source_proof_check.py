@@ -21,6 +21,11 @@ def require(condition, code):
         raise ProbeFailure(code)
 
 
+# The argument fixture never executes the operational probe body. Install the
+# sentinel after function definitions, immediately before the fixed dispatch.
+_PROBE_SENTINEL = 'probe() { printf "probe body substituted\\n" > "$VR_TEST_ROWS"; } || exit 2\n'
+
+
 def probe(helper, witness):
     with tempfile.TemporaryDirectory(prefix='proof-probe-') as tmp:
         base = Path(tmp)
@@ -50,8 +55,12 @@ def probe(helper, witness):
         # Install-style fixed path in production; replace that literal only in the local
         # scratch copy when probing a source checkout rather than the installed image.
         script = base / 'witness.sh'
-        script.write_text(Path(witness).read_text().replace(
-            '/usr/local/lib/verify-runner/source_proof.py', str(helper)))
+        candidate = Path(witness).read_text().replace(
+            '/usr/local/lib/verify-runner/source_proof.py', str(helper))
+        dispatch = '\ncase $1 in\n  seed)'
+        if candidate.count(dispatch) != 1:
+            raise RuntimeError('cannot isolate the operational probe dispatch')
+        script.write_text(candidate.replace(dispatch, '\n' + _PROBE_SENTINEL + dispatch, 1))
         marker = base / 'rows'
         network = base / 'network-seams'
         # Bash reads this file; nothing under the scratch mount is exec'd. This
@@ -96,16 +105,14 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
             if source is not False:
                 args += ['--sha=' + (sha if source is None else source)]
             result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=dict(runenv, VR_TEST_KEY=key), capture_output=True)
+            # No fixture path, including a guard regression, may attempt a
+            # network seam. The operational probe is a local sentinel instead.
+            require(not network.exists(), 'seams:probe-network')
             if good:
                 if result.returncode:
                     raise RuntimeError('unexpected witness failure: ' + result.stderr.decode())
                 require(marker.is_file() and marker.read_text() == 'check\ncheck:ci\n', 'rows:' + case)
             else:
-                if key == 'probe' and not result.stderr.startswith(b'usage: '):
-                    # A probe-only guard regression must traverse the inert seams,
-                    # never execute their DNS/TCP arguments or the inner row runner.
-                    require(network.is_file() and network.read_text() == 'timeout\ntimeout\ntimeout\n',
-                            'seams:probe-network')
                 require(result.returncode == 2 and not marker.exists(), 'refusal:' + case)
                 if usage:
                     require(result.stderr.startswith(b'usage: '), 'usage:' + case)
