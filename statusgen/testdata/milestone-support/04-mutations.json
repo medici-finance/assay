@@ -69,7 +69,7 @@
       "name": "v4-envelope-holds-back-legacy",
       "target": "statusgen/briefv4.go",
       "old": "Advertisement: legacyBriefReaderAdvertisement()}); r.State != readercaps.Unsupported {",
-      "new": "Advertisement: legacy}); false && r.State != readercaps.Unsupported {",
+      "new": "Advertisement: legacyBriefReaderAdvertisement()}); false && r.State != readercaps.Unsupported {",
       "module": "statusgen",
       "package": ".",
       "test": "TestPrefixedBriefSchema"
