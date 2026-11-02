@@ -13,7 +13,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|---|---|
 | [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/9 | 2026-10-30 |  |
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-11-01 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/15 | 2026-11-01 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/15 | 2026-11-02 |  |
 | [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/8 | 2026-11-01 |  |
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-29 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 0/4 | 2026-11-01 |  |
@@ -101,7 +101,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 |---|---|---|---|
 | [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-20 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-11-01 |
-| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-27 |
+| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-11-02 |
 | [ci-tooling](docs/streams/ci-tooling/README.md) | P2 | 0/7 | 2026-10-20 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/2 | 2026-10-20 |
 | [delivery-profiles](docs/streams/delivery-profiles/README.md) | P2 | 0/7 | 2026-10-30 |
@@ -125,8 +125,8 @@ _Held by per-stream caps: 12 brief(s) across 2 stream(s) — top: desktools-v2. 
 | graph-execution | 16 — Cell ownership, cumulative budgets and restoration fencing [exec:strong] | 5 | 24500 |
 | desk-tools | 39 — Extract shared review observation and pure planning contracts [exec:strong] | 2 | 16000 |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8500 |
+| milestone-support | 02 — Negotiate reader capabilities through one shared contract [exec:strong] | 1 | 7010 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
-| milestone-support | 02 — Negotiate reader capabilities through one shared contract [exec:strong] | 1 | 7000 |
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6500 |
 | performance-collection | 01 — Local performance event contract, spool and offline report [exec:strong] | 0 | 5030 |
 | graph-execution | 34 — Signal input, signal classes and decision options in the workflow-pattern schema [exec:strong] | 1 | 4500 |
@@ -363,7 +363,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| brief-quality | 01 [exec:strong] | verified | 6050 | 8 | — | — | — | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (forge-identity) | — |
+| brief-quality | 01 [exec:strong] | verified | 6000 | 8 | — | — | — | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (forge-identity) | — |
 
 ## Age at the human gate
 
