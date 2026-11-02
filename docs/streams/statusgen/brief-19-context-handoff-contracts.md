@@ -195,6 +195,26 @@ The substance is the by-hand non-implementer run recorded above (2026-10-14, sou
 
 **VERIFY: PASS** — the 2026-10-14 by-hand run passed all 7 rows with 0 fail, and the container witness at 742839555dcd passed all 7 rows (exit 0, 0 fail, 0 could-not-run).
 
+### Batch re-witness — 2026-11-02 claude-opus-5-5 verifier at 2c6c21336a60 (7/7 rows pass)
+
+Fresh non-implementer re-witness of the whole Verify table at pinned main 2c6c21336a606e64df057294f21177f16db7b9f8, under the driver's one-time batch re-witness ruling (https://github.com/medici-finance/assay/issues/2026#issuecomment-6563527111). All seven rows ran verbatim and non-dry inside a closed admission bracket: host open-bracket, then `statusgen verifyrun --sandbox=container-netns` in a local arm64 container started with `--network none` (verify-runner image pinned by the digest below, uid 501, home mounted read-only), then host close-bracket. Admitted by `deskdispatch --check-verifier` (rc 0). `--bracket-digest` reports verdict=match. Risk metadata is present and all no (irreversible: no), so the risk-bearing trigger does not fire; the earlier enumeration above stands unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffAmendWithoutPatchFails$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffAmendWithoutPatchFails " "$out")` | pass exit=0 sandbox=container-netns | sha256:d960a6903590 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCoverageGapRequired$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCoverageGapRequired " "$out")` | pass exit=0 sandbox=container-netns | sha256:e41a75e96928 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffDraftIsNotApproved$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffDraftIsNotApproved " "$out")` | pass exit=0 sandbox=container-netns | sha256:ff5f135921e4 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCanonicalDigestStable$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCanonicalDigestStable " "$out")` | pass exit=0 sandbox=container-netns | sha256:85ac25386432 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffQualifiedIDsResolve$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffQualifiedIDsResolve " "$out")` | pass exit=0 sandbox=container-netns | sha256:370d3e55098f | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffSchemaFixtures$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffSchemaFixtures " "$out")` | pass exit=0 sandbox=container-netns | sha256:7cecfa888487 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./contexthandoff/) && test "$name" = contexthandoff && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./contexthandoff/) && test -z "$bad")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5281 run=641af0b111d3c7bad3b9b8903b688494d1037d06d1a86331bd78fdcf34f9fa41 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/statusgen/brief-19-context-handoff-contracts.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=641af0b111d3c7bad3b9b8903b688494d1037d06d1a86331bd78fdcf34f9fa41 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:1e2ed676870d49dfbd8726573ddbecfd0707a0ca2113a01f8947611a02947fb9 opened=2026-11-02T02:01:15Z closed=2026-11-02T02:01:26Z before=receipt after=check-verifier
+
+**VERIFY: PASS** — 7 of 7 rows pass at 2c6c21336a60 (exit 0, 0 fail, 0 could-not-run); container bracket verdict=match.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer checks the record set against doc 12 and
