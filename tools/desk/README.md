@@ -353,7 +353,7 @@ scan-explain: rule=high-entropy-run line=42 length=40 shape=Qx…Dz (base64)
 ```
 
 — the rule id (`high-entropy-run`, `decrypted-k8s-secret`, `pem-block`, `sops-block`,
-`github-token`, `aws-key-id`, `jwt`), the 1-based line of the first offending span, its
+`github-token`, `aws-key-id`, `jwt`, `url-userinfo`), the 1-based line of the first offending span, its
 length, and a REDACTED shape (first two and last two characters, the middle elided, plus a
 character-class summary). **The explain line never prints the offending span itself — the
 refusal must not become the leak.** Without `--explain` the refusal message is byte-for-byte

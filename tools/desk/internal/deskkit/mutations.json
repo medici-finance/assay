@@ -817,6 +817,24 @@
       "file": "internal/deskkit/credentialprovider.go",
       "old": "\tif gerr := Guard(); gerr != nil {\n\t\treturn \"\", \"\", gerr // the guard recorded its own refusal\n\t}",
       "new": "\tif gerr := Guard(); false && gerr != nil {\n\t\treturn \"\", \"\", gerr // the guard recorded its own refusal\n\t}"
+    },
+    {
+      "name": "url-userinfo — disarm the arm (a password in URL userinfo scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif at, pw := urlUserinfoAt(s); at >= 0 {",
+      "new": "\tif at, pw := urlUserinfoAt(s); false && at >= 0 {"
+    },
+    {
+      "name": "url-userinfo — drop the placeholder skip (<token>, ${VAR}, *** refuse)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if strings.ContainsAny(user+pw, \"/?#[]\") || isUserinfoPlaceholder(pw) {",
+      "new": "if strings.ContainsAny(user+pw, \"/?#[]\") {"
+    },
+    {
+      "name": "url-userinfo — drop the authority bound (a host:port/path@x match refuses)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if strings.ContainsAny(user+pw, \"/?#[]\") || isUserinfoPlaceholder(pw) {",
+      "new": "if strings.ContainsAny(user+pw, \"\") || isUserinfoPlaceholder(pw) {"
     }
   ],
   "_not_mutated": {

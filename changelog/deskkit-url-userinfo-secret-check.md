@@ -1,0 +1,2 @@
+### Added
+- The shared secret scan behind every desk write verb and the outbound write check refuses a URL whose userinfo carries a password (`scheme://user:<password>@host`) under the new `url-userinfo` rule (`secret.url-userinfo` on the outbound check). Placeholders such as `<token>`, `${VAR}`, `$VAR` and `***`, username-only forms like `git@host` or `x-access-token@host`, and matches that leave the URL authority stay allowed.
