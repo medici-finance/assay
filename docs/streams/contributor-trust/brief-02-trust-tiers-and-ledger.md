@@ -225,6 +225,83 @@ path, both of which the guard correctly flagged (this repo's whole `docs/streams
 `do-not-copy` for the `tools/desk` copy set, regardless of whether the referenced stream is itself
 withheld). Neutralised to prose with no bare slug/number or `docs/streams/` path; the guard is now
 clean.
+### Re-verification — 2026-11-01 (merged main 65a4deb064cb)
+
+Source 65a4deb064cb58ccc387b276e6ddf5dfc9f7aef2, admitted by the dispatcher attestation medici-finance/assay#5198 (run cba769cf86fd). Non-implementer verifier claude-opus-5-5, tier strong. The original table was re-derived first (deskpathguard rederive: 11 rows, 0 author-added). The brief's risk block answers sensitive-data: yes, so every row is risk-bearing and owes a fail-first witness. The delivery is the merge 849f93e5f506 (#971), whose parent is 0ac980f40ae8. Rows 1-8, 10 and 11 were witnessed on the host by statusgen verifyrun v1.0.67 with --fail-first --base 0ac980f40ae84ff548da68cf8d492b4b896f0827 --rows 1,2,3,4,5,6,7,8,10,11, with TMPDIR and GOCACHE outside the home. Row 9 (check:ci) ran in the closed admission bracket, inside a --network none container.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTier' -count=1` | pass exit=0 | sha256:6fe131a04072 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierAbsentLedger' -count=1 -v` | pass exit=0 | sha256:abcc1a6d5540 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierUnreadableLedger' -count=1 -v` | pass exit=0 | sha256:98ee8fdd21a7 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierRosterWins' -count=1 -v` | pass exit=0 | sha256:fdc51b198121 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierUnpinnedHuman' -count=1 -v` | pass exit=0 | sha256:115a1986cfd1 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 6 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'RosterCoupling' -count=1` | pass exit=0 | sha256:b9a923c268f0 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 7 | `grep -n 'never published' docs/contributor-trust.md` | pass exit=0 | sha256:f2f98e4c4938 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 red rc=2 · head=65a4deb064cb |
+| 8 | `git -C . grep -n -E 'unknown.*blessed-once.*contributor.*maintainer' -- docs/contributor-trust.md` | pass exit=0 | sha256:693697f75790 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 red rc=1 · head=65a4deb064cb |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierPublishedModelMatchesTable' -count=1 -v` | pass exit=0 | sha256:c2d7d4eb9323 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 green rc=0 · head=65a4deb064cb |
+| 11 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief assay:assay:contributor-trust:02 --delivery 849f93e5f50687aab773330669abaad8f9566bcc --base 0ac980f40ae84ff548da68cf8d492b4b896f0827 > "$o" && cat "$o" && grep -Fxq 'summary: 5 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$o")` | pass exit=0 | sha256:a7cf1ca8d9b1 | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) | base=0ac980f40ae8 red rc=2 · head=65a4deb064cb |
+Verification-Attestation: medici-finance/assay#5198 run=cba769cf86fd97a1f36e86ef75b58d6f1408b204f260a0657d8fc9b6efd67da1 source=65a4deb064cb58ccc387b276e6ddf5dfc9f7aef2 brief=docs/streams/contributor-trust/brief-02-trust-tiers-and-ledger.md model=claude-opus-5-5 tier=strong
+
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 9 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ 65a4deb064cb (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:367fbaf9533fa9e8a20d8661914b6f5e06bfc1741075c77b1a61ad4b74cd0712
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5198 run=cba769cf86fd97a1f36e86ef75b58d6f1408b204f260a0657d8fc9b6efd67da1 source=65a4deb064cb58ccc387b276e6ddf5dfc9f7aef2 brief=docs/streams/contributor-trust/brief-02-trust-tiers-and-ledger.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=cba769cf86fd97a1f36e86ef75b58d6f1408b204f260a0657d8fc9b6efd67da1 source=65a4deb064cb58ccc387b276e6ddf5dfc9f7aef2 tree=sha256:367fbaf9533fa9e8a20d8661914b6f5e06bfc1741075c77b1a61ad4b74cd0712 witness=sha256:51efc9dcbca7c45942a7312ead7b157a5982a63249b6f19ec8076d1a5a89d71b opened=2026-11-01T21:25:38Z closed=2026-11-01T21:31:43Z before=receipt after=check-verifier
+
+Row 9 ran in the release-pinned runner image verify-runner v1.0.67 at sha256:f073d208c69e (go1.27.3 linux/amd64, GOPROXY=off, GOTOOLCHAIN=local), with the home, the admission receipt and the repository git directory mounted read-only. statusgen verifyrun --bracket-digest on the closed witness reports verdict=match with span-lines=tree-digest:1,container-image:1,attestation:1. Credit is checked only after landing: on the unlanded witness file, --credit answers could-not-check because the file is not inside a git work tree. The base half of row 9's fail-first audit could-not-run, because no admitted base tree is mounted in the container. Its head half passed inside the bracket.
+
+Fail-first result. Rows 7, 8 and 11 discriminate: they are red at base 0ac980f40ae8 and pass at head. Rows 1, 2, 3, 4, 5, 6 and 10 are non-discriminating: they are green at base (rc=0) and pass at head. This is the cause. Each of those commands is a go test with an unanchored -run filter. At the base, the trust-tier tests do not exist yet, so go test matches no test and still exits 0. A supplemental base read, which earns no acceptance credit, ran rows 2 and 6 verbatim on a git-archive snapshot of 0ac980f40ae8 outside the home. Each printed "testing: warning: no tests to run" and "ok ... [no tests to run]" and exited 0. Rows 1 and 6 expect only exit 0 and "ok", so they pass with or without the change even by their Expect cells. Rows 2, 3, 4, 5 and 10 carry content clauses that the base output would not meet, but the command itself does not enforce them.
+
+Head-output reads, supplemental and with no acceptance credit (the same commands re-run at head, output kept outside the home):
+- Row 2 printed "ResolveTier = tier=unknown provenance=default-absent".
+- Row 3 printed "tier=unknown provenance=default-unreadable" plus the stderr announcement "trust-ledger: malformed ledger fixture ... resolving ... to unknown". The substring contributor occurs 0 times.
+- Row 4 printed "tier=maintainer provenance=roster".
+- Row 5 printed "tier=unknown provenance=default-absent".
+- Row 6 ran TestContributorLedgerRosterCoupling (PASS).
+- Row 7 matched line 84, "The rows are never published."
+- Row 8 matched line 11, "Four tiers, ordered: unknown < blessed-once < contributor < maintainer".
+- Row 10 printed "PASS: ... capability table matches capabilityTable for all four tiers".
+- Row 11 printed "summary: 5 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing", with no DISPROVED and no COULD-NOT-CHECK.
+
+So every head Expect clause holds.
+
+Mutation reads, supplemental and with no acceptance credit, run on a git-archive snapshot of the source outside the home. The underlying tests do discriminate:
+- unreadable collapsed to default-absent: row 3's test FAILs
+- unreadable resolved to contributor: row 3's test FAILs
+- unpinned ledger row allowed: row 5's test FAILs
+- roster step skipped: row 4's test FAILs
+- blessed-once given desk-automation in code only: row 10's test FAILs
+- absent resolved to contributor: row 2's test FAILs
+- statusgen twin key literal altered: row 6's test FAILs
+
+The fault is in the row definitions. They need a reviewed definition repair, for example an anchored -run '^TestName$' with -v plus an asserted "--- PASS: TestName" line, followed by fresh dispatch and admission. Once that lands, these rows can carry a discriminating fail-first witness.
+
+Finding outside the Verify table (supplemental probe, no acceptance credit). The brief's facts and the published model (docs/contributor-trust.md lines 23-25) both say maintainer "is resolved from the roster, never from the ledger". ResolveTier nevertheless accepts a ledger row with tier maintainer for a non-roster identity. A probe test on the snapshot recorded ResolveTier(non-roster, pinned id, ledger tier=maintainer) = tier=maintainer provenance=ledger-row. The cause is parseTier, which accepts "maintainer" (trusttier.go:92-93). The impact is latent: no caller is wired, and capabilityTable gives contributor and maintainer the same four grants. Brief 03's bless verb never writes maintainer. Even so, the reader contradicts its own contract, and any later AtLeast(TierMaintainer) caller would widen.
+
+Risk-bearing values were enumerated over the delivery diff 0ac980f40ae8..849f93e5f506 and re-read at 65a4deb064cb (no drift in trusttier.go):
+- TierUnknown..TierMaintainer = iota 0..3 @ tools/desk/internal/deskkit/trusttier.go:57-60
+- parseTier "maintainer" -> TierMaintainer @ tools/desk/internal/deskkit/trusttier.go:92-93
+- roster membership c.Logins[l] -> TierMaintainer @ tools/desk/internal/deskkit/trusttier.go:232
+- strict pin: row.ID == 0 || id == 0 || row.ID != id (0 = unpinned) @ tools/desk/internal/deskkit/trusttier.go:256
+- capabilityTable: unknown={}, blessed-once={review-depth}, contributor=maintainer={review-depth, fork-ci-auto-run, desk-automation, changelog-proxy} @ tools/desk/internal/deskkit/trusttier.go:294-299
+- ledger line limit 1024*1024 bytes (initial 64*1024) @ tools/desk/internal/deskkit/trusttier.go:186
+- provenance literals roster / ledger-row / default-absent / default-unreadable @ tools/desk/internal/deskkit/trusttier.go:108-119
+- EnvContributorLedger = "ASSAY_CONTRIBUTOR_LEDGER" @ tools/desk/internal/deskkit/rosterconfig.go:268, and its twin scanEnvContributorLedger @ statusgen/rosterconfig.go:404
+
+The item is irreversible: no. Every value can be reversed by an edit and a redeploy, and nothing is wired yet. Ranked by consequence once wired: capabilityTable, then parseTier maintainer, then the strict pin, then the roster predicate. The line limit and the provenance and key literals rank last. The line limit only fails closed: an over-long line gives default-unreadable.
+
+RISK-VALUE: NAMED, NOT DERIVED — capabilityTable contributor = {review-depth, fork-ci-auto-run, desk-automation, changelog-proxy} @ tools/desk/internal/deskkit/trusttier.go:297 — the brief fixes the set of four capabilities but not which tier holds which. The gate-why assigns the per-tier list to the human, and granting fork-ci-auto-run at contributor is a policy judgement no model can derive.
+RISK-VALUE: NAMED, NOT DERIVED — parseTier "maintainer" = TierMaintainer @ tools/desk/internal/deskkit/trusttier.go:93 — the brief's facts say maintainer comes from the roster only. The literal contradicts that, as the probe above shows, so it cannot be derived as right. Either the reader refuses a maintainer row or the contract changes.
+RISK-VALUE: DERIVED — strict-pin sentinel 0 = unpinned @ tools/desk/internal/deskkit/trusttier.go:256 — forge account ids are positive integers, so 0 never names a real account. Requiring row.ID != 0, id != 0 and equality is the same shape trust.go's trustedContentAuthor applies through trustcore.Admit (pin, id), which closes the recycled-login hole the brief names.
+RISK-VALUE: DERIVED — roster membership c.Logins[l] -> TierMaintainer @ tools/desk/internal/deskkit/trusttier.go:232 — the brief defines maintainer as "existing roster membership", and this is the same login-keyed predicate TrustedAuthor uses (trust.go:51). The supplied id is not compared at this step, so a roster tier follows the existing roster predicate rather than the strict content path.
+
+The admission check returned 0 before any row ran and again at close-bracket. The home was left detached at 65a4deb064cb, and it stayed clean (git status --porcelain --ignored empty) after every step.
+
+**VERIFY: FAIL** — rows 1, 2, 3, 4, 5, 6 and 10 are risk-bearing (sensitive-data: yes) and non-discriminating: green at the delivery parent 0ac980f40ae8 because an unanchored -run filter matches no test there, and pass at head. Rows 7, 8 and 11 discriminate (red at base, pass at head). Row 9 passes at head in the bracket (verdict match), and its base half could-not-run. Every head Expect clause holds. The repair needed is a reviewed Verify-row definition change, not a code fix. A separate contract finding is recorded: parseTier admits a ledger-granted maintainer.
 
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.
