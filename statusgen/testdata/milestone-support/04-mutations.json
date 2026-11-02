@@ -75,6 +75,15 @@
       "test": "TestPrefixedBriefSchema"
     },
     {
+      "name": "v4-envelope-real-legacy-ops",
+      "target": "statusgen/briefv4.go",
+      "old": "ops = append(ops, op)",
+      "new": "if op.Operation == \"syntax\" {\n\t\t\tops = append(ops, op)\n\t\t}",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
       "name": "legacy-refuses-requires-milestones",
       "target": "statusgen/brieffile.go",
       "old": "if _, ok := data[\"requires-milestones\"]; ok {",

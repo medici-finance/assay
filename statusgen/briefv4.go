@@ -119,9 +119,30 @@ func parseBriefV4Keys(data map[string]any, bf *BriefFile, addBad func(string, ..
 	bf.Unblocks = normalizeBriefV4Edges("unblocks", bf.Unblocks, bf, addBad)
 }
 
+// legacyBriefReaderAdvertisement is the advertisement a reader that predates
+// brief-v4 gives the shared preflight: the operations statusgen's own
+// advertisement lists (syntax and requirements preflight, the same operation
+// set the desk-tools readers advertise), with the syntax schemas limited to the
+// shared legacy registry. Deriving it from statusgenReaderCaps keeps the
+// operation set in step with the real advertisement instead of a stand-in.
+func legacyBriefReaderAdvertisement() readercaps.Advertisement {
+	adv := statusgenReaderCaps()
+	ops := make([]readercaps.Operation, 0, len(adv.Operations))
+	for _, op := range adv.Operations {
+		if op.Operation == "syntax" {
+			op.Schemas = briefdoc.SchemaVersions()
+		}
+		ops = append(ops, op)
+	}
+	adv.Operations = ops
+	adv.Provider, adv.Version = "legacy-brief-reader", "legacy"
+	return adv
+}
+
 // briefV4EnvelopeProblem decodes a brief-v4 reader-requirements envelope and
 // checks it does its one job: a reader advertising only the shared legacy
-// schemas must assess it unsupported. It returns "" when it does.
+// schemas (and the preflight every real reader advertises) must assess it
+// unsupported. It returns "" when it does.
 func briefV4EnvelopeProblem(v any) string {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -131,10 +152,8 @@ func briefV4EnvelopeProblem(v any) string {
 	if err != nil {
 		return err.Error()
 	}
-	legacy := readercaps.Advertisement{Schema: readercaps.AdvertisementSchema, Provider: "legacy-brief-reader", Version: "legacy",
-		Operations: []readercaps.Operation{{Operation: "syntax", Schemas: briefdoc.SchemaVersions(), Semantics: []string{}}}}
-	if r := readercaps.Assess(req, readercaps.Observation{State: readercaps.Current, Advertisement: legacy}); r.State != readercaps.Unsupported {
-		return "must require syntax support for " + briefSchemaV4 + " so a reader advertising only " + strings.Join(briefdoc.SchemaVersions(), ", ") + " refuses the record (a legacy-only reader was assessed " + string(r.State) + ")"
+	if r := readercaps.Assess(req, readercaps.Observation{State: readercaps.Current, Advertisement: legacyBriefReaderAdvertisement()}); r.State != readercaps.Unsupported {
+		return "must require syntax support for " + briefSchemaV4 + " so a reader advertising only " + strings.Join(briefdoc.SchemaVersions(), ", ") + " refuses the record (a legacy reader was assessed " + string(r.State) + ")"
 	}
 	return ""
 }

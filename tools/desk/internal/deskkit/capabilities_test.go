@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/readercaps"
 )
 
@@ -78,4 +80,18 @@ func TestDeskCapsPreflight(t *testing.T) {
 		}
 	})
 
+}
+
+// regression: milestone-support/04-followup
+// statusgen's brief-v4 envelope check assesses a record against the operation
+// set the legacy readers advertise (TestLegacyBriefReaderAdvertisementMatchesRealReaders
+// holds the same literal). A change to this advertisement must change both.
+func TestLegacyReaderOperations(t *testing.T) {
+	want := []readercaps.Operation{
+		{Operation: "syntax", Schemas: briefdoc.SchemaVersions(), Semantics: []string{}},
+		{Operation: "preflight", Schemas: []string{"reader-requirements-v1"}, Semantics: []string{"required-semantics-v1"}},
+	}
+	if got := ReaderCapabilities("dev", "deskboard").Operations; !reflect.DeepEqual(got, want) {
+		t.Fatalf("reader operations %+v, want %+v", got, want)
+	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -150,6 +151,10 @@ func TestPrefixedBriefSchema(t *testing.T) {
 		{"envelope required", "brief-02-prefixed.md", "reader-requirements:\n  schema: reader-requirements-v1\n  required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "", []string{"reader-requirements is required under brief-v4"}},
 		{"envelope that holds back no legacy reader", "brief-02-prefixed.md", "required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "required: []\n", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
 		{"envelope naming only a legacy schema", "brief-02-prefixed.md", "schemas: [brief-v4]", "schemas: [brief-v3]", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
+		// regression: milestone-support/04-followup: the envelope is judged against the
+		// operations the real legacy readers advertise (syntax AND preflight), not a syntax-only stand-in.
+		{"envelope requiring only preflight", "brief-02-prefixed.md", "required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "required:\n    - operation: preflight\n      schemas: [reader-requirements-v1]\n      semantics: [required-semantics-v1]\n", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
+		{"envelope requiring legacy syntax and preflight", "brief-02-prefixed.md", "required:\n    - operation: syntax\n      schemas: [brief-v4]\n      semantics: []\n", "required:\n    - operation: syntax\n      schemas: [brief-v3]\n      semantics: []\n    - operation: preflight\n      schemas: [reader-requirements-v1]\n      semantics: [required-semantics-v1]\n", []string{"reader-requirements:", "must require syntax support for brief-v4"}},
 		{"slash milestone", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["demo4/m-01@1"]`, []string{"requires-milestones"}},
 		{"unversioned milestone", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["demo4:m-01"]`, []string{"requires-milestones", "not an exact versioned milestone"}},
 		{"unknown milestone root", "brief-02-prefixed.md", `["demo4:m-01@1"]`, `["other:demo4:m-01@1"]`, []string{"does not resolve"}},
@@ -328,5 +333,21 @@ func TestBriefV4SchemaCoverage(t *testing.T) {
 	}
 	if len(problems) > 0 {
 		t.Fatalf("committed brief-v4 schema drifted from the validated contract:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+}
+
+// regression: milestone-support/04-followup
+// The envelope check is only as honest as the legacy advertisement it assesses
+// against. This pins that advertisement to the operation set the desk-tools
+// readers advertise (tools/desk/internal/deskkit TestLegacyReaderOperations holds
+// the same literal), so the two cannot drift apart unnoticed.
+func TestLegacyBriefReaderAdvertisementMatchesRealReaders(t *testing.T) {
+	want := []readercaps.Operation{
+		{Operation: "syntax", Schemas: briefdoc.SchemaVersions(), Semantics: []string{}},
+		{Operation: "preflight", Schemas: []string{"reader-requirements-v1"}, Semantics: []string{"required-semantics-v1"}},
+	}
+	got := legacyBriefReaderAdvertisement().Operations
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy advertisement operations %+v, want %+v", got, want)
 	}
 }

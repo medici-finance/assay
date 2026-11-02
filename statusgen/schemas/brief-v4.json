@@ -201,9 +201,9 @@
             "type": "object",
             "required": ["operation", "schemas", "semantics"],
             "properties": {
-              "operation": {"type": "string", "minLength": 1},
-              "schemas": {"type": "array", "items": {"type": "string", "minLength": 1}},
-              "semantics": {"type": "array", "items": {"type": "string", "minLength": 1}}
+              "operation": {"type": "string"},
+              "schemas": {"type": "array", "items": {"type": "string"}},
+              "semantics": {"type": "array", "items": {"type": "string"}}
             }
           }
         }
