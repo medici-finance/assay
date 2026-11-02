@@ -38,7 +38,8 @@ consumers:
   - "containers/k8s/README.md: follow-up cell-api/09"
   - "deskd/README.md: follow-up cell-api/09"
   - "changelog/deskd-release-image.md: follow-up cell-api/09"
-  - "containers/k8s/release-images.json: out-of-scope (the pinned pre-change release record, kept byte for byte; it is read, never edited)"
+  - "containers/k8s/release-images.json: out-of-scope (the pinned pre-change v1.0.52 release record, kept byte for byte; it is read, never edited)"
+  - "containers/k8s/components/compatibility-cellctl/candidate-release-images.json: out-of-scope (the pinned pre-change v1.0.65 candidate release record, kept byte for byte; it is read, never edited)"
   - ".github/workflows/release.yml: out-of-scope (the producer reads its image set from images.py, so no functional workflow change is needed; its 'nine images' comments and dry-run message go stale and are a maintainer's edit, because no App identity writes workflows)"
   - "ci/staged-workflows/release.yml: out-of-scope (held byte-identical to the live workflow by the release tests; it changes only with the live file)"
   - "images/deskd/: follow-up cell-api/08 (the image definition is consumed unchanged)"
@@ -57,7 +58,7 @@ facts:
 - pin: public main f05c32091, inspected 2026-11-02. cell-api/08 is implemented: `images/deskd/Dockerfile` and its `Dockerfile.dockerignore` exist, the build context is `deskd/`, the revision comes from `ARG REVISION`, the final stage is `FROM scratch` with `USER 65532:65532` and `ENTRYPOINT ["/deskd"]`. The image has no shell and no statusgen, and deskd has no version flag.
 - producer: `tools/release/images.py` holds `NAMES` (nine: desk-tools, assay-harness, desk-base, five desks, verify-runner). `build_images` builds every image for `linux/amd64` (verify-runner also `linux/arm64`), runs `check_version` (statusgen `--version` inside each image) on all of them, runs `containers/scripts/layer-secret-scan.sh` on desk-base and the five desks, and only then, when publishing, pushes and writes `release-images.json` and `verify-runner-image.txt`. A dry run builds and checks and pushes nothing.
 - contract: `tools/release/images_contract.py` `validate()` requires `set(seen) == NAMES`; its `runner_platforms` argument already carries one compatibility default (an older amd64-only runner record). The live release step calls `validate(..., runner_platforms=(RUNNER_PLATFORM,))` and passes nothing else.
-- consumers: `containers/k8s/check.py` validates the pinned v1.0.52 record (`containers/k8s/release-images.json`, nine images) with `validate()` at two call sites (`--base` and `--compatibility-cellctl`). Adding deskd to the contract's required set breaks both unless they say which set they accept.
+- consumers: `containers/k8s/check.py` calls `validate()` at two sites, on two different pinned nine-image records. `recorded_images()` (used by `--base`, and again by `--compatibility-cellctl`) validates the v1.0.52 record `containers/k8s/release-images.json`. `candidate_images()` (used by `--compatibility-cellctl`) validates the v1.0.65 record `containers/k8s/components/compatibility-cellctl/candidate-release-images.json`, pinned by `candidate.json`'s `record_sha256`. Adding deskd to the contract's required set breaks both sites unless each says which set it accepts.
 - workflows: no App identity writes `.github/workflows/` (`ci/staged-workflows/README.md`), and `images_test.py` asserts the live `release.yml` and `ci/staged-workflows/release.yml` are byte-identical. The live workflow text says "all nine images" in comments and in its dry-run message only; the set itself comes from `images.py`.
 
 layering: No new component. The release producer already owns image publication and its contract already owns validation. This brief adds one entry to each and one explicit compatibility option, and leaves the workflow, the single approval and the publication order unchanged.
@@ -112,23 +113,30 @@ Task 1 (the pin this brief makes possible).
      passes `runner_platforms` alone and which no App identity may edit) refuses a record
      without deskd with no workflow change.
    - A consumer of an older record opts in by name: both `validate()` calls in
-     `containers/k8s/check.py` pass the current and legacy sets. Any other reader found at
+     `containers/k8s/check.py` (`recorded_images()` and `candidate_images()`) pass the
+     current and legacy sets. Any other reader found at
      pickup gets the same explicit choice; none silently inherits leniency.
    - deskd's reference is `ghcr.io/<repository>/deskd:<umbrella-tag>@sha256:<digest>`,
      validated like the other per-repository images.
 
 3. **Tests.** In `tools/release/images_test.py`, deliver `test_deskd_release_record`
    (planned) and `test_deskd_contract_compatibility` (planned), and update the existing
-   fake-Docker expectations for the tenth image. Keep every existing test, including the
+   fake-Docker expectations for the tenth image. Give the two named tests no docstring:
+   under `unittest -v` a docstring moves `... ok` onto a second line, which rows 1 and 2
+   would not match. Keep every existing test, including the
    byte-identity check of the two workflow copies, passing unchanged.
 
-4. **Documentation.** Update `docs/release-images.md` (producer order, the image list and
-   "exactly ten" records, the deskd check and that deskd has no statusgen), the
-   "all nine images" line in `docs/docker.md`, the contract sentence in
-   `containers/k8s/README.md` "Image provenance" (it validates its pinned record with
-   the legacy set explicitly allowed), and `deskd/README.md` (the local image stays
-   local-only, and the release publishes deskd under the umbrella tag). Add
-   `changelog/deskd-release-image.md` (planned).
+4. **Documentation.** Each file below carries the phrase Verify row 4 checks in it, and
+   none of those phrases is present at the authoring pin.
+   - `docs/release-images.md`: producer order, the image list naming `deskd`, records
+     "exactly ten" images, the deskd check, and that deskd has no statusgen.
+   - `docs/docker.md`: the "all nine images" line names `deskd` and no longer says
+     "all nine images".
+   - `containers/k8s/README.md` "Image provenance": the contract sentence names
+     `LEGACY_NAMES`, the set its pinned records are validated with, explicitly allowed.
+   - `deskd/README.md`: the local image stays local-only, and the umbrella release
+     publishes deskd, whose reference that release's `release-images.json` records.
+   - Add `changelog/deskd-release-image.md` (planned).
 
 ## Interface and acceptance contract
 
@@ -172,11 +180,11 @@ its record.
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow +mutation | `o=$(mktemp) && python3 -B -m unittest discover -s tools/release -p images_test.py -v > "$o" 2>&1 && grep -E '^test_deskd_release_record .*\.\.\. ok$' "$o"` | exit 0; the existing suite passes and `test_deskd_release_record` is ok. With fake Docker, a dry run builds deskd from `images/deskd/Dockerfile` with the `deskd/` context and the source revision, runs its user/label/usage check and the layer-secret gate, and pushes nothing. A publish writes a deskd `linux/amd64` record with a registry manifest digest only after every check. Each of these stops before any push or metadata write: a root or non-numeric user, a revision label that differs from the source, a binary that does not print usage, and a deskd layer-secret finding. Removing deskd from `NAMES` in a scratch copy fails the test. At the pre-delivery base the test does not exist and the grep fails. |
-| 2 | check:ci +mutation | `o=$(mktemp) && python3 -B -m unittest discover -s tools/release -p images_test.py -v > "$o" 2>&1 && grep -E '^test_deskd_contract_compatibility .*\.\.\. ok$' "$o"` | exit 0; `test_deskd_contract_compatibility` is ok. With the default arguments, `validate()` refuses a ten-image record missing deskd, a nine-image record, a deskd reference with a bare tag, the wrong repository or a non-amd64 platform, and accepts a complete ten-image record. Called with the current and legacy sets, it accepts the real bytes of `containers/k8s/release-images.json` and still refuses a duplicate or unknown name. Making the default lenient in a scratch copy fails the test. |
+| 2 | check:ci +mutation | `o=$(mktemp) && python3 -B -m unittest discover -s tools/release -p images_test.py -v > "$o" 2>&1 && grep -E '^test_deskd_contract_compatibility .*\.\.\. ok$' "$o"` | exit 0; `test_deskd_contract_compatibility` is ok. With the default arguments, `validate()` refuses a ten-image record missing deskd, a nine-image record, a deskd reference with a bare tag, the wrong repository or a non-amd64 platform, and accepts a complete ten-image record. Called with the current and legacy sets, it accepts the real bytes of both pinned nine-image records, `containers/k8s/release-images.json` (v1.0.52) and `containers/k8s/components/compatibility-cellctl/candidate-release-images.json` (v1.0.65), and still refuses a duplicate or unknown name. Making the default lenient in a scratch copy fails the test. |
 | 3 | check:ci +neighbour | `o=$(mktemp) && python3 -B -m unittest tools.release.images_test tools.release.ci_step_test -v > "$o" 2>&1 && grep -E '^test_release_has_one_approval_before_all_publication .*\.\.\. ok$' "$o" && tail -n 3 "$o" \| grep -E '^OK'` | exit 0; both release suites pass, `docs/release-images.md`'s validation command unchanged. The one-approval test, which also asserts the live and staged `release.yml` are byte-identical and that no separate publish workflow exists, is ok. |
-| 4 | check +dereference | `python3 -B -c "import sys; sys.path.insert(0, 'tools/release'); import images, images_contract as c; n = set(images.NAMES); assert 'deskd' in n and n == set(c.NAMES) and len(n) == 10, sorted(n); assert set(c.LEGACY_NAMES) == n - {'deskd'}, sorted(c.LEGACY_NAMES); print('names ok')" && grep -F -- 'exactly ten' docs/release-images.md && grep -F -- 'deskd' docs/release-images.md docs/docker.md containers/k8s/README.md deskd/README.md` | exit 0; prints `names ok`. The producer and contract name the same ten images, the legacy set is exactly those without deskd, and every documented surface names deskd. At the pre-delivery base the first assertion fails. |
-| 5 | check +neighbour | `sh containers/k8s/check.sh --base && sh containers/k8s/check.sh --base --self-test` | exit 0 with the listed tools installed. The Kubernetes desk package still validates its pinned nine-image record through the release contract, and its image-provenance mutation fixtures still fire. A missing tool is could-not-check, never pass. |
-| 6 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && git diff --quiet "$ASSAY_DELIVERY_BASE_SHA" "$ASSAY_DELIVERY_SHA" -- .github/workflows ci/staged-workflows containers/k8s/release-images.json images/deskd && o=$(mktemp) && statusgen --root . --consumers --brief cell-api/09 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA" > "$o" 2>&1 && grep -E '^summary: [1-9][0-9]* corroborated, 0 disproved' "$o"` | exit 0 only for the named landed implementation delivery and its first parent. The delivery changed no workflow copy, the pinned record or the deskd image definition. Record exact corroborated, disproved and unchecked counts, with 0 disproved. Unchecked consumers stay held, and the non-path entries (cell-api/05's pin and the two follow-ons outside this repository) are review obligations. Unset inputs exit 1. |
+| 4 | check +dereference | `python3 -B -c "import sys; sys.path.insert(0, 'tools/release'); import images, images_contract as c; n = set(images.NAMES); assert 'deskd' in n and n == set(c.NAMES) and len(n) == 10, sorted(n); assert set(c.LEGACY_NAMES) == n - {'deskd'}, sorted(c.LEGACY_NAMES); print('names ok')" && grep -F -- 'exactly ten' docs/release-images.md && grep -F -- 'deskd' docs/release-images.md && grep -F -- 'deskd' docs/docker.md && ! grep -F -- 'all nine images' docs/docker.md && grep -F -- 'LEGACY_NAMES' containers/k8s/README.md && grep -F -- 'release-images.json' deskd/README.md` | exit 0; prints `names ok`. The producer and contract name the same ten images, and the legacy set is exactly those without deskd. Each documentation probe reads one file and checks the phrase Task 4 prescribes for it, so a delivery that skips any one file fails the row. At the pre-delivery base the first assertion fails, and so does each of the six file probes on its own. |
+| 5 | check +neighbour | `sh containers/k8s/check.sh --base && sh containers/k8s/check.sh --base --self-test && o=$(mktemp) && { sh containers/k8s/check.sh --compatibility-cellctl --self-test > "$o" 2>&1; true; } && grep -Fx -- 'checked-clean: compatibility mutation fixtures; actual candidate remains a separate gate' "$o" && ! grep -F -- 'release-images-v1' "$o" && python3 -B -c "import sys; sys.path.insert(0, 'containers/k8s'); import check; print('candidate record accepted:', len(check.candidate_images()), 'role refs')"` | exit 0 with the listed tools installed; prints `candidate record accepted: 9 role refs`. Both `validate()` sites in `containers/k8s/check.py` still accept their pinned nine-image records through the release contract: `--base` covers `recorded_images()`, and the direct `candidate_images()` call covers the v1.0.65 candidate record (it also re-reads the v1.0.52 record). The image-provenance and compatibility mutation fixtures still fire, and neither contract refusal (both name `release-images-v1`) appears in the compatibility self-test's output. That self-test's own exit is not read: at the authoring pin it ends `checked-failed: prepared launch identity missing`, because the template's adopter-owned preparation values are unresolved, which no release-contract change affects. Control: in a scratch copy whose contract requires deskd while `check.py` passes no legacy set, both `recorded_images()` and `candidate_images()` raise. A missing tool is could-not-check, never pass. |
+| 6 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && git diff --quiet "$ASSAY_DELIVERY_BASE_SHA" "$ASSAY_DELIVERY_SHA" -- .github/workflows ci/staged-workflows containers/k8s/release-images.json containers/k8s/components/compatibility-cellctl/candidate-release-images.json images/deskd && o=$(mktemp) && statusgen --root . --consumers --brief cell-api/09 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA" > "$o" 2>&1 && grep -E '^summary: [1-9][0-9]* corroborated, 0 disproved' "$o"` | exit 0 only for the named landed implementation delivery and its first parent. The delivery changed no workflow copy, either pinned record or the deskd image definition. Record exact corroborated, disproved and unchecked counts, with 0 disproved. Unchecked consumers stay held, and the non-path entries (cell-api/05's pin and the two follow-ons outside this repository) are review obligations. Unset inputs exit 1. |
 
 ## Threat model and detection
 
@@ -185,9 +193,9 @@ its record.
 | deskd is pushed before its checks or its layer-secret gate, or with a credential in a layer | row 1; the release's protected approval stays a separate human layer |
 | A deskd image built from the wrong context, revision or user is published | row 1 (context, revision label and user check before any push) |
 | The release's own validation step accepts a record without deskd because the contract default is lenient | row 2's default-arguments refusals and its scratch-copy mutation |
-| The contract change breaks the Kubernetes desk package's pinned pre-change record | rows 2 and 5 |
+| The contract change breaks either of the Kubernetes desk package's pinned pre-change records (`recorded_images()` on v1.0.52 or `candidate_images()` on v1.0.65) | row 2 (both records' real bytes) and row 5 (`--base`, the compatibility self-test and a direct `candidate_images()` call) |
 | The producer, contract and docs disagree on the image set | row 4 |
-| A workflow copy, the pinned record or the deskd Dockerfile is edited by this delivery | rows 3 and 6 |
+| A workflow copy, either pinned record or the deskd Dockerfile is edited by this delivery | rows 3 and 6 |
 | A downstream deployment pins a local or out-of-band deskd image instead of the release record | No row here; cell-api/05's pin and the downstream follow-on dereference the published record |
 
 ## Evidence
