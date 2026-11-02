@@ -1,2 +1,0 @@
-### Fixed
-- `deskrelease cut -h` and `deskrelease cut --help` now print the verb's help and exit 0, the same as `deskrelease help cut`, without reading the roster, taking the audit lock or writing an audit row. They used to be refused with exit 5 and audited. A help word next to any other word (`cut <tag> --help`, `cut -h extra`) is still refused with exit 5 and audited, like every other word the cut parser does not recognise.
