@@ -198,6 +198,78 @@
       "file": "internal/cellscratch/store.go",
       "old": "// gitMarker is a conservative",
       "new": "func unclassifiedCleanup(s *Store) error { return s.remove(\"work\") }\n\n// gitMarker is a conservative"
+    },
+    {
+      "name": "disarm abandoned build reclaim",
+      "file": "internal/cellscratch/store.go",
+      "old": "} else if len(build) > 0 {",
+      "new": "} else if false && len(build) > 0 {"
+    },
+    {
+      "name": "reclaim recent build output",
+      "file": "internal/cellscratch/store.go",
+      "old": "if time.Since(last) <= p.MaxAge {",
+      "new": "if false {"
+    },
+    {
+      "name": "reclaim under a live execution lease",
+      "file": "internal/cellscratch/store.go",
+      "old": "lease, lockErr := s.lock(e.Name() + \"/owner.lock\")\n\t\t\tif lockErr != nil {",
+      "new": "lease, lockErr := s.lock(e.Name() + \"/owner.lock\")\n\t\t\tif false && lockErr != nil {"
+    },
+    {
+      "name": "widen abandoned build names",
+      "file": "internal/cellscratch/store.go",
+      "old": "return strings.HasPrefix(name, \"go-build\") ||",
+      "new": "return true ||"
+    },
+    {
+      "name": "skip abandoned child proof",
+      "file": "internal/cellscratch/store.go",
+      "old": "quiet := r.Reaped",
+      "new": "quiet := true"
+    },
+    {
+      "name": "ignore sibling maintenance stamp",
+      "file": "internal/cellscratch/store.go",
+      "old": "time.Since(last) < s.due",
+      "new": "time.Since(last) < 0"
+    },
+    {
+      "name": "remove abandoned task record",
+      "file": "internal/cellscratch/store.go",
+      "old": "targets = c.build",
+      "new": "targets = append(c.build, c.r.ID)"
+    },
+    {
+      "name": "ignore maintenance stop",
+      "file": "internal/cellscratch/store.go",
+      "old": "\treturn s.ctx.Err()\n}",
+      "new": "\treturn nil\n}"
+    },
+    {
+      "name": "sweep on the launch path",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "r, err := s.Begin(session, role, revision)",
+      "new": "s.SweepIfDue(cellscratch.DefaultPolicy(), time.Nanosecond, true)\n\tr, err := s.Begin(session, role, revision)"
+    },
+    {
+      "name": "disconnect interactive maintenance",
+      "file": "cmd/cellctl/cadence.go",
+      "old": "stopMaintenance := c.startScratchMaintenance(child, role, nil)",
+      "new": "stopMaintenance := func() {}"
+    },
+    {
+      "name": "disconnect cadenced maintenance",
+      "file": "cmd/cellctl/cadence.go",
+      "old": "stopMaintenance := c.startScratchMaintenance(ctx, role, os.Stderr)",
+      "new": "stopMaintenance := func() {}"
+    },
+    {
+      "name": "keep maintenance after stop",
+      "file": "cmd/cellctl/scratch_maintain.go",
+      "old": "return func() { cancel(); <-done }",
+      "new": "return func() { _, _ = cancel, done }"
     }
   ]
 }
