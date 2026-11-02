@@ -76,10 +76,18 @@ What is delivered on main (source-qualified, not independently verified):
   typed open-issue listing before any trust, comment or label-history read. The
   full board and the older spellings still work unchanged.
 - `deskinbox discovery` gives the human decision inbox script one typed listing
-  per repository instead of four per-label reads. It refuses an incompatible
-  producer before discovery, keeps partial output with exit 2, and
-  `ASSAY_INBOX_READER=legacy` rolls it back.
-- Selection is one shared pure seam (`tools/desk/internal/issueflow`). Trust,
+  per repository instead of four per-label reads, and keeps partial output with
+  exit 2. The script picks its reader before any discovery, and the narrow form
+  is not enforced against older producers by default:
+  - Default `ASSAY_INBOX_READER=auto`: without a desk loop identity it reports
+    could-not-check and reads nothing. With one, it uses the typed listing only
+    when the producer reports `issue-discovery-v1`; an absent or older producer
+    falls back to the four per-label reads.
+  - Explicit `ASSAY_INBOX_READER=typed`: an absent or older producer is refused
+    before any discovery. This is the only mode that refuses.
+  - Explicit `ASSAY_INBOX_READER=legacy`: the four per-label reads. This is the
+    rollback.
+- Selection is one shared pure selection package (`issueflow`). Trust,
   identity, pagination, escalation, addressed-response and positive-closure
   reads keep their existing owners. No cache, service, credential owner,
   release, pin change or activation is added.
@@ -93,17 +101,19 @@ What is delivered on main (source-qualified, not independently verified):
   from 55 to 51 at 8 issues and from 172 to 132 at 80 issues. CPU and wall time
   moved both ways, so only less request work is shown, not faster runs.
 
-Source check at main `666b4399b`, not Evidence: Verify rows 1 and 2 pass. Row 3
-reports 5 consumers corroborated and 1 unchecked (the deskboard out-of-scope
-entry, which is the reviewer's call).
+Source check at main `2c6c21336`, not Evidence: the projection flow suite and
+the projection fault suite both pass. The consumer-corroboration check reports 5
+consumers corroborated and 1 unchecked (the deskboard out-of-scope entry, which
+is the reviewer's call).
 
 These holds stay in place whichever option is chosen:
 
-- desk-tools/38 still needs independent verification before this brief can be
+- The prerequisite brief desk-tools/38 (desk performance attribution and counter
+  coverage) still needs independent verification before this brief can be
   `verified` or `done`. Its acceptance transition has its own decision issue.
-- Row 3's command was changed after delivery to pin the delivery and its base.
-  That change counts only through its own human-approved acceptance transition
-  at verification time.
+- The consumer-corroboration check's command was changed after delivery to pin
+  the delivery and its base. That change counts only through its own
+  human-approved acceptance transition at verification time.
 - Live activation, releases, pin changes, collection consent and executor
   switches stay separate gates.
 
