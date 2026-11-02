@@ -3798,6 +3798,48 @@ install, a release, or CI.
 - CI and `make` targets never see an overlay and are not checked by it; a gate that must refuse
   a hotfix refuses the stamp itself (the `statusgen` version gate reads it as its base release).
 
+### Hotfix cut — shipping an urgent fix as the next plain patch
+
+The overlay above bridges one machine for a few days. The release is what ships the fix to
+everyone, and it retires the overlay. A hotfix is cut as the **next plain patch release**
+through the existing release path: no separate lane, no suffixed tag, no skipped check. For
+one urgent fix, in this order:
+
+1. **The fix is merged to `main`, and `main` is green** at the commit that will be tagged. The
+   fix's PR carries its `changelog/` fragment as usual; the release refuses to cut with nothing
+   to aggregate.
+2. **Optional: bridge one machine with the overlay** while the release is cut:
+
+   ```bash
+   cellctl hotfix install <tool> --source <40-hex merged sha> --dry-run   # decides the source rule only
+   sudo cellctl hotfix install <tool> --source <40-hex merged sha>
+   ```
+
+   The entry expires (72h by default, never more than 168h) and a shim points at it only from
+   the next `cellctl desk` / `cellctl up`. It never replaces the release; skip this step when
+   the fix can wait for the cut.
+3. **Cut the next plain `vX.Y.Z` patch** with the `release` workflow's manual dispatch. Between
+   releases `main` already carries the next patch version, so that is the version to name. Run
+   it with `dry_run` set to `true` explicitly first (the input defaults to `false`), then, after
+   a green dry run, the real cut with the same version. Both runs wait for approval on the
+   `release` environment, and both dispatches and both approvals are the driver's. The
+   [`cut-release`](../../plugins/assay/skills/cut-release/SKILL.md) skill holds the full order,
+   including how to confirm the dry run cut no tag.
+4. **Move every pin to the new release in one re-pin change** per repository, linking the fix:
+   `plugins/assay/paired-versions.yaml` here (checked by `make paired-versions`) and each
+   consumer's `.assay-versions` (checked by `deskpins --check`). Every sha256 comes from the
+   published release's `checksums.txt`; never pin a partial set.
+5. **Install the new pins** on each machine, by the same human act as any install
+   ([Install / upgrade](#install--upgrade), or `deskinstall --manifest <re-pinned manifest>
+   --dest <dir>`).
+6. **Clear the overlay:** `sudo cellctl hotfix clear`. Moving the pin has already retired any
+   hotfix built over the old pin: `deskboot` refuses it with `hotfix outlived its pin` until
+   the next `cellctl desk` / `cellctl up` points its shim back at the pinned binary. The clear
+   removes the inert entry and its binary.
+
+**Cost.** A cut is about an hour of wall time, of which the approval wait is a minor part.
+A fix that cannot wait that long is what step 2 is for.
+
 ### Guard, the two meters, and repo scope
 
 Every tool in the [Tool reference](#tool-reference) table calls `deskkit.Guard()` first
