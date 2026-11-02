@@ -7,14 +7,15 @@
 //	  aliases-e<N>.json    private alias map of epoch N (keyed digests, never raw locators)
 //	  coverage.json        retirements, failed-write ranges, unclean ends, epoch resets
 //	  lock                 the writer lock (flock, bounded wait)
-//	  run/                 one live marker per open writer
+//	  run/                 one live marker per open writer, locked before it is named live-
 //	  segments/            seg-<firstSeq>-e<epoch>-<YYYYMMDD>.jsonl, one canonical event per line
 //	  distributions/       day-<YYYY-MM-DD>.json rollups (only with distribution retention)
 //
 // The tree is distinct from audit.jsonl, dispatch-records.jsonl and perf/. Directories
-// are 0700 and files 0600; metadata is replaced atomically by rename. Appends never
-// fsync on the work path, so a crash can lose the tail of the last write: the reader
-// reports that as a partial tail or an unexplained gap, never as complete coverage.
+// are 0700 and files 0600, and an unsafe tree is refused (secure.go); metadata is
+// replaced atomically by rename. Appends never fsync on the work path, so a crash can
+// lose the tail of the last write: the reader reports that as a partial tail or an
+// unexplained gap, never as complete coverage.
 package local
 
 import (
@@ -258,18 +259,37 @@ func randomHex(n int) string {
 }
 
 func (s *Store) openLive() error {
-	s.livePath = filepath.Join(s.root, "run", "live-"+randomHex(8)+".lock")
-	f, err := os.OpenFile(s.livePath, os.O_CREATE|os.O_EXCL|os.O_RDWR|noFollow, 0o600)
+	// The marker is created under a name the reaper ignores, locked, and only then
+	// renamed to its live- name, so no reaper ever sees a live marker its writer has not
+	// locked yet.
+	id := randomHex(8)
+	born := filepath.Join(s.root, "run", "born-"+id+".lock")
+	f, err := os.OpenFile(born, os.O_CREATE|os.O_EXCL|os.O_RDWR|noFollow, 0o600)
 	if err != nil {
 		return err
 	}
-	if liveMarkersSupported && !tryLockFile(f) {
+	fail := func(err error) error {
 		f.Close()
-		return errors.New("perfdata/local: cannot hold live marker")
+		_ = os.Remove(born)
+		return err
+	}
+	if liveMarkersSupported && !tryLockFile(f) {
+		return fail(errors.New("perfdata/local: cannot hold live marker"))
+	}
+	if err := s.fault("live"); err != nil {
+		return fail(err)
+	}
+	s.livePath = filepath.Join(s.root, "run", "live-"+id+".lock")
+	if err := os.Rename(born, s.livePath); err != nil {
+		return fail(err)
 	}
 	s.liveF = f
 	return nil
 }
+
+// bornStale is how old an unlocked born- marker must be before it is removed: one left
+// behind by a writer that died between creating and renaming it.
+const bornStale = time.Minute
 
 // reapLive counts and removes live markers whose writer is gone (unclean ends).
 func (s *Store) reapLive(cov *coverageFile) {
@@ -279,6 +299,10 @@ func (s *Store) reapLive(cov *coverageFile) {
 	ents, _ := os.ReadDir(filepath.Join(s.root, "run"))
 	for _, e := range ents {
 		p := filepath.Join(s.root, "run", e.Name())
+		if strings.HasPrefix(e.Name(), "born-") {
+			s.reapBorn(p)
+			continue
+		}
 		if p == s.livePath || !strings.HasPrefix(e.Name(), "live-") {
 			continue
 		}
@@ -292,6 +316,24 @@ func (s *Store) reapLive(cov *coverageFile) {
 			unlockFile(f)
 		}
 		f.Close()
+	}
+}
+
+// reapBorn removes a born- marker whose writer died before naming it live. It is not an
+// unclean end: that writer never wrote.
+func (s *Store) reapBorn(p string) {
+	fi, err := os.Lstat(p)
+	if err != nil || !fi.Mode().IsRegular() || time.Since(fi.ModTime()) < bornStale {
+		return
+	}
+	f, err := openRegular(p, os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if tryLockFile(f) {
+		_ = os.Remove(p)
+		unlockFile(f)
 	}
 }
 

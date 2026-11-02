@@ -163,3 +163,50 @@ func TestCoverageRefusesBadSource(t *testing.T) {
 		})
 	}
 }
+
+// regression: a new live marker was visible, unlocked, before its writer locked it, so a
+// concurrent Open could reap it as an unclean end.
+func TestLiveMarkerBornLocked(t *testing.T) {
+	if !liveMarkersSupported {
+		t.Skip("live markers are not lock-checked on this platform")
+	}
+	dir := t.TempDir()
+	openOnce(t, dir)
+	run := filepath.Join(Root(dir), "run")
+	var reapable []string
+	// At the moment between creating and locking its marker, do what a concurrent
+	// Open's reaper does: any live- marker whose lock is free would be removed.
+	probe := func(op string) error {
+		if op != "live" {
+			return nil
+		}
+		ents, _ := os.ReadDir(run)
+		for _, e := range ents {
+			if !strings.HasPrefix(e.Name(), "live-") {
+				continue
+			}
+			f, err := os.OpenFile(filepath.Join(run, e.Name()), os.O_RDWR, 0)
+			if err != nil {
+				continue
+			}
+			if tryLockFile(f) {
+				reapable = append(reapable, e.Name())
+				unlockFile(f)
+			}
+			f.Close()
+		}
+		return nil
+	}
+	st := mustOpen(t, dir, testPolicy(t, ""), Options{Now: fixed(day1), fault: probe})
+	st.Close()
+	if len(reapable) != 0 {
+		t.Fatalf("a concurrent reaper could take the new writer's unlocked marker: %v", reapable)
+	}
+	rr, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := rr.Coverage[0]; c.UncleanTerminations != 0 {
+		t.Fatalf("a clean open and close must not read as unclean: %+v", c)
+	}
+}
