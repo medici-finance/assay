@@ -182,7 +182,7 @@ func TestSpoolRecovery(t *testing.T) {
 			t.Fatalf("want %d events seq 1..%d complete, got %d events last %d %s conflicts=%d gaps=%v",
 				want, want, len(rr.Events), c.LastSeq, c.State, rr.Conflicts, c.UnexplainedGaps)
 		}
-		if segs := listSegments(Root(dir)); len(segs) < 2 {
+		if segs := segmentsOf(t, dir); len(segs) < 2 {
 			t.Fatalf("expected segment rollover, got %d segments", len(segs))
 		}
 	})
@@ -191,7 +191,7 @@ func TestSpoolRecovery(t *testing.T) {
 		dir := t.TempDir()
 		st := mustOpen(t, dir, testPolicy(t, ""), Options{Now: fixed(day1)})
 		mustWrite(t, st, 2, day1)
-		seg := filepath.Join(Root(dir), "segments", listSegments(Root(dir))[0].name)
+		seg := filepath.Join(Root(dir), "segments", segmentsOf(t, dir)[0].name)
 		f, _ := os.OpenFile(seg, os.O_WRONLY|os.O_APPEND, 0)
 		f.WriteString(`{"schema":"performance-event-v1","id":"tor`) // a torn final append
 		f.Close()
@@ -201,7 +201,7 @@ func TestSpoolRecovery(t *testing.T) {
 		if c.PartialTails != 1 || c.State != perfdata.CoveragePartial || len(rr.Events) != 3 || c.CorruptLines != 0 {
 			t.Fatalf("partial tail: %+v events=%d", c, len(rr.Events))
 		}
-		if n := len(listSegments(Root(dir))); n != 2 {
+		if n := len(segmentsOf(t, dir)); n != 2 {
 			t.Fatalf("the write after a torn tail must start a new segment, got %d segments", n)
 		}
 	})

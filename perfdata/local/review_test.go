@@ -1,6 +1,7 @@
 package local
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,11 +120,19 @@ func TestSegmentFitsByteCap(t *testing.T) {
 	dir := t.TempDir()
 	st := mustOpen(t, dir, p, Options{Now: fixed(day1)})
 	defer st.Close()
+	// The size bound below needs far more data than the default segment holds to see an
+	// unclamped segment, so the selected segment size is checked directly as well.
+	if sb := st.Policy().SegmentBytes; sb <= 0 || sb > byteCap {
+		t.Fatalf("Open selected a %d-byte segment for a %d-byte cap", sb, byteCap)
+	}
 	mustWrite(t, st, 300, day1)
 	total := int64(0)
-	for _, sg := range listSegments(Root(dir)) {
-		size, _ := regularSize(filepath.Join(Root(dir), "segments", sg.name))
-		total += size
+	for _, sg := range segmentsOf(t, dir) {
+		fi, err := os.Lstat(filepath.Join(Root(dir), "segments", sg.name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += fi.Size()
 	}
 	// Retirement runs when a segment rolls over, so the bound is the cap plus the one
 	// open segment, and that segment is never larger than the cap.
@@ -174,10 +183,10 @@ func TestLiveMarkerBornLocked(t *testing.T) {
 	openOnce(t, dir)
 	run := filepath.Join(Root(dir), "run")
 	var reapable []string
-	// At the moment between creating and locking its marker, do what a concurrent
-	// Open's reaper does: any live- marker whose lock is free would be removed.
+	// Right after the marker is created and again once it is locked, do what a
+	// concurrent Open's reaper does: any live- marker whose lock is free would be removed.
 	probe := func(op string) error {
-		if op != "live" {
+		if op != "created" && op != "live" {
 			return nil
 		}
 		ents, _ := os.ReadDir(run)
@@ -208,5 +217,34 @@ func TestLiveMarkerBornLocked(t *testing.T) {
 	}
 	if c := rr.Coverage[0]; c.UncleanTerminations != 0 {
 		t.Fatalf("a clean open and close must not read as unclean: %+v", c)
+	}
+}
+
+// regression: without flock the live marker was renamed while open, which Windows refuses,
+// so Open failed on every such platform.
+func TestLiveMarkerOtherPlatforms(t *testing.T) {
+	defer func(v bool) { liveMarkers = v }(liveMarkers)
+	liveMarkers = false // the path of a platform without flock
+	dir := t.TempDir()
+	// Windows refuses to rename a file that is open; the rename effect fails the same way.
+	openRename := func(op string) error {
+		if op == "rename" {
+			return errors.New("rename of an open file refused")
+		}
+		return nil
+	}
+	st, err := Open(dir, armed, testPolicy(t, ""), Options{Now: fixed(day1), fault: openRename})
+	if err != nil {
+		t.Fatalf("Open must not rename its open live marker: %v", err)
+	}
+	mustWrite(t, st, 1, day1)
+	run := filepath.Join(Root(dir), "run")
+	ents, _ := os.ReadDir(run)
+	if len(ents) != 1 || !strings.HasPrefix(ents[0].Name(), "live-") {
+		t.Fatalf("want exactly one live- marker while open, got %v", ents)
+	}
+	st.Close()
+	if ents, _ := os.ReadDir(run); len(ents) != 0 {
+		t.Fatalf("a clean close must remove its marker, left %v", ents)
 	}
 }

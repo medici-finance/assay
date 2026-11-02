@@ -180,10 +180,10 @@ func (s *Sink) Close() (clean bool) {
 // addDropsBestEffort records drops in coverage when the health event could not be
 // written. Caller holds s.mu. It waits only briefly for the store lock.
 func (s *Store) addDropsBestEffort(d perfdata.Drops) {
-	if s.lockF == nil || lockFile(s.lockF, 20*time.Millisecond) != nil {
+	if s.lockF == nil || lockStore(s.t.top, s.lockF, 20*time.Millisecond) != nil {
 		return
 	}
-	defer unlockFile(s.lockF)
+	defer unlockStore(s.t.top, s.lockF)
 	cov := s.loadCoverage()
 	cov.Drops.Add(d)
 	_ = s.saveCoverage(cov)

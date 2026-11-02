@@ -13,8 +13,6 @@ package local
 import (
 	"bytes"
 	"errors"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -40,11 +38,11 @@ func (cov *coverageFile) retiredSegment(src string, sg segment) bool {
 func (s *Store) retire(cov *coverageFile) error {
 	now := s.opts.now()
 	keepFrom := now.AddDate(0, 0, -(s.policy.AgeCapDays - 1)).Format("2006-01-02")
-	segs := listSegments(s.root)
+	segs := listSegments(s.t)
 	total := int64(0)
 	sizes := map[string]int64{}
 	for _, sg := range segs {
-		if size, ok := regularSize(filepath.Join(s.root, "segments", sg.name)); ok {
+		if size, ok := regularSize(s.t.segs, sg.name); ok {
 			sizes[sg.name] = size
 			total += size
 		}
@@ -66,7 +64,7 @@ func (s *Store) retire(cov *coverageFile) error {
 	}
 	if s.policy.DistributionDays > 0 {
 		dKeep := now.AddDate(0, 0, -(s.policy.DistributionDays - 1)).Format("2006-01-02")
-		ents, _ := os.ReadDir(filepath.Join(s.root, "distributions"))
+		ents, _ := readDir(s.t.dist)
 		for _, e := range ents {
 			day, ok := rollupDay(e.Name())
 			if !ok || day >= dKeep {
@@ -77,7 +75,7 @@ func (s *Store) retire(cov *coverageFile) error {
 			if err := s.saveCoverage(*cov); err != nil {
 				return err
 			}
-			_ = os.Remove(filepath.Join(s.root, "distributions", e.Name()))
+			_ = s.t.dist.Remove(e.Name())
 		}
 	}
 	return nil
@@ -95,8 +93,7 @@ func rollupDay(name string) (string, bool) {
 }
 
 func (s *Store) retireSegment(cov *coverageFile, sg segment, reason string, now interface{ Format(string) string }) error {
-	p := filepath.Join(s.root, "segments", sg.name)
-	b, err := readRegular(p)
+	b, err := readRegular(s.t.segs, sg.name)
 	if err != nil {
 		return err
 	}
@@ -113,12 +110,12 @@ func (s *Store) retireSegment(cov *coverageFile, sg segment, reason string, now 
 		last = max(last, e.Seq)
 	}
 	if src == "" {
-		if sf, err := readSource(s.root); err == nil {
+		if sf, err := readSource(s.t); err == nil {
 			src = sf.Source
 		}
 	}
 	if cov.retiredSegment(src, sg) {
-		return os.Remove(p) // retirement already recorded; finish the removal
+		return s.t.segs.Remove(sg.name) // retirement already recorded; finish the removal
 	}
 	r := retired{Source: src, Retirement: perfdata.Retirement{
 		Reason: reason, FromSeq: sg.firstSeq, ToSeq: last, Events: len(events), Bytes: int64(len(b)),
@@ -136,7 +133,7 @@ func (s *Store) retireSegment(cov *coverageFile, sg segment, reason string, now 
 			return err
 		}
 	}
-	return os.Remove(p)
+	return s.t.segs.Remove(sg.name)
 }
 
 // rollUp folds tool completions into their days' rollup files.
@@ -168,7 +165,7 @@ func (s *Store) rollUp(events []perfdata.Event) error {
 	for _, day := range keys {
 		r := days[day]
 		name := "day-" + day + ".json"
-		if b, err := readRegular(filepath.Join(s.root, "distributions", name)); err == nil {
+		if b, err := readRegular(s.t.dist, name); err == nil {
 			old, err := perfdata.DecodeRollup(b)
 			if err != nil {
 				return errors.New("perfdata/local: corrupt rollup")
@@ -178,7 +175,7 @@ func (s *Store) rollUp(events []perfdata.Event) error {
 			}
 			r = &old
 		}
-		if err := s.writeJSON(filepath.Join("distributions", name), r); err != nil {
+		if err := s.writeJSON(s.t.dist, name, r); err != nil {
 			return err
 		}
 	}

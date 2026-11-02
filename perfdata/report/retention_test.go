@@ -209,3 +209,40 @@ func derefI(p *int64) any {
 	}
 	return *p
 }
+
+// regression: a retirement ending on the last representable day made Build loop forever.
+func TestBuildBoundsRetiredDays(t *testing.T) {
+	cases := map[string][2]string{
+		"ending on 9999-12-31":   {"9999-12-31", "9999-12-31"},
+		"an unparsable start":    {"not-a-day", "2026-10-02"},
+		"spanning the whole era": {"0001-01-01", "9999-12-30"},
+	}
+	for name, span := range cases {
+		t.Run(name, func(t *testing.T) {
+			cov := []perfdata.SourceCoverage{{Retired: []perfdata.Retirement{
+				{Reason: local.RetireAge, FromDay: span[0], ToDay: span[1], Unsent: true}}}}
+			done := make(chan report.Report, 1)
+			go func() {
+				done <- report.Build(report.Input{Coverage: cov, Cutoff: time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC),
+					Window: perfdata.Window{From: "2026-10-01", To: "2026-10-03"}})
+			}()
+			select {
+			case r := <-done:
+				if len(r.Days) != 3 {
+					t.Fatalf("want the three window days, got %+v", r.Days)
+				}
+				want := report.DayUnknown
+				if span[0] == "0001-01-01" {
+					want = report.DayRetired
+				}
+				for _, d := range r.Days {
+					if d.State != want {
+						t.Fatalf("day %s: state %q, want %q", d.Day, d.State, want)
+					}
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Build did not return: the retired-day walk is unbounded")
+			}
+		})
+	}
+}

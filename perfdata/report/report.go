@@ -972,16 +972,26 @@ func days(win perfdata.Window, raw, roll map[string]bool, daily map[string]*perf
 	if !ok1 || !ok2 || end.Before(start) || end.Sub(start) > 400*24*time.Hour {
 		return res
 	}
-	retired := map[string]bool{}
+	// A retirement is matched against the window's own days, never walked day by day:
+	// its range comes from a file on disk and may be unparsable or reach the year 9999.
+	type span struct{ from, to string }
+	var spans []span
 	for _, c := range cov {
 		for _, r := range c.Retired {
-			if r.FromDay == "" {
-				continue
-			}
-			for d := r.FromDay; d <= r.ToDay; d = nextDay(d) {
-				retired[d] = true
+			_, okF := perfdata.ParseTime(r.FromDay + "T00:00:00.000Z")
+			_, okT := perfdata.ParseTime(r.ToDay + "T00:00:00.000Z")
+			if okF && okT && r.FromDay <= r.ToDay {
+				spans = append(spans, span{r.FromDay, r.ToDay})
 			}
 		}
+	}
+	retiredOn := func(d string) bool {
+		for _, s := range spans {
+			if s.from <= d && d <= s.to {
+				return true
+			}
+		}
+		return false
 	}
 	for t := start; !t.After(end); t = t.AddDate(0, 0, 1) {
 		d := t.Format("2006-01-02")
@@ -991,7 +1001,7 @@ func days(win perfdata.Window, raw, roll map[string]bool, daily map[string]*perf
 			day.State = DayMeasured
 		case roll[d]:
 			day.State = DayRollup
-		case retired[d]:
+		case retiredOn(d):
 			day.State = DayRetired
 		default:
 			day.State = DayUnknown
@@ -1004,12 +1014,4 @@ func days(win perfdata.Window, raw, roll map[string]bool, daily map[string]*perf
 		res = append(res, day)
 	}
 	return res
-}
-
-func nextDay(d string) string {
-	t, ok := perfdata.ParseTime(d + "T00:00:00.000Z")
-	if !ok {
-		return "9999-12-31"
-	}
-	return t.AddDate(0, 0, 1).Format("2006-01-02")
 }

@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"errors"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -30,29 +29,29 @@ type ReadResult struct {
 	Conflicts  int `json:"conflicts"`
 }
 
-// Read reads the store under stateDir.
+// Read reads the store under stateDir. It applies the writer's directory checks (an
+// unsafe state or store directory is refused) and reads through the same handles.
 func Read(stateDir string) (ReadResult, error) {
-	root := Root(stateDir)
 	var rr ReadResult
-	if st, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
+	t, err := openTree(stateDir, false)
+	if errors.Is(err, os.ErrNotExist) {
 		rr.Coverage = []perfdata.SourceCoverage{{State: perfdata.CoverageMissing, Epochs: []uint32{},
 			ExplainedGaps: []perfdata.SeqRange{}, UnexplainedGaps: []perfdata.SeqRange{}, Retired: []perfdata.Retirement{}, EpochResets: []perfdata.EpochReset{}}}
 		return rr, nil
 	} else if err != nil {
 		return rr, err
-	} else if !st.IsDir() {
-		return rr, unsafeEntry(root, "not a directory ("+st.Mode().Type().String()+")")
 	}
+	defer t.close()
 	rr.Present = true
 	corruptMeta := 0
-	if _, ok := regularSize(filepath.Join(root, "manifest.json")); !ok {
+	if _, ok := regularSize(t.top, "manifest.json"); !ok {
 		corruptMeta++
 	}
-	cov, ok := readCoverage(root)
+	cov, ok := readCoverage(t)
 	if !ok {
 		corruptMeta++
 	}
-	sf, serr := readSource(root)
+	sf, serr := readSource(t)
 	if serr != nil && !errors.Is(serr, os.ErrNotExist) {
 		corruptMeta++
 	}
@@ -76,8 +75,8 @@ func Read(stateDir string) (ReadResult, error) {
 	}
 	seen := map[string]string{}
 	orphanCorrupt, orphanPartial := 0, 0
-	for _, sg := range listSegments(root) {
-		b, err := readRegular(filepath.Join(root, "segments", sg.name))
+	for _, sg := range listSegments(t) {
+		b, err := readRegular(t.segs, sg.name)
 		if err != nil {
 			orphanCorrupt++
 			continue
@@ -162,14 +161,14 @@ func Read(stateDir string) (ReadResult, error) {
 	// clean close (a crash or an abandoned flush) and has not been reaped yet. The probe
 	// is non-blocking, so a running writer is never delayed.
 	live, orphaned := 0, 0
-	if ents, err := os.ReadDir(filepath.Join(root, "run")); err == nil {
+	if ents, err := readDir(t.run); err == nil {
 		for _, e := range ents {
 			if !strings.HasPrefix(e.Name(), "live-") {
 				continue
 			}
-			f, err := openRegular(filepath.Join(root, "run", e.Name()), os.O_RDWR, 0)
+			f, err := openRegular(t.run, e.Name(), os.O_RDWR, 0)
 			switch {
-			case err != nil || !liveMarkersSupported:
+			case err != nil || !liveMarkers:
 				live++
 			case tryLockFile(f):
 				unlockFile(f)
@@ -227,12 +226,12 @@ func Read(stateDir string) (ReadResult, error) {
 		}
 		rr.Coverage = append(rr.Coverage, *c)
 	}
-	ents, _ := os.ReadDir(filepath.Join(root, "distributions"))
+	ents, _ := readDir(t.dist)
 	for _, e := range ents {
 		if _, ok := rollupDay(e.Name()); !ok {
 			continue
 		}
-		b, err := readRegular(filepath.Join(root, "distributions", e.Name()))
+		b, err := readRegular(t.dist, e.Name())
 		var r perfdata.DailyRollup
 		if err == nil {
 			r, err = perfdata.DecodeRollup(b)

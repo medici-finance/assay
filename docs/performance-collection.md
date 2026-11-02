@@ -85,12 +85,17 @@ Unknown values are counted as unknown, never as zero.
 
 Everything is under `<dir>/performance-events/`: `manifest.json`, `source.json`,
 `aliases-e<N>.json`, `coverage.json`, `lock`, `run/`, `segments/` and `distributions/`.
-Directories are created 0700 and files 0600. The store trusts no entry by its name: it
-refuses to open (`ErrUnsafe`) a tree where any store directory is a symbolic link, belongs to
-another user or is open to group or other users, or where any file is a symbolic link or not
-a regular file. It refuses instead of repairing, and it never follows a link to read or
-write. Protecting the directories above `<dir>` is the caller's job. Metadata is replaced
-atomically. This tree is separate
+Directories are created 0700 and files 0600. The store trusts no entry by its name. It
+refuses (`ErrUnsafe`) a `<dir>` that belongs to another user (the superuser excepted) or that
+group or other users can write without the sticky bit. It refuses a tree where any store
+directory is a symbolic link, belongs to another user or is open to group or other users, or
+where any file is a symbolic link or not a regular file. The writer and the reader apply the
+same checks. When the store opens, each store directory is checked and then bound to a
+directory handle, and every later read and write goes through those handles. Renaming or
+replacing a store directory after that cannot redirect a read or a write, and no name
+resolves outside the store. A file reached through a symbolic link is refused, never read or
+written. The store refuses instead of repairing. Protecting the directories above `<dir>` is
+the caller's job. Metadata is replaced atomically. This tree is separate
 from `audit.jsonl`, `dispatch-records.jsonl` and `perf/`, and turning collection off never
 affects those.
 
@@ -107,7 +112,9 @@ affects those.
   queued drafts and the tail of the last write. A reader shows that loss as a partial tail, an
   unexplained sequence gap or an orphaned live marker, never as complete coverage. If the disk
   is full, the record of the loss may not be written either. That loss then stays unexplained
-  but visible as a gap.
+  but visible as a gap. On platforms without file locks (Windows) an orphaned live marker
+  cannot be told from a running writer, so the reader counts every live marker as live and
+  an unclean termination shows only as a gap or a partial tail.
 - **Torn tails.** A torn last line is skipped and counted. After a crash, the next writer
   starts a new segment. If the lazily advanced source metadata had not yet passed the torn
   record, that record's sequence number can be given to a new event. The torn line never

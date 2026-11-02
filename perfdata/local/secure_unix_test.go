@@ -59,3 +59,32 @@ func TestStoreRefusesUnsafeTree(t *testing.T) {
 		})
 	}
 }
+
+// regression: a state directory other users could write let them replace the store
+// directory between checks; it is now refused by both the writer and the reader.
+func TestStateDirChecked(t *testing.T) {
+	dir := t.TempDir()
+	openOnce(t, dir)
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Open(dir, armed, testPolicy(t, ""), Options{Now: fixed(day1)})
+	if err == nil {
+		st.Close()
+		t.Fatal("Open accepted a state directory every user can write")
+	}
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("Open: want ErrUnsafe, got %v", err)
+	}
+	if _, err := Read(dir); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("Read: want ErrUnsafe, got %v", err)
+	}
+	// With the sticky bit other users cannot rename or remove this user's entries.
+	if err := os.Chmod(dir, 0o777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	mustOpen(t, dir, testPolicy(t, ""), Options{Now: fixed(day1)}).Close()
+	if _, err := Read(dir); err != nil {
+		t.Fatalf("Read refused a sticky shared state directory: %v", err)
+	}
+}

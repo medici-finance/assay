@@ -35,6 +35,11 @@ func tryLockFile(f *os.File) bool {
 
 func unlockFile(f *os.File) { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }
 
+// lockStore takes the store lock: the flock on the open lock file.
+func lockStore(_ *os.Root, f *os.File, wait time.Duration) error { return lockFile(f, wait) }
+
+func unlockStore(_ *os.Root, f *os.File) { unlockFile(f) }
+
 // liveMarkersSupported reports whether an abandoned live marker can be told apart from a
 // running writer (it can when the marker carries a held lock).
 const liveMarkersSupported = true

@@ -1,6 +1,7 @@
 package local
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,11 +21,20 @@ func quantiles(d []time.Duration) (p50, p95, mx time.Duration) {
 }
 
 // The 1 ms append target is a property of a reference host, not of whatever machine runs
-// the suite. The gate therefore takes the best of several rounds (a transient stall
-// spoils one round, not the result) and measures, in each round, the bare floor this
-// filesystem sets for the same work: open, append one line, close, with no store logic.
-// A floor this slow means the host is loaded or slow, so the target cannot be judged on
-// it; the gate says so and skips rather than failing or passing on noise.
+// the suite. Two things are therefore checked separately.
+//
+// What makes a small append cheap is structural and is enforced on every host: a
+// steady-state Write performs exactly one append and rewrites no metadata and starts no
+// segment (counted through the effect hook, so the count does not depend on timing).
+//
+// The 1 ms median is then timed in several rounds. Each append is paired with the bare
+// floor this filesystem sets for the same work (open, append one line, close, no store
+// logic), measured right after it, so both see the same moment of the host. The best
+// round's median is the result (a transient stall spoils one round, not the result). It
+// passes under the target; otherwise it fails only when every round's floor shows a quiet
+// host. A loaded round anywhere means the host was not quiet while it was measured, so
+// the target cannot be judged on it: the gate says so and skips rather than failing or
+// passing on noise.
 const (
 	appendTarget   = time.Millisecond
 	appendRounds   = 5
@@ -32,66 +42,80 @@ const (
 	slowHostFloor  = 100 * time.Microsecond
 )
 
-// fsFloor is the median cost of an open/append/close of one line in dir.
-func fsFloor(t *testing.T, dir string, line []byte, n int) time.Duration {
+// floorOp is one open/append/close of line at p, timed.
+func floorOp(t *testing.T, p string, line []byte) time.Duration {
 	t.Helper()
-	p := filepath.Join(dir, "floor")
-	lat := make([]time.Duration, n)
-	for i := range lat {
-		start := time.Now()
-		f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := f.Write(line); err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
-		lat[i] = time.Since(start)
+	start := time.Now()
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
 	}
-	p50, _, _ := quantiles(lat)
-	return p50
+	if _, err := f.Write(line); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return time.Since(start)
 }
 
-// regression: the append gate failed on a loaded host and the slow-I/O counts at -cpu 1.
+// regression: the append gate failed on a loaded host whose best round looked quiet.
 func TestLocalCostAndBounds(t *testing.T) {
 	t.Run("a small locked append stays under 1ms median", func(t *testing.T) {
 		dir := t.TempDir()
-		st := mustOpen(t, dir, testPolicy(t, ""), Options{Now: fixed(day1)})
+		effects := map[string]int{}
+		count := func(op string) error { effects[op]++; return nil }
+		st := mustOpen(t, dir, testPolicy(t, ""), Options{Now: fixed(day1), fault: count})
 		defer st.Close()
 		mustWrite(t, st, 1, day1) // warm: aliases, segment, metadata exist
 		line, _ := st.Write([]perfdata.Draft{toolDraft(day1, 1)}, false)
 		size := len(line.Lines[0]) + 1
-		var best, bestP95, bestMax, bestFloor time.Duration
+		floorPath := filepath.Join(t.TempDir(), "floor")
+		bench := func(i int) perfdata.Draft {
+			d := toolDraft(day1, int64(i))
+			d.Ctx.Invocation = "run-bench" // one invocation, as within one process run: no alias minting
+			return d
+		}
+		for _, phase := range []string{"warm", "measure"} { // the first mints run-bench's alias
+			clear(effects)
+			if _, err := st.Write([]perfdata.Draft{bench(0)}, false); err != nil {
+				t.Fatalf("%s: %v", phase, err)
+			}
+		}
+		if want := map[string]int{"append": 1}; !maps.Equal(effects, want) {
+			t.Fatalf("a steady-state append must do one append and nothing else: effects %v, want %v", effects, want)
+		}
+		var best, bestP95, bestMax, bestFloor, worstFloor time.Duration
 		for r := 0; r < appendRounds; r++ {
 			lat := make([]time.Duration, appendPerRound)
+			floor := make([]time.Duration, appendPerRound)
 			for i := range lat {
-				d := toolDraft(day1, int64(i))
-				d.Ctx.Invocation = "run-bench" // one invocation, as within one process run: no alias minting
+				d := bench(i)
 				start := time.Now()
 				if _, err := st.Write([]perfdata.Draft{d}, false); err != nil {
 					t.Fatal(err)
 				}
 				lat[i] = time.Since(start)
+				floor[i] = floorOp(t, floorPath, append(line.Lines[0], '\n'))
 			}
 			p50, p95, mx := quantiles(lat)
-			floor := fsFloor(t, t.TempDir(), append(line.Lines[0], '\n'), appendPerRound)
-			t.Logf("round %d: locked append median=%v p95=%v max=%v | filesystem floor median=%v", r+1, p50, p95, mx, floor)
+			f50, _, _ := quantiles(floor)
+			t.Logf("round %d: locked append median=%v p95=%v max=%v | filesystem floor median=%v (%.1fx)",
+				r+1, p50, p95, mx, f50, float64(p50)/float64(f50))
 			if r == 0 || p50 < best {
-				best, bestP95, bestMax, bestFloor = p50, p95, mx, floor
+				best, bestP95, bestMax, bestFloor = p50, p95, mx, f50
 			}
+			worstFloor = max(worstFloor, f50)
 		}
-		t.Logf("locked append on %s/%s, concurrency 1, one %d-byte event, best of %d rounds of %d: median=%v p95=%v max=%v (floor %v)",
-			runtime.GOOS, runtime.GOARCH, size, appendRounds, appendPerRound, best, bestP95, bestMax, bestFloor)
+		t.Logf("locked append on %s/%s, concurrency 1, one %d-byte event, best of %d rounds of %d: median=%v p95=%v max=%v (floor %v, slowest round's floor %v)",
+			runtime.GOOS, runtime.GOARCH, size, appendRounds, appendPerRound, best, bestP95, bestMax, bestFloor, worstFloor)
 		switch {
 		case best < appendTarget:
 		case raceEnabled:
 			t.Logf("race detector on: the %v target is reported, not enforced", appendTarget)
-		case bestFloor >= slowHostFloor:
-			t.Skipf("not a reference host: the bare open/append/close floor is %v (>= %v), so the host is loaded or slow and the %v target cannot be judged here",
-				bestFloor, slowHostFloor, appendTarget)
+		case worstFloor >= slowHostFloor:
+			t.Skipf("not a quiet reference host: a round's bare open/append/close floor was %v (>= %v), so the host was loaded or slow while measured and the %v target cannot be judged here",
+				worstFloor, slowHostFloor, appendTarget)
 		default:
-			t.Fatalf("small-append median %v is not under %v on a host whose filesystem floor is %v", best, appendTarget, bestFloor)
+			t.Fatalf("small-append median %v is not under %v on a host whose filesystem floor stayed under %v in every round", best, appendTarget, slowHostFloor)
 		}
 	})
 

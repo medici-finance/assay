@@ -12,8 +12,10 @@
 //	  distributions/       day-<YYYY-MM-DD>.json rollups (only with distribution retention)
 //
 // The tree is distinct from audit.jsonl, dispatch-records.jsonl and perf/. Directories
-// are 0700 and files 0600, and an unsafe tree is refused (secure.go); metadata is
-// replaced atomically by rename. Appends never fsync on the work path, so a crash can
+// are 0700 and files 0600, and an unsafe tree is refused (secure.go). The directories
+// are checked once and bound to handles; every later read and write is resolved
+// relative to those handles, never re-resolved from the path. Metadata is replaced
+// atomically by rename. Appends never fsync on the work path, so a crash can
 // lose the tail of the last write: the reader reports that as a partial tail or an
 // unexplained gap, never as complete coverage.
 package local
@@ -27,6 +29,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -50,8 +53,9 @@ var ErrOff = errors.New("perfdata/local: collection is off")
 var errLockTimeout = errors.New("perfdata/local: store lock wait exceeded")
 
 // ErrUnsafe is returned when a store entry is a symbolic link, is not the expected kind
-// of file, belongs to another user or is open to group or other users. The store never
-// follows or repairs such an entry; it refuses.
+// of file, belongs to another user or is open to group or other users, or when the
+// state directory is another user's or writable by other users without the sticky bit.
+// The store never reads or writes through such an entry and never repairs it; it refuses.
 var ErrUnsafe = errors.New("perfdata/local: unsafe store entry")
 
 // Root returns the store directory of a state directory.
@@ -63,8 +67,9 @@ type Options struct {
 	Now      func() time.Time
 	LockWait time.Duration
 
-	// fault, when set, is called before each effect ("append", "meta", "segment")
-	// and its error replaces the effect's result. Tests use it for full disk and slow I/O.
+	// fault, when set, is called before each effect ("append", "meta", "segment", and
+	// for the live marker "created", "live" and "rename") and its error replaces the
+	// effect's result. Tests use it for full disk, slow I/O and platform behavior.
 	fault func(op string) error
 }
 
@@ -78,7 +83,7 @@ func (o Options) now() time.Time {
 // Store is one writer handle. It is safe for use by one goroutine at a time per
 // method; Write serializes internally. Several Stores (and processes) may share a tree.
 type Store struct {
-	root    string
+	t       *tree
 	policy  perfdata.Policy
 	profile perfdata.Profile
 	opts    Options
@@ -87,7 +92,7 @@ type Store struct {
 	liveMu   sync.Mutex
 	lockF    *os.File
 	liveF    *os.File
-	livePath string
+	liveName string
 	aliases  *aliasFile
 	aliasSt  fileStamp
 }
@@ -155,25 +160,28 @@ func Open(stateDir string, c perfdata.Consent, policy perfdata.Policy, o Options
 	if o.Build.Version == "" {
 		o.Build = perfdata.Build{Version: "dev", OS: "unknown", Arch: "unknown"}
 	}
-	s := &Store{root: Root(stateDir), policy: policy, profile: c.Profile, opts: o}
+	s := &Store{policy: policy, profile: c.Profile, opts: o}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
-	for _, d := range []string{s.root, filepath.Join(s.root, "segments"), filepath.Join(s.root, "run"), filepath.Join(s.root, "distributions")} {
-		if err := ensureDir(d); err != nil {
-			return nil, err
-		}
-	}
-	if err := checkTree(s.root); err != nil {
+	t, err := openTree(stateDir, true)
+	if err != nil {
 		return nil, err
 	}
-	lf, err := openRegular(filepath.Join(s.root, "lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	s.t = t
+	if err := checkTree(t); err != nil {
+		t.close()
+		return nil, err
+	}
+	lf, err := openRegular(t.top, "lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
+		t.close()
 		return nil, err
 	}
 	s.lockF = lf
 	if err := s.openLive(); err != nil {
 		lf.Close()
+		t.close()
 		return nil, err
 	}
 	err = s.locked(func() error {
@@ -214,13 +222,14 @@ func (s *Store) Close() error {
 	if s.liveF != nil {
 		unlockFile(s.liveF)
 		s.liveF.Close()
-		_ = os.Remove(s.livePath)
+		_ = s.t.run.Remove(s.liveName)
 		s.liveF = nil
 	}
 	s.liveMu.Unlock()
 	if s.lockF != nil {
 		s.lockF.Close()
 		s.lockF = nil
+		s.t.close()
 	}
 	return nil
 }
@@ -245,10 +254,10 @@ func (s *Store) fault(op string) error {
 }
 
 func (s *Store) locked(fn func() error) error {
-	if err := lockFile(s.lockF, s.opts.LockWait); err != nil {
+	if err := lockStore(s.t.top, s.lockF, s.opts.LockWait); err != nil {
 		return err
 	}
-	defer unlockFile(s.lockF)
+	defer unlockStore(s.t.top, s.lockF)
 	return fn()
 }
 
@@ -258,32 +267,52 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
+// liveMarkers is liveMarkersSupported; tests turn it off to run the other platforms' path.
+var liveMarkers = liveMarkersSupported
+
 func (s *Store) openLive() error {
+	id := randomHex(8)
+	live := "live-" + id + ".lock"
+	if !liveMarkers {
+		// No lock is held on a marker here, so there is nothing to wait for before
+		// naming it; and an open file cannot be renamed on every platform (Windows
+		// refuses it), so the marker is created under its final name.
+		f, err := s.t.run.OpenFile(live, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+		if err != nil {
+			return err
+		}
+		s.liveF, s.liveName = f, live
+		return nil
+	}
 	// The marker is created under a name the reaper ignores, locked, and only then
 	// renamed to its live- name, so no reaper ever sees a live marker its writer has not
 	// locked yet.
-	id := randomHex(8)
-	born := filepath.Join(s.root, "run", "born-"+id+".lock")
-	f, err := os.OpenFile(born, os.O_CREATE|os.O_EXCL|os.O_RDWR|noFollow, 0o600)
+	born := "born-" + id + ".lock"
+	f, err := s.t.run.OpenFile(born, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
 	fail := func(err error) error {
 		f.Close()
-		_ = os.Remove(born)
+		_ = s.t.run.Remove(born)
 		return err
 	}
-	if liveMarkersSupported && !tryLockFile(f) {
+	if err := s.fault("created"); err != nil {
+		return fail(err)
+	}
+	if !tryLockFile(f) {
 		return fail(errors.New("perfdata/local: cannot hold live marker"))
 	}
 	if err := s.fault("live"); err != nil {
 		return fail(err)
 	}
-	s.livePath = filepath.Join(s.root, "run", "live-"+id+".lock")
-	if err := os.Rename(born, s.livePath); err != nil {
+	if err := s.fault("rename"); err != nil {
 		return fail(err)
 	}
-	s.liveF = f
+	if err := s.t.run.Rename(born, live); err != nil {
+		return fail(err)
+	}
+	s.liveF, s.liveName = f, live
 	return nil
 }
 
@@ -293,26 +322,26 @@ const bornStale = time.Minute
 
 // reapLive counts and removes live markers whose writer is gone (unclean ends).
 func (s *Store) reapLive(cov *coverageFile) {
-	if !liveMarkersSupported {
+	if !liveMarkers {
 		return
 	}
-	ents, _ := os.ReadDir(filepath.Join(s.root, "run"))
+	ents, _ := readDir(s.t.run)
 	for _, e := range ents {
-		p := filepath.Join(s.root, "run", e.Name())
-		if strings.HasPrefix(e.Name(), "born-") {
-			s.reapBorn(p)
+		name := e.Name()
+		if strings.HasPrefix(name, "born-") {
+			s.reapBorn(name)
 			continue
 		}
-		if p == s.livePath || !strings.HasPrefix(e.Name(), "live-") {
+		if name == s.liveName || !strings.HasPrefix(name, "live-") {
 			continue
 		}
-		f, err := openRegular(p, os.O_RDWR, 0)
+		f, err := openRegular(s.t.run, name, os.O_RDWR, 0)
 		if err != nil {
 			continue
 		}
 		if tryLockFile(f) {
 			cov.Unclean++
-			_ = os.Remove(p)
+			_ = s.t.run.Remove(name)
 			unlockFile(f)
 		}
 		f.Close()
@@ -321,70 +350,70 @@ func (s *Store) reapLive(cov *coverageFile) {
 
 // reapBorn removes a born- marker whose writer died before naming it live. It is not an
 // unclean end: that writer never wrote.
-func (s *Store) reapBorn(p string) {
-	fi, err := os.Lstat(p)
+func (s *Store) reapBorn(name string) {
+	fi, err := s.t.run.Lstat(name)
 	if err != nil || !fi.Mode().IsRegular() || time.Since(fi.ModTime()) < bornStale {
 		return
 	}
-	f, err := openRegular(p, os.O_RDWR, 0)
+	f, err := openRegular(s.t.run, name, os.O_RDWR, 0)
 	if err != nil {
 		return
 	}
 	defer f.Close()
 	if tryLockFile(f) {
-		_ = os.Remove(p)
+		_ = s.t.run.Remove(name)
 		unlockFile(f)
 	}
 }
 
-// writeAtomic replaces path with data via a same-directory temporary file and rename.
-func (s *Store) writeAtomic(path string, data []byte) error {
+// writeAtomic replaces name under r with data via a temporary file in the same
+// directory (created exclusively, so never through a link) and a rename.
+func (s *Store) writeAtomic(r *os.Root, name string, data []byte) error {
 	if err := s.fault("meta"); err != nil {
 		return err
 	}
-	tmp := path + ".tmp-" + randomHex(6)
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|noFollow, 0o600)
+	tmp := name + ".tmp-" + randomHex(6)
+	f, err := r.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
 		f.Close()
-		os.Remove(tmp)
+		r.Remove(tmp)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		r.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	if err := r.Rename(tmp, name); err != nil {
+		r.Remove(tmp)
 		return err
 	}
 	return nil
 }
 
-func (s *Store) writeJSON(name string, v any) error {
+func (s *Store) writeJSON(r *os.Root, name string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	return s.writeAtomic(filepath.Join(s.root, name), append(b, '\n'))
+	return s.writeAtomic(r, name, append(b, '\n'))
 }
 
 func (s *Store) ensureManifest() error {
-	p := filepath.Join(s.root, "manifest.json")
-	if _, ok := regularSize(p); ok {
+	if _, ok := regularSize(s.t.top, "manifest.json"); ok {
 		return nil
 	}
-	return s.writeJSON("manifest.json", manifest{
+	return s.writeJSON(s.t.top, "manifest.json", manifest{
 		Schema: StoreSchema, EventSchema: perfdata.EventSchema, BatchSchema: perfdata.BatchSchema,
 		RollupSchema: perfdata.RollupSchema, SegmentFormat: "jsonl-canonical",
 	})
 }
 
-func readCoverage(root string) (coverageFile, bool) {
+func readCoverage(t *tree) (coverageFile, bool) {
 	cov := coverageFile{Schema: coverageSchema}
-	b, err := readRegular(filepath.Join(root, "coverage.json"))
+	b, err := readRegular(t.top, "coverage.json")
 	if errors.Is(err, os.ErrNotExist) {
 		return cov, true
 	}
@@ -424,15 +453,17 @@ func (c coverageFile) sourcesValid() bool {
 }
 
 func (s *Store) loadCoverage() coverageFile {
-	cov, _ := readCoverage(s.root)
+	cov, _ := readCoverage(s.t)
 	return cov
 }
 
-func (s *Store) saveCoverage(cov coverageFile) error { return s.writeJSON("coverage.json", cov) }
+func (s *Store) saveCoverage(cov coverageFile) error {
+	return s.writeJSON(s.t.top, "coverage.json", cov)
+}
 
-func readSource(root string) (sourceFile, error) {
+func readSource(t *tree) (sourceFile, error) {
 	var sf sourceFile
-	b, err := readRegular(filepath.Join(root, "source.json"))
+	b, err := readRegular(t.top, "source.json")
 	if err != nil {
 		return sf, err
 	}
@@ -448,7 +479,7 @@ func readSource(root string) (sourceFile, error) {
 // behind the segments is moved forward so a sequence is never reused.
 func (s *Store) loadSource(cov *coverageFile, scan bool) (sourceFile, error) {
 	now := perfdata.FormatTime(s.opts.now())
-	sf, err := readSource(s.root)
+	sf, err := readSource(s.t)
 	changed := false
 	if err != nil {
 		src, epoch, maxSeq, _, found := s.scanIdentity()
@@ -478,7 +509,7 @@ func (s *Store) loadSource(cov *coverageFile, scan bool) (sourceFile, error) {
 		}
 	}
 	if sf.AliasesMinted {
-		if _, ok := regularSize(s.aliasPath(sf.Epoch)); !ok {
+		if _, ok := regularSize(s.t.top, aliasName(sf.Epoch)); !ok {
 			sf.Epoch++
 			sf.AliasesMinted = false
 			cov.EpochResets = append(cov.EpochResets, perfdata.EpochReset{Epoch: sf.Epoch, Reason: perfdata.ResetAliasMapLost, At: now})
@@ -486,7 +517,7 @@ func (s *Store) loadSource(cov *coverageFile, scan bool) (sourceFile, error) {
 		}
 	}
 	if changed {
-		if err := s.writeJSON("source.json", sf); err != nil {
+		if err := s.writeJSON(s.t.top, "source.json", sf); err != nil {
 			return sf, err
 		}
 		if !scan {
@@ -527,8 +558,8 @@ func parseSegment(name string) (segment, bool) {
 	return segment{name: name, firstSeq: seq, epoch: uint32(ep), day: d[:4] + "-" + d[4:6] + "-" + d[6:]}, true
 }
 
-func listSegments(root string) []segment {
-	ents, _ := os.ReadDir(filepath.Join(root, "segments"))
+func listSegments(t *tree) []segment {
+	ents, _ := readDir(t.segs)
 	var out []segment
 	for _, e := range ents {
 		if sg, ok := parseSegment(e.Name()); ok {
@@ -542,9 +573,9 @@ func listSegments(root string) []segment {
 // scanIdentity finds the source, newest epoch and highest sequence in the segments,
 // and the first sequence of the newest segment holding a decodable record.
 func (s *Store) scanIdentity() (src string, epoch uint32, maxSeq, first uint64, found bool) {
-	segs := listSegments(s.root)
+	segs := listSegments(s.t)
 	for i := len(segs) - 1; i >= 0; i-- {
-		b, err := readRegular(filepath.Join(s.root, "segments", segs[i].name))
+		b, err := readRegular(s.t.segs, segs[i].name)
 		if err != nil {
 			continue
 		}
@@ -578,12 +609,12 @@ type segTail struct {
 // newestTail reads only the end of the newest segment. Appends are serialized by the
 // store lock, so the highest sequence of a segment sits in its last complete lines.
 func (s *Store) newestTail(src string) segTail {
-	segs := listSegments(s.root)
+	segs := listSegments(s.t)
 	if len(segs) == 0 {
 		return segTail{}
 	}
 	t := segTail{seg: segs[len(segs)-1], ok: true}
-	f, err := openRegular(filepath.Join(s.root, "segments", t.seg.name), os.O_RDONLY, 0)
+	f, err := openRegular(s.t.segs, t.seg.name, os.O_RDONLY, 0)
 	if err != nil {
 		t.partial = true // unreadable: never append to it
 		return t
@@ -612,7 +643,7 @@ func (s *Store) newestTail(src string) segTail {
 		}
 	}
 	if !decoded && n < t.size {
-		if b, err := readRegular(f.Name()); err == nil {
+		if b, err := io.ReadAll(io.NewSectionReader(f, 0, t.size)); err == nil {
 			for _, line := range bytes.Split(b, []byte("\n")) {
 				if e, err := perfdata.DecodeEvent(line); err == nil && e.Source == src {
 					t.lastSeq = max(t.lastSeq, e.Seq)
@@ -639,13 +670,11 @@ type fileStamp struct {
 	mod   time.Time
 }
 
-func (s *Store) aliasPath(epoch uint32) string {
-	return filepath.Join(s.root, fmt.Sprintf("aliases-e%d.json", epoch))
-}
+func aliasName(epoch uint32) string { return fmt.Sprintf("aliases-e%d.json", epoch) }
 
 func (s *Store) loadAliases(epoch uint32) (*aliasFile, error) {
-	p := s.aliasPath(epoch)
-	st, err := os.Lstat(p)
+	p := aliasName(epoch)
+	st, err := s.t.top.Lstat(p)
 	if errors.Is(err, os.ErrNotExist) {
 		af := &aliasFile{Schema: aliasSchema, Epoch: epoch, Secret: randomHex(32), Map: map[string]string{}}
 		s.aliases, s.aliasSt = af, fileStamp{epoch: epoch}
@@ -655,13 +684,13 @@ func (s *Store) loadAliases(epoch uint32) (*aliasFile, error) {
 		return nil, err
 	}
 	if !st.Mode().IsRegular() {
-		return nil, unsafeEntry(p, "not a regular file")
+		return nil, unsafeEntry(display(s.t.top, p), "not a regular file")
 	}
 	stamp := fileStamp{epoch: epoch, size: st.Size(), mod: st.ModTime()}
 	if s.aliases != nil && s.aliasSt == stamp && !s.aliases.dirty {
 		return s.aliases, nil
 	}
-	b, err := readRegular(p)
+	b, err := readRegular(s.t.top, p)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +754,7 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 			}
 			return &cov
 		}
-		sf, err := readSource(s.root)
+		sf, err := readSource(s.t)
 		if err != nil {
 			if sf, err = s.loadSource(loadCov(), false); err != nil {
 				return err
@@ -736,7 +765,7 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 			withCtx = withCtx || d.Ctx != nil
 		}
 		if withCtx && sf.AliasesMinted {
-			if _, ok := regularSize(s.aliasPath(sf.Epoch)); !ok {
+			if _, ok := regularSize(s.t.top, aliasName(sf.Epoch)); !ok {
 				if sf, err = s.loadSource(loadCov(), false); err != nil { // alias map lost: new epoch
 					return err
 				}
@@ -783,12 +812,12 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 		}
 		reserve := false
 		if af != nil && af.dirty {
-			if err := s.writeJSON(filepath.Base(s.aliasPath(sf.Epoch)), af); err != nil {
+			if err := s.writeJSON(s.t.top, aliasName(sf.Epoch), af); err != nil {
 				s.aliases = nil
 				return err
 			}
 			af.dirty = false
-			if st, err := os.Lstat(s.aliasPath(sf.Epoch)); err == nil {
+			if st, err := s.t.top.Lstat(aliasName(sf.Epoch)); err == nil {
 				s.aliasSt = fileStamp{epoch: sf.Epoch, size: st.Size(), mod: st.ModTime()}
 			}
 			sf.AliasesMinted, reserve = true, true
@@ -808,7 +837,7 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 			seg, reserve = segmentName(first, sf.Epoch, day), true
 		}
 		if reserve {
-			if err := s.writeJSON("source.json", sf); err != nil {
+			if err := s.writeJSON(s.t.top, "source.json", sf); err != nil {
 				return err // nothing reserved, nothing written
 			}
 		}
@@ -832,7 +861,7 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 // lost reserves and records a range whose append failed, so it is never reused. Both
 // writes may fail too (a full disk); the gap then stays unexplained.
 func (s *Store) lost(c *coverageFile, sf sourceFile, first uint64, err error) error {
-	_ = s.writeJSON("source.json", sf)
+	_ = s.writeJSON(s.t.top, "source.json", sf)
 	c.Lost = append(c.Lost, lostRange{Source: sf.Source, Range: perfdata.SeqRange{From: first, To: sf.LastSeq, Reason: perfdata.GapWriteFailed}})
 	_ = s.saveCoverage(*c)
 	return err
@@ -847,7 +876,7 @@ func (s *Store) append(name string, lines [][]byte) error {
 		buf.Write(l)
 		buf.WriteByte('\n')
 	}
-	f, err := openRegular(filepath.Join(s.root, "segments", name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := openRegular(s.t.segs, name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -861,8 +890,8 @@ func (s *Store) append(name string, lines [][]byte) error {
 
 func (s *Store) totalBytes() int64 {
 	var n int64
-	for _, sg := range listSegments(s.root) {
-		if size, ok := regularSize(filepath.Join(s.root, "segments", sg.name)); ok {
+	for _, sg := range listSegments(s.t) {
+		if size, ok := regularSize(s.t.segs, sg.name); ok {
 			n += size
 		}
 	}

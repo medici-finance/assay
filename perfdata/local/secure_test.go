@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/perfdata"
@@ -109,7 +110,7 @@ func TestStoreRefusesLinks(t *testing.T) {
 		ost := mustOpen(t, other, testPolicy(t, ""), Options{Now: fixed(day1)})
 		mustWrite(t, ost, 3, day1)
 		ost.Close()
-		target := filepath.Join(Root(other), "segments", listSegments(Root(other))[0].name)
+		target := filepath.Join(Root(other), "segments", segmentsOf(t, other)[0].name)
 		symlinkOrSkip(t, target, filepath.Join(Root(dir), "segments", segmentName(3, 1, "2026-10-01")))
 		rr, err := Read(dir)
 		if err != nil {
@@ -131,6 +132,53 @@ func TestStoreRefusesLinks(t *testing.T) {
 			t.Fatalf("want ErrUnsafe for a linked root, got %v", err)
 		}
 	})
+}
+
+// regression: replacing the store directory after Open redirected later writes, alias
+// map included, into the replacement.
+func TestStoreBoundAtOpen(t *testing.T) {
+	for _, sub := range []string{"", "segments"} {
+		name := filepath.Join("store", sub)
+		t.Run("replacing "+name+" after Open never redirects a write", func(t *testing.T) {
+			dir := t.TempDir()
+			st := mustOpen(t, dir, testPolicy(t, ""), Options{Now: fixed(day1)})
+			defer st.Close()
+			mustWrite(t, st, 1, day1)
+			other := t.TempDir()
+			openOnce(t, other)
+			before := snapshot(t, Root(other))
+			moved := filepath.Join(t.TempDir(), "moved")
+			if err := os.Rename(filepath.Join(Root(dir), sub), moved); err != nil {
+				t.Fatal(err)
+			}
+			symlinkOrSkip(t, filepath.Join(Root(other), sub), filepath.Join(Root(dir), sub))
+			if _, err := st.Write([]perfdata.Draft{toolDraft(day1, 2)}, false); err != nil {
+				t.Fatalf("the store must keep writing to the directory it opened: %v", err)
+			}
+			if after := snapshot(t, Root(other)); after != before {
+				t.Fatalf("a write followed the replaced %s into another directory", name)
+			}
+			if n := strings.Count(snapshot(t, moved), `"schema":"`+perfdata.EventSchema+`"`); n != 2 {
+				t.Fatalf("both events must land in the directory that was opened, found %d", n)
+			}
+		})
+	}
+}
+
+// segmentsOf lists the parsed segment files of the store under dir, by path.
+func segmentsOf(t *testing.T, dir string) []segment {
+	t.Helper()
+	ents, err := os.ReadDir(filepath.Join(Root(dir), "segments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []segment
+	for _, e := range ents {
+		if sg, ok := parseSegment(e.Name()); ok {
+			out = append(out, sg)
+		}
+	}
+	return out
 }
 
 // snapshot is the content of a file, or a listing of a directory, as one string.
