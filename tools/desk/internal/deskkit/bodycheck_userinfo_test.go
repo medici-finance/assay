@@ -21,7 +21,7 @@ func TestBodyCheckURLUserinfo(t *testing.T) {
 	refused := map[string]string{
 		"remote userinfo": "https://fixture-user:" + uiRepoPw + "@github.com/example-org/project.git",
 		"oauth2 user":     "git push https://oauth2:" + uiPw + "@gitlab.example.com/o/r.git main",
-		"ssh scheme":      "ssh://deploy:" + uiPw + "@git.example.com/o/r",
+		"ssh scheme":      "ssh://deploy:" + uiPw + "@github.com/o/r",
 		"ftp scheme":      "fetch ftp://anon:" + uiPw + "@ftp.example.com/pub",
 		"db dsn":          "postgres://app:" + uiPw + "@127.0.0.1:5432/app",
 		"numeric pw":      "https://user:" + "4815" + "1623" + "@example.com/x",
