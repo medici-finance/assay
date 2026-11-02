@@ -112,9 +112,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (2):** desk-containers/26 → already-merged-unflipped (merged PR #3001, Brief: trailer; flip held: desk-containers/brief-26: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desk-containers/README.md: decision-gate hold (lifecycle-v1 §4.5): desk-containers/26 is gate: human and this change moves it to implemented (it was todo at the base), but no decision issue is recorded (frontmatter decision-issue: is absent) — no decision issue at all is a refusal, not a pass; file the brief's decision issue, record its number in decision-issue:, and record the ruling once given. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), desktools-v2/73 → already-merged-unflipped (merged PR #4102, Brief: trailer; flip held: desktools-v2/brief-73: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desktools-v2/README.md: decision-gate hold (lifecycle-v1 §4.5): desktools-v2/73 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #4070 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #4070, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.). Fix: the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — clear the problem the hold names: cite the approved design-decision record in the brief's `design:` (lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile then writes the row. Do not re-dispatch it.
 
-_Next-up: 17 of 44 eligible — 27 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 18 of 46 eligible — 28 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (11), statusgen (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 28 brief(s) across 3 stream(s) — top: desktools-v2. By stream: desktools-v2 (14), desk-tools (11), statusgen (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -124,6 +124,8 @@ _Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. 
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8500 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6500 |
+| milestone-support | 04 — Add negotiated brief schema and prefixed authoring [exec:strong] | 2 | 6000 |
+| milestone-support | 03 — Load and validate versioned milestone records [exec:strong] | 2 | 5500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3500 |
 | statusgen | 28 — Separate frozen historical notices from actionable lint findings [exec:strong] | 1 | 3000 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2500 |
@@ -131,7 +133,6 @@ _Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. 
 | statusgen | 27 — Reject newly introduced actionable lint notices on changed briefs [exec:strong] | 1 | 2500 |
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
-| desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2000 |
 | statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2000 |
 | statusgen | 36 — Content-bound witness schema v2: the reader and the one digest owner [exec:strong] | 1 | 2000 |
 | forge-gitlab | 18 — Rotate the board-push credential in one process — the new value never reaches a shell, a transcript, a log or argv [exec:strong] | 5 | 1010 |
@@ -140,13 +141,13 @@ _Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (9 for the desk · 46 for the driver · 57 for workers · 18 for an operator · 41 runner-pending — of 175 total; 4 could-not-check)
+## Awaiting verification / review (9 for the desk · 47 for the driver · 57 for workers · 18 for an operator · 42 runner-pending — of 177 total; 4 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-### Awaiting human gate (46)
+### Awaiting human gate (47)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -158,6 +159,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 01 [exec:strong] | implemented | 9500 | 15 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | desk-containers | 02 | implemented | 9000 | 16 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#900 | — | — |
 | desktools-v2 | 63 [exec:strong] | implemented | 8000 | 14 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
+| milestone-support | 02 [exec:strong] | implemented | 7000 | 12 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#5048 | — | — |
 | forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 6000 | 8 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 5000 | 6 | — | driver | resolve the recorded blocker before sign-off: hold (check-definition), cite medici-finance/assay#1281 | — | — |
@@ -282,7 +284,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 | desktools-v2 | 72 | implemented | 1000 | 0 | — | operator | environment blocker, cite #4327 | — | — |
 
-### Runner-pending (41)
+### Runner-pending (42)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -323,6 +325,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 27 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
 | desk-tools | 15 | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | desk-tools | 23 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
+| desktools-go-git | 08 | implemented | 1000 | 0 | — | verify runner | none | — | — |
 | desktools-v2 | 05 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | desktools-v2 | 12 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ e4d474af8bca (claude-opus-5-5) | — |
 | desktools-v2 | 14 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
@@ -374,6 +377,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | harness-portability | — | — |
 | iso-9001 | — | — |
 | measured-status | — | — |
+| milestone-support | — | — |
 | statusgen | — | — |
 | verification-handoff | — | — |
 | windows-port | — | — |
@@ -654,7 +658,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 05 migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) — implemented (wave 4)
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — verified (wave 4)
-- 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
+- 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — implemented (wave 5)
 
 ### desktools-v2 (60 open)
 
@@ -850,7 +854,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### milestone-support (13 open)
 
-- 02 Negotiate reader capabilities through one shared contract — todo (wave 1)
+- 02 Negotiate reader capabilities through one shared contract — implemented (wave 1)
 - 03 Load and validate versioned milestone records — todo (wave 2)
 - 04 Add negotiated brief schema and prefixed authoring — todo (wave 2)
 - 05 Build the combined milestone and brief dependency graph — todo (wave 3)
