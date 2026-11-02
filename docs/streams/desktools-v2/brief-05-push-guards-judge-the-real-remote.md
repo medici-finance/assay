@@ -291,6 +291,48 @@ RISK-VALUE: DERIVED — base = "refs/remotes/" + remoteName + "/main" @ tools/de
 
 VERIFY: PASS — all ten Verify rows passed by hand at c6ac80b45107, with every required PASS line and both mutation totals observed.
 
+### Batch re-witness — 2026-11-02 non-implementer verifier (claude-opus-5-5, strong) @ 2c6c21336a60
+
+A fresh non-implementer pass at the pinned main commit 2c6c21336a606e64df057294f21177f16db7b9f8, admitted by the dispatcher check (attestation line under the witness table below), renews this brief's witness for the batch re-witness (medici-finance/assay#2026). The home was detached at that commit and clean before and after the run. Toolchain go1.27.2 darwin/arm64, statusgen v1.0.69. No row is classed check:ci, so the container lane was not needed; every row ran on the host. Earlier blocks above were neither copied nor relied on.
+
+Each row was first executed by hand, then by the writing witness below. Hand observations (output lines quoted from the logs):
+
+- Row 1: exit 0, zero bytes of output.
+- Row 2: the first hand execution exited 1 because the deskwt package hit the row's own 10-minute test timeout (the timeout alarm fired as TestMaintenanceDeadline began; no individual test FAIL line) while the host load average was about 80 on 16 cores. The deskpushguard and deskpr packages were ok in that execution. The witness execution of the unchanged command, after the load fell, exited 0 with all three packages ok; that execution is the row's record.
+- Row 3: exit 0; "--- PASS: TestForeignCommitCheckUsesThePushedRemotesMain (10.39s)" plus one subtest PASS line; no SKIP or FAIL.
+- Row 4: exit 0; "--- PASS: TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin (3.29s)" plus one subtest PASS line; no SKIP or FAIL.
+- Row 5: exit 0; both "--- PASS: TestPushTransportRefusesInsteadOfRewrittenToSSH (0.55s)" and "--- PASS: TestPushTransportRefusesPushInsteadOfRewrittenToSSH (0.54s)", each with one subtest PASS line.
+- Row 6: exit 0, zero bytes of output.
+- Row 7: exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT." and "Totals: 7 caught, 0 NOT CAUGHT, 0 could-not-mutate." The seven caught mutants are the run() default, the foreign-commit base, its empty-name branch, the register-id base, its empty-name branch, the sibling candidates and the liveness probe.
+- Row 8: exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT." and "Totals: 30 caught, 0 NOT CAUGHT, 0 could-not-mutate."
+- Row 9: exit 0; "--- PASS: TestGitLabPushRewriteRefusesSSH (0.97s)" and eight subtest PASS lines (insteadOf and pushInsteadOf, each with self_managed, non22_port, nested_subgroup, oauth2_user).
+- Row 10: exit 0; "--- PASS: TestPrePushCmdForwardsArgs (0.00s)".
+
+The witness decides rows 3, 4, 5, 9 and 10 on exit status only; the required PASS lines for those rows are the hand observations above. `statusgen verifyrun --check` on this brief after the witness: 10 pass, 0 fail, 0 could-not-run/missing (of 10 Verify rows).
+
+Risk-bearing value. Risk metadata is present with all four answers no; the enumeration was still done over the non-test files the brief's Deliverables name (the three deskpushguard files, the deskkit push-transport file, the deskpr and deskwt exec files), read at 2c6c21336a60. Literals: Remote = "origin" at tools/desk/cmd/deskpr/exec.go:115 and tools/desk/cmd/deskwt/exec.go:40; resolver argv "remote get-url --push --all origin" at tools/desk/cmd/deskpr/exec.go:120 and tools/desk/cmd/deskwt/exec.go:45; base "refs/remotes/" + remoteName + "/main" at tools/desk/cmd/deskpushguard/foreigncommit.go:225; remoteName := "" at tools/desk/cmd/deskpushguard/main.go:111; the leading-dash refusal at tools/desk/cmd/deskpushguard/registerid.go:221; len(pushurls) < 2 at tools/desk/internal/deskkit/pushtransport.go:371; suffixes ".insteadof" / ".pushinsteadof" at tools/desk/internal/deskkit/pushtransport.go:392 and :394. All sit in client-side advisory guards and are reversible by an edit and a reinstall; the first three rank highest because a wrong value silently reinstates #884 or #1201.
+
+RISK-VALUE: DERIVED — Remote = "origin" @ tools/desk/cmd/deskpr/exec.go:115 (and tools/desk/cmd/deskwt/exec.go:40) — the gate must judge the remote the caller itself pushes to; deskpr resolves its single push destination from origin's push URL (tools/desk/cmd/deskpr/push.go:172, refusing any count other than one at :178) and deskwt's transport fix writes remote.origin.pushurl (tools/desk/cmd/deskwt/transport.go:278 and :306), so origin is the real target for these two callers, unlike the pre-push hook, whose target git supplies as its first argument.
+RISK-VALUE: DERIVED — resolver argv "remote get-url --push --all origin" @ tools/desk/cmd/deskpr/exec.go:120 (and tools/desk/cmd/deskwt/exec.go:45) — git-remote(1): get-url expands insteadOf and pushInsteadOf, --push selects push URLs, --all lists every URL a push fans out to, and it reads local config only; that is the effective-URL question the brief's facts state.
+RISK-VALUE: DERIVED — base = "refs/remotes/" + remoteName + "/main" @ tools/desk/cmd/deskpushguard/foreigncommit.go:225 — gitrevisions(7) resolves refs/heads/ ahead of refs/remotes/ for a bare name/main, so only the fully qualified spelling is immune to a stray local branch of that name; the brief keeps that spelling and substitutes the remote name only.
+
+**VERIFY: PASS** — all ten Verify rows passed at 2c6c21336a60 (witness 10 of 10; every required PASS line and both mutation totals observed by hand).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | pass exit=0 | sha256:448789f5d721 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | pass exit=0 | sha256:18b0bb047f98 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | pass exit=0 | sha256:847afec12fbf | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | pass exit=0 | sha256:1937610df97b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | pass exit=0 | sha256:79e04ed7a13e | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | pass exit=0 | sha256:0f7e317d1ba0 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGitLabPushRewriteRefusesSSH$' -v` | pass exit=0 | sha256:2bd6c923a41b | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskpushguard/ -run '^TestPrePushCmdForwardsArgs$' -v` | pass exit=0 | sha256:216c48ee246a | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5252 run=f01383d1949cf8a319ec1fae1b2d4a5237f77ec7f300a2c3e8b3d1c89774894b source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/desktools-v2/brief-05-push-guards-judge-the-real-remote.md model=claude-opus-5-5 tier=strong
+
+
 ## Review
 Gate: model (all four risk answers no — both changes make an existing guard evaluate the real
 remote; no capability is removed and no credential is touched). The security-relevant nature is
