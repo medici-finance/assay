@@ -927,7 +927,7 @@ class ImagesTest(unittest.TestCase):
         suite = HERE.parents[1] / 'images/verify-runner/source_proof_test.py'
         result = subprocess.run([sys.executable, '-I', str(suite)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('Ran 2 tests', result.stderr)
+        self.assertIn('Ran 3 tests', result.stderr)
 
 
     def setUp(self):
