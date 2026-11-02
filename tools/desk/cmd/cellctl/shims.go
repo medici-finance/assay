@@ -137,6 +137,16 @@ func hotfixShimBody(c *Cell, ghWrapDir string, ch deskkit.HotfixShimChoice) stri
 	return body[:nl+1] + prelude + body[nl+1:]
 }
 
+// shimBody is the ordinary shim for one desk verb, exec'ing bin.
+func shimBody(c *Cell, ghWrapDir, bin string) string {
+	return strings.NewReplacer(
+		"__CELL__", c.Name,
+		"__CELL_HOME__", c.Home,
+		"__GH_WRAP__", ghWrapDir,
+		"__BIN__", bin,
+	).Replace(shimTemplate)
+}
+
 // genShims writes one wrapper per installed desk verb into <cell>/shim, the cell's `gh` wrapper
 // into <cell>/shim-gh, plus a symlink per binary in <cell>/bin so the cell's own deskd/deskcli
 // come first on PATH too. Substitution is by plain replacement, never sed: a bin path or CELL
@@ -166,12 +176,7 @@ func (c *Cell) genShims() {
 			if serr != nil || st.IsDir() || st.Mode()&0o111 == 0 {
 				continue
 			}
-			body := strings.NewReplacer(
-				"__CELL__", c.Name,
-				"__CELL_HOME__", c.Home,
-				"__GH_WRAP__", ghWrapDir,
-				"__BIN__", p,
-			).Replace(shimTemplate)
+			body := shimBody(c, ghWrapDir, p)
 			if ch := c.hotfixShimChoice(en.Name(), bin, os.Stderr); ch.Hotfix {
 				body = hotfixShimBody(c, ghWrapDir, ch)
 			}
