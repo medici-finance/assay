@@ -185,11 +185,14 @@ its head, brief 10, is the App's ground truth (installed? correctly scoped?), wh
 provisioning question a human may have to answer before 11 and 12 can proceed.
 Brief 10's gate is ruled on #1245: option 2 in the brief, provision then confirm (the ratified
 relay letters it "option A"). The ruling adds `pull_requests: write` to the existing workflow App,
-and a human merges the workflow-only PR. Its scope and the sole-holder invariant are recorded in
-[`workflow-app-scope.md`](workflow-app-scope.md). Row 10 stays `blocked` until the ruling is
-recorded in the DR (status and `decided-by`; `lifecycle-v1.md` §4.4 and the DR's own flip rule)
-and Verify rows 5 and 6 pass against the live installations (the ratified relay on #1245).
-Briefs 11 and 12 stay `blocked` on their own gates.
+and for the first cutover a human merges the workflow-only PR. Its scope and the sole-holder
+invariant are recorded in [`workflow-app-scope.md`](workflow-app-scope.md). Row 10 stays `blocked`
+until two holds clear. The first is that the ruling is recorded in the DR (status and
+`decided-by`, per the DR's own flip rule). It cleared 2026-11-02: the DR is accepted, and its
+`ruling:` is on #1245. The second is that Verify rows 5 and 6 pass against the live
+installations, after the App owner adds `pull_requests: write` (the ratified relay on #1245:
+"The row moves out of `blocked` once those checks pass"). The second hold is still open.
+Briefs 11 and 12 stay `blocked` on their own gates and their `depends:` chain.
 
 **The vitals delta rides a third, independent chain off 07.** Briefs 13-15 do not change the
 original head — they hang off the built machinery, and they are unrelated to the workflow-landing
