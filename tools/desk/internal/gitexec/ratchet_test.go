@@ -339,7 +339,7 @@ func TestRatchetCountModeNeedsNoPin(t *testing.T) {
 // (argument injection) and CVE-2025-21614 (denial of service).
 var goGitFloor = [3]int{5, 13, 0}
 
-var goGitRequire = regexp.MustCompile(`^\s*(?:require\s+)?github\.com/go-git/go-git/v5\s+v(\d+)\.(\d+)\.(\d+)\S*`)
+var goGitRequire = regexp.MustCompile(`^\s*(?:require\s+)?github\.com/go-git/go-git/v5\s+v(\d+)\.(\d+)\.(\d+)(\S*)`)
 
 // goGitFloorHeld reads a go.mod body and reports the go-git/v5 version it requires and
 // whether that version is at or above the floor. A replace of go-git, or no go-git
@@ -368,9 +368,15 @@ func goGitFloorHeld(gomod string) (string, bool, error) {
 		for i := range v {
 			v[i], _ = strconv.Atoi(m[i+1])
 		}
-		found = fmt.Sprintf("v%d.%d.%d", v[0], v[1], v[2])
+		found = fmt.Sprintf("v%d.%d.%d%s", v[0], v[1], v[2], m[4])
 		held = v[0] > goGitFloor[0] ||
 			(v[0] == goGitFloor[0] && (v[1] > goGitFloor[1] || (v[1] == goGitFloor[1] && v[2] >= goGitFloor[2])))
+		// Semver orders a prerelease below its release, so v5.13.0-rc1 (or a
+		// pseudo-version based on it) does not carry the floor release's fixes. A
+		// prerelease of a LATER release (v5.13.1-0.2025...) is still above v5.13.0.
+		if v == goGitFloor && strings.HasPrefix(m[4], "-") {
+			held = false
+		}
 	}
 	if found == "" {
 		return "", false, fmt.Errorf("no github.com/go-git/go-git/v5 requirement")
@@ -411,6 +417,9 @@ func TestGoGitFloorRefusesBelow(t *testing.T) {
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.12.0\n)\n", false, false},
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.4.2 // indirect\n)\n", false, false},
 		{"require github.com/go-git/go-git/v5 v5.13.0\n", true, false},
+		{"require github.com/go-git/go-git/v5 v5.13.0-rc1\n", false, false},
+		{"require github.com/go-git/go-git/v5 v5.13.0-0.20241201000000-abcdef123456\n", false, false},
+		{"require github.com/go-git/go-git/v5 v5.13.1-0.20250101000000-abcdef123456\n", true, false},
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.19.3\n)\n", true, false},
 		{"require (\n\tgithub.com/go-git/go-git/v5 v5.19.3\n)\nreplace github.com/go-git/go-git/v5 => ../fork\n", false, true},
 		{"require (\n\tgithub.com/go-git/go-billy/v5 v5.9.2\n)\n", false, true},
