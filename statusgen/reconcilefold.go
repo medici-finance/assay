@@ -135,7 +135,7 @@ type foldTree struct {
 // once for the whole run, as autoFlipModel does.
 func treeFoldInputs(root string, streams []*Stream, data []reconcileFoldData) foldTree {
 	t := foldTree{witnesses: map[string]WitnessInfo{}, rulings: map[string]string{}, undecided: map[string]string{}}
-	coverage := evaluateCoverage(root, streams, coverageOptions{})
+	coverage := evaluateCoverage(root, streams, coverageOptionsFor(root, nil))
 	for _, d := range data {
 		w, ok, why := foldVerified(d, coverage)
 		switch {

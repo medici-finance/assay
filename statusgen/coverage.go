@@ -109,6 +109,26 @@ type coverageOptions struct {
 	// Dependencies maps a brief id to its work-input dependency manifest.
 	// Production passes none today, so every claim takes the conservative scope.
 	Dependencies map[string]dependencyManifest
+	// readSets observes each witness's recorded read set, its introduction
+	// and the go compile-input floor (build-less-brittle/15). Set by
+	// coverageOptionsFor only when read sets are honoured
+	// (readSetRecorderShipped); nil judges as a build with no recorder: no
+	// observation runs and no read-set token is judged, so a row with one
+	// comes out as the same row without it (never a narrower scope).
+	readSets *readSetSource
+}
+
+// coverageOptionsFor is the one source of coverage options for the callers
+// that decide a brief (autoflip, the reconcile fold, --coverage): the parsed
+// pattern files plus, once a recorder ships (readSetRecorderShipped), the
+// read-set, introduction and go-floor observations. No caller builds an
+// empty options value itself.
+func coverageOptionsFor(root string, patterns map[string]patternDoc) coverageOptions {
+	opts := coverageOptions{Patterns: patterns}
+	if honourReadSets {
+		opts.readSets = newReadSetSource(root)
+	}
+	return opts
 }
 
 // evaluateCoverage computes the coverage verdict for every brief across
@@ -148,6 +168,9 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 				continue
 			}
 			obs, texts := observeBriefTexts(root, path, s.Name+"/"+num, bf)
+			if opts.readSets != nil {
+				opts.readSets.observeBrief(path, obs.BriefRel, obs.Witnesses)
+			}
 			observed[obs.ID] = observedBrief{Path: path, Obs: obs, WitnessTexts: texts}
 			in.Briefs = append(in.Briefs, obs)
 		}
@@ -169,6 +192,12 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 			}
 			in.Dependencies[id] = evaluation.DependencyManifest{Complete: m.Complete, Deps: deps}
 		}
+	}
+	if opts.readSets != nil {
+		in.ReadSetsRecorded = true
+		in.GoFloors = opts.readSets
+		in.ReadSetDeadline = opts.readSets.overdue
+		defer opts.readSets.close()
 	}
 	var repo evaluation.Repo
 	if root != "" {
@@ -356,7 +385,7 @@ func runCoverage(root string, jsonMode bool) int {
 		return coverageExitCouldNot
 	}
 	patterns, _ := loadPatternDocs(root)
-	cov, observed := evaluateCoverageObserved(root, streams, coverageOptions{Patterns: patterns})
+	cov, observed := evaluateCoverageObserved(root, streams, coverageOptionsFor(root, patterns))
 
 	ids := make([]string, 0, len(cov))
 	for id := range cov {
