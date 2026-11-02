@@ -166,7 +166,7 @@ is a strict superset of the one before it; no field is removed or changed in mea
 | `brief-v1` | this document's fields (§3.1, §3.2) | `schemas/brief-v1.json` | v0.9.0 (the earliest published release) |
 | `brief-v2` | the hierarchical `brief:` id `<cell>:<repo>:<stream>:<NN>`, `version:`, and the identity/graph keys `id`, `supersedes`, `gates`, `feathers`, `verify` | `schemas/brief-v2.json` | v1.0.0 |
 | `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | v1.0.50 |
-| `brief-v4` | the colon-only prefixed definition id `<cell>:<repo>:<stream>:b-<NN>`, required `version` and `id`, `requires-milestones` (§3.7), typed brief references with optional `@<version>` selectors (§3.8), and the `reader-requirements` envelope | `schemas/brief-v4.json` | unreleased (negotiated; §3.7–3.8) |
+| `brief-v4` | the colon-only prefixed definition id `<cell>:<repo>:<stream>:b-<NN>`, required `version` and `id`, `requires-milestones` (§3.7), typed brief references with optional `@<version>` selectors (§3.8), and a REQUIRED top-level `reader-requirements` envelope that requires `syntax` support for `brief-v4` | `schemas/brief-v4.json` | unreleased (negotiated; §3.7–3.8) |
 
 A `statusgen` release declares the versions it reads, and the first release of each, in
 machine-readable form: `statusgen --version --json` prints
@@ -798,5 +798,9 @@ adds `readerCapabilities`; the existing fields and bare version output are uncha
 and its own are assessed `supported` for the record's `reader-requirements`; zero supplied
 advertisements, an unreadable or malformed one, or any `unsupported` reader refuses before
 any write. `--schema legacy` is the explicitly selected supported legacy mode, and a
-`--requires-milestone` without `brief-v4` is refused, never silently dropped. Milestone-start
+`--requires-milestone` without `brief-v4` is refused, never silently dropped. The `reader-requirements` envelope is required on every `brief-v4` record: a
+reader that checks only envelopes treats a record without one as carrying no requirement
+and would read it as a legacy brief. The parser refuses a `brief-v4` record whose envelope
+is absent, or whose requirements a reader advertising only `brief-v1`..`brief-v3` would
+assess as supported. Milestone-start
 keys stay off legacy schemas. The §3.7–3.8 rollout holds on operational use remain in force.
