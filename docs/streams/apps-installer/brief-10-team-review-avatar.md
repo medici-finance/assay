@@ -25,7 +25,7 @@ consumers:
   - "tools/desk/cmd/deskavatar/main.go: fixed-here"
   - "docs/desk-tools/deskavatar.md: fixed-here"
   - "docs/streams/apps-installer/design.md: fixed-here"
-version: 1
+version: 2
 id: a45786fd-217c-4794-9e43-1391edcd0d95
 ---
 
@@ -74,12 +74,12 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go build -o /tmp/deskavatar ./cmd/deskavatar && rm -rf /tmp/av10 && /tmp/deskavatar --org example --tier team --out /tmp/av10 --sizes 200 && ls /tmp/av10 \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | 6 | check +flow |
+| 1 | `cd tools/desk && d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && go build -o "$d/deskavatar" ./cmd/deskavatar && "$d/deskavatar" --org example --tier team --out "$d/av" --sizes 200 && ls "$d/av" \| grep -cE -e '^example-read\.' -e '^example-act\.' -e '^example-review\.'` | 6 | check +flow |
 | 2 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeam.*Proof' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeam.*Proof'` | ≥ 1 — the three-tile team set passes the 20 px proof for org logins `example`, `acme`, `a`, and a 39-character login | check |
 | 3 | `cd tools/desk && go test ./internal/avatar/ -run 'TestTeamReadActUnchanged' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamReadActUnchanged'` | 1 — the read and act SVG bytes for org `example` equal golden files captured from origin/main before this change | check +dereference |
 | 4 | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofRejects' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestProofRejects'` | ≥ 1 — a forced review tile identical to read (same glyph and colours) makes `Generate` return a `*ProofError` naming both Apps | check +mutation |
-| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1` | exit 0 — the whole package, including the updated `TestGenerateTeamNamesAndCount` and `TestGolden20px` against the regenerated team strip | check |
-| 6 | `statusgen --root . --consumers --brief apps-installer/10` | exit 0 — routing claims corroborated against the diff | check |
+| 5 | `cd tools/desk && go test ./internal/avatar/ -count=1 && test "$(od -An -j19 -N1 -tu1 internal/avatar/testdata/golden/team-20px.png \| tr -d ' ')" = 60` | exit 0 — the whole package, including the updated `TestGenerateTeamNamesAndCount` and `TestGolden20px` against the regenerated team strip | check |
+| 6 | `o=$(statusgen --root . --consumers --brief apps-installer/10 --delivery f52610f4e036de6b8e01e16c6f7aadde168b5b25 --base 59246f0b7a95c5ac600ef209d6731fd378125e6e 2>&1) && printf '%s\n' "$o" \| grep -q '^summary: 4 corroborated, 0 disproved, 0 unchecked'` | exit 0 — routing claims corroborated against the diff | check |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item -->
