@@ -1,0 +1,96 @@
+{
+  "schema": "brief-v4-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/04-mutate.py",
+  "cases": [
+    {
+      "name": "v4-version-required",
+      "target": "statusgen/briefv4.go",
+      "old": "if _, ok := data[\"version\"]; !ok {",
+      "new": "if _, ok := data[\"version\"]; false && !ok {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-alias-read-once",
+      "target": "statusgen/briefv4.go",
+      "old": "if prev, dup := firstSpelling[key]; dup {",
+      "new": "if prev, dup := firstSpelling[key]; false && dup {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-revision-never-substituted",
+      "target": "statusgen/briefv4.go",
+      "old": "if uint64(entry.Version) != sel.Ref.Revision {",
+      "new": "if false && uint64(entry.Version) != sel.Ref.Revision {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "v4-milestone-gate-held",
+      "target": "statusgen/briefv4.go",
+      "old": "out = append(out, GraphEdge{Ref: m, Type: \"behavioural-gate\"",
+      "new": "_ = append(out, GraphEdge{Ref: m, Type: \"behavioural-gate\"",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "legacy-refuses-requires-milestones",
+      "target": "statusgen/brieffile.go",
+      "old": "if _, ok := data[\"requires-milestones\"]; ok {",
+      "new": "if _, ok := data[\"requires-milestones\"]; false && ok {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "legacy-refuses-prefixed-id",
+      "target": "statusgen/brieffile.go",
+      "old": "if isBriefV2Family(bf.Schema) && strings.HasPrefix(lastColonSegment(bf.Brief), \"b-\") {",
+      "new": "if false && isBriefV2Family(bf.Schema) && strings.HasPrefix(lastColonSegment(bf.Brief), \"b-\") {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestPrefixedBriefSchema"
+    },
+    {
+      "name": "newbrief-zero-readers-refuse",
+      "target": "statusgen/newbriefv4.go",
+      "old": "if len(capFiles) == 0 {",
+      "new": "if false && len(capFiles) == 0 {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNewbriefCaps"
+    },
+    {
+      "name": "newbrief-every-reader-supported",
+      "target": "statusgen/newbriefv4.go",
+      "old": "Advertisement: adv}); r.State != readercaps.Supported {",
+      "new": "Advertisement: adv}); false && r.State != readercaps.Supported {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNewbriefCaps"
+    },
+    {
+      "name": "newbrief-never-drops-gate",
+      "target": "statusgen/newbriefv4.go",
+      "old": "if len(milestones) > 0 {",
+      "new": "if false && len(milestones) > 0 {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNewbriefCaps"
+    },
+    {
+      "name": "newbrief-inverse-follows-dep-schema",
+      "target": "statusgen/newbriefv4.go",
+      "old": "return stream + \":b-\" + num",
+      "new": "return stream + \"/\" + num",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestNewbriefCaps"
+    }
+  ]
+}

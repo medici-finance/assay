@@ -719,6 +719,36 @@ func TestNewBriefV2SchemaIDAndWave(t *testing.T) {
 	}
 }
 
+// TestNewBriefV2InverseEdgeLintsClean: the unblocks: entry newbrief writes
+// into a brief-v2 dependency is the <stream>/<NN> form the brief-v2 contract
+// accepts there, never the new brief's hierarchical brief: id (which --lint
+// refuses as "not a <stream>/<NN> id").
+// regression: milestone-support/04
+func TestNewBriefV2InverseEdgeLintsClean(t *testing.T) {
+	root := nbTreeV2(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, _, se := nbRun(t,
+		"--root", root, "--stream", "demo2", "--title", "Second with dep", "--depends", "demo2/01",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("want exit 0, got %d; stderr=%s", code, se)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "streams", "demo2", "brief-01-first.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `unblocks: ["demo2/02"]`) {
+		t.Errorf("the brief-v2 dependency's inverse edge must be demo2/02:\n%s", raw)
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems, _ := checkBriefFiles(streams, streams); len(problems) != 0 {
+		t.Errorf("the generated v2 graph must lint clean; problems:\n%s", strings.Join(problems, "\n"))
+	}
+}
+
 // TestNewBriefV2RowNoHandEdit is the fail-first
 // regression for issue #1280's item 2: the row newbrief writes into a
 // `board: generated` stream must be byte-identical to what

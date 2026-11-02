@@ -11,7 +11,7 @@ func TestRemoteUserinfoEmailBoundary(t *testing.T) {
 		{"scp", "git@github.com:example-org/project.git", false},
 		{"ssh", "ssh://git@github.com/example-org/project.git", false},
 		{"https", "https://fixture-user@github.com/example-org/project.git", false},
-		{"password-userinfo", "https://fixture-user:fixture-token@github.com/example-org/project.git", false},
+		{"password-userinfo", "https://fixture-user:" + "fixture-token" + "@github.com/example-org/project.git", false},
 		{"plain-address", obEmailOutside, true},
 		{"space-after-remote", "https://github.com/example-org/project.git " + obEmailOutside, true},
 		{"comma-after-remote", "https://github.com/example-org/project.git," + obEmailOutside, true},

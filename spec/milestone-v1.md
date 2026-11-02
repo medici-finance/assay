@@ -291,11 +291,12 @@ A conforming milestone implementation MUST demonstrate at least:
 This is a specification draft, not a rollout. First implement explicit capability
 advertisement/refusal for milestone records, stream opt-in and brief start requirements.
 Old readers currently tolerate unknown keys in several places: inserting new YAML keys
-alone is unsafe because they may silently ignore a required gate. A future negotiated
-brief schema (provisionally `brief-v4`, subject to allocation at implementation) MUST
-be used for `requires-milestones`; supported brief schemas remain v1–v3 today.
-No release support entry or live declaration is added by this draft; the record
-loader below adds `schemas/milestone-v1.json` for the record frontmatter only.
+alone is unsafe because they may silently ignore a required gate. The negotiated
+brief schema `brief-v4` (allocated in brief §3.5 with `schemas/brief-v4.json`; no
+supporting release yet) MUST be used for `requires-milestones`, and a conforming linter
+refuses the key on brief-v1–v3. No release support entry or live declaration is added
+by this draft; the record loader below adds `schemas/milestone-v1.json` for the record
+frontmatter only.
 
 The implementation handoff MUST enumerate parser/schema/lint, graph resolution, eligibility,
 Next-up/dispatch, board/deskboard, historian/export and trace report consumers. Unsupported

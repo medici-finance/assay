@@ -315,6 +315,10 @@ const SurfaceBody = "body"
 //     PER-VALUE: one encrypted field elsewhere in the document does not license a
 //     plaintext field beside it. A bare `sops:` metadata mapping is not itself a
 //     secret and is no longer refused (#585).
+//   - a URL whose userinfo carries a password (scheme://user:<password>@host, or
+//     scheme://:<password>@host with no username) that is not a placeholder (see
+//     urlUserinfoAt). It runs after every other arm, so a surface that
+//     trips another arm too keeps that arm's rule id.
 //   - any run of ≥32 base64ish chars, EXCEPT:
 //   - an exactly-40- or exactly-64-char lowercase-hex run (git SHAs — the
 //     methodology quotes them constantly; refusing them would brick every verdict).
@@ -657,7 +661,73 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"complete sops envelope) are exempt", surface, len(run)),
 			&ScanFinding{Rule: "high-entropy-run", Line: lineOf(raw, loc[0]), Length: len(run), Shape: redactShape(run)})
 	}
+	// The url-userinfo arm runs LAST, so every refusal above keeps its rule id and message;
+	// it only refuses a surface that would otherwise have returned nil. A password carried
+	// in a URL's userinfo (scheme://user:<password>@host) is a credential at any length,
+	// so the 32-char run threshold above is no measure of it. See urlUserinfoAt.
+	if at, pw := urlUserinfoAt(s); at >= 0 {
+		return RefusedFinding("refused: "+surface+" contains a URL carrying a password in its "+
+			"userinfo (scheme://user:<password>@host) — remove the credential; a placeholder "+
+			"such as <token>, ${VAR}, $VAR or *** is accepted",
+			&ScanFinding{Rule: "url-userinfo", Line: lineOf(s, at), Length: len(pw),
+				Shape: "userinfo-password (" + runClass(pw) + ")"})
+	}
 	return nil
+}
+
+// urlUserinfoAt returns the byte offset and password of the first URL in s whose userinfo
+// carries a real password, or -1 when there is none. It matches with reURLUserinfo, the
+// same pattern Scrub redacts with (scrub.go), so the two agree on what a userinfo
+// credential is. A match is NOT a credential when:
+//   - either half holds '/', '?', '#', '[' or ']': RFC 3986 never allows these in
+//     userinfo, so the match ran past a URL's authority (a host:port followed by a path or
+//     query that has an '@' in it) or is not a URL at all (a regular expression);
+//   - its password half is a placeholder: isPlaceholderSecretValue's forms (<token>,
+//     ${VAR}, {{…}}, REDACTED, PLACEHOLDER), a shell expansion ($VAR, $(cmd)), a mask or
+//     elision made only of '*', '.' and '…', or the bare word naming the field
+//     (password, passwd, pass, pw, secret, token: the user:password@host of a usage
+//     line);
+//   - is source concatenation: an optional backslash, a quote, then '+' (the shape a Go or
+//     shell string building the URL around a variable leaves behind).
+//
+// The username half is never judged, and may be empty: a password-only userinfo
+// (scheme://:<password>@host) is judged on its password like any other. A username-only
+// form (user@host, x-access-token@…) has no ':' before the '@' and does not match at all.
+func urlUserinfoAt(s string) (int, string) {
+	for _, m := range reURLUserinfo.FindAllStringSubmatchIndex(s, -1) {
+		user, pw := s[m[2]:m[3]], s[m[4]:m[5]]
+		if strings.ContainsAny(user+pw, "/?#[]") || isUserinfoPlaceholder(pw) {
+			continue
+		}
+		return m[0], pw
+	}
+	return -1, ""
+}
+
+// reShellExpansion is a whole-value shell expansion: $NAME, $1, ${…} or $(…).
+var reShellExpansion = regexp.MustCompile(`^\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]|\{[^}]*\}|\([^)]*\))$`)
+
+// isUserinfoPlaceholder reports whether a userinfo password is a stand-in rather than a
+// secret (see urlUserinfoAt for the forms).
+func isUserinfoPlaceholder(pw string) bool {
+	if isPlaceholderSecretValue(pw) {
+		return true
+	}
+	if reShellExpansion.MatchString(pw) {
+		return true
+	}
+	if strings.Trim(pw, "*.…") == "" {
+		return true
+	}
+	switch strings.ToLower(pw) {
+	case "password", "passwd", "pass", "pw", "secret", "token":
+		return true
+	}
+	rest := strings.TrimPrefix(pw, `\`)
+	if rest != "" && strings.ContainsRune(`"'`+"`", rune(rest[0])) {
+		return strings.HasPrefix(strings.TrimLeft(rest[1:], " "), "+")
+	}
+	return false
 }
 
 // isGitSHA reports whether run is an exactly-40 (sha1) or exactly-64 (sha256)
