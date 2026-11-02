@@ -1,2 +1,0 @@
-### Changed
-- The workflow-App landing design record is now accepted. Its `ruling:` links the driver's ruling on its decision issue: one workflow App is the sole holder of `workflows: write`, and for the first cutover a human merges the workflow-only PR. The record's first citing brief, the workflow App wiring check, stays `blocked` until its live permission checks pass, as the ratified relay requires. The two later briefs stay `blocked` on their dependency chain.
