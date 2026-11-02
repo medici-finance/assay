@@ -1,0 +1,2 @@
+### Fixed
+- The Verify table of the in-process push migration brief now holds only offline, deterministic rows that fail on the pre-delivery tree: named, anchored push, force-rejection and reachability tests each asserted by their own pass line under an explicit timeout, a source check that the push call sites use `gitcore.Push`, and a git-spawn count that exits non-zero unless it falls from 166 to 165 across the delivering commit.
