@@ -1,8 +1,15 @@
 # docker compose definition for the five desks (desk-containers/05).
 #
 # One `docker compose run <desk-name>` gives the same interactive session, work volume and
-# credential surface as `containers/desk-run.sh <desk-name>` (docs/docker.md). It implements the
-# runtime credential contract in containers/secrets.md section 4.2 and invents nothing beyond it.
+# credential surface as `containers/desk-run.sh <desk-name>` (docs/docker.md). It follows the
+# runtime credential contract in containers/secrets.md section 4.2: the App PEM mounted read-only
+# at /run/secrets/assay/app.pem, the model environment from an env-file.
+#
+# The PEM secrets carry no uid, gid or mode. Outside swarm, Compose bind-mounts a file secret
+# read-only and ignores those three keys (it warns that they are not supported), so the file
+# inside the container keeps the host file's owner and mode. On a Linux host, make each PEM
+# readable by the container's `desk` user (UID 999), for example owner or group 999 at 0400 or
+# 0440, and never world-readable. Docker Desktop's file sharing handles this for you.
 #
 # Run one desk (interactive, removed on exit):
 #   docker compose -f containers/compose.yaml run --rm worker-desk
@@ -19,6 +26,9 @@
 #   ASSAY_DESK_ENV_FILE      the model env-file (default: $XDG_CONFIG_HOME/assay/desk.env)
 #   ASSAY_DESK_PEM_FILE_DIR  directory holding one <desk-name>.pem per desk
 #                            (default: $XDG_CONFIG_HOME/assay, itself defaulting to $HOME/.config)
+# An override set but empty is used as given, not replaced by the default, so Compose refuses
+# it (env-file not found, or no PEM at the bind source) rather than starting a desk on a file
+# you did not name.
 name: assay-desks
 
 x-desk-common: &desk-common
@@ -27,7 +37,7 @@ x-desk-common: &desk-common
   # The model variables of containers/secrets.md section 3, supplied at runtime from the operator's
   # env-file. Keep that file to model settings: it reaches every desk started on its default path.
   env_file:
-    - ${ASSAY_DESK_ENV_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay/desk.env}
+    - ${ASSAY_DESK_ENV_FILE-${XDG_CONFIG_HOME:-${HOME}/.config}/assay/desk.env}
 
 services:
   intake-desk:
@@ -36,9 +46,6 @@ services:
     secrets:
       - source: intake-desk-pem
         target: /run/secrets/assay/app.pem
-        uid: "999"
-        gid: "999"
-        mode: 0400
     volumes:
       - intake-desk-work:/work
 
@@ -48,9 +55,6 @@ services:
     secrets:
       - source: worker-desk-pem
         target: /run/secrets/assay/app.pem
-        uid: "999"
-        gid: "999"
-        mode: 0400
     volumes:
       - worker-desk-work:/work
 
@@ -60,9 +64,6 @@ services:
     secrets:
       - source: pr-review-desk-pem
         target: /run/secrets/assay/app.pem
-        uid: "999"
-        gid: "999"
-        mode: 0400
     volumes:
       - pr-review-desk-work:/work
 
@@ -72,9 +73,6 @@ services:
     secrets:
       - source: verify-desk-pem
         target: /run/secrets/assay/app.pem
-        uid: "999"
-        gid: "999"
-        mode: 0400
     volumes:
       - verify-desk-work:/work
 
@@ -84,25 +82,23 @@ services:
     secrets:
       - source: the-desk-pem
         target: /run/secrets/assay/app.pem
-        uid: "999"
-        gid: "999"
-        mode: 0400
     volumes:
       - the-desk-work:/work
 
 # One App PEM per desk, each its own host file (docs/docker.md: the implementer, reviewer and
-# verifier must never share a key). Supplied by the operator, never committed.
+# verifier must never share a key). Supplied by the operator, never committed. Mounted as the
+# host file is (see the header): its owner and mode on the host decide whether UID 999 can read it.
 secrets:
   intake-desk-pem:
-    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/intake-desk.pem
+    file: ${ASSAY_DESK_PEM_FILE_DIR-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/intake-desk.pem
   worker-desk-pem:
-    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/worker-desk.pem
+    file: ${ASSAY_DESK_PEM_FILE_DIR-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/worker-desk.pem
   pr-review-desk-pem:
-    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/pr-review-desk.pem
+    file: ${ASSAY_DESK_PEM_FILE_DIR-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/pr-review-desk.pem
   verify-desk-pem:
-    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/verify-desk.pem
+    file: ${ASSAY_DESK_PEM_FILE_DIR-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/verify-desk.pem
   the-desk-pem:
-    file: ${ASSAY_DESK_PEM_FILE_DIR:-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/the-desk.pem
+    file: ${ASSAY_DESK_PEM_FILE_DIR-${XDG_CONFIG_HOME:-${HOME}/.config}/assay}/the-desk.pem
 
 # Named exactly as desk-run.sh names them, so a desk started by either surface sees the same /work.
 # One volume per desk, never shared across desks.

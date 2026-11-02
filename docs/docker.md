@@ -347,17 +347,23 @@ Each service is named exactly by its desk (`intake-desk`, `worker-desk`, `pr-rev
   `desk-run.sh` uses, so a desk started by either surface sees the same files. No volume is
   shared across desks.
 - **App PEM.** A top-level `secrets:` entry per desk binds a host file to
-  `/run/secrets/assay/app.pem`, read-only, owned by the container's `desk` user (UID/GID 999)
-  with mode `0400`. Each desk has its own entry and its own file, never one key for all five
-  (see the prerequisites above). The files default to `~/.config/assay/<desk-name>.pem`, the
-  same per-desk defaults as the launcher; set `ASSAY_DESK_PEM_FILE_DIR` to read them from
-  another directory.
+  `/run/secrets/assay/app.pem`, read-only. Each desk has its own entry and its own file, never
+  one key for all five (see the prerequisites above). The files default to
+  `~/.config/assay/<desk-name>.pem`, the same per-desk defaults as the launcher; set
+  `ASSAY_DESK_PEM_FILE_DIR` to read them from another directory. Outside swarm, compose
+  mounts a file secret as a bind mount, so the file inside the container keeps the host
+  file's owner and mode; compose's `uid`, `gid` and `mode` keys do not apply to it, and
+  `compose.yaml` sets none. Docker Desktop shares your files with the container for you. On
+  a Linux host, as with the launcher, the container's `desk` user (UID 999) must be able to
+  read the host file: for example, make UID 999 its owner at `0400`, or its group at `0440`.
+  Never make it world-readable.
 - **Model environment.** `env_file` reads `~/.config/assay/desk.env`, the launcher's default;
   set `ASSAY_DESK_ENV_FILE` to use another file.
   [`containers/desk.env.example`](../containers/desk.env.example) lists every model variable
   from [`containers/secrets.md`](../containers/secrets.md) section 3 with placeholder values
   only. Copy it, fill in your copy, and keep it out of version control.
-- **Version.** `DESK_VERSION=vX.Y.Z` (or `sha-<short>`) pins every desk to one tag.
+- **Version.** `DESK_VERSION=vX.Y.Z` (or `sha-<short>`) pins every desk to one tag. Unset, it
+  is `latest`, as with the launcher; for a standing stack, pin it.
 
 No credential value is in `compose.yaml` or in the example env-file, and none is in an image
 layer.
@@ -374,9 +380,25 @@ docker compose -f containers/compose.yaml attach worker-desk
 DESK_VERSION=vX.Y.Z docker compose -f containers/compose.yaml run --rm worker-desk
 ```
 
-Three things differ from `desk-run.sh`. Compose does not repeat the launcher's own checks
-(exit codes 2, 3 and 4 above); a missing model env-file is reported by compose itself, and
-the container's start-up check still refuses a desk with no usable PEM or model credential.
+Compose does not repeat the launcher's own checks (exit codes 2, 3 and 4 above). What
+refuses instead:
+
+- A missing model env-file is refused by compose itself.
+- A missing PEM file is refused by the engine before the container starts: compose warns
+  that the secret file does not exist, and the bind mount fails.
+- A PEM that exists but that UID 999 cannot read, or a missing model credential, is refused
+  by the container's start-up check.
+- An `ASSAY_DESK_ENV_FILE` or `ASSAY_DESK_PEM_FILE_DIR` you set but leave empty is used as
+  given, not replaced by the default: an empty env-file path is refused by compose, and an
+  empty PEM directory points each desk at `/<desk-name>.pem`, which the engine refuses when
+  that file is not there. Neither falls back to the default file.
+
+There is no single-instance guard like the launcher's "already exists" refusal (exit
+code 4). Two `docker compose run` sessions of one desk, or a compose session beside a
+`desk-run.sh` container (compose names its containers differently, so the launcher's check
+by container name does not see them), run that desk twice at once on the same
+`<desk-name>-work` volume with the same App key. Start each desk once.
+
 `docker compose config` resolves the file without checking that each PEM file exists, so it
 is not a credential check. And it prints the resolved env-file values in clear, so do not
 paste its output anywhere if your env-file holds a real credential.
