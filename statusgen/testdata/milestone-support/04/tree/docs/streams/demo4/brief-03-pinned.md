@@ -12,6 +12,12 @@ issues: []
 schema: brief-v4
 version: 1
 id: 00000000-0000-4000-8000-000000000403
+reader-requirements:
+  schema: reader-requirements-v1
+  required:
+    - operation: syntax
+      schemas: [brief-v4]
+      semantics: []
 authored: 2026-11-01 fixture
 sources: ["fixture: pinned"]
 ---

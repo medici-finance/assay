@@ -101,6 +101,13 @@ The following named tests, fixtures and executable mutation maps are FUTURE DELI
 | 1 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrefixedBriefSchema$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestPrefixedBriefSchema ' "$milestone_verify_out")` | exit 0 and named PASS; actual parser validates new IDs/requirements, legacy forms still read once, duplicate UUID aliases and unavailable versions refuse/are unknown; a parser accepting a mismatched schema fails. |
 | 2 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestNewbriefCaps$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestNewbriefCaps ' "$milestone_verify_out")` | exit 0 and named PASS; actual generator writes a valid ID/schema pair and inverses; unsupported required consumers cause zero writes, even with a tolerant YAML decoder. |
 
+## Notes
+
+Known limits recorded by the milestone-support/04 follow-up. Neither is fixed there, because each needs a design choice rather than a few obviously-correct lines.
+
+- A scoped lint run (`--changed` / `--scope`) builds the per-root brief snapshot only from the validated stream subset, while a full run builds it from every stream. A `depends:` reference pinned with `@<version>` to a brief in a stream outside the subset therefore binds as unknown (a notice plus a could-not-check gate) in a scoped run, where a full run would resolve it. Resolving it would need the snapshot to be built from the full stream set, which changes what a scoped run reads.
+- A brief-v2 record that omits `version:` is read as revision 1, so an `@1` pin binds it as though revision 1 had been authored. Only brief-v1 (no `version:` field at all) is treated as carrying no authored revision. Telling an authored revision from a defaulted one would need the parser to record whether the field was present.
+
 ## Pre-mortem and dispatch check
 
 The wrong-but-plausible delivery is the mutation named in each Verify row. Each must turn that production-path test red and the correct implementation green; do not merely inspect imports or fixture shapes. The facts, public-module visibility, derived waves, risk answers, sizing and consumers were inspected while authoring. API adequacy, completeness of the reader census and human acceptance remain review obligations. Implementation pickup rechecks them.
