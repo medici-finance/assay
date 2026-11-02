@@ -37,6 +37,8 @@ var (
 	obPhoneIntl     = "+1 415 " + "555 0100"
 	obPhoneAmbig    = "415-555" + "-0100"
 	obRulingClaim   = "I (" + "Alex" + ") have decided to ship it."
+	obUserinfoPw    = "fixture-" + "pw"
+	obUserinfoURL   = "https://fixture-user:" + obUserinfoPw + "@github.com/example-org/project.git"
 )
 
 // obRoster plants the configured roster every row reads: the three listed targets and the
@@ -204,6 +206,8 @@ func obRows() []obRow {
 		{id: "C5c", text: "https://github.com/example-org/project.git," + obEmailOutside, target: obPrivate, refuse: true, rule: RulePIIEmail, span: obEmailOutside, surfaces: obAll},
 		{id: "C5d", text: "https://github.com/example-org/project.git?contact=" + obEmailOutside, target: obPrivate, refuse: true, rule: RulePIIEmail, span: obEmailOutside, surfaces: obAll},
 		{id: "C5e", text: "ssh://git@github.com/example-org/project.git", target: obPrivate, surfaces: obAll},
+		// A password in URL userinfo is a credential (secret.url-userinfo), on any target.
+		{id: "C5f", text: "clone " + obUserinfoURL, target: obPrivate, refuse: true, rule: RuleSecretPrefix + "url-userinfo", span: obUserinfoPw, surfaces: obAll},
 		{id: "C6", text: "co-authored by " + obEmailNoReply, target: obPublic, surfaces: obAll},
 		{id: "C7", text: "call " + obPhoneIntl + " after hours", target: obPrivate, refuse: true, rule: RulePIIPhone, span: obPhoneIntl, surfaces: obAll},
 		{id: "C8", text: "ticket " + obPhoneAmbig + " is closed", target: obPublic, notice: RulePIIPhoneAmbiguous, surfaces: obAll},
