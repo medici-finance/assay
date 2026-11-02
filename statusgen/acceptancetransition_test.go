@@ -462,13 +462,16 @@ func TestSnapshotOriginFailures(t *testing.T) {
 			f.evidence(t, nil)
 			switch mode {
 			case "scp-ambiguous", "scp-double-at", "helper":
-				origin := "git:git@github.com:" + rlRepo + ".git"
+				origin := "git:git@github.com:example-org/example-repo.git"
 				if mode == "scp-double-at" {
 					// Reserved synthetic user identity; retain both at-signs and the real
 					// forge authority. Removing the guard still reaches the forbidden read.
-					origin = "git@example.invalid@github.com:" + rlRepo + ".git"
+					origin = "git@example.invalid@github.com:example-org/example-repo.git"
 				} else if mode == "helper" {
 					origin = "ext::https://github.com/" + rlRepo + ".git"
+				}
+				if !strings.HasSuffix(origin, rlRepo+".git") {
+					t.Fatal("synthetic remote must retain the approval fixture repository")
 				}
 				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", origin)
 				got, err := historyGit(f.root, "remote", "get-url", "origin").Output()
