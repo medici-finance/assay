@@ -2,8 +2,10 @@ package deskkit
 
 import (
 	"errors"
+	"math/rand"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The url-userinfo fixtures are built by concatenation, with a space on each side of every
@@ -28,6 +30,14 @@ func TestBodyCheckURLUserinfo(t *testing.T) {
 		"second url":      "see https://example.com/a and https://u:" + uiPw + "@example.com/b",
 		"later line":      "line one\nline two https://u:" + uiPw + "@example.com\n",
 		"empty username":  "redis://:" + uiPw + "@cache.example.com:6379/0",
+		// A URL nested in a longer one is judged on its own userinfo.
+		"nested in path":    "https://example.com:8443/redir/https://u:" + uiPw + "@example.org/r",
+		"nested in query":   "https://example.com:8443/cb?return=https://u:" + uiPw + "@example.org/r",
+		"nested in frag":    "https://example.com:8443/cb#https://u:" + uiPw + "@example.org/r",
+		"nested after port": "see https://example.com:8443/https://u:" + uiPw + "@example.org",
+		"nested twice":      "https://a.example:1/https://b.example:2/https://u:" + uiPw + "@example.org",
+		"nested no user":    "https://example.com:8443/cb?return=redis://:" + uiPw + "@cache.example.com",
+		"nested later line": "https://example.com:8443/ok\nhttps://example.com:8443/cb?next=https://u:" + uiPw + "@h\n",
 	}
 	for name, text := range refused {
 		err := BodyCheck([]byte(text))
@@ -78,6 +88,13 @@ func TestBodyCheckURLUserinfo(t *testing.T) {
 		"empty user, angle": "redis://:<password>@cache.example.com:6379/0",
 		"empty user, var":   "amqp://:${MQ_PW}@mq.example.com/vhost",
 		"empty user, mask":  "redis://:***@cache.example.com:6379",
+		// Nested URLs whose own userinfo is not a credential.
+		"nested placeholder": "https://example.com:8443/cb?return=https://u:<token>@example.org/r",
+		"nested mask":        "https://example.com:8443/cb?return=https://u:***@example.org/r",
+		"nested shell var":   "https://example.com:8443/redir/https://u:${URL_PW}@example.org/r",
+		"nested no password": "https://example.com:8443/cb?return=https://u@example.org/r",
+		"nested no at":       "https://example.com:8443/cb?return=https://example.org/r",
+		"nested path at":     "https://example.com:8443/cb?return=https://example.org/a:b/c@d",
 	}
 	for name, text := range clean {
 		if err := BodyCheck([]byte(text)); err != nil {
@@ -103,5 +120,72 @@ func TestBodyCheckUserinfoArmOrder(t *testing.T) {
 	}
 	if err != nil && !strings.Contains(err.Error(), "refused: title contains a URL") {
 		t.Errorf("refusal does not name its surface: %v", err)
+	}
+}
+
+// naiveUserinfoAt is the reference urlUserinfoAt is held to: after a skipped match it
+// resumes just after that match's "://", one "://" at a time.
+func naiveUserinfoAt(s string) (int, string) {
+	for pos := 0; pos < len(s); {
+		m := reURLUserinfo.FindStringSubmatchIndex(s[pos:])
+		if m == nil {
+			break
+		}
+		for i := range m {
+			m[i] += pos
+		}
+		user, pw := s[m[2]:m[3]], s[m[4]:m[5]]
+		if !strings.ContainsAny(user+pw, "/?#[]") && !isUserinfoPlaceholder(pw) {
+			return m[0], pw
+		}
+		pos = m[0] + len("://")
+	}
+	return -1, ""
+}
+
+// regression: url-userinfo arm
+// TestBodyCheckUserinfoResumeEquiv: the one-step resume after a skipped match reaches the
+// same verdict and offset as resuming at every "://" in turn, over random strings built from
+// the characters the pattern and its skip rules turn on.
+func TestBodyCheckUserinfoResumeEquiv(t *testing.T) {
+	pieces := []string{"://", "://", ":", "@", "/", "?", "#", "[", "]", "a", "bb", "8080",
+		" ", "\n", "***", "<t>", "${V}", "pw1", "-", "."}
+	rng := rand.New(rand.NewSource(1))
+	for i := 0; i < 20000; i++ {
+		var b strings.Builder
+		for n := rng.Intn(14); n >= 0; n-- {
+			b.WriteString(pieces[rng.Intn(len(pieces))])
+		}
+		in := b.String()
+		wantAt, wantPw := naiveUserinfoAt(in)
+		gotAt, gotPw := urlUserinfoAt(in)
+		if gotAt != wantAt || gotPw != wantPw {
+			t.Fatalf("urlUserinfoAt(%q) = (%d, %q), reference = (%d, %q)", in, gotAt, gotPw, wantAt, wantPw)
+		}
+	}
+}
+
+// regression: url-userinfo arm
+// TestBodyCheckUserinfoRepeatedColon: a long run of repeated "://a:" fragments, with and
+// without a closing '@', ends in time linear in its length.
+func TestBodyCheckUserinfoRepeatedColon(t *testing.T) {
+	frag := strings.Repeat("://a:", 60000)
+	for name, in := range map[string]string{
+		"no at":        "https" + frag,
+		"closing at":   "https" + frag + "@h",
+		"credential":   "https" + frag + "/https://u:" + uiPw + "@h",
+		"placeholder":  "https" + frag + "/https://u:***@h",
+		"many at":      "https" + strings.Repeat("://a:@", 60000),
+		"many slashes": "https" + strings.Repeat("://a:/", 60000) + "@",
+	} {
+		start := time.Now()
+		at, pw := urlUserinfoAt(in)
+		if d := time.Since(start); d > 10*time.Second {
+			t.Errorf("%s: urlUserinfoAt took %v on %d bytes", name, d, len(in))
+		}
+		wantCred := name == "credential"
+		if (at >= 0) != wantCred || (wantCred && pw != uiPw) {
+			t.Errorf("%s: urlUserinfoAt = (%d, %q), want credential=%v", name, at, pw, wantCred)
+		}
 	}
 }
