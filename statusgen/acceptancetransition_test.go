@@ -464,7 +464,9 @@ func TestSnapshotOriginFailures(t *testing.T) {
 			case "scp-ambiguous", "scp-double-at", "helper":
 				origin := "git:git@github.com:" + rlRepo + ".git"
 				if mode == "scp-double-at" {
-					origin = "git@github.com@github.com:" + rlRepo + ".git"
+					// Reserved synthetic user identity; retain both at-signs and the real
+					// forge authority. Removing the guard still reaches the forbidden read.
+					origin = "git@example.invalid@github.com:" + rlRepo + ".git"
 				} else if mode == "helper" {
 					origin = "ext::https://github.com/" + rlRepo + ".git"
 				}
