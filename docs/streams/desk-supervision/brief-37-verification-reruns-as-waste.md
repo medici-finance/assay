@@ -45,15 +45,15 @@ design-fit:
   weight: "+1 optional record key (attempts, 6 sub-keys, 2 closed reason sets), +1 read-only deskperf verb with 3 flags, +5 refusals (attempt shape), +~40 rule-text lines across verify-wake-v1.md, the verifier kit and the verify-desk skill; 0 new cost measures, 0 new perf fields or extensions, 0 new stores"
   why-add: "The attempt history exists only inside one verifier dispatch and is lost when it ends; the outcome record is the one durable per-dispatch record the verifier already writes, so attempts belong there. Considered instead: a perf-v4 dispatch-id extension (the issue's proposal), rejected because perf rows are local-only, pruned after 7 days and need a privacy review per new extension, so a re-run count kept there would vanish within a week; and new cost fields on the record, rejected by the driver because perf already measures that cost."
 consumers:
-  - "tools/desk/internal/deskkit/verifyoutcomejoin.go (joinTopKeys, ParseJoinInput, checkRunMetadataShape gain `attempts`): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/verifyattempts.go (planned — attempt type, validator, per-brief rollup): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskevidence/outcomerecord.go (the writer accepts and lands `attempts` unchanged): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskperf/ (new read-only verb `reruns`; the package header's read-scope sentence is amended): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/verifyoutcomes_additive_test.go (the additive-key pin gains `attempts`): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/verifyloop/outcomerecords_test.go (a record carrying `attempts` still plans and wakes as before): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskdispatch/references/verifier-prompt.md (fixed-shape attempt reporting): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "plugins/assay/skills/verify-desk/SKILL.md (the dispatch step passes the brief as the perf work ref; the outcome-record step carries `attempts`): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "docs/streams/desk-supervision/verify-wake-v1.md and docs/streams/verify-outcomes/README.md (field table and register description): follow-up desk-supervision/37 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/internal/deskkit/verifyoutcomejoin.go (joinTopKeys, ParseJoinInput, checkRunMetadataShape gain `attempts`): fixed-here"
+  - "tools/desk/internal/deskkit/verifyattempts.go (attempt type, validator, per-brief rollup): fixed-here"
+  - "tools/desk/cmd/deskevidence/outcomerecord.go (the writer accepts and lands `attempts` unchanged): fixed-here"
+  - "tools/desk/cmd/deskperf/ (new read-only verb `reruns`; the package header's read-scope sentence is amended): fixed-here"
+  - "statusgen/verifyoutcomes_additive_test.go (the additive-key pin gains `attempts`): fixed-here"
+  - "tools/desk/cmd/verifyloop/outcomerecords_test.go (a record carrying `attempts` still plans and wakes as before): fixed-here"
+  - "tools/desk/cmd/deskdispatch/references/verifier-prompt.md (fixed-shape attempt reporting): fixed-here"
+  - "plugins/assay/skills/verify-desk/SKILL.md (the dispatch step passes the brief as the perf work ref; the outcome-record step carries `attempts`): fixed-here"
+  - "docs/streams/desk-supervision/verify-wake-v1.md and docs/streams/verify-outcomes/README.md (field table and register description): fixed-here"
   - "perfrec/ and the perf-v4 envelope (desktools-v2/67, desktools-v2/68): out-of-scope (read only; this brief adds no perf field, extension or producer change, and joins on the workflow attribution those briefs already keep)"
   - "statusgen --flow (graph-execution/07): out-of-scope (the brief's verification lead time stays there; this report does not recompute or duplicate it)"
   - "verifier dispatch token usage (desk-supervision/34's deferred review/verify follow-up): out-of-scope (34 records worker dispatches only; until that follow-up lands, verifier token cost is printed as could-not-check, never estimated)"
@@ -65,13 +65,13 @@ consumers:
 ## Context
 files:
 - **edit** `tools/desk/internal/deskkit/verifyoutcomejoin.go`: `attempts` joins `joinTopKeys` (line 130); `ParseJoinInput` (line 149) decodes it; `checkRunMetadataShape` (line 264) calls the new validator.
-- **add** `tools/desk/internal/deskkit/verifyattempts.go` (planned) and `tools/desk/internal/deskkit/verifyattempts_test.go` (planned): the `VerifyAttempt` type, `CheckAttempts`, `RollupAttempts` (per-brief counts over every record), and `PerfBriefRef` (the qualified perf work ref for a brief).
+- **add** `tools/desk/internal/deskkit/verifyattempts.go` and `tools/desk/internal/deskkit/verifyattempts_test.go`: the `VerifyAttempt` type, `CheckAttempts`, `RollupAttempts` (per-brief counts over every record), and `PerfBriefRef` (the qualified perf work ref for a brief).
 - **edit** `tools/desk/cmd/deskevidence/outcomerecord.go` and `tools/desk/cmd/deskevidence/outcomerecord_test.go`: the writer lands `attempts` as validated.
-- **add** `tools/desk/cmd/deskperf/reruns.go` (planned) and `tools/desk/cmd/deskperf/reruns_test.go` (planned); **edit** `tools/desk/cmd/deskperf/main.go` (verb dispatch, usage text, package header).
-- **add** `tools/desk/cmd/deskperf/testdata/reruns/` (planned): the graph-execution/02-shaped fixture (two outcome records, one perf day file).
+- **add** `tools/desk/cmd/deskperf/reruns.go` and `tools/desk/cmd/deskperf/reruns_test.go`; **edit** `tools/desk/cmd/deskperf/main.go` (verb dispatch, usage text, package header).
+- **add** `tools/desk/cmd/deskperf/testdata/reruns/`: the graph-execution/02-shaped fixture (two outcome records, one perf day file).
 - **edit** `statusgen/verifyoutcomes_additive_test.go` and `tools/desk/cmd/verifyloop/outcomerecords_test.go`: neighbour rows.
 - **edit** `tools/desk/cmd/deskdispatch/references/verifier-prompt.md`, `plugins/assay/skills/verify-desk/SKILL.md`, `docs/streams/desk-supervision/verify-wake-v1.md`, `docs/streams/verify-outcomes/README.md`, `tools/desk/README.md`.
-- **add** `changelog/desk-supervision-37.md` (planned).
+- **add** `changelog/desk-supervision-37.md`.
 
 facts:
 - **The outcome record today (read 2026-10-22 @ 866a169ae).** One JSON object per landed
@@ -147,7 +147,7 @@ already reads (Task 1, Task 4; Verify rows 1-6).
 - Never estimate: a measure that is missing, pruned or ambiguous is printed as `could-not-check` or `ambiguous` with its reason, never as zero and never apportioned.
 
 ## Task
-1. **Attempt shape and validator (`tools/desk/internal/deskkit/verifyattempts.go` (planned)).**
+1. **Attempt shape and validator (`tools/desk/internal/deskkit/verifyattempts.go`).**
    `attempts` is an optional list on the record, 1 to 16 entries. Each entry has exactly these keys:
    - `attempt`: integer; the list is numbered 1..n contiguously in order.
    - `disposition`: `credited` | `uncredited` | `discarded`.
