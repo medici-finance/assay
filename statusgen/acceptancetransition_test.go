@@ -731,6 +731,8 @@ func TestGlobalIncludeApproval(t *testing.T) {
 		{"missing", "[include]\n path = MISSING\n", ""},
 		{"credential-rewrite", "[url \"https://fixture-user:fixture-token@github.com/\"]\n insteadOf = https://github.com/\n", ""},
 		{"global-extension", "[extensions]\n worktreeConfig = true\n", ""},
+		{"chained-rewrite", "[url \"https://github.com/first-hop/\"]\n insteadOf = https://github.com/\n[url \"https://github.com/second-hop/\"]\n insteadOf = https://github.com/first-hop/\n", ""},
+		{"symlink-home", "[includeIf \"gitdir:~/\"]\n path = INC\n", foreign},
 		{"authority-include", "[include]\n path = INC\n", foreign},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -752,6 +754,18 @@ func TestGlobalIncludeApproval(t *testing.T) {
 			t.Setenv("GIT_CONFIG_COUNT", "0")
 			t.Setenv("GIT_CONFIG_PARAMETERS", "")
 			f := transitionFixtureAt(t)
+			if tc.name == "symlink-home" {
+				physical, err := filepath.EvalSymlinks(f.root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				link := filepath.Join(dir, "home-link")
+				if err := os.Symlink(filepath.Dir(physical), link); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("HOME", link)
+				t.Setenv("PWD", "/")
+			}
 			f.evidence(t, nil)
 			head := vfRev(t, f.root, "HEAD")
 			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
@@ -760,7 +774,7 @@ func TestGlobalIncludeApproval(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("GIT_CONFIG_GLOBAL", global)
-			want := tc.name != "authority-include"
+			want := tc.name != "authority-include" && tc.name != "chained-rewrite" && tc.name != "symlink-home"
 			native, err := historyGit(f.root, "remote", "get-url", "--all", "origin").Output()
 			if want && (err != nil || strings.Count(string(native), "\n") != 1 || !strings.Contains(string(native), "github.com/"+rlRepo+".git")) {
 				t.Fatalf("native control=%q %v", native, err)
@@ -788,7 +802,11 @@ func TestGlobalIncludeApproval(t *testing.T) {
 				}
 				if !want && root == f.root {
 					// The consumer names the owner's unavailability class, never a URL.
-					if !strings.Contains(why, "could-not-check repository authority: repository origin authority is unavailable: an include may affect authority") || strings.Contains(why, "foreign") || strings.Contains(why, dir) {
+					class := "an include may affect authority"
+					if tc.name == "chained-rewrite" {
+						class = "an ambient rewrite changes the origin"
+					}
+					if !strings.Contains(why, "could-not-check repository authority: repository origin authority is unavailable: "+class) || strings.Contains(why, "foreign") || strings.Contains(why, dir) {
 						t.Fatalf("unavailability class not named safely: %s", why)
 					}
 				}

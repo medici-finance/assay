@@ -258,6 +258,9 @@ func TestOriginIncludeOracle(t *testing.T) {
 				t.Fatal(err)
 			}
 			home := filepath.Join(dir, "home")
+			if err := os.Mkdir(home, 0700); err != nil {
+				t.Fatal(err)
+			}
 			if tc.name == "home-match" {
 				home = physical
 			}

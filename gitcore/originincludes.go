@@ -73,7 +73,9 @@ func headBranch(admin string) (string, bool) {
 	}
 	target, symbolic := strings.CutPrefix(strings.TrimRight(string(head), "\r\n"), "ref: ")
 	if !symbolic {
-		return "", true
+		// Git accepts other whitespace (or none) after ref:. This observer
+		// only decodes the canonical spelling; unknown is never detached.
+		return "", !strings.HasPrefix(string(head), "ref:")
 	}
 	name, ok := strings.CutPrefix(strings.TrimSpace(target), "refs/heads/")
 	if !ok {
@@ -132,9 +134,9 @@ func (o *originIncludes) match(condition string) bool {
 		}
 		return wildmatchMay(pattern, o.branch, false)
 	}
-	pattern, fold := "", false
+	pattern := ""
 	if p, ok := strings.CutPrefix(condition, "gitdir/i:"); ok {
-		pattern, fold = p, true
+		pattern = p
 	} else if p, ok := strings.CutPrefix(condition, "gitdir:"); ok {
 		pattern = p
 	} else {
@@ -147,7 +149,13 @@ func (o *originIncludes) match(condition string) bool {
 		if home == "" {
 			return true
 		}
-		pattern = home + pattern[1:]
+		// Git realpaths HOME before expanding a gitdir condition. If that
+		// cannot be proved, inspect the include rather than skip it.
+		physical, err := filepath.EvalSymlinks(home)
+		if err != nil || !filepath.IsAbs(physical) {
+			return true
+		}
+		pattern = filepath.ToSlash(physical) + pattern[1:]
 	} else if strings.HasPrefix(pattern, "~") || strings.HasPrefix(pattern, "%(prefix)/") || strings.HasPrefix(pattern, "./") {
 		return true
 	}
@@ -158,7 +166,10 @@ func (o *originIncludes) match(condition string) bool {
 		pattern += "**"
 	}
 	for _, text := range o.texts {
-		if wildmatchMay(pattern, text, fold) {
+		// Git canonicalizes filesystem casing where Go may preserve caller
+		// spelling. A case-only mismatch is not proof of a nonmatch, even
+		// for gitdir without /i. Over-approximate it on every host.
+		if wildmatchMay(pattern, text, true) {
 			return true
 		}
 	}
