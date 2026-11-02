@@ -221,7 +221,7 @@ func TestPartialWakeExecutionLexemesStayCompatible(t *testing.T) {
 
 // regression: #1731
 func TestPartialWakeInvalidTableRowsAreNotOmitted(t *testing.T) {
-	for _, id := range []string{"0", "06", "+7", "-1", "2.1", "R2", "２"} {
+	for _, id := range []string{"0", "06", "+7", "-1", "2.1", "R-2", "6a1", "２"} {
 		t.Run(id, func(t *testing.T) {
 			brief := strings.Replace(planBriefRows(2), "| 2 |", "| "+id+" |", 1)
 			root := planFixtureRoot(t, map[string]string{"01": brief})
@@ -460,5 +460,33 @@ func TestPartialWakeOutcomeProducerRequiresExactHeldResults(t *testing.T) {
 	}
 	if _, err := deskkit.ParseJoinInput(withoutResults); err == nil {
 		t.Fatal("gapped held set accepted without required exact results")
+	}
+}
+
+// A table labelled with letter IDs schedules by those exact labels, the same
+// identities verifyrun records and the outcome-record writer accepts.
+// regression: #5013
+func TestPartialWakeLetterIdentities(t *testing.T) {
+	brief := strings.Replace(planBriefRows(3), "| 2 |", "| R |", 1)
+	brief = strings.Replace(brief, "| 3 |", "| S1 |", 1)
+	root := planFixtureRoot(t, map[string]string{"01": brief})
+	var rec deskkit.WakeReceipt
+	raw := `{"brief":"example-stream/01","outcome":"blocked","rows":["R"],"rows_passed":2,"rows_total":3,"row_results":[{"row":1,"result":"pass"},{"row":"R","result":"could-not-run"},{"row":"S1","result":"pass"}]}`
+	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
+		t.Fatal(err)
+	}
+	base := heldReceipt(holdTS)
+	rec.Schema, rec.ID, rec.Inputs = base.Schema, base.ID, base.Inputs
+	rec.BlockerKind, rec.BlockerRef, rec.WakePredicate = base.BlockerKind, base.BlockerRef, base.WakePredicate
+	rec.TS, rec.Repo, rec.Verifier, rec.SHA = base.TS, base.Repo, base.Verifier, base.SHA
+	writeReceipts(t, root, rec)
+	v := &VerifyLoop{Root: root, WakeReader: fakeWake{revs: map[string]string{"file:pkg/x.go": "rev1"}}, Issues: openIssues, Now: fixedClock("2026-09-20T12:00:00Z")}
+	items, err := v.SelectQueue()
+	if err != nil || len(items) != 1 {
+		t.Fatalf("select: %v %#v", err, items)
+	}
+	tier, _ := v.TierPolicy(items[0])
+	if d, _ := classifyItem(items[0], tier); d != dispWaitReceipt || items[0].Payload["wake_held_rows"] != "R" {
+		t.Fatalf("lost exact held label: %v %#v", d, items[0].Payload)
 	}
 }
