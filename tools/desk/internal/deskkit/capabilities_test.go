@@ -82,7 +82,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 
 }
 
-// regression: milestone-support/04-followup
+// regression: brief-v4 envelope is judged against the real legacy reader operations
 // statusgen's brief-v4 envelope check assesses a record against the operation
 // set the legacy readers advertise (TestLegacyBriefReaderAdvertisementMatchesRealReaders
 // holds the same literal). A change to this advertisement must change both.
