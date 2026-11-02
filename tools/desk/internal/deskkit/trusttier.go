@@ -78,9 +78,15 @@ func (t Tier) String() string {
 // unknown < blessed-once < contributor < maintainer.
 func (t Tier) AtLeast(min Tier) bool { return t >= min }
 
-// parseTier resolves a ledger row's recorded tier name. ok is false for anything
-// other than the four published names — a row that fails to parse grants nothing,
+// parseTier resolves a ledger row's recorded tier name. It is the only place a
+// ledger row's text becomes a Tier. ok is false for anything other than the
+// three names a ledger row may carry — a row that fails to parse grants nothing,
 // the same fail-closed direction as every other malformed-row case here.
+//
+// `maintainer` is deliberately NOT one of them. That tier is roster membership,
+// resolved before the ledger is read; a ledger row naming it is refused like any
+// other unparseable row, so a write to the ledger can never mint the top tier
+// for an identity the roster does not name.
 func parseTier(s string) (Tier, bool) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "unknown":
@@ -89,8 +95,6 @@ func parseTier(s string) (Tier, bool) {
 		return TierBlessedOnce, true
 	case "contributor":
 		return TierContributor, true
-	case "maintainer":
-		return TierMaintainer, true
 	default:
 		return TierUnknown, false
 	}
