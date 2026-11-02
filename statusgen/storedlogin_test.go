@@ -392,7 +392,7 @@ func slState(t *testing.T, s int32) {
 // TestStoredLoginGhGuard: what a forge CLI launch receives. Refused with no
 // token variable, the command never starts; refused with one, it runs without
 // CELLCTL_GH_AMBIENT and with the unset family closed by a placeholder;
-// allowed, it is untouched.
+// allowed outside CI, it is untouched; CI pins the same environment.
 func TestStoredLoginGhGuard(t *testing.T) {
 	t.Run("refused-no-token", func(t *testing.T) {
 		log := slAdmittedRow(t)
@@ -415,10 +415,23 @@ func TestStoredLoginGhGuard(t *testing.T) {
 		}
 	})
 	t.Run("allowed", func(t *testing.T) {
+		t.Setenv("GITHUB_ACTIONS", "false")
 		slOutside(t)
 		t.Setenv("CELLCTL_GH_AMBIENT", "fixture-ambient")
 		if cmd := ghGuard(exec.Command("gh", "auth", "token")); cmd.Err != nil || cmd.Env != nil {
 			t.Fatalf("an allowed launch was changed: err %v env %v", cmd.Err, cmd.Env)
+		}
+	})
+	t.Run("allowed-ci-snapshot", func(t *testing.T) {
+		slOutside(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+		t.Setenv("GH_TOKEN", "fixture-original-token")
+		t.Setenv("CELLCTL_GH_AMBIENT", "fixture-ambient")
+		cmd := ghGuard(exec.Command("gh", "api", "rate_limit"))
+		t.Setenv("GH_TOKEN", "fixture-later-token")
+		env := strings.Join(cmd.Env, "\n")
+		if cmd.Err != nil || !strings.Contains(env, "GH_TOKEN=fixture-original-token") || strings.Contains(env, "GH_TOKEN=fixture-later-token") || !strings.Contains(env, "CELLCTL_GH_AMBIENT=fixture-ambient") {
+			t.Fatalf("allowed CI snapshot changed authority: err=%v env=%s", cmd.Err, env)
 		}
 	})
 }

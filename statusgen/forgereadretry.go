@@ -129,8 +129,8 @@ func forgeCLIRead(resource string, makeCmd func() *exec.Cmd) ([]byte, error) {
 
 func forgeCLIReadWith(resource string, makeCmd func() *exec.Cmd, budget *forgeReadWait, now func() time.Time, wait func(context.Context, time.Duration) error) ([]byte, error) {
 	cmd := makeCmd()
-	if cmd.Env == nil {
-		cmd.Env = os.Environ()
+	if os.Getenv("GITHUB_ACTIONS") == "true" && cmd.Env == nil {
+		return nil, fmt.Errorf("CI forge read requires a guarded credential environment")
 	}
 	out, err := cmd.Output()
 	if err == nil {
@@ -195,7 +195,11 @@ func forgeCLIFailure(cmd *exec.Cmd, err error) string {
 	}
 	env := cmd.Env
 	if env == nil {
-		env = os.Environ()
+		// Outside CI the guard retains implicit inheritance. Read only the CLI's
+		// credential variables for redaction; never construct a child environment here.
+		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "CELLCTL_GH_AMBIENT"} {
+			env = append(env, key+"="+os.Getenv(key))
+		}
 	}
 	for _, kv := range env {
 		key, value, ok := strings.Cut(kv, "=")
