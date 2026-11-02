@@ -287,6 +287,53 @@ RISK-VALUE: DERIVED — len(ids) < 12 minimum = 12 @ docs/research/criterion-evi
 
 **VERIFY: PASS** — 3/3 rows pass on the `statusgen verifyrun` witness at 47ef38f961aa; no row rests only on a hand run.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 docs/research/criterion-evidence-freshness/replay.py --check` | pass exit=0 | sha256:b688f1510c3a | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `python3 docs/research/criterion-evidence-freshness/replay.py --self-test` | pass exit=0 | sha256:0e10d12bd0ad | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCoverageAcceptanceDigestChanged$' . > "$out" && GOWORK=off go test -count=1 -v -run '^TestCoverageExpectChangedSinceWitnessRan$' . >> "$out" && grep -F -- '--- PASS: TestCoverageAcceptanceDigestChanged ' "$out" && grep -F -- '--- PASS: TestCoverageExpectChangedSinceWitnessRan ' "$out")` | pass exit=0 | sha256:29f0115d0940 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5272 run=de34c1d00ee4faf339224efe5192e73ea86e8f4eaf75a82f6dafff99a40a2ecd source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/graph-execution/brief-32-investigate-criterion-level-evidence-freshness.md model=claude-opus-5-5 tier=strong
+
+The table above is the `statusgen verifyrun` execution witness (write mode, statusgen
+v1.0.69) for the batch re-witness at the pinned main commit. It ran once from the admitted
+detached home at source 2c6c21336a606e64df057294f21177f16db7b9f8 on a clean tree, offline,
+go1.27.2 darwin/arm64, Python 3.15.0. All three rows are `check` class (none is check:ci),
+so they ran on the host under the witness, each with exit 0, and every row rests on the
+witness. `statusgen verifyrun --check` reports 3 pass, 0 fail, 0 could-not-run of 3. The
+research files the delivering squash merge of #3307 (83c6988d097d) added under
+`docs/research/criterion-evidence-freshness/` are byte-unchanged between that merge and
+the pinned source.
+
+The verifier then re-ran the commands by hand at the same source, only to read the output
+the witness hashes, and compared it with each Expect cell. The row 3 hand read used one
+combined `-run` selector, so it is a reading aid and earns no row credit.
+
+- Row 1 (exit 0): "CLI JSON byte commitments: 17/42 identical; semantic replay matches",
+  then 14 declared case lines, each with a measured baseline result kept separate from a
+  `prediction=` field, then "14 declared cases executed; original witnesses retain their
+  subjects". The unavailable case keeps numeric=could-not-check with prediction=unknown.
+- Row 2 (exit 0): "identical-observations: accepted exit=0"; tampered-observation,
+  skipped-case, duplicate-case, fabricated-execution, unknown-as-pass ("unavailable
+  governing source is not current acceptance"), prediction-as-measured,
+  wrong-raw-commitment and changed-decoded-value were each rejected with exit 1 and a
+  named reason.
+- Row 3 (exit 0): "--- PASS: TestCoverageAcceptanceDigestChanged" and
+  "--- PASS: TestCoverageExpectChangedSinceWitnessRan" from the statusgen package.
+
+Risk-bearing value. The risk frontmatter is all no, nothing is irreversible, and the
+design-fit weight is zero. The enumeration covered the delivering change's research files
+as they stand at the pinned source. Literals found: the minimum case count 12 and the
+duplicate refusal in the driver's case guard (replay.py line 473); three JSON captures per
+case (replay.py line 363); the subprocess timeouts 60, 30, 120 and 10 seconds plus the
+witness `--timeout 10s` (replay.py lines 126, 332, 338, 447, 455 and 297); and the pinned
+study source commit (cases.json line 3). The timeouts are reversible research-harness
+knobs, ranked last and left underived; the capture count is fixed by the three statusgen
+JSON calls each case issues (42 = 3 x 14 in row 1).
+
+RISK-VALUE: DERIVED — len(ids) < 12 minimum = 12 @ docs/research/criterion-evidence-freshness/replay.py:473 — Task 2 of this brief requires at least twelve explicit cases and lists exactly twelve required categories; the guard refuses fewer and refuses duplicates, and cases.json declares 14.
+
+**VERIFY: PASS** — 3/3 rows pass on the `statusgen verifyrun` witness at 2c6c21336a60; no row rests only on a hand run.
+
 ## Review
 
 Gate: model; synthetic research and a recommendation only. Prioritize contradictions and
