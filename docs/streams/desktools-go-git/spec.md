@@ -32,11 +32,13 @@ the git pack transport.
 
 ## Decisions taken
 
-1. **Library: `go-git` (pure Go), pinned `>= v5.13`.** Pure Go keeps the desk-tools
+1. **Library: `go-git` (pure Go), pinned `>= v5.19.2`.** Pure Go keeps the desk-tools
    posture of trivially cross-compiled, pinned, per-platform static release binaries
-   (the release pipeline harvests per-platform sha256s of pure-Go builds). `v5.13` is
-   the floor because CVE-2025-21613 (argument injection) and CVE-2025-21614
-   (denial-of-service) are fixed there. `git2go`/`libgit2` — which *would* cover
+   (the release pipeline harvests per-platform sha256s of pure-Go builds). The floor
+   started at `v5.13`, where CVE-2025-21613 (argument injection) and CVE-2025-21614
+   (denial-of-service) are fixed. Brief 08 raised it to `v5.19.2`, the highest fixed
+   version the Go vulnerability database listed for go-git v5 when the gate landed
+   (GO-2026-6213 and GO-2026-6214); a later advisory raises it again by hand. `git2go`/`libgit2` — which *would* cover
    go-git's gaps (three-way merge, rebase, worktrees) — is rejected: it is
    archived/unmaintained, it is CGO (which breaks the static cross-compiled release
    flow), and a C parser surface processing attacker-influenceable repo data is a worse
@@ -84,7 +86,7 @@ the git pack transport.
   preflight transport probe (replaced by an authenticated `List`).
 - The `deskmerge` exception: fence its trial merge as the sole sanctioned git-binary
   caller; migrate its other verbs.
-- The drop-the-binary CI gate and the `go-git >= v5.13` CVE floor.
+- The drop-the-binary CI gate and the go-git CVE floor (`>= v5.19.2`, decision 1).
 
 **Out of scope** — a NAMED FOLLOW-ON stream, deliberately not attempted here:
 
