@@ -136,8 +136,9 @@ tools do not record them yet, so they are accepted and ignored. None of the five
 environment variable or configuration key. `deskrelease cut` is the exception to Cobra
 parsing: it takes its argv raw, so the cut parser is still the only parser, and any word it
 does not recognise is refused (exit 5) and audited. That includes a flag written before
-`cut` and a help word: `cut -h` and `cut --help` are refused like any other flag. The verb's
-help is `deskrelease help cut`.
+`cut` and a help word beside any other word (`cut <tag> --help`, `cut -h extra`). The help
+word alone is the verb's help: `cut -h`, `cut --help` and `deskrelease help cut` all print it
+and exit 0 before the startup, the kill switch or any audit write.
 
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
@@ -6060,7 +6061,7 @@ absolute-sounding claims about matchers are what produced #1538:
 |---|---|
 | verbs | `cut <tag>` only. No delete, force, move, override, or waiver verb exists. |
 | tag validation | two independent layers: a refspec-metacharacter screen (`:` `+` `^` `~` `@` `*` `?` `[` `\`, whitespace, control chars) and the anchored pattern `^(desk-tools\|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`. Each refuses with its own reason. |
-| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag and a flag written before `cut`. That includes `cut -h` and `cut --help`; the verb's help is `deskrelease help cut`. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
+| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag or beside any other word, and a flag written before `cut`. The help word ALONE (`cut -h`, `cut --help`) is the verb's help, like `deskrelease help cut`: exit 0, answered before any config read, lock or audit write. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
 | input | argv only — never stdin, never an environment variable. |
 | `--dry-run` | validates, reads the remote, and stops **before** `POST /git/refs`. **When the tag is still free** — the case the flag is for — exit 0, audited `result=dryrun` — a class **neither rate-limit meter counts** (#214). It used to audit `noop`, which the non-progress breaker counts, so five rehearsals opened a 15-minute breaker against the real cut: checking whether a release was safe could lock the release out. A dry run is still *subject* to both meters; it just does not feed them, and it is IGNORED rather than treated as progress, so it cannot reset a breaker a real refusal loop opened either. Against a tag that already **exists**, the stop is never reached: the row below settles the invocation first, and the rehearsal audits `noop`/`refused`/`unverifiable` like the real thing. |
 | transport | `POST /repos/{owner}/{repo}/git/refs`. `git push` is never executed; no local checkout is touched, so a `git -C` variance and a stale sibling clone are both impossible. |
