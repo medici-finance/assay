@@ -303,9 +303,11 @@ func checkWithdrawalKeys(add, notice func(string, ...any), path, selfID string, 
 	// Withdrawal keys and status are versioned explicitly in brief-v3.
 	// On brief-v1/brief-v2 the three keys are unknown keys, tolerated as written
 	// (never parsed, never a PROBLEM): only the status itself needs brief-v3.
-	if bf.Schema != briefSchemaV3 {
+	// brief-v4 is brief-v3 plus the typed-reference surface, so it carries the
+	// withdrawal keys unchanged.
+	if bf.Schema != briefSchemaV3 && bf.Schema != briefSchemaV4 {
 		if isWithdrawn(row.Status) {
-			add("%s: brief %s is withdrawn but is schema %s — a withdrawn brief must be schema brief-v3", path, selfID, bf.Schema)
+			add("%s: brief %s is withdrawn but is schema %s — a withdrawn brief must be schema brief-v3 or brief-v4", path, selfID, bf.Schema)
 		}
 		return
 	}

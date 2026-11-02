@@ -1,0 +1,32 @@
+---
+brief: assay:assay:demo4:01
+title: Base
+why: "A legacy brief-v2 dependency at revision 2."
+wave: 1
+depends: []
+unblocks: ["demo4/02", "demo4/03"]
+effort: S
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v2
+version: 2
+id: 11111111-1111-4111-8111-111111111111
+authored: 2026-11-01 fixture
+sources: ["fixture: base"]
+---
+
+# Brief 01 — Base
+
+## Context
+files:
+facts:
+- nothing
+
+## Task
+1. Nothing.
+
+## Verify
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | `true` | exit 0 |
