@@ -34,18 +34,18 @@ type ReadResult struct {
 func Read(stateDir string) (ReadResult, error) {
 	root := Root(stateDir)
 	var rr ReadResult
-	if st, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
+	if st, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
 		rr.Coverage = []perfdata.SourceCoverage{{State: perfdata.CoverageMissing, Epochs: []uint32{},
 			ExplainedGaps: []perfdata.SeqRange{}, UnexplainedGaps: []perfdata.SeqRange{}, Retired: []perfdata.Retirement{}, EpochResets: []perfdata.EpochReset{}}}
 		return rr, nil
 	} else if err != nil {
 		return rr, err
 	} else if !st.IsDir() {
-		return rr, errors.New("perfdata/local: store path is not a directory")
+		return rr, unsafeEntry(root, "not a directory ("+st.Mode().Type().String()+")")
 	}
 	rr.Present = true
 	corruptMeta := 0
-	if _, err := os.Stat(filepath.Join(root, "manifest.json")); err != nil {
+	if _, ok := regularSize(filepath.Join(root, "manifest.json")); !ok {
 		corruptMeta++
 	}
 	cov, ok := readCoverage(root)
@@ -77,7 +77,7 @@ func Read(stateDir string) (ReadResult, error) {
 	seen := map[string]string{}
 	orphanCorrupt, orphanPartial := 0, 0
 	for _, sg := range listSegments(root) {
-		b, err := os.ReadFile(filepath.Join(root, "segments", sg.name))
+		b, err := readRegular(filepath.Join(root, "segments", sg.name))
 		if err != nil {
 			orphanCorrupt++
 			continue
@@ -167,7 +167,7 @@ func Read(stateDir string) (ReadResult, error) {
 			if !strings.HasPrefix(e.Name(), "live-") {
 				continue
 			}
-			f, err := os.OpenFile(filepath.Join(root, "run", e.Name()), os.O_RDWR, 0)
+			f, err := openRegular(filepath.Join(root, "run", e.Name()), os.O_RDWR, 0)
 			switch {
 			case err != nil || !liveMarkersSupported:
 				live++
@@ -232,7 +232,7 @@ func Read(stateDir string) (ReadResult, error) {
 		if _, ok := rollupDay(e.Name()); !ok {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(root, "distributions", e.Name()))
+		b, err := readRegular(filepath.Join(root, "distributions", e.Name()))
 		var r perfdata.DailyRollup
 		if err == nil {
 			r, err = perfdata.DecodeRollup(b)

@@ -19,7 +19,7 @@ func lockFile(f *os.File, wait time.Duration) error {
 		if err == nil {
 			return g.Close()
 		}
-		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > staleLock {
+		if st, serr := os.Lstat(path); serr == nil && time.Since(st.ModTime()) > staleLock {
 			_ = os.Remove(path)
 			continue
 		}

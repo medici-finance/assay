@@ -2915,6 +2915,23 @@
       "basis": "169 lines at a504b956; bounded cold-volume preparation; no runtime or work authority",
       "owner": "desk-containers/31",
       "state": "pending"
+    },
+    {
+      "executable": "perfdata",
+      "path": "perfdata/cmd/perfdata",
+      "kind": "go",
+      "module": "perfdata",
+      "release": "module-local operator command built from source; not in the release.yml cmd/* loop or the Makefile DESK_CMDS",
+      "consumers": [
+        "docs/performance-collection.md",
+        "perfdata/cmd/perfdata/main_test.go",
+        "docs/streams/performance-collection/brief-01-local-performance-event-contract-spool-and-offline-report.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "226 LOC, 2 verbs, 10 flags at 765668a4b0d1; local record/report only, no network or work authority",
+      "owner": "performance-collection/01",
+      "state": "pending"
     }
   ]
 }

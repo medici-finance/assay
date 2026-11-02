@@ -64,10 +64,18 @@ func (s *Sink) Enabled() bool { return s != nil && s.st != nil }
 
 // Record queues one observation without blocking.
 func (s *Sink) Record(d perfdata.Draft) {
-	if !s.Enabled() || s.abandoned.Load() {
+	if !s.Enabled() {
 		return
 	}
-	defer func() { _ = recover() }() // a Record racing Close is dropped, never a panic
+	if s.abandoned.Load() {
+		s.flushTimeout.Add(1)
+		return
+	}
+	defer func() { // a Record racing Close is dropped and counted, never a panic
+		if recover() != nil {
+			s.flushTimeout.Add(1)
+		}
+	}()
 	select {
 	case s.ch <- d:
 	default:
@@ -146,6 +154,9 @@ func (s *Sink) Close() (clean bool) {
 			// without waiting on it, and leave the live marker so coverage reads
 			// as uncertain.
 			s.st.abandon()
+			// The store lock is released once the writer lets go of the store; the
+			// live marker stays behind (abandon already dropped it from the store).
+			go func() { <-s.done; _ = s.st.Close() }()
 			return
 		}
 		s.latMu.Lock()

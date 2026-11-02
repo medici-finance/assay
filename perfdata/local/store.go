@@ -48,6 +48,11 @@ var ErrOff = errors.New("perfdata/local: collection is off")
 
 var errLockTimeout = errors.New("perfdata/local: store lock wait exceeded")
 
+// ErrUnsafe is returned when a store entry is a symbolic link, is not the expected kind
+// of file, belongs to another user or is open to group or other users. The store never
+// follows or repairs such an entry; it refuses.
+var ErrUnsafe = errors.New("perfdata/local: unsafe store entry")
+
 // Root returns the store directory of a state directory.
 func Root(stateDir string) string { return filepath.Join(stateDir, DirName) }
 
@@ -141,7 +146,7 @@ func Open(stateDir string, c perfdata.Consent, policy perfdata.Policy, o Options
 		return nil, fmt.Errorf("perfdata/local: profile %q not admitted by policy %q", c.Profile, policy.Revision)
 	}
 	if policy.SegmentBytes == 0 {
-		policy.SegmentBytes = perfdata.DefaultSegmentBytes
+		policy.SegmentBytes = min(perfdata.DefaultSegmentBytes, policy.ByteCap)
 	}
 	if o.LockWait == 0 {
 		o.LockWait = 2 * time.Second
@@ -150,13 +155,18 @@ func Open(stateDir string, c perfdata.Consent, policy perfdata.Policy, o Options
 		o.Build = perfdata.Build{Version: "dev", OS: "unknown", Arch: "unknown"}
 	}
 	s := &Store{root: Root(stateDir), policy: policy, profile: c.Profile, opts: o}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return nil, err
+	}
 	for _, d := range []string{s.root, filepath.Join(s.root, "segments"), filepath.Join(s.root, "run"), filepath.Join(s.root, "distributions")} {
-		if err := os.MkdirAll(d, 0o700); err != nil {
+		if err := ensureDir(d); err != nil {
 			return nil, err
 		}
-		_ = os.Chmod(d, 0o700)
 	}
-	lf, err := os.OpenFile(filepath.Join(s.root, "lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err := checkTree(s.root); err != nil {
+		return nil, err
+	}
+	lf, err := openRegular(filepath.Join(s.root, "lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +259,7 @@ func randomHex(n int) string {
 
 func (s *Store) openLive() error {
 	s.livePath = filepath.Join(s.root, "run", "live-"+randomHex(8)+".lock")
-	f, err := os.OpenFile(s.livePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(s.livePath, os.O_CREATE|os.O_EXCL|os.O_RDWR|noFollow, 0o600)
 	if err != nil {
 		return err
 	}
@@ -272,7 +282,7 @@ func (s *Store) reapLive(cov *coverageFile) {
 		if p == s.livePath || !strings.HasPrefix(e.Name(), "live-") {
 			continue
 		}
-		f, err := os.OpenFile(p, os.O_RDWR, 0)
+		f, err := openRegular(p, os.O_RDWR, 0)
 		if err != nil {
 			continue
 		}
@@ -291,7 +301,7 @@ func (s *Store) writeAtomic(path string, data []byte) error {
 		return err
 	}
 	tmp := path + ".tmp-" + randomHex(6)
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|noFollow, 0o600)
 	if err != nil {
 		return err
 	}
@@ -321,7 +331,7 @@ func (s *Store) writeJSON(name string, v any) error {
 
 func (s *Store) ensureManifest() error {
 	p := filepath.Join(s.root, "manifest.json")
-	if _, err := os.Stat(p); err == nil {
+	if _, ok := regularSize(p); ok {
 		return nil
 	}
 	return s.writeJSON("manifest.json", manifest{
@@ -332,14 +342,43 @@ func (s *Store) ensureManifest() error {
 
 func readCoverage(root string) (coverageFile, bool) {
 	cov := coverageFile{Schema: coverageSchema}
-	b, err := os.ReadFile(filepath.Join(root, "coverage.json"))
+	b, err := readRegular(filepath.Join(root, "coverage.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return cov, true
 	}
-	if err != nil || json.Unmarshal(b, &cov) != nil || cov.Schema != coverageSchema {
+	if err != nil || decodeStrict(b, &cov) != nil || cov.Schema != coverageSchema || !cov.sourcesValid() {
 		return coverageFile{Schema: coverageSchema}, false
 	}
 	return cov, true
+}
+
+// decodeStrict decodes one JSON value with no unknown fields and nothing after it.
+func decodeStrict(b []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if dec.More() {
+		return errors.New("trailing data")
+	}
+	return nil
+}
+
+// sourcesValid refuses a coverage file naming a source that is not a source id: the
+// names reach the report verbatim, so a hand-edited file must not carry control text.
+func (c coverageFile) sourcesValid() bool {
+	for _, r := range c.Retired {
+		if r.Source != "" && !perfdata.IsSource(r.Source) {
+			return false
+		}
+	}
+	for _, l := range c.Lost {
+		if !perfdata.IsSource(l.Source) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) loadCoverage() coverageFile {
@@ -351,7 +390,7 @@ func (s *Store) saveCoverage(cov coverageFile) error { return s.writeJSON("cover
 
 func readSource(root string) (sourceFile, error) {
 	var sf sourceFile
-	b, err := os.ReadFile(filepath.Join(root, "source.json"))
+	b, err := readRegular(filepath.Join(root, "source.json"))
 	if err != nil {
 		return sf, err
 	}
@@ -397,7 +436,7 @@ func (s *Store) loadSource(cov *coverageFile, scan bool) (sourceFile, error) {
 		}
 	}
 	if sf.AliasesMinted {
-		if _, err := os.Stat(s.aliasPath(sf.Epoch)); err != nil {
+		if _, ok := regularSize(s.aliasPath(sf.Epoch)); !ok {
 			sf.Epoch++
 			sf.AliasesMinted = false
 			cov.EpochResets = append(cov.EpochResets, perfdata.EpochReset{Epoch: sf.Epoch, Reason: perfdata.ResetAliasMapLost, At: now})
@@ -463,7 +502,7 @@ func listSegments(root string) []segment {
 func (s *Store) scanIdentity() (src string, epoch uint32, maxSeq, first uint64, found bool) {
 	segs := listSegments(s.root)
 	for i := len(segs) - 1; i >= 0; i-- {
-		b, err := os.ReadFile(filepath.Join(s.root, "segments", segs[i].name))
+		b, err := readRegular(filepath.Join(s.root, "segments", segs[i].name))
 		if err != nil {
 			continue
 		}
@@ -502,7 +541,7 @@ func (s *Store) newestTail(src string) segTail {
 		return segTail{}
 	}
 	t := segTail{seg: segs[len(segs)-1], ok: true}
-	f, err := os.Open(filepath.Join(s.root, "segments", t.seg.name))
+	f, err := openRegular(filepath.Join(s.root, "segments", t.seg.name), os.O_RDONLY, 0)
 	if err != nil {
 		t.partial = true // unreadable: never append to it
 		return t
@@ -531,7 +570,7 @@ func (s *Store) newestTail(src string) segTail {
 		}
 	}
 	if !decoded && n < t.size {
-		if b, err := os.ReadFile(f.Name()); err == nil {
+		if b, err := readRegular(f.Name()); err == nil {
 			for _, line := range bytes.Split(b, []byte("\n")) {
 				if e, err := perfdata.DecodeEvent(line); err == nil && e.Source == src {
 					t.lastSeq = max(t.lastSeq, e.Seq)
@@ -564,7 +603,7 @@ func (s *Store) aliasPath(epoch uint32) string {
 
 func (s *Store) loadAliases(epoch uint32) (*aliasFile, error) {
 	p := s.aliasPath(epoch)
-	st, err := os.Stat(p)
+	st, err := os.Lstat(p)
 	if errors.Is(err, os.ErrNotExist) {
 		af := &aliasFile{Schema: aliasSchema, Epoch: epoch, Secret: randomHex(32), Map: map[string]string{}}
 		s.aliases, s.aliasSt = af, fileStamp{epoch: epoch}
@@ -573,11 +612,14 @@ func (s *Store) loadAliases(epoch uint32) (*aliasFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !st.Mode().IsRegular() {
+		return nil, unsafeEntry(p, "not a regular file")
+	}
 	stamp := fileStamp{epoch: epoch, size: st.Size(), mod: st.ModTime()}
 	if s.aliases != nil && s.aliasSt == stamp && !s.aliases.dirty {
 		return s.aliases, nil
 	}
-	b, err := os.ReadFile(p)
+	b, err := readRegular(p)
 	if err != nil {
 		return nil, err
 	}
@@ -652,7 +694,7 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 			withCtx = withCtx || d.Ctx != nil
 		}
 		if withCtx && sf.AliasesMinted {
-			if _, err := os.Stat(s.aliasPath(sf.Epoch)); err != nil {
+			if _, ok := regularSize(s.aliasPath(sf.Epoch)); !ok {
 				if sf, err = s.loadSource(loadCov(), false); err != nil { // alias map lost: new epoch
 					return err
 				}
@@ -704,7 +746,7 @@ func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error
 				return err
 			}
 			af.dirty = false
-			if st, err := os.Stat(s.aliasPath(sf.Epoch)); err == nil {
+			if st, err := os.Lstat(s.aliasPath(sf.Epoch)); err == nil {
 				s.aliasSt = fileStamp{epoch: sf.Epoch, size: st.Size(), mod: st.ModTime()}
 			}
 			sf.AliasesMinted, reserve = true, true
@@ -763,7 +805,7 @@ func (s *Store) append(name string, lines [][]byte) error {
 		buf.Write(l)
 		buf.WriteByte('\n')
 	}
-	f, err := os.OpenFile(filepath.Join(s.root, "segments", name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := openRegular(filepath.Join(s.root, "segments", name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -778,8 +820,8 @@ func (s *Store) append(name string, lines [][]byte) error {
 func (s *Store) totalBytes() int64 {
 	var n int64
 	for _, sg := range listSegments(s.root) {
-		if st, err := os.Stat(filepath.Join(s.root, "segments", sg.name)); err == nil {
-			n += st.Size()
+		if size, ok := regularSize(filepath.Join(s.root, "segments", sg.name)); ok {
+			n += size
 		}
 	}
 	return n

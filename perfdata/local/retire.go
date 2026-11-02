@@ -44,9 +44,9 @@ func (s *Store) retire(cov *coverageFile) error {
 	total := int64(0)
 	sizes := map[string]int64{}
 	for _, sg := range segs {
-		if st, err := os.Stat(filepath.Join(s.root, "segments", sg.name)); err == nil {
-			sizes[sg.name] = st.Size()
-			total += st.Size()
+		if size, ok := regularSize(filepath.Join(s.root, "segments", sg.name)); ok {
+			sizes[sg.name] = size
+			total += size
 		}
 	}
 	for _, sg := range segs {
@@ -96,7 +96,7 @@ func rollupDay(name string) (string, bool) {
 
 func (s *Store) retireSegment(cov *coverageFile, sg segment, reason string, now interface{ Format(string) string }) error {
 	p := filepath.Join(s.root, "segments", sg.name)
-	b, err := os.ReadFile(p)
+	b, err := readRegular(p)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (s *Store) rollUp(events []perfdata.Event) error {
 	for _, day := range keys {
 		r := days[day]
 		name := "day-" + day + ".json"
-		if b, err := os.ReadFile(filepath.Join(s.root, "distributions", name)); err == nil {
+		if b, err := readRegular(filepath.Join(s.root, "distributions", name)); err == nil {
 			old, err := perfdata.DecodeRollup(b)
 			if err != nil {
 				return errors.New("perfdata/local: corrupt rollup")

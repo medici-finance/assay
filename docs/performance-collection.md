@@ -85,7 +85,12 @@ Unknown values are counted as unknown, never as zero.
 
 Everything is under `<dir>/performance-events/`: `manifest.json`, `source.json`,
 `aliases-e<N>.json`, `coverage.json`, `lock`, `run/`, `segments/` and `distributions/`.
-Directories are 0700 and files 0600. Metadata is replaced atomically. This tree is separate
+Directories are created 0700 and files 0600. The store trusts no entry by its name: it
+refuses to open (`ErrUnsafe`) a tree where any store directory is a symbolic link, belongs to
+another user or is open to group or other users, or where any file is a symbolic link or not
+a regular file. It refuses instead of repairing, and it never follows a link to read or
+write. Protecting the directories above `<dir>` is the caller's job. Metadata is replaced
+atomically. This tree is separate
 from `audit.jsonl`, `dispatch-records.jsonl` and `perf/`, and turning collection off never
 affects those.
 
@@ -115,11 +120,16 @@ affects those.
 
 - Raw segments are retired after `ageCapDays` UTC days (1–7, initially 7).
 - When the store exceeds `byteCap` (at most 1 GiB), the oldest segments are retired. The cap
-  is checked when a new segment starts (default segment size 1 MiB), so the store can exceed
-  the cap by about one segment.
+  is checked when a new segment starts, so the store can exceed the cap by about one
+  segment. The default segment size is the smaller of 1 MiB and `byteCap`, and an explicit
+  `segmentBytes` must fit the cap. The cap counts raw segments only: the metadata files, the
+  alias maps and the rollups are outside it.
 - The alias map (`aliases-e<N>.json`) grows with each distinct locator in an epoch and is
   not counted against `byteCap`. A long-lived workflow source should expect it to grow. A new
-  epoch starts a new map. Old maps remain until the store is removed.
+  epoch starts a new map. Old maps remain until the store is removed, including each map's
+  keyed-digest secret. Anyone who can read the store can therefore test a guessed locator
+  against an old epoch's aliases for as long as the map remains. Remove the store to end
+  that.
 - Nothing in this tool sends data, so **every retirement is unsent loss**. The coverage
   record keeps its sequence range, day window, event count and bytes.
 - With `distributionDays` (0–90) set, expired raw tool completions are first folded into
@@ -129,19 +139,26 @@ affects those.
 
 ## Writer cost
 
-Measured by `TestLocalCostAndBounds` on darwin/arm64, with a 729-byte tool-completion event
-and 300 runs:
+Measured by `TestLocalCostAndBounds` on darwin/arm64, with a 725-byte tool-completion event.
+The append figure is the best of five rounds of 100 appends:
 
 | Measure | Median | p95 | Max |
 |---|---|---|---|
-| Locked append (open-segment write under the lock) | 430.75 µs | 557 µs | 988.6 µs |
+| Locked append (open-segment write under the lock) | 436 µs | 567 µs | 634 µs |
+| Bare open/append/close on the same filesystem (floor) | 50 µs | — | — |
 | Producer cost, collection off | 42 ns | — | — |
-| Producer cost, collection on (enqueue) | 958 ns | 1.625 µs | 47.6 µs |
+| Producer cost, collection on (enqueue) | 958 ns | 1.25 µs | — |
 
-Under a deliberately slow writer, recording returned in a total of 192 µs, and the close
-finished in about 51 ms, inside its budget. The excess was dropped and counted (QueueFull 184,
-FlushTimeout 8). These numbers come from one reference machine and are evidence for the
-pending human decision. They are not a portability guarantee.
+The 1 ms append target is judged only on a host that can show it. Each round also measures
+the bare filesystem floor, and when the best round's floor is 100 µs or more the host is
+loaded or slow, so the test logs both figures and skips the target instead of passing or
+failing on noise. Under the race detector the figures are reported, not enforced.
+
+Under a writer held inside its first append, recording 200 observations returned in under
+2 ms and the close gave up at its 50 ms budget. Every observation was written or counted
+once: one written, 191 `queueFull` and 8 `flushTimeout`. These numbers come from one
+reference machine and are evidence for the pending human decision. They are not a
+portability guarantee.
 
 ## Fixtures
 

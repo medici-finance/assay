@@ -99,7 +99,8 @@ func DecodePolicy(b []byte) (Policy, error) {
 
 func (p Policy) withDefaults() Policy {
 	if p.SegmentBytes == 0 {
-		p.SegmentBytes = DefaultSegmentBytes
+		// A default segment never outgrows the byte cap it is retired against.
+		p.SegmentBytes = min(DefaultSegmentBytes, p.ByteCap)
 	}
 	if p.Queue == 0 {
 		p.Queue = DefaultQueue

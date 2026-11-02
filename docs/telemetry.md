@@ -453,6 +453,9 @@ applies to `telemetry-v1` only. It does not describe these records.
 - **Not anonymous.** A random source identity links every record of one source. Under the
   workflow profile, work, session and agent locators are replaced by random aliases scoped to a
   source epoch. The alias map stays local and is never part of a record, preview or batch.
+  Each epoch's map keeps its keyed-digest secret until the store is removed, after that
+  epoch's records are retired, so a reader of the store can test a guessed locator against
+  that epoch's aliases until then.
 - **Still off by default.** `ASSAY_TELEMETRY=1` alone selects no profile and arms nothing, so
   existing telemetry-v1 or perf-v1 opt-ins do not become consent to this class. With collection
   off, nothing is created.
