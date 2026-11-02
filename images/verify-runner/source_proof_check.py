@@ -75,13 +75,13 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
         admit.mkdir()
         (admit / 'receipt.json').write_text('{}')
         (admit / 'image-digest').write_text('sha256:' + 'a' * 64)
-        runenv = dict(env, PATH='/usr/bin:/bin', BASH_ENV=str(seams), VR_WORK_DIR=str(root),
+        runenv = dict(env, PATH='/usr/bin:/bin', BASH_ENV=str(seams), VR_CACHE_DIR=str(base / 'cache'), VR_WORK_DIR=str(root),
                       VR_ADMISSION_DIR=str(admit), VR_SCRATCH_DIR=str(base),
                       VR_TEST_ROWS=str(marker), VR_TEST_DELIVERY=str(base / 'delivery'),
                       ASSAY_DELIVERY_SHA='ambient-poison', ASSAY_DELIVERY_BASE_SHA='ambient-poison')
-        def run(flags=(), good=True, case='source', source=None, proof=True, usage=False):
+        def run(flags=(), good=True, case='source', source=None, proof=True, usage=False, key='proof/01'):
             marker.unlink(missing_ok=True)
-            args = ['proof/01']
+            args = [key]
             if proof:
                 args += ['--source-proof']
             if source is not False:
@@ -107,6 +107,9 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
         for flags in (['--sha=' + sha], ['--source-proof'], ['--unknown'], ['--delivery-sha=x']):
             run(flags, good=False, case='argv', usage=True)
         run(source=older, good=False, case='requested-sha')
+        run(source=sha[:39], good=False, case='malformed-sha', usage=True)
+        for key in ('seed', 'seed-probe', 'probe'):
+            run(key=key, good=False, case='seed-flags', usage=True)
         run(source=False, good=False, case='no-sha', usage=True)
         run(['--delivery-sha=' + head], source=False, proof=False,
             good=False, case='delivery-without-proof', usage=True)

@@ -30,8 +30,10 @@ class ProofTests(unittest.TestCase):
              '--check-clone "$WORK" "$(/usr/bin/git -C "$WORK" rev-parse HEAD)"', 'refusal:requested-sha'),
             ('required source', 'witness.sh', '[ -n "$SOURCE_SHA" ] || usage', ':', 'usage:no-sha'),
             ('delivery proof guard', 'witness.sh', '[ -z "$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" ] || usage', ':', 'refusal:delivery-without-proof'),
+            ('seed flags', 'witness.sh', '[ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage', ':', 'usage:seed-flags'),
+            ('source shape', 'witness.sh', '[[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || usage', ':', 'usage:malformed-sha'),
         ]
-        self.assertEqual(len(mutants), 10)
+        self.assertEqual(len(mutants), 12)
         for name, file, old, new, message in mutants:
             with self.subTest(name=name), tempfile.TemporaryDirectory(prefix='proof-mutant-') as tmp:
                 root = Path(tmp)
