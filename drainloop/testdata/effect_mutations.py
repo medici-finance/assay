@@ -129,6 +129,8 @@ mutations += [
 ]
 # GE/16 preparation, review round 2: strict decode and ruled contract text.
 mutations += [
+    ("checkpoint-json-bound-bypassed", "ownership.go", "if !json.Valid(body) {",
+     "if false && !json.Valid(body) {", "TestCheckpointSyntaxBound"),
     ("checkpoint-null-accepted", "ownership.go", "if v == nil {",
      "if false && v == nil {", "TestCheckpointNullPositionsHeld"),
     ("checkpoint-duplicate-accepted", "ownership.go", "if _, seen := obj[key]; seen {",

@@ -50,6 +50,10 @@ type CellCheckpoint struct {
 // not held or as zero. An explicit null nullable count stays unknown. A decoded
 // record grants no authority and selects no current incarnation.
 func DecodeCellCheckpoint(body []byte) (CellCheckpoint, error) {
+	// Preserve encoding/json's syntax and nesting bound before recursive token reading.
+	if !json.Valid(body) {
+		return CellCheckpoint{}, errors.New("checkpoint: invalid JSON")
+	}
 	tree := json.NewDecoder(bytes.NewReader(body))
 	tree.UseNumber()
 	raw, err := readStrict(tree)

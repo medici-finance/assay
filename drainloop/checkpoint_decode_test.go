@@ -144,3 +144,13 @@ func TestCheckpointPausedDecodeBoundary(t *testing.T) {
 		t.Fatalf("valid boundary control: %v", err)
 	}
 }
+
+// regression: F-checkpoint-hold-decode
+func TestCheckpointSyntaxBound(t *testing.T) {
+	// encoding/json rejects nesting past 10,000; the token reader must not undo that bound.
+	for _, body := range []string{"{", strings.Repeat("[", 10001) + "0" + strings.Repeat("]", 10001)} {
+		if _, err := DecodeCellCheckpoint([]byte(body)); err == nil || err.Error() != "checkpoint: invalid JSON" {
+			t.Fatalf("syntax/nesting not refused before record traversal: %v", err)
+		}
+	}
+}
