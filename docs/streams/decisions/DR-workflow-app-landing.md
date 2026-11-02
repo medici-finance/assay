@@ -18,11 +18,36 @@ accepted:
   - "Open sub-decision, NOT settled by this record: whether the workflow App also MERGES the workflow-only PR (landing it under `pull_requests: write`) or whether merge stays a human act as it is for every other PR. Both are compatible with the record; the merge-authority choice is deferred to the wiring brief's human gate. Choosing identity-merges is WIDER than today's status quo (today's promote route needs a maintainer credential — `ci/staged-workflows/README.md:1-8,16-19`): it is admissible only once the branch-protection placement above (bypass-list absence) is verified AND paired with a rule that any diff touching the guard's own CI job still requires a human merge, so the one identity able to rewrite the guard can never also be the one that waives review of that rewrite."
 ---
 
-**Status:** proposed
+**Status:** proposed — accepted by the driver, 2026-11-02; identifier-bound ratification is
+pending, so this record is not yet ruled.
 
-**This record is NOT approved.** No design-approval ruling has been recorded. It is proposed
-for the driver (`human:<name>`) to weigh; when a ruling is made, the decision-issue reference
-and the outcome are recorded here, and `decided-by` above is confirmed.
+## Status and recorded human direction
+
+**Direction recorded; identifier-bound ratification is pending.** The driver accepted this
+record's controlling design on 2026-11-02: one dedicated workflow App is the sole holder of
+`workflows: write`, and no desk App is granted it (the first `accepted:` entry above). That
+acceptance is recorded here as direction only. It is not a `ruling:` in the sense of
+`spec/registers-v1.md` §7.5, and nothing in this file treats it as one.
+
+The decision issue for this record's first citing brief is
+[decision #1245](https://github.com/medici-finance/assay/issues/1245) (desk-supervision/10).
+Its unedited human comment
+[of 2026-10-05](https://github.com/medici-finance/assay/issues/1245#issuecomment-5985886801)
+ratified brief 10's option A:
+
+> Ratified: A — add pull_requests:write to the workflow App (relay above).
+
+That comment settles brief 10's provisioning choice and the merge-authority sub-decision
+(merge stays a human act). It does not name `DR-workflow-app-landing`, so it is not asserted
+to satisfy §7.5 for this record. No `ruling:` is supplied, and `decided-by` above stays the
+unconfirmed placeholder, until a qualifying unedited human comment naming
+`DR-workflow-app-landing` exists on decision #1245. No bot relay or PR approval is
+substituted for it.
+
+**This record is NOT yet ruled.** Until that comment exists, the board rule below still
+holds: the citing briefs' rows stay `blocked`. When the comment exists, its exact URL is bound
+here as `ruling:`, this status line moves to accepted, and `decided-by` is confirmed through
+that link.
 
 **How an unruled record is distinguishable from a ruled one, mechanically, not just by this
 sentence:** the design-approval gate (`lifecycle-v1.md` §4.4) only fires on the `todo →
