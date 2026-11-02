@@ -211,6 +211,30 @@ The substance is the existing by-hand Evidence block of 2026-10-15 at source a39
 
 **VERIFY: PASS** — all 4 Verify rows pass with a network-off execution witness (exit 0, sandbox=container-netns, 0 fail) at b73d90d774fc, on top of the 2026-10-15 by-hand PASS.
 
+### Batch re-witness — 2026-11-02 claude-opus-5-5 verifier at 2c6c21336a60 (4/4 rows pass, sandbox=container-netns, closed admission bracket)
+
+A fresh non-implementer verifier re-ran the whole Verify table at pinned merged main 2c6c21336a606e64df057294f21177f16db7b9f8, under the one-time batch re-witness ruling (medici-finance/assay#2026). The home was a detached worktree at that commit, admitted by `deskdispatch --check-verifier` (rc 0; binding below). The rows ran inside the closed admission bracket: host open-bracket, then `statusgen verifyrun --sandbox=container-netns` in a `docker run --network none` container from the pinned arm64 verify-runner image (digest below) as uid 501 with the home mounted read-only, GOPROXY=off and GOTOOLCHAIN=local, then host close-bracket. The container run exited 0, close-bracket exited 0, and `--bracket-digest` reported verdict=match. The witness bytes below are the closed witness file, unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationLibraryCLIParity$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationLibraryCLIParity " "$result")` | pass exit=0 sandbox=container-netns | sha256:cfd36ebb9701 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationUncertainEvidenceHolds$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationUncertainEvidenceHolds " "$result")` | pass exit=0 sandbox=container-netns | sha256:f7199ac1a095 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationPureDependencyBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationPureDependencyBoundary " "$result")` | pass exit=0 sandbox=container-netns | sha256:61b9f74ee53d | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationExternalConsumer$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationExternalConsumer " "$result")` | pass exit=0 sandbox=container-netns | sha256:5c5dde59db9a | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c
+Container-Image: sha256:097db7d3e20415bc7a2c524250e2ad89158ed93a31a7d8cd861e6cd38fc3b3b4
+Verification-Attestation: medici-finance/assay#5279 run=6ae8a8c641dea772b47fee0bb6caa49a94e8a5fdffa11913af3c337d8a792a93 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/statusgen/brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=6ae8a8c641dea772b47fee0bb6caa49a94e8a5fdffa11913af3c337d8a792a93 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:ddf14768e4b78f02e94f6fae4c310c08dc06e0a8db50a2fb68244111759cd68c witness=sha256:1da6eca04b010d47819fded780e878bb9dc0247c45ceaa791cbf10edb0ffc2ac opened=2026-11-02T01:58:24Z closed=2026-11-02T01:58:56Z before=receipt after=check-verifier
+
+Risk metadata is explicitly all no, the gate is model, and the item is not irreversible. This pass renews the execution witness only; it ran no mutation sweep. The enumeration covered the package-level numeric bounds, the revision pattern and the identity in statusgen/evaluation at the pinned commit. Each is reversible by an edit and a redeploy, and every bound fails safe to a hold.
+
+RISK-VALUE: DERIVED — TreeSHALen = 12 @ statusgen/evaluation/coverage_api.go:22 — unchanged from the pre-extraction width every recorded witness token carries; minRevisionTokenLen = TreeSHALen (statusgen/evaluation/coverage.go:512) keeps the same floor, so a shorter token proves nothing.
+RISK-VALUE: DERIVED — hexRevisionRe = `^[0-9a-fA-F]{12,40}$` @ statusgen/evaluation/coverage.go:526 — lower bound is TreeSHALen, upper bound is a full SHA-1 object name; a token outside the pattern is never credited.
+RISK-VALUE: DERIVED — DefaultMaxLandingCandidates = 1000 @ statusgen/evaluation/coverage_repo.go:105 — equals the pre-extraction bound; a search past it returns could-not-check, which holds, so the bound can only withhold work.
+RISK-VALUE: DERIVED — EvaluatorVersion = "statusgen-evaluation/4" @ statusgen/evaluation/identity.go:13 — a generation label that names the rules and carries no authority; it moved from 3 to 4 with the witness schema v2 reader (d8a599381), and this run exercises the current generation.
+
+**VERIFY: PASS** — 4 of 4 rows pass (exit 0, named PASS, sandbox=container-netns) at 2c6c21336a60 inside a closed admission bracket with verdict=match.
+
 ## Review
 
 Gate: model. This is behavior-preserving offline extraction, not an authority change. Any
