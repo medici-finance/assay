@@ -73,6 +73,18 @@ class ProofTests(unittest.TestCase):
                 check.probe(HERE / 'source_proof.py', witness)
             self.assertEqual(failure.exception.code, 'refusal:seed-flags')
 
+            # Code directly in the dispatch arm is outside the fixture contract
+            # and must be refused before executing even a harmless canary.
+            original = witness.read_text()
+            arm = '\n  probe)\n    probe\n    ;;'
+            self.assertEqual(original.count(arm), 1)
+            bad_arm = '\n  probe)\n    printf "dispatch reached\\n" >> "$VR_TEST_NETWORK"\n    probe\n    ;;'
+            witness.write_text(original.replace(arm, bad_arm, 1))
+            with self.assertRaisesRegex(RuntimeError, 'operational probe arm'):
+                check.probe(HERE / 'source_proof.py', witness)
+            print('DISPATCH-GUARD RED unsupported arm refused before execution')
+            witness.write_text(original)
+
             # Removing the substitution reaches the canary and must go red.
             with mock.patch.object(check, '_PROBE_SENTINEL', ':'):
                 with self.assertRaises(check.ProbeFailure) as failure:

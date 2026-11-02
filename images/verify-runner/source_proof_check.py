@@ -5,6 +5,7 @@ network, model, forge admission or acceptance is exercised by this probe.
 """
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -60,6 +61,10 @@ def probe(helper, witness):
         dispatch = '\ncase $1 in\n  seed)'
         if candidate.count(dispatch) != 1:
             raise RuntimeError('cannot isolate the operational probe dispatch')
+        operation = candidate[candidate.index(dispatch):]
+        probe_arm = '\n  probe)\n    probe\n    ;;'
+        if operation.count(probe_arm) != 1 or len(re.findall(r'(?m)^[ \t]*probe[ \t]*\)', operation)) != 1:
+            raise RuntimeError('cannot isolate the operational probe arm')
         script.write_text(candidate.replace(dispatch, '\n' + _PROBE_SENTINEL + dispatch, 1))
         marker = base / 'rows'
         network = base / 'network-seams'
