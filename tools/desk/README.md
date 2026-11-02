@@ -93,7 +93,7 @@ changed or discarded.
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
 | `deskusage` | `record` reported counts at worker completion; `summary --by item\|tier [--json]` aggregates only; never reads transcripts, prompts, stdin or tool output | local-only counts write, outside Git worktrees; no network | no |
-| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
+| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role), `reruns` (verification re-runs per brief from the verify-outcome register, joined to verifier perf rows) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files, plus the verify-outcome register and brief file under `--root` for `reruns`; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `maintain objects` inventories and compacts the common Git directory offline; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); inspection takes `--dry-run` | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -611,6 +611,15 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
   Rules: `docs/telemetry.md`.
 - `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
   boot order, and the summed boot cost per role.
+- `deskperf reruns --root <repo> [--brief <stream>/<NN>] [--days N] [--json]` — verification
+  re-runs as waste. Counts every verify-outcome record of a brief under `--root` (each one
+  re-validated; a record that fails is listed invalid with its path, never counted; a record
+  without `attempts` is one `unrecorded` run), then joins each attempt window to workflow perf
+  rows with role `verify` and the brief's qualified work ref (the verify-desk passes it with
+  `--perf-work`). It prints the total, the uncredited-plus-discarded part and its share. A
+  pruned, missing or ambiguous measure prints `could-not-check` or `ambiguous` with its reason,
+  never 0; rows outside every window print as `unassigned`. Exit 6 when the register has no
+  record for `--brief`.
 
 `--days` defaults to 7 and refuses anything above it (exit 5): there is no eighth day to read.
 An empty history is a REFUSAL (exit 6) that names its reason — logging off, or on but nothing

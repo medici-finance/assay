@@ -199,6 +199,25 @@ presence; inability to inspect that artifact is **VERIFY: BLOCKED** if no other 
 A runner launch failure, unknown baseline or empty re-derivation establishes no acceptance
 result. A zero process exit establishes neither coverage nor installed-runner qualification.
 
+### Attempts
+
+Every run of the Verify table in this dispatch, full or partial, is one attempt. Report each one
+in order for the outcome record's `attempts` list:
+
+- `started` / `finished` (RFC3339 UTC) and `rows_run`.
+- `disposition` and `reason`, from these closed sets only:
+  - `credited`, with no reason. At most one, and it is the last attempt.
+  - `uncredited`, with `local-build` (a locally built binary in an admitted run),
+    `not-credited` (`--credit` printed `credit=not-credited`) or `credit-unchecked`
+    (`credit=could-not-check`).
+  - `discarded`, with `env-fault` (an environmental cause failed rows and the run was thrown
+    away and re-run; give its `cause_ref`) or `superseded` (replaced by a later attempt for
+    any other stated cause).
+
+Discarding a run never deletes its entry. The list records what was run, not what was kept.
+The count measures environment waste, not the verifier. It changes nothing about what is
+credited.
+
 ## 6. What a verifier may and may not flip
 
 - Record Evidence and the verdict. Land Evidence as it is produced — a PASS in hand and not
