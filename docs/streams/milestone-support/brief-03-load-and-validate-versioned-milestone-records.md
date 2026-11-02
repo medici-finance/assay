@@ -125,7 +125,7 @@ Risk-bearing values. The brief carries risk metadata, all no, and is not irrever
 - RISK-VALUE: DERIVED — milestone ID pattern = `^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*[:/]m-[0-9]{2,}$` @ schemas/milestone-v1.json:25 — the three segments plus m-<NN> match the full colon-only ID at spec/milestone-v1.md:39-41, and the [:/] alternative admits the earlier slash spelling that spec/milestone-v1.md:58-59 and :365 keep as a compatibility input.
 - RISK-VALUE: NAMED, NOT DERIVED — milestoneLabelRe = `(?i)^(m-?[0-9]+|wave[ -]?[0-9]+|w[0-9]+)$` @ statusgen/milestones.go:167 — spec/milestone-v1.md:106 and :376 refuse a title that is only an ID or wave label but give no grammar for a wave label; the w<N>, wave <N> and m<N> spellings are the implementer's reading and the spec offers no list to derive the set from.
 
-This brief is gate: model with every risk answer no; this pass records Evidence only and changes no lifecycle cell.
+This brief is gate: model with every risk answer no; on this PASS, the same branch flips the stream index row 03 from implemented to verified (the verifier makes that flip; CI owns verified to done).
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
