@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 type transitionFixture struct {
@@ -380,6 +382,330 @@ func TestTransitionRootPaths(t *testing.T) {
 			code, out, diag := captureVerifyclosure(t, []string{"--root", root, "--brief", "vf/01", "--acceptance-forge"})
 			if code != 0 {
 				t.Fatalf("relative-root closure: %d %s %s", code, out, diag)
+			}
+		})
+	}
+}
+
+// regression: #4823
+func TestSnapshotApprovalContext(t *testing.T) {
+	for _, mode := range []string{"approved", "offline", "absent", "bot", "edited", "foreign", "missing", "other-repo", "worktree-other"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com:443/"+rlRepo+".git")
+			switch mode {
+			case "foreign":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://gitlab.example/"+rlRepo+".git")
+			case "missing":
+				vfGit(t, f.root, vfMailHuman, "remote", "remove", "origin")
+			case "other-repo":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com/other/project.git")
+			case "absent":
+				f.forge.commentStatus = 404
+			case "bot":
+				f.forge.commentBody = rlCommentJSONWith(vfRunner, "Bot", rlRepo, rlIssue, f.payload, rlPosted, rlPosted)
+			case "edited":
+				f.forge.commentBody = strings.Replace(f.forge.commentBody, `"updated_at":"`+rlPosted, `"updated_at":"2026-10-01T10:00:00Z`, 1)
+			}
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			source := f.root
+			if mode == "worktree-other" {
+				// The human approval belongs to the shared-config repository. A role
+				// worktree overrides that with a different effective repository.
+				vfGit(t, f.root, vfMailHuman, "config", "extensions.worktreeConfig", "true")
+				source = filepath.Join(t.TempDir(), "linked")
+				vfGit(t, f.root, vfMailHuman, "worktree", "add", "--detach", source, head)
+				vfGit(t, source, vfMailHuman, "config", "--worktree", "--add", "remote.origin.url", "")
+				vfGit(t, source, vfMailHuman, "config", "--worktree", "--add", "remote.origin.url", "https://github.com/other/project.git")
+			}
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(source, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatal(err)
+			}
+			// Offline must never invoke the approval reader, even though origin survives.
+			if mode == "offline" {
+				transitionForge = false
+				transitionClient = func() *ghClient { t.Fatal("offline approval read"); return nil }
+			}
+			resetReadMemo()
+			path := vfBrief(snapshot)
+			verify, evidence, err := briefSections(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			findings, why := closureWitnesses(verify, evidence, path)
+			accepted := why == "" && len(findings) == 3
+			for _, finding := range findings {
+				accepted = accepted && closureSatisfied(finding)
+			}
+			if accepted != (mode == "approved") {
+				t.Fatalf("snapshot closure accepted=%v: %s", accepted, why)
+			}
+			streams, _, err := loadStreams(snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if problems := protectedClosureProblems(streams); (len(problems) == 0) != (mode == "approved") {
+				t.Fatalf("snapshot lint: %v", problems)
+			}
+		})
+	}
+}
+
+// regression: #4823 C1 C2
+func TestSnapshotOriginFailures(t *testing.T) {
+	for _, mode := range []string{"malformed", "push-only", "multiple", "scp-ambiguous", "scp-double-at", "helper"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			switch mode {
+			case "scp-ambiguous", "scp-double-at", "helper":
+				origin := "git:git@github.com:" + rlRepo + ".git"
+				if mode == "scp-double-at" {
+					origin = "git@github.com@github.com:" + rlRepo + ".git"
+				} else if mode == "helper" {
+					origin = "ext::https://github.com/" + rlRepo + ".git"
+				}
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", origin)
+				got, err := historyGit(f.root, "remote", "get-url", "origin").Output()
+				if err != nil || strings.TrimSpace(string(got)) != origin {
+					t.Fatalf("native origin control=%q err=%v", got, err)
+				}
+			case "malformed":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@github.com:o/r.git")
+			case "push-only":
+				vfGit(t, f.root, vfMailHuman, "config", "--unset-all", "remote.origin.url")
+				vfGit(t, f.root, vfMailHuman, "config", "remote.origin.pushurl", "https://github.com/"+rlRepo+".git")
+			case "multiple":
+				vfGit(t, f.root, vfMailHuman, "config", "--add", "remote.origin.url", "https://github.com/other/project.git")
+			}
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatalf("metadata blocked history: %v", err)
+			}
+			transitionClient = func() *ghClient { t.Fatal("unavailable authority reached approval read"); return nil }
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(snapshot))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, why := closureWitnesses(verify, evidence, vfBrief(snapshot))
+			if !strings.Contains(why, "could-not-check repository authority") {
+				t.Fatalf("authority consumer did not hold: %s", why)
+			}
+		})
+	}
+}
+
+// regression: #4823 C1
+func TestSnapshotInjectedOrigin(t *testing.T) {
+	for _, mode := range []string{"count", "parameters"} {
+		t.Run(mode, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://github.com/foreign/project.git")
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			approved := "https://github.com/" + rlRepo + ".git"
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			if mode == "count" {
+				t.Setenv("GIT_CONFIG_COUNT", "2")
+				t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+				t.Setenv("GIT_CONFIG_VALUE_0", "")
+				t.Setenv("GIT_CONFIG_KEY_1", "remote.origin.url")
+				t.Setenv("GIT_CONFIG_VALUE_1", approved)
+			} else {
+				t.Setenv("GIT_CONFIG_PARAMETERS", "'remote.origin.url=' 'remote.origin.url="+approved+"'")
+			}
+			snapshot := t.TempDir()
+			if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+				t.Fatal(err)
+			}
+			// Positive control: native config injection overrides the snapshot reset,
+			// so withholding metadata alone cannot protect this actual consumer.
+			native, err := historyGit(snapshot, "remote", "get-url", "origin").Output()
+			if err != nil || strings.TrimSpace(string(native)) != approved {
+				t.Fatalf("injection control=%q %v", native, err)
+			}
+			transitionClient = func() *ghClient { t.Fatal("injected foreign authority reached approval reader"); return nil }
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(snapshot))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, why := closureWitnesses(verify, evidence, vfBrief(snapshot))
+			if !strings.Contains(why, "could-not-check repository authority") {
+				t.Fatalf("injected authority did not hold: %s", why)
+			}
+		})
+	}
+}
+
+// regression: #4823 C1
+func TestSnapshotRewriteFallback(t *testing.T) {
+	f := transitionFixtureAt(t)
+	f.evidence(t, nil)
+	vfGit(t, f.root, vfMailHuman, "config", "--add", "remote.origin.url", "https://github.com/foreign/project.git")
+	head := vfRev(t, f.root, "HEAD")
+	vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+	global := filepath.Join(t.TempDir(), "global")
+	approved := "https://github.com/" + rlRepo + ".git"
+	body := fmt.Sprintf("[url %q]\n insteadOf = origin\n", approved)
+	if err := os.WriteFile(global, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_COUNT", "0")
+	t.Setenv("GIT_CONFIG_PARAMETERS", "")
+	snapshot := t.TempDir()
+	if err := gitcore.CheckoutLocalCommit(f.root, snapshot, head, "refs/remotes/origin/main"); err != nil {
+		t.Fatal(err)
+	}
+	// A real global rewrite manufactures a foreign approval origin from the
+	// native missing-remote fallback despite the destination's local reset.
+	native, err := historyGit(snapshot, "remote", "get-url", "origin").Output()
+	if err != nil || strings.TrimSpace(string(native)) != approved {
+		t.Fatalf("rewrite control=%q %v", native, err)
+	}
+	transitionClient = func() *ghClient { t.Fatal("global fallback reached foreign approval reader"); return nil }
+	resetReadMemo()
+	verify, evidence, err := briefSections(vfBrief(snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, why := closureWitnesses(verify, evidence, vfBrief(snapshot))
+	if !strings.Contains(why, "could-not-check repository authority") {
+		t.Fatalf("global fallback did not hold: %s", why)
+	}
+}
+
+// regression: #4823 C1 C2
+func TestAuthorityNeutralIncludes(t *testing.T) {
+	for _, mode := range []string{"matching-ci", "nonmatch-missing", "linked", "worktree-glob", "case-insensitive", "nested", "foreign", "rewrite", "unreadable", "cycle", "depth", "unsupported"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			source := f.root
+			if mode == "linked" || mode == "worktree-glob" {
+				source = filepath.Join(t.TempDir(), "linked")
+				vfGit(t, f.root, vfMailHuman, "worktree", "add", "--detach", source, head)
+			}
+			adminRaw, adminErr := historyGit(source, "rev-parse", "--absolute-git-dir").Output()
+			if adminErr != nil {
+				t.Fatal(adminErr)
+			}
+			admin := strings.TrimSpace(string(adminRaw))
+			file := filepath.Join(t.TempDir(), "included.config")
+			const neutral = "[http \"https://github.com\"]\n extraHeader = fixture-secret\n[credential]\n helper = fixture-secret-helper\n"
+			content := neutral
+			condition := "gitdir:" + filepath.ToSlash(admin)
+			want := true
+			switch mode {
+			case "nonmatch-missing":
+				condition = "gitdir:" + filepath.ToSlash(filepath.Join(t.TempDir(), "absent", ".git"))
+			case "worktree-glob":
+				condition = "gitdir:" + filepath.ToSlash(filepath.Dir(admin)) + "/*"
+			case "case-insensitive":
+				condition = "gitdir/i:" + strings.ToUpper(filepath.ToSlash(admin))
+			case "foreign":
+				content += "[remote \"origin\"]\n url = https://github.com/foreign/project.git\n"
+				want = false
+			case "rewrite":
+				content += "[url \"https://github.com/foreign/\"]\n insteadOf = https://github.com/\n"
+				want = false
+			case "nested":
+				nested := filepath.Join(filepath.Dir(file), "nested.config")
+				if err := os.WriteFile(nested, []byte(neutral), 0600); err != nil {
+					t.Fatal(err)
+				}
+				content = fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(nested))
+			case "cycle":
+				content += fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(file))
+				want = false
+			case "depth":
+				for i := 0; i < 10; i++ {
+					current := filepath.Join(filepath.Dir(file), fmt.Sprintf("level-%d.config", i))
+					next := filepath.Join(filepath.Dir(file), fmt.Sprintf("level-%d.config", i+1))
+					body := neutral
+					if i < 9 {
+						body += fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(next))
+					}
+					if err := os.WriteFile(current, []byte(body), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				content = fmt.Sprintf("[include]\n path = %q\n", filepath.ToSlash(filepath.Join(filepath.Dir(file), "level-0.config")))
+				want = false
+			case "unreadable":
+				want = false
+			case "unsupported":
+				condition = "gitdir:**"
+				want = false
+			}
+			if mode == "unreadable" {
+				if err := os.Mkdir(file, 0700); err != nil {
+					t.Fatal(err)
+				}
+			} else if mode != "nonmatch-missing" {
+				if err := os.WriteFile(file, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A nonmatching container path in checkout-v7 must never be opened.
+			vfGit(t, f.root, vfMailHuman, "config", "includeIf.gitdir:/example.invalid/container/.git.path", filepath.Join(t.TempDir(), "not-present"))
+			vfGit(t, f.root, vfMailHuman, "config", "includeIf."+condition+".path", file)
+			if mode == "matching-ci" || mode == "linked" || mode == "worktree-glob" || mode == "case-insensitive" || mode == "nested" {
+				raw, err := historyGit(source, "config", "--get", "http.https://github.com.extraHeader").Output()
+				if err != nil || strings.TrimSpace(string(raw)) != "fixture-secret" {
+					t.Fatalf("native include control=%q %v", raw, err)
+				}
+			}
+			got, err := gitcore.OriginAuthority(source)
+			if want {
+				if err != nil || got != "https://github.com/"+rlRepo+".git" {
+					t.Fatalf("supported include authority=%q err=%v", got, err)
+				}
+			} else if err == nil {
+				t.Fatalf("unsupported include supplied authority=%q", got)
+			}
+			if !want {
+				transitionClient = func() *ghClient { t.Fatal("unsupported include reached approval reader"); return nil }
+			}
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			findings, why := closureWitnesses(verify, evidence, vfBrief(source))
+			accepted := why == "" && len(findings) == 3
+			for _, finding := range findings {
+				accepted = accepted && closureSatisfied(finding)
+			}
+			if accepted != want {
+				t.Fatalf("included closure accepted=%v want=%v: %s", accepted, want, why)
+			}
+			if want {
+				snapshot := t.TempDir()
+				if err := gitcore.CheckoutLocalCommit(source, snapshot, head, "refs/remotes/origin/main"); err != nil {
+					t.Fatal(err)
+				}
+				config, err := os.ReadFile(filepath.Join(snapshot, ".git", "config"))
+				if err != nil || strings.Contains(string(config), "fixture-secret") || strings.Contains(string(config), "include") {
+					t.Fatal("included credential/transport config copied")
+				}
 			}
 		})
 	}

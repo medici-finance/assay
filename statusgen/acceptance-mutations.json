@@ -22,7 +22,7 @@
     {
       "name": "origin host binding removed",
       "file": "acceptancetransition.go",
-      "old": "if err != nil || remoteHost(string(origin)) != \"github.com\" {",
+      "old": "if err != nil || remoteHost(origin) != \"github.com\" {",
       "new": "if err != nil {"
     },
     {
