@@ -1,2 +1,2 @@
 ### Changed
-- The workflow-App landing design record now records the driver's acceptance of its controlling design (one workflow App is the sole holder of `workflows: write`) and links the existing ratification on its decision issue, while keeping the record unruled and its citing briefs `blocked` until a ratifying comment that names the record is bound as its `ruling:`.
+- The workflow-App landing design record is now accepted. Its `ruling:` links the driver's ruling on its decision issue: one workflow App is the sole holder of `workflows: write`, and for the first cutover a human merges the workflow-only PR. The record's first citing brief, the workflow App wiring check, moves from `blocked` to `todo`. The two later briefs stay `blocked` on their dependency chain.
