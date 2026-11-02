@@ -8,7 +8,8 @@ import (
 
 // TestVerifyOutcomes_AdditiveKeys pins that the join keys a verify-outcome record now carries
 // (prs, prs_unknown_reason, verifier_tier, started, finished, rows_passed, rows_total,
-// row_results, dispatch_ref, dispatch_ref_sha256) are invisible to this reader: a record
+// row_results, dispatch_ref, dispatch_ref_sha256, and desk-supervision/37's attempts) are
+// invisible to this reader: a record
 // carrying every one of them yields the same latest outcome as the same record without them.
 // regression: F-outcome-join-keys
 func TestVerifyOutcomes_AdditiveKeys(t *testing.T) {
@@ -19,7 +20,11 @@ func TestVerifyOutcomes_AdditiveKeys(t *testing.T) {
 		`"verifier_tier":"strong","started":"2026-10-06T14:00:00Z","finished":"2026-10-06T14:10:00Z",` +
 		`"rows_passed":0,"rows_total":1,"row_results":[{"row":1,"result":"fail"}],` +
 		`"dispatch_ref":"assay--x--1@20261006T141502Z.3fa9c01b7d2e","dispatch_ref_sha256":"` +
-		`1111111111111111111111111111111111111111111111111111111111111111"}`
+		`1111111111111111111111111111111111111111111111111111111111111111",` +
+		`"attempts":[{"attempt":1,"disposition":"discarded","reason":"env-fault","cause_ref":"example-org/tracker#8",` +
+		`"started":"2026-10-06T14:00:00Z","finished":"2026-10-06T14:04:00Z","rows_run":1},` +
+		`{"attempt":2,"disposition":"uncredited","reason":"not-credited",` +
+		`"started":"2026-10-06T14:05:00Z","finished":"2026-10-06T14:10:00Z","rows_run":1}]}`
 
 	latest := func(record string) awaitOutcome {
 		t.Helper()

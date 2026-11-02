@@ -129,7 +129,7 @@ type JoinInput struct {
 // decode would have matched.
 var joinTopKeys = []string{
 	"prs", "prs_unknown_reason", "verifier_tier", "started", "finished", "rows_passed", "rows_total",
-	"rows", "row_results", "dispatch_ref", "dispatch_ref_sha256",
+	"rows", "row_results", "dispatch_ref", "dispatch_ref_sha256", "attempts",
 }
 
 var prEntryKeys = []string{"repo", "number", "merge_sha", "withheld"}
@@ -429,7 +429,10 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 			}
 		}
 	}
-	return nil
+	// attempts (desk-supervision/37): every verification run of this dispatch, validated
+	// against the record's own window and row count checked above.
+	_, err = CheckAttempts(f)
+	return err
 }
 
 // CheckWakeV1RunFields refuses a verify-wake-v1 record that lacks one of the join keys every

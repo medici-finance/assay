@@ -86,4 +86,29 @@ func TestOutcomeRecords(t *testing.T) {
 	if logOnly != both {
 		t.Fatalf("log-only and both-layouts plans differ (a record present in both layouts must count once):\n--- log-only ---\n%s\n--- both ---\n%s", logOnly, both)
 	}
+
+	// desk-supervision/37: a blocked record carrying attempts plans and wakes exactly as the same
+	// record without them — the planner never reads the new key.
+	blocked := `{"ts":"2026-09-08T03:00:00Z","brief":"example-stream/02","outcome":"blocked","sha":"0000003",` +
+		`"blocker_kind":"environment","blocker_ref":"example-org/tracker#9","started":"2026-09-08T02:00:00Z",` +
+		`"finished":"2026-09-08T02:50:00Z","rows_total":4`
+	withAttempts := blocked + `,"attempts":[` +
+		`{"attempt":1,"disposition":"uncredited","reason":"local-build","started":"2026-09-08T02:00:00Z","finished":"2026-09-08T02:10:00Z","rows_run":4},` +
+		`{"attempt":2,"disposition":"discarded","reason":"env-fault","cause_ref":"example-org/tracker#9","started":"2026-09-08T02:20:00Z","finished":"2026-09-08T02:30:00Z","rows_run":2}]}`
+	var plain, attempted string
+	t.Run("blocked record without attempts", func(t *testing.T) {
+		plain = runVariant(t, func(root string) {
+			writeOutcomeRecord(t, root, line01)
+			writeOutcomeRecord(t, root, blocked+"}")
+		})
+	})
+	t.Run("blocked record with attempts", func(t *testing.T) {
+		attempted = runVariant(t, func(root string) {
+			writeOutcomeRecord(t, root, line01)
+			writeOutcomeRecord(t, root, withAttempts)
+		})
+	})
+	if plain == "" || plain != attempted {
+		t.Fatalf("a blocked record carrying attempts plans differently from the same record without them:\n--- without ---\n%s\n--- with ---\n%s", plain, attempted)
+	}
 }
