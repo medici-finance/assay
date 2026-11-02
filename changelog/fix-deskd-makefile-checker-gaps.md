@@ -1,0 +1,2 @@
+### Fixed
+- The deskd build contract test now reads the root Makefile closer to how GNU Make does, so it can no longer be silently bypassed by any of these: a setting split across backslash-continued lines, `GNUMAKEFLAGS` carrying `-i`, an `exit 256` (which the shell reports as success) before the image build, or a second `deskd-image`/`deskd-build` rule written with spaces, alongside other targets, or with its recipe after `;`. Each spelling has its own negative fixture.

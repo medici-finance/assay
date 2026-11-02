@@ -566,19 +566,75 @@ type makeRule struct {
 	recipes int      // rules for the target that carry a recipe; make runs only the last
 }
 
-// makeRecipe returns target's first recipe and whether the rule exists. The -
-// marker is recorded per line rather than dropped silently: a line make runs
+// makeLines splits a makefile into physical lines, CRLF read as LF.
+func makeLines(makefile string) []string {
+	return strings.Split(strings.ReplaceAll(makefile, "\r\n", "\n"), "\n")
+}
+
+// joinContinued returns the logical makefile line that starts at lines[i] and
+// the index of the line after it. make joins a line that ends in an odd number
+// of backslashes with the next one, the backslash and the blanks around it
+// becoming one space, before it reads the line as a rule, an assignment or a
+// comment. A tab-led line is returned alone: it is a recipe line, whose
+// continuations go to the shell and are read by recipeLines.
+func joinContinued(lines []string, i int) (string, int) {
+	l := lines[i]
+	if strings.HasPrefix(l, "\t") {
+		return l, i + 1
+	}
+	j := i + 1
+	for j < len(lines) && (len(l)-len(strings.TrimRight(l, `\`)))%2 == 1 {
+		l = strings.TrimRight(strings.TrimSuffix(l, `\`), " \t") + " " + strings.TrimLeft(lines[j], " \t")
+		j++
+	}
+	return l, j
+}
+
+// ruleHeader reads a logical makefile line as a rule: the targets before its
+// colon (blanks around them allowed, any number of them, a double colon
+// included) and the recipe text after a ; on the same line, if there is one.
+// ok is false for a recipe line, a comment, a variable assignment (=, :=, ::=,
+// :::=, ?=, +=, !=) or a line with no colon.
+func ruleHeader(line string) (targets []string, inline string, hasInline, ok bool) {
+	if strings.HasPrefix(line, "\t") {
+		return nil, "", false, false
+	}
+	before, after, found := strings.Cut(line, ":")
+	if !found || strings.ContainsAny(before, "#=") {
+		return nil, "", false, false
+	}
+	after = strings.TrimPrefix(after, ":")
+	if strings.HasPrefix(after, "=") || strings.HasPrefix(after, ":=") {
+		return nil, "", false, false
+	}
+	if pre, post, semi := strings.Cut(after, ";"); semi && !strings.Contains(pre, "#") {
+		inline, hasInline = post, true
+	}
+	return strings.Fields(before), inline, hasInline, true
+}
+
+// makeRecipe returns target's first recipe and whether the rule exists. A rule
+// is any logical line whose targets name target, however spelled; its recipe is
+// the text after a ; on that line, if any, then the tab-led lines below it. The
+// - marker is recorded per line rather than dropped silently: a line make runs
 // with its status ignored can fail without failing the target.
 func makeRecipe(makefile, target string) (makeRule, bool) {
-	lines := strings.Split(strings.ReplaceAll(makefile, "\r\n", "\n"), "\n")
+	lines := makeLines(makefile)
 	var r makeRule
 	found := false
-	for i, l := range lines {
-		if !strings.HasPrefix(l, target+":") {
+	for i := 0; i < len(lines); {
+		head, next := joinContinued(lines, i)
+		i = next
+		targets, inline, hasInline, ok := ruleHeader(head)
+		if !ok || !slices.Contains(targets, target) {
 			continue
 		}
 		found = true
-		body, ignored := recipeLines(lines[i+1:])
+		rest := lines[next:]
+		if hasInline {
+			rest = append([]string{"\t" + inline}, rest...)
+		}
+		body, ignored := recipeLines(rest)
 		if len(body) == 0 {
 			continue
 		}
@@ -627,17 +683,22 @@ func recipeLines(lines []string) ([]string, []bool) {
 // makeIgnoresErrors names each Makefile-level setting under which make does not
 // fail a target on a failed recipe line, or reads the recipe other than one
 // POSIX shell per line: .IGNORE (bare, naming target, or through a variable),
-// MAKEFLAGS/MFLAGS gaining -i or --ignore-errors (or an abbreviation of it),
-// .ONESHELL, a SHELL other than /bin/sh, any .SHELLFLAGS, and $(eval), which
-// can create any of these where no line spells it. Each name is matched in any
-// form: a mention the checker cannot read as a plain setting is refused.
+// MAKEFLAGS, MFLAGS or GNUMAKEFLAGS gaining -i or --ignore-errors (or an
+// abbreviation of it), .ONESHELL, a SHELL other than /bin/sh, any .SHELLFLAGS,
+// and $(eval), which can create any of these where no line spells it. Each name
+// is matched in any form: a mention the checker cannot read as a plain setting
+// is refused. Lines are read as make reads them, backslash continuations joined
+// first, so a setting split across physical lines is the one setting it is.
 func makeIgnoresErrors(makefile string, targets []string) []string {
 	const assignOp = `\s*(?:\+|:|::|:::|\?|!)?=`
 	ignoreRule := regexp.MustCompile(`^\s*\.IGNORE\s*::?(.*)$`)
-	flagsSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*(?:MAKEFLAGS|MFLAGS)` + assignOp + `(.*)$`)
+	flagsSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*(?:GNUMAKEFLAGS|MAKEFLAGS|MFLAGS)` + assignOp + `(.*)$`)
 	shellSet := regexp.MustCompile(`^\s*(?:(?:export|override)\s+)*SHELL` + assignOp + `\s*/bin/sh\s*$`)
 	var why []string
-	for _, l := range strings.Split(strings.ReplaceAll(makefile, "\r\n", "\n"), "\n") {
+	lines := makeLines(makefile)
+	for i := 0; i < len(lines); {
+		var l string
+		l, i = joinContinued(lines, i)
 		if strings.HasPrefix(l, "\t") {
 			continue
 		}
@@ -653,8 +714,8 @@ func makeIgnoresErrors(makefile string, targets []string) []string {
 		if regexp.MustCompile(`\.SHELLFLAGS\b`).MatchString(l) {
 			why = append(why, ".SHELLFLAGS changes how each recipe line is run: "+q)
 		}
-		if regexp.MustCompile(`\b(?:MAKEFLAGS|MFLAGS)\b`).MatchString(l) && !flagsSet.MatchString(l) {
-			why = append(why, "MAKEFLAGS is named in a form the checker cannot read as a plain setting: "+q)
+		if regexp.MustCompile(`\b(?:GNUMAKEFLAGS|MAKEFLAGS|MFLAGS)\b`).MatchString(l) && !flagsSet.MatchString(l) {
+			why = append(why, "a make flags variable is named in a form the checker cannot read as a plain setting: "+q)
 		}
 		if regexp.MustCompile(`\.IGNORE\b`).MatchString(l) && !ignoreRule.MatchString(l) {
 			why = append(why, ".IGNORE is named in a form the checker cannot read as a rule: "+q)
@@ -672,7 +733,7 @@ func makeIgnoresErrors(makefile string, targets []string) []string {
 			}
 		}
 		if m := flagsSet.FindStringSubmatch(l); m != nil && makeflagsIgnore(m[1]) {
-			why = append(why, "MAKEFLAGS runs make with -i, ignoring failed recipe lines: "+q)
+			why = append(why, "a make flags variable runs make with -i, ignoring failed recipe lines: "+q)
 		}
 		if regexp.MustCompile(`\.ONESHELL\b`).MatchString(l) {
 			why = append(why, ".ONESHELL runs each recipe as one shell, so a later line decides the target's status")
@@ -732,19 +793,26 @@ func phonyTargets(makefile string) map[string]bool {
 // reports only its last command, so those positions are refused too.
 //
 // On a line that carries a step, a trap (which can rewrite the exit status), an
-// exit/return without a literal non-zero status or an exec before the step
-// (which end the line first), and a function or alias named after the step's
-// command (which shadows it) are refused as well, also when reached through
-// command/builtin or inside a { } group, an if, a loop or a subshell. eval and
-// . (source) are refused anywhere on such a line: they run text the checker
-// cannot read. At the make level, a line marked - (or starting with an
-// expansion, which can yield one), .IGNORE, MAKEFLAGS with -i, .ONESHELL, a
-// SHELL other than /bin/sh, .SHELLFLAGS, $(eval) and a second recipe for the
-// target are refused in checkMakefile. These rules match spellings, so a
-// spelling none of them names can still escape; they guard against the forms a
-// regression is likely to take, not against a determined rewrite. Out of this
-// file's reach, and so not held here: a caller running make -i or exporting
-// MAKEFLAGS or SHELL, and a makefile pulled in through include.
+// exit/return without a literal non-zero status (read modulo 256, as the shell
+// reads it) or an exec before the step (which end the line first), and a
+// function or alias named after the step's command (which shadows it) are
+// refused as well, also when reached through command/builtin or inside a { }
+// group, an if, a loop or a subshell. eval and . (source) are refused anywhere
+// on such a line: they run text the checker cannot read. At the make level, a
+// line marked - (or starting with an expansion, which can yield one), .IGNORE,
+// MAKEFLAGS, MFLAGS or GNUMAKEFLAGS with -i, .ONESHELL, a SHELL other than
+// /bin/sh, .SHELLFLAGS, $(eval) and a second recipe for the target are refused
+// in checkMakefile. Makefile lines are read after joining backslash
+// continuations, and a rule is found by the targets before its colon, however
+// they are spaced or grouped, with a recipe after ; counted as a recipe.
+//
+// These rules match spellings, so a spelling none of them names can still
+// escape; they guard against the forms a regression is likely to take, not
+// against a determined rewrite. Still unmodelled: $(eval) reached other than by
+// a line spelling $(eval or ${eval (through a variable holding the function
+// name, or $(call) of text that evals), and a makefile pulled in through
+// include, whose lines are never read. Out of this file's reach, and so not
+// held here: a caller running make -i or exporting MAKEFLAGS or SHELL.
 
 // recipeStep is a command whose failure must fail its make target.
 type recipeStep struct {
@@ -978,11 +1046,26 @@ func unfatalSteps(line string, steps []recipeStep) []string {
 			why = append(why, "line sets a trap, which can rewrite its exit status")
 		case stepSeen:
 		case w[0] == "exec",
-			(w[0] == "exit" || w[0] == "return") && (len(w) < 2 || !regexp.MustCompile(`^0*[1-9][0-9]*$`).MatchString(w[1])):
+			(w[0] == "exit" || w[0] == "return") && (len(w) < 2 || !failingStatus(w[1])):
 			why = append(why, "line runs "+w[0]+" before its step, which ends it first with a status the step did not set")
 		}
 	}
 	return why
+}
+
+// failingStatus reports whether a literal exit or return argument leaves a
+// non-zero status. The shell keeps only the low 8 bits, so 256 is a success; a
+// number too long to reduce the same way on every shell is not counted.
+func failingStatus(arg string) bool {
+	if !regexp.MustCompile(`^[0-9]+$`).MatchString(arg) {
+		return false
+	}
+	digits := strings.TrimLeft(arg, "0")
+	if digits == "" || len(digits) > 9 {
+		return false
+	}
+	n, err := strconv.Atoi(digits)
+	return err == nil && n%256 != 0
 }
 
 // leadCommand drops the words that put a command inside a compound or run it
