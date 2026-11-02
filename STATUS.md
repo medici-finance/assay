@@ -38,7 +38,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [verification-handoff](docs/streams/verification-handoff/README.md) | P2 | active | 0/6 | 2026-10-27 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-11-02 |  |
 
-### Stuck auto-flips (45)
+### Stuck auto-flips (46)
 
 _gate:model briefs at `verified` that the model auto-flip has not moved to `done`. See docs/board-stuck-autoflips.md._
 
@@ -79,6 +79,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [iso-9001/03](docs/streams/iso-9001/README.md) | A finding closes on a fired control — the corrective-action effectiveness record | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [measured-status/03](docs/streams/measured-status/README.md) | Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [measured-status/04](docs/streams/measured-status/README.md) | statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [milestone-support/03](docs/streams/milestone-support/README.md) | Load and validate versioned milestone records | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [milestone-support/04](docs/streams/milestone-support/README.md) | Add negotiated brief schema and prefixed authoring | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [quality/19](docs/streams/quality/README.md) | qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/15](docs/streams/statusgen/README.md) | Extract canonical eligibility and coverage evaluation API | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -113,7 +114,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered, flip held by the reconcile's lint hold — held out of dispatch (2):** desk-containers/26 → already-merged-unflipped (merged PR #3001, Brief: trailer; flip held: desk-containers/brief-26: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desk-containers/README.md: decision-gate hold (lifecycle-v1 §4.5): desk-containers/26 is gate: human and this change moves it to implemented (it was todo at the base), but no decision issue is recorded (frontmatter decision-issue: is absent) — no decision issue at all is a refusal, not a pass; file the brief's decision issue, record its number in decision-issue:, and record the ruling once given. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.), desktools-v2/73 → already-merged-unflipped (merged PR #4102, Brief: trailer; flip held: desktools-v2/brief-73: risk-gated brief at "implemented" has no design: record — a brief authored after 2026-09-05 may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4); docs/streams/desktools-v2/README.md: decision-gate hold (lifecycle-v1 §4.5): desktools-v2/73 is gate: human and this change moves it to implemented (it was todo at the base), but decision issue #4070 has no recorded ruling (frontmatter ruling: is absent) — once a human rules on #4070, link the ruling comment in ruling:. This offline check looked only for a well-formed ruling link; it cannot tell who wrote the linked comment — the network pass (statusgen --decision-gate, also run by --corroborate) checks that.). Fix: the reconcile's lint hold refuses to write this row, so reconciling cannot clear it — clear the problem the hold names: cite the approved design-decision record in the brief's `design:` (lifecycle-v1 §4.4), or record the human ruling in `ruling:` (lifecycle-v1 §4.5); the next reconcile then writes the row. Do not re-dispatch it.
 
-_Next-up: 18 of 45 eligible — 27 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 19 of 46 eligible — 27 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (11), statusgen (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -125,6 +126,7 @@ _Held by per-stream caps: 27 brief(s) across 3 stream(s) — top: desktools-v2. 
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8500 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6500 |
+| milestone-support | 05 — Build the combined milestone and brief dependency graph [exec:strong] | 3 | 5000 |
 | milestone-support | 08 — Normalize PR trailers and claims through the shared resolver [exec:strong] | 3 | 4000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3500 |
 | statusgen | 28 — Separate frozen historical notices from actionable lint findings [exec:strong] | 1 | 3000 |
@@ -304,7 +306,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | milestone-support | 04 [exec:strong] | verified | 6000 | 10 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ cd08e97833cb (forge-identity) | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | desktools-v2 | 65 [exec:strong] | verified | 5500 | 9 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ e25479a69d69 (forge-identity) | — |
-| milestone-support | 03 [exec:strong] | implemented | 5500 | 9 | — | verify runner | none | — | — |
+| milestone-support | 03 [exec:strong] | verified | 5500 | 9 | — | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ fede422ee8a5 (forge-identity) | — |
 | windows-port | 00 | verified | 5000 | 8 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8bc28e8edf84 (claude-opus-5-5) | — |
 | build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
 | build-less-brittle | 06 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
@@ -860,7 +862,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### milestone-support (13 open)
 
 - 02 Negotiate reader capabilities through one shared contract — implemented (wave 1)
-- 03 Load and validate versioned milestone records — implemented (wave 2)
+- 03 Load and validate versioned milestone records — verified (wave 2)
 - 04 Add negotiated brief schema and prefixed authoring — verified (wave 2)
 - 05 Build the combined milestone and brief dependency graph — todo (wave 3)
 - 06 Bind milestone acceptance to existing evidence and decisions — todo (wave 4)
