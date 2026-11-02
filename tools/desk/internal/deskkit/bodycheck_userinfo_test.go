@@ -27,6 +27,7 @@ func TestBodyCheckURLUserinfo(t *testing.T) {
 		"numeric pw":      "https://user:" + "4815" + "1623" + "@example.com/x",
 		"second url":      "see https://example.com/a and https://u:" + uiPw + "@example.com/b",
 		"later line":      "line one\nline two https://u:" + uiPw + "@example.com\n",
+		"empty username":  "redis://:" + uiPw + "@cache.example.com:6379/0",
 	}
 	for name, text := range refused {
 		err := BodyCheck([]byte(text))
@@ -74,6 +75,9 @@ func TestBodyCheckURLUserinfo(t *testing.T) {
 		"regex":             `^https://(?:[A-Za-z0-9._-]+:[^@]+@)?github\.com/`,
 		"concatenation":     `s = reURL.ReplaceAllString(s, "://$1:"+marker+"@")`,
 		"spaced concat":     `u := "https://user:" + pw + "@example.com"`,
+		"empty user, angle": "redis://:<password>@cache.example.com:6379/0",
+		"empty user, var":   "amqp://:${MQ_PW}@mq.example.com/vhost",
+		"empty user, mask":  "redis://:***@cache.example.com:6379",
 	}
 	for name, text := range clean {
 		if err := BodyCheck([]byte(text)); err != nil {

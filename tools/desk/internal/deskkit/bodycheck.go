@@ -315,8 +315,9 @@ const SurfaceBody = "body"
 //     PER-VALUE: one encrypted field elsewhere in the document does not license a
 //     plaintext field beside it. A bare `sops:` metadata mapping is not itself a
 //     secret and is no longer refused (#585).
-//   - a URL whose userinfo carries a password (scheme://user:<password>@host) that is not
-//     a placeholder (see urlUserinfoAt). It runs after every other arm, so a surface that
+//   - a URL whose userinfo carries a password (scheme://user:<password>@host, or
+//     scheme://:<password>@host with no username) that is not a placeholder (see
+//     urlUserinfoAt). It runs after every other arm, so a surface that
 //     trips another arm too keeps that arm's rule id.
 //   - any run of ≥32 base64ish chars, EXCEPT:
 //   - an exactly-40- or exactly-64-char lowercase-hex run (git SHAs — the
@@ -689,8 +690,9 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 //   - is source concatenation: an optional backslash, a quote, then '+' (the shape a Go or
 //     shell string building the URL around a variable leaves behind).
 //
-// The username half is never judged: a username-only form (user@host, x-access-token@…)
-// has no ':' before the '@' and does not match at all.
+// The username half is never judged, and may be empty: a password-only userinfo
+// (scheme://:<password>@host) is judged on its password like any other. A username-only
+// form (user@host, x-access-token@…) has no ':' before the '@' and does not match at all.
 func urlUserinfoAt(s string) (int, string) {
 	for _, m := range reURLUserinfo.FindAllStringSubmatchIndex(s, -1) {
 		user, pw := s[m[2]:m[3]], s[m[4]:m[5]]

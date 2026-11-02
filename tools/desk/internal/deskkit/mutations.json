@@ -835,6 +835,12 @@
       "file": "internal/deskkit/bodycheck.go",
       "old": "if strings.ContainsAny(user+pw, \"/?#[]\") || isUserinfoPlaceholder(pw) {",
       "new": "if strings.ContainsAny(user+pw, \"\") || isUserinfoPlaceholder(pw) {"
+    },
+    {
+      "name": "url-userinfo — require a username again (scheme://:<password>@host scans clean)",
+      "file": "internal/deskkit/scrub.go",
+      "old": "reURLUserinfo = regexp.MustCompile(`://([^:/@\\s]*):([^@\\s]+)@`)",
+      "new": "reURLUserinfo = regexp.MustCompile(`://([^:/@\\s]+):([^@\\s]+)@`)"
     }
   ],
   "_not_mutated": {
