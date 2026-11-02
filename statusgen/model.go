@@ -93,6 +93,15 @@ type Stream struct {
 	// into completed work still resolves (loadArchivedStreams). false for every
 	// active stream.
 	Archived bool
+	// MilestoneOptIn is true when the README's top-level reader-requirements
+	// envelope names the milestone-v1 schema (spec/milestone-v1.md, stream
+	// opt-in); MilestoneOptInErr is set when that envelope is unreadable. A
+	// legacy stream has neither, and its milestones/ directory is never read.
+	MilestoneOptIn    bool
+	MilestoneOptInErr error
+	// Milestones is the milestone-v1 plan for an opted-in active stream
+	// (milestones.go); nil for every legacy, non-opted-in or archived stream.
+	Milestones *MilestonePlan
 }
 
 type Brief struct {

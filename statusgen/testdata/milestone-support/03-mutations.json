@@ -1,0 +1,141 @@
+{
+  "schema": "milestone-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/03-mutate.py",
+  "cases": [
+    {
+      "name": "filename-version-inference",
+      "target": "statusgen/milestones.go",
+      "old": "\trec.ContractVersion = uint64(version)",
+      "new": "\trec.ContractVersion = map[bool]uint64{true: 2, false: uint64(version)}[strings.HasSuffix(where, \"-v2.md\")]",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRecords"
+    },
+    {
+      "name": "duplicate-version-accepted",
+      "target": "statusgen/milestones.go",
+      "old": "if prior, ok := seen[k]; ok {",
+      "new": "if prior, ok := seen[k]; ok && false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRecords"
+    },
+    {
+      "name": "owner-not-checked",
+      "target": "statusgen/milestones.go",
+      "old": "if id.Cell != in.Owner.Cell || id.Repo != in.Owner.Repo || id.Stream != in.Stream {",
+      "new": "if false && (id.Cell != in.Owner.Cell || id.Repo != in.Owner.Repo || id.Stream != in.Stream) {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRecords"
+    },
+    {
+      "name": "unknown-key-ignored",
+      "target": "statusgen/milestones.go",
+      "old": "if !milestoneKeys[k] {",
+      "new": "if false && !milestoneKeys[k] {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRecords"
+    },
+    {
+      "name": "wrong-kind-contribution",
+      "target": "statusgen/milestones.go",
+      "old": "\t\tres, err := workref.Resolve(ref, in.Owner, in.Registry, workref.TypedBrief)\n\t\tif err != nil {\n\t\t\tbad(\"contributes",
+      "new": "\t\tres, err := workref.Resolve(ref, in.Owner, in.Registry, workref.Typed)\n\t\tif err != nil {\n\t\t\tbad(\"contributes",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRecords"
+    },
+    {
+      "name": "legacy-stream-read",
+      "target": "statusgen/milestones.go",
+      "old": "\t\tif !s.MilestoneOptIn {",
+      "new": "\t\tif false && !s.MilestoneOptIn {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRecords"
+    },
+    {
+      "name": "missing-dir-as-empty",
+      "target": "statusgen/milestones.go",
+      "old": "\tif in.DirMissing {",
+      "new": "\tif in.DirMissing && false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "unreadable-dir-as-empty",
+      "target": "statusgen/milestones.go",
+      "old": "\tif in.DirErr != nil {\n\t\tplan.unknown",
+      "new": "\tif in.DirErr != nil && false {\n\t\tplan.unknown",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "symlink-followed",
+      "target": "statusgen/milestones.go",
+      "old": "if entry.Mode&fs.ModeType != 0 {",
+      "new": "if false && entry.Mode&fs.ModeType != 0 {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "unreadable-record-parsed",
+      "target": "statusgen/milestones.go",
+      "old": "\t\tif entry.Err != nil {",
+      "new": "\t\tif false && entry.Err != nil {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "escape-not-refused",
+      "target": "statusgen/milestones.go",
+      "old": "if strings.HasPrefix(p, \"/\") || !fs.ValidPath(path.Clean(p))",
+      "new": "if false && strings.HasPrefix(p, \"/\") || false && !fs.ValidPath(path.Clean(p))",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "missing-evidence-assumed",
+      "target": "statusgen/milestones.go",
+      "old": "if _, err := fs.Stat(in.Repo, path.Clean(p)); err != nil {",
+      "new": "if _, err := fs.Stat(in.Repo, path.Clean(p)); err != nil && false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "uncovered-criterion-hidden",
+      "target": "statusgen/milestones.go",
+      "old": "\t\tif !mapped[c.ID] {",
+      "new": "\t\tif false && !mapped[c.ID] {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "unmapped-empty-contributes",
+      "target": "statusgen/milestones.go",
+      "old": "if len(c.Contributors) == 0 && len(c.Evidence) == 0 {",
+      "new": "if false && len(c.Contributors) == 0 && len(c.Evidence) == 0 {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    },
+    {
+      "name": "prerequisite-assumed",
+      "target": "statusgen/milestones.go",
+      "old": "if !have[ref] {",
+      "new": "if false && !have[ref] {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneUnknownCoverage"
+    }
+  ]
+}
