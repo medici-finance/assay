@@ -7186,7 +7186,9 @@ brief's frontmatter `brief:` id), `kit`, `branch` (null for a detached review or
 dispatch), `pr`, `session_tag`, `tier` (`--tier`, recorded as its canonical lower-case token:
 `any` | `strong`), `brief_exec_tier` and
 `brief_effort` (the brief's frontmatter values), `model_stamp` (`applied` | `pending` |
-`skipped`) and `attempt_local`.
+`skipped`), `attempt_local` and `dispatch_instructions_sha256` (the sha256 of the role
+dispatch-instruction text the prompt quoted, null when it quoted none;
+`docs/cellctl-role-context.md` §"Dispatched agents").
 
 - A frontmatter value that is absent, unreadable or outside its grammar or vocabulary is
   null, never guessed and never recorded as the text it was.
@@ -7278,6 +7280,7 @@ enforces it: a line whose field is outside its grammar is never written.
 | `tier`, `brief_exec_tier` | `any` \| `strong` |
 | `brief_effort` | `S` \| `M` \| `L` |
 | `model_stamp` | `applied` \| `pending` \| `skipped` |
+| `dispatch_instructions_sha256` | 64 lowercase hex characters |
 
 No space, control character or invisible format character fits any row. No markdown link, URL
 with a scheme, mention or markup fits any row except `claim_key` and `dispatch_ref`: the
