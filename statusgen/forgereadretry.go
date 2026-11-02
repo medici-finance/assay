@@ -108,6 +108,7 @@ func (d *forgeReadDoer) Do(req *http.Request) (*http.Response, error) {
 	if err := d.wait(req.Context(), delay); err != nil {
 		return nil, err
 	}
+	perfCountHTTP() // the extra direct attempt belongs in API-cost accounting
 	return d.inner.Do(req.Clone(req.Context()))
 }
 

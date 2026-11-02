@@ -85,6 +85,7 @@ func TestForgeReadHTTP(t *testing.T) {
 			}
 			req, _ := http.NewRequest(method, srv.URL+"/same-read", nil)
 			req.Header.Set("Authorization", "Bearer same-credential")
+			before := perfHTTPCalls.Load()
 			resp, err := d.Do(req)
 			if mode == "cancelled" {
 				if !errors.Is(err, context.Canceled) || calls != 1 {
@@ -106,6 +107,9 @@ func TestForgeReadHTTP(t *testing.T) {
 				if !strings.Contains(string(body), "observed") {
 					t.Fatal(string(body))
 				}
+			}
+			if got := perfHTTPCalls.Load() - before; got != int64(wantCalls-1) {
+				t.Fatalf("retry HTTP count=%d want %d", got, wantCalls-1)
 			}
 			if calls != wantCalls || waits != wantWait || resp.StatusCode != wantStatus {
 				t.Fatalf("calls=%d waits=%d status=%d", calls, waits, resp.StatusCode)
