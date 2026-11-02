@@ -1026,6 +1026,13 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			if cuts == nil && read.key == "" && len(read.blank) == 0 && heldRiskDefinition(clean, h) {
 				continue
 			}
+			// Prose that only recounts a state word — a zero tally, a mutation
+			// sentence, a past flip hold citing its tracker — is not a
+			// disposition (heldScanScope rule 6, #4721). A table line, a
+			// struck line and every other prose shape stay read.
+			if cuts == nil && !heldProseExempt(line, read) && heldRecounted(clean, h) {
+				continue
+			}
 			// A negated or zero-counted occurrence ("no could-not-check",
 			// "summary: 0 HELD") is not a live disposition at all — it is
 			// excused outright, the same as a routed one, without needing a
@@ -1076,6 +1083,15 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		return true, quotes[k]
 	}
 	return false, ""
+}
+
+// heldProseExempt reports whether line is, or may render as, a table row: it
+// is read in its result cells or whole, never for rule 6's recounted prose.
+// Any pipe, even one inside a code span or escaped, keeps the line out of
+// rule 6 — the fail-closed side of where a GFM table row splits.
+func heldProseExempt(line string, read heldLineRead) bool {
+	return read.key != "" || len(read.blank) > 0 || heldTableLine(line) ||
+		strings.Contains(line, "|") || heldHTMLTableRe.MatchString(line)
 }
 
 // evidenceVerifierInfo extracts the date and runner from the first data row of an
