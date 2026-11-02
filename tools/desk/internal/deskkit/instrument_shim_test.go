@@ -14,19 +14,15 @@ import (
 
 const shimHost = "linux-amd64"
 
-// shimText reproduces the shape cmd/cellctl generates for one desk verb: the
-// marker comment, then two exec branches. cmd/cellctl's own test pins that the
-// real generator output parses the same way.
+// shimText is a generated shim exec'ing bin (CellctlShimTemplate, the one copy
+// cmd/cellctl renders). other != bin hand-edits the first exec line to name a
+// second binary.
 func shimText(home, bin, other string) string {
-	return "#!/usr/bin/env bash\n" +
-		CellctlShimMarker + "fixture): run this desk verb with the CELL config-home.\n" +
-		"gh_token=\"${CELLCTL_GH_AMBIENT:-}\"\n" +
-		"if [[ -n \"$gh_token\" ]]; then\n" +
-		"  export CELLCTL_GH_AMBIENT=\"$gh_token\"\n" +
-		"  exec env HOME=\"" + home + "\" PATH=\"" + home + "/shim-gh:$PATH\" \"" + bin + "\" \"$@\"\n" +
-		"else\n" +
-		"  exec env HOME=\"" + home + "\" \"" + other + "\" \"$@\"\n" +
-		"fi\n"
+	s := RenderCellctlShim("fixture", home, home+"/shim-gh", bin)
+	if other != bin {
+		s = strings.Replace(s, "\""+bin+"\" \"$@\"", "\""+other+"\" \"$@\"", 1)
+	}
+	return s
 }
 
 // hotfixText reproduces a hotfix shim: a prelude choosing $bin at run time.
@@ -157,6 +153,63 @@ func TestShimToShimIsUnchecked(t *testing.T) {
 	if _, _, c := w.admit(); c.State != CouldNotCheck {
 		t.Fatalf("shim chain = %v %q, want could-not-check", c.State, c.Detail)
 	}
+}
+
+// shimCase is one hand-edited shim body and the name its failure reports.
+type shimCase struct{ name, body string }
+
+// admitEach writes each body as the statusgen shim and requires could-not-check.
+func (w *shimWorld) admitEach(t *testing.T, cases []shimCase) {
+	t.Helper()
+	for _, tc := range cases {
+		w.write(t, w.shimDir, "statusgen", []byte(tc.body))
+		if value, _, c := w.admit(); c.State != CouldNotCheck || value != "" {
+			t.Errorf("%s: hand-edited shim = %v %q value %q, want could-not-check", tc.name, c.State, c.Detail, value)
+		}
+	}
+}
+
+// regression: #5288 SEC-1 — a marked script that keeps a well-formed exec line
+// naming the pinned binary but runs, preloads or resolves something else must
+// never be admitted on the pinned binary's digest.
+func TestShimBypassUnchecked(t *testing.T) {
+	w := newShimWorld(t, pinnedBytes)
+	bin := w.write(t, w.binDir, "statusgen", pinnedBytes)
+	evil := w.write(t, w.binDir, "evil", driftedBytes)
+	gen := shimText(w.home, bin, bin)
+	argv := `"` + bin + `" "$@"`
+	cases := []shimCase{
+		{"command before exec", strings.Replace(gen, "gh_token=", `"`+evil+`" "$@"`+"\ngh_token=", 1)},
+		{"compound exec line", strings.Replace(gen, "  exec env ", `  "`+evil+`" || exec env `, 1)},
+		{"extra program to env", strings.ReplaceAll(gen, argv, `"`+evil+`" `+argv)},
+		{"LD_PRELOAD", strings.ReplaceAll(gen, "exec env ", `exec env LD_PRELOAD="`+evil+`" `)},
+		{"DYLD_INSERT_LIBRARIES", strings.ReplaceAll(gen, "exec env ", `exec env DYLD_INSERT_LIBRARIES="`+evil+`" `)},
+		{"subst in HOME", strings.ReplaceAll(gen, `HOME="`+w.home+`"`, `HOME="$(`+evil+`)"`)},
+		{"PATH change", strings.Replace(gen, "gh_token=", `export PATH="`+w.binDir+`:$PATH"`+"\ngh_token=", 1)},
+		{"env -S", strings.ReplaceAll(gen, "exec env ", `exec env -S "`+evil+`" `)},
+	}
+	for _, tc := range cases {
+		if tc.body == gen {
+			t.Fatalf("%s: the fixture edit did not apply", tc.name)
+		}
+	}
+	w.admitEach(t, cases)
+}
+
+// regression: #5288 SEC-1 (class) — shapes the review did not list: a body
+// that IS the template rendered, but for a field value that changes what runs.
+func TestShimFieldInjectUnchecked(t *testing.T) {
+	w := newShimWorld(t, pinnedBytes)
+	bin := w.write(t, w.binDir, "statusgen", pinnedBytes)
+	evil := w.write(t, w.binDir, "evil", driftedBytes)
+	// env(1) reads a NAME=VALUE word as an assignment, then runs "$1".
+	eq := w.write(t, w.binDir, "x=y", pinnedBytes)
+	wrap := w.home + "/shim-gh"
+	w.admitEach(t, []shimCase{
+		{"quote in home", RenderCellctlShim("fixture", w.home+`" LD_PRELOAD="`+evil, wrap, bin)},
+		{"newline in cell", RenderCellctlShim("fixture\n\""+evil+"\" \"$@\"\n#", w.home, wrap, bin)},
+		{"= in binary", RenderCellctlShim("fixture", w.home, wrap, eq)},
+	})
 }
 
 // Non-shim files keep the old behaviour: their own bytes are compared.

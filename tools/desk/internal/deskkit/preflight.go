@@ -35,7 +35,6 @@ package deskkit
 //     most once.
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -2549,9 +2548,10 @@ func revisionProbe(dir string) (string, error) {
 // instrumentProbe resolves a pinned instrument on PATH and returns the path and
 // digest of the binary that runs. A cellctl shim first on PATH is a wrapper
 // script, so its own bytes never match a pin: the probe hashes the one binary
-// the shim execs instead, and names that binary. A shim whose target cannot be
-// resolved to exactly one absolute file is an error (could-not-check), never
-// the shim's own digest and never a pass.
+// the shim execs instead, and names that binary. Only a shim that is
+// byte-for-byte the generated one is followed (ShimExecTarget); any other marked
+// script, or a target that is missing, not a regular file or itself a shim, is
+// an error (could-not-check), never the shim's own digest and never a pass.
 func instrumentProbe(name string) (string, string, error) {
 	path, err := exec.LookPath(name)
 	if err != nil {
@@ -2583,72 +2583,6 @@ func instrumentProbe(name string) (string, string, error) {
 		return path, "", fmt.Errorf("%s is a cellctl shim for %s, which is itself a shim", path, target)
 	}
 	return target, verifierDigest(tb), nil
-}
-
-// CellctlShimMarker opens the header comment line of every desk-verb shim
-// cellctl generates (cmd/cellctl shimTemplate); a cellctl test pins that the
-// generated shims still carry it and still parse here.
-const CellctlShimMarker = "# cellctl shim ("
-
-// ShimExecTarget reports whether script is a cellctl shim and, when it is, the
-// one binary its exec lines run. Every exec line must have the generated shape
-// `exec env NAME="…" … "<binary>" "$@"`, and every one must name the same
-// literal absolute path. A shim that selects its binary at run time (the hotfix
-// shim's "$bin"), names two binaries, or has any other exec line returns
-// isShim=true with an error: the binary that runs is not knowable from the text.
-func ShimExecTarget(script []byte) (target string, isShim bool, err error) {
-	if !bytes.HasPrefix(script, []byte("#!")) {
-		return "", false, nil
-	}
-	lines := strings.Split(string(script), "\n")
-	for _, l := range lines {
-		if strings.HasPrefix(l, CellctlShimMarker) {
-			isShim = true
-			break
-		}
-	}
-	if !isShim {
-		return "", false, nil
-	}
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if l != "exec" && !strings.HasPrefix(l, "exec ") && !strings.HasPrefix(l, "exec\t") {
-			continue
-		}
-		t, perr := shimExecLineTarget(l)
-		if perr != nil {
-			return "", true, perr
-		}
-		if target != "" && t != target {
-			return "", true, fmt.Errorf("exec lines name two binaries: %s and %s", target, t)
-		}
-		target = t
-	}
-	if target == "" {
-		return "", true, errors.New("no exec line names a binary")
-	}
-	return target, true, nil
-}
-
-// shimExecLineTarget extracts the quoted binary from one generated exec line.
-func shimExecLineTarget(line string) (string, error) {
-	const argv = ` "$@"`
-	if !strings.HasPrefix(line, "exec env ") || !strings.HasSuffix(line, argv) {
-		return "", fmt.Errorf("exec line is not the generated shape: %s", line)
-	}
-	rest := strings.TrimSuffix(line, argv)
-	open := strings.LastIndex(strings.TrimSuffix(rest, `"`), `"`)
-	if !strings.HasSuffix(rest, `"`) || open < 1 || rest[open-1] != ' ' {
-		return "", fmt.Errorf("exec line does not quote its binary: %s", line)
-	}
-	bin := rest[open+1 : len(rest)-1]
-	if bin == "" || strings.ContainsAny(bin, "$`\\\"") {
-		return "", fmt.Errorf("exec target %q is chosen at run time, not a literal path", bin)
-	}
-	if !filepath.IsAbs(bin) {
-		return "", fmt.Errorf("exec target %q is not an absolute path", bin)
-	}
-	return bin, nil
 }
 
 func short(rev string) string {
