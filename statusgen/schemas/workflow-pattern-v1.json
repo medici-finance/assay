@@ -57,15 +57,25 @@
             "enum": ["desk", "reviewer", "verifier", "worker", "human"]
           },
           "inputs": {
-            "description": "What this node needs before it can run. `artifact` names the artifact kind it consumes; `revision` optionally pins which revision (e.g. `brief.version`).",
+            "description": "What this node needs before it can run. An item names exactly one of `artifact` (the artifact kind it consumes; `revision` optionally pins which revision, e.g. `brief.version`) or `signal` (an external signal that starts an instance; entry nodes only). Exactly-one-of is the lint's `pattern-signal-input` rule, not a schema rule.",
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["artifact"],
               "properties": {
                 "artifact": { "type": "string" },
-                "revision": { "type": "string" }
+                "revision": { "type": "string" },
+                "signal": {
+                  "description": "A signal input (spec/workflow-pattern-v1.md §4.3). `source` names where the signal comes from; `liveness-check` states, in words a verifier can check, how a dead source is detected; `classes` names the `signal-classes` ids this input admits.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["source", "liveness-check", "classes"],
+                  "properties": {
+                    "source": { "type": "string" },
+                    "liveness-check": { "type": "string" },
+                    "classes": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+                  }
+                }
               }
             }
           },
@@ -123,6 +133,87 @@
             "properties": {
               "wait": { "type": "array", "items": { "type": "string" } },
               "fail": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "options": {
+            "description": "Decision nodes only: the choices a person closes the decision with. Not a synonym for `outcomes`, which names non-success dispositions.",
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string" }
+          },
+          "default": {
+            "description": "Decision nodes only: the recommended next step, one of `options`. A recommendation shown to the person who closes the decision and nothing more: it never closes a decision on a timeout, when no one answers, or by any act but the person's own.",
+            "type": "string"
+          },
+          "containment": {
+            "description": "The closed containment taxonomy, on the one effect-free human containment decision of a signal pattern (`pattern-containment-set`).",
+            "type": "array",
+            "minItems": 5,
+            "items": { "type": "string", "enum": ["quarantine", "rollback", "secondary-auth", "stop", "none-needed"] }
+          }
+        }
+      }
+    },
+    "signal-classes": {
+      "description": "Signal patterns only (spec/workflow-pattern-v1.md §4.3): the classes of signal the pattern's signal input admits, each with its exit node(s), admission predicate, optional culprit record, remedy set, refused paths and limits. Cross-field rules (exits are nodes, admission and the `.github/` floor fail closed on any effect-bearing node) are lint rules.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "limits"],
+        "properties": {
+          "id": { "type": "string" },
+          "exit": { "type": "string", "description": "The class's single exit node id, for a class with no culprit record." },
+          "admission": {
+            "description": "Which runs may start an instance of this class. A `push-refs` entry is a fully qualified ref (`refs/heads/main`), never a bare branch name.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["triggers"],
+            "properties": {
+              "triggers": { "type": "array", "items": { "type": "string", "enum": ["schedule", "push"] } },
+              "push-refs": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "culprit-record": {
+            "description": "What a culprit record holds for a class with a mechanical exit.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fields", "default-class", "withheld"],
+            "properties": {
+              "fields": { "type": "array", "items": { "type": "string" } },
+              "default-class": { "type": "string", "enum": ["mechanical", "judgement"] },
+              "withheld": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["class", "file"],
+                "properties": {
+                  "class": { "type": "string", "enum": ["mechanical", "judgement"] },
+                  "file": { "type": "null" }
+                }
+              }
+            }
+          },
+          "mechanical-exit": { "type": "string", "description": "The node id a culprit recorded `mechanical` goes to." },
+          "judgement-exit": { "type": "string", "description": "The node id every other culprit class, unresolved included, goes to." },
+          "remedies": { "type": "array", "items": { "type": "string" } },
+          "refused-paths": { "type": "array", "items": { "type": "string" } },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dedupe", "open-ceiling", "rate", "on-exceed"],
+            "properties": {
+              "dedupe": { "const": "per-culprit" },
+              "open-ceiling": { "type": "integer", "minimum": 1 },
+              "rate": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["count", "window"],
+                "properties": {
+                  "count": { "type": "integer", "minimum": 1 },
+                  "window": { "type": "string" }
+                }
+              },
+              "on-exceed": { "const": "escalate" }
             }
           }
         }
