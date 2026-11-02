@@ -1,1 +1,0 @@
-- Refuse null nonnullable checkpoint values, repeated keys and case-variant keys before a restored record can clear a hold. Pin custody wire inventories and the ruled restriction text with negative controls.

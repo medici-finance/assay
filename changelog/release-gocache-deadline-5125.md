@@ -1,2 +1,0 @@
-### Fixed
-- The release suite's Go regression wrapper (`TestReleaseGoCache`) no longer kills a passing run on a loaded CI runner: it now runs under the shared shell-suite budget (4m, capped at 5m) instead of a fixed 60s, and a new guard fails any `context.WithTimeout` in the regression package that sits below that budget (it also caught two 2m deadlines in the floor-runner tests). The image-publisher refusal test now runs its 14 refusal modes on separate fixtures in parallel, cutting it from about 25s to about 5s on a loaded host with every mode and assertion kept.
