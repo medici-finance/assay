@@ -9,6 +9,9 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Changes required-semantics gates used before authoring and worker admission; wrong capability interpretation must not authorize unsupported work or weaken existing gates."
+design: DR-milestone-support-02
+decision-issue: 4531
+ruling: "https://github.com/medici-finance/assay/issues/4531#issuecomment-6512231509"
 decision-trigger: spec
 issues: []
 schema: brief-v2
