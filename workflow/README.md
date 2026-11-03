@@ -76,3 +76,18 @@ recorded SQL checksums. Add future mirror/domain tables there, never in a compet
 `TestPGFoundationSchema` dereferences the actual database catalog in both directions.
 `TestPGFoundationConcurrent` launches two independent test processes against the same
 explicit fixture; local goroutines alone do not qualify cross-process migration locking.
+
+For repeatable production fault controls in an owned clean linked worktree:
+
+```sh
+test -n "$ASSAY_TEST_POSTGRES_DSN"
+python3 store/testdata/mutations.py
+```
+
+The script snapshots/restores exact source bytes and rejects compile-only failures as
+invalid controls. It never starts a server or grants independent verification credit.
+Its nontransactional fault deliberately disables both forward-only transaction guards
+and forces the wrong upstream execution mode, so the real failed-DDL rollback assertion
+must fail; this is one composite execution fault, not three independently qualified guards.
+Cleanup after an acknowledged fixture creation is bounded. An uncertain creation whose
+ownership cannot be established is retained and reported, never deleted speculatively.
