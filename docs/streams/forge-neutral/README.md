@@ -726,7 +726,7 @@ verification-contract follow-up. It has no workflow store or populated mirror se
 The next independent contribution is
 [48 — native response bounds](brief-48-bound-native-mirror-response-allocation-before-decoding.md).
 
-| Delivery | Wave | Source state at this read | Unblocks |
+| Delivery | Stage | Source state at this read | Unblocks |
 |---|---|---|---|
 | graph-execution/16 ownership and budgets | A | Passive preparation exists; runtime algorithms and boundary evidence owed | graph-execution/19 |
 | forge-neutral/48 native mirror response bound | A | Authored; implementation and independent acceptance owed | One native transport prerequisite of /37 |
@@ -735,8 +735,9 @@ The next independent contribution is
 | Consumer cutover and service fault qualification | D | Existing /38–45 and shared-library /75,/77 retain their own scope and gates | Measurable reduction in repeated forge reads |
 
 Critical path: `graph-execution/16 → graph-execution/19 → forge-neutral/37 → scoped consumer qualification`.
-Wave A contributions can proceed independently; B requires its whole dependency graph,
-C requires B plus /48 and the retention gate, D requires the relevant joined delivery.
+Stage A contributions can proceed independently; B requires its whole dependency graph,
+C requires B plus /48 and the retention gate. D follows each consumer's actual prerequisites;
+some related source-query work is independent of the joined mirror.
 Do not substitute another database or one poller per tool to make this path appear shorter.
 The requested purge-to-tombstones direction has a canonical human decision record at
 medici-finance/assay#5380; this bot-authored direction is not human ratification or activation.
