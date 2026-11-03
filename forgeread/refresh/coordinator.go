@@ -217,6 +217,9 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 	complete.Query = q
 	complete.Query.Now = complete.Now
 	c.observe(ctx, "source-attempt", "scan-call", q.Scope, t.Generation)
+	if scanErr == nil {
+		scanErr = ctx.Err()
+	}
 	if errors.Is(scanErr, mirror.ErrPermission) {
 		complete.AdmissionDenied = true
 		complete.Failure = mirror.Permission

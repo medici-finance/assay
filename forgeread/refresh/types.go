@@ -105,6 +105,15 @@ type Completion struct {
 	Failure mirror.Reason
 	Now     time.Time
 }
+
+// ReviewOnlyPartial identifies the coordinator's conservative review-requirement
+// downgrade, not an incomplete source population. Call before normalizing Query.
+// Gate backends persist this class only after a qualified apply, bound to the
+// completed generation/version; it cannot grant data access or advance coverage.
+func (c Completion) ReviewOnlyPartial() bool {
+	return c.Query.RequireReviews && c.Query.Scope.Kind == mirror.Changes && !c.AdmissionDenied && c.Failure == "" && c.Update != nil && c.Update.Scope == c.Query.Scope && !c.Update.CompleteScan && c.Update.Coverage.State == mirror.Partial
+}
+
 type Result struct {
 	mirror.Result
 	Fulfilled bool
