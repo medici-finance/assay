@@ -663,6 +663,9 @@ type recordedRequest struct {
 	Timeout    string   `json:"timeout"`
 	Now        bool     `json:"now"`
 	Foreign    string   `json:"foreign"`
+	// State is what the record says about the roles (say "idle"). It is kept for the operator's
+	// reading and never believed: the idle signal is always re-measured.
+	State string `json:"state,omitempty"`
 }
 
 // recordedAllowed is the allowlist: the stop and no-new-work transitions. Anything not on it —

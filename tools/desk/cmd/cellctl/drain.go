@@ -146,6 +146,16 @@ func (l *interimLifecycle) drain(o drainOpts) drainReport {
 		for _, role := range pending {
 			rd := l.Idle(role)
 			last[role] = rd
+			if rd.Err != nil {
+				// An unreadable idle signal is never idle and does not get better by waiting:
+				// the drain ends could-not-check, nothing is stopped, the roles stay paused.
+				r.Actions = append(r.Actions, actionResult(cell, "wait:"+role, cellop.ActionNotRun, "idle could not be measured: "+rd.Err.Error()))
+				r.Roles = drainRoles(targets, state, last)
+				r.Finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, fmt.Sprintf("%s: idle could not be measured: %v", role, rd.Err), l.now())
+				r.Next = []string{"cellctl resume " + cell}
+				rep.Result, rep.Confirm = r, nil
+				return rep
+			}
 			if !rd.measuredIdle() {
 				still = append(still, role)
 				continue
