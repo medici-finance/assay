@@ -44,7 +44,19 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/deskkit/mirroringest.go` (planned), `mirroringest_test.go` (planned), `mirrorsource.go` and its tests; `forgeread/mirror/types.go`, `planner.go`, `scan.go`, presence/baseline tests and `mirrortest/`; `docs/contracts.md`, `forgeread/README.md`, `changelog/mirror-observation-source.md` (planned). Existing architecture/import and cross-module CI registries must include actual new inputs when required; do not weaken their assertions.
+files:
+- `tools/desk/internal/deskkit/mirroringest.go`
+- `tools/desk/internal/deskkit/mirroringest_test.go`
+- `tools/desk/internal/deskkit/mirrorsource.go`
+- `tools/desk/internal/deskkit/mirrorsource_test.go`
+- `forgeread/mirror/types.go`
+- `forgeread/mirror/planner.go`
+- `forgeread/mirror/scan.go`
+- `forgeread/mirror/presence_test.go`
+- `forgeread/mirror/mirrortest/`
+- `docs/contracts.md`
+- `forgeread/README.md`
+- `changelog/mirror-observation-source.md`
 
 facts:
 - Inspected main 863c43db contains /46, /47 and /48; no workflow module, mirror.Source implementation or populated production mirror caller exists.
@@ -74,6 +86,8 @@ Default if no answer: none — blocks until answered
 This gate covers acceptance and activation. Offline implementation and synthetic fixture preparation may proceed before acceptance; no private population is ingested or served.
 
 ## Ground rules
+
+- Existing architecture/import and cross-module CI registries must include actual new inputs when required; do not weaken their assertions.
 
 - Own isolated worktree and draft PR. Synthetic transports/data only; no live infrastructure, default DSN, credential discovery, new endpoint, command, flag, daemon, serving, polling loop or client fallback.
 - Preserve all parent /37's 23 original Verify Class/Command pairs, remaining Tasks, retention/human gates and persisted row 23. This source-only proof cannot qualify PostgreSQL, shared coalescing or full /37 acceptance.
