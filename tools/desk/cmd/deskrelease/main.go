@@ -66,9 +66,11 @@
 //
 //   - the kill switch runs before anything that ACTS — before the cut argv parse, the
 //     identity mint, and any network call. Precisely: the non-acting requests (`version`,
-//     `--version`, `-v`, `help`, `-h`, `--help`, `help cut`, and a bare invocation) are answered by the command tree ahead of Guard() and print without
-//     consulting it. Every other path runs Guard() first: every path that could touch the
-//     remote, every cut refusal (`cut -h` included), and every command line the tree cannot
+//     `--version`, `-v`, `help`, `-h`, `--help`, `help cut`, `cut -h` and `cut --help` with
+//     no other word, and a bare invocation) are answered by the command tree ahead of Guard()
+//     and print without consulting it. Every other path runs Guard() first: every path that
+//     could touch the remote, every cut refusal (a help word beside another word included),
+//     and every command line the tree cannot
 //     parse (an unknown verb or flag), so a disabled suite audits each of them as it did;
 //   - the tag is validated against ^(desk-tools|statusgen)/v\d+\.\d+\.\d+$ AND
 //     screened for refspec metacharacters, each with its own refusal reason;
@@ -142,8 +144,8 @@ usage:
 
 <tag> is (desk-tools|statusgen|assay)/vMAJOR.MINOR.PATCH — argv only, never stdin or the
 environment. --dry-run validates and resolves everything but writes nothing. Any other word
-— an extra operand, an unknown flag, a help word (cut -h included) — is REFUSED (exit 5)
-and audited, never ignored. This help is: deskrelease help cut.
+— an extra operand, an unknown flag, a help word beside another word — is REFUSED (exit 5)
+and audited, never ignored. This help is: deskrelease help cut, cut -h or cut --help.
 
 exit codes: 0 ok/noop · 2 usage · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable`
 
@@ -283,12 +285,18 @@ func newTree(out, errw io.Writer, pre func(io.Writer) bool, handled *bool) *cobr
 		Use:   "cut <tag> [--dry-run]",
 		Short: "create refs/tags/<tag> at the current remote origin/main HEAD",
 		Long:  cutHelp,
-		// parseCutArgs is cut's one parser; see execute's doc comment. A help word here
-		// (`cut -h`, `cut <tag> --help`) is a word like any other: refused with 5 and audited.
-		// `deskrelease help cut` prints the verb's help.
+		// parseCutArgs is cut's one parser; see execute's doc comment. `cut -h` and `cut --help`
+		// alone are the verb's help (isHelpWord); a help word beside any other word
+		// (`cut <tag> --help`, `cut -h extra`) is a word like any other: refused with 5 and
+		// audited.
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, rest []string) error {
 			mark()
+			// The help word ALONE is the verb's help, answered before the startup, the kill
+			// switch and the cut parser, as `help cut` is: nothing is read, locked or audited.
+			if isHelpWord(rest) {
+				return cmd.Help()
+			}
 			// Kill switch FIRST among the acts — before parsing the cut argv or touching
 			// the network.
 			if g := gate(errw, pre); g != 0 {
@@ -306,6 +314,13 @@ func newTree(out, errw io.Writer, pre func(io.Writer) bool, handled *bool) *cobr
 			return nil
 		}})
 	return root
+}
+
+// isHelpWord reports a raw verb argv that is exactly one help word, `-h` or `--help`: the
+// verb's help, as the CLI contract's `<verb> -h` and `<verb> --help` forms. Any other word
+// beside it makes the line the verb's own, for its parser to refuse.
+func isHelpWord(rest []string) bool {
+	return len(rest) == 1 && (rest[0] == "-h" || rest[0] == "--help")
 }
 
 // cmdCut runs the one mutating verb through the outward-write flow.

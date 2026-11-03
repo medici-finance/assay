@@ -328,7 +328,8 @@ if want origin-degraded; then
   w="$TMPROOT/od"; make_gh "$w"
   # (a) an origin that is not github.com: not a valid owner/name -> degraded, no gh call.
   repodir="$TMPROOT/od-repo-a"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
-  git -C "$repodir" remote add origin "https://user:s3cretpw@example.com:8443/o/r.git"
+  pw=s3cretpw # kept out of the URL literal: no userinfo password sits in the source
+  git -C "$repodir" remote add origin "https://user:${pw}@example.com:8443/o/r.git"
   OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-a" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
   ERR=$(cat "$w/stderr")
   check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "an unparseable origin exits 1" "got $RC"

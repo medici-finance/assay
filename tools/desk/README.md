@@ -93,7 +93,7 @@ changed or discarded.
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
 | `deskusage` | `record` reported counts at worker completion; `summary --by item\|tier [--json]` aggregates only; never reads transcripts, prompts, stdin or tool output | local-only counts write, outside Git worktrees; no network | no |
-| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
+| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role), `reruns` (verification re-runs per brief from the verify-outcome register, joined to verifier perf rows) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files, plus the verify-outcome register and brief file under `--root` for `reruns`; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `maintain objects` inventories and compacts the common Git directory offline; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); inspection takes `--dry-run` | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -136,8 +136,9 @@ tools do not record them yet, so they are accepted and ignored. None of the five
 environment variable or configuration key. `deskrelease cut` is the exception to Cobra
 parsing: it takes its argv raw, so the cut parser is still the only parser, and any word it
 does not recognise is refused (exit 5) and audited. That includes a flag written before
-`cut` and a help word: `cut -h` and `cut --help` are refused like any other flag. The verb's
-help is `deskrelease help cut`.
+`cut` and a help word beside any other word (`cut <tag> --help`, `cut -h extra`). The help
+word alone is the verb's help: `cut -h`, `cut --help` and `deskrelease help cut` all print it
+and exit 0 before the startup, the kill switch or any audit write.
 
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
@@ -352,7 +353,7 @@ scan-explain: rule=high-entropy-run line=42 length=40 shape=Qx…Dz (base64)
 ```
 
 — the rule id (`high-entropy-run`, `decrypted-k8s-secret`, `pem-block`, `sops-block`,
-`github-token`, `aws-key-id`, `jwt`), the 1-based line of the first offending span, its
+`github-token`, `aws-key-id`, `jwt`, `url-userinfo`), the 1-based line of the first offending span, its
 length, and a REDACTED shape (first two and last two characters, the middle elided, plus a
 character-class summary). **The explain line never prints the offending span itself — the
 refusal must not become the leak.** Without `--explain` the refusal message is byte-for-byte
@@ -610,6 +611,15 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
   Rules: `docs/telemetry.md`.
 - `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
   boot order, and the summed boot cost per role.
+- `deskperf reruns --root <repo> [--brief <stream>/<NN>] [--days N] [--json]` — verification
+  re-runs as waste. Counts every verify-outcome record of a brief under `--root` (each one
+  re-validated; a record that fails is listed invalid with its path, never counted; a record
+  without `attempts` is one `unrecorded` run), then joins each attempt window to workflow perf
+  rows with role `verify` and the brief's qualified work ref (the verify-desk passes it with
+  `--perf-work`). It prints the total, the uncredited-plus-discarded part and its share. A
+  pruned, missing or ambiguous measure prints `could-not-check` or `ambiguous` with its reason,
+  never 0; rows outside every window print as `unassigned`. Exit 6 when the register has no
+  record for `--brief`.
 
 `--days` defaults to 7 and refuses anything above it (exit 5): there is no eighth day to read.
 An empty history is a REFUSAL (exit 6) that names its reason — logging off, or on but nothing
@@ -3798,6 +3808,48 @@ install, a release, or CI.
 - CI and `make` targets never see an overlay and are not checked by it; a gate that must refuse
   a hotfix refuses the stamp itself (the `statusgen` version gate reads it as its base release).
 
+### Hotfix cut — shipping an urgent fix as the next plain patch
+
+The overlay above bridges one machine for a few days. The release is what ships the fix to
+everyone, and it retires the overlay. A hotfix is cut as the **next plain patch release**
+through the existing release path: no separate lane, no suffixed tag, no skipped check. For
+one urgent fix, in this order:
+
+1. **The fix is merged to `main`, and `main` is green** at the commit that will be tagged. The
+   fix's PR carries its `changelog/` fragment as usual; the release refuses to cut with nothing
+   to aggregate.
+2. **Optional: bridge one machine with the overlay** while the release is cut:
+
+   ```bash
+   cellctl hotfix install <tool> --source <40-hex merged sha> --dry-run   # decides the source rule only
+   sudo cellctl hotfix install <tool> --source <40-hex merged sha>
+   ```
+
+   The entry expires (72h by default, never more than 168h) and a shim points at it only from
+   the next `cellctl desk` / `cellctl up`. It never replaces the release; skip this step when
+   the fix can wait for the cut.
+3. **Cut the next plain `vX.Y.Z` patch** with the `release` workflow's manual dispatch. Between
+   releases `main` already carries the next patch version, so that is the version to name. Run
+   it with `dry_run` set to `true` explicitly first (the input defaults to `false`), then, after
+   a green dry run, the real cut with the same version. Both runs wait for approval on the
+   `release` environment, and both dispatches and both approvals are the driver's. The
+   [`cut-release`](../../plugins/assay/skills/cut-release/SKILL.md) skill holds the full order,
+   including how to confirm the dry run cut no tag.
+4. **Move every pin to the new release in one re-pin change** per repository, linking the fix:
+   `plugins/assay/paired-versions.yaml` here (checked by `make paired-versions`) and each
+   consumer's `.assay-versions` (checked by `deskpins --check`). Every sha256 comes from the
+   published release's `checksums.txt`; never pin a partial set.
+5. **Install the new pins** on each machine, by the same human act as any install
+   ([Install / upgrade](#install--upgrade), or `deskinstall --manifest <re-pinned manifest>
+   --dest <dir>`).
+6. **Clear the overlay:** `sudo cellctl hotfix clear`. Moving the pin has already retired any
+   hotfix built over the old pin: `deskboot` refuses it with `hotfix outlived its pin` until
+   the next `cellctl desk` / `cellctl up` points its shim back at the pinned binary. The clear
+   removes the inert entry and its binary.
+
+**Cost.** A cut is about an hour of wall time, of which the approval wait is a minor part.
+A fix that cannot wait that long is what step 2 is for.
+
 ### Guard, the two meters, and repo scope
 
 Every tool in the [Tool reference](#tool-reference) table calls `deskkit.Guard()` first
@@ -6018,7 +6070,7 @@ absolute-sounding claims about matchers are what produced #1538:
 |---|---|
 | verbs | `cut <tag>` only. No delete, force, move, override, or waiver verb exists. |
 | tag validation | two independent layers: a refspec-metacharacter screen (`:` `+` `^` `~` `@` `*` `?` `[` `\`, whitespace, control chars) and the anchored pattern `^(desk-tools\|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`. Each refuses with its own reason. |
-| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag and a flag written before `cut`. That includes `cut -h` and `cut --help`; the verb's help is `deskrelease help cut`. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
+| argv | **exactly** `<tag>` (+ optional `--dry-run`). Any extra operand or unknown flag is REFUSED (exit 5, audited), never ignored. That includes a help word after the tag or beside any other word, and a flag written before `cut`. The help word ALONE (`cut -h`, `cut --help`) is the verb's help, like `deskrelease help cut`: exit 0, answered before any config read, lock or audit write. `cut` takes its argv raw from the command tree, so this parser is the only one that reads it. |
 | input | argv only — never stdin, never an environment variable. |
 | `--dry-run` | validates, reads the remote, and stops **before** `POST /git/refs`. **When the tag is still free** — the case the flag is for — exit 0, audited `result=dryrun` — a class **neither rate-limit meter counts** (#214). It used to audit `noop`, which the non-progress breaker counts, so five rehearsals opened a 15-minute breaker against the real cut: checking whether a release was safe could lock the release out. A dry run is still *subject* to both meters; it just does not feed them, and it is IGNORED rather than treated as progress, so it cannot reset a breaker a real refusal loop opened either. Against a tag that already **exists**, the stop is never reached: the row below settles the invocation first, and the rehearsal audits `noop`/`refused`/`unverifiable` like the real thing. |
 | transport | `POST /repos/{owner}/{repo}/git/refs`. `git push` is never executed; no local checkout is touched, so a `git -C` variance and a stale sibling clone are both impossible. |
@@ -7186,7 +7238,9 @@ brief's frontmatter `brief:` id), `kit`, `branch` (null for a detached review or
 dispatch), `pr`, `session_tag`, `tier` (`--tier`, recorded as its canonical lower-case token:
 `any` | `strong`), `brief_exec_tier` and
 `brief_effort` (the brief's frontmatter values), `model_stamp` (`applied` | `pending` |
-`skipped`) and `attempt_local`.
+`skipped`), `attempt_local` and `dispatch_instructions_sha256` (the sha256 of the role
+dispatch-instruction text the prompt quoted, null when it quoted none;
+`docs/cellctl-role-context.md` §"Dispatched agents").
 
 - A frontmatter value that is absent, unreadable or outside its grammar or vocabulary is
   null, never guessed and never recorded as the text it was.
@@ -7278,6 +7332,7 @@ enforces it: a line whose field is outside its grammar is never written.
 | `tier`, `brief_exec_tier` | `any` \| `strong` |
 | `brief_effort` | `S` \| `M` \| `L` |
 | `model_stamp` | `applied` \| `pending` \| `skipped` |
+| `dispatch_instructions_sha256` | 64 lowercase hex characters |
 
 No space, control character or invisible format character fits any row. No markdown link, URL
 with a scheme, mention or markup fits any row except `claim_key` and `dispatch_ref`: the

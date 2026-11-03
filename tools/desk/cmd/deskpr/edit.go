@@ -357,7 +357,7 @@ func cmdEdit(args []string) (err error) {
 // body; here the false result can only describe the PR's CURRENT body, where it means the
 // migration case (a pre-trailer PR may gain a link) rather than a violation.
 func trailerLink(body []byte) (string, bool) {
-	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+	if isScanCarrierBody(body) {
 		return "", false
 	}
 	trs, err := deskkit.ParseTrailers(body)

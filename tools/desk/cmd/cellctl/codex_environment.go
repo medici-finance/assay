@@ -8,6 +8,9 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellstop"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // codexCommandEnvironment is applied by Codex only to command subprocesses.
@@ -70,6 +73,19 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {
 				values[key] = value
+			}
+		}
+	}
+	// A role's dispatch-instruction value and, only beside it, the cell marker
+	// directory deskdispatch checks custody against. A role without the value forwards neither, so
+	// its argv is what it was before the key existed.
+	for _, kv := range env {
+		if k, value, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, deskkit.EnvDispatchInstructions) && value != "" {
+			values[deskkit.EnvDispatchInstructions] = value
+			for _, kv := range env {
+				if k, dir, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, cellstop.EnvCellDir) {
+					values[cellstop.EnvCellDir] = dir
+				}
 			}
 		}
 	}
