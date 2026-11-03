@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -218,3 +218,8 @@ exit, named result, positive and failing control, and date. No result is asserte
 Gate: human. Inspect actual dependency/import and credential reachability, private data and
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
+
+
+## Read-through coordinator routing
+
+The bounded coordinator contribution `forge-neutral/51` routes its authenticated service composition consumer here. Consume that existing typed boundary under this brief's complete dependencies, gates and source obligations; this inverse reference grants no implementation, credential, serving or activation authority.
