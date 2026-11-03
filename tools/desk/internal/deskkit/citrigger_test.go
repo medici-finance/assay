@@ -530,6 +530,13 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
 		},
 		{
+			test: "tools/desk/internal/deskkit/mirror_attempts_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"forgeread", "forgeread/mirror", "forgeread/refresh", "tools/desk/internal/deskkit/mirrorsource.go", "tools/desk/internal/deskkit/forge_github.go", "tools/desk/internal/deskkit/forge_gitlab.go", "tools/desk/go.mod", ".github/workflows/ci.yml"},
+			runInvokes: deskShardInvokes,
+			why:        "the unconditional desk floor qualifies typed native receipt owners, actual closed operations, pinned SDK configuration and their CI reader coverage",
+		},
+		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},

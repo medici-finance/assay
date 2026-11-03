@@ -129,6 +129,20 @@ func TestRefreshSourceReceiptFlow(t *testing.T) {
 			}
 		})
 	}
+	t.Run("reviews-missing-native-bound", func(t *testing.T) {
+		f := setup(t)
+		f.q.Scope.Kind, f.q.RequireReviews = mirror.Changes, true
+		f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, p mirror.ScanPlan) (mirror.ScanResult, error) {
+			return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: scope.Repository, Kind: "pull-request", Number: 1}, Reviews: mirror.ReviewObservations{State: mirror.NeverRead}}}, Attempts: mirror.AttemptReceipt{Grant: p.AttemptGrant, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}}, nil
+		}
+		_, _ = f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+		f.gate.mu.Lock()
+		got := f.gate.receipts[0]
+		f.gate.mu.Unlock()
+		if got.Update != nil || got.Failure != mirror.Unknown {
+			t.Fatal("review downgrade bypassed original native population time qualification", got)
+		}
+	})
 	for name, alter := range map[string]func(*mirror.AttemptGrant){
 		"missing":    func(g *mirror.AttemptGrant) { *g = mirror.AttemptGrant{} },
 		"scope":      func(g *mirror.AttemptGrant) { g.Scope.AdmissionID = "other" },
