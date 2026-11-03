@@ -533,6 +533,14 @@ func (g *RefreshGate) Leave(ctx context.Context, t refresh.Ticket, o refresh.Out
 	defer tx.Rollback()
 	f, k, caller, reviews, e := g.ticket(ctx, tx, t)
 	if errors.Is(e, refresh.ErrStale) {
+		// A completed generation may already have been superseded. Release this
+		// exact ticket debit without interpreting its outcome against the new fill.
+		if _, err := tx.ExecContext(ctx, `UPDATE public.refresh_waiters SET released=true WHERE ticket_id=$1 AND admission=$2 AND generation=$3 AND NOT released`, []byte(t.ID), []byte(g.config.AdmissionID), []byte(t.Generation)); err != nil {
+			return refresh.State{}, refresh.ErrHeld
+		}
+		if tx.Commit() != nil {
+			return refresh.State{}, refresh.ErrHeld
+		}
 		return refresh.State{}, nil
 	}
 	if e != nil {

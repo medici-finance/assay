@@ -61,6 +61,8 @@ def mutate(name):
         change(state,attempt,'if o.HTTP.Value == 0 {','if o.HTTP.Value==0 {return false}; if false {')
     elif name=='postcommit-zero-closure':
         change(state,attempt,'_ = g.ObserveAttempt(cleanup, reservation, mirror.AttemptObservation{HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now().UTC()})','_ = cleanup')
+    elif name=='superseded-ticket-release':
+        change(state,code,'UPDATE public.refresh_waiters SET released=true WHERE ticket_id=$1 AND admission=$2 AND generation=$3 AND NOT released','UPDATE public.refresh_waiters SET released=false WHERE ticket_id=$1 AND admission=$2 AND generation=$3 AND NOT released')
     elif name=='review-owner-isolation':
         change(state,code,'} else if reviews || !f.reviewOnlyPartial {','} else {')
     elif name=='joined-store-apply':
@@ -76,7 +78,7 @@ def mutate(name):
     elif name=='requirement-class':
         change(state,code,'if reviews {\n\t\t\tcolumn = "review_retry_at"','if false {\n\t\t\tcolumn = "review_retry_at"')
     elif name=='outcome-version':
-        change(state,code,'if checked && version > 0 && o.SnapshotVersion == strconv.FormatInt(version, 10) && version == f.version {','if checked {')
+        change(state,code,'if checked && version > 0 && o.SnapshotVersion == strconv.FormatInt(version, 10) && version == f.version {','if checked && version >= 0 {')
     elif name=='sql-expiry':
         change(state,sql,'IF OLD.expires_at<=clock_timestamp() OR NEW.completion_xid IS DISTINCT FROM pg_current_xact_id() THEN','IF NEW.completion_xid IS DISTINCT FROM pg_current_xact_id() THEN')
     elif name=='sql-reservation':
@@ -103,8 +105,17 @@ controls=[
  ('sql-reservation','TestPGRefreshSchemaBoundary'),
  ('joined-store-apply','TestMirrorPersistedReadThroughJoin/cohort-github'),
  ('joined-caller-ceiling','TestMirrorPersistedReadThroughJoin/lower-native-budget'),
+ ('superseded-ticket-release','TestPGRefreshGateAtomicCompletion'),
 ]
 composites={'common-transaction','source-debit','aggregate-reconciliation','joined-caller-ceiling'}
+# Resume qualification after a corrected planted fault; prior controls are kept
+# with their exact source fingerprints, never silently reported by this suffix.
+if len(sys.argv)>2: raise SystemExit('expected optional starting control name')
+if len(sys.argv)==2:
+    names=[name for name,_ in controls]
+    if sys.argv[1] not in names: raise SystemExit('unknown starting control')
+    controls=controls[names.index(sys.argv[1]):]
+
 
 signal.signal(signal.SIGTERM,lambda *_:sys.exit(143))
 try:
@@ -119,6 +130,6 @@ try:
         if '--- FAIL: '+test not in result.stdout:
             print(result.stdout);raise SystemExit('INVALID named failure absent: '+name)
         print('KILLED: '+name+(' [COMPOSITE guard bundle]' if name in composites else '')+' -> '+test,flush=True)
-    print('PASS: all18 actual production faults killed (4 composite guard bundles); exact source restored',flush=True)
+    print('PASS: selected '+str(len(controls))+' actual production faults killed ('+str(sum(name in composites for name,_ in controls))+' composite guard bundles); exact source restored',flush=True)
 finally:
     for p,b in original.items(): (module/p).write_bytes(b)

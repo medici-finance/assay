@@ -99,6 +99,7 @@ func completionRefresh(r refreshRig, ticket refresh.Ticket, u *mirror.ScanUpdate
 
 // regression: F-refresh-atomic-generation
 func TestPGRefreshGateAtomicCompletion(t *testing.T) {
+	t.Run("superseded-ticket-release", checkRefreshSupersededTicketRelease)
 	r := sqlRefresh(t)
 	a, u := mirrorInput()
 	now := time.Now().UTC()
@@ -831,5 +832,39 @@ func checkRefreshCrossAdmissionLock(t *testing.T) {
 	}
 	if _, e = loser.gate.BeforeAttempt(ctx, loser.grant); e != nil {
 		t.Fatal("qualified shared slot release did not admit waiting domain")
+	}
+}
+
+// regression: F-refresh-superseded-waiter-accounting
+func checkRefreshSupersededTicketRelease(t *testing.T) {
+	r := sqlRefresh(t)
+	a, u := mirrorInput()
+	ctx := context.Background()
+	first := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	c := completionRefresh(r, first, &u)
+	c.Attempts = knownRefreshAttempt(t, r, first)
+	if e := r.g.Complete(ctx, first, r.s, a, c); e != nil {
+		t.Fatal(e)
+	}
+	next := acquireRefresh(t, r, r.demand(u.Scope, "caller-b"))
+	if !next.Owner || next.Generation == first.Generation {
+		t.Fatal("completed generation blocked a new freshness demand")
+	}
+	if _, e := r.g.Wait(ctx, first); !errors.Is(e, refresh.ErrStale) {
+		t.Fatal("superseded wait unexpectedly current", e)
+	}
+	// Old tickets cannot poison the next generation, but their exact waiter debit
+	// must release rather than consuming capacity until the old ticket expires.
+	if _, e := r.g.Leave(ctx, first, refresh.Outcome{Checked: true, Fulfilled: false, SnapshotVersion: "1"}); e != nil {
+		t.Fatal(e)
+	}
+	var released bool
+	if e := r.raw.QueryRow(`SELECT released FROM public.refresh_waiters WHERE ticket_id=$1`, []byte(first.ID)).Scan(&released); e != nil || !released {
+		t.Fatal("superseded waiter debit was not released", e)
+	}
+	var generation []byte
+	var base, reviews *time.Time
+	if e := r.raw.QueryRow(`SELECT generation,base_retry_at,review_retry_at FROM public.refresh_fills`).Scan(&generation, &base, &reviews); e != nil || string(generation) != next.Generation || base != nil || reviews != nil {
+		t.Fatal("superseded outcome poisoned the current generation", e)
 	}
 }
