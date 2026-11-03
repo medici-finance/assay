@@ -255,9 +255,6 @@ func checkBriefV4Semantics(add, notice func(string, ...any), path string, bf *Br
 		revisionOf[res.LogicalKey] = res.Revision
 		spellingOf[res.LogicalKey] = m
 	}
-	if len(bf.RequiresMilestones) > 0 {
-		notice("%s: brief %s requires-milestones %s — milestone acceptance is not evaluated by this reader; the brief is held could-not-check, never offered as ready", path, bf.TypedID, strings.Join(bf.RequiresMilestones, ", "))
-	}
 
 	for _, sel := range bf.RefSelectors {
 		if sel.Ref.Cell == "" && sel.Ref.Repo == "" {
@@ -284,6 +281,9 @@ func checkBriefV4Semantics(add, notice func(string, ...any), path string, bf *Br
 // revision (brief-v1).
 type briefSnapshotEntry struct {
 	Version int
+	// ID is the brief's authored uuid ("" when the schema carries none). The
+	// combined milestone graph carries it through unchanged; it never mints one.
+	ID string
 }
 
 // briefSnapshot maps a same-root <stream>/<NN> key to its observed entry.
@@ -325,18 +325,6 @@ type briefV4PendingBinding struct {
 	path, root string
 	row        *Brief
 	sel        BriefRefSelector
-}
-
-// briefV4HeldEdges returns the extra eligibility gates a brief-v4 row carries:
-// one per milestone start requirement. Their refs match no tree reference form,
-// so the evaluator reports them could-not-check and HOLDS the brief — a
-// requested gate is never silently dropped by a reader that cannot evaluate it.
-func briefV4HeldEdges(bf *BriefFile) []GraphEdge {
-	var out []GraphEdge
-	for _, m := range bf.RequiresMilestones {
-		out = append(out, GraphEdge{Ref: m, Type: "behavioural-gate", Reason: "requires-milestones: milestone acceptance is not evaluated by this reader"})
-	}
-	return out
 }
 
 // bindBriefV4Selectors binds every pinned selector after the whole scan has
