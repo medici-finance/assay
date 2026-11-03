@@ -1,0 +1,1 @@
+- Split the read-only PostgreSQL mirror adapter from workflow execution, reusing the canonical migration ledger and disposable container harness while retaining full parent acceptance.
