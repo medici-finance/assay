@@ -70,6 +70,9 @@ func ApplyCompletion(ctx context.Context, store mirror.Store, a mirror.Admission
 	if err := authorize(ctx, a, q.Scope); err != nil {
 		return held(q, mirror.Permission), err
 	}
+	if err := ctx.Err(); err != nil {
+		return held(q, mirror.Transport), err
+	}
 	out := present(r, q, State{Reason: c.Failure})
 	if c.Failure != "" {
 		out.Fulfilled = false

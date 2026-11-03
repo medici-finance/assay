@@ -1156,6 +1156,31 @@ func (g armAfterWait) Wait(ctx context.Context, t Ticket) (State, error) {
 
 // regression: #5399
 func TestRefreshReleaseAuthority(t *testing.T) {
+	t.Run("completion-deadline", func(t *testing.T) {
+		for _, mode := range []string{"cancel", "deadline"} {
+			t.Run(mode, func(t *testing.T) {
+				f := setup(t)
+				f.seed(t)
+				ctx, cancel := context.WithCancel(context.Background())
+				if mode == "deadline" {
+					cancel()
+					ctx, cancel = context.WithTimeout(context.Background(), 50*time.Millisecond)
+				}
+				defer cancel()
+				store := &revokeReadStore{Store: f.store, revoke: func() {
+					if mode == "deadline" {
+						<-ctx.Done()
+					} else {
+						cancel()
+					}
+				}}
+				r, err := ApplyCompletion(ctx, store, f.a, Completion{Query: f.q, Now: f.clock.Now(), Authority: f.auth, Caller: f.caller})
+				if ctx.Err() == nil || err == nil || r.Fulfilled || len(r.Snapshot.Records) != 0 {
+					t.Fatalf("completion released rows after final read canceled/expired: context=%v err=%v fulfilled=%v rows=%d", ctx.Err(), err, r.Fulfilled, len(r.Snapshot.Records))
+				}
+			})
+		}
+	})
 	t.Run("after-leave", checkReleaseAfterLeave)
 	t.Run("hit-observer", checkHitObserverRelease)
 	t.Run("authority-age", checkAuthorityFreshness)
