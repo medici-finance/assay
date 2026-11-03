@@ -51,7 +51,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		return held(q, mirror.Permission), err
 	}
 	q.Now = c.clock.Now()
-	r, err := mirror.QueryScope(ctx, c.store, a, q.Query)
+	r, err := c.queryScope(ctx, a, q)
 	if err != nil {
 		return held(q, mirror.Unknown), err
 	}
@@ -71,6 +71,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if baseline.Scope != q.Scope {
 		return held(q, mirror.Unknown), mirror.ErrInvalid
 	}
+	q.Now = c.clock.Now()
 	plan, err := mirror.PlanRefresh(baseline, q.Now, caller.Limits.Refresh)
 	if err != nil {
 		return c.release(ctx, a, q, caller, r, State{}, err)
@@ -89,6 +90,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	}
 	// Cleanup gets its own finite context: a cancelled waiter cannot leak its debit.
 	var outcome Outcome
+	var staleWaitErr error
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(c.lifetime), caller.Limits.WaitTimeout)
 		defer cancel()
@@ -106,6 +108,10 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		// Leave performs shared-store I/O after the query. It cannot be the last
 		// boundary before rows escape: current permission and deadline apply here too.
 		result, err = c.release(ctx, a, q, caller, result.Result, State{Reason: result.Reason, RetryAt: result.RetryAt}, err)
+		if staleWaitErr != nil && (!result.Fulfilled || err != nil) {
+			result = held(q, result.Reason)
+			err = errors.Join(staleWaitErr, err)
+		}
 	}()
 	if ticket.ID == "" || ticket.Generation == "" {
 		return held(q, mirror.Unknown), ErrHeld
@@ -121,7 +127,24 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	defer cancel()
 	state, err := c.gate.Wait(waitCtx, ticket)
 	if err != nil {
-		return held(q, mirror.Transport), err
+		if !onlyStaleWait(err) {
+			return held(q, mirror.Transport), err
+		}
+		staleWaitErr = err
+		// Rotation invalidates the old wait result, not a sufficient current
+		// snapshot. Requery without source work and leave the old outcome unchecked.
+		if e := c.authority.Authorize(ctx, caller, q.Scope); e != nil {
+			return held(q, mirror.Permission), errors.Join(err, e)
+		}
+		r, e := c.queryScope(ctx, a, q)
+		if e != nil {
+			return held(q, mirror.Unknown), errors.Join(err, e)
+		}
+		result, e = c.release(ctx, a, q, caller, r, State{}, nil)
+		if e != nil || !result.Fulfilled {
+			return held(q, result.Reason), errors.Join(err, e)
+		}
+		return result, nil
 	}
 	if state.Pending {
 		return held(q, mirror.Unknown), ErrHeld
@@ -131,7 +154,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if e := c.authority.Authorize(ctx, caller, q.Scope); e != nil {
 		return held(q, mirror.Permission), e
 	}
-	r, err = mirror.QueryScope(ctx, c.store, a, q.Query)
+	r, err = c.queryScope(ctx, a, q)
 	if err != nil {
 		return held(q, mirror.Unknown), err
 	}
@@ -163,7 +186,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		return
 	}
 	q.Now = c.clock.Now()
-	current, err := mirror.QueryScope(ctx, c.store, a, q.Query)
+	current, err := c.queryScope(ctx, a, q)
 	if err != nil {
 		complete.Failure = mirror.Unknown
 		finish()
@@ -189,17 +212,14 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		return
 	}
 	// An owner acquired after another commit must plan from that actual snapshot.
+	q.Now = c.clock.Now()
 	plan, err = mirror.PlanRefresh(baseline, q.Now, caller.Limits.Refresh)
 	if err != nil {
 		complete.Failure = mirror.Unknown
 		finish()
 		return
 	}
-	if q.Now.Before(plan.NotBefore) {
-		complete.Failure = mirror.Unknown
-		finish()
-		return
-	}
+	// Admitted composition has zero kernel backoff; Gate owns retry eligibility.
 	if err := c.authority.Authorize(ctx, caller, q.Scope); err != nil {
 		complete.AdmissionDenied = true
 		complete.Failure = mirror.Permission
@@ -269,6 +289,22 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 	finish()
 }
 
+// queryScope chooses evaluation time after the guarded read. A concurrent commit
+// may be newer than the read's start; actual future timestamps still fail the
+// canonical evaluator. Source observation/watermark timestamps are never changed.
+func (c *Coordinator) queryScope(ctx context.Context, a mirror.Admission, q Query) (mirror.Result, error) {
+	q.Now = c.clock.Now()
+	snapshot, reason, err := mirror.ReadScopeSnapshot(ctx, c.store, a, q.Query)
+	if reason != "" {
+		return held(q, reason).Result, err
+	}
+	if err != nil {
+		return mirror.Result{}, err
+	}
+	q.Now = c.clock.Now()
+	return mirror.EvaluateSnapshot(snapshot, q.Query)
+}
+
 // release is the single return boundary for snapshots. Checks before a blocking
 // Store.Read do not establish current permission when that read finishes.
 func (c *Coordinator) release(ctx context.Context, a mirror.Admission, q Query, caller Caller, r mirror.Result, state State, cause error) (Result, error) {
@@ -296,4 +332,21 @@ func (c *Coordinator) observe(ctx context.Context, kind, unit string, scope mirr
 	if !absent(c.observer) {
 		_ = c.observer.Observe(ctx, Observation{Kind: kind, Unit: unit, Scope: scope, Generation: generation, Count: 1, Known: true})
 	}
+}
+
+// onlyStaleWait accepts the typed generation refusal through ordinary wrapping.
+// Aggregate failures can also contain a held/quota/deadline refusal and must not
+// be promoted to a successful query merely because one cause is ErrStale.
+func onlyStaleWait(err error) bool {
+	for err != nil {
+		if err == ErrStale {
+			return true
+		}
+		wrapped, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return false
+		}
+		err = wrapped.Unwrap()
+	}
+	return false
 }

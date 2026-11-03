@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 7
+version: 10
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
@@ -33,7 +33,7 @@ exec-tier-why: "Concurrency, cancellation, admission epochs and a partial nil-er
 domain: complicated
 consumers:
   - "forgeread/refresh/: fixed-here (coordinator and typed gate port only)"
-  - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: fixed-here (canonical pure snapshot query evaluation; no authorization or I/O)"
+  - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: fixed-here (canonical guarded snapshot acquisition and explicit-time evaluation; no transport or custody)"
   - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: fixed-here"
   - "tools/forge-import-check/, tools/desk/internal/regression/mirrorimports_test.go, tools/desk/internal/deskkit/citrigger_test.go: fixed-here (closed-target checker reuse and existing CI reader)"
   - "workflow/store/: follow-up forge-neutral/37 (one R2-owned production refresh-gate adapter and persistence integration; no implementation here)"
@@ -64,6 +64,15 @@ files:
 - `tools/desk/internal/deskkit/citrigger_test.go`
 
 Boundary reuse edits the listed existing checker and CI reader; no workflow edit.
+
+Preserve QueryScope's explicit-time evaluation contract. Factor its existing admission/store
+acquisition into ReadScopeSnapshot, which returns an owned raw snapshot or an explicit
+unavailable reason without evaluating freshness. The coordinator samples its trusted clock
+AFTER every acquired query/baseline snapshot and before evaluation or PlanRefresh. A
+concurrent committed observation is not future merely because I/O began earlier; timestamps
+truly beyond the post-read clock still refuse. Preserve current admission/caller/deadline
+checks at release and the independently captured source-observation time; do not retimestamp
+coverage, add a clock callback to the kernel, or change Gate/store semantics.
 
 facts:
 - At the pinned main, `forgeread/mirror` exports `QueryScope`, `PlanRefresh`, `Source.Scan`, `PlanScan` and `Store.Read/Apply`. `PlanRefresh.NotBefore` is advisory; it neither schedules nor provides cross-process ownership. The reference store is synthetic conformance support, not runtime persistence.
@@ -122,7 +131,30 @@ This decision gates acceptance and activation. Offline implementation and synthe
 
 ## Interface contract and substitution limits
 
+The shared-gate composition admits only `Limits.Refresh.FailureBackoff == 0`.
+Reject any nonzero value, including negative values, before store reads, gate acquisition,
+quota debit or source work; do not silently derive a different policy. The canonical R2 gate
+is the sole shared retry-eligibility authority here, including provider-qualified retry floors
+when joined later. Its trusted configuration/profile validation must enforce the same zero
+kernel-backoff policy. Old incompatible profiles remain held until explicitly replaced.
+The standalone mirror planner retains its general nonzero advisory-backoff support unchanged.
+A kernel NotBefore non-attempt is never an unqualified source failure or permission to slide
+shared cooldown. Test positive zero and explicit 10-second, 3-minute and negative refusals
+with zero I/O, alongside existing actual cooldown-expiry and review-only partial controls.
+
 Inputs are a currently admitted scope and query, trusted caller/policy/epoch facts, explicit time, source/store and a shared gate. Outputs preserve `mirror.Result` plus explicit fulfilment/held/unavailable, typed reason and retry eligibility; they grant no authority. Gate references and owner generations are opaque, scoped and never credentials. A gate refusal is not a successful empty query.
+
+Only a typed stale-generation error from Gate.Wait may trigger a guarded current-snapshot
+requery, without another Acquire, source attempt or retry loop. Return success only if that
+snapshot satisfies this caller's complete observation/freshness requirements under current
+caller/admission/deadline checks, including after Leave I/O. If recovery is insufficient,
+future-dated or revoked, retain an explicit hold/error and no released rows. Other gate errors
+and multi-error holds are not recovered this way. The old ticket's Leave outcome remains
+UNCHECKED even when a current snapshot is sufficient; it cannot clear/install failures for
+a rotated generation. Exact old-ticket accounting release remains the canonical adapter's
+obligation. Do not pin completed generations while old weak readers remain: stronger reads
+must still acquire/complete a needed refresh under concurrent weak traffic. Qualify these
+cases through the existing gate-fence/shared-read tests and compiling removal controls.
 
 Demand carries one bounded observation requirement class: whether existing Reviews must be complete. It does not add arbitrary freshness, projection or request identifiers to the base fill key. Compatible demands retain one underlying fill; source-failure eligibility and query-qualified failure eligibility are separate shared records. After its actual requery, each waiter supplies a typed Leave outcome bound to its ticket, refresh generation and exact queried snapshot version. A current authorized unfulfilled outcome records the relevant bounded shared cooldown; a fulfilled outcome clears only the relevant requirement failure. Cancellation, expired deadline, admission/epoch denial and refusal are unchecked outcomes that cannot install shared failure. A late unfulfilled outcome from an older generation or snapshot version must not poison a later qualified recovery, including when another waiter in the same original fill is delayed. Canonical R2 persists this outcome/accounting atomically; the fixture supplies no production backend. Recheck current caller authority, repository admission and deadline after Leave I/O before releasing any rows.
 

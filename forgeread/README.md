@@ -210,6 +210,12 @@ After the last observer/cleanup callback, release checks current permission and
 deadline, then uses the mirror owner's pure `EvaluateSnapshot` with trusted current
 time and no later callback or I/O. The evaluator reuses canonical validation/freshness, performs no I/O and
 grants no authorization; holders of its typed snapshot must still authorize release.
+The existing query/admission/store acquisition is exposed as `ReadScopeSnapshot`; it
+returns an owned raw snapshot or an explicit unavailable reason and never evaluates
+freshness. The coordinator samples trusted time after each query/baseline read before
+evaluation or refresh planning, so a concurrent commit is not rejected using an
+earlier start time. Explicit-time `QueryScope` and true future-data rejection remain;
+source observation and watermark timestamps are not rewritten.
 Scan-call diagnostics follow the actual invocation; completion time is captured at
 Scan return before diagnostics, so a slow observer cannot inflate complete freshness.
 
