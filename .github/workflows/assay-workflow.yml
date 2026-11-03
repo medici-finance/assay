@@ -52,7 +52,7 @@ jobs:
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
       - name: Qualify workflow against disposable PostgreSQL
         env:
-        ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/postgres?sslmode=disable
+          ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
         run: |
           set -euo pipefail
           cd workflow
