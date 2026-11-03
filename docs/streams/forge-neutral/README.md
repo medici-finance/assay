@@ -742,3 +742,13 @@ Do not substitute another database or one poller per tool to make this path appe
 The requested purge-to-tombstones direction has a canonical human decision record at
 medici-finance/assay#5380; this bot-authored direction is not human ratification or activation.
 All 23 existing /37 Class/Command pairs remain unchanged.
+
+## Shared-cache read-through — 3 November 2026
+
+Cold or insufficient admitted queries fill inside the shared read owner; clients need no
+provider fallback. Equivalent misses and failures coalesce. Bounded failure-cache cooldown
+returns explicit unavailable or permitted stale coverage, then one eligible retry can
+recover. The [architecture contract](../../proposals/non-ci-architecture/22-forge-service-and-source-queries.md)
+and /37, /39, /40, /42, /43 and /45 carry the source, client, authorization and served-fault
+acceptance. Every prior Class/Command pair remains; no persistent service or activation is
+claimed by this requirements amendment.
