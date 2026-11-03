@@ -4,7 +4,7 @@ title: Join admitted incremental reads to mirror observations
 why: "The delivered incremental readers and mirror kernel have no connecting source. A bounded mapper lets read-only ingestion qualify independently of the PostgreSQL store, execution and serving, while preserving incomplete data as unknown."
 wave: 4
 depends: ["forge-neutral/46", "forge-neutral/47", "forge-neutral/48"]
-unblocks: []
+unblocks: ["forge-neutral/53"]
 split-from: forge-neutral/37
 effort: M
 gate: human

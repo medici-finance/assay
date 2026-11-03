@@ -4,7 +4,7 @@ title: Canonical PostgreSQL mirror store without execution dependencies
 why: "The shared mirror needs durable scoped rows and honest coverage before execution features exist. Extend the canonical PostgreSQL owner instead of introducing a mirror database or waiting for workflow admission and outboxes."
 wave: 3
 depends: ["graph-execution/36", "forge-neutral/46"]
-unblocks: []
+unblocks: ["forge-neutral/54"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -39,7 +39,17 @@ consumers:
 
 ## Context
 
-files: `workflow/go.mod` (planned), `workflow/go.sum` (planned), `workflow/store/` (planned), `workflow/store/migrations/` (planned), `workflow/internal/pgtest/` (planned), `workflow/README.md` (planned), `spec/coordination-store-v1.md` (planned), `.github/workflows/assay-workflow.yml` (planned), `docs/contracts.md`, `changelog/mirror-postgres-store.md` (planned). Extend actual /36 delivery paths, never create a second foundation.
+files:
+- `workflow/go.mod` (planned)
+- `workflow/go.sum` (planned)
+- `workflow/store/` (planned)
+- `workflow/store/migrations/` (planned)
+- `workflow/internal/pgtest/` (planned)
+- `workflow/README.md` (planned)
+- `spec/coordination-store-v1.md` (planned)
+- `.github/workflows/assay-workflow.yml` (planned)
+- `docs/contracts.md` (planned)
+- `changelog/mirror-postgres-store.md` (planned)
 
 facts:
 - The R2 foundation child graph-execution/36 supplies the only PostgreSQL driver, Goose migration ledger and explicitly provisioned container fixture. Its delivery is in progress at authoring; implementation must consume a genuine tested source revision and stop if its migration/harness is unavailable. A genuine feature-branch merge may supply that canonical source for offline implementation; a stack supplies no mainline delivery or acceptance credit.

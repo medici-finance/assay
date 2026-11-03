@@ -243,6 +243,20 @@ and serving. It does not discharge this brief's persisted joined row 23, choose
 retention, qualify shared refresh ownership or authorize private ingestion/activation.
 All 23 existing acceptance rows, remaining Tasks and gates remain owed here.
 
+## Bounded durable refresh contributions — 3 November 2026
+
+[53](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) supplies
+safe typed native attempt/retry evidence and the pre-request authority seam;
+[54](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md)
+implements the canonical SQL Gate/attempt authority and real admitted source/coordinator/
+Store fixture. They are bounded precursors to this complete joined delivery, not a new
+retention, service, policy or activation owner. Offline pickup uses their explicitly
+qualified immutable source contracts, without waiting for workflow execution features.
+The51 Requirements/checked-Outcome repair must be genuinely consumed; owner-only
+fulfilment or post-hoc request counts cannot qualify the durable join. Unknown state
+holds. Every existing Task, dependency, risk/gate and all23 Class/Command pairs here
+remain; these contributions do not satisfy the rest of full joined row23 by inference.
+
 ## Ground rules
 
 - Offline fixtures and fake provider transports only; real PostgreSQL only in the disposable test

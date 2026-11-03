@@ -4,7 +4,7 @@ title: Store-injected mirror read-through coordinator and shared refresh gate po
 why: "A missing or stale shared answer should trigger one admitted refresh, while equivalent readers wait for that result. A reusable coordinator makes failures and cooldown visible without making every client poll the forge or waiting for write execution features."
 wave: 3
 depends: ["forge-neutral/46"]
-unblocks: []
+unblocks: ["forge-neutral/53", "forge-neutral/54"]
 split-from: forge-neutral/37
 effort: M
 gate: human
@@ -44,7 +44,21 @@ consumers:
 
 ## Context
 
-files: `forgeread/refresh/types.go` (planned), `forgeread/refresh/gate.go` (planned), `forgeread/refresh/coordinator.go` (planned), `forgeread/refresh/coordinator_test.go` (planned), `forgeread/refresh/boundary_test.go` (planned), `forgeread/README.md`, `docs/contracts.md`, `changelog/mirror-read-through-coordinator.md` (planned).
+files:
+- `forgeread/refresh/types.go`
+- `forgeread/refresh/gate.go`
+- `forgeread/refresh/coordinator.go`
+- `forgeread/refresh/coordinator_test.go`
+- `forgeread/refresh/boundary_test.go`
+- `forgeread/README.md`
+- `docs/contracts.md`
+- `changelog/mirror-read-through-coordinator.md`
+- `tools/forge-import-check/check_env_imports.go`
+- `tools/forge-import-check/check_env_imports_test.go`
+- `tools/desk/internal/regression/mirrorimports_test.go`
+- `tools/desk/internal/deskkit/citrigger_test.go`
+
+Boundary reuse edits the listed existing checker and CI reader; no workflow edit.
 
 facts:
 - At the pinned main, `forgeread/mirror` exports `QueryScope`, `PlanRefresh`, `Source.Scan`, `PlanScan` and `Store.Read/Apply`. `PlanRefresh.NotBefore` is advisory; it neither schedules nor provides cross-process ownership. The reference store is synthetic conformance support, not runtime persistence.
