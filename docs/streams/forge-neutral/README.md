@@ -251,6 +251,8 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
 | 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
+| 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
+| 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -717,3 +719,39 @@ decisions, completed Evidence and later rollout gates remain. The early supporte
 source-bound offline consumer, not a deployed service or a fleet-saving claim. Read-only serving
 will reuse the approved shared forge library direction; the write-through service does not become
 a prerequisite for these two pure/read-adapter contributions.
+
+### Persistence and cutover continuation — 3 November 2026
+
+Fresh main `678d7ea5` includes the kernel and incremental-reader deliveries and their
+verification-contract follow-up. It has no workflow store or populated mirror service.
+The next independent contribution is
+[48 — native response bounds](brief-48-bound-native-mirror-response-allocation-before-decoding.md).
+
+| Delivery | Stage | Source state at this read | Unblocks |
+|---|---|---|---|
+| graph-execution/16 ownership and budgets | A | Passive preparation exists; runtime algorithms and boundary evidence owed | graph-execution/19 |
+| forge-neutral/48 native mirror response bound | A | Authored; implementation and independent acceptance owed | One native transport prerequisite of /37 |
+| graph-execution/19 PostgreSQL coordination | B | No workflow module; all declared prerequisites still apply, including /03 | Durable adapter for /37 |
+| forge-neutral/37 joined persistent mirror | C | Held on store and human gate; consumes /46, /47 and /48 | Existing service and consumer qualification briefs |
+| Consumer cutover and service fault qualification | D | Existing /38–45 and shared-library /75,/77 retain their own scope and gates | Measurable reduction in repeated forge reads |
+
+Critical path: `graph-execution/16 → graph-execution/19 → forge-neutral/37 → scoped consumer qualification`.
+Stage A contributions can proceed independently; B requires its whole dependency graph,
+C requires B plus /48 and the retention gate. D follows each consumer's actual prerequisites;
+some related source-query work is independent of the joined mirror.
+Do not substitute another database or one poller per tool to make this path appear shorter.
+The requested purge-to-tombstones direction has a canonical human decision record at
+medici-finance/assay#5380; this bot-authored direction is not human ratification or activation.
+All 23 existing /37 Class/Command pairs remain unchanged.
+
+### Claim-decay stored-login contribution — 3 November 2026
+
+[49](brief-49-retire-claim-decay-stored-github-login-fallback.md) extracts only the
+claim-decay credential selector's CLI lookup and stored-login fallback from /18.
+The unchanged forge-ban instrument at main 678d7ea5 counts statusgen class a at 31
+and all statusgen sites at 39; after this contribution its counts are 30 and 38.
+That instrument counts the subprocess; the parent quoted-gh-line census separately
+loses two lines (one executable lookup and one possible subprocess). This retires
+neither every remaining forge read nor the parent contribution.
+Explicit token inputs and host separation remain until /77's migration. /18 remains
+partial and retains every original acceptance row and remaining read/CI obligation.

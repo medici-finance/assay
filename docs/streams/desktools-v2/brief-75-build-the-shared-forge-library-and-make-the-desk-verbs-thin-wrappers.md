@@ -195,3 +195,9 @@ when present, retaining their context, provider/repository identity, completenes
 read-only/CI write-fence behavior. Reuse the existing adapter implementation; do not grow
 a second mirror source or credential path. This is a consumer inventory obligation, not a
 new start prerequisite for this brief and not a claim that either delivery is accepted.
+
+The native response-allocation bound contribution `assay:assay:forge-neutral:48`, when
+present, remains the one shared mirror-only byte-bound implementation. Relocate and reuse
+its native provider controls rather than adding another wrapper or treating library
+relocation as qualification. Its transport evidence does not satisfy /37's joined durable
+mapper/watermark requirement. This is a consumer obligation, not a new start prerequisite.
