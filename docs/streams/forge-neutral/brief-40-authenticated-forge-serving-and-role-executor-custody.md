@@ -219,7 +219,12 @@ Gate: human. Inspect actual dependency/import and credential reachability, priva
 count isolation, current authority and unknown outcomes. Tests cannot authorize provisioning
 credentials, switching a managed writer, answering a human decision or changing a merge policy.
 
+## Read-through coordinator ownership — 3 November 2026
 
-## Read-through coordinator routing
-
-The bounded coordinator contribution `forge-neutral/51` routes its authenticated service composition consumer here. Consume that existing typed boundary under this brief's complete dependencies, gates and source obligations; this inverse reference grants no implementation, credential, serving or activation authority.
+This brief's future authenticated serving composition consumes
+assay:assay:forge-neutral:51 through currently admitted source/store ports and the
+canonical R2 refresh-gate adapter. Trusted caller identity, access/configuration
+epochs and finite policy come from this existing custody boundary, never a request.
+The coordinator's fake-gate profile proves neither cross-process durability nor
+authenticated remote access. Production serving and executor custody stay held
+behind every existing Task/Verify obligation and human gate.

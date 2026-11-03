@@ -11,6 +11,50 @@ import (
 
 var instant = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
+// regression: #5399
+func TestMirrorSnapshotEvaluation(t *testing.T) {
+	_, scope, _, snapshot := seed(t, true)
+	query := mirror.Query{Scope: scope, Now: instant, MaxAge: time.Minute}
+	result, err := mirror.EvaluateSnapshot(snapshot, query)
+	if err != nil || !result.Available || result.Stale || len(result.Snapshot.Records) != 1 {
+		t.Fatalf("owned snapshot was not evaluated: %+v %v", result, err)
+	}
+	result.Snapshot.Records[0].Labels[0] = "changed"
+	if snapshot.Records[0].Labels[0] != "retained" {
+		t.Fatal("pure evaluator leaked mutable snapshot storage")
+	}
+	query.Now = instant.Add(2 * time.Minute)
+	if r, e := mirror.EvaluateSnapshot(snapshot, query); e != nil || r.Available || !r.Stale {
+		t.Fatalf("explicit later time did not age snapshot: %+v %v", r, e)
+	}
+	for _, mode := range []string{"scope", "time", "max-age", "future", "malformed"} {
+		t.Run(mode, func(t *testing.T) {
+			s, q := mirror.CloneSnapshot(snapshot), mirror.Query{Scope: scope, Now: instant, MaxAge: time.Minute}
+			switch mode {
+			case "scope":
+				q.Scope.Repository.Path = "example/other"
+			case "time":
+				q.Now = time.Time{}
+			case "max-age":
+				q.MaxAge = 0
+			case "future":
+				s.Coverage.LastAttempted = instant.Add(time.Second)
+			case "malformed":
+				s.Coverage.State = mirror.NeverRead
+			}
+			if _, e := mirror.EvaluateSnapshot(s, q); !errors.Is(e, mirror.ErrInvalid) {
+				t.Fatalf("invalid %s snapshot/query passed: %v", mode, e)
+			}
+		})
+	}
+	snapshot.Coverage.State = mirror.Unavailable
+	snapshot.Coverage.Reason = mirror.Permission
+	query.Now = instant
+	if r, e := mirror.EvaluateSnapshot(snapshot, query); e != nil || r.Available || len(r.Snapshot.Records) != 0 || r.Snapshot.Version != "" {
+		t.Fatalf("permission-held snapshot released stored fields: %+v %v", r, e)
+	}
+}
+
 func fixture() (mirror.Scope, *mirrortest.TestAdmission, mirror.Observation) {
 	repo := mirror.RepositoryID{Provider: mirror.GitHub, Host: "forge.example", Path: "example/project"}
 	a := &mirrortest.TestAdmission{Name: "admission-a", Allowed: true}

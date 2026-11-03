@@ -181,3 +181,61 @@ qualified rate limits use the existing classifier. No error cache stores raw err
 This source contribution does not qualify PostgreSQL transactions/restart,
 shared coalescing, retention selection, served access or consumer cutover.
 The joined persisted mirror acceptance remains with forge-neutral/37.
+
+## Store-injected read-through coordination
+
+`refresh` composes the existing mirror query/planner/source/store ports. It has no
+production gate, store, provider walker, credential, listener or caller cutover.
+`New` requires an explicit host lifetime, clock, admitted source/store, trusted
+caller-authority checker and shared gate. Missing dependencies hold; there is no
+process-local gate or failure-cache fallback. The root package and pure mirror
+never import orchestration.
+
+Trusted caller policy supplies current admission/access/configuration/policy epochs,
+allowed freshness, finite concurrent/queued demand, per-caller/admission fill-window
+reservations, owner/wait deadlines and failure capacity/expiry. One owner attempts
+at most one Source.Scan. A fill reservation counts coordinator work, not HTTP pages,
+provider retries or GraphQL points. Optional observations count own scan calls,
+cache hits and joined waiters; missing instrumentation is unknown.
+
+A miss uses the real kernel, joins/acquires the shared gate, scans, plans an update,
+applies through the gate-bound Store seam and requeries. A partial nil-error result
+or insufficient review/not-modified observation remains unfulfilled and cannot
+advance completeness. Caller/admission refusal creates no shared source-failure
+cooldown or confirmed permission-loss record. Source-confirmed permission coverage
+remains a separate kernel outcome, with retention still human-gated. Current caller
+and repository admission are checked after store I/O before releasing any rows.
+The same checks and caller deadline apply after gate cleanup I/O.
+After the last observer/cleanup callback, release checks current permission and
+deadline, then uses the mirror owner's pure `EvaluateSnapshot` with trusted current
+time and no later callback or I/O. The evaluator reuses canonical validation/freshness, performs no I/O and
+grants no authorization; holders of its typed snapshot must still authorize release.
+Scan-call diagnostics follow the actual invocation; completion time is captured at
+Scan return before diagnostics, so a slow observer cannot inflate complete freshness.
+
+Base fill identity stays separate from bounded observation `Requirements` (currently
+complete existing reviews). `Demand` carries that requirement class; no request id,
+projection or arbitrary freshness value fragments it. After its actual requery,
+each waiter reports a typed `Outcome` through `Leave`. The shared gate atomically
+records requirement-qualified failure/cooldown and waiter accounting, independently
+checking current ticket generation and queried snapshot version. Unchecked
+cancellation, deadline, admission or epoch refusals install no failure. Repeated
+cached outcomes cannot slide the original cooldown, and a late older observation
+cannot poison a later qualified recovery. This remains a canonical R2 obligation.
+
+The R2 implementation must bind the injected store to its canonical PostgreSQL
+backend and atomically check refresh generation, apply/query through
+`ApplyCompletion`, and commit completion/cooldown. An old owner with a still-matching
+snapshot version must be refused before apply. The package supplies no such SQL
+adapter. Its tests share a stateful fake gate and reference Store between two
+independently constructed coordinators; that proves port/coordinator behavior,
+not process durability, SQL atomicity, authenticated serving or activation. Full
+forge-neutral/37 retains its joined persisted mapper/watermark criterion.
+
+The current mirror ScanResult/native budget receipt and refresh Completion do not
+carry a qualified provider retry floor. Fixture cooldown/RetryAt therefore proves
+local shared failure suppression only; it is not HTTP Retry-After compliance or
+permission to retry a real provider. Real source/gate integration remains held until
+the joined owner propagates typed qualified retry timing or an explicit unknown-retry
+hold. Do not infer it from error text, retain response bodies/headers here, or install
+a blind fixed interval as a production substitute.
