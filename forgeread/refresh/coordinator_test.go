@@ -29,7 +29,7 @@ func (g alteredGrantGate) Acquire(ctx context.Context, d Demand) (Ticket, error)
 
 // regression: F-mirror-attempt-flow
 func TestRefreshSourceReceiptFlow(t *testing.T) {
-	for _, mode := range []string{"complete", "partial", "failure", "cancelled", "admission", "caller-budget", "unknown-budget", "unknown-count"} {
+	for _, mode := range []string{"complete", "partial", "failure", "cancelled", "admission", "caller-budget", "unknown-budget", "unknown-count", "aged-empty", "missing-native-bound", "future-native-bound"} {
 		t.Run(mode, func(t *testing.T) {
 			f := setup(t)
 			prior := f.seed(t)
@@ -48,10 +48,18 @@ func TestRefreshSourceReceiptFlow(t *testing.T) {
 				if p.AttemptGrant.Validate(f.clock.Now()) != nil || p.AttemptGrant.Scope != scope || p.AttemptGrant.SourceID != "issue-inventory" || p.ExpectedVersion != prior.Version || p.PriorObservedUpTo != prior.Coverage.ObservedUpTo {
 					t.Error("final re-plan did not retain the actual snapshot and trusted grant")
 				}
-				want = mirror.AttemptReceipt{Grant: p.AttemptGrant, HTTP: mirror.WorkCount{Value: 3, Known: true}, DecodedBytes: mirror.WorkCount{Value: 17, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
+				want = mirror.AttemptReceipt{Grant: p.AttemptGrant, ObservedAt: f.clock.Now(), HTTP: mirror.WorkCount{Value: 3, Known: true}, DecodedBytes: mirror.WorkCount{Value: 17, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
 				scan := f.scan(scope, "fresh")
 				var err error
 				switch mode {
+				case "aged-empty":
+					scan.Records = nil
+					scan.ObservedUpTo = prior.Coverage.ObservedUpTo
+					f.clock.step(2 * time.Minute)
+				case "missing-native-bound":
+					want.ObservedAt = time.Time{}
+				case "future-native-bound":
+					want.ObservedAt = f.clock.Now().Add(time.Hour)
 				case "partial":
 					scan.Complete, scan.ObservedUpTo = false, time.Time{}
 				case "failure":
@@ -102,7 +110,7 @@ func TestRefreshSourceReceiptFlow(t *testing.T) {
 					f.auth.set(other)
 					f.source.fn = func(_ context.Context, _ mirror.Admission, s mirror.Scope, p mirror.ScanPlan) (mirror.ScanResult, error) {
 						scan := f.scan(s, "recovered")
-						scan.Attempts = mirror.AttemptReceipt{Grant: p.AttemptGrant, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
+						scan.Attempts = mirror.AttemptReceipt{Grant: p.AttemptGrant, ObservedAt: f.clock.Now(), HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
 						return scan, nil
 					}
 					if next, err := f.c[1].Read(context.Background(), f.a, f.q, other); err != nil || !next.Fulfilled || f.source.calls.Load() != 2 {
@@ -112,6 +120,12 @@ func TestRefreshSourceReceiptFlow(t *testing.T) {
 			}
 			if mode == "admission" && !got.AdmissionDenied {
 				t.Fatal("current admission refusal lost while retaining native receipt")
+			}
+			if mode == "aged-empty" && (r.Fulfilled || !r.Snapshot.Coverage.LastComplete.Equal(want.ObservedAt) || !got.Now.Equal(f.clock.Now())) {
+				t.Fatal("callback completion refreshed already-observed data or replaced current query time", r, got.Now)
+			}
+			if (mode == "missing-native-bound" || mode == "future-native-bound") && (r.Fulfilled || got.Update != nil || got.Failure != mirror.Unknown) {
+				t.Fatal("unqualified native completion time silently fell back to callback time", got)
 			}
 		})
 	}

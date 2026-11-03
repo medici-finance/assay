@@ -276,7 +276,16 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 			}
 		}
 	}
-	update, err := mirror.PlanScan(baseline, plan, scan, complete.Now)
+	observedAt := complete.Now
+	if scan.Attempts.Grant.ID != "" && (scan.Complete || scan.NotModified) && (scan.Attempts.ObservedAt.IsZero() || scan.Attempts.ObservedAt.After(complete.Now) || !scan.Attempts.HTTP.Known || scan.Attempts.HTTP.Value < 1 || !scan.Attempts.Grant.Equal(t.AttemptGrant)) {
+		complete.Failure = mirror.Unknown
+		finish()
+		return
+	}
+	if !scan.Attempts.ObservedAt.IsZero() && scan.Attempts.ObservedAt.Before(observedAt) {
+		observedAt = scan.Attempts.ObservedAt
+	}
+	update, err := mirror.PlanScan(baseline, plan, scan, observedAt)
 	if err != nil {
 		complete.Failure = mirror.Unknown
 		finish()
