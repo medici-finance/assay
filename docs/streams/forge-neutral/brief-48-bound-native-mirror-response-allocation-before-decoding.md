@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5384
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 outcome: none
 id: 894ac034-2261-4f1c-945e-7d18d83ff68b
 authored: 2026-11-03 by statusgen newbrief
@@ -28,10 +28,11 @@ exec-tier: strong
 exec-tier-why: "SDK success and error decoding may allocate before an apparent caller guard; only native-path evidence with aggregate accounting bypassed distinguishes the two."
 domain: complicated
 consumers:
-  - "tools/desk/internal/deskkit/forge_response_bounds.go, forge_response_bounds_test.go: follow-up forge-neutral/48"
-  - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go, mirrorsource.go: follow-up forge-neutral/48 (mirror-only native response composition)"
-  - "forgeread/README.md: follow-up forge-neutral/48"
-  - "docs/contracts.md: follow-up forge-neutral/48 (register the native response bound and its weight)"
+  - "tools/desk/internal/deskkit/forge_response_bounds.go, forge_response_bounds_test.go: fixed-here (shared early native bound and both provider controls)"
+  - "tools/desk/internal/deskkit/mirrorsource.go: fixed-here (exactly two enumerated operations consume private bounded native access)"
+  - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go: out-of-scope (reuse existing SDK page readers and lower scope checks unchanged; bound their private upstream transports)"
+  - "forgeread/README.md: fixed-here"
+  - "docs/contracts.md: fixed-here (register the native response bound and its weight)"
   - "workflow/store/, mirroringest.go and persisted watermark failure flow: follow-up forge-neutral/37"
   - "forgeclient/: follow-up desktools-v2/75 (relocate this implementation if present)"
   - "statusgen/: out-of-scope (no reader cutover or import change)"
@@ -41,8 +42,8 @@ consumers:
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/forge_response_bounds.go` (planned)
-- `tools/desk/internal/deskkit/forge_response_bounds_test.go` (planned)
+- `tools/desk/internal/deskkit/forge_response_bounds.go`
+- `tools/desk/internal/deskkit/forge_response_bounds_test.go`
 - `tools/desk/internal/deskkit/forge_github.go`
 - `tools/desk/internal/deskkit/forge_gitlab.go`
 - `tools/desk/internal/deskkit/sharedread.go`
@@ -50,7 +51,7 @@ files:
 - `tools/desk/internal/deskkit/mirrorsource_test.go`
 - `forgeread/README.md`
 - `docs/contracts.md`
-- `changelog/native-mirror-response-bound.md` (planned)
+- `changelog/native-mirror-response-bound.md`
 
 facts:
 - At main 678d7ea5, /47's admitted incremental readers exist; their aggregate 8 MiB payload budget runs after native response allocation.
