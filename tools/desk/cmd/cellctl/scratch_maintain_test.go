@@ -190,7 +190,20 @@ func TestScratchMaintainWiring(t *testing.T) {
 			must(t, cmd.Start())
 			done := make(chan error, 1)
 			go func() { done <- cmd.Wait() }()
-			t.Cleanup(func() { _ = cmd.Process.Kill(); <-done })
+			t.Cleanup(func() {
+				// Stop the supervisor the way an operator does, so it reaps its pass's
+				// own process group and finishes its sweep before TempDir removal. A bare
+				// kill leaves both writing into the tree being removed.
+				if cmd.Process.Signal(os.Interrupt) == nil {
+					select {
+					case err := <-done:
+						done <- err
+					case <-time.After(10 * time.Second):
+					}
+				}
+				_ = cmd.Process.Kill()
+				<-done
+			})
 			if mode == "interactive" {
 				select {
 				case err := <-done:
