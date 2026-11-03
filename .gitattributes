@@ -35,3 +35,7 @@ plugins/assay/cursor/assay.mdc text eol=lf
 plugins/assay/hooks/resident-rules.payload.txt text eol=lf
 tools/harnessgen/testdata/payload.golden.txt text eol=lf
 .cursor/** text eol=lf
+
+# perfdata fixtures are digest-checked byte for byte (event IDs, batch digests); never
+# rewrite their line endings.
+perfdata/testdata/** -text

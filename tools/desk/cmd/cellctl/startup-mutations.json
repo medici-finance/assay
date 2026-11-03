@@ -35,7 +35,7 @@
       "name": "reclaim unacknowledged tree",
       "file": "internal/cellscratch/store.go",
       "old": "case receiptErr != nil:",
-      "new": "case receiptErr != nil: _ = s.remove(r.ID+\"/work\")"
+      "new": "case receiptErr != nil: _ = s.remove(r.ID+\"/work\", seen)"
     },
     {
       "name": "omit final cache telemetry",
