@@ -116,7 +116,7 @@ or removing any human gate (spec §5 states the divergence).
 | 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | implemented | — | — |
 | 34 | [Signal input, signal classes and decision options in the workflow-pattern schema](brief-34-signal-input-and-signal-classes.md) | 1 | L | implemented | — | — |
 | 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
-| 36 | [Canonical PostgreSQL foundation for read-only consumers](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) | 0 | M | todo | — | — |
+| 36 | [Canonical PostgreSQL foundation for read-only consumers](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)

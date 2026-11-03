@@ -255,8 +255,9 @@ GitLab case identity qualification before activation remains #5376.
   for that scope (row 15). Sharing a mirror across cells needs matching access scopes and explicit
   ownership, and is a separate brief.
 - Full /37 retains graph-execution/19's R2 prerequisites. Its bounded PostgreSQL Store child
-  forge-neutral/52 may instead consume the landed canonical migration and container harness
-  from graph-execution/36 before full /19 execution delivery. If that actual foundation is
+  forge-neutral/52 may instead consume an actual tested canonical migration and container
+  harness revision from graph-execution/36 before full /19 execution delivery, including
+  through a genuine owned feature-branch merge for offline work. If that actual foundation is
   absent, stop and report NEEDS_CONTEXT. Do not build a second store. This exception grants
   no parent acceptance, shared-refresh fencing, retention action or activation.
 - Stop at `implemented`; an independent verifier owns verified and done.
