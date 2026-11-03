@@ -24,8 +24,9 @@ risk:
   sensitive-data: no
 gate-why: Ownership and restore behavior constrain external effects; the owner confirms stale writers cannot retain independent authority.
 decision-trigger: spec
+design: DR-graph-exec-16
 decision-issue: 5111
-ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515"
+ruling: "https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889"
 issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
@@ -384,12 +385,15 @@ describes that preparation checkpoint.
 | Task 4: qualified hold/reconciliation limits | `drainloop/README.md`, `docs/enforcement-model.md`, authoritative resolution and settlement ports; no production backend or exactly-once guarantee |
 | Task 5: current incarnation and restore authority | `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go` and current-incarnation checks at admission/effect boundaries; concrete custody/signature/consumer qualification remains separate |
 
-The canonical row remains `todo` because the risk-gated lifecycle requires a formal
-`design:` record. Proposed `DR-graph-exec-16` transcribes the existing bounded
-profile and its restrictions; no record-specific ruling or design stamp is invented.
-After its exact human provenance is bound, use the native `statusgen reconcile` command to assess the
-`implemented` transition with the actual #5386 witness. Independent verification,
-human acceptance and activation are subsequent distinct acts.
+The record-specific human binding is now recorded in `DR-graph-exec-16` and the
+frontmatter `design:`/`ruling:` fields. It preserves the earlier bounded design
+and both custody restrictions:
+https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889
+
+No board row is hand-edited here. After this metadata lands, use native
+`statusgen reconcile` to judge the implemented transition against the actual
+#5386 delivery. Independent verification, final human acceptance and activation
+remain subsequent distinct acts.
 
 This reconciliation changes no Task, original Verify definition, Evidence, dependency
 or accepted policy. It installs no runtime/backend and claims no test execution.

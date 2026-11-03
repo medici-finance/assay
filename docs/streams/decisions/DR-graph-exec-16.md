@@ -4,6 +4,7 @@ date: "2026-11-03"
 title: "Retain bounded Cell ownership, cumulative budgets and restore fencing at the existing coordination authority"
 consequence: critical
 decided-by: "human:<name>"
+ruling: https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889
 alternatives:
   - "Use a restored database generation or lease as current effect authority: excluded by the existing R2 contract because restored state cannot independently fence an old writer."
   - "Use an external secret authority instead of the bounded operator-control volume (1B), manual-only reopen (2B), qualified conservative request bounds (3B), or report-only unsupported providers (4B): alternatives already recorded on decision #5111; the existing ruling selected 1A/2A/3A/4A with pacing rule 5 unchanged. No additional rejection rationale is invented."
@@ -14,20 +15,20 @@ accepted:
   - "The delivered library is store-neutral. Real PostgreSQL rollback belongs to graph-execution/19, launch enforcement to graph-execution/26, and concrete custody/provider/credential/consumer qualification and activation remain separate. No exactly-once claim or live authority is added."
 ---
 
-**PROPOSED RECORD BINDING — no record-specific human ruling is claimed.**
-The `decided-by` placeholder is required register shape, not a new approval stamp.
-This formalization preserves the already recorded bounded design direction; it does
-not ask for another choice of architecture or expand the implementation scope.
+**Record binding ratified — 2026-11-03.** The new unedited human comment names
+DR-graph-exec-16 and graph-execution/16 and preserves the existing bounded
+1A/2A/3A/4A profile, pacing rule 5 and both 1A custody restrictions:
+https://github.com/medici-finance/assay/issues/5111#issuecomment-6612666889
 
-The existing design-only ruling and its two custody restrictions remain authoritative:
+The original design-only ruling remains the provenance for those policy choices:
 https://github.com/medici-finance/assay/issues/5111#issuecomment-6561259515
 
-That comment names graph-execution/16 and its selected dimensions, but does not name
-DR-graph-exec-16. Under registers-v1 section 7.5 it therefore cannot be placed in this
-record's `ruling:` field as corroboration. A new unedited mapped-human comment on
-that decision issue must bind this record and brief. Only then should a follow-up
-add the ruling link, bind `design:` and use the normal lifecycle reconciliation path.
-The existing issue marker already names this brief; its existing decision is retained.
+The new `ruling:` binds this formal record; the earlier comment did not name a DR
+identifier. The public `decided-by` placeholder does not replace corroboration of
+the actual mapped-human author, unedited timestamps and issue marker. This binding
+supplies no independent verification, final acceptance, credentials or activation.
+The brief now cites this record so the existing lifecycle tools can assess the
+merged implementation under the unchanged gates.
 
 The design fits the Cell incarnation/checkpoint and recovery contracts. Merged
 schema/test preparation #5113 did not deliver the brief. Subsequent implementation
