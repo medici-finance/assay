@@ -105,7 +105,7 @@ func boundEnv(t *testing.T) *[][]string {
 	calls := withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	for _, k := range []string{"ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR", "ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR__WORKER",
-		"ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR__REVIEWER"} {
+		"ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR__REVIEWER", "ASSAY_DESK_WRITE_BOUND_REPO_HOUR"} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
 	}
@@ -331,17 +331,170 @@ func TestBoundFilingCap(t *testing.T) {
 	}
 }
 
-// TestBoundFilingStillChargesRepoCeiling: with the cap off, the repo-wide deskfile write
-// ceiling still refuses a bound filing.
-// regression: #4072
-func TestBoundFilingStillChargesRepoCeiling(t *testing.T) {
-	calls := boundEnv(t)
+// TestBoundFilingOffFixedCeiling: a bound filing is no longer held by the fixed
+// 20-an-hour repo-wide ceiling (writes that fill it do not refuse it), but it is still held: by
+// the PR-bound backstop (write.bound.repo_hour), which counts the bound class apart and refuses
+// at its limit. The backstop's value and source are on the audit line.
+// regression: #4072, #4161
+func TestBoundFilingOffFixedCeiling(t *testing.T) {
+	boundEnv(t)
+	bind := []string{"--for-pr", allowedRepo + "#42", "--brief", "demo/07"}
+
+	// Writes that fill the fixed ceiling no longer refuse a bound filing.
 	seedRepoWrites(t, deskkit.RateLimitPerPRPerHour)
-	rc, out := fileBound(t, "--for-pr", allowedRepo+"#42", "--brief", "demo/07")
-	if rc != deskkit.ExitRateLimited {
-		t.Fatalf("rc = %d, want 4 (repo-wide ceiling)\n%s", rc, out)
+	if rc, out := fileBound(t, bind...); rc != deskkit.ExitOK {
+		t.Fatalf("bound filing after %d fixed-bucket writes rc = %d, want 0\n%s",
+			deskkit.RateLimitPerPRPerHour, rc, out)
 	}
-	assertNoIssueCreate(t, *calls)
+
+	// The bound class is bounded by its own tier: seed it to the default limit, and it refuses.
+	const dflt = 60
+	seedBoundWrites(t, boundVerb, dflt)
+	curForge.filed = nil
+	rc, out := fileBound(t, bind...)
+	if rc != deskkit.ExitRateLimited {
+		t.Fatalf("rc = %d, want 4 (PR-bound backstop at its default %d)\n%s", rc, dflt, out)
+	}
+	if !strings.Contains(out, "PR-bound write budget") || !strings.Contains(out, "write.bound.repo_hour") {
+		t.Fatalf("refusal does not name the PR-bound tier and its knob:\n%s", out)
+	}
+	if curForge.filed != nil {
+		t.Fatal("an issue was created on a path that must not write")
+	}
+
+	// The knob moves the limit, and the line records the value and its source.
+	t.Setenv("ASSAY_DESK_WRITE_BOUND_REPO_HOUR", "500")
+	if rc, out := fileBound(t, bind...); rc != deskkit.ExitOK {
+		t.Fatalf("filing under a raised backstop rc = %d, want 0\n%s", rc, out)
+	}
+	es := boundEntries(t)
+	last := es[len(es)-1].Detail
+	if !strings.Contains(last, "write.bound.repo_hour = 500 (env ASSAY_DESK_WRITE_BOUND_REPO_HOUR") {
+		t.Fatalf("Detail = %q, want the backstop's value and source", last)
+	}
+}
+
+// TestBoundTierAuditedAndHeld: the backstop's default and source are on a bound line and on its
+// back-link; an out-of-range value, including 0, holds (exit 6) before anything is created.
+// regression: #4161
+func TestBoundTierAuditedAndHeld(t *testing.T) {
+	boundEnv(t)
+	bind := []string{"--for-pr", allowedRepo + "#42", "--brief", "demo/07"}
+	if rc, out := fileBound(t, bind...); rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d\n%s", rc, out)
+	}
+	const want = "write.bound.repo_hour = 60 (env unset; config unset; default)"
+	var links int
+	for _, e := range readAudit(t) {
+		if e.Tool != "deskfile" || (e.Verb != boundVerb && e.Verb != attachPRVerb) {
+			continue
+		}
+		if e.Verb == attachPRVerb {
+			links++
+		}
+		if !strings.Contains(e.Detail, want) {
+			t.Fatalf("%s line Detail = %q, want it to contain %q", e.Verb, e.Detail, want)
+		}
+	}
+	if links != 1 {
+		t.Fatalf("back-link lines = %d, want 1", links)
+	}
+	curForge.filed = nil
+	for _, bad := range []string{"0", "-1", "abc", "99999"} {
+		t.Setenv("ASSAY_DESK_WRITE_BOUND_REPO_HOUR", bad)
+		if rc, _ := fileBound(t, bind...); rc != deskkit.ExitUnverifiable {
+			t.Fatalf("ASSAY_DESK_WRITE_BOUND_REPO_HOUR=%s rc = %d, want 6", bad, rc)
+		}
+	}
+	if curForge.filed != nil {
+		t.Fatal("an issue was created on a path that must not write")
+	}
+}
+
+// TestUnboundNewKeepsCeiling: the positive control. An unbound filing is still refused by the
+// fixed ceiling, and bound-class writes do not count toward it.
+// regression: #4161
+func TestUnboundNewKeepsCeiling(t *testing.T) {
+	boundEnv(t)
+	seedBoundWrites(t, boundVerb, 2*deskkit.RateLimitPerPRPerHour)
+	seedBoundWrites(t, attachPRVerb, deskkit.RateLimitPerPRPerHour)
+	if rc, out := fileBound(t); rc != deskkit.ExitOK {
+		t.Fatalf("unbound filing after bound-class writes rc = %d, want 0\n%s", rc, out)
+	}
+	seedRepoWrites(t, deskkit.RateLimitPerPRPerHour)
+	curForge.filed = nil
+	if rc, out := fileBound(t); rc != deskkit.ExitRateLimited {
+		t.Fatalf("unbound filing at the fixed ceiling rc = %d, want 4\n%s", rc, out)
+	}
+	if curForge.filed != nil {
+		t.Fatal("an issue was created on a path that must not write")
+	}
+}
+
+// TestAttachToChangeBackstop: an attach to a change request is the attach-pr verb, is counted
+// by the PR-bound backstop and not the fixed ceiling, carries the backstop's note, and is
+// refused at the limit before anything is posted; an attach to an issue is not held by it.
+// regression: #4161
+func TestAttachToChangeBackstop(t *testing.T) {
+	boundEnv(t)
+	t.Setenv("ASSAY_DESK_WRITE_BOUND_REPO_HOUR", "3")
+	attach := func(kind string, to int) int {
+		body := bodyFileWith(t, "observation on the change")
+		rc, _ := runCapture([]string{"attach", "-R", allowedRepo, "--to", fmt.Sprint(to), "--kind", kind, "--body-file", body})
+		return rc
+	}
+	for i := 0; i < 3; i++ {
+		if rc := attach("mr", 600+i); rc != deskkit.ExitOK {
+			t.Fatalf("attach %d rc = %d, want 0", i, rc)
+		}
+	}
+	var lines []deskkit.Entry
+	for _, e := range readAudit(t) {
+		if e.Tool == "deskfile" && e.Verb == attachPRVerb {
+			lines = append(lines, e)
+		}
+	}
+	if len(lines) != 3 || !strings.Contains(lines[0].Detail, "write.bound.repo_hour = 3 (env ASSAY_DESK_WRITE_BOUND_REPO_HOUR") {
+		t.Fatalf("attach-pr lines = %+v, want 3 carrying the backstop note", lines)
+	}
+	posted := len(curForge.comments)
+	if rc := attach("mr", 700); rc != deskkit.ExitRateLimited {
+		t.Fatalf("attach at the backstop rc = %d, want 4", rc)
+	}
+	if len(curForge.comments) != posted {
+		t.Fatal("a refused attach posted a comment")
+	}
+	if rc := attach("issue", 701); rc != deskkit.ExitOK {
+		t.Fatalf("attach to an issue at the backstop rc = %d, want 0", rc)
+	}
+	// Three attach-pr lines do not fill the fixed ceiling for an unbound filing.
+	if rc, out := fileBound(t); rc != deskkit.ExitOK {
+		t.Fatalf("unbound filing rc = %d\n%s", rc, out)
+	}
+}
+
+// seedBoundWrites appends n charged deskfile lines of verb on allowedRepo, dated now.
+func seedBoundWrites(t *testing.T, verb string, n int) {
+	t.Helper()
+	dir := filepath.Join(os.Getenv("HOME"), ".config", "assay")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		num := 800 + i
+		line, _ := json.Marshal(deskkit.Entry{TS: time.Now().UTC().Format(time.RFC3339), Tool: "deskfile",
+			Verb: verb, Repo: allowedRepo, PR: &num, Result: deskkit.ResultOK, Detail: "seed", SessionTag: "test"})
+		b.Write(append(line, '\n'))
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "audit.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(b.String()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // seedRepoWrites appends n charged deskfile attach writes on allowedRepo, each on its own
@@ -478,29 +631,24 @@ func TestBoundCapUnreadableLedger(t *testing.T) {
 	}
 }
 
-// TestBoundFilingWriteCharges pins what a bound filing costs the outward-write tiers: two
-// deskfile writes on (repo, PR) — the new-bound line and the back-link attach — so with the
-// cap off the per-PR and repo-wide tiers (RateLimitPerPRPerHour writes per hour each) admit
-// RateLimitPerPRPerHour/2 bound filings per hour, spread over PRs or not.
-// regression: #4072
+// TestBoundFilingWriteCharges pins what a bound filing costs the per-PR outward-write tier: two
+// deskfile writes on (repo, PR) — the new-bound line and the back-link attach-pr line — so with
+// the cap off that tier (RateLimitPerPRPerHour writes per hour) admits RateLimitPerPRPerHour/2
+// bound filings per hour on one change request. The fixed repo-wide ceiling does not count them
+// (#4161; the PR-bound backstop does, see TestBoundFilingOffFixedCeiling).
+// regression: #4072, #4161
 func TestBoundFilingWriteCharges(t *testing.T) {
 	boundEnv(t)
 	want := deskkit.RateLimitPerPRPerHour / 2
-	prs := []string{"#42", "#46", "#43"}
 	for i := 0; i < want; i++ {
-		ref := prs[i%len(prs)]
-		args := []string{"--for-pr", allowedRepo + ref}
-		if ref != "#43" {
-			args = append(args, "--brief", "demo/07")
-		}
-		if rc, out := fileBound(t, args...); rc != deskkit.ExitOK {
-			t.Fatalf("bound filing %d (%s) rc = %d, want 0\n%s", i+1, ref, rc, out)
+		if rc, out := fileBound(t, "--for-pr", allowedRepo+"#42", "--brief", "demo/07"); rc != deskkit.ExitOK {
+			t.Fatalf("bound filing %d rc = %d, want 0\n%s", i+1, rc, out)
 		}
 	}
 	writes := 0
 	for _, e := range readAudit(t) {
 		if e.Tool == "deskfile" && e.Repo == allowedRepo && e.Result == deskkit.ResultOK &&
-			(e.Verb == boundVerb || e.Verb == "attach") {
+			(e.Verb == boundVerb || e.Verb == attachPRVerb) {
 			writes++
 		}
 	}
@@ -508,11 +656,15 @@ func TestBoundFilingWriteCharges(t *testing.T) {
 		t.Fatalf("charged writes = %d, want %d (two per bound filing)", writes, 2*want)
 	}
 	curForge.filed = nil
-	if rc, out := fileBound(t, "--for-pr", allowedRepo+"#46", "--brief", "demo/07"); rc != deskkit.ExitRateLimited {
-		t.Fatalf("filing %d rc = %d, want 4 (repo-wide tier)\n%s", want+1, rc, out)
+	if rc, out := fileBound(t, "--for-pr", allowedRepo+"#42", "--brief", "demo/07"); rc != deskkit.ExitRateLimited {
+		t.Fatalf("filing %d rc = %d, want 4 (per-PR tier)\n%s", want+1, rc, out)
 	}
 	if curForge.filed != nil {
-		t.Fatal("an issue was created past the repo-wide tier")
+		t.Fatal("an issue was created past the per-PR tier")
+	}
+	// A second change request has its own per-PR count and the fixed ceiling does not see these.
+	if rc, out := fileBound(t, "--for-pr", allowedRepo+"#46", "--brief", "demo/07"); rc != deskkit.ExitOK {
+		t.Fatalf("filing on another change rc = %d, want 0\n%s", rc, out)
 	}
 }
 

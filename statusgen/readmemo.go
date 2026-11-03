@@ -106,6 +106,8 @@ var (
 	// directory listing). Tests assert against it to prove a hit really skipped
 	// the read.
 	readMemoDiskReads int
+	readMemoDiskFiles int
+	readMemoDiskDirs  int
 )
 
 // resetReadMemo clears both memos and the disk-read counter. Tests use it so one
@@ -115,6 +117,8 @@ func resetReadMemo() {
 	readMemoFiles = map[string]readMemoEntry{}
 	readMemoDirs = map[string]readMemoEntry{}
 	readMemoDiskReads = 0
+	readMemoDiskFiles = 0
+	readMemoDiskDirs = 0
 	readMemoMu.Unlock()
 }
 
@@ -142,6 +146,7 @@ func readFileMemo(path string) ([]byte, error) {
 	raw, err := os.ReadFile(path)
 	readMemoMu.Lock()
 	readMemoDiskReads++
+	readMemoDiskFiles++
 	readMemoMu.Unlock()
 	if err != nil || !ok || before.dir {
 		return raw, err
@@ -168,6 +173,7 @@ func readDirMemo(path string) ([]os.DirEntry, error) {
 	ents, err := os.ReadDir(path)
 	readMemoMu.Lock()
 	readMemoDiskReads++
+	readMemoDiskDirs++
 	readMemoMu.Unlock()
 	if err != nil || !ok || !before.dir {
 		return ents, err

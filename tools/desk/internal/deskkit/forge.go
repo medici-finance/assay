@@ -21,12 +21,16 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/credential"
 )
 
 // errForgeTokenMissing identifies local credential absence without changing the
@@ -43,12 +47,12 @@ func missingForgeToken(msg string) error {
 	return &forgeTokenMissingError{Unverifiable(msg, nil)}
 }
 
-// GitHubAPIBase is the single home of the GitHub REST/GraphQL host literal. Desk commands
-// that keep a package-level test hook (`var apiBaseURL = GitHubAPIBase`) source their
-// default from here so the literal is constructed in exactly one place — the forge module —
-// and never in a cmd package (the "no direct API construction outside the forge
-// implementation" contract).
-const GitHubAPIBase = "https://api.github.com"
+// GitHubAPIBase is the GitHub REST/GraphQL host. Desk commands that keep a package-level
+// test hook (`var apiBaseURL = GitHubAPIBase`) source their default from here, and this is the
+// role-credential provider's constant (credential.GitHubAPIBase) — the literal's single home
+// now that the App mint lives there — so it is constructed in exactly one place and never in a
+// cmd package (the "no direct API construction outside the forge implementation" contract).
+const GitHubAPIBase = credential.GitHubAPIBase
 
 // GitHubBaseURLOrDefault resolves an override base to a concrete GitHub host: the override
 // when non-empty, else GitHubAPIBase. It is the ONE place the "" → default resolution lives,
@@ -143,6 +147,7 @@ type PullRequest struct {
 	// to tell "no CI rollup because nothing is required" apart from "no rollup because the
 	// required checks have not reported". Empty when the forge did not report a base branch,
 	// which the consumer treats as could-not-check rather than as "no branch".
+	BaseSHA string `json:",omitempty"` // exact provider base endpoint, when supplied
 	BaseRef string
 	// UpdatedAt is the forge's own last-modified timestamp, RFC3339, empty when the forge
 	// did not report one. Consumed by the loopengine liveness taxonomy's PR-activity probe
@@ -510,6 +515,11 @@ type SearchIssuesInput struct {
 	// DecisionGateBrief optionally narrows marker discovery to one exact brief
 	// spelling. It is an opaque marker token, never provider search syntax.
 	DecisionGateBrief string
+	// FilingKey selects the exact filing-identity lookup: OPEN issues of this repo whose body
+	// carries the key's marker, walked to completion or an error (a truncated read is unknown,
+	// never an empty answer). Query and the decision fields must be empty in this mode. The key
+	// is an opaque FilingKey value; callers still confirm each hit with MatchFiledIssues.
+	FilingKey string
 }
 
 // IssueSearchResult is one issue matched by SearchIssues: the fields deskfile's dedupe scores
@@ -524,7 +534,12 @@ type IssueSearchResult struct {
 	State  string // open | closed
 	Labels []string
 	URL    string
-	Body   string `json:",omitempty"` // decision-marker discovery only
+	Body   string `json:",omitempty"` // decision-marker and filing-key discovery only
+	// Author and AuthorID are the issue AUTHOR's login and numeric id as the forge reports them,
+	// carried by the filing-key discovery only (zero elsewhere). A hit whose author the trust
+	// gate does not admit is never a case's filing (MatchFiledIssues).
+	Author   string `json:",omitempty"`
+	AuthorID int64  `json:",omitempty"`
 }
 
 // LabelSpec names a label plus the cosmetic metadata used ONLY when the label has to be
@@ -893,6 +908,11 @@ type OpenChanges struct {
 // straddle a push — N sequential reads can see the list at one head and a change's reviews
 // after a newer head landed. Truncation carries the SAME meaning as OpenChanges.
 type ReviewQueue struct {
+	// Visibility is the live repository visibility when the backend carries it in
+	// this same snapshot: public, private or internal. Empty means unavailable,
+	// not private. Consumers needing it must then retain their explicit live probe.
+	// It is not a cross-run cache or an authorization decision.
+	Visibility string `json:",omitempty"`
 	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
 	Changes []QueuedChange
 	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
@@ -1696,6 +1716,12 @@ func validateGateName(gate string) (string, error) {
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
 // change.
 type Forge interface {
+	// ChangesUpdatedSince and IssuesUpdatedSince are bounded incremental source
+	// observations consumed by MirrorReadSource. An incomplete list is never an
+	// inventory; review/check coverage remains outside these endpoint reads.
+	ChangesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.ChangeUpdates, error)
+	IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error)
+
 	// --- Reads ---
 
 	// GetPullRequest reads a change's head/state/draft/node-id/changed-file-count/author.

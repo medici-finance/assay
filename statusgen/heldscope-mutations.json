@@ -1,7 +1,7 @@
 {
   "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction' -count=1 -timeout 300s",
   "control": {
-    "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
+    "name": "CONTROL \u2014 supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
     "old": "\tif s.from < 0 {\n\t\treturn false\n\t}",
     "new": "\tif s.from < 0 {\n\t\treturn false\n\t}\n\treturn true"
@@ -26,16 +26,88 @@
       "new": "return strings.HasPrefix(t, \"#\")"
     },
     {
-      "name": "S1: an earlier hold is dropped whether or not the last entry re-ran its row",
+      "name": "S1: an earlier keyed hold is dropped whether or not the last entry re-ran its row",
       "file": "heldscope.go",
-      "old": "if k := s.lines[i].key; k == \"\" || !s.covered[k] {",
-      "new": "if false {"
+      "old": "if read.key != \"\" && s.covered[read.key] {",
+      "new": "if read.key != \"\" {"
     },
     {
-      "name": "S1: an earlier hold with no row key (prose, misaligned row) is dropped",
+      "name": "#3841: an earlier held line is dropped without whole coverage",
       "file": "heldscope.go",
-      "old": "k == \"\" || !s.covered[k]",
-      "new": "k != \"\" && !s.covered[k]"
+      "old": "if s.whole && read.whole {",
+      "new": "if read.whole {"
+    },
+    {
+      "name": "#3841: whole coverage drops a hold in an earlier table of another shape",
+      "file": "heldscope.go",
+      "old": "if s.whole && read.whole {",
+      "new": "if s.whole {"
+    },
+    {
+      "name": "#3841: an earlier key the last entry did not re-run still allows whole supersession",
+      "file": "heldscope.go",
+      "old": "if !covered[k] {\n\t\t\t\treturn false",
+      "new": "if false && !covered[k] {\n\t\t\t\treturn false"
+    },
+    {
+      "name": "#3841: an earlier misaligned or unkeyed results row still allows whole supersession",
+      "file": "heldscope.go",
+      "old": "if !aligned[e] {\n\t\t\treturn false",
+      "new": "if false {\n\t\t\treturn false"
+    },
+    {
+      "name": "#3841: earlier entries with no keyed row are superseded as wholes",
+      "file": "heldscope.go",
+      "old": "return n > 0",
+      "new": "return true"
+    },
+    {
+      "name": "#3841: a hold in a non-comment HTML block is droppable",
+      "file": "heldscope.go",
+      "old": "out[i].whole = html[i] != heldHTMLOther",
+      "new": "out[i].whole = len(html) > 0"
+    },
+    {
+      "name": "#3841: a table the scan cannot key still allows whole supersession",
+      "file": "heldscope.go",
+      "old": "\t\t\t\taligned[e] = false // a table the scan cannot key",
+      "new": "\t\t\t\t// a table the scan cannot key"
+    },
+    {
+      "name": "#3841: a lazy row after a results table still allows whole supersession",
+      "file": "heldscope.go",
+      "old": "aligned[e] = false // a line GFM may read as one more row of the table",
+      "new": "// a line GFM may read as one more row of the table"
+    },
+    {
+      "name": "#3841: a pipe outside inline code is not a table line",
+      "file": "heldscope.go",
+      "old": "\t\tcase '|':\n\t\t\treturn true",
+      "new": "\t\tcase '|':\n\t\t\treturn false"
+    },
+    {
+      "name": "#3841: an HTML table tag is not a table line",
+      "file": "heldscope.go",
+      "old": "tableish := heldHTMLTableRe.MatchString(lines[i])",
+      "new": "tableish := false"
+    },
+    {
+      "name": "#3841: a table line inside an HTML comment is exempt from the whole-supersession check",
+      "file": "heldscope.go",
+      "old": "if !inFence[i] && tableish {",
+      "new": "if !inFence[i] && html[i] != heldHTMLComment && tableish {"
+    },
+    {
+      "name": "#3841: text after a comment's end counts as inside the comment",
+      "file": "heldscope.go",
+      "old": "if strings.TrimSpace(t[j+n:]) != \"\" {",
+      "new": "if n < 0 {"
+    },
+    {
+      "name": "#3841: an HTML block that is not a comment counts as a comment",
+      "file": "heldscope.go",
+      "old": "\t\tkind[i] = heldHTMLOther\n\t\tif t := strings.TrimLeft",
+      "new": "\t\tkind[i] = heldHTMLComment\n\t\tif t := strings.TrimLeft"
     },
     {
       "name": "S1: a covering row needs no result",
@@ -106,8 +178,8 @@
     {
       "name": "over-strict: an HTML paragraph never ends (no line after it is live)",
       "file": "heldscope.go",
-      "old": "\t\t\t\thtml = false",
-      "new": "\t\t\t\thtml = true"
+      "old": "\t\t\tif isBlankLine(l) {\n\t\t\t\thtml = false\n\t\t\t} else if toggle {",
+      "new": "\t\t\tif isBlankLine(l) {\n\t\t\t\thtml = true\n\t\t\t} else if toggle {"
     },
     {
       "name": "over-strict: a multi-line HTML comment never ends",
@@ -232,8 +304,8 @@
     {
       "name": "S1-r3: an expectation column supplies the outcome",
       "file": "heldscope.go",
-      "old": "\t\t\t\tif role == heldColExpect {\n\t\t\t\t\tcontinue\n\t\t\t\t}",
-      "new": "\t\t\t\tif false && role == heldColExpect {\n\t\t\t\t\tcontinue\n\t\t\t\t}"
+      "old": "if role == heldColExpect || heldOutputDigest(",
+      "new": "if false && role == heldColExpect || heldOutputDigest("
     },
     {
       "name": "S1-r3: an unrecognised column supplies the outcome",
@@ -258,6 +330,1110 @@
       "file": "heldscope.go",
       "old": "\tcell = heldStrikeRe.ReplaceAllString(cell, \"\")\n",
       "new": "\tcell = strikethroughRe.ReplaceAllString(cell, \"\")\n"
+    },
+    {
+      "name": "#3841: a comment's end is searched after the four-byte opener (<!--> stays open)",
+      "file": "heldscope.go",
+      "old": "j, n := heldCommentEnd(t)",
+      "new": "j, n := heldCommentEnd(t[4:])"
+    },
+    {
+      "name": "#3841: a comment's end is searched past the opener's first dash (<!--> stays open; Q10)",
+      "file": "heldscope.go",
+      "old": "j, n := heldCommentEnd(t)",
+      "new": "j, n := heldCommentEnd(t[3:])"
+    },
+    {
+      "name": "#3841: \"--!>\" does not end a comment",
+      "file": "heldscope.go",
+      "old": "if k := strings.Index(s, \"--!>\"); k >= 0 && (j < 0 || k < j) {",
+      "new": "if k := -1; k >= 0 && (j < 0 || k < j) {"
+    },
+    {
+      "name": "#3841: \"--!>\" ends a comment only when no \"-->\" is on the line",
+      "file": "heldscope.go",
+      "old": "if k := strings.Index(s, \"--!>\"); k >= 0 && (j < 0 || k < j) {",
+      "new": "if k := strings.Index(s, \"--!>\"); k >= 0 && j < 0 {"
+    },
+    {
+      "name": "#3841: lines after a \"--!>\" end stay comment text",
+      "file": "heldscope.go",
+      "old": "comment = false // a \"--!>\" end leaves the block open, read",
+      "new": "comment = !strings.Contains(lower, \"-->\")"
+    },
+    {
+      "name": "#3841: an opener closed by \"--!>\" ends the whole block",
+      "file": "heldscope.go",
+      "old": "end = \"-->\" // closed by \"--!>\": the rest of the block is read",
+      "new": "end = \"\""
+    },
+    {
+      "name": "#3841: text after an in-block comment end counts as inside the comment",
+      "file": "heldscope.go",
+      "old": "if strings.TrimSpace(lower[j+n:]) != \"\" {",
+      "new": "if n < 0 {"
+    },
+    {
+      "name": "#3841: an HTML table in a results table's header is exempt",
+      "file": "heldscope.go",
+      "old": "tableish := heldHTMLTableRe.MatchString(lines[i])",
+      "new": "tableish := !out[i].skip && heldHTMLTableRe.MatchString(lines[i])"
+    },
+    {
+      "name": "#3841: an HTML table in a keyed row is exempt",
+      "file": "heldscope.go",
+      "old": "tableish := heldHTMLTableRe.MatchString(lines[i])",
+      "new": "tableish := out[i].key == \"\" && heldHTMLTableRe.MatchString(lines[i])"
+    },
+    {
+      "name": "#3841: an unclosed HTML block does not stop whole supersession",
+      "file": "heldscope.go",
+      "old": "covered) &&\n\t\t\t\t\t!heldHTMLUnclosed(lines, inFence)",
+      "new": "covered)"
+    },
+    {
+      "name": "#3841: a list marker is not stripped",
+      "file": "heldscope.go",
+      "old": "case len(t) > 1 && strings.IndexByte(\"-*+\", t[0]) >= 0",
+      "new": "case len(t) < 0 && strings.IndexByte(\"-*+\", t[0]) >= 0"
+    },
+    {
+      "name": "#3841: a blockquote marker is not stripped",
+      "file": "heldscope.go",
+      "old": "case strings.HasPrefix(t, \">\"):",
+      "new": "case strings.HasPrefix(t, \">>>>\"):"
+    },
+    {
+      "name": "#3841: an open tag is text",
+      "file": "heldscope.go",
+      "old": "case isASCIILetter(n) || n == '/' && i+2 < len(line) && isASCIILetter(line[i+2]):\n\t\t\t\tst = 1",
+      "new": "case isASCIILetter(n) || n == '/' && i+2 < len(line) && isASCIILetter(line[i+2]):\n\t\t\t\tst = 0"
+    },
+    {
+      "name": "#3841: a comment opened mid-line is text",
+      "file": "heldscope.go",
+      "old": "st, i = 4, i+3",
+      "new": "st, i = 0, i+3"
+    },
+    {
+      "name": "#3841: a double-quoted attribute value is not tracked",
+      "file": "heldscope.go",
+      "old": "case '\"':\n\t\t\t\tst = 2",
+      "new": "case '\"':\n\t\t\t\tst = 1"
+    },
+    {
+      "name": "#3841: a single-quoted attribute value is not tracked",
+      "file": "heldscope.go",
+      "old": "case '\\'':\n\t\t\t\tst = 3",
+      "new": "case '\\'':\n\t\t\t\tst = 1"
+    },
+    {
+      "name": "#3841: the tokenizer is checked only at the end",
+      "file": "heldscope.go",
+      "old": "if (!in || !sure) && st != 0 {\n\t\t\treturn true",
+      "new": "if (!in || !sure) && st < 0 {\n\t\t\treturn true"
+    },
+    {
+      "name": "#3841: an opener-line end is ignored",
+      "file": "heldscope.go",
+      "old": "case closed:\n\t\t\tin = false",
+      "new": "case closed && false:\n\t\t\tin = false"
+    },
+    {
+      "name": "#3841: an opener-line end is never found",
+      "file": "heldscope.go",
+      "old": "closed = strings.Contains(lower, k.end)",
+      "new": "closed = false"
+    },
+    {
+      "name": "#3841: a declaration never ends on its line",
+      "file": "heldscope.go",
+      "old": "\t\t\treturn true, \"\", true\n\t\t}\n\t\treturn true, \">\", false",
+      "new": "\t\t\treturn true, \"\", false\n\t\t}\n\t\treturn true, \">\", false"
+    },
+    {
+      "name": "#3841: a block the page may end early is checked only at its end",
+      "file": "heldscope.go",
+      "old": "if (!in || !sure) && st != 0 {",
+      "new": "if !in && st != 0 {"
+    },
+    {
+      "name": "#3841: a carriage return is no render doubt",
+      "file": "heldscope.go",
+      "old": "case strings.IndexByte(l, '\\r') >= 0:\n\t\t\tdoubt = true",
+      "new": "case false && strings.IndexByte(l, '\\r') >= 0:\n\t\t\tdoubt = true"
+    },
+    {
+      "name": "#3841: container doubt does not stop whole supersession",
+      "file": "heldscope.go",
+      "old": "!heldHTMLUnclosed(lines, inFence) && !heldContainerDoubt(lines, inFence)",
+      "new": "!heldHTMLUnclosed(lines, inFence)"
+    },
+    {
+      "name": "#3841: a fence in a container is no doubt",
+      "file": "heldscope.go",
+      "old": "if heldFenceToggle(t) || !inFence[i] && heldTagStartRe.MatchString(l) {",
+      "new": "if !inFence[i] && heldTagStartRe.MatchString(l) {"
+    },
+    {
+      "name": "#3841: a fence after a container marker is not seen",
+      "file": "heldscope.go",
+      "old": "if heldFenceToggle(t) || !inFence[i]",
+      "new": "if heldFenceToggle(l) || !inFence[i]"
+    },
+    {
+      "name": "#3841: a tag in a container is no doubt",
+      "file": "heldscope.go",
+      "old": "if heldFenceToggle(t) || !inFence[i] && heldTagStartRe.MatchString(l) {",
+      "new": "if heldFenceToggle(t) || false && !inFence[i] && heldTagStartRe.MatchString(l) {"
+    },
+    {
+      "name": "#3841: container doubt skips no fenced line",
+      "file": "heldscope.go",
+      "old": "|| !inFence[i] && heldTagStartRe",
+      "new": "|| (!inFence[i] || true) && heldTagStartRe"
+    },
+    {
+      "name": "#3841: a column-0 line counts as a container",
+      "file": "heldscope.go",
+      "old": "\t\tif t == l {\n\t\t\tcontinue\n\t\t}\n\t\tif heldFenceToggle(t)",
+      "new": "\t\tif false && t == l {\n\t\t\tcontinue\n\t\t}\n\t\tif heldFenceToggle(t)"
+    },
+    {
+      "name": "#3841: no tag counts as a kind-6 opener",
+      "file": "heldscope.go",
+      "old": "\tif !heldKind6Tags[strings.ToLower(t[:n])] {\n\t\treturn false",
+      "new": "\tif true {\n\t\treturn false"
+    },
+    {
+      "name": "#3841: every tag counts as a kind-6 opener",
+      "file": "heldscope.go",
+      "old": "\tif !heldKind6Tags[strings.ToLower(t[:n])] {\n\t\treturn false",
+      "new": "\tif false {\n\t\treturn false"
+    },
+    {
+      "name": "#3841: an opener that names an end marker is never sure",
+      "file": "heldscope.go",
+      "old": "sure = e != \"\" || heldHTMLKind6(l)",
+      "new": "sure = heldHTMLKind6(l)"
+    },
+    {
+      "name": "#3841: every block opener is sure",
+      "file": "heldscope.go",
+      "old": "sure = e != \"\" || heldHTMLKind6(l)",
+      "new": "sure = true"
+    },
+    {
+      "name": "#3841: an end-marker block opened inside stays sure",
+      "file": "heldscope.go",
+      "old": "\t\t\tsure = false // the page may run this block on to that end marker",
+      "new": "\t\t\t_ = 0"
+    },
+    {
+      "name": "#3841: an end-marker opener inside a block is not seen",
+      "file": "heldscope.go",
+      "old": "\t\tcase heldHTMLOpenEnds(l):\n\t\t\t_, end, _ = heldHTMLOpenEnd(l)",
+      "new": "\t\tcase false && heldHTMLOpenEnds(l):\n\t\t\t_, end, _ = heldHTMLOpenEnd(l)"
+    },
+    {
+      "name": "#3841: render ignores an end marker opened in a block",
+      "file": "heldscope.go",
+      "old": "\t\t\t} else if heldHTMLOpenEnds(l) {\n\t\t\t\t_, htmlEnd = heldHTMLOpen(l)",
+      "new": "\t\t\t} else if false && heldHTMLOpenEnds(l) {\n\t\t\t\t_, htmlEnd = heldHTMLOpen(l)"
+    },
+    {
+      "name": "#3841: HTML lines ignore an end marker opened in a block",
+      "file": "heldscope.go",
+      "old": "\t\t\tif heldHTMLOpenEnds(l) {\n\t\t\t\t_, end = heldHTMLOpen(l)",
+      "new": "\t\t\tif false && heldHTMLOpenEnds(l) {\n\t\t\t\t_, end = heldHTMLOpen(l)"
+    },
+    {
+      "name": "#3841: the brief reader rewrites line endings twice",
+      "file": "brieffile.go",
+      "old": "fmRaw, body, err := splitFrontmatter(string(raw))",
+      "new": "fmRaw, body, err := splitFrontmatter(content)"
+    },
+    {
+      "name": "#3841: the section reader rewrites line endings twice",
+      "file": "verifyrun.go",
+      "old": "if _, b, ferr := splitFrontmatter(raw); ferr == nil {",
+      "new": "if _, b, ferr := splitFrontmatter(content); ferr == nil {"
+    },
+    {
+      "name": "#3841: the awaiting reader rewrites line endings twice",
+      "file": "awaiting_bucket.go",
+      "old": "if _, bd, ferr := splitFrontmatter(string(raw)); ferr == nil {",
+      "new": "if _, bd, ferr := splitFrontmatter(content); ferr == nil {"
+    },
+    {
+      "name": "#3841 element: whole supersession ignores an element an entry leaves open",
+      "file": "heldscope.go",
+      "old": " &&\n\t\t\t\t\t!heldElementCheck(lines, inFence, starts)\n",
+      "new": "\n"
+    },
+    {
+      "name": "#3841 element: a void element is held open",
+      "file": "heldscope.go",
+      "old": "\t\t\t\t\tcase heldVoidTags[n]:\n\t\t\t\t\tcase heldRawTags[n]:",
+      "new": "\t\t\t\t\tcase false:\n\t\t\t\t\tcase heldRawTags[n]:"
+    },
+    {
+      "name": "#3841 element: a raw-text or foreign element counts as closed",
+      "file": "heldscope.go",
+      "old": "\t\t\t\t\tcase heldRawTags[n]:\n\t\t\t\t\t\treturn true",
+      "new": "\t\t\t\t\tcase heldRawTags[n]:\n\t\t\t\t\t\tstack = append(stack, heldElement{n, run, raw})"
+    },
+    {
+      "name": "#3841 element: an opener in fenced code is counted",
+      "file": "heldscope.go",
+      "old": "\t\t\tif inFence[i] {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tp0, s0 := 0, st",
+      "new": "\t\t\tp0, s0 := 0, st"
+    },
+    {
+      "name": "#3841 element: a close tag in code, link or math syntax counts",
+      "file": "heldscope.go",
+      "old": "heldVoidTags[n] || noClose || p > 0",
+      "new": "heldVoidTags[n] || noClose && false || p > 0"
+    },
+    {
+      "name": "#3841 element: a backslash-escaped close tag counts",
+      "file": "heldscope.go",
+      "old": " || p > 0 && l[p-1] == '\\\\' {",
+      "new": " {"
+    },
+    {
+      "name": "#3841 element: a close tag in a tag or comment counts",
+      "file": "heldscope.go",
+      "old": "\t\t\t\tif s0 != 0 {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "#3841 element: a stray close tag is ignored",
+      "file": "heldscope.go",
+      "old": "return true // a stray close tag",
+      "new": "continue // a stray close tag"
+    },
+    {
+      "name": "#3841 element: a close tag in a later paragraph counts",
+      "file": "heldscope.go",
+      "old": "if top.run != run && !(top.raw && raw) {",
+      "new": "if false {"
+    },
+    {
+      "name": "#3841 element: a paragraph opener closes in a later HTML block",
+      "file": "heldscope.go",
+      "old": "if top.run != run && !(top.raw && raw) {",
+      "new": "if top.run != run && !raw {"
+    },
+    {
+      "name": "#3841 element: every run is an HTML block",
+      "file": "heldscope.go",
+      "old": "raw = !inFence[i] && heldRawRun(l)",
+      "new": "raw = true"
+    },
+    {
+      "name": "#3841 element: no run is an HTML block",
+      "file": "heldscope.go",
+      "old": "raw = !inFence[i] && heldRawRun(l)",
+      "new": "raw = false"
+    },
+    {
+      "name": "#3841 element: a crossed close tag counts",
+      "file": "heldscope.go",
+      "old": "\t\t\t\tif top.name != n {\n\t\t\t\t\treturn true\n\t\t\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "#3841 element: the last entry may hold an element across a line end",
+      "file": "heldscope.go",
+      "old": "if lastEntry && len(stack) > 0 {",
+      "new": "if lastEntry && false {"
+    },
+    {
+      "name": "#3841 element: an entry may end with an element open",
+      "file": "heldscope.go",
+      "old": "\t\tif len(stack) > 0 {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n\n// heldElementCheck is",
+      "new": "\t}\n\treturn false\n}\n\n// heldElementCheck is"
+    },
+    {
+      "name": "#3841 element: tag names are not case-folded",
+      "file": "heldscope.go",
+      "old": "\t\t\tc += 'a' - 'A'\n",
+      "new": "\n"
+    },
+    {
+      "name": "#3841 element: a close tag need not end in \">\"",
+      "file": "heldscope.go",
+      "old": "if !strings.HasPrefix(r, \">\") {",
+      "new": "if r == \"\" && false {"
+    },
+    {
+      "name": "#3841 element: a hyphen ends a close tag's name",
+      "file": "heldscope.go",
+      "old": "for n < len(s) && (isASCIILetter(s[n]) || s[n] >= '0' && s[n] <= '9' || s[n] == '-') {",
+      "new": "for n < len(s) && (isASCIILetter(s[n]) || s[n] >= '0' && s[n] <= '9') {"
+    },
+    {
+      "name": "#3841 element: any line opening with a tag opens a run-long HTML block",
+      "file": "heldscope.go",
+      "old": "\treturn heldPlainAttrsRe.MatchString(t[n : len(t)-1])\n",
+      "new": "\treturn true\n"
+    },
+    {
+      "name": "#3841 element: a type 1 opener runs to the blank line",
+      "file": "heldscope.go",
+      "old": "\treturn name == \"pre\" || name == \"script\" || name == \"style\" || name == \"textarea\"\n",
+      "new": "\treturn false\n"
+    },
+    {
+      "name": "#3841 element: a code span does not stop close tags",
+      "file": "heldscope.go",
+      "old": "[]string{\"`\", \"](\",",
+      "new": "[]string{\"](\","
+    },
+    {
+      "name": "#3841 element: a link destination does not stop close tags",
+      "file": "heldscope.go",
+      "old": "[]string{\"`\", \"](\", \"]:\",",
+      "new": "[]string{\"`\", \"]:\","
+    },
+    {
+      "name": "#3841 element: a reference link label does not stop close tags",
+      "file": "heldscope.go",
+      "old": "\"]:\", \"][\", \"![\",",
+      "new": "\"]:\", \"![\","
+    },
+    {
+      "name": "#3841 element: an image does not stop close tags",
+      "file": "heldscope.go",
+      "old": "\"][\", \"![\", \"[^\",",
+      "new": "\"][\", \"[^\","
+    },
+    {
+      "name": "#3841 element: math does not stop close tags",
+      "file": "heldscope.go",
+      "old": "\"[^\", \"$\", \"|\",",
+      "new": "\"[^\", \"|\","
+    },
+    {
+      "name": "#4294 witness: the trailer exemption ignores the witness header",
+      "file": "heldscope.go",
+      "old": "\tif !heldWitnessHeaders[lines[header]] {\n\t\treturn j\n\t}\n",
+      "new": "\tif false && !heldWitnessHeaders[lines[header]] {\n\t\treturn j\n\t}\n"
+    },
+    {
+      "name": "#4294 witness: a trailer run need not end at a blank line",
+      "file": "heldscope.go",
+      "old": "t < hi && !isBlankLine(lines[t]) {",
+      "new": "t < hi && !isBlankLine(lines[t]) && false {"
+    },
+    {
+      "name": "#4294 witness: a trailer line may carry text after its fields",
+      "file": "heldscope.go",
+      "old": "model=[A-Za-z0-9._:\\[\\]-]+ tier=[a-z]+$`",
+      "new": "model=[A-Za-z0-9._:\\[\\]-]+ tier=[a-z]+`"
+    },
+    {
+      "name": "#4294 witness: a digest counts as a clean outcome, not neutral",
+      "file": "heldscope.go",
+      "old": "\treturn heldNorm(header) == \"output\" && heldDigestRe.MatchString(strings.TrimSpace(cell))\n",
+      "new": "\treturn heldDigestRe.MatchString(strings.TrimSpace(cell))\n"
+    },
+    {
+      "name": "#4294 witness: a digest of any length is neutral",
+      "file": "heldscope.go",
+      "old": "heldDigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{12}$`)",
+      "new": "heldDigestRe = regexp.MustCompile(`^sha256:[0-9a-f]+$`)"
+    },
+    {
+      "name": "#4294 witness: any sandbox token is a neutral detail",
+      "file": "heldscope.go",
+      "old": "regexp.MustCompile(`^sandbox=(?:unshare|container-netns)(?:[ \\t,;]|$)`),",
+      "new": "regexp.MustCompile(`^sandbox=\\S+`),"
+    },
+    {
+      "name": "#4294 witness: a Tree-Digest line may carry text after its digest",
+      "file": "heldscope.go",
+      "old": "`^Tree-Digest: sha256:[0-9a-f]{64}$`",
+      "new": "`^Tree-Digest: sha256:[0-9a-f]{64}`"
+    },
+    {
+      "name": "#4294 witness: a Container-Image line may carry text after its digest",
+      "file": "heldscope.go",
+      "old": "`^Container-Image: sha256:[0-9a-f]{64}$`",
+      "new": "`^Container-Image: sha256:[0-9a-f]{64}`"
+    },
+    {
+      "name": "#4294 witness: an Admission-Bracket line may carry text after its fields",
+      "file": "heldscope.go",
+      "old": "before=receipt after=check-verifier$`",
+      "new": "before=receipt after=check-verifier`"
+    },
+    {
+      "name": "#4294 witness: the witness header is matched after trimming space",
+      "file": "heldscope.go",
+      "old": "\tif !heldWitnessHeaders[lines[header]] {",
+      "new": "\tif !heldWitnessHeaders[strings.TrimSpace(lines[header])] {"
+    },
+    {
+      "name": "#4294 witness: a digest is neutral in any result column, not only Output",
+      "file": "heldscope.go",
+      "old": "\treturn heldNorm(header) == \"output\" && heldDigestRe",
+      "new": "\treturn heldCoverColumn(header) != heldColOther && heldDigestRe"
+    },
+    {
+      "name": "#4294 witness: a sandbox mode need not end at a word boundary",
+      "file": "heldscope.go",
+      "old": "container-netns)(?:[ \\t,;]|$)`),",
+      "new": "container-netns)`),"
+    },
+    {
+      "name": "#4294 witness: the fail-first witness header is not a witness header",
+      "file": "heldscope.go",
+      "old": "strings.SplitN(witnessHeaderFailFirst, \"\\n\", 2)[0]: true,",
+      "new": "strings.SplitN(witnessHeaderFailFirst, \"\\n\", 2)[0]: false,"
+    },
+    {
+      "name": "#4294 witness: a version-2 attestation (source-repo=, tracking-source=) is no trailer",
+      "file": "heldscope.go",
+      "old": "(?:source-repo=[A-Za-z0-9._-]+/[A-Za-z0-9._-]+ )?source=[0-9a-f]{40} (?:tracking-source=[0-9a-f]{40} )?brief=",
+      "new": "source=[0-9a-f]{40} brief="
+    },
+    {
+      "name": "#4294 witness: sandbox=unshare, the default mode, is not a neutral detail",
+      "file": "heldscope.go",
+      "old": "`^sandbox=(?:unshare|container-netns)(?:[ \\t,;]|$)`",
+      "new": "`^sandbox=(?:container-netns)(?:[ \\t,;]|$)`"
+    },
+    {
+      "name": "#4294 witness: a fail-first Base cell is never neutral",
+      "file": "heldscope.go",
+      "old": "\treturn heldNorm(header) == \"base\" && heldBaseCellRe",
+      "new": "\treturn false && heldNorm(header) == \"base\" && heldBaseCellRe"
+    },
+    {
+      "name": "#4294 witness: a Base cell is neutral in any result column, not only Base",
+      "file": "heldscope.go",
+      "old": "\treturn heldNorm(header) == \"base\" && heldBaseCellRe",
+      "new": "\treturn heldCoverColumn(header) == heldColOther && heldBaseCellRe"
+    },
+    {
+      "name": "#4294 witness: a Base cell may carry text after its head tree",
+      "file": "heldscope.go",
+      "old": "(?:\\+dirty|\\+unknown)?|no-git)$`)",
+      "new": "(?:\\+dirty|\\+unknown)?|no-git)`)"
+    },
+    {
+      "name": "#4294 witness: a digest is matched after heldNorm (case and emphasis ignored)",
+      "file": "heldscope.go",
+      "old": "heldDigestRe.MatchString(strings.TrimSpace(cell))",
+      "new": "heldDigestRe.MatchString(heldNorm(cell))"
+    },
+    {
+      "name": "#4294 witness: a Base cell may carry text before base=",
+      "file": "heldscope.go",
+      "old": "heldBaseCellRe = regexp.MustCompile(`^base=",
+      "new": "heldBaseCellRe = regexp.MustCompile(`base="
+    },
+    {
+      "name": "#4294 witness: a Base cell counts as a clean outcome, not neutral",
+      "file": "heldscope.go",
+      "old": "lines[r][rg[0]:rg[1]]) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tst := heldOutcome(",
+      "new": "lines[r][rg[0]:rg[1]]) {\n\t\t\t\t\tran = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tst := heldOutcome("
+    },
+    {
+      "name": "#4294 witness: a Base cell is matched after heldNorm (emphasis ignored)",
+      "file": "heldscope.go",
+      "old": "heldBaseCellRe.MatchString(strings.TrimSpace(cell))",
+      "new": "heldBaseCellRe.MatchString(heldNorm(cell))"
+    },
+    {
+      "name": "#4294 prose pipe: the one-line exemption is off (a prose pipe line still blocks whole supersession)",
+      "file": "heldscope.go",
+      "old": "out[i].key == \"\" && !heldOneLineProse(lines, inFence, i) {",
+      "new": "out[i].key == \"\" {"
+    },
+    {
+      "name": "#4294 prose pipe: every pipe line is exempt (a table the scan cannot key no longer blocks)",
+      "file": "heldscope.go",
+      "old": "\tif i == 0 || i+1 >= len(lines) || inFence[i] {\n\t\treturn false\n\t}",
+      "new": "\tif true {\n\t\treturn true\n\t}"
+    },
+    {
+      "name": "#4294 prose pipe: a line joined to the line before it is exempt",
+      "file": "heldscope.go",
+      "old": "return strings.Trim(lines[i-1], \" \\t\") == \"\" && ",
+      "new": "return "
+    },
+    {
+      "name": "#4294 prose pipe: a line joined to the line after it is exempt",
+      "file": "heldscope.go",
+      "old": " && strings.Trim(lines[i+1], \" \\t\") == \"\"\n",
+      "new": "\n"
+    },
+    {
+      "name": "#4294 prose pipe: a line led by a pipe is exempt",
+      "file": "heldscope.go",
+      "old": " || l[0] == '|' || ",
+      "new": " || "
+    },
+    {
+      "name": "#4294 prose pipe: a line in a blockquote, a list item or indented is exempt",
+      "file": "heldscope.go",
+      "old": " || heldContainerStrip(l) != l {",
+      "new": " {"
+    },
+    {
+      "name": "#4294 key: an annotation naming another number still shortens the key",
+      "file": "heldscope.go",
+      "old": "if n != m[1] {",
+      "new": "if n != m[1] && false {"
+    },
+    {
+      "name": "#4294 key: two forms of one number in an entry still merge",
+      "file": "heldscope.go",
+      "old": "if prev, dup := seen[base]; dup && prev != ann {",
+      "new": "if prev, dup := seen[base]; false && dup && prev != ann {"
+    },
+    {
+      "name": "#4294 key: two annotations across entries still merge",
+      "file": "heldscope.go",
+      "old": "if !ok || lastRaw[k] || split[base] || len(forms[base]) > 1 {",
+      "new": "if !ok || lastRaw[k] || split[base] {"
+    },
+    {
+      "name": "#4294 key: text after the annotation is admitted",
+      "file": "heldscope.go",
+      "old": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\(([^()]*)\\)$`)",
+      "new": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\(([^()]*)\\)`)"
+    },
+    {
+      "name": "#4294 key: nested parentheses are admitted",
+      "file": "heldscope.go",
+      "old": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\(([^()]*)\\)$`)",
+      "new": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\((.*)\\)$`)"
+    },
+    {
+      "name": "#4294 key: shortened keys are not applied to the rows",
+      "file": "heldscope.go",
+      "old": "\t\t\tout[r].key = canon(out[r].key)\n",
+      "new": "\t\t\tout[r].key = out[r].key\n"
+    },
+    {
+      "name": "#4294 observe: a non-clean Exit cell still admits the row",
+      "file": "heldscope.go",
+      "old": "if heldOutcome(line[rg[0]:rg[1]], true) != heldCellPass {\n\t\t\t\treturn nil",
+      "new": "if false {\n\t\t\t\treturn nil"
+    },
+    {
+      "name": "#4294 observe: a table with no Exit column admits the row",
+      "file": "heldscope.go",
+      "old": "\tif !exit {\n\t\treturn nil\n\t}\n\treturn res",
+      "new": "\tif !exit && false {\n\t\treturn nil\n\t}\n\treturn res"
+    },
+    {
+      "name": "#4294 observe: a note column is read as a Result cell",
+      "file": "heldscope.go",
+      "old": "\t\tcase heldColResult:\n\t\t\tres = append(res, rg)",
+      "new": "\t\tdefault:\n\t\t\tres = append(res, rg)"
+    },
+    {
+      "name": "#4294 observe: the cell need not open on a pass",
+      "file": "heldscope.go",
+      "old": "lead := heldObserveLeadRe.FindStringIndex(line[rg[0]:rg[1]])",
+      "new": "lead := []int{0, 0}"
+    },
+    {
+      "name": "#4294 observe: the pass lead need not end a word",
+      "file": "heldscope.go",
+      "old": "(?:pass(?:ed)?|ok)\\\\b(?:",
+      "new": "(?:pass(?:ed)?|ok)(?:"
+    },
+    {
+      "name": "#4294 observe: no article is needed before the marker",
+      "file": "heldscope.go",
+      "old": "|| !heldObserveBeforeRe.MatchString(before) ||",
+      "new": "||"
+    },
+    {
+      "name": "#4294 observe: a verb of output need not govern the marker",
+      "file": "heldscope.go",
+      "old": "if !heldObserveVerbRe.MatchString(before) {",
+      "new": "if false {"
+    },
+    {
+      "name": "#4294 observe: a verb in an earlier clause governs the marker",
+      "file": "heldscope.go",
+      "old": "\t\t\tbefore = before[i[len(i)-1][1]:]",
+      "new": "\t\t\t_ = i"
+    },
+    {
+      "name": "#4294 observe: text after the marker need not be a known noun",
+      "file": "heldscope.go",
+      "old": "len(words) == 0 || !heldObserveHead[words[0]]",
+      "new": "false"
+    },
+    {
+      "name": "#4294 observe: hold words in the row are ignored",
+      "file": "heldscope.go",
+      "old": " || heldObserveHoldRe.MatchString(line) {",
+      "new": " {"
+    },
+    {
+      "name": "#4294 observe: BLOCKED is not a hold word",
+      "file": "heldscope.go",
+      "old": "(?:blocked|fail",
+      "new": "(?:fail"
+    },
+    {
+      "name": "#4294 observe: fail is not a hold word",
+      "file": "heldscope.go",
+      "old": "|fail\\w*|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: skip is not a hold word",
+      "file": "heldscope.go",
+      "old": "|skip\\w*|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unrun is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unrun|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: deferred is not a hold word",
+      "file": "heldscope.go",
+      "old": "|deferred|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: pending is not a hold word",
+      "file": "heldscope.go",
+      "old": "|pending|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: awaiting is not a hold word",
+      "file": "heldscope.go",
+      "old": "|awaiting|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: awaits is not a hold word",
+      "file": "heldscope.go",
+      "old": "|awaits?|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: waiting is not a hold word",
+      "file": "heldscope.go",
+      "old": "|waiting|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: needs is not a hold word",
+      "file": "heldscope.go",
+      "old": "|needs?|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: needed is not a hold word",
+      "file": "heldscope.go",
+      "old": "|needed|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: still is not a hold word",
+      "file": "heldscope.go",
+      "old": "|still|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: open is not a hold word",
+      "file": "heldscope.go",
+      "old": "|open|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: remain is not a hold word",
+      "file": "heldscope.go",
+      "old": "|remain\\w*|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: outstanding is not a hold word",
+      "file": "heldscope.go",
+      "old": "|outstanding|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: incomplete is not a hold word",
+      "file": "heldscope.go",
+      "old": "|incomplete|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: partial is not a hold word",
+      "file": "heldscope.go",
+      "old": "|partial\\w*|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: offline is not a hold word",
+      "file": "heldscope.go",
+      "old": "|offline|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unavailable is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unavailable|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unreachable is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unreachable|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unverified is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unverified|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not yet is not a hold word",
+      "file": "heldscope.go",
+      "old": "(?:yet|exercised",
+      "new": "(?:exercised"
+    },
+    {
+      "name": "#4294 observe: not exercised is not a hold word",
+      "file": "heldscope.go",
+      "old": "|exercised|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not executed is not a hold word",
+      "file": "heldscope.go",
+      "old": "|executed|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not available is not a hold word",
+      "file": "heldscope.go",
+      "old": "|available|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not checked is not a hold word",
+      "file": "heldscope.go",
+      "old": "|checked|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not re-?run is not a hold word",
+      "file": "heldscope.go",
+      "old": "|re-?run|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not run is not a hold word",
+      "file": "heldscope.go",
+      "old": "|run)",
+      "new": ")"
+    },
+    {
+      "name": "#4294 observe: no[ \\t]+runner is not a hold word",
+      "file": "heldscope.go",
+      "old": "|no[ \\t]+runner|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: cannot is not a hold word",
+      "file": "heldscope.go",
+      "old": "|cannot|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: can't is not a hold word",
+      "file": "heldscope.go",
+      "old": "|can't|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unable is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unable|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: todo is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unable|todo)",
+      "new": "|unable)"
+    },
+    {
+      "name": "#4294 observe: text after the noun need not be neutral words",
+      "file": "heldscope.go",
+      "old": "\t\t\tif !heldObserveTail[w] {",
+      "new": "\t\t\tif !heldObserveTail[w] && false {"
+    },
+    {
+      "name": "#4294 observe: a HELD occurrence is excused like could-not-check",
+      "file": "heldscope.go",
+      "old": "!strings.EqualFold(clean[h[0]:h[1]], \"could-not-check\") || ",
+      "new": ""
+    },
+    {
+      "name": "#4294 observe: a line with a struck span is excused",
+      "file": "verifyissues.go",
+      "old": "if cuts == nil && heldObservedOutput(",
+      "new": "if heldObservedOutput("
+    },
+    {
+      "name": "#4294 zero ratio: the two counts need not agree",
+      "file": "verifyissues.go",
+      "old": "m != nil && heldDetailCounts(m[1:])",
+      "new": "m != nil"
+    },
+    {
+      "name": "#4294 zero ratio: any number of qualifiers",
+      "file": "verifyissues.go",
+      "old": "[ \\t]+(?:[a-z]+[ \\t]+)?(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)",
+      "new": "[ \\t]+(?:[a-z]+[ \\t]+)*(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)"
+    },
+    {
+      "name": "#4294 zero ratio: any noun is counted",
+      "file": "verifyissues.go",
+      "old": "(?:[a-z]+[ \\t]+)?(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)",
+      "new": "(?:[a-z]+[ \\t]+)?[a-z]+[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)"
+    },
+    {
+      "name": "#4294 cover: an earlier key the last entry records as written is still shortened (C1)",
+      "file": "heldscope.go",
+      "old": "if !ok || lastRaw[k] || split[base] || len(forms[base]) > 1 {",
+      "new": "if !ok || split[base] || len(forms[base]) > 1 {"
+    },
+    {
+      "name": "#4294 cover: the as-written set is read from the first entry, not the last (C1)",
+      "file": "heldscope.go",
+      "old": "for _, k := range keys[len(keys)-1] {\n\t\t\tlastRaw[k] = true",
+      "new": "for _, k := range keys[0] {\n\t\t\tlastRaw[k] = true"
+    },
+    {
+      "name": "#4294 observe: words before the marker are not checked against the vocabulary",
+      "file": "heldscope.go",
+      "old": "if !heldObserveWords(heldObserveTailRe",
+      "new": "if false && !heldObserveWords(heldObserveTailRe"
+    },
+    {
+      "name": "#4294 observe: the subject before the verb is not checked",
+      "file": "heldscope.go",
+      "old": "if !heldObserveSubject[strings.Join(words[:i], \" \")] {",
+      "new": "if false {"
+    },
+    {
+      "name": "#4294 observe: a word that only holds an output verb counts as the verb",
+      "file": "heldscope.go",
+      "old": "heldObserveVerbWordRe = regexp.MustCompile(`^(?:` + heldObserveVerbs + `)$`)",
+      "new": "heldObserveVerbWordRe = regexp.MustCompile(`(?:` + heldObserveVerbs + `)`)"
+    },
+    {
+      "name": "#4294 observe: the vocabulary is read from the scan's cleaned row (inline code dropped)",
+      "file": "heldscope.go",
+      "old": "heldObserveWords(heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1))",
+      "new": "heldObserveWords(heldObserveTailRe.FindAllString(strings.ToLower(clean[rg[0]+lead[1]:h[0]]), -1))"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits runner",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the runner\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits verifier",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the verifier\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits harness",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the harness\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits case and positive",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"on positive the case\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits half and negative",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the negative half\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits rows and digits",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"row 4\": true}"
+    },
+    {
+      "name": "#4294 observe: the vocabulary admits a pronoun",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"it\": true}"
+    },
+    {
+      "name": "#4294 observe: reports is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `reports?|prints?|"
+    },
+    {
+      "name": "#4294 observe: shows is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `shows?|prints?|"
+    },
+    {
+      "name": "#4294 observe: contains is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `contains?|prints?|"
+    },
+    {
+      "name": "#4294 observe: includes is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `includes?|prints?|"
+    },
+    {
+      "name": "#4294 observe: displays is a verb of output again",
+      "file": "heldscope.go",
+      "old": "const heldObserveVerbs = `prints?|",
+      "new": "const heldObserveVerbs = `displays?|prints?|"
+    },
+    {
+      "name": "#4294 observe: the case label in the lead may be any word",
+      "file": "heldscope.go",
+      "old": "(?:positive|negative)\\\\b)?",
+      "new": "\\\\w+\\\\b)?"
+    },
+    {
+      "name": "#4294 observe: the lead takes no case label",
+      "file": "heldscope.go",
+      "old": "\\\\b(?:[ \\\\t]*:[ \\\\t]*(?:positive|negative)\\\\b)?\")",
+      "new": "\\\\b\")"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the command",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the command\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the tool",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the tool\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the stdout",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the stdout\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the cli",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the cli\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the binary",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the binary\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the fixture",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the fixture\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the linter",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the linter\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the lint",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the lint\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the brief",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the brief\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: a cell with no subject is admitted (implied subject)",
+      "file": "heldscope.go",
+      "old": "if !heldObserveSubject[strings.Join(words[:i], \" \")] {",
+      "new": "if i > 0 && !heldObserveSubject[strings.Join(words[:i], \" \")] {"
+    },
+    {
+      "name": "#4294 observe S2-r4: the words after the verb are not checked",
+      "file": "heldscope.go",
+      "old": "if !heldObserveObject[o] {",
+      "new": "if !heldObserveObject[o] && false {"
+    },
+    {
+      "name": "#4294 observe S2-r4: a second verb is admitted after the first",
+      "file": "heldscope.go",
+      "old": "if !heldObserveObject[o] {",
+      "new": "if !heldObserveObject[o] && !heldObserveVerbWordRe.MatchString(o) {"
+    },
+    {
+      "name": "#4294 observe S2-r4: the object vocabulary admits their",
+      "file": "heldscope.go",
+      "old": "heldObserveObject = map[string]bool{\"a\": true,",
+      "new": "heldObserveObject = map[string]bool{\"their\": true, \"a\": true,"
+    },
+    {
+      "name": "#4294 observe S2-r4: the object vocabulary admits instrument nouns",
+      "file": "heldscope.go",
+      "old": "heldObserveObject = map[string]bool{\"a\": true,",
+      "new": "heldObserveObject = map[string]bool{\"output\": true, \"stdout\": true, \"command\": true, \"a\": true,"
+    },
+    {
+      "name": "#4294 observe S2-r4: words with no output verb are admitted",
+      "file": "heldscope.go",
+      "old": "\t\treturn true\n\t}\n\treturn false\n}\n\n// heldObservedOutput",
+      "new": "\t\treturn true\n\t}\n\treturn true\n}\n\n// heldObservedOutput"
+    },
+    {
+      "name": "#4294 observe S2-r4: the tail admits rows and all",
+      "file": "heldscope.go",
+      "old": "\"once\": true, \"twice\": true,\n",
+      "new": "\"once\": true, \"twice\": true, \"rows\": true, \"all\": true,\n"
+    },
+    {
+      "name": "#4294 observe S2-r4: the tail admits both",
+      "file": "heldscope.go",
+      "old": "\"once\": true, \"twice\": true,\n",
+      "new": "\"once\": true, \"twice\": true, \"both\": true,\n"
     }
   ]
 }

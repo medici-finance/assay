@@ -56,9 +56,8 @@ version: 3
 
 files:
 - `tools/desk/internal/deskkit/forge_github.go` — the existing go-gh-seated GitHub backend; the native read client is built here or beside it, reusing its refuse-if-empty contract.
-- The read verbs the inventory (`desktools-v2/01`) names as gh-shelling reads — each routed
-  onto the native client, its gh reach-around DELETED in the same change (never left dormant).
-- NEW `..._test.go` siblings — including the negative-path tests below.
+- **The read verbs the inventory (`desktools-v2/01`) names as gh-shelling reads** — each routed onto the native client, its gh reach-around DELETED in the same change (never left dormant).
+- **NEW `..._test.go` siblings** — including the negative-path tests below.
 
 single-point-of-failure: the ONE control this design depends on is the client's
 refuse-if-unminted contract — if the client ever resolves an ambient credential, a read runs

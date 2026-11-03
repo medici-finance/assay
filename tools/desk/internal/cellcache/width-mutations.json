@@ -1,0 +1,18 @@
+{
+  "test": "go test ./internal/cellcache -run '^TestCacheMaintenanceRealWidth$' -count=1 -timeout=180s",
+  "control": {
+    "name": "CONTROL new owned cache cannot prepare",
+    "file": "internal/cellcache/launch.go",
+    "old": "return m.launchCheck()",
+    "new": "return Report{}, fmt.Errorf(\"control preparation unavailable\")"
+  },
+  "mutations": [
+    {
+      "name": "restore inventory default below representative cache width",
+      "file": "internal/deskkit/boundedwalk.go",
+      "old": "const MaintenanceEntries = 262144",
+      "new": "const MaintenanceEntries = 65536"
+    }
+  ],
+  "timeout": {"multiplier": 3, "floor": "60s", "baseline": "3m"}
+}

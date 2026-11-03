@@ -1,0 +1,36 @@
+{
+  "description": "The same event identity with a different record is a conflict, never an overwrite; the rest commits (partial).",
+  "context": {
+    "authenticatedSource": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consentRevision": "r1",
+    "allowedProfiles": [
+      "tool"
+    ],
+    "now": "2026-10-02T12:00:00.000Z",
+    "replayHorizonHours": 168,
+    "known": {
+      "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s2": "6aea144d84739cf8b95e2e9b8c80514c9e105f9f14e8a68963f5b6f9e690dbec"
+    },
+    "commit": "ok"
+  },
+  "receipt": {
+    "schema": "performance-receipt-v1",
+    "batchDigest": "ce949d5c819773e85f34bbb448b624c58be3f0c67579d80bff19d72d2dbd941c",
+    "committed": true,
+    "status": "partial",
+    "results": [
+      {
+        "index": 0,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s1",
+        "status": "acknowledged",
+        "digest": "617645c982bd3168421139014fe76e3315cf1c7c2b2981588ea2b18636ec3145"
+      },
+      {
+        "index": 1,
+        "id": "src-aaaaaaaaaaaaaaaaaaaaaaaaaa-e1-s2",
+        "status": "conflicting",
+        "digest": "2a933b4644f3691caf71b36412ad09c282a3bba41bb49d57ae7cb134cad69ca3"
+      }
+    ]
+  }
+}

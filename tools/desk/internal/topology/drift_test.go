@@ -418,6 +418,15 @@ var handTableOptOut = map[string]string{
 		"neither declared set and cannot drift from topology.yaml (a change to either label category " +
 		"leaves this set untouched); it restates `needs-decision`/`question` only because the " +
 		"escalation vocabulary happens to overlap decision_owed, not because it copies it.",
+	"labelKind": "NOT a derivation — a distinct POLICY SET, the sibling of escalationLabels. " +
+		"It is deskd's escalation-kind parser (deskd/internal/adapter/map.go): the wire label → " +
+		"domain kind join for needs-decision, question, help wanted and ask, plus the hyphenated " +
+		"domain spelling help-wanted. It is neither labels.system_state nor labels.decision_owed — " +
+		"it carries `help wanted` and `ask`, which are not topology labels at all, and omits " +
+		"`needs-human`, which decision_owed carries — so it mirrors neither declared set and cannot " +
+		"drift from topology.yaml. deskd is a separate Go module that cannot import this loader. It is " +
+		"the module's ONLY copy: the MCP filer derives its tables from it through " +
+		"adapter.KindForLabel / adapter.WireLabel, bound by deskd's TestEscalationLabelsSingleOwner.",
 }
 
 // scanForHandTables finds composite literals that restate two or more distinct

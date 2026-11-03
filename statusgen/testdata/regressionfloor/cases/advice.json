@@ -1,0 +1,13 @@
+{
+  "id": "advice",
+  "verify": "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |",
+  "evidence": "| # | Note |\n|---|------|\n| 1 | HIGH CONFIDENCE: this row passes based on a code read, no execution needed |",
+  "edge": "",
+  "expected": {
+    "released": false,
+    "claim": "missing",
+    "eligibility": "eligible",
+    "hold_states": [],
+    "notice_states": []
+  }
+}

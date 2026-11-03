@@ -1,0 +1,25 @@
+{
+  "digest": "sha256:51cbc2f67d191b7272d5a15dcf3879cecd8438b087526064cadf1c0f950b3ac9",
+  "harness": {
+    "implementation": "harness-x",
+    "version": "1.4.2",
+    "bundle_digest": "sha256:a02a49f49507c2acda4c89a292c70db848da8684014c4491e8719ae853746128",
+    "bundle_provenance": "attestations/harness-x-1.4.2"
+  },
+  "model": {
+    "profile": "model-profile-a",
+    "model": "model-a"
+  },
+  "backend": {
+    "profile": "backend-local",
+    "platform": "linux-arm64"
+  },
+  "needs": {
+    "restart": {
+      "files": true
+    },
+    "cancel_confirmation": true,
+    "telemetry": "complete"
+  },
+  "fallback": "any-backend"
+}

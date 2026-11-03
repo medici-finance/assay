@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead|TestShowsAppRunKeepsRefusalInContext|TestShownTextsFailClosedPastCap|TestMathTextsCharacterCodes|TestHiddenReadingsStopAtBudget|TestMathTextsBarIsNoBracket|TestMathTextsFailClosedOnUnnamedWord|TestStampUnnamedMathLeadRefused)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -132,6 +132,1032 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "evidenceEnd = max(off-1, idx+len(evidenceMarker))",
       "new": "evidenceEnd = -1\n\t\t\t\tcontinue"
+    },
+    {
+      "name": "a second heading shown as Evidence is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if at, under, ok := unreadEvidenceAddition(lines, baseLines, onBranch); ok {",
+      "new": "if at, under, ok := unreadEvidenceAddition(lines, baseLines, onBranch); false && ok {"
+    },
+    {
+      "name": "a lone CR does not split a heading line",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.Split(lines[i], \"\\r\")",
+      "new": "[]string{lines[i]}"
+    },
+    {
+      "name": "only the exact lint heading text counts as Evidence",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lettersOf(html.UnescapeString(htmlTagRe.ReplaceAllString(v, \"\"))) == \"evidence\" {",
+      "new": "if lettersOf(v) == \"evidence\" {"
+    },
+    {
+      "name": "the heading line that ends the section is not checked for control characters",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for i := start; i < min(end+1, len(lines)); i++ {",
+      "new": "for i := start; i < end; i++ {"
+    },
+    {
+      "name": "a table line without a leading pipe is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if added && piped {",
+      "new": "if false && added && piped {"
+    },
+    {
+      "name": "a row after a pipe-less line in the same table is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lost && added && !lastCellRunner(header, len(cellSpans(t))) {",
+      "new": "if false && lost && added && !lastCellRunner(header, len(cellSpans(t))) {"
+    },
+    {
+      "name": "a header without a leading pipe does not start a table",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if !piped || i+1 >= end || !isDelimiterRow(lines[i+1]) {",
+      "new": "if !strings.HasPrefix(t, \"|\") || !piped || i+1 >= end || !isDelimiterRow(lines[i+1]) {"
+    },
+    {
+      "name": "markup in an App-run Runner cell is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if c, ok := runnerMarkup(orig); ok {",
+      "new": "if c, ok := runnerMarkup(orig); false && ok {"
+    },
+    {
+      "name": "markup that makes a Runner cell show as App-run is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if showsAppRun(orig[sp[0]:sp[1]]) {",
+      "new": "if false && showsAppRun(orig[sp[0]:sp[1]]) {"
+    },
+    {
+      "name": "the strikethrough character is not taken as markup",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.IndexAny(cell, \"<>&~\\\\\")",
+      "new": "strings.IndexAny(cell, \"<>&\\\\\")"
+    },
+    {
+      "name": "a format character in a header is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case unicode.Is(unicode.Cf, r):",
+      "new": "case false:"
+    },
+    {
+      "name": "a non-ASCII letter in a header is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case r > unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsMark(r)):",
+      "new": "case false:"
+    },
+    {
+      "name": "a header cell spelling Runner with markup is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lettersOf(cell) == \"runner\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "a header with two Runner columns is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if runners > 1 {",
+      "new": "if false {"
+    },
+    {
+      "name": "an added header is never checked",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if why := unreadableHeader(view[i], lines[start+i], spans); why != \"\" {",
+      "new": "if why := unreadableHeader(view[i], lines[start+i], spans); false && why != \"\" {"
+    },
+    {
+      "name": "strong emphasis is not stripped before deciding what a Runner cell shows",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "runnerMarkupRe  = regexp.MustCompile(\"[*_~`\\\\\\\\]\")",
+      "new": "runnerMarkupRe  = regexp.MustCompile(\"[_~`\\\\\\\\]\")"
+    },
+    {
+      "name": "underscore emphasis is not stripped before deciding what a Runner cell shows",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "runnerMarkupRe  = regexp.MustCompile(\"[*_~`\\\\\\\\]\")",
+      "new": "runnerMarkupRe  = regexp.MustCompile(\"[*~`\\\\\\\\]\")"
+    },
+    {
+      "name": "a code span is not stripped before deciding what a Runner cell shows",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "runnerMarkupRe  = regexp.MustCompile(\"[*_~`\\\\\\\\]\")",
+      "new": "runnerMarkupRe  = regexp.MustCompile(\"[*_~\\\\\\\\]\")"
+    },
+    {
+      "name": "comment markers hide a comment's shown text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{evidenceCommentRe.ReplaceAllString(s, \"\"), commentMarkerRe.ReplaceAllString(s, \"\")}",
+      "new": "return []string{evidenceCommentRe.ReplaceAllString(s, \"\"), s}"
+    },
+    {
+      "name": "a raw HTML heading is not read as a heading",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "} else if m := htmlHeadingRe.FindStringSubmatch(t); m != nil {",
+      "new": "} else if m := htmlHeadingRe.FindStringSubmatch(t); false && m != nil {"
+    },
+    {
+      "name": "rows added under a heading already on the branch are not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if strings.TrimSpace(lines[j]) != \"\" && !onBranch[lines[j]] {",
+      "new": "if false && strings.TrimSpace(lines[j]) != \"\" && !onBranch[lines[j]] {"
+    },
+    {
+      "name": "a non-ASCII heading letter is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if i, r, ok := addedHeadingLetter(lines, onBranch); ok {",
+      "new": "if i, r, ok := addedHeadingLetter(lines, onBranch); false && ok {"
+    },
+    {
+      "name": "a heading inside a code block is read as a heading",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if fence != \"\" || strings.HasPrefix(p.text, \"    \")",
+      "new": "if false && fence != \"\" || strings.HasPrefix(p.text, \"    \")"
+    },
+    {
+      "name": "with no Evidence section, an App-run row in the body is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if i, why := outsideEvidenceProblem(lines, -1, -1, onBranch); why != \"\" {",
+      "new": "if i, why := outsideEvidenceProblem(lines, -1, -1, onBranch); false && why != \"\" {"
+    },
+    {
+      "name": "an App-run row outside the Evidence section is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if i, why := outsideEvidenceProblem(lines, start, end, onBranch); why != \"\" {",
+      "new": "if i, why := outsideEvidenceProblem(lines, start, end, onBranch); false && why != \"\" {"
+    },
+    {
+      "name": "a raw HTML table outside the Evidence section is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if slices.ContainsFunc(outsideCodeSpans(lines[i]), rawTableTagRe.MatchString) {",
+      "new": "if false && slices.ContainsFunc(outsideCodeSpans(lines[i]), rawTableTagRe.MatchString) {"
+    },
+    {
+      "name": "an App-run cell in a row outside the Evidence section is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if showsAppRun(t[sp[0]:sp[1]]) {",
+      "new": "if false && showsAppRun(t[sp[0]:sp[1]]) {"
+    },
+    {
+      "name": "a code block outside the Evidence section is read as a table",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if fence != \"\" || (start >= 0",
+      "new": "if false && fence != \"\" || (start >= 0"
+    },
+    {
+      "name": "a code span outside the Evidence section is read as markup",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{codeSpanRe.ReplaceAllString(line, \"\"), b.String()}",
+      "new": "return []string{line, b.String()}"
+    },
+    {
+      "name": "the layout check is not consulted",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if i, why := evidenceLayoutProblem(lines, start, end, onBranchEvidence); why != \"\" {",
+      "new": "if i, why := evidenceLayoutProblem(lines, start, end, onBranchEvidence); false && why != \"\" {"
+    },
+    {
+      "name": "a raw HTML table in the Evidence section is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if rawTableTagRe.MatchString(lines[i]) {",
+      "new": "if false && rawTableTagRe.MatchString(lines[i]) {"
+    },
+    {
+      "name": "a line sharing a cross-line comment is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if joined[k] && t != \"\" {",
+      "new": "if false && joined[k] && t != \"\" {"
+    },
+    {
+      "name": "a table line in a block quote is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if added(k) && strings.HasPrefix(t, \">\") && hasUnescapedPipe(t) {",
+      "new": "if false && added(k) && strings.HasPrefix(t, \">\") && hasUnescapedPipe(t) {"
+    },
+    {
+      "name": "a separator line under no header is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\t\tif added(k) {\n\t\t\t\t\treturn i, \"the lint reads it as a table separator, but no",
+      "new": "\t\t\t\tif false && added(k) {\n\t\t\t\t\treturn i, \"the lint reads it as a table separator, but no"
+    },
+    {
+      "name": "an App-run cell in a row under no header is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for j, sp := range spans[:max(len(spans)-1, 0)] {",
+      "new": "for j, sp := range spans[:0] {"
+    },
+    {
+      "name": "a delimiter row a renderer rejects is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if (added(k) || gfmTableAdds(k+1)) && !gfmDelimiter(view[k+1], len(spans)) {",
+      "new": "if false && (added(k) || gfmTableAdds(k+1)) && !gfmDelimiter(view[k+1], len(spans)) {"
+    },
+    {
+      "name": "a delimiter row of the wrong width is accepted",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tif len(spans) != n {\n\t\treturn false",
+      "new": "\tif false && len(spans) != n {\n\t\treturn false"
+    },
+    {
+      "name": "a delimiter cell without a dash is accepted",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "gfmDelimiterCellRe = regexp.MustCompile(`^:?-+:?$`)",
+      "new": "gfmDelimiterCellRe = regexp.MustCompile(`^:?-*:?$`)"
+    },
+    {
+      "name": "a note line closing a table with App-run text is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if added(k) && showsAttribution(lines[i]) {",
+      "new": "if false && added(k) && showsAttribution(lines[i]) {"
+    },
+    {
+      "name": "a separator line inside a table is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif added(k) {\n\t\t\t\treturn i, \"the lint reads it as a table separator, but it stands",
+      "new": "\t\t\tif false && added(k) {\n\t\t\t\treturn i, \"the lint reads it as a table separator, but it stands"
+    },
+    {
+      "name": "a new lint header inside a table is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if added(k) || added(k+1) {",
+      "new": "if false && (added(k) || added(k+1)) {"
+    },
+    {
+      "name": "a row under a header a renderer shows as a row is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if split {\n\t\t\treturn i,",
+      "new": "if false && split {\n\t\t\treturn i,"
+    },
+    {
+      "name": "a row wider than a Runner-less header is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if runner < 0 && len(spans) > cols {",
+      "new": "if false && runner < 0 && len(spans) > cols {"
+    },
+    {
+      "name": "an App-run cell outside the lint's Runner column is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if j != r && (showsAppRun(",
+      "new": "if false && j != r && (showsAppRun("
+    },
+    {
+      "name": "a repeat of the table's header is refused by the layout check",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if spans := cellSpans(view[k]); slices.Equal(headerCells(view[k], spans), header) {",
+      "new": "if spans := cellSpans(view[k]); false && slices.Equal(headerCells(view[k], spans), header) {"
+    },
+    {
+      "name": "a repeat of the table's header after a note line is refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif slices.Equal(headerCells(t, cellSpans(t)), header) {",
+      "new": "\t\t\tif false && slices.Equal(headerCells(t, cellSpans(t)), header) {"
+    },
+    {
+      "name": "a different header directly under a note line is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if !onBranch[lines[j]] {\n\t\t\t\t\treturn i, \"the lint reads it as a new table header, but no blank",
+      "new": "if false && !onBranch[lines[j]] {\n\t\t\t\t\treturn i, \"the lint reads it as a new table header, but no blank"
+    },
+    {
+      "name": "the merge appends a new table without a blank line",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "if opensTable(evidenceStr) {",
+      "new": "if false && opensTable(evidenceStr) {"
+    },
+    {
+      "name": "a header already on the branch is not checked when rows are added under it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lintTableAdds(view, lines[start:end], i, onBranchEvidence) {",
+      "new": "if !onBranchEvidence[lines[start+i]] {"
+    },
+    {
+      "name": "a closed comment is not read hidden",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{evidenceCommentRe.ReplaceAllString(s, \"\"), commentMarkerRe.ReplaceAllString(s, \"\")}",
+      "new": "return []string{commentMarkerRe.ReplaceAllString(s, \"\")}"
+    },
+    {
+      "name": "link syntax is not reduced to its shown text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{s, reduceLinks(s, false), reduceLinks(s, true)}",
+      "new": "return []string{s}"
+    },
+    {
+      "name": "an image is not read with its alt text shown",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{s, reduceLinks(s, false), reduceLinks(s, true)}",
+      "new": "return []string{s, reduceLinks(s, false)}"
+    },
+    {
+      "name": "an image is not read with its alt text dropped",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{s, reduceLinks(s, false), reduceLinks(s, true)}",
+      "new": "return []string{s, reduceLinks(s, true)}"
+    },
+    {
+      "name": "image syntax is not recognised",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case c == '[' || (c == '!' && i+1 < len(s) && s[i+1] == '['):",
+      "new": "case c == '[':"
+    },
+    {
+      "name": "an image's alt text is never shown",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if c == '[' || keepAlt {",
+      "new": "if c == '[' {"
+    },
+    {
+      "name": "an autolink is not reduced to its address",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if m := autolinkRe.FindStringSubmatchIndex(s[i:]); m != nil {",
+      "new": "if m := autolinkRe.FindStringSubmatchIndex(s[i:]); false && m != nil {"
+    },
+    {
+      "name": "a reference link is not recognised",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tcase '[':\n\t\tfor j := close + 2;",
+      "new": "\tcase 0:\n\t\tfor j := close + 2;"
+    },
+    {
+      "name": "an inline link is not recognised",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tcase '(':\n\t\tif e := inlineDestinationEnd(s, close+1); e > 0 {",
+      "new": "\tcase 0:\n\t\tif e := inlineDestinationEnd(s, close+1); e > 0 {"
+    },
+    {
+      "name": "an App-run Runner cell holding link syntax is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if linkSyntax(orig) {",
+      "new": "if false && linkSyntax(orig) {"
+    },
+    {
+      "name": "a heading is not read with its link syntax reduced",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, v := range linkReadings(s) {\n\t\t\tif lettersOf",
+      "new": "for _, v := range []string{s} {\n\t\t\tif lettersOf"
+    },
+    {
+      "name": "the layout check blanks comments rune by rune, shifting cell offsets",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "view := strings.Split(blankComments(section), \"\\n\")\n\tadded := func(k int)",
+      "new": "view := strings.Split(evidenceCommentRe.ReplaceAllStringFunc(section, func(m string) string {\n\t\treturn strings.Map(func(r rune) rune {\n\t\t\tif r == '\\n' {\n\t\t\t\treturn r\n\t\t\t}\n\t\t\treturn ' '\n\t\t}, m)\n\t}), \"\\n\")\n\tadded := func(k int)"
+    },
+    {
+      "name": "a same-width row after a note line is refused even with its Runner cell last",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lost && added && !lastCellRunner(header, len(cellSpans(t))) {",
+      "new": "if lost && added {"
+    },
+    {
+      "name": "a row of another width after a note line is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if n != len(header) || n == 0 {",
+      "new": "if n == 0 {"
+    },
+    {
+      "name": "a row after a note line is not refused when the header's Runner column is not last",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return j == n-1",
+      "new": "return true"
+    },
+    {
+      "name": "a shortcut reference link is not reduced to its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, r := range append(linkReadings(c), reduceLinksMode(c, true, true)) {",
+      "new": "for _, r := range linkReadings(c) {"
+    },
+    {
+      "name": "a Runner cell that shows a login and tag is read only as the lint reads it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return eachShownText(cell, func(t string) bool { return isAppRunnerCell(t) || identityShowsTag(t) })",
+      "new": "return eachShownText(cell, func(t string) bool { return isAppRunnerCell(t) })"
+    },
+    {
+      "name": "a line closing a table is not read for a login and tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag(t[i:]) {",
+      "new": "if false && identityShowsTag(t[i:]) {"
+    },
+    {
+      "name": "a line closing a table is read for a login and tag only at its start",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag(t[i:]) {",
+      "new": "if i == 0 && identityShowsTag(t[i:]) {"
+    },
+    {
+      "name": "a non-ASCII bracket opens no tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r == '[' || r == '<' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)",
+      "new": "return r == '[' || r == '<'"
+    },
+    {
+      "name": "a non-ASCII bracket closes no tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r == ']' || r == '>' || r > unicode.MaxASCII && unicode.In(r, unicode.Pe, unicode.Pf)",
+      "new": "return r == ']' || r == '>'"
+    },
+    {
+      "name": "an angle bracket opens no tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r == '[' || r == '<' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)",
+      "new": "return r == '[' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)"
+    },
+    {
+      "name": "a tag may open after any character",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return true"
+    },
+    {
+      "name": "a tag may open after a closing bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return !tagOpen(r) && (loginByte(r) || r > unicode.MaxASCII)"
+    },
+    {
+      "name": "a tag may open after an opening bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)"
+    },
+    {
+      "name": "a tag never opens after a non-ASCII character",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return !tagOpen(r) && !tagClose(r) && loginByte(r)"
+    },
+    {
+      "name": "a space inside a tag ends the identity region",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case !open && (r == ' ' || r == '('):",
+      "new": "case r == ' ' || r == '(':"
+    },
+    {
+      "name": "a tag broken by a parenthesis or bracket still extends the identity region",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case open && (r == '(' || tagOpen(r)):\n\t\t\treturn s[:cut]",
+      "new": "case false:\n\t\t\treturn s[:cut]"
+    },
+    {
+      "name": "a tag that never closes extends the identity region",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tif open {\n\t\treturn s[:cut]\n\t}\n\treturn s\n}",
+      "new": "\treturn s\n}"
+    },
+    {
+      "name": "a square bracket is outside the login alphabet",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.ContainsRune(\"._-[]\", r)",
+      "new": "strings.ContainsRune(\"._-\", r)"
+    },
+    {
+      "name": "a character outside the login alphabet is not noticed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif !loginByte(r) {\n\t\t\tforeign = true\n\t\t}\n",
+      "new": "\t\t_ = loginByte(r)\n"
+    },
+    {
+      "name": "a region of CJK text is not exempt",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return (three || wide && foreign) && !cjkOnly(ir)",
+      "new": "return (three || wide && foreign)"
+    },
+    {
+      "name": "a wide tag needs no character outside the login alphabet",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return (three || wide && foreign) && !cjkOnly(ir)",
+      "new": "return (three || wide && (foreign || !foreign)) && !cjkOnly(ir)"
+    },
+    {
+      "name": "a wide tag is never read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return (three || wide && foreign) && !cjkOnly(ir)",
+      "new": "return (three || wide && foreign && false) && !cjkOnly(ir)"
+    },
+    {
+      "name": "a tag needs four letters to read as one",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "three, wide, open = three || words == 3, wide || glyphs >= 3, false",
+      "new": "three, wide, open = three || words == 4, wide || glyphs >= 3, false"
+    },
+    {
+      "name": "a wide tag needs four glyphs",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "three, wide, open = three || words == 3, wide || glyphs >= 3, false",
+      "new": "three, wide, open = three || words == 3, wide || glyphs >= 4, false"
+    },
+    {
+      "name": "a symbol in a tag is not counted",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case open && unicode.IsSymbol(r):\n\t\t\tglyphs++",
+      "new": "case false:\n\t\t\tglyphs++"
+    },
+    {
+      "name": "a region with no letters reads as CJK text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\treturn seen\n}",
+      "new": "\treturn seen || !seen\n}"
+    },
+    {
+      "name": "an invisible letter reads as CJK text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": " ||\n\t\t\tunicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) {",
+      "new": " {"
+    },
+    {
+      "name": "the reading with blank characters dropped not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "blank := strings.Map(dropBlank, t)",
+      "new": "blank := t"
+    },
+    {
+      "name": "a leading word that cannot be a login not read past",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "seen := pastLead(blank)\n\t\tif seen != t && f(seen) {\n\t\t\treturn true\n\t\t}\n\t\t// Only the leading words are read as a renderer shows them, each by itself, and what\n\t\t// follows them is taken as written.\n\t\tlead := pastShownLead(blank)",
+      "new": "seen := strings.TrimSpace(blank)\n\t\tif seen != t && f(seen) {\n\t\t\treturn true\n\t\t}\n\t\t// Only the leading words are read as a renderer shows them, each by itself, and what\n\t\t// follows them is taken as written.\n\t\tlead := strings.TrimSpace(blank)"
+    },
+    {
+      "name": "the reading past a leading word not trimmed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)",
+      "new": "\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)"
+    },
+    {
+      "name": "only the first leading word read past",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tt = strings.TrimSpace(t[end:])\n\t}\n}",
+      "new": "\t\treturn strings.TrimSpace(t[end:])\n\t}\n}"
+    },
+    {
+      "name": "the word after a leading word not trimmed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\t\tt = t[end:]\n"
+    },
+    {
+      "name": "a leading word read past only when it ends at a space",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "end := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {",
+      "new": "end := strings.IndexByte(t, ' ')\n\t\tif end <= 0 {"
+    },
+    {
+      "name": "an ASCII punctuation word taken for a name",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))",
+      "new": "return r < utf8.RuneSelf"
+    },
+    {
+      "name": "a non-ASCII letter taken for a login",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))",
+      "new": "return unicode.IsLetter(r) || unicode.IsDigit(r)"
+    },
+    {
+      "name": "the shown text trimmed of ASCII white space only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, \"\"))",
+      "new": "t := strings.Trim(runnerMarkupRe.ReplaceAllString(d, \"\"), \" \\t\")"
+    },
+    {
+      "name": "the reading past a leading word trimmed of ASCII white space only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \\t\")\n"
+    },
+    {
+      "name": "the reading past a leading word trimmed of every white space but a tab",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\tt = strings.Trim(t, \" \"+string(rune(0xa0))+string(rune(0x3000)))\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \"+string(rune(0xa0))+string(rune(0x3000)))\n"
+    },
+    {
+      "name": "the reading past a leading word trimmed of ASCII white space only at its start",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)"
+    },
+    {
+      "name": "the word after a leading word trimmed of ASCII white space only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\t\tt = strings.Trim(t[end:], \" \\t\")\n"
+    },
+    {
+      "name": "a word shown as a glyph not read as a symbol",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "word = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)",
+      "new": "word = strings.TrimSpace(word)"
+    },
+    {
+      "name": "the shown-lead reading not read past its leading words",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "lead := pastShownLead(blank)",
+      "new": "lead := blank"
+    },
+    {
+      "name": "the shown-lead reading not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return lead != seen && lead != t && f(lead)",
+      "new": "return false && lead != seen && lead != t && f(lead)"
+    },
+    {
+      "name": "the shown-lead reading kept only when it ends the untrimmed text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return lead != seen && lead != t && f(lead)",
+      "new": "return lead != seen && lead != t && strings.HasSuffix(blank, lead) && f(lead)"
+    },
+    {
+      "name": "the shown-lead reading kept only when it ends the text read with every glyph word as a symbol",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return lead != seen && lead != t && f(lead)",
+      "new": "return lead != seen && lead != t && strings.HasSuffix(strings.TrimSpace(glyphWordRe.ReplaceAllString(blank, glyphPlaceholder)), lead) && f(lead)"
+    },
+    {
+      "name": "the glyph reading taken from the whole text and kept only when it ends the untrimmed text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "lead := pastShownLead(blank)\n\t\treturn lead != seen && lead != t && f(lead)",
+      "new": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {\n\t\t\tif seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(blank, seen) {\n\t\t\t\treturn f(seen)\n\t\t\t}\n\t\t}\n\t\treturn false"
+    },
+    {
+      "name": "the reading with each run and every run before it dropped not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if add(lead + d[r[1]:]) {\n\t\t\treturn true\n\t\t}",
+      "new": "_ = r"
+    },
+    {
+      "name": "a math span's text read only from its start",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, at := range starts {\n\t\t\tif mathTexts(",
+      "new": "for _, at := range starts[:1] {\n\t\t\tif mathTexts("
+    },
+    {
+      "name": "the text after a line break or block element not read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, m := range lineBreakRe.FindAllStringIndex(shown[i], -1) {",
+      "new": "for _, m := range lineBreakRe.FindAllStringIndex(shown[i], 0) {"
+    },
+    {
+      "name": "a closing block tag not read as a line break",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "lineBreakRe = regexp.MustCompile(`(?i)<\\s*/?\\s*(?:br|",
+      "new": "lineBreakRe = regexp.MustCompile(`(?i)<\\s*(?:br|"
+    },
+    {
+      "name": "a line break element not read as a line break",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "(?:br|hr|p|div|details|",
+      "new": "(?:hr|p|div|details|"
+    },
+    {
+      "name": "a disclosure element not read as a block",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "(?:br|hr|p|div|details|summary|",
+      "new": "(?:br|hr|p|div|"
+    },
+    {
+      "name": "a word shown as a glyph read as an ASCII letter",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "glyphPlaceholder = \"\\u25a1\"",
+      "new": "glyphPlaceholder = \"x\""
+    },
+    {
+      "name": "a glyph word matched in lower case only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)",
+      "new": "regexp.MustCompile(`:[a-z0-9_+-]+:`)"
+    },
+    {
+      "name": "a glyph word with a sign not matched",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)",
+      "new": "regexp.MustCompile(`(?i):[a-z0-9_]+:`)"
+    },
+    {
+      "name": "a glyph word with a digit not matched",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)",
+      "new": "regexp.MustCompile(`(?i):[a-z_+-]+:`)"
+    },
+    {
+      "name": "an element a sanitizer drops read only with its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "sanitized := droppedElementRe.ReplaceAllString(r, \"\")",
+      "new": "sanitized := r"
+    },
+    {
+      "name": "a style element not read as dropped",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "`(?is)<\\s*(?:script|style|template",
+      "new": "`(?is)<\\s*(?:script|template"
+    },
+    {
+      "name": "a nonspacing mark not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)"
+    },
+    {
+      "name": "an enclosing mark not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Mn, unicode.Other_Default_Ignorable_Code_Point)"
+    },
+    {
+      "name": "a default-ignorable letter not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Mn, unicode.Me)"
+    },
+    {
+      "name": "the blank braille pattern not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if r == '\\u2800' || unicode.In(r, unicode.Mn,",
+      "new": "if unicode.In(r, unicode.Mn,"
+    },
+    {
+      "name": "an uncategorised character not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !unicode.In(r, unicode.L, unicode.M, unicode.N, unicode.P, unicode.S, unicode.Z)\n}",
+      "new": "return false\n}"
+    },
+    {
+      "name": "a reference to a C1 control read only as windows-1252",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{d, html.UnescapeString(c)}",
+      "new": "return []string{d}"
+    },
+    {
+      "name": "a word after a parenthesis not read on a note line",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag",
+      "new": "t[i-1] == '\\t') && identityShowsTag"
+    },
+    {
+      "name": "a math span's text not read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if mathTexts(body[at:], func(m string) bool { return add(lead + m + after) }) {\n\t\t\t\treturn true\n\t\t\t}",
+      "new": "_, _ = at, after"
+    },
+    {
+      "name": "a math span's markup not removed from its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "b.WriteString(s[last:t.at])\n\t\tlast = t.end\n",
+      "new": "b.WriteString(s[last:t.at])\n\t\tlast = t.at\n"
+    },
+    {
+      "name": "a math span's text not read from after a control word in it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {\n\t\t\tstarts = append(starts, m[1])\n\t\t}\n\t\tfor _, at := range starts {\n\t\t\tif mathTexts(",
+      "new": "for _, m := range mathMarkupRe.FindAllStringIndex(body, 0) {\n\t\t\tstarts = append(starts, m[1])\n\t\t}\n\t\tfor _, at := range starts {\n\t\t\tif mathTexts("
+    },
+    {
+      "name": "the math readings not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if mathDecodings(v, b, visit) || over {",
+      "new": "if slices.ContainsFunc(decodings(v), visit) || over {"
+    },
+    {
+      "name": "an element a renderer hides by default read only with its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if keep(base) || eachHiddenReading(base, keep) {",
+      "new": "if keep(base) {"
+    },
+    {
+      "name": "a ruby fallback not read as hidden",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "<\\s*(rp|datalist|dialog)\\b",
+      "new": "<\\s*(datalist|dialog)\\b"
+    },
+    {
+      "name": "the hidden attribute not read as hiding its element",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "hidden\\b[^>]*>`",
+      "new": "hiddenx\\b[^>]*>`"
+    },
+    {
+      "name": "elements a sanitizer drops and elements a renderer hides read dropped only together",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, base := range []string{r, sanitized} {",
+      "new": "for _, base := range []string{sanitized} {"
+    },
+    {
+      "name": "elements a renderer hides not read dropped beside dropped elements",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, base := range []string{r, sanitized} {",
+      "new": "for _, base := range []string{r, sanitized[:0] + r} {"
+    },
+    {
+      "name": "leftmost pairing restored: runs paired two by two from the first, with no reading of all the text between them",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if mathTexts(all.String(), func(m string) bool { return add(lead + m + d[runs[len(runs)-1][1]:]) }) {\n\t\treturn true\n\t}\n\tfor i := 0; i+1 < len(runs); i++ {",
+      "new": "_ = all.String()\n\tfor i := 0; i+1 < len(runs); i += 2 {"
+    },
+    {
+      "name": "a math span's text not read with its white space dropped",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, collapse := range []bool{false, true} {\n\t\tp := mathPrepare(s, collapse)",
+      "new": "for _, collapse := range []bool{false} {\n\t\tp := mathPrepare(s, collapse)"
+    },
+    {
+      "name": "a bracket control word not read as its glyph",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "`\\lbrack`: \"[\", `\\rbrack`: \"]\",",
+      "new": "`\\lbrack`: \"\", `\\rbrack`: \"\","
+    },
+    {
+      "name": "a hidden element not read to the closing tag that matches it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1), hiddenSpans(s)} {",
+      "new": "for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1)} {"
+    },
+    {
+      "name": "a hidden element read to its first closing tag of the same name only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "} else {\n\t\t\t\tdepth++\n\t\t\t}",
+      "new": "} else {\n\t\t\t\tdepth += 0\n\t\t\t}"
+    },
+    {
+      "name": "the hidden attribute not read after a slash",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "[\\s/\"']hidden\\b",
+      "new": "[\\s\"']hidden\\b"
+    },
+    {
+      "name": "the hidden attribute not read after a quote",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "[\\s/\"']hidden\\b",
+      "new": "[\\s/]hidden\\b"
+    },
+    {
+      "name": "the code spans read as CommonMark pairs them not taken as a second set of math delimiters",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if spans := mathDelimiters(s, codeSpans(s)); !slices.EqualFunc(",
+      "new": "if spans := mathDelimiters(s, codeSpans(s)); false && !slices.EqualFunc("
+    },
+    {
+      "name": "code spans read as pairing backtick runs of any lengths",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "func codeSpans(s string) [][]int {\n\tvar out [][]int",
+      "new": "func codeSpans(s string) [][]int {\n\tif true {\n\t\treturn codeSpanRe.FindAllStringIndex(s, -1)\n\t}\n\tvar out [][]int"
+    },
+    {
+      "name": "an escaped backtick read as opening a code span",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case '\\\\':\n\t\t\ti += 2\n\t\tcase '`':\n\t\t\tif end := codeSpanEnd(s, i); end > i {\n\t\t\t\tout = append(out, []int{i, end})",
+      "new": "case '\\\\':\n\t\t\ti++\n\t\tcase '`':\n\t\t\tif end := codeSpanEnd(s, i); end > i {\n\t\t\t\tout = append(out, []int{i, end})"
+    },
+    {
+      "name": "control words the tool does not name never read as a bracket pair",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, j := range unnamed[x+1:] {",
+      "new": "for _, j := range unnamed[x+1 : x+1] {"
+    },
+    {
+      "name": "only adjacent unnamed control words read as a bracket pair",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, j := range unnamed[x+1:] {",
+      "new": "for _, j := range unnamed[x+1 : min(x+2, len(unnamed))] {"
+    },
+    {
+      "name": "quoted attribute values never emptied, so a quoted `>` ends a tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if q == s {\n\t\treturn []string{s}\n\t}\n\treturn []string{s, q}",
+      "new": "_ = q\n\treturn []string{s}"
+    },
+    {
+      "name": "the reading with quoted attribute values emptied replaces the reading as written",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{s, q}",
+      "new": "return []string{q}"
+    },
+    {
+      "name": "the narrow hidden-element reading not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if f(hiddenKindRe.ReplaceAllString(s, \"\")) {",
+      "new": "if false && f(hiddenKindRe.ReplaceAllString(s, \"\")) {"
+    },
+    {
+      "name": "hidden elements dropped only all at once, never the first ones alone",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for k := 1; k <= len(spans); k++ {",
+      "new": "for k := len(spans); k <= len(spans); k++ {"
+    },
+    {
+      "name": "the reading cap never charged, so a costly text is read without bound",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "b.left -= len(s) + 1\n\treturn b.left >= 0",
+      "new": "b.left -= len(s) + 1\n\treturn true"
+    },
+    {
+      "name": "leftmost pairing of runs of `$` not read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, d := range decodings(s) {\n\t\tif leftmostReadings(d, add) {",
+      "new": "for _, d := range decodings(s)[:0] {\n\t\tif leftmostReadings(d, add) {"
+    },
+    {
+      "name": "only the first link or comment reading of a text read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if took[r] {",
+      "new": "if len(took) > 0 {"
+    },
+    {
+      "name": "the raw-tag check outside code spans read only one way",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{codeSpanRe.ReplaceAllString(line, \"\"), b.String()}",
+      "new": "return []string{codeSpanRe.ReplaceAllString(line, \"\")}"
+    },
+    {
+      "name": "the reading cap never reached",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tb.left -= len(s) + 1\n\treturn b.left >= 0",
+      "new": "\tb.left -= len(s) + 1\n\treturn true"
+    },
+    {
+      "name": "a character code never read as its character",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "mathCharCode(s, m[1], w); codes && ok {",
+      "new": "mathCharCode(s, m[1], w); false && codes && ok {"
+    },
+    {
+      "name": "a character code's control word never read as one the tool does not name",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if plain := mathTokens(p, false); !slices.Equal(plain, toks) {",
+      "new": "if plain := mathTokens(p, false); false && !slices.Equal(plain, toks) {"
+    },
+    {
+      "name": "a control word's argument never taken into the bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if toks[i].arg > toks[i].end {",
+      "new": "if false && toks[i].arg > toks[i].end {"
+    },
+    {
+      "name": "a control word the tool does not name never read alone as a bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, i := range unnamed {\n\t\tfor _, take := range modes(i) {",
+      "new": "for _, i := range unnamed[:0] {\n\t\tfor _, take := range modes(i) {"
+    },
+    {
+      "name": "a closing bracket word's argument never taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif pick.takeClose {\n",
+      "new": "\t\t\tif false && pick.takeClose {\n"
+    },
+    {
+      "name": "an opening bracket word's argument never taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif pick.takeOpen {\n",
+      "new": "\t\t\tif false && pick.takeOpen {\n"
+    },
+    {
+      "name": "a hidden reading built past a spent budget",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tif f(b.String()) {\n\t\t\t\treturn true\n\t\t\t}\n",
+      "new": "\t\t\tif f(b.String()) && false {\n\t\t\t\treturn true\n\t\t\t}\n"
+    },
+    {
+      "name": "a hidden reading charged to no budget",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\t\t\tif !b.take(e) {\n\t\t\t\t\t\treturn true\n\t\t\t\t\t}\n\t\t\t\t\thave[e] = true\n\t\t\t\t\tshown = append(shown, e)\n\t\t\t\t\treturn false",
+      "new": "\t\t\t\t\thave[e] = true\n\t\t\t\t\tshown = append(shown, e)\n\t\t\t\t\treturn false"
+    },
+    {
+      "name": "a \\unicode code not decoded",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tcase `\\unicode`:\n",
+      "new": "\tcase `\\unicode-never`:\n"
+    },
+    {
+      "name": "a \\mathchar code read whole, not by its low byte",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tv &= 0xff\n",
+      "new": "\t\t\tv &= 0xffffff\n"
+    },
+    {
+      "name": "an escaped bar read as a control symbol the tool does not name",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "`\\rvert`: \"|\", `\\|`: \"|\",",
+      "new": "`\\rvert`: \"|\","
+    },
+    {
+      "name": "an element's end found by matching every tag after it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tt := elementTagRe.FindStringSubmatchIndex(s[pos:])\n\t\t\tif t == nil {\n\t\t\t\tbreak\n\t\t\t}\n",
+      "new": "\t\t\tall := elementTagRe.FindAllStringSubmatchIndex(s[pos:], -1)\n\t\t\tif len(all) == 0 {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tt := all[0]\n"
+    },
+    {
+      "name": "a math span holding an unnamed control word read with no fail-closed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tunread = unread || slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })\n",
+      "new": ""
+    },
+    {
+      "name": "only an unnamed control word with an argument fails closed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })",
+      "new": "slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed && t.arg > t.end })"
+    },
+    {
+      "name": "unnamed control words read for the fail-closed only with entities kept",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tunread = unread || slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })\n",
+      "new": "\t\tunread = unread || !collapse && slices.ContainsFunc(toks, func(t mathToken) bool { return t.unnamed })\n"
     }
   ]
 }

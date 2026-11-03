@@ -1,0 +1,194 @@
+[
+  {
+    "name": "count-every-report",
+    "path": "portfolio/ledger.go",
+    "before": "\t\tif seen[enc] {\n\t\t\tl.Duplicates = append(l.Duplicates, Entry{\"segment\"",
+    "after": "\t\tif false && seen[enc] {\n\t\t\tl.Duplicates = append(l.Duplicates, Entry{\"segment\"",
+    "package": "./portfolio",
+    "test": "TestPortfolioLedgerIdentityAndUnits"
+  },
+  {
+    "name": "count-retry-as-duplicate",
+    "path": "portfolio/ledger.go",
+    "before": "\t\tenc := encode(g)\n",
+    "after": "\t\tretry := g\n\t\tretry.Invocation.ID = \"\"\n\t\tenc := encode(retry)\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioLedgerIdentityAndUnits"
+  },
+  {
+    "name": "drop-overlap-reconciliation",
+    "path": "portfolio/ledger.go",
+    "before": "reason = overlap(selected)",
+    "after": "reason = \"\"",
+    "package": "./portfolio",
+    "test": "TestPortfolioLedgerIdentityAndUnits"
+  },
+  {
+    "name": "coerce-missing-to-zero",
+    "path": "portfolio/ledger.go",
+    "before": "\t\t\tif v == nil {\n\t\t\t\tq.UnknownRecords++\n",
+    "after": "\t\t\tif v == nil {\n\t\t\t\tq.KnownRecords++\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioUnknownAndZero"
+  },
+  {
+    "name": "zero-total-share-defined",
+    "path": "portfolio/ledger.go",
+    "before": "\tcase total.Known == 0:\n",
+    "after": "\tcase false:\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioUnknownAndZero"
+  },
+  {
+    "name": "use-elapsed-silently",
+    "path": "portfolio/ledger.go",
+    "before": "\tif g.Active == nil {\n\t\treturn 0, unmeasured\n",
+    "after": "\tif g.Active == nil {\n\t\tif g.Elapsed != nil {\n\t\t\treturn *g.Elapsed, inside\n\t\t}\n\t\treturn 0, unmeasured\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioRunnerAdapterFlow"
+  },
+  {
+    "name": "pinned-model-as-actual",
+    "path": "portfolio/runner.go",
+    "before": "ActualModel: obs.ActualModel,",
+    "after": "ActualModel: req.Profile.Model,",
+    "package": "./portfolio",
+    "test": "TestPortfolioRunnerAdapterFlow"
+  },
+  {
+    "name": "normalize-target-to-consumption",
+    "path": "portfolio/compare.go",
+    "before": "\twant := t.BasisPoints\n",
+    "after": "\twant := observed.Numerator * 10000 / observed.Denominator\n\td.TargetBasis = want\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioTargetNotConsumption"
+  },
+  {
+    "name": "permit-ambiguous-bucket",
+    "path": "portfolio/decode.go",
+    "before": "if prior, ok := owner[m]; ok {",
+    "after": "if prior, ok := owner[m]; ok && false {",
+    "package": "./portfolio",
+    "test": "TestPortfolioDecode"
+  },
+  {
+    "name": "permit-uncovered-source",
+    "path": "portfolio/decode.go",
+    "before": "\t\tif !sources[d.Source] {\n",
+    "after": "\t\tif false {\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioDecode"
+  },
+  {
+    "name": "disarm-pure-boundary",
+    "path": "portfolio/ledger_test.go",
+    "before": "return &boundaryError{\"import \" + path}",
+    "after": "continue",
+    "package": "./portfolio",
+    "test": "TestPortfolioBoundary"
+  },
+  {
+    "name": "wrap-on-overflow",
+    "path": "portfolio/ledger.go",
+    "before": "deref(v)); !ok {",
+    "after": "deref(v)); false && !ok {",
+    "package": "./portfolio",
+    "test": "TestPortfolioOverflowUnknown"
+  },
+  {
+    "name": "skip-total-overflow-check",
+    "path": "portfolio/ledger.go",
+    "before": "\t\tfor _, t := range tallies {\n\t\t\tif _, ok := addInt64(",
+    "after": "\t\tfor _, t := range tallies[:1] {\n\t\t\tif _, ok := addInt64(",
+    "package": "./portfolio",
+    "test": "TestPortfolioOverflowTotal"
+  },
+  {
+    "name": "raw-sum",
+    "path": "portfolio/ledger.go",
+    "before": "q.Known, _ = addInt64(q.Known, *v)",
+    "after": "q.Known += *v",
+    "package": "./portfolio",
+    "test": "TestPortfolioCheckedMath"
+  },
+  {
+    "name": "raw-weight",
+    "path": "portfolio/ledger.go",
+    "before": "if w, ok := mulInt64(active, milli); ok {",
+    "after": "if w, ok := active*milli, true; ok {",
+    "package": "./portfolio",
+    "test": "TestPortfolioOverflowUnknown"
+  },
+  {
+    "name": "raw-difference-elsewhere",
+    "path": "portfolio/compare.go",
+    "before": "case q.Known > lim.Max:",
+    "after": "case q.Known-lim.Max > 0:",
+    "package": "./portfolio",
+    "test": "TestPortfolioCheckedMath"
+  },
+  {
+    "name": "saturating-duration",
+    "path": "portfolio/ledger.go",
+    "before": "secs, _ := subInt64(e.Unix(), s.Unix())",
+    "after": "secs := int64(e.Sub(s).Seconds())",
+    "package": "./portfolio",
+    "test": "TestPortfolioOverflowUnknown"
+  },
+  {
+    "name": "straddle-cost-known",
+    "path": "portfolio/ledger.go",
+    "before": "\t\t\tcase straddles:\n",
+    "after": "\t\t\tcase -1:\n",
+    "package": "./portfolio",
+    "test": "TestPortfolioWindowEdges"
+  },
+  {
+    "name": "outside-conflict-unknown",
+    "path": "portfolio/ledger.go",
+    "before": "if reason != \"\" && wholly(groups, l.Window) {",
+    "after": "if false {",
+    "package": "./portfolio",
+    "test": "TestPortfolioWindowEdges"
+  },
+  {
+    "name": "outside-decision-conflict",
+    "path": "portfolio/ledger.go",
+    "before": "if len(ds) > 1 && decisionsOutside(ds, l.Window) {",
+    "after": "if false {",
+    "package": "./portfolio",
+    "test": "TestPortfolioWindowEdges"
+  },
+  {
+    "name": "unsorted-overlap-sweep",
+    "path": "portfolio/ledger.go",
+    "before": "\tsort.SliceStable(spans, func(i, j int) bool { return spans[i].start.Before(spans[j].start) })\n",
+    "after": "",
+    "package": "./portfolio",
+    "test": "TestPortfolioOverlapSweep"
+  },
+  {
+    "name": "lax-runner-request",
+    "path": "portfolio/runner.go",
+    "before": "if err := domain.DecodeStrict(request, &req); err != nil",
+    "after": "if err := json.Unmarshal(request, &req); err != nil",
+    "package": "./portfolio",
+    "test": "TestPortfolioRunnerStrict"
+  },
+  {
+    "name": "echo-runner-version",
+    "path": "portfolio/runner.go",
+    "before": "return Segment{}, errRunnerVersion",
+    "after": "return Segment{}, fmt.Errorf(\"portfolio: runner request version %q\", header.Version)",
+    "package": "./portfolio",
+    "test": "TestPortfolioRunnerStrict"
+  },
+  {
+    "name": "echo-unattributed-invocation",
+    "path": "portfolio/runner.go",
+    "before": "return Segment{}, errRunnerUnattributed",
+    "after": "return Segment{}, fmt.Errorf(\"portfolio: no attribution for invocation %s/%s\", inv.Caller, inv.ID)",
+    "package": "./portfolio",
+    "test": "TestPortfolioRunnerStrict"
+  }
+]

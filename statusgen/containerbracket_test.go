@@ -109,15 +109,34 @@ func getFile(t *testing.T, path string) string {
 	return string(raw)
 }
 
+// fixtureRunner is the runner the host derives from the fixture home's git
+// identity (user.name "fixture"): what --open-bracket records.
+const fixtureRunner = `"runner":"human:fixture","runner_source":"git-config"`
+
 // writeBracketReceipt writes the open step's receipt file directly, with the
-// home's current tree digest, so a container test starts no deskdispatch.
+// home's current tree digest and the fixture's host runner, so a container
+// test starts no deskdispatch.
 func (fx containerFixture) writeBracketReceipt(t *testing.T, check string) {
+	t.Helper()
+	fx.writeReceiptRunner(t, check, fixtureRunner)
+}
+
+// writeReceiptRunner is writeBracketReceipt with the receipt's runner fields
+// given as a JSON fragment ("" for none). A fragment that names no
+// runner_tree gets the home's host tree token, as the open step records it.
+func (fx containerFixture) writeReceiptRunner(t *testing.T, check, runner string) {
 	t.Helper()
 	tree, err := homeTreeDigest(fx.home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	putFile(t, fx.receipt, `{"check":`+check+`,"tree":"`+tree+`","opened":"`+fixtureOpened+`"}`+"\n")
+	if runner != "" && !strings.Contains(runner, `"runner_tree"`) {
+		runner += `,"runner_tree":"` + briefTreeSHA(fx.home, fx.brief) + `"`
+	}
+	if runner != "" {
+		runner = "," + runner
+	}
+	putFile(t, fx.receipt, `{"check":`+check+`,"tree":"`+tree+`","opened":"`+fixtureOpened+`"`+runner+"}\n")
 }
 
 func (fx containerFixture) containerArgs(extra ...string) []string {
@@ -179,7 +198,7 @@ func TestContainerNetnsRequiresAdmissionReceipt(t *testing.T) {
 // regression: #4071
 // TestContainerNetnsReceipt: a valid version-1 receipt yields exactly the
 // attestation line the in-process path renders, plus the image and
-// Tree-Digest lines; a version-2 receipt, a brief mismatch, an incomplete
+// Tree-Digest lines; a version-2 receipt with no digests, a brief mismatch, an incomplete
 // receipt, a receipt inside the home, a missing or malformed image digest,
 // and a mounted tree that does not digest to the receipt's tree (one file
 // changed, one file added) are each refused before any row runs.
@@ -194,7 +213,7 @@ func TestContainerNetnsReceipt(t *testing.T) {
 		mutate           func()
 		restore          func()
 	}{
-		{name: "version 2", check: checkJSON(2, fixtureRun, fixtureSource, "docs/brief.md", "m"), why: "version 2 (cross-repository) receipts are not admitted"},
+		{name: "version 2 without digests", check: checkJSON(2, fixtureRun, fixtureSource, "docs/brief.md", "m"), why: "the cross-repository receipt's binding is refused"},
 		{name: "brief mismatch", check: checkJSON(1, fixtureRun, fixtureSource, "docs/other.md", "m"), why: "the receipt admits brief docs/other.md"},
 		{name: "incomplete", check: checkJSON(1, fixtureRun, fixtureSource, "docs/brief.md", ""), why: "incomplete pre-work verifier receipt"},
 		{name: "short run", check: checkJSON(1, "r", fixtureSource, "docs/brief.md", "m"), why: "incomplete receipt"},

@@ -46,6 +46,7 @@ pr-shepherd
 session-coach
 system-demo
 the-desk
+trace-path-to-live
 upgrade-assay
 verify-desk
 worker-desk

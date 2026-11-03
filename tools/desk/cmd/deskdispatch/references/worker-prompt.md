@@ -286,10 +286,13 @@ it is the same code either way, and the round trip is better spent on the wordin
 ## 11. Changelog fragment — part of the deliverable where the repo enforces one
 
 > If the target repo carries `changelog/README.md`, your PR is INCOMPLETE until it adds a
-> `changelog/<slug>.md` fragment — `<slug>` is your branch name — holding at least one
-> `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`, or
-> `### Changed` heading). Never edit a top-level `CHANGELOG.md`; the aggregate is assembled
-> from the per-PR fragments at release time.
+> `changelog/<slug>.md` fragment — `<slug>` is your branch name with every `/` replaced by
+> `-` (or the issue or brief slug), so `feat/foo` becomes `changelog/feat-foo.md` — holding
+> at least one `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`,
+> or `### Changed` heading). The fragment MUST be a single flat file directly under
+> `changelog/`, never in a subdirectory: a nested path such as `changelog/feat/foo.md` is
+> never aggregated. Never edit a top-level `CHANGELOG.md`; the aggregate is assembled from
+> the per-PR fragments at release time.
 
 Detect it, do not remember it: `test -f changelog/README.md` in the checked-out tree tells
 you whether this repo enforces a fragment. Most repos do not, and there this clause is inert.

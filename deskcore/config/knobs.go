@@ -96,6 +96,8 @@ var v1Table = []Knob{
 		Doc: "writes one role may make to one change request per hour; 0 = off"},
 	{Name: "write.rate.per_repo_hour", Class: ClassRate, Kind: Count, Unit: "writes", Default: 0, Min: 0, Max: 10000, PerRole: true, V1: 100,
 		Doc: "writes one role may make to one repository per hour; 0 = off"},
+	{Name: "write.bound.repo_hour", Class: ClassFaultGuard, Kind: Count, Unit: "writes", Default: 60, Min: 1, Max: 10000,
+		Doc: "runaway backstop: change-bound filings and change replies one repository takes per hour, counted apart from the fixed repo-wide ceiling; never off"},
 	{Name: "evidence.unnumbered_cap", Class: ClassBudget, Kind: Count, Unit: "entries", Default: 0, Min: 0, Max: 10000, PerRole: true, V1: 30,
 		Doc: "unnumbered evidence entries one role may land per run; 0 = off"},
 	{Name: "autolane.daily_cap", Class: ClassBudget, Kind: Count, Unit: "merges", Default: 0, Min: 0, Max: 10000, PerRole: true, V1: 100,

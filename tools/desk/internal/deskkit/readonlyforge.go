@@ -22,8 +22,10 @@ package deskkit
 // forge and checks every method against the test-side classification table (obClass).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 )
 
 // readOnlyRefusalText is the phrase every refusal of this decorator carries. Tests and the
@@ -309,4 +311,12 @@ func (r *readOnlyForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateIn
 
 func (r *readOnlyForge) RetryRun(repo ForgeRepo, run RunRef) error {
 	return readOnlyRefusal("RetryRun")
+}
+
+func (r *readOnlyForge) ChangesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.ChangeUpdates, error) {
+	return r.inner.ChangesUpdatedSince(ctx, repo, q)
+}
+
+func (r *readOnlyForge) IssuesUpdatedSince(ctx context.Context, repo ForgeRepo, q adapters.UpdateQuery) (adapters.IssueUpdates, error) {
+	return r.inner.IssuesUpdatedSince(ctx, repo, q)
 }

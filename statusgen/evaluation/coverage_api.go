@@ -90,6 +90,9 @@ type VerifyRow struct {
 	// could-not-check reason the caller words for it.
 	ProseLed     string
 	ProseLedNote string
+	// ClassCell is the row's Class cell as authored (trimmed), the text a v2
+	// record's class_sha256 digests.
+	ClassCell string
 }
 
 // Witness is one recorded execution witness for a Verify row, as read off the
@@ -99,6 +102,14 @@ type Witness struct {
 	Command string // the Command cell, code span lifted
 	State   string // StatePass, StateFail, StateCouldNotRun, or "" (unparseable)
 	Tree    string // the tree token after the Runner cell's `@`, "" when absent
+	// Runner, Result, Output and Date are the row's Runner, Result, output-digest
+	// and Date cells as written (trimmed). A v2 cell (`[w2]`) is judged from
+	// them (witness.go); a v1 cell never reads them. An empty Runner is read
+	// from Tree alone.
+	Runner string
+	Result string
+	Output string
+	Date   string
 }
 
 // BriefObservation is everything coverage reads about one brief.
@@ -112,7 +123,14 @@ type BriefObservation struct {
 	// false when the brief declares none.
 	DeclaredFiles      []string
 	DeclaredFilesFound bool
-	VerifyRows         []VerifyRow
+	// DeclaredInputs are the brief's `inputs:` entries (ParseInputsDeclaration);
+	// DeclaredInputsFound is false when the field is absent or unparseable (a
+	// v2 claim is then whole-tree scope). DeclaredInputsProblem is the parser's
+	// lint problem, never read by coverage.
+	DeclaredInputs        []string
+	DeclaredInputsFound   bool
+	DeclaredInputsProblem string
+	VerifyRows            []VerifyRow
 	// AcceptanceRevision is an optional immutable original-table revision.
 	// The observer must validate protected delivery/baseline/original provenance
 	// before populating it. It governs only the historical Expect definition
@@ -177,6 +195,14 @@ type CoverageInput struct {
 	// MaxLandingCandidates bounds the squash-commit search; 0 means
 	// DefaultMaxLandingCandidates.
 	MaxLandingCandidates int
+	// WitnessPolicy is the environment rule a v2 witness is judged by; the
+	// zero value is the ruled default (option 1: the pinned network-less
+	// container runner, or a host or back-filled run whose row is not `+env`
+	// and whose readable command names no network tool).
+	WitnessPolicy WitnessPolicy
+	// Forge is the optional code-hosting seam a v2 landing check consults; nil
+	// is offline.
+	Forge Forge
 }
 
 // EvaluateCoverage computes the coverage verdict of every observed brief,
@@ -187,6 +213,8 @@ type CoverageInput struct {
 // semantic: S-evidence-coverage
 func EvaluateCoverage(in CoverageInput, repo Repo) map[string]Coverage {
 	x := newEvalCtx(repo, in.MaxLandingCandidates)
+	x.policy, x.forge = in.WitnessPolicy, in.Forge
+	x.prefetchV2Records(in)
 	out := map[string]Coverage{}
 	for _, b := range in.Briefs {
 		out[b.ID] = evaluateOneCoverage(x, b, in)
@@ -209,6 +237,8 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 		man = &m
 	}
 	scope := newWitnessScope(b.BriefRel, b.DeclaredFiles, b.DeclaredFilesFound, man)
+	scope.briefID = id
+	scope.v2inputs, scope.v2inputsFound = b.DeclaredInputs, b.DeclaredInputsFound
 	for _, r := range b.VerifyRows {
 		definition := b.AcceptanceRevision
 		if amended, ok := b.AcceptanceRevisions[r.ID]; ok {

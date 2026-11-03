@@ -111,6 +111,38 @@ exposed by this session; these are usage instructions, not a new capability qual
   artifact paths. Read a compact checkpoint after compaction, then restore any missing
   binding instructions and revalidate mutable facts at their existing boundaries.
 
+## End of a PR — release the session's own worktree
+
+A Codex session that cut its own worktree for a PR releases it as its **last step**, once
+the PR's branch is pushed and the tree is clean. Otherwise the branch stays checked out in a
+worktree locked for a session that has gone, and every later session that needs that branch
+(a shepherd adopting the PR to fix review findings) is refused until that worktree is released.
+
+- **Create it with `deskwt`, locked for this session:**
+  `deskwt add <name> --lock-session "$DESK_SESSION"`. `deskwt remove` acts only inside its
+  sanctioned worktree locations, so a tree created by hand elsewhere (or by a managed-worktree
+  mechanism that places it elsewhere) cannot be released by the session itself.
+- **Release it when the PR is pushed and the tree is clean:**
+  first run `git status --porcelain` and deal with every line it prints. Then, from inside the
+  worktree, `deskwt remove "$(git rev-parse --show-toplevel)"`, under the same
+  `$DESK_SESSION`. `remove` refuses an uncommitted tracked change or an unpushed commit, so a
+  refusal means work would be lost: fix it, then re-run. Its gates do not count what git
+  ignores or hides, which is deleted with the tree: ignored files, a directory that ignores
+  itself, a tracked edit hidden with `git update-index --skip-worktree`, and any worktree
+  nested under an ignored path (it is deleted without judging its own lock; a locked one
+  keeps its registration and branch held). For a locked tree it also refuses anything
+  `git status --porcelain` lists (untracked files, a modified submodule, a nested repository)
+  and prints those rows (exit 5, nothing deleted), because a session id is self-asserted and
+  can be inherited: a caller that inherits the owner's `$DESK_SESSION` passes the session
+  match, and what it can then lose is limited to what that status cannot see. It retires
+  the lock only when the lock is this session's own; a lock held by any other session is
+  refused with exit 5 and the tree is left as it was, whatever that session's roster beacon
+  says. A tree whose session has ended is reaped by `deskwt prune --reap-dead-sessions`, not by
+  `remove`: only once it has been idle past `--min-idle` (1h by default), and it sweeps every
+  ownerless clean, pushed tree, so run it with `--dry-run` first.
+- **Not for dispatched workers.** An agent dispatched into a home the dispatcher made
+  leaves that home to its dispatcher and to `deskwt prune`.
+
 ## Degradation — per skill (Codex CLI, v1 target)
 
 Reproduced from the ruled matrix (ruling C, Codex CLI column) — the serial-fanout
@@ -135,6 +167,7 @@ session states the ruled posture rather than improvising it.
 | `session-coach` | **runs** — reads the session's own record (transcript, tool calls, subagent transcripts) and writes one coaching note outside any repository; no `gh`, no dispatch, no isolation and no gate authority. Where the note's location is one the sandbox does not let it write (§3.8), that is a sandbox precondition stated in-session — the note is never written into the repository instead. A piece of the record the session cannot read is marked as such in the note, per the body. No dispatch/isolation/gate surface.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `system-demo` | **runs** — authoring a storyboard and, when requested, a local static player is text/local-file work; it writes only within the session's own workspace, needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
 | `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** where parallel dispatch is unavailable (§3.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). |
+| `trace-path-to-live` | **runs** — read-only: it fetches each stream root, runs the existing `statusgen` and `deskboard` readers, and writes one self-contained page outside any repository; no dispatch, no isolation and no gate authority. The forge reads (fetch, open PRs, claims) need network and `gh` access; where the sandbox blocks one (§3.8), that reader is marked `could-not-check` on the page and stated in-session, never shown as empty. Where the page's location cannot be written, that is stated in-session; the page is never written into the repository instead.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `upgrade-assay` | **runs** — the dry-run-first order is the skill's own invariant and is never degraded; the apply step writes the tree and version pins → needs a write-capable sandbox, and under `workspace-write` it states BLOCKED rather than half-applying (§3.8). No dispatch/isolation/gate surface beyond that. |
 | `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need `danger-full-access` (§3.8). The evidence guarantee is never degraded. |
 | `worker-desk` | **refuses under `workspace-write`** — the pool cannot create an **isolated worktree**: the CLI's managed-worktree mechanism (`codex exec --worktree`, §3.9, confirmed present on codex-cli 0.154.0) still writes to `.git/refs/heads/`, same as a manual `git worktree add` / `checkout -b` would, and that ref-write is **blocked by the `workspace-write` sandbox** (§3.8). Per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout**. **runs under `danger-full-access`** (worktrees creatable). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. |

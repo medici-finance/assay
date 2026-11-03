@@ -1,0 +1,5 @@
+# GOINSECURE fetches modules without TLS and skips checksum verification.
+want: goinsecure
+file: Dockerfile
+replace: "    GOFLAGS=-mod=readonly\n"
+with: "    GOFLAGS=-mod=readonly \\\n    GOINSECURE=example.com/*\n"

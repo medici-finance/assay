@@ -1,0 +1,78 @@
+{
+  "test": "go test -count=1 -timeout 60s -run '^(TestV4.*|TestMixedSchemaIdentities)$' .",
+  "schemata": true,
+  "control": {
+    "name": "tool profile admits empty workflow linkage",
+    "file": "v4.go",
+    "old": "v.Profile == ProfileTool && (r.Role != RoleNone || v.Attribution != nil)",
+    "new": "v.Profile == ProfileTool && r.Role != RoleNone"
+  },
+  "mutations": [
+    {
+      "name": "duplicate JSON keys overwrite prior data",
+      "file": "v4.go",
+      "old": "if _, ok = m[s]; ok {",
+      "new": "if _, ok = m[s]; false && ok {"
+    },
+    {
+      "name": "line bound admits scanner-sized records",
+      "file": "v4.go",
+      "old": "if len(b)+1 >= MaxV4LineBytes {",
+      "new": "if false && len(b)+1 >= MaxV4LineBytes {"
+    },
+    {
+      "name": "depth bound admits an extra object",
+      "file": "v4.go",
+      "old": "if depth >= MaxV4Depth {",
+      "new": "if depth > MaxV4Depth {"
+    },
+    {
+      "name": "extension count overflows bounded registry",
+      "file": "v4.go",
+      "old": "!ok || len(em) > MaxV4Extensions",
+      "new": "!ok"
+    },
+    {
+      "name": "extension version overflows integer contract",
+      "file": "v4.go",
+      "old": "version < 1 || version > MaxV4ExtensionVersion",
+      "new": "version < 1"
+    },
+    {
+      "name": "missing required core or facet member becomes zero",
+      "file": "v4.go",
+      "old": "if _, ok := m[tag]; !ok {",
+      "new": "if _, ok := m[tag]; false && !ok {"
+    },
+    {
+      "name": "case aliases enter known payload",
+      "file": "v4.go",
+      "old": "if !ok || !exactShape(v, f.Type) {",
+      "new": "if ok && !exactShape(v, f.Type) {"
+    },
+    {
+      "name": "discarded future facets hide conflicting identity",
+      "file": "v4.go",
+      "old": "if r.V4.unsupported > 0 {",
+      "new": "if false && r.V4.unsupported > 0 {"
+    },
+    {
+      "name": "late schema alias downgrades strict v4 dispatch",
+      "file": "schema.go",
+      "old": "if head.Schema.sawV4 {",
+      "new": "if false && head.Schema.sawV4 {"
+    },
+    {
+      "name": "mixed schema copies become two invocations",
+      "file": "mixed_identity.go",
+      "old": "if masks[k] != 3 {",
+      "new": "if true || masks[k] != 3 {"
+    },
+    {
+      "name": "padded line loses byte bound through generic JSON decoding",
+      "file": "schema.go",
+      "old": "err := r.UnmarshalJSON(line)",
+      "new": "err := json.Unmarshal(line, &r)"
+    }
+  ]
+}

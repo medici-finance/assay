@@ -1,5 +1,5 @@
 {
-  "test": "go test -count=1 -timeout 60s -run 'TestPerfV3ContextAndConsent|TestV3DroppedCoverage|TestV3ReviewBoundaries' .",
+  "test": "go test -count=1 -timeout 60s -run 'TestPerfV3ContextAndConsent|TestV3DroppedCoverage|TestV3ReviewBoundaries|TestWriterResolvedConsent' .",
   "schemata": true,
   "control": {
     "name": "tool profile writer bypass admits linked identity",

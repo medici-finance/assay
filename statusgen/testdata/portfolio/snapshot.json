@@ -1,0 +1,92 @@
+{
+  "schema": "portfolio-measurement/v1",
+  "policy": {
+    "id": "capacity-policy",
+    "revision": "p3",
+    "scope": "example-org/product",
+    "window": { "start": "2026-10-01T00:00:00Z", "end": "2026-10-08T00:00:00Z" },
+    "sources": ["runner-ledger", "decision-log"],
+    "weights": {
+      "id": "model-weights",
+      "revision": "w1",
+      "models": [
+        { "model": "model-a", "milli": 1000 },
+        { "model": "model-b", "milli": 2500 }
+      ]
+    },
+    "tolerance-basis-points": 50,
+    "buckets": [
+      {
+        "id": "reliability",
+        "members": [{ "repository": "example-org/product", "requirement": "REQ-reliability-core" }],
+        "agent-target": { "measure": "active-seconds", "basis-points": 500 },
+        "human-target": { "measure": "decisions", "basis-points": 2000 }
+      },
+      {
+        "id": "features",
+        "members": [{ "repository": "example-org/product", "requirement": "REQ-feature-search" }],
+        "agent-target": { "measure": "active-seconds", "basis-points": 9500 },
+        "human-target": { "measure": "decisions", "basis-points": 8000 }
+      }
+    ],
+    "limits": [
+      { "bucket": "features", "measure": "cost-micros", "max": 5000000, "authorization": "budget-approval-7" }
+    ]
+  },
+  "segments": [
+    {
+      "invocation": { "caller": "desk-worker", "id": "inv-0001" },
+      "id": "s1",
+      "revision": "r1",
+      "profile": { "id": "profile-a", "revision": "pr2", "model": "model-a" },
+      "actual-model": "model-a",
+      "source": "runner-ledger",
+      "subject": { "repository": "example-org/product", "requirement": "REQ-reliability-core" },
+      "active": { "start": "2026-10-02T10:00:00Z", "end": "2026-10-02T10:02:00Z" },
+      "elapsed-seconds-proxy": 300,
+      "cost-micros": 1200
+    },
+    {
+      "invocation": { "caller": "desk-worker", "id": "inv-0002" },
+      "id": "s1",
+      "revision": "r1",
+      "profile": { "id": "profile-b", "revision": "pr1", "model": "model-b" },
+      "actual-model": "model-b",
+      "source": "runner-ledger",
+      "subject": { "repository": "example-org/product", "requirement": "REQ-feature-search" },
+      "active": { "start": "2026-10-02T09:00:00Z", "end": "2026-10-02T10:38:00Z" },
+      "elapsed-seconds-proxy": 6000,
+      "cost-micros": 4000000
+    }
+  ],
+  "decisions": [
+    {
+      "id": "dec-1",
+      "unit": "decision",
+      "window": { "start": "2026-10-03T00:00:00Z", "end": "2026-10-03T01:00:00Z" },
+      "primary-subject": { "repository": "example-org/product", "requirement": "REQ-reliability-core" },
+      "source": "decision-log"
+    },
+    {
+      "id": "dec-2",
+      "unit": "decision",
+      "window": { "start": "2026-10-03T00:00:00Z", "end": "2026-10-03T01:00:00Z" },
+      "primary-subject": { "repository": "example-org/product", "requirement": "REQ-feature-search" },
+      "source": "decision-log"
+    },
+    {
+      "id": "dec-3",
+      "unit": "minute",
+      "quantity": 30,
+      "window": { "start": "2026-10-04T00:00:00Z", "end": "2026-10-04T01:00:00Z" },
+      "primary-subject": { "repository": "example-org/product", "requirement": "REQ-feature-search" },
+      "source": "decision-log"
+    },
+    {
+      "id": "dec-4",
+      "unit": "decision",
+      "window": { "start": "2026-10-05T00:00:00Z", "end": "2026-10-05T01:00:00Z" },
+      "source": "decision-log"
+    }
+  ]
+}

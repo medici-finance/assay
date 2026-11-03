@@ -46,7 +46,7 @@ func exitWith(code int) { panic(exitCode{code}) }
 
 func main() {
 	selected := perfrec.ResolveContext(perfrec.ContextInput{})
-	os.Exit(deskkit.PerfRunMeasured("cellctl", perfVerbs(), commandArgs(os.Args[1:]), func(_ []string, measurement *perfrec.Session) (int, perfrec.Context) {
+	os.Exit(deskkit.PerfRunMeasuredConfig("cellctl", perfVerbs(), commandArgs(os.Args[1:]), func(_ []string, measurement *perfrec.Session) (int, perfrec.Context) {
 		// The roster class is an EXPLICIT declaration, never the zero value by accident
 		// (a correctness review found SetToolClass had no caller anywhere, so "ClassWrite is the
 		// safe default" was true only by luck — and TestEveryRosterReadingMainDeclaresClassAndEchoes

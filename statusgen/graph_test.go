@@ -272,6 +272,84 @@ func TestGraphSourcesTypedIDFidelity(t *testing.T) {
 	}
 }
 
+// writeGraphBriefV2 drops a valid brief-v2 file whose `brief:` id is the
+// qualified <cell>:<alias>:<stream>:<NN> form, with the given typed edges.
+func writeGraphBriefV2(t *testing.T, streamsDir, stream, num string, depends, unblocks []string) {
+	t.Helper()
+	q := func(xs []string) string {
+		if len(xs) == 0 {
+			return "[]"
+		}
+		var quoted []string
+		for _, x := range xs {
+			quoted = append(quoted, fmt.Sprintf("%q", x))
+		}
+		return "[" + strings.Join(quoted, ", ") + "]"
+	}
+	body := fmt.Sprintf(`---
+brief: "fx:fx:%s:%s"
+title: fixture qualified brief %s
+why: >-
+  Independent rationale a non-engineer could read and justify the work from.
+wave: 0
+depends: %s
+unblocks: %s
+effort: M
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v2
+version: 1
+authored: 2026-10-22 by fixture
+sources: ["fixture: qualified id"]
+---
+
+# Brief %s
+Body.
+`, stream, num, num, q(depends), q(unblocks), num)
+	if err := os.WriteFile(filepath.Join(streamsDir, stream, "brief-"+num+"-qualified.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// regression: #4113
+func TestGraphQualifiedBriefEdges(t *testing.T) {
+	root := t.TempDir()
+	streamsDir := filepath.Join(root, "docs", "streams")
+	if err := os.MkdirAll(streamsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraphStreamREADME(t, streamsDir, "gamma", []string{"01", "02", "03"})
+	// 01 and 02 carry the qualified id; 03 stays on the short brief-v1 form, so
+	// a mixed tree is covered in both directions.
+	writeGraphBriefV2(t, streamsDir, "gamma", "01", nil, []string{"gamma/02"})
+	writeGraphBriefV2(t, streamsDir, "gamma", "02", []string{"gamma/01"}, []string{"gamma/03"})
+	writeGraphBrief(t, streamsDir, "gamma", "03", []string{"gamma/02"}, nil, nil, nil)
+	writeTemp(t, streamsDir, "INTAKE.md", "# Intake\n\nNo intake entries yet.\n")
+
+	g, err := buildGraph(root)
+	if err != nil {
+		t.Fatalf("buildGraph: %v", err)
+	}
+	want := []graphEdge{
+		{"depends", "gamma/02", "gamma/01"},
+		{"depends", "gamma/03", "gamma/02"},
+		{"unblocks", "gamma/01", "gamma/02"},
+		{"unblocks", "gamma/02", "gamma/03"},
+	}
+	for _, w := range want {
+		if !hasEdge(g, w.Type, w.From, w.To) {
+			t.Errorf("missing edge %s: %s -> %s (a qualified brief id must key on its <stream>/<NN> node)", w.Type, w.From, w.To)
+		}
+	}
+	// No node may be minted for the qualified spelling itself.
+	for id := range g.nodes {
+		if strings.Contains(id, ":") {
+			t.Errorf("unexpected node %q: the qualified id must reduce to <stream>/<NN>", id)
+		}
+	}
+}
+
 // TestGraphIssueNodesAsReferenced asserts an issue node exists only when a
 // stream or brief references it, and unreferenced numbers never appear.
 func TestGraphIssueNodesAsReferenced(t *testing.T) {

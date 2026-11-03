@@ -14,6 +14,18 @@
       "new": "if false && s.Running {\n\t\t\treturn ErrUnfinished"
     },
     {
+      "name": "skip heartbeat-time guard",
+      "file": "internal/cellcadence/cadence.go",
+      "old": "if c.Guard != nil {\n\t\t\t\t\tif err = c.Guard(); err != nil {\n\t\t\t\t\t\tpassErr = err",
+      "new": "if false && c.Guard != nil {\n\t\t\t\t\tif err = c.Guard(); err != nil {\n\t\t\t\t\t\tpassErr = err"
+    },
+    {
+      "name": "skip maintenance heartbeat guard",
+      "file": "internal/cellcadence/cadence.go",
+      "old": "if c.Guard != nil {\n\t\t\t\t\tif err := c.Guard(); err != nil {\n\t\t\t\t\t\tinterrupted = err",
+      "new": "if false && c.Guard != nil {\n\t\t\t\t\tif err := c.Guard(); err != nil {\n\t\t\t\t\t\tinterrupted = err"
+    },
+    {
       "name": "discard cleanup uncertainty",
       "file": "internal/cellcadence/cadence.go",
       "old": "if result.Uncertain {",

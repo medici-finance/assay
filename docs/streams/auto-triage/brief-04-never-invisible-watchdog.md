@@ -7,7 +7,7 @@ why: >-
   invisible — an alert that never fires is worse than none, because it manufactures false
   confidence. This brief is the fail-safe: a red whole-tree gate with no responder action
   within a bounded window is itself escalated, so no red ever goes silent.
-wave: 3
+wave: 4
 depends: ["auto-triage/02", "auto-triage/03"]
 unblocks: []
 effort: M

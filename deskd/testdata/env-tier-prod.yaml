@@ -1,0 +1,35 @@
+# Negative-path fixture for cellsvalidate (the service contract Verify row 4).
+#
+# The namespaces here are the two synthetic development namespaces — nothing is wrong
+# with the blast radius. What is wrong is that the entry claims `tier: prod`.
+#
+# This fixture is the one that proves the tier enum is CLOSED rather than
+# merely defaulted: there is no prod value for the schema to accept, so the
+# entry is refused even though every other field in it is the production-safe
+# one. A schema that silently ignored an unknown tier, or treated it as a
+# label, would pass this file.
+#
+# Expect: non-zero exit, error naming `tier`.
+cells:
+  - name: assay
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [deepseek-chat, glm-5.2]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    environments:
+      - name: tracker-dev
+        kind: k8s
+        tier: prod
+        cluster: fixture-cluster
+        namespaces: [example-dev-app, example-dev-canton]
+        access: [read]
+        runner_pool: example-verify-tracker

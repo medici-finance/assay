@@ -1,0 +1,12 @@
+{
+  "encoding": "typed-v2",
+  "options": [
+    {
+      "id": "repin",
+      "label": "Re-pin to the previous known-good release",
+      "consequence": "the loop resumes on the old toolchain; the upgrade is deferred."
+    }
+  ],
+  "options_rev": "b69c78042d60b573ab09391c95c41fa4b59734aea7c4123c185b082178b1af29",
+  "confidence": "checked-clean"
+}

@@ -1,0 +1,24 @@
+{
+  "note": "Single source of truth for the lifecycle chart palette (design §7.6). The CSS lifecycle ramp in app.css is generated from `lifecycle_ramp.colors`; validate_palette.js reads THIS file so the check and the shipped ramp can never drift. `frames_5hue` is the wireframes' original set, kept ONLY so the validator can demonstrate the CVD failure it was rejected for — it is never shipped to a surface.",
+  "surface": {
+    "dark": "#16161a",
+    "light": "#fbfbfa"
+  },
+  "lifecycle_ramp": {
+    "kind": "single-hue sequential (lifecycle is a progression, not five identities — §7.6)",
+    "hue": "teal",
+    "stages": ["todo", "in-progress", "implemented", "verified", "done"],
+    "colors": ["#0a3a44", "#0f5f6b", "#1c8b94", "#48b3b6", "#8ad6d2"]
+  },
+  "frames_5hue": {
+    "kind": "REJECTED — five distinct hues; #3366FF vs #7a5cff are protan-indistinguishable at ΔE 0.4 (§7.6). Present only as the validator's negative fixture.",
+    "stages": ["todo", "in-progress", "implemented", "verified", "done"],
+    "colors": ["#3366FF", "#7a5cff", "#00b894", "#fdcb6e", "#e17055"]
+  },
+  "reserved": {
+    "gold": {
+      "hex": "#b8860b",
+      "meaning": "the human gate (⟡) — a reserved semantic, never a series colour (§7.6)"
+    }
+  }
+}

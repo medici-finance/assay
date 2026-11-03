@@ -1,0 +1,65 @@
+{{define "panehead"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deskd — {{.}}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>{{end}}
+
+{{define "panenav"}}
+<header class="topbar">
+  <div class="topbar-left">
+    <a class="brand" href="/inbox">deskd</a>
+    <span class="crumb">{{.}}</span>
+  </div>
+  <div class="topbar-right">
+    <span id="session-chip" class="session-chip" data-live="false">session: checking…</span>
+  </div>
+</header>
+<nav class="viewbar panebar">
+  <a class="viewtab" href="/inbox">inbox</a>
+  <a class="viewtab{{if eq . "roadmap"}} active{{end}}" href="/roadmap">roadmap</a>
+  <a class="viewtab{{if eq . "measures"}} active{{end}}" href="/measures">measures</a>
+  <a class="viewtab{{if eq . "portfolio"}} active{{end}}" href="/portfolio">portfolio</a>
+  <a class="viewtab{{if eq . "teams"}} active{{end}}" href="/teams">teams</a>
+  {{/* Named, never numbered (§7.5). */}}
+  <a class="viewtab{{if eq . "ask assay"}} active{{end}}" href="/askassay">ask assay</a>
+  {{/* the service contract, one-week experiment — dropped without ceremony if it
+       loses (brief §why); the tab itself is not gated on the verdict. */}}
+  <a class="viewtab{{if eq . "fleet"}} active{{end}}" href="/fleet">fleet</a>
+</nav>
+{{end}}
+
+{{/* The §5.2 ambient metrics strip — standard chrome on every pane, scope from
+     context. It is the element every pane MUST carry (Verify 1): note
+     data-scope. Staleness (§10, §3.4): the "as of" chip greys past 2× the poll
+     interval and the strip is marked data-stale. */}}
+{{define "ambient"}}
+<aside class="ambient-strip" data-scope="{{.Scope}}" data-stale="{{.Stale}}"
+       aria-label="metrics strip at {{.Scope}} scope">
+  <span class="as-of{{if .Stale}} stale{{end}}"
+        title="{{if .Stale}}{{.StaleReason}}{{else}}index age{{end}}"
+        data-stale="{{.Stale}}">
+    as of {{.AsOf}} ({{.AsOfHuman}}){{if .Stale}} · STALE — greyed{{end}}
+  </span>
+  <span class="ambient-scope">scope: {{.Scope}}</span>
+  {{template "tile" .WaitingOnYou}}
+  {{template "tile" .Constraint}}
+  {{range .DORA}}{{template "tile" .}}{{end}}
+</aside>
+{{end}}
+
+{{/* One figure. Every tile carries data-query and data-hardness (Verify 3).
+     A delegated/underivable figure renders could-not-check — never a zero
+     (§10). The acceptance-rate tile is data-hardness="◐" and marked tuning. */}}
+{{define "tile"}}
+<span class="tile{{if not .OK}} unchecked{{end}}{{if .Tuning}} tuning{{end}}"
+      data-key="{{.Key}}" data-query="{{.Query}}" data-hardness="{{.Hardness}}"
+      title="{{if .OK}}{{.Query}}{{else}}could-not-check — {{.Reason}}{{end}}">
+  <span class="tile-hardness" aria-hidden="true">{{.Hardness}}</span>
+  <span class="tile-label">{{.Label}}</span>
+  {{if .OK}}<span class="tile-value">{{.Value}}</span>{{else}}<span class="tile-value unchecked">could-not-check</span>{{end}}
+  {{if .Tuning}}<span class="tile-tuning" title="tuning-only instrument (§5.3), never an audit figure">tuning</span>{{end}}
+</span>
+{{end}}

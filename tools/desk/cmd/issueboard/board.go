@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	handoff "github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/topology"
@@ -290,11 +291,68 @@ func (r *issueReader) fetchIssueTrustPayload(num int) (bodyEdited time.Time, eve
 // and one long thread never fails the whole board again.
 func (r *issueReader) fetchIssueEvents(num int) (events []deskkit.ContentEvent, complete bool, err error) {
 	f, fr, repo := r.forge, r.repo, r.repo.Slug()
+	if r.eventNext < len(r.eventNumbers) && r.eventNumbers[r.eventNext] == num {
+		end := min(r.eventNext+deskkit.IssueCommentBatchSize, len(r.eventNumbers))
+		payloads, batchErr := deskkit.ReadIssueCommentEvents(f, fr, r.eventNumbers[r.eventNext:end])
+		if batchErr != nil {
+			return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), batchErr)
+		}
+		r.eventPayloads = payloads
+		r.eventNext = end
+	}
+	if payload, ok := r.eventPayloads[num]; ok {
+		delete(r.eventPayloads, num)
+		return payload.Events, payload.Complete, nil
+	}
 	tp, terr := f.IssueContentEvents(fr, num)
 	if terr != nil {
 		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
 	}
 	return tp.Events, tp.Complete, nil
+}
+
+// Only known-trusted, selected escalation rows can be read ahead. Untrusted
+// authors keep their original trust-then-history sequence, including quarantine
+// and body-edit/numeric-identity checks. Duplicate listing identities retain
+// their original separate reads. This plan and its bounded results belong to
+// this repository's current collection only.
+func (r *issueReader) planIssueEvents(issues []ghIssue, byKey map[string]placeholderRow, projection issueflow.Projection, toFilter string) {
+	if !deskkit.CanBatchIssueComments(r.forge) {
+		return
+	}
+	seen := map[int]bool{}
+	for _, candidate := range issues {
+		if seen[candidate.Number] {
+			r.eventNumbers = nil
+			return
+		}
+		seen[candidate.Number] = true
+		if !deskkit.TrustedAuthor(candidate.Author.Login) {
+			continue
+		}
+		names := labelNames(candidate.Labels)
+		decisionOwed := hasDecisionLabel(names)
+		role, state := deskkit.AddressedToOf(names)
+		addressed := state == deskkit.RaisedByStamped
+		if !(decisionOwed || addressed) || toFilter != "" && (!addressed || !strings.EqualFold(role, toFilter)) {
+			continue
+		}
+		_, hasPh := byKey[r.repo.Slug()+"#"+strconv.Itoa(candidate.Number)]
+		helpWanted := false
+		for _, label := range names {
+			if strings.EqualFold(strings.TrimSpace(label), "help wanted") {
+				helpWanted = true
+			}
+		}
+		if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
+			HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names), DecisionOwed: decisionOwed,
+			Addressed: addressed, Role: role, AddressUnknown: state == deskkit.RaisedByIndeterminate,
+			HelpWanted: helpWanted,
+		}, toFilter) {
+			continue
+		}
+		r.eventNumbers = append(r.eventNumbers, candidate.Number)
+	}
 }
 
 // labelHistoryHold is the issue board's SUPERSET test over an issue's label history
@@ -419,11 +477,13 @@ func parseFrontmatter(path string) (map[string]string, error) {
 // placeholderRow is the parsed frontmatter of one docs/streams/issue-loop placeholder
 // file this tool cares about.
 type placeholderRow struct {
-	Path    string
-	Issue   int
-	Repo    string
-	Status  string
-	Blocked string
+	Handoff       string
+	HandoffOpened string
+	Path          string
+	Issue         int
+	Repo          string
+	Status        string
+	Blocked       string
 }
 
 // loadPlaceholders scans root/docs/streams/issue-loop for placeholder-named files and
@@ -458,11 +518,13 @@ func loadPlaceholders(root string) ([]placeholderRow, error) {
 			return nil, deskkit.Unverifiable("cannot parse placeholder "+path, err)
 		}
 		out = append(out, placeholderRow{
-			Path:    path,
-			Issue:   num,
-			Repo:    fields["repo"],
-			Status:  strings.ToLower(fields["status"]),
-			Blocked: fields["blocked"],
+			Path:          path,
+			Handoff:       fields["handoff"],
+			HandoffOpened: fields["handoff-opened"],
+			Issue:         num,
+			Repo:          fields["repo"],
+			Status:        strings.ToLower(fields["status"]),
+			Blocked:       fields["blocked"],
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -566,6 +628,8 @@ type issueClassifyInput struct {
 	// work item, not free work: it is EXCLUDED from CREATE-PLACEHOLDER and rendered
 	// ADDRESSED→<role> so the addressee's own sweep leads with it.
 	addressed bool
+	// addressUnknown holds malformed or conflicting to: labels without guessing a role.
+	addressUnknown bool
 	// addresseeResponded is whether the addressed role's App has commented on the issue.
 	// It is the SECOND, independent layer behind the inbox: an addressed item aged past
 	// the SLA with no response from that role's App becomes visible (ESCALATE) without the
@@ -605,6 +669,9 @@ func classifyIssue(in issueClassifyInput) string {
 			return actEscalate
 		}
 		return actAddressed
+	}
+	if in.open && in.addressUnknown {
+		return actAwait
 	}
 	if in.hasPlaceholder {
 		if !in.open {
@@ -725,6 +792,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		if err != nil {
 			return nil, nil, err
 		}
+		reader.planIssueEvents(issues, byKey, projection, toFilter)
 		seen := map[string]bool{}
 
 		for _, iss := range issues {
@@ -747,7 +815,8 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
 				HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names),
 				DecisionOwed: decisionOwed, Addressed: addressed, Role: addrRole,
-				HelpWanted: helpWanted,
+				AddressUnknown: addrState == deskkit.RaisedByIndeterminate,
+				HelpWanted:     helpWanted,
 			}, toFilter) {
 				continue
 			}
@@ -771,7 +840,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			}
 
 			// Desk-inbox addressee (`to:<role>`), ONE valid role only (a conflicting pair
-			// is malformed and falls through to ordinary classification, never a guess).
+			// is malformed and held as AWAIT, never offered as ordinary work).
 
 			// The --to view shows ONLY that role's inbox: an issue addressed to a different
 			// role (or to nobody) is not part of it and is dropped before any extra read.
@@ -820,6 +889,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				decisionOwed:       decisionOwed,
 				agedPastSLA:        agedPastSLA,
 				addressed:          addressed,
+				addressUnknown:     addrState == deskkit.RaisedByIndeterminate,
 				addresseeResponded: addresseeResponded,
 			})
 			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays, EscalationUnverifiable: escalationUnverifiable}
@@ -840,6 +910,15 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 					row.HistoryHold, row.HistoryUnverifiable = reason, unver
 				}
 			}
+			intake := assessIssueHandoff(ph, key, names, now)
+			if projection == issueflow.WorkReady && !handoff.RepairDispositionSettled(intake) {
+				continue
+			}
+			// Keep classification visible in the ordinary intake/full board. A scan
+			// placeholder and a routing comment cannot make this judgment disappear.
+			if row.Action == actNone || row.Action == actCreatePlaceholder {
+				row.Title = "[intake:" + intake.State + "] " + row.Title
+			}
 			if addressed {
 				row.AddrRole = addrRole
 			}
@@ -852,6 +931,28 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		// could-not-check as a whole, because a listing that omitted a live issue has also
 		// silently omitted CREATE-PLACEHOLDER / ESCALATE work this board cannot see. Rows
 		// are walked in placeholder order so the refusal names the same issue every run.
+		// Gather only the same positive reads the serial loop needs. Observations
+		// are held in this repository/invocation only; no closure is cached. The
+		// wrapped capability batches bounded positive reads where supported and
+		// preserves each original GetIssue read everywhere else.
+		var absent []int
+		uniqueAbsent := map[int]bool{}
+		groupPositive := true
+		if toFilter == "" && projection != issueflow.Inbox {
+			for _, ph := range placeholders {
+				if ph.Repo == repo && ph.Status != "done" && !seen[repo+"#"+strconv.Itoa(ph.Issue)] {
+					if uniqueAbsent[ph.Issue] {
+						groupPositive = false
+					}
+					uniqueAbsent[ph.Issue] = true
+					absent = append(absent, ph.Issue)
+				}
+			}
+		}
+		positive := map[int]deskkit.PositiveIssueState{}
+		// Load at most the next bounded page when needed. A partial-listing or
+		// failed read still stops the sweep before later pages are requested.
+		absentOffset := 0
 		for _, ph := range placeholders {
 			if ph.Repo != repo || seen[repo+"#"+strconv.Itoa(ph.Issue)] {
 				continue
@@ -873,10 +974,36 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: "(placeholder already retired)", Action: actNone})
 				continue
 			}
-			state, title, serr := reader.fetchIssueState(ph.Issue)
-			if serr != nil {
-				return nil, nil, serr
+			if _, ok := positive[ph.Issue]; !ok || !groupPositive {
+				end := min(absentOffset+deskkit.PositiveIssueStateBatchSize, len(absent))
+				if !groupPositive {
+					end = absentOffset + 1
+				}
+				var observed []deskkit.PositiveIssueState
+				var serr error
+				if end-absentOffset == 1 {
+					n := absent[absentOffset]
+					state, title, err := reader.fetchIssueState(n)
+					serr = err
+					if err == nil {
+						observed = []deskkit.PositiveIssueState{{Number: n, State: state, Title: title}}
+					}
+				} else {
+					observed, serr = deskkit.ReadPositiveIssueStates(reader.forge, reader.repo, absent[absentOffset:end])
+				}
+				if serr != nil {
+					return nil, nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: positive issue states for %s could not be read (RETIRE needs a positive closed read, never listing absence)", repo), serr)
+				}
+				for _, observation := range observed {
+					positive[observation.Number] = observation
+				}
+				absentOffset = end
 			}
+			observation, ok := positive[ph.Issue]
+			if !ok || (observation.State != "open" && observation.State != "closed") {
+				return nil, nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: positive issue state for %s#%d was not returned", repo, ph.Issue), nil)
+			}
+			state, title := observation.State, observation.Title
 			if state == "open" {
 				return nil, nil, deskkit.Unverifiable(fmt.Sprintf(
 					"could-not-check: the open-issue listing for %s is partial — %s#%d reads open but was absent "+
@@ -887,8 +1014,13 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				continue
 			}
 			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true})
+			intake := assessIssueHandoff(ph, fmt.Sprintf("%s#%d", repo, ph.Issue), nil, now)
 			if title == "" {
 				title = "(title unavailable — issue closed)"
+			}
+			if intake.State != "observed" {
+				action = actAwait
+				title = "[intake:" + intake.State + "] " + title
 			}
 			rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: title, Action: action})
 		}

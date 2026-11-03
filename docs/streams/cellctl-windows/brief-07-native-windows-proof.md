@@ -39,7 +39,7 @@ consumers:
 ## Context
 
 files:
-- tools/desk/cmd/cellctl/windows_acceptance_test.go and compiled fixtures (new)
+- tools/desk/cmd/cellctl/windows_acceptance_test.go — and compiled fixtures (new)
 - ci/staged-workflows/cellctl-windows.yml (new proposal)
 - docs/cellctl-windows.md, docs/cellctl.md, docs/adopting-assay.md
 - scripts/bootstrap-windows.ps1 (only if packaged helper installation needs adjustment)

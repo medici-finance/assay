@@ -26,19 +26,36 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 		out, err := historyGit(root, args...).Output()
 		return strings.TrimSpace(string(out)), err
 	}
-	prefix, err := git("rev-parse", "--show-prefix")
+	prefix, err := provenanceRootPrefix(root)
 	if err != nil || prefix != "" {
 		return fail("--root must name the repository root")
 	}
-	shallow, err := git("rev-parse", "--is-shallow-repository")
-	if err != nil || shallow != "false" {
+	repo := coverageRepo{root: root}
+	shallow, ok := repo.IsShallow()
+	if !ok || shallow {
 		return fail("complete local Git history is required (no fetch is attempted)")
 	}
-	actual, err := git("rev-parse", "--verify", delivery+"^{commit}")
+	out, err, supported := commitReadOutput(gitCoreForCommits(root, delivery), delivery)
+	actual := strings.TrimSpace(string(out))
+	if !supported {
+		actual, err = git("rev-parse", "--verify", delivery+"^{commit}")
+	}
 	if err != nil || actual != delivery {
 		return fail("delivery is not a commit in local history")
 	}
-	parent, err := git("rev-parse", "--verify", delivery+"^1")
+	read := gitCoreForCommits(root, delivery)
+	parent := ""
+	if read.err != nil {
+		err = read.err
+	} else if read.native != "" {
+		parent, err = git("rev-parse", "--verify", delivery+"^1")
+	} else {
+		parents, parentErr := read.repo.ParentHashes(delivery)
+		err = parentErr
+		if len(parents) != 0 {
+			parent = parents[0]
+		}
+	}
 	if err != nil || parent != base {
 		return fail("base must be the delivery's first parent; wider or empty history ranges are refused")
 	}
@@ -63,7 +80,6 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	// A tree archive has no commit context for export-subst. Check the complete
 	// entry roster before extraction, so no symlink or submodule can escape the
 	// snapshot or make an input silently disappear. export-ignore is detected below.
-	repo := coverageRepo{root: root}
 	entries, ok := repo.TreeModes(delivery)
 	if !ok || len(entries) == 0 {
 		return fail("cannot enumerate delivered tree entries")

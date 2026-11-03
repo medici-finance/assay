@@ -502,7 +502,7 @@ func checkSiblingCheckout(path string) (ok bool, reason string) {
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
 		return false, fmt.Sprintf("%s is not a git directory (no .git)", path)
 	}
-	out, err := exec.Command("git", "-C", path, "rev-parse", "--is-shallow-repository").Output()
+	out, err := gitShallowOutput(path)
 	if err != nil {
 		return false, fmt.Sprintf("git rev-parse --is-shallow-repository failed at %s: %v", path, err)
 	}
@@ -524,10 +524,10 @@ type siblingCommit struct {
 // readSiblingCommits reads a sibling checkout's first-parent history. The
 // format uses %x1e (record separator) ahead of each commit and %x00 between
 // its hash and its raw body, so a multi-line %B can never be mistaken for a
-// record boundary — mergedPRsFromGit (mergedstatus.go) can get away with
-// %s-per-line because it reads only the SUBJECT; this detector needs the
-// full body for the body-only id shape (fact 3) and the Issue:/closing-keyword
-// trailer (key k2), so it cannot use a newline-delimited format.
+// record boundary. It needs the full body for the body-only id shape (fact 3)
+// and the Issue:/closing-keyword trailer (key k2), so it cannot use a
+// newline-delimited format. (mergedPRsFromGit, mergedstatus.go, reads its
+// messages length-prefixed through cat-file instead.)
 func readSiblingCommits(path string) ([]siblingCommit, error) {
 	out, err := exec.Command("git", "-C", path, "log", "--first-parent",
 		"-n", strconv.Itoa(siblingMergeHistoryLimit), "--format=%x1e%H%x00%B").Output()
@@ -569,9 +569,10 @@ func siblingIDPattern(id string) *regexp.Regexp {
 }
 
 // siblingIssuePattern matches an `Issue: #<N>` trailer or a GitHub closing
-// keyword for issue #<N> (key k2).
+// keyword for issue #<N> (key k2), with or without a colon after the keyword —
+// so deskpr's resolving `Fixes: #<N>` trailer matches as well as `Fixes #<N>`.
 func siblingIssuePattern(n int) *regexp.Regexp {
-	return regexp.MustCompile(`(?i)(?:\bissue:\s*#|\b(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#)` + strconv.Itoa(n) + `\b`)
+	return regexp.MustCompile(`(?i)(?:\bissue:\s*#|\b(?:close[sd]?|fixe[sd]?|resolve[sd]?)(?::\s*|\s+)#)` + strconv.Itoa(n) + `\b`)
 }
 
 // matchedSiblingCommit is one commit that matched a row, via which key.
@@ -727,6 +728,19 @@ func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string,
 	}
 	notices, _, _ = siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
 	return notices, true
+}
+
+// holdPhantomRowsFromGit is runSiblingMergeIfOptedIn's counterpart for the in-tree
+// board-honesty holds: the dispatch emitters (--next-up, --roadmap) call it before
+// nextUp() so they hold the same rows STATUS.md does. A tree with no .git, or an
+// unreadable history, holds no merged-delivery row — could-not-check is never
+// "delivered" — but still holds a re-homed pointer row, whose evidence is the tree
+// itself, exactly as run() does (errNoGitForMerge): the queue and the board must not
+// disagree about the same tree.
+func holdPhantomRowsFromGit(streams []*Stream, root string) {
+	ownRepo, _ := rootRepo(streams)
+	merged, _, err := deliveryHistory(root, ownRepo) // crossroot.go: own root + every configured root
+	applyPhantomHolds(root, streams, merged, err)
 }
 
 // siblingMergeOffNotices is what --lint prints INSTEAD of the check when the

@@ -161,7 +161,12 @@ func (r Record) hasLegacyCounters() bool {
 // MarshalJSON writes the named schema's field set exactly. A record carrying another schema's
 // fields, an unknown schema, or an invalid perf-v2 coverage is refused, never written.
 func (r Record) MarshalJSON() ([]byte, error) {
+	if r.Schema != SchemaV4 && r.V4 != nil {
+		return nil, ErrSchemaReuse
+	}
 	switch r.Schema {
+	case SchemaV4:
+		return marshalV4(r)
 	case SchemaV3:
 		if err := validV3(r); err != nil {
 			return nil, err
@@ -193,17 +198,7 @@ func (r Record) MarshalJSON() ([]byte, error) {
 		if r.hasLegacyCounters() || r.V3 != nil {
 			return nil, ErrSchemaReuse
 		}
-		w := v2Record{r.Schema, r.TS, r.Tool, r.Verb, r.Role, r.Boundary, r.WallMs, r.CPU, r.CPUMs, r.Exit,
-			r.Result, r.Phases, r.PhaseOverlap, r.Counters, r.Unavailable, r.SourceSHA, r.Install}
-		if w.Phases == nil {
-			w.Phases = []PhaseStat{}
-		}
-		if w.Counters == nil {
-			w.Counters = map[Counter]int64{}
-		}
-		if w.Unavailable == nil {
-			w.Unavailable = []Counter{}
-		}
+		w := intervalWire(r)
 		if err := validV2(w); err != nil {
 			return nil, err
 		}
@@ -213,19 +208,44 @@ func (r Record) MarshalJSON() ([]byte, error) {
 	}
 }
 
+// intervalWire is the single reference mapping for interval validation and the
+// historical v2 encoder. New formats validate it directly, without serializing
+// an intermediate historical JSON record merely to invoke its checks.
+func intervalWire(r Record) v2Record {
+	w := v2Record{r.Schema, r.TS, r.Tool, r.Verb, r.Role, r.Boundary, r.WallMs, r.CPU, r.CPUMs, r.Exit, r.Result, r.Phases, r.PhaseOverlap, r.Counters, r.Unavailable, r.SourceSHA, r.Install}
+	if w.Phases == nil {
+		w.Phases = []PhaseStat{}
+	}
+	if w.Counters == nil {
+		w.Counters = map[Counter]int64{}
+	}
+	if w.Unavailable == nil {
+		w.Unavailable = []Counter{}
+	}
+	return w
+}
+
 // UnmarshalJSON decodes one line strictly as the schema it names: an unknown key, an unknown
 // schema or an invalid perf-v2 enumeration/coverage is an error, so a reader skips the line
 // instead of reinterpreting it.
 func (r *Record) UnmarshalJSON(b []byte) error {
 	var head struct {
-		Schema string `json:"schema"`
+		Schema schemaDiscriminator `json:"schema"`
 	}
 	if err := json.Unmarshal(b, &head); err != nil {
 		return err
 	}
+	// encoding/json accepts case aliases and repeated struct members. Remember
+	// EVERY decoded discriminator, so a later legacy alias cannot downgrade a
+	// v4 envelope before its exact-key/duplicate-aware validator sees it.
+	if head.Schema.sawV4 {
+		return unmarshalV4(b, r)
+	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
-	switch head.Schema {
+	switch head.Schema.value {
+	case SchemaV4:
+		return unmarshalV4(b, r)
 	case SchemaV3:
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(b, &fields); err != nil {
@@ -278,14 +298,30 @@ func (r *Record) UnmarshalJSON(b []byte) error {
 			Counters: w.Counters, Unavailable: w.Unavailable}
 		return nil
 	default:
-		return fmt.Errorf("perfrec: unknown schema %q", head.Schema)
+		return fmt.Errorf("perfrec: unknown schema %q", head.Schema.value)
 	}
 }
 
-// Decode parses one day-file line as either schema (Record.UnmarshalJSON).
+type schemaDiscriminator struct {
+	value string
+	sawV4 bool
+}
+
+func (s *schemaDiscriminator) UnmarshalJSON(b []byte) error {
+	var value string
+	if err := json.Unmarshal(b, &value); err != nil {
+		return err
+	}
+	s.value = value
+	s.sawV4 = s.sawV4 || value == SchemaV4
+	return nil
+}
+
+// Decode parses one complete day-file line as its named historical or current
+// schema. Exclude the LF, but preserve all other bytes for the v4 wire bound.
 func Decode(line []byte) (Record, error) {
 	var r Record
-	err := json.Unmarshal(line, &r)
+	err := r.UnmarshalJSON(line)
 	return r, err
 }
 

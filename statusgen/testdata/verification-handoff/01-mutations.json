@@ -1,0 +1,168 @@
+{
+  "schema": "verification-handoff-mutations-v2",
+  "snapshot_budget": {
+    "files": 16000,
+    "bytes": 100663296
+  },
+  "cases": [
+    {
+      "id": "shared-addressed",
+      "target": "deskcore/issueflow/selection.go",
+      "old": "return !c.HasPlaceholder && !c.Excluded && !c.Addressed && !c.AddressUnknown",
+      "new": "return !c.HasPlaceholder && !c.Excluded",
+      "test": "TestHandoffPolicyParity",
+      "expect": "population parity addressed",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case shared-addressed"
+    },
+    {
+      "id": "scanner-second-site",
+      "target": "statusgen/scanissues.go",
+      "old": "if !issueflow.Select(issueflow.Scanner, candidate, \"\") {",
+      "new": "if excluded {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "addressed scanner policy",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case scanner-second-site"
+    },
+    {
+      "id": "source-binding",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if !sameSource(h.Source, f.Source) {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "wrong-source assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case source-binding"
+    },
+    {
+      "id": "incomplete-facts",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if !f.Complete {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "unreadable assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case incomplete-facts"
+    },
+    {
+      "id": "human-hold",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if f.HumanHold {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "human-hold assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case human-hold"
+    },
+    {
+      "id": "activation-hold",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if f.ActivationHold {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "activation-hold assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case activation-hold"
+    },
+    {
+      "id": "freshness",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "f.Now.After(h.FreshUntil)",
+      "new": "false",
+      "test": "TestHandoffPolicyParity",
+      "expect": "stale assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case freshness"
+    },
+    {
+      "id": "successor",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if !briefRef.MatchString(h.Successor) && !issueRef.MatchString(h.Successor) {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "no-successor assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case successor"
+    },
+    {
+      "id": "external-owner",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "return unknown(\"missing external owner\")",
+      "new": "return Assessment{h.Disposition,\"observed\",\"mutant\"}",
+      "test": "TestHandoffPolicyParity",
+      "expect": "external-missing assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case external-owner"
+    },
+    {
+      "id": "version",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "return schema == HandoffSchema",
+      "new": "return true",
+      "test": "TestHandoffPolicyParity",
+      "expect": "legacy assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case version"
+    },
+    {
+      "id": "consumer-route",
+      "target": "statusgen/scanissues.go",
+      "old": "if !issueflow.Select(issueflow.Scanner, candidate, \"\") {",
+      "new": "if excluded {",
+      "test": "TestHandoffModuleImports",
+      "expect": "consumer bypassed owner",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case consumer-route"
+    },
+    {
+      "id": "second-clock",
+      "target": "deskcore/issueflow/planted_effect.go",
+      "plant": "package issueflow\nimport \"time\"\nfunc plantedSecond() { _ = time.Now() }\n",
+      "test": "TestHandoffModuleImports",
+      "expect": "time.Now",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case second-clock"
+    },
+    {
+      "id": "second-process",
+      "target": "deskcore/issueflow/planted_effect.go",
+      "plant": "package issueflow\nimport \"os/exec\"\nfunc plantedSecond() { _ = exec.Command(\"fixture\") }\n",
+      "test": "TestHandoffModuleImports",
+      "expect": "os/exec",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case second-process"
+    },
+    {
+      "id": "second-env",
+      "target": "deskcore/issueflow/planted_effect.go",
+      "plant": "package issueflow\nimport \"os\"\nfunc plantedSecond() { _ = os.Getenv(\"HANDOFF_FIXTURE\") }\n",
+      "test": "TestHandoffModuleImports",
+      "expect": "os",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case second-env"
+    },
+    {
+      "id": "cli-projection",
+      "target": "deskcore/issueflow/selection.go",
+      "old": "return p == Full || p == WorkReady || p == Intake || p == Inbox",
+      "new": "return p == Full || p == WorkReady || p == Intake || p == Inbox || p == Scanner",
+      "test": "TestHandoffPolicyParity",
+      "expect": "library-only scanner",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case cli-projection"
+    },
+    {
+      "id": "row-shape",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if row < 1 || seen[row] {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "bad-rows assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case row-shape"
+    },
+    {
+      "id": "expected-rows",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "delete(rows, row)",
+      "new": "_ = row",
+      "test": "TestHandoffPolicyParity",
+      "expect": "expected-duplicate assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case expected-rows"
+    },
+    {
+      "id": "deciding-role",
+      "target": "deskcore/issueflow/handoff.go",
+      "old": "if !knownRole(h.DecidingRole) {",
+      "new": "if false {",
+      "test": "TestHandoffPolicyParity",
+      "expect": "mechanical assessment",
+      "command": "python3 statusgen/testdata/verification-handoff/mutate.py --case deciding-role"
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{{define "inbox.html"}}<!doctype html>
+<html lang="en" data-view="{{.Filter.View}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deskd — inbox</title>
+<link rel="stylesheet" href="/static/app.css">
+{{if .WebMCPDev}}<script>
+// WebMCP diagnostics dev flag is ON (the service contract, DESKD_WEBMCP_DEV=1).
+// Read-only error buffer, wired as early as possible so it catches errors from
+// the rest of this page's load, not just from webmcp-diagnostics.js onward.
+// Never present when the flag is off — see web/web.go Deps.WebMCPDev.
+window.__webmcpDiagnostics = { errors: [] };
+window.addEventListener("error", function (e) {
+  window.__webmcpDiagnostics.errors.push({
+    type: "error", message: e.message || "", source: e.filename || "",
+    line: e.lineno || 0, at: new Date().toISOString(),
+  });
+});
+window.addEventListener("unhandledrejection", function (e) {
+  window.__webmcpDiagnostics.errors.push({
+    type: "unhandledrejection", message: String(e.reason), at: new Date().toISOString(),
+  });
+});
+</script>{{end}}
+</head>
+<body data-human-login="{{humanLogin}}" class="inbox">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="brand">deskd</span>
+    <span class="crumb">inbox{{if .Filter.Cell}} · {{.Filter.Cell}}{{end}}</span>
+  </div>
+  <div class="topbar-right">
+    <!-- Urgent count renders group-independent in the header (D5 guard). -->
+    <span class="urgent-count" data-urgent="{{.UrgentCount}}" title="urgent + gold, across all groups">
+      {{.UrgentCount}} urgent
+    </span>
+    <span class="total-count">{{.Total}} open</span>
+    {{if .Viewer.Authenticated}}
+    <span class="viewer-chip">{{.Viewer.Login}}</span>
+    <a class="signout" href="/auth/logout">sign out</a>
+    {{else}}
+    <a class="signin" href="/auth/login?return_to=/inbox">sign in with GitHub</a>
+    {{end}}
+    <span id="session-chip" class="session-chip" data-live="false">session: checking…</span>
+  </div>
+</header>
+
+<nav class="viewbar">
+  <a class="viewtab {{if .Flat}}active{{end}}" href="/inbox?view=flat{{if .Filter.Cell}}&cell={{.Filter.Cell}}{{end}}">flat</a>
+  <a class="viewtab {{if not .Flat}}active{{end}}" href="/inbox?view=grouped{{if .Filter.Cell}}&cell={{.Filter.Cell}}{{end}}">grouped</a>
+  {{if .Filter.State}}<span class="filter-chip">state: {{.Filter.State}}</span>{{end}}
+  {{if .Filter.Kind}}<span class="filter-chip">kind: {{.Filter.Kind}}</span>{{end}}
+  {{if .Filter.Urgency}}<span class="filter-chip">urgency: {{.Filter.Urgency}}</span>{{end}}
+</nav>
+
+<main id="queue" tabindex="0" aria-label="escalation queue">
+{{if .Flat}}
+  <ul class="rows" role="listbox" aria-label="escalations, urgency then age">
+    {{range .Rows}}{{template "row" .}}{{end}}
+  </ul>
+{{else}}
+  {{range .Groups}}
+  <section class="group {{if not .Collapsible}}no-collapse{{end}}" data-collapsible="{{.Collapsible}}" data-has-urgent="{{.HasUrgent}}">
+    <h2 class="group-head">
+      <span class="group-name">{{.Name}}</span>
+      <span class="group-count">{{len .Rows}}</span>
+      {{if .HasUrgent}}<span class="group-urgent" title="holds an urgent item — cannot collapse">urgent</span>{{end}}
+    </h2>
+    <ul class="rows" role="listbox">
+      {{range .Rows}}{{template "row" .}}{{end}}
+    </ul>
+  </section>
+  {{end}}
+{{end}}
+</main>
+
+<footer class="hint">
+  <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Space</kbd> peek · <kbd>1</kbd>–<kbd>9</kbd> stage · <kbd>Enter</kbd> answer as {{humanLogin}} · <kbd>a</kbd> ack · <kbd>Enter→</kbd> open item
+</footer>
+
+<script src="/static/app.js"></script>
+{{if .WebMCPDev}}<script src="/static/webmcp-diagnostics.js"></script>{{end}}
+</body>
+</html>{{end}}
+
+{{define "row"}}
+<li class="row {{if .Gold}}gold{{end}} {{if .Answered}}answered{{end}}"
+    role="option"
+    tabindex="-1"
+    data-id="{{.ID}}"
+    data-gold="{{.Gold}}"
+    data-answered="{{.Answered}}"
+    data-options-rev="{{.OptionsRev}}"
+    data-platform-url="{{.PlatformURL}}"
+    data-unparsed="{{.Unparsed}}">
+  <div class="row-line">
+    <span class="attn attn-{{.State}}" title="{{.Word}}"><span class="glyph">{{.Glyph}}</span> <span class="word">{{.Word}}</span></span>
+    <span class="title">{{.Title}}</span>
+    <span class="meta">
+      <!-- provenance + kind chips live in the row CHROME, outside the peek's untrusted region (§6.6) -->
+      <span class="chip chip-kind">{{.Kind}}</span>
+      <span class="chip chip-urg urg-{{.Urgency}}">{{.Urgency}}</span>
+      <span class="chip chip-prov">{{.Provenance}}</span>
+      <span class="age">{{humanAge .AgeSeconds}}</span>
+    </span>
+  </div>
+
+  <!-- peek panel: Space expands IN PLACE; travels with selection (spec §2.1) -->
+  <div class="peek" hidden>
+    {{if .Unparsed}}
+      <p class="unparsed-note">malformed escalation — shown raw, no answer bindings (§6.6)</p>
+      <pre class="raw-body">{{.RawBody}}</pre>
+    {{else}}
+      <p class="situation">{{.Situation}}</p>
+      {{if .Gold}}
+        <p class="gold-note">gold / irreversible — the full item view is required to answer (D1).
+          <a class="open-item" href="/item/{{.ID}}">open item →</a></p>
+      {{else if .Options}}
+        <ol class="options">
+          {{range .Options}}
+          <li class="option" data-option-id="{{.ID}}" data-digit="{{.Digit}}">
+            <span class="opt-digit">{{.Digit}}</span>
+            <span class="opt-label">{{.Label}}</span>
+            <span class="opt-consequence">{{.Consequence}}</span>
+          </li>
+          {{end}}
+        </ol>
+      {{else}}
+        <p class="prose-answer-note">no typed options — answer in the full item view.
+          <a class="open-item" href="/item/{{.ID}}">open item →</a></p>
+      {{end}}
+      {{if .Blocks}}
+      <ul class="blocks">
+        {{range .Blocks}}<li class="block">blocks: {{.Kind}} {{.Ident}}</li>{{end}}
+      </ul>
+      {{end}}
+      <div class="peek-chrome">
+        <span class="chip chip-prov">{{.Provenance}}</span>
+        <a class="platform-link" href="{{.PlatformURL}}" target="_blank" rel="noopener">on GitHub ↗</a>
+        <a class="open-item" href="/item/{{.ID}}">why · full item →</a>
+      </div>
+    {{end}}
+  </div>
+</li>
+{{end}}

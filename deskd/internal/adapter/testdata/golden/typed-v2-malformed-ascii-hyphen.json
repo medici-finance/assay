@@ -1,0 +1,11 @@
+{
+  "encoding": "typed-v2-malformed",
+  "options": null,
+  "options_rev": "",
+  "problems": [
+    "option heading \"#### `option-a` - Do the first thing\" does not separate id from label with an em-dash (U+2014) surrounded by single spaces",
+    "option heading \"#### `option-b` - Do the second thing\" does not separate id from label with an em-dash (U+2014) surrounded by single spaces",
+    "marker present but no `#### `\u003cid\u003e` — \u003clabel\u003e` heading parsed (note: the id/label separator is U+2014 EM DASH, not an ASCII hyphen)"
+  ],
+  "confidence": "could-not-check"
+}

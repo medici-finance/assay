@@ -1,0 +1,72 @@
+{{define "fleet.html"}}{{template "panehead" "fleet"}}
+<body class="pane fleet">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+{{template "panenav" "fleet"}}
+<main class="pane-body fleet-body">
+  <h1 class="pane-title">Fleet <span class="pane-sub">where every claim and PR is, and what state it's in — the service contract, one-week experiment</span></h1>
+
+  {{if not .OK}}
+  <p class="note">could-not-check — no fleet cache is wired for this deskd, or this cell configures no repos. This
+    is the honest OFF state, not an empty fleet (§C4: could-not-check is never rendered as a pass or a clean zero).</p>
+  {{else}}
+  <p class="note">Read-only: pan by dragging, zoom with the controls or your trackpad/wheel, hover a token for its
+    detail. Nothing on this page writes anything — see the four state colors below, and the separate staleness
+    overlay on the lane itself (a working-but-stale token looks distinct from a working-fresh one, deliberately).</p>
+
+  <div class="fleet-canvas-controls">
+    <button type="button" class="fleet-zoom-out" aria-label="zoom out">&minus;</button>
+    <button type="button" class="fleet-zoom-reset" aria-label="reset zoom">reset</button>
+    <button type="button" class="fleet-zoom-in" aria-label="zoom in">+</button>
+  </div>
+
+  <div class="fleet-viewport">
+    <div class="fleet-canvas" id="fleet-canvas">
+      {{range .Lanes}}
+      <section class="fleet-lane{{if not .OK}} unchecked{{end}}{{if .Stale}} stale{{end}}" data-repo="{{.Repo}}">
+        <header class="fleet-lane-head">
+          <span class="fleet-lane-repo">{{.Repo}}</span>
+          {{if .OK}}
+          <span class="fleet-lane-age{{if .Stale}} stale{{end}}" data-stale="{{.Stale}}"
+                title="{{if .Stale}}stale — last good read: {{.FetchedAt}} ({{.Reason}}){{else}}fetched {{.FetchedAt}}{{end}}">
+            as of {{humanAge .FetchAge}} ago{{if .Stale}} · STALE{{end}}
+          </span>
+          {{else}}
+          <span class="fleet-lane-age unchecked" title="{{.Reason}}">could-not-check</span>
+          {{end}}
+        </header>
+        {{if .OK}}
+          {{if .Tokens}}
+          <div class="fleet-tokens">
+            {{range .Tokens}}
+            <span class="fleet-token pal-{{.Palette}}{{if eq .State "stale-claim"}} token-stale{{end}}"
+                  data-kind="{{.Kind}}" data-state="{{.State}}" data-palette="{{.Palette}}"
+                  title="{{.Kind}} {{.Key}}{{if .Title}}: {{.Title}}{{end}} — {{.State}}, held by {{.Holder}}, age {{humanAge .AgeSecs}}">
+              <span class="fleet-token-key">{{.Key}}</span>
+              <span class="fleet-token-holder">{{.Holder}}</span>
+              <span class="fleet-token-age">{{humanAge .AgeSecs}}</span>
+            </span>
+            {{end}}
+          </div>
+          {{else}}
+          <p class="note fleet-lane-empty">no open claims or PRs</p>
+          {{end}}
+        {{else}}
+        <p class="note fleet-lane-empty unchecked">{{.Reason}}</p>
+        {{end}}
+      </section>
+      {{end}}
+    </div>
+  </div>
+
+  <p class="note fleet-legend">
+    <span class="pal-healthy">&#9679;</span> working
+    <span class="pal-neutral">&#9679;</span> awaiting-review
+    <span class="pal-fault">&#9679;</span> conflicting
+    <span class="pal-amber">&#9679;</span> stale-claim
+    — staleness (the lane's own fetch age, separate from token state) renders as the <em>lane</em> header going amber
+    and STALE-labelled, never folded into a token's own color.
+  </p>
+  {{end}}
+</main>
+<script src="/static/fleet.js"></script>
+</body></html>{{end}}

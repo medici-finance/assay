@@ -1,0 +1,13 @@
+{
+  "id": "unavailable",
+  "verify": "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |",
+  "evidence": "| # | Command | Result | Output | Date | Runner |\n|---|---------|--------|--------|------|--------|\n| 1 | `true` | could-not-run exit=0 | sha256:abc123def456 | 2026-09-25 | fixture-verifier @ 4444444444444444444444444444444444444444 |",
+  "edge": "",
+  "expected": {
+    "released": false,
+    "claim": "could-not-check",
+    "eligibility": "eligible",
+    "hold_states": [],
+    "notice_states": []
+  }
+}

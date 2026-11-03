@@ -14,7 +14,7 @@ why: >-
   CI stops reaching the network at all.
 wave: 5
 depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34"]
-unblocks: ["forge-neutral/35", "desktools-v2/08"]
+unblocks: ["forge-neutral/35", "desktools-v2/08", "desktools-v2/77"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -24,6 +24,7 @@ delivery:
   - {in: "assay#1053", covers: partial, note: "slice 1: the deskread issues read, offline lint by default, one git walk for attribution, the memoised brief parse"}
   - {in: "assay#1262", covers: partial, note: "the --changed-only CI gate, the offline-safety proof, the history memo and the identity/surface regressions"}
   - {in: "assay#2312", covers: partial, note: "the stamp-validated read memo for --lint; the remaining gh sites need Forge reads that forge-neutral/33 authors"}
+  - {in: "assay#4385", covers: partial, note: "decision-queue and issue-metric list reads onto deskread; the remaining statusgen forge reads are not delivered"}
 schema: brief-v2
 authored: 2026-09-14 by forge-neutral authoring session
 sources:
@@ -55,6 +56,7 @@ consumers:
   - "statusgen/main.go: fixed-here (the single history read, the `--forge` and `--changed-only` flags)"
   - "statusgen/linkcheck.go: fixed-here (the source index scoped to docs/)"
   - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. There is no follow-on brief and deliberately no forward reference to one)"
+  - "statusgen/claimdecay_github.go `githubDecayToken`: fixed-here (amended 2026-10-25, `DR-forge-library`: the `gh auth token --hostname` fallback and its `gh` lookup retire here, the two `\"gh\"` lines row 3 counts; the file's forge-token environment reads stay on row 22's ratchet and retire in desktools-v2/77)"
   - "statusgen/decisionruling.go, statusgen/decisionruling_test.go, statusgen/decisionruling-mutations.json, statusgen/ghfetch.go: follow-up forge-neutral/35 (the ruling resolver, and the `gh auth token` fallback at `decisionruling.go:643`, move in their own human-gated brief because the move rewrites the inputs of the ruling-authenticity control; this brief does not touch them, and its row 3 excludes `statusgen/decisionruling.go` by path)"
   - "statusgen/transcribescan.go `ghCommentResolver`: follow-up forge-neutral/35 (the transcribe lanes' sign-off resolver at `:104-129`, with its launch at `:109` at `e6cb7d2a0`, moves in the same human-gated brief as the ruling resolver because both enactment gates read their sign-off check from it; this brief does not touch that function, and its row 19 pins the one line row 3 still counts to it. `ghAuthorResolver` at `:76` in the same file is this brief's)"
   - "statusgen/transcribeverdict.go `ghVerdictIssueResolver`: follow-up forge-neutral/35 (the verdict-issue read at `:505-531`, with its launch at `:506` at `e6cb7d2a0`, feeds the verdict and scan-delta lanes' author pins and edited-issue refusals; its old source never set the edit flag, so its move turns those refusals on, and it moves in the same human-gated brief. This brief does not touch that function, and its row 20 pins the one line row 3 still counts to it. `ghVerdictMainHealth` at `:579` in the same file is this brief's)"
@@ -62,7 +64,7 @@ consumers:
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated, or added by forge-neutral/33, and has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
-version: 3
+version: 5
 id: 6ccc64a7-c32b-48ba-b6ac-d3a8165f15f9
 ---
 
@@ -97,25 +99,25 @@ files:
 no human-ruling resolver, and changes no control's accept or refuse rule. Several sites it
 moves do feed a control. Each keeps the same signal from a new source, and the table in Task 6
 names the old and the new source for each. Every site it moves is a read: the
-same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves —
-`forge-neutral/07`'s roster parity and `forge-neutral/01`'s resolver locally, and in CI the
+same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves — `forge-neutral/07`'s
+roster parity and `forge-neutral/01`'s resolver locally, and in CI the
 opt-in workflow-token transport that #2253's ruling chose (the CI-transport brief in #2314).
 For the CI-lane reads that identity is new: today they run under the job's own `gh` login, and
 afterwards under the transport, which is why this brief depends on that brief and adds `issue`,
 plus each further kind its CI-lane sites need, to `ciTransportKinds` by reviewed diff. The
 acting identity statusgen RECORDS is unchanged (row 14). Two resolvers and one issue read are
-deliberately not here, and forge-neutral/35, human-gated, moves all three. The first is the ruling resolver in
-`decisionruling.go`, with its `gh auth token` fallback at `:643`. Moving it rewrites the inputs
+deliberately not here, and forge-neutral/35, human-gated, moves all three. The first is the ruling resolver in `decisionruling.go`,
+with its `gh auth token` fallback at `:643`. Moving it rewrites the inputs
 of the ruling-authenticity control (deleted-comment detection, the comment-to-issue binding,
-edit detection, the bot check) and the credential it reads under. The second is
-`ghCommentResolver` in `transcribescan.go`, the sign-off check both transcribe lanes'
+edit detection, the bot check) and the credential it reads under. The second is `ghCommentResolver`
+in `transcribescan.go`, the sign-off check both transcribe lanes'
 enactment gates read. Moving it changes how the comment is found (a thread read selected by
-id instead of a single read by id) and where the author type comes from. The third is
-`ghVerdictIssueResolver` in `transcribeverdict.go`, the issue read behind the verdict and
+id instead of a single read by id) and where the author type comes from. The third is `ghVerdictIssueResolver`
+in `transcribeverdict.go`, the issue read behind the verdict and
 scan-delta lanes' author pins and edited-issue refusals. Its old source never set the edit flag,
-so moving it turns those refusals on, which changes an accept-or-refuse outcome. Row 3 excludes
-`decisionruling.go` by path and counts the two lines left in `ghCommentResolver` and
-`ghVerdictIssueResolver`; rows 19 and 20 pin each line to its function. One read this brief does move sits next to a human ratification:
+so moving it turns those refusals on, which changes an accept-or-refuse outcome. Row 3 excludes `decisionruling.go`
+by path and counts the two lines left in `ghCommentResolver` and `ghVerdictIssueResolver`;
+rows 19 and 20 pin each line to its function. One read this brief does move sits next to a human ratification:
 the decision-gate anchor's issue read (`decisiongateanchor.go:229`), whose closer the anchor
 matches against the blessing authority's login (`:157`). The anchor's rule is unchanged, and
 the closer login comes from `Issue.ClosedBy` instead of REST `closed_by`, so its signal does
@@ -123,8 +125,8 @@ not change. What this brief
 does change is the REACH of a check, and the two places that could go wrong are the offline
 default and the scope-narrowed mode. Neither removes a control: the issue-debt line is a NOTICE
 that is already `gh`-guarded and already degrades to the empty string on any failure
-(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and
-`--changed-only` is specified as REFUSING outright in the CI gate rather than narrowing quietly.
+(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and `--changed-only`
+is specified as REFUSING outright in the CI gate rather than narrowing quietly.
 Both are guarded by mandatory negative-path rows (5, 6, 11).
 
 single-point-of-failure: for the offline default, the one control between "this lint is green
@@ -252,6 +254,49 @@ What it adds:
   Rows 21–23 fail if one does.
 - /34 remains the CI admission owner and /35 the ruling and sign-off owner. Scan and CI path
   coverage of the extracted module is /36's. Release resolution is /36's row 4.
+
+## Shared forge library amendment — 2026-10-25 (ruled: `DR-forge-library`)
+
+The driver's ruling of 2026-10-25 on #2395 supersedes `DR-forge-neutral-36`
+(`docs/streams/decisions/DR-forge-library.md`). There is to be one shared forge library for
+reads and writes. statusgen links it for its forge calls instead of running a desk-tools
+command, and the library alone holds the role-and-repo credential, in a private field, with no
+ambient fallback. The 2026-10-08 amendment above is amended in its transport clause only.
+
+What changes for this brief:
+
+- **The transport stays `deskread` here; the switch is desktools-v2/77's.** This brief still
+  moves each Task 6 site onto statusgen's `forgeReader` seam, and the online reader behind that
+  seam is still the `deskread` process adapter. desktools-v2/77, after desktools-v2/75 has built
+  the library, replaces that one adapter with a library-backed reader. No call site changes
+  twice: the sites read the seam, and only the reader behind it changes.
+- **"No in-process credential" becomes "no credential outside the library".** No moved read,
+  and no new statusgen code, reads a forge token, builds an HTTP client for a forge or links a
+  provider adapter directly. The clients statusgen already has are held by row 22 and retired by
+  /77; after /77 a credential exists in the statusgen process only inside the library's client.
+  Rows 21 to 23 are restated to that rule below.
+- **Row 22's ratchet is re-measured.** At `d6a2ff244` the token-variable grep finds a fifth
+  file, `statusgen/claimdecay_github.go` (2 lines), added after the 2026-10-08 measurement by
+  the dead-claim decay change that removed its `gh` dependency. The row names it, at its
+  measured count. This brief adds no file and raises no count; /77 takes every entry except
+  /35's `decisionruling.go` to `0`.
+- **The claim-decay `gh auth token` fallback retires here, not in /77.** `githubDecayToken` in
+  `statusgen/claimdecay_github.go` (lines 96 and 99 at `d6a2ff244`) looks `gh` up on `PATH` and
+  runs `gh auth token --hostname <host>` when no forge-token variable is set. Those are two
+  non-test `"gh"` lines, so row 3 counts them, and desktools-v2/08 rows 1 and 2 (which follow
+  this brief and /35 only) need them gone. This brief deletes the fallback and the lookup in
+  Task 6: with no token variable set, the GitHub decay read takes the existing no-token path
+  (`githubBranchPRPages`), which reports could-not-check with the variables to set, and its
+  message drops the `gh auth login` hint. The ruling forbids an ambient-token fallback, so this
+  only tightens the read. The file's environment-token reads stay on row 22's ratchet until
+  desktools-v2/77; /77's no-`gh`-fallback row stays as the regression hold. Row 3's completion
+  value stays `2`, because the two claim-decay lines are this brief's own.
+- **The three class c GraphQL blocks retire here.** `forge-ban.sh` sums four classes into
+  its `statusgen sites:` total. This brief's moved reads build three `pullRequest(` blocks
+  (`autonomy.go:548`, `:557`, `autoflip.go:1470` at `e07782de2`); they go with their launches
+  (Task 6) and row 24 asserts it. desktools-v2/77 owns classes b and d.
+- /35 keeps the ruling and sign-off resolvers. The resolvers move onto the same seam, so /77's
+  swap covers them too.
 
 ## Task
 
@@ -397,6 +442,22 @@ different total has found either a drifted brief or a new call site, and either 
 `exec.CommandContext` launch at `autonomy.go:539`. The current per-site list is forge-neutral/33's
 census.)
 
+**The claim-decay credential fallback is here (amended 2026-10-25).** `githubDecayToken`'s
+`gh auth token --hostname` fallback in `statusgen/claimdecay_github.go` is not a read but a
+credential source. It added two `"gh"` lines after the freshness base and is not in the census
+above. This brief deletes it and its `exec.LookPath("gh")` guard, leaving the variable reads to
+row 22 and desktools-v2/77 (see the shared forge library amendment). A planted copy of the
+fallback must raise row 3's count from `2` to `4`.
+
+**The GraphQL blocks of the moved reads go with them (amended 2026-10-25).** Three non-test
+statusgen lines build a `pullRequest(` GraphQL block for a read this brief moves:
+`autonomy.go:548` and `:557` (the check-rollup reads behind the `exec.CommandContext` launch in `autonomyGates`'s `run` helper) and
+`autoflip.go:1470` (the `lastEditedAt` read, `PRTrustEvents.BodyEdited` in the table below).
+They are `forge-ban.sh` class c sites, and nothing else owns them: the typed reads build their
+queries inside the backend, so each block is deleted with its launch, never kept beside the
+reader. Row 24 asserts the class c column at `0` (`3` at `e07782de2`). desktools-v2/08 does not
+count them, and desktools-v2/77 row 9 asserts the whole statusgen total.
+
 **The two human-ruling resolvers, and one issue read, are not here.** The ruling resolver's one census site,
 `decisionruling.go:643`, is not a read: it is `gh auth token`, the last-resort credential for
 the client the resolver builds for its own two reads. Moving those reads rewrites the inputs of
@@ -469,7 +530,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 |---|-------|---------|--------|
 | 1 | check:ci | `cd statusgen && go build ./... && go test ./... -count=1` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go build ./... && go test ./... -count=1` | exit 0 |
-| 3 | check +dereference | `test -d statusgen/ && { grep -rnF '"gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+_test\.go:' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^statusgen/decisionruling\.go:' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `2`, and rows 19 and 20 show those two lines are in `ghCommentResolver` and `ghVerdictIssueResolver`. If forge-neutral/35 has already landed, the output is `0`. Together the three rows prove one thing: no line outside test files, `//` comment lines, `statusgen/decisionruling.go`, `ghCommentResolver` and `ghVerdictIssueResolver` carries the double-quoted literal `"gh"`. That covers `exec.Command`, `exec.CommandContext` with any context argument, a variable or constant in statusgen holding the name, a call split across lines, and an aliased import. It does NOT see a launch whose name is: a back-quoted raw string; an escaped literal (hex, octal or Unicode); a path ending in `gh`, absolute or relative; inside a shell command (`sh -c "gh …"`); derived at run time (case conversion, bytes, concatenation); or supplied from outside the file (another package, an imported module, linker flags, an embedded or config file, the environment). A `0` is therefore necessary, not sufficient: 18's reviewer confirms every site in forge-neutral/33's census except `decisionruling.go:643`, `transcribescan.go:109` and `transcribeverdict.go:506` was moved onto a forge read rather than re-expressed in one of those forms. A structural guard for those forms is a named follow-up (Task 6), not part of this row. **The path filter excludes `statusgen/decisionruling.go`, and only that file.** Its one site, `:643`, is the ruling resolver's `gh auth token` fallback, which forge-neutral/35 owns because moving it rewrites the inputs of the ruling-authenticity control. The two lines it still counts are `ghCommentResolver`'s and `ghVerdictIssueResolver`'s launches, which forge-neutral/35 also owns. A path filter cannot drop them, because the same two files hold `ghAuthorResolver`'s launch (identical text) and `ghVerdictMainHealth`'s, both this brief's; rows 19 and 20 tell them apart by function. 35's own row runs this command without the filter and takes the full count to `0`. The filter is anchored at the start of the path field, like the test-file filter, so it cannot drop a line from any other file. The comment filter drops only lines that begin with `//`, so a `"gh"` inside a block comment or in a comparison is still counted, which errs toward a non-zero count. The test-file filter matches the path field only. Measured at the freshness base: 26 sites across 15 non-test files. Re-measured 2026-10-06 at `11228951d`: the command without the decisionruling filter printed `32`, one line per forge-CLI launch site. The earlier `exec.Command("gh"` form printed `31` (16 non-test files) because it missed the one `exec.CommandContext(ctx, "gh", …)` launch at `autonomy.go:539`. The one comment line naming `"gh"` (`doratiming.go:48`) is excluded by the comment filter, and forge-neutral/33's census lists each site. Re-measured 2026-10-06 at `35c303e47` with BSD and GNU grep: this command prints `31`, the same 32 less the one line at `decisionruling.go:643`. Re-measured at `e6cb7d2a0` with BSD and GNU grep: `31` again, `32` without the decisionruling filter. Of those 31, exactly two lie in 35-owned functions in files that keep other sites (`transcribescan.go:109` in `ghCommentResolver`, `transcribeverdict.go:506` in `ghVerdictIssueResolver`, per rows 19 and 20 with BSD and GNU awk), which is why the completion Expect is `2`. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
+| 3 | check +dereference | `test -d statusgen/ && { grep -rnF '"gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+_test\.go:' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^statusgen/decisionruling\.go:' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `2`, and rows 19 and 20 show those two lines are in `ghCommentResolver` and `ghVerdictIssueResolver`. If forge-neutral/35 has already landed, the output is `0`. Amended 2026-10-25 (`DR-forge-library`): the two `statusgen/claimdecay_github.go` lines (`githubDecayToken`'s `gh` lookup and `gh auth token --hostname` fallback, lines 96 and 99 at `d6a2ff244`) are counted and are this brief's own (Task 6), so the `2` is reached only once they are deleted; while they remain the output is `4` or more. Together the three rows prove one thing: no line outside test files, `//` comment lines, `statusgen/decisionruling.go`, `ghCommentResolver` and `ghVerdictIssueResolver` carries the double-quoted literal `"gh"`. That covers `exec.Command`, `exec.CommandContext` with any context argument, a variable or constant in statusgen holding the name, a call split across lines, and an aliased import. It does NOT see a launch whose name is: a back-quoted raw string; an escaped literal (hex, octal or Unicode); a path ending in `gh`, absolute or relative; inside a shell command (`sh -c "gh …"`); derived at run time (case conversion, bytes, concatenation); or supplied from outside the file (another package, an imported module, linker flags, an embedded or config file, the environment). A `0` is therefore necessary, not sufficient: 18's reviewer confirms every site in forge-neutral/33's census except `decisionruling.go:643`, `transcribescan.go:109` and `transcribeverdict.go:506` was moved onto a forge read rather than re-expressed in one of those forms. A structural guard for those forms is a named follow-up (Task 6), not part of this row. **The path filter excludes `statusgen/decisionruling.go`, and only that file.** Its one site, `:643`, is the ruling resolver's `gh auth token` fallback, which forge-neutral/35 owns because moving it rewrites the inputs of the ruling-authenticity control. The two lines it still counts are `ghCommentResolver`'s and `ghVerdictIssueResolver`'s launches, which forge-neutral/35 also owns. A path filter cannot drop them, because the same two files hold `ghAuthorResolver`'s launch (identical text) and `ghVerdictMainHealth`'s, both this brief's; rows 19 and 20 tell them apart by function. 35's own row runs this command without the filter and takes the full count to `0`. The filter is anchored at the start of the path field, like the test-file filter, so it cannot drop a line from any other file. The comment filter drops only lines that begin with `//`, so a `"gh"` inside a block comment or in a comparison is still counted, which errs toward a non-zero count. The test-file filter matches the path field only. Measured at the freshness base: 26 sites across 15 non-test files. Re-measured 2026-10-06 at `11228951d`: the command without the decisionruling filter printed `32`, one line per forge-CLI launch site. The earlier `exec.Command("gh"` form printed `31` (16 non-test files) because it missed the one `exec.CommandContext(ctx, "gh", …)` launch at `autonomy.go:539`. The one comment line naming `"gh"` (`doratiming.go:48`) is excluded by the comment filter, and forge-neutral/33's census lists each site. Re-measured 2026-10-06 at `35c303e47` with BSD and GNU grep: this command prints `31`, the same 32 less the one line at `decisionruling.go:643`. Re-measured at `e6cb7d2a0` with BSD and GNU grep: `31` again, `32` without the decisionruling filter. Of those 31, exactly two lie in 35-owned functions in files that keep other sites (`transcribescan.go:109` in `ghCommentResolver`, `transcribeverdict.go:506` in `ghVerdictIssueResolver`, per rows 19 and 20 with BSD and GNU awk), which is why the completion Expect is `2`. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
 | 4 | check:ci +flow | `cd statusgen && go test ./... -run TestLintOfflineMakesNoNetworkCall -count=1 -v` | **negative path**: a full `--lint` with no `--forge`, run against a harness whose network dial hook FAILS the test on any attempt and whose `PATH` contains no `gh` and no `deskread`, completes with the same verdict as a networked run. Fails if any connection is attempted or any forge process is started |
 | 5 | check:ci +mutation | `cd statusgen && go test ./... -run TestForgeBackedChecksReportCouldNotCheckOffline -count=1 -v` | **negative path**: with the offline reader wired, every forge-backed check renders could-not-check AS ITSELF. The test fails if any of them renders clean, and it enumerates the checks so a newly-added one that forgets is caught rather than skipped |
 | 6 | check:ci +mutation | `cd statusgen && go test ./... -run TestIssueDebtNoticeOptInOnly -count=1 -v` | **negative path**: `--lint` alone emits no issue-debt line and starts no process; `--lint --forge` emits it from the verb's JSON. The test fails if the notice appears without `--forge` |
@@ -487,9 +548,10 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 | 18 | check:ci | `cd tools/desk && go test ./cmd/deskread/ -run '^TestCITransportKindsIssue$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r18.out" 2>&1 && grep -F -e '--- PASS: TestCITransportKindsIssue' "${TMPDIR:-/tmp}/b18-r18.out"` | exit 0, `--- PASS:` printed. `TestCITransportKindsIssue` (planned) asserts that `issue` is on `ciTransportKinds` and on `readKinds`, and that a `deskread issue` call under the CI transport for the job's own repository reads, while the same call without the transport's opt-in does not use the job token. It also asserts every other kind this brief added to `ciTransportKinds` is on `readKinds` |
 | 19 | check +dereference | `test -f statusgen/transcribescan.go && awk '/^func /{fn=$0; sub(/^func (\([^)]*\) )?/, "", fn); sub(/\(.*/, "", fn)} /"gh"/ && !/^[[:space:]]*\/\// {print fn}' statusgen/transcribescan.go` | output is exactly one line, `ghCommentResolver`. The command prints the name of the function enclosing each non-`//` line of `transcribescan.go` that carries `"gh"`, method receivers included. It is row 3's file-scoped twin: row 3 can drop `decisionruling.go` by path, but not this file, whose two launches are textually identical and belong to different briefs. Measured at `e6cb7d2a0` with BSD awk and GNU awk: two lines, `ghAuthorResolver` then `ghCommentResolver`. After this brief `ghAuthorResolver` reads through the reader; if forge-neutral/35 has landed, the output is empty. Any other name, or the same name twice, fails the row |
 | 20 | check +dereference | `test -f statusgen/transcribeverdict.go && awk '/^func /{fn=$0; sub(/^func (\([^)]*\) )?/, "", fn); sub(/\(.*/, "", fn)} /"gh"/ && !/^[[:space:]]*\/\// {print fn}' statusgen/transcribeverdict.go` | output is exactly one line, `ghVerdictIssueResolver`. Row 19's twin for `transcribeverdict.go`, by the same command: the file's other launch, in `ghVerdictMainHealth`, is this brief's, and `ghVerdictIssueResolver` is forge-neutral/35's, so a path filter cannot separate them. Measured at `e6cb7d2a0` with BSD awk and GNU awk: two lines, `ghVerdictIssueResolver` then `ghVerdictMainHealth`. After this brief `ghVerdictMainHealth` reads through the reader; if forge-neutral/35 has landed, the output is empty. Any other name, or the same name twice, fails the row |
-| 21 | check +dereference | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"([^"]*/)?forgeread/[^"]+"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`. **Negative control for the no-in-process-credential rule, keyed on the module, not on a planned path**: no non-test, non-comment statusgen line quotes an import path BELOW the shared module's root package, whatever that subpackage is called. forge-neutral/36 lays the module out with its offline and frozen surface in the root package and every authenticated read adapter in a subpackage, so linking anything but the root is refused whether the adapter lands under `forgeread/adapters/` or any other name; an adapter put into the root package itself is held at the link point by forge-neutral/36 row 11 (the root package's dependency closure carries no HTTP client, no process launch and no subpackage). Row 23 and desktools-v2/08 row 10 are the behavioural and import-graph backstops. Every grep stage tolerates only the no-match status, and the `test -d` leg fails the row on a missing tree. Measured at this amendment: `0` (the module does not exist yet); a planted import of `.../forgeread/adapters/github` counts `1`, a planted import under another subpackage name (`.../forgeread/authn`) counts `1`, and a planted import of the root package counts `0` |
-| 22 | check +dereference | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"(GH_TOKEN\|GITHUB_TOKEN\|GH_ENTERPRISE_TOKEN\|GITHUB_ENTERPRISE_TOKEN\|GITLAB_TOKEN\|STATUSGEN_GITLAB_TOKEN\|CI_JOB_TOKEN)"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| cut -d: -f1 \| sort \| uniq -c` | **negative control (ratchet)**: every line names one of `statusgen/claimdecay_gitlab.go` (count at most 3), `statusgen/decisionruling.go` (at most 2; absent once forge-neutral/35 lands), `statusgen/doratiming.go` (at most 1) or `statusgen/ghfetch.go` (at most 1). Any other file, or a higher count, fails: a moved read has acquired a forge token from the environment in a new place. Measured at this amendment: exactly those four files with counts 3, 2, 1, 1 |
-| 23 | check:ci +flow +mutation | `cd statusgen && go test ./... -run '^TestMovedReadsUseVerbOnly$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r23.out" 2>&1 && grep -F -e '--- PASS: TestMovedReadsUseVerbOnly' "${TMPDIR:-/tmp}/b18-r23.out"` | exit 0, `--- PASS:` printed. `TestMovedReadsUseVerbOnly` (planned) runs every site in Task 6's table under `--forge` with a stub `deskread` first on `PATH`, a sentinel value in each forge-token environment variable, and the row 4 dial hook that FAILS the test on any network dial from the statusgen process. Each moved site's read must arrive at the stub, and no dial may occur while that site's read runs. It enumerates the Task 6 sites, so a site that is added without an entry fails rather than being skipped. Row 22 catches a new token read; this row catches a moved read that reuses an existing in-process client |
+| 21 | check +dereference | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"([^"]*/)?forgeread/[^"]+"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`. **Negative control for the no-credential-outside-the-library rule (amended 2026-10-25, `DR-forge-library`), keyed on the module, not on a planned path**: statusgen reaches a provider adapter only through the shared forge library (desktools-v2/75), from its forge adapter layer, never by importing the adapter itself. no non-test, non-comment statusgen line quotes an import path BELOW the shared module's root package, whatever that subpackage is called. forge-neutral/36 lays the module out with its offline and frozen surface in the root package and every authenticated read adapter in a subpackage, so linking anything but the root is refused whether the adapter lands under `forgeread/adapters/` or any other name; an adapter put into the root package itself is held at the link point by forge-neutral/36 row 11 (the root package's dependency closure carries no HTTP client, no process launch and no subpackage). Row 23 and desktools-v2/08 row 10 are the behavioural and import-graph backstops. Every grep stage tolerates only the no-match status, and the `test -d` leg fails the row on a missing tree. Measured at the 2026-10-08 amendment: `0` (the module did not exist yet); re-measured `0` at `d6a2ff244`; a planted import of `.../forgeread/adapters/github` counts `1`, a planted import under another subpackage name (`.../forgeread/authn`) counts `1`, and a planted import of the root package counts `0` |
+| 22 | check +dereference | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"(GH_TOKEN\|GITHUB_TOKEN\|GH_ENTERPRISE_TOKEN\|GITHUB_ENTERPRISE_TOKEN\|GITLAB_TOKEN\|STATUSGEN_GITLAB_TOKEN\|CI_JOB_TOKEN)"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| cut -d: -f1 \| sort \| uniq -c` | **negative control (ratchet)**: every line names one of `statusgen/claimdecay_github.go` (count at most 2; found at `d6a2ff244`, see the 2026-10-25 amendment), `statusgen/claimdecay_gitlab.go` (count at most 3), `statusgen/decisionruling.go` (at most 2; absent once forge-neutral/35 lands), `statusgen/doratiming.go` (at most 1) or `statusgen/ghfetch.go` (at most 1). Any other file, or a higher count, fails: a moved read has acquired a forge token from the environment in a new place. Measured at the 2026-10-08 amendment: four files with counts 3, 2, 1, 1. Re-measured at `d6a2ff244`: five files, `claimdecay_github.go` 2, `claimdecay_gitlab.go` 3, `decisionruling.go` 2, `doratiming.go` 1, `ghfetch.go` 1. The end state is `0` lines, owned by desktools-v2/77 (and forge-neutral/35 for `decisionruling.go`); the forge-neutral/34 CI opt-in variable read moves into the library with it |
+| 23 | check:ci +flow +mutation | `cd statusgen && go test ./... -run '^TestMovedReadsUseReaderSeamOnly$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r23.out" 2>&1 && grep -F -e '--- PASS: TestMovedReadsUseReaderSeamOnly' "${TMPDIR:-/tmp}/b18-r23.out"` | exit 0, `--- PASS:` printed. `TestMovedReadsUseReaderSeamOnly` (planned) runs every site in Task 6's table under `--forge` with a stub online `forgeReader` injected at the seam, a sentinel value in each forge-token environment variable, and the row 4 dial hook that FAILS the test on any network dial from the statusgen process. Each moved site's read must arrive at the injected reader, no site may start a process (`gh`, `deskread` or any other) itself, and no dial may occur while that site's read runs. After desktools-v2/77 the reader behind the seam is the library client; this row still holds every site to the seam. The test was earlier planned as `TestMovedReadsUseVerbOnly` (planned), renamed on 2026-10-25; no code carries either name yet. It enumerates the Task 6 sites, so a site that is added without an entry fails rather than being skipped. Row 22 catches a new token read; this row catches a moved read that reuses an existing in-process client |
+| 24 | check +dereference | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && sh tools/desk/scripts/forge-ban.sh > "$o" && grep -E '^ *class c ' "$o")` | exit 0, and the class c line ends `statusgen=0`: no `pullRequest(` or `mergeRequest(` GraphQL block is built in non-test statusgen code, because every read that built one is on the reader (Task 6). Measured at `e07782de2`: `statusgen=3` (`autonomy.go:548`, `:557`, `autoflip.go:1470`). Added 2026-10-25 (`DR-forge-library`) so these three sites have an owner and a row |
 
 ### Named mutations for the `+mutation` rows
 
@@ -503,7 +565,7 @@ never observed reddening is a control whose strength is asserted, not shown.
 | 9 | delete the memo lookup in `parseBriefFile`. Distinct parses then equal CALL count and the row fails |
 | 10 | swap the two assignments in the authorship walk (take the first sighting as the introducing commit). The multi-author fixture file must then resolve first and last inverted |
 | 11 | drop the CI-gate detection from `--changed-only` so it merely warns. The row must fail on the exit code |
-| 23 | route one moved site's read through `ghfetch.go`'s in-process client instead of `deskread`. The dial hook must fire and the row must fail on that site's name |
+| 23 | route one moved site's read through `ghfetch.go`'s in-process client instead of the `forgeReader` seam. The dial hook must fire and the row must fail on that site's name. A second mutation: have one site launch `deskread` itself instead of calling the seam; the injected reader then sees no call for that site and the row must fail on its name |
 
 ## Pre-mortem → detection map
 
@@ -530,7 +592,8 @@ never observed reddening is a control whose strength is asserted, not shown.
 | A new `Forge` operation is added because one call site was awkward, widening a frozen surface behind a read verb | row 15 + `allowedInvocationCeiling` unchanged |
 | The remaining call sites are left on `gh` but the row is flipped to implemented anyway | row 3's `0` is the completion test for the whole brief; slice 1 leaves it non-zero and the row stays `in-progress` by construction |
 | The measured win is claimed from a warm-cache run against a cold-cache baseline | row 13 specifies best-of-three on one tree, both sides offline |
-| A moved read is served by an in-process forge client or a forge token taken from the environment, so statusgen holds a credential the verb was meant to hold | rows 21–23: no authenticated adapter linked, no new token read, and a dial hook over every moved site |
+| A moved read is served by an in-process forge client or a forge token taken from the environment, so statusgen holds a credential outside the library (amended 2026-10-25, `DR-forge-library`) | rows 21–23: no adapter linked except through the library, no new token read, every site held to the reader seam, and a dial hook over every moved site |
+| A moved read keeps its GraphQL block in statusgen and passes it through, so the query text the backend should own stays outside it | row 24 |
 | An adopter on a box with no desk-tools installed finds `--lint` broken rather than merely offline | **no row** — it is the offline DEFAULT that makes this safe: with no `--forge` the verb is never invoked, so a missing `deskread` is unreachable from the gate. A row asserting a missing binary's behaviour under `--forge` belongs with `forge-neutral/11`'s install work, where a box with no desk-tools actually exists |
 
 ## Evidence

@@ -74,6 +74,7 @@ func dispatchBindings(mode string) []cli.Binding {
 			str("repo", "", "owner/name (default: --root's origin)"), str("root", ".", "item's own repo root"),
 			str("claim-root", "", "checkout carrying consumer scripts (default: --root); claims still land in --repo"),
 			str("model", "", "exact model selected by the dispatcher"), str("branch", "", "fresh branch, or verified resume source branch"),
+			str("observation", "", "advisory review observation file (review kit only)"),
 			str("brief", "", "item specification path"), boolean("gate-human", "ensure the human decision issue exists"),
 			integer("pr", "already-open change to resume"), str("prompt-file", "", "caller task path (never written); emit to a new .emitted.md sibling"),
 			boolean("quiet", "suppress per-step OK lines"), boolean("dry-run", "print the plan and prompt; touch nothing"),
@@ -161,6 +162,7 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 			o.kit = v.String("kit")
 			o.attestation = v.Int("attestation")
 		default:
+			o.observation = v.String("observation")
 			o.item = args[0]
 			o.tier = v.String("tier")
 			o.kit = v.String("kit")

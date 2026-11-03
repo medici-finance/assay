@@ -1,0 +1,27 @@
+# Synthetic fixture: the exact house proving-cell name may opt in with a
+# declared development environment. This is not deployed configuration.
+# Every other private cell, including near-miss names, must still be refused.
+cells:
+  - name: house
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [glm-5.3, deepseek-chat]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    per_user_identity: enabled
+    environments:
+      - name: house-dev
+        kind: k8s
+        tier: dev
+        cluster: laptop
+        namespaces: [example-dev-house]
+        access: [read]
+        runner_pool: pool-house

@@ -43,9 +43,11 @@ var gitlabCredSites = map[string]string{
 	"internal/deskkit/forge_gitlab.go|triggerClient|client": "TestGitLabClientRedirectKeepsToken",
 	// Account liveness: no-redirect default, and an injected client is copied with redirects refused.
 	"internal/deskkit/trustliveness_gitlab.go|GetAccount|header": "TestGitLabAccountFetcherInjectedClientRefusesRedirect",
-	// desktoken rotation and self-check: gitlabHTTPClient.
-	"cmd/desktoken/gitlab.go|rotateGitLabToken|header": "TestGitLabRotateRefusesRedirect",
-	"cmd/desktoken/gitlab.go|gitlabSelfCheck|header":   "TestGitLabSelfCheckRefusesRedirect",
+	// The credential provider's GitLab rotation and self-check (desktools-v2/58; formerly in
+	// cmd/desktoken/gitlab.go): each call copies its client through noRedirect, whatever client
+	// the adapter supplies. The pins drive them through the desktoken CLI adapter.
+	"internal/credential/gitlab.go|RotateGitLabToken|header": "TestGitLabRotateRefusesRedirect",
+	"internal/credential/gitlab.go|GitLabSelfCheck|header":   "TestGitLabSelfCheckRefusesRedirect",
 	// deskfleet: noRedirects wraps every client it builds.
 	"cmd/deskfleet/client.go|newGitLabClient|header": "TestFleetNeverFollowsRedirect",
 	// deskgitlab (the fleet provisioner): newAPIClient sets CheckRedirect to ErrUseLastResponse

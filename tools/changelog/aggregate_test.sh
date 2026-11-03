@@ -265,6 +265,29 @@ else
   bad "C7 later-merge containment test (rc: $rc)"; printf '%s\n' "$out"
 fi
 
+# F1/F2: the FLAT-FRAGMENT contract (assay#4186). The aggregator reads exactly the
+#     top-level changelog/*.md — the layout check.sh enforces. F1: every top-level
+#     fragment (including slugs that look like branch paths once flattened) is
+#     read. F2: a fragment in a subdirectory is NOT read, which is precisely why
+#     check.sh refuses to let a PR add one.
+newcase
+echo '- `topone` shipped.' > "$D/changelog/topone.md"
+echo '- `toptwo` shipped.' > "$D/changelog/issue-4186.md"
+echo '- `topthree` shipped.' > "$D/changelog/assay--issue-4186-flat.md"
+mkdir -p "$D/changelog/feat"
+echo '- `nestedone` shipped.' > "$D/changelog/feat/nested.md"
+out="$(python3 "$AGG" highlights "$D/changelog" "$D/CHANGELOG.md" 2>/dev/null)"; rc=$?
+if [ "$rc" = 0 ] && grep -q 'topone' <<<"$out" && grep -q 'toptwo' <<<"$out" && grep -q 'topthree' <<<"$out"; then
+  ok "F1 every top-level fragment is aggregated"
+else
+  bad "F1 every top-level fragment is aggregated (rc: $rc)"; printf '%s\n' "$out"
+fi
+if ! grep -q 'nestedone' <<<"$out"; then
+  ok "F2 a nested fragment is not aggregated (hence refused at the gate)"
+else
+  bad "F2 a nested fragment is not aggregated"
+fi
+
 echo "---"
 echo "aggregate_test: $pass passed, $fail failed (impl: $AGG)"
 [ "$fail" = 0 ]

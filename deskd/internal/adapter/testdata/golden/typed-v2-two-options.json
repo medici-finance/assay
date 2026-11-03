@@ -1,0 +1,17 @@
+{
+  "encoding": "typed-v2",
+  "options": [
+    {
+      "id": "ship-partial",
+      "label": "Ship the partial index",
+      "consequence": "inbox live today; roadmap pane lags a week."
+    },
+    {
+      "id": "wait-for-fix",
+      "label": "Hold until the roadmap derivation lands",
+      "consequence": "nothing ships this week; no rework risk."
+    }
+  ],
+  "options_rev": "ec477c903c15bf2e5541a37a54e9d51168e6475543d0fbd5de7c2d32c50b6e3b",
+  "confidence": "checked-clean"
+}

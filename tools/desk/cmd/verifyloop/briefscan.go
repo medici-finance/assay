@@ -42,6 +42,7 @@ type briefRow struct {
 // self-contained (the deliberate "desk mirrors statusgen, does not import it" pattern —
 // statusgen is package main and unimportable anyway).
 type briefFrontmatter struct {
+	ParseError  string
 	Gate        string
 	Risk        loopengine.RiskFlags
 	Effort      string
@@ -426,6 +427,9 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 	}
 	rel := relTo(root, path)
 	fm = parseFrontmatter(string(raw))
+	if fm.ParseError != "" {
+		return rel, fm, true, "brief frontmatter unreadable: " + fm.ParseError, nil
+	}
 	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
 	for _, vr := range parseVerifyRowsIn(extractVerify(string(raw))) {

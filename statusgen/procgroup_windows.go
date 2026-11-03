@@ -13,10 +13,13 @@ import "os/exec"
 // itself and outlive the timeout — exactly the orphan pile-up the unix group kill
 // exists to prevent.
 //
-// What still makes the deadline REAL for the caller is cmd.WaitDelay, which is set
-// by the shared caller in gitinfo.go (unchanged, and not touched by either
-// variant): after it expires the pipes are closed and Wait returns, so
+// What still makes the deadline REAL for the git callers (gitinfo.go,
+// claimtransport.go) is the cmd.WaitDelay each of them sets (not touched by
+// either variant): after it expires the pipes are closed and Wait returns, so
 // listRemoteBranches still fails fast even though a grandchild may linger. The
+// verifyrun row caller sets NO WaitDelay (a short one would truncate valid
+// background output), so on windows a row descendant holding the output pipe
+// can still outlast that row's deadline; verifyrun discloses this limit. The
 // follow-up that would CLOSE this gap on windows is a job object
 // (CreateJobObject + AssignProcessToJobObject with
 // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE), which kills the whole tree on handle close;

@@ -8,19 +8,53 @@ IDE agent the **secondary** end-user surface. Harness tool names are legal here 
 is this file's whole purpose — and illegal in a skill body (`tools/harnesslint bodies`
 enforces it).
 
-## Install and upgrade — versioned bundle or explicit source
+## Install and upgrade — two routes, one version
 
-Cursor has **no** `/plugin marketplace add` / `/plugin install` path. That is Claude Code.
-The authoritative install steps — the one-command `deskinstall --harness cursor` (`windows-port/07`)
-and the five manual steps it automates — live in
+Cursor offers two ways in. They differ in what tracks a release, so pick on purpose.
+Both report the same version: the Claude manifest's `version`, which the release
+stamp copies into every Cursor surface.
+
+**Route 1: Cursor plugin, from a team marketplace import (follows a branch).**
+The repo carries a Cursor marketplace at `.cursor-plugin/marketplace.json`. Its one
+entry points at `plugins/assay`, whose `.cursor-plugin/plugin.json` names the rule
+(`cursor/assay.mdc`) and `skills/`. The marketplace entry carries no version. Cursor
+merges the plugin manifest over the entry, so `plugins/assay/.cursor-plugin/plugin.json`
+is the only place a version lives, and the release stamp and gate keep it equal to the
+tag. Assay is not listed in the public Cursor Marketplace, so this route is a
+Teams/Enterprise **Import from Repo** of this repository. Cursor re-indexes the branch
+the import tracks (Auto Refresh on push, or **Refresh** by hand). It does not read the
+`version` field to decide whether to update, and its docs describe no way to pin an
+import to a tag. After a release, the default branch already carries the *next* patch
+version, so an import that tracks it reports a release that has not been cut yet.
+Use this route when following the branch is what you want. `/add-plugin <url>` stays
+at the commit it was added from.
+
+**Route 2: copied skills, from a versioned bundle (follows the umbrella tag).**
+This is the route that pins a release. `deskinstall --harness cursor --release vX.Y.Z`
+places the release's verified bundle into `.cursor/` and writes
+`.cursor/assay-managed.json`, which records the placed plugin `version` beside the file
+hashes. To see what a repo holds, read that `version`. To see whether a newer release
+exists, and move to it:
+
+1. `upgrade-assay --root . --harness cursor --forge github --fetch --dry-run`
+   (omit `--to` for the latest stable umbrella tag, or pass `--to vX.Y.Z`). It prints
+   the release the inventory records next to the one selected.
+2. Run the same command without `--dry-run` to apply it.
+3. Run it again with `--check`. It exits 0 only when the placement matches the selected
+   release.
+
+The full steps, the one-command `deskinstall --harness cursor` (`windows-port/07`) and
+the five manual steps it automates, live in
 [`docs/adopting-assay.md`](../../../docs/adopting-assay.md) § **Running Assay on Cursor**
-(`windows-port/09`); this file does not carry a second copy. Versioned placement verifies
-the selected release's bundle; `upgrade-assay --harness cursor` previews, applies, and
-checks it through the existing version resolver. Skills and references are siblings,
-bindings arrive via `AGENTS.md`/`.cursor/rules`, and desk binaries go on `PATH`.
-Legacy releases without the asset refuse the versioned route; explicit local source
-placement remains available. Edit canonical `plugins/assay`, then regenerate the
-managed `.cursor` copies; do not edit generated copies.
+(`windows-port/09`). This file does not carry a second copy. Skills and references are
+siblings, bindings arrive via `AGENTS.md`/`.cursor/rules`, and desk binaries go on
+`PATH`. Legacy releases without the bundle asset refuse the versioned route; explicit
+local source placement remains available, and records no version when its source has no
+manifest. Edit canonical `plugins/assay`, then regenerate the managed `.cursor` copies
+and the Cursor manifests (`harnessgen cursor`); do not edit generated copies.
+
+Claude Code's `/plugin marketplace add` and `/plugin install` are Claude Code commands.
+They do not exist in Cursor.
 
 The in-editor agent is a supported install surface. Headless `cursor-agent` is the
 smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
@@ -96,6 +130,7 @@ degradations than Codex** because isolation is native on the IDE surface and the
 | `session-coach` | **runs** — reads the session's own record (transcript, tool calls, subagent transcripts) and writes one coaching note outside any repository; no `gh`, no dispatch, no isolation and no gate authority. Where the note's location is one the permission posture does not let it write (§2.8), that is a permission-posture precondition stated in-session — the note is never written into the repository instead. A piece of the record the session cannot read is marked as such in the note, per the body. No dispatch/isolation/gate surface.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `system-demo` | **runs** — authoring a storyboard and, when requested, a local static player is text/local-file work; it writes only within the session's own workspace, needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
 | `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** if headless parallel dispatch is unconfirmed (§2.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). |
+| `trace-path-to-live` | **runs** — read-only: it fetches each stream root, runs the existing `statusgen` and `deskboard` readers, and writes one self-contained page outside any repository; no dispatch, no isolation and no gate authority. The forge reads (fetch, open PRs, claims) need network and `gh` access; where the permission posture blocks one (§2.8), that reader is marked `could-not-check` on the page and stated in-session, never shown as empty. Where the page's location cannot be written, that is stated in-session; the page is never written into the repository instead.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `upgrade-assay` | **runs** — the dry-run-first order is the skill's own invariant and is never degraded; the apply step writes the tree and version pins → needs a write-capable posture, and where the posture blocks the write it states BLOCKED rather than half-applying (§2.8). No dispatch/isolation/gate surface beyond that. |
 | `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need the permission posture (§2.8). The evidence guarantee is never degraded. |
 | `worker-desk` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), so the pool isolates each implementer as the floor requires. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) so the skill can create its own isolated worktree (as on Claude Code), it **runs**; if the sandbox blocks that ref-write, per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout** (the outcome Codex CLI hit). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. |

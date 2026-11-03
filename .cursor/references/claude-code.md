@@ -61,6 +61,7 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `session-coach` | runs  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `system-demo` | runs |
 | `the-desk` | runs |
+| `trace-path-to-live` | runs  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `upgrade-assay` | runs |
 | `verify-desk` | runs |
 | `worker-desk` | runs |

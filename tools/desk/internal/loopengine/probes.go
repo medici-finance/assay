@@ -50,8 +50,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // Payload* name the Item.Payload keys the house probes read to attribute activity to a

@@ -26,7 +26,7 @@ import (
 //   - absent: nothing is running and nothing is left. The role is launched.
 //
 // Launches are serialized: the next role's window opens only once the previous role's launch has
-// taken its lease and passed the scratch sweep (the lease record then names the role child), or
+// taken its lease and passed bounded scratch admission (the lease record then names the role child), or
 // has failed.
 
 // The final per-role states of the up table.
@@ -198,7 +198,7 @@ func (c *Cell) staleHint(p upProbe) string {
 
 // awaitRoleLease waits for the window just opened for role to take the role lease and start its
 // child. The lease record names the child only after the launch passed lease acquisition and the
-// scratch sweep, so that is the gate the next window waits on. A launch that took the lease and
+// bounded scratch admission, so that is the gate the next window waits on. A launch that took the lease and
 // released it without a child failed; one that never took it within wait failed too.
 //
 // A cadenced role relaunched less than one interval after its last pass holds the lease and idles
@@ -243,6 +243,17 @@ func (c *Cell) awaitRoleLease(role string, wait time.Duration, since time.Time) 
 // state was just cleared by an applied plan.
 func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate func(role string, since time.Time) (string, error), open func(role string) error) []upRow {
 	var rows []upRow
+	began := c.launchStarted
+	if began.IsZero() {
+		began = time.Now()
+	}
+	confirmed := 0
+	requested := 0
+	for _, p := range probes {
+		if p.Kind == probeAbsent {
+			requested++
+		}
+	}
 	for _, p := range probes {
 		switch p.Kind {
 		case probeUp:
@@ -267,6 +278,12 @@ func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate 
 				rows = append(rows, upRow{Role: p.Role, State: upStateFailed, Detail: firstOutLine(err.Error())})
 				continue
 			}
+			if sched == "" {
+				confirmed++
+				if confirmed == 1 {
+					c.recordLaunchStep("launch-first-start", time.Since(began), nil)
+				}
+			}
 			state := upStateUp
 			if reconciled[p.Role] {
 				state = upStateReconciledUp
@@ -276,6 +293,9 @@ func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate 
 			}
 			rows = append(rows, upRow{Role: p.Role, State: state, Detail: sched})
 		}
+	}
+	if requested > 0 && confirmed == requested {
+		c.recordLaunchStep("launch-all-starts", time.Since(began), nil)
 	}
 	return rows
 }

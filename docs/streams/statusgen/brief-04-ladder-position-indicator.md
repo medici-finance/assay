@@ -38,7 +38,7 @@ id: 5e5a7419-dea9-4c92-8c53-08526ed0d689
 ## Context
 files:
 - `statusgen/` — the `--ladder` emit + tests; a panel line on the roadmap-deck overview page
-- the daily artifact (day directory) — include the indicator
+- **the daily artifact (day directory)** — include the indicator
 - `docs/streams/statusgen/README.md` — convention line (authored in this brief set)
 
 facts:

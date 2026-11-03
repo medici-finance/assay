@@ -1,0 +1,34 @@
+# Verify row 12b fixture (the service contract Task 9, the authorization contract): a PRIVATE
+# cell that is not the proving cell tries to enable the per-user identity path.
+# cellsvalidate must exit NON-ZERO on this file, naming the cell and the reason.
+#
+#   go run ./cmd/cellsvalidate config/testdata/peruseridentity/private-cell-opt-in.yaml
+#
+# The cell is private by the offline rule: it does not carry
+# allow_anonymous_read: true. It DOES declare a dev environment — deliberately,
+# so this fixture proves the dev declaration is only a PRECONDITION and never
+# an enable. Relayed direction, toolkit 1963 (2026-09-06), forks 1/4/5.
+cells:
+  - name: not-the-proving-cell
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [glm-5.3, deepseek-chat]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    per_user_identity: enabled
+    environments:
+      - name: some-dev
+        kind: k8s
+        tier: dev
+        cluster: fixture-cluster
+        namespaces: [example-dev-app]
+        access: [read]
+        runner_pool: pool-not-the-proving-cell

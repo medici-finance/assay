@@ -23,9 +23,12 @@ package main
 // Credential: GH_TOKEN, then GITHUB_TOKEN (what a workflow step passes), then —
 // only when neither is set and `gh` happens to be on PATH — `gh auth token
 // --hostname github.com`, so a desk machine that relied on gh's own login keeps
-// decaying. `gh` is never REQUIRED. An endpoint guessed from the origin host (a
-// GitHub Enterprise Server) gets only an enterprise credential, never the
-// github.com one (githubDecayToken). GitHub's GraphQL API refuses unauthenticated
+// decaying, unless storedLoginRefusal closes that fallback (inside an admitted
+// verifyrun or one of its rows, and wherever verifier admission would be
+// required: a verify DESK_LOOP or an attested working repository;
+// forgecredential.go). `gh` is never REQUIRED.
+// An endpoint guessed from the origin host (a GitHub Enterprise Server) gets
+// only an enterprise credential, never the github.com one (githubDecayToken). GitHub's GraphQL API refuses unauthenticated
 // calls, so no credential at all is a named could-not-check before any request,
 // never an anonymous try.
 //
@@ -79,6 +82,8 @@ var githubDecayClient = &http.Client{Timeout: 30 * time.Second}
 //
 // `gh` is consulted only when it is on PATH, and always with --hostname: a bare
 // `gh auth token` answers with the github.com login whatever host is asked about.
+// It is never consulted where storedLoginRefusal refuses: there the token
+// variables are the only source, and none is the named could-not-check.
 func githubDecayToken(endpoint string, derived bool) (token, source string, vars []string) {
 	vars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
 	if derived {
@@ -90,13 +95,13 @@ func githubDecayToken(endpoint string, derived bool) (token, source string, vars
 		}
 	}
 	host := githubCredentialHost(endpoint)
-	if host == "" {
+	if host == "" || storedLoginRefusal() != "" {
 		return "", "", vars
 	}
 	if _, err := exec.LookPath("gh"); err != nil {
 		return "", "", vars
 	}
-	if out, err := exec.Command("gh", "auth", "token", "--hostname", host).Output(); err == nil {
+	if out, err := ghGuard(exec.Command("gh", "auth", "token", "--hostname", host)).Output(); err == nil {
 		if v := strings.TrimSpace(string(out)); v != "" {
 			return v, "`gh auth token --hostname " + host + "`", vars
 		}

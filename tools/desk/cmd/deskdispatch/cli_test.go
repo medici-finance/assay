@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/gitcore/gitstub"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -230,7 +231,7 @@ func cliManifestTree(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	write(".git/HEAD", "ref: refs/heads/main\n")
+	gitstub.Repo(t, tree)
 	write("verbs/component.yaml", "component: test/desk-verbs\nversion: 0.0.1\nprovides:\n  - assay.desk.verbs\ninject:\n  required:\n    - key: test.never.provided\n  optional: []\n")
 	for i := 0; i < 600; i++ {
 		write(fmt.Sprintf("c/%02d/m%03d/component.yaml", i/40, i), fmt.Sprintf("component: test/bulk-%03d\nversion: 0.0.1\nprovides:\n  - test.bulk.%03d\ninject:\n  required: []\n  optional: []\n", i, i))
@@ -324,7 +325,7 @@ func TestCLIConfigFlow(t *testing.T) {
 }
 
 func cliFields(o dispatchOpts, override string) map[string]any {
-	return map[string]any{"tier": o.tier, "kit": o.kit, "repo": o.repo, "root": o.root, "claim-root": o.claimRoot, "model": o.model, "branch": o.branch, "brief": o.brief, "gate-human": o.gateHuman, "pr": o.pr, "prompt-file": o.promptFile, "quiet": o.quiet, "dry-run": o.dryRun, "worktree": o.worktree, "rework": o.rework, "attest-worker": o.attestWorker, "cross-repo": o.crossRepo, "attestation": o.attestation, "force-scan-override": override}
+	return map[string]any{"observation": o.observation, "tier": o.tier, "kit": o.kit, "repo": o.repo, "root": o.root, "claim-root": o.claimRoot, "model": o.model, "branch": o.branch, "brief": o.brief, "gate-human": o.gateHuman, "pr": o.pr, "prompt-file": o.promptFile, "quiet": o.quiet, "dry-run": o.dryRun, "worktree": o.worktree, "rework": o.rework, "attest-worker": o.attestWorker, "cross-repo": o.crossRepo, "attestation": o.attestation, "force-scan-override": override}
 }
 
 // regression: #2111

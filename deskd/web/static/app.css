@@ -1,0 +1,361 @@
+/* deskd console styles (the answer flow, §7.6: states, contrast, keyboard, 44px
+   targets). Colour is never the only carrier of state — every state also shows
+   a glyph and a word (set in the HTML), so this file may use colour freely. */
+
+:root {
+  --bg: #fbfbfa;
+  --fg: #1a1a1a;
+  --muted: #5b5b57;
+  --line: #e2e1dd;
+  --panel: #ffffff;
+  --gold: #b8860b;
+  --gold-bg: #fff8e6;
+  --urgent: #b02a37;
+  --working: #1f6f43;
+  --silent: #6b6b6b;
+  --focus: #2b6cb0;
+  --chip-fs: 9px;      /* chip band: 8.5–9.5px (spec §2.9) */
+  --body-fs: 12px;     /* option labels + consequence lines: ≥11px floor */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16161a; --fg: #ececec; --muted: #9a9a95; --line: #2c2c31;
+    --panel: #1e1e22; --gold: #e0b84a; --gold-bg: #2a2410;
+    --urgent: #f08a94; --working: #6fce9a; --silent: #9a9a95; --focus: #7fb0e6;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* topbar */
+.topbar { display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { font-weight: 700; text-decoration: none; color: var(--fg); }
+.crumb { color: var(--muted); margin-left: 8px; }
+.topbar-right { display: flex; gap: 12px; align-items: center; }
+.urgent-count { color: var(--urgent); font-weight: 600; }
+.urgent-count[data-urgent="0"] { color: var(--muted); font-weight: 400; }
+.total-count { color: var(--muted); }
+.session-chip { font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--line); }
+.session-chip[data-live="true"] { color: var(--working); border-color: var(--working); }
+.session-chip[data-live="false"] { color: var(--muted); }
+
+/* viewbar */
+.viewbar { display: flex; gap: 8px; align-items: center; padding: 8px 16px;
+  border-bottom: 1px solid var(--line); }
+.viewtab { text-decoration: none; color: var(--muted); padding: 4px 10px;
+  border-radius: 6px; min-height: 28px; }
+.viewtab.active { color: var(--fg); background: var(--line); font-weight: 600; }
+.filter-chip { font-size: 11px; color: var(--muted); border: 1px dashed var(--line);
+  padding: 2px 6px; border-radius: 6px; }
+
+/* queue + rows */
+main#queue { padding: 8px 0; }
+.rows { list-style: none; margin: 0; padding: 0; }
+.group-head { display: flex; gap: 8px; align-items: center; margin: 0;
+  padding: 8px 16px; font-size: 13px; color: var(--muted); text-transform: lowercase; }
+.group-name { font-weight: 700; color: var(--fg); }
+.group-count { color: var(--muted); }
+.group-urgent { color: var(--urgent); font-size: 11px; }
+.group.no-collapse .group-head::after { content: ""; }
+
+.row { padding: 8px 16px; border-bottom: 1px solid var(--line); cursor: pointer; min-height: 44px; }
+.row.selected { background: var(--panel); box-shadow: inset 3px 0 0 var(--focus); }
+.row.answered { opacity: 0.6; }
+.row.gold { background: var(--gold-bg); box-shadow: inset 3px 0 0 var(--gold); }
+.row-line { display: flex; gap: 10px; align-items: baseline; }
+.attn { font-size: 12px; white-space: nowrap; }
+.attn .glyph { font-weight: 700; }
+.attn-waiting .glyph, .attn-waiting { color: var(--gold); }
+.attn-working { color: var(--working); }
+.attn-silent { color: var(--silent); }
+.title { flex: 1; font-weight: 500; }
+.meta { display: flex; gap: 6px; align-items: center; }
+.chip { font-size: var(--chip-fs); text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+.urg-urgent { color: var(--urgent); border-color: var(--urgent); }
+.urg-gold { color: var(--gold); border-color: var(--gold); }
+.age { font-size: 11px; color: var(--muted); }
+
+/* peek panel */
+.peek { margin-top: 8px; padding: 10px 12px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; }
+.peek .situation { font-size: var(--body-fs); margin: 0 0 8px; }
+.options { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.option { display: grid; grid-template-columns: 24px 1fr; gap: 6px 8px;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; min-height: 44px;
+  align-items: center; }
+.option.staged { border-color: var(--focus); box-shadow: 0 0 0 2px var(--focus); }
+.option.staged .opt-digit::after { content: " staged"; font-size: 10px; color: var(--focus); }
+.opt-digit { font-weight: 700; text-align: center; border: 1px solid var(--line);
+  border-radius: 4px; min-width: 20px; }
+/* labels + consequence lines are ≥11px body text — the commit is judged on the
+   consequence, so it is NEVER chip-sized (spec §2.9). */
+.opt-label { font-size: var(--body-fs); font-weight: 600; grid-column: 2; }
+.opt-consequence { font-size: var(--body-fs); color: var(--muted); grid-column: 2; }
+.gold-note, .prose-answer-note, .unparsed-note { font-size: var(--body-fs); color: var(--gold); }
+.raw-body { font-size: var(--body-fs); white-space: pre-wrap; background: var(--bg);
+  padding: 8px; border-radius: 6px; overflow-x: auto; }
+.peek-chrome { display: flex; gap: 12px; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--line); font-size: 11px; }
+.blocks { list-style: none; margin: 8px 0 0; padding: 0; font-size: 11px; color: var(--muted); }
+
+/* item detail */
+.detail { max-width: 820px; margin: 0 auto; padding: 16px; }
+.detail-title { font-size: 20px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.chrome { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0 16px; }
+.situation-block .situation { font-size: 14px; }
+.platform-link, .open-item { color: var(--focus); text-decoration: none; }
+
+/* artifact trail */
+.trail { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.trail-node { display: flex; gap: 8px; align-items: center; padding: 6px 10px;
+  border-radius: 6px; }
+.trail-node.escalation { border: 2px dashed var(--gold); }
+.trail-node.stroke-solid { border-style: solid; }
+.trail-node.outcome-settled { border-color: var(--working); }
+.trail-node.outcome-open { border-color: var(--gold); }
+.node-glyph { font-weight: 700; color: var(--gold); }
+.trail-note { font-size: 11px; color: var(--muted); }
+
+/* answer block */
+.answer-block { margin-top: 16px; padding: 16px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); }
+.answer-text { width: 100%; font: inherit; padding: 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--fg); }
+.commit-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.confirm-chip { display: flex; gap: 8px; align-items: center; padding: 4px 8px;
+  border: 1px solid var(--focus); border-radius: 6px; font-size: 12px; }
+.confirm-identity { font-weight: 700; }
+.commit, .ack { min-height: 44px; padding: 0 16px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  font: inherit; cursor: pointer; }
+.commit:disabled { opacity: 0.5; cursor: not-allowed; }
+.commit:not(:disabled) { border-color: var(--focus); color: var(--focus); font-weight: 600; }
+.commit-status { font-size: 12px; }
+.commit-status.ok { color: var(--working); }
+.commit-status.err { color: var(--urgent); }
+
+/* focus visibility (§2.9): visible focus stays on the row/option throughout */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+main#queue:focus { outline: none; }
+
+.hint { position: sticky; bottom: 0; padding: 8px 16px; border-top: 1px solid var(--line);
+  background: var(--panel); font-size: 11px; color: var(--muted); }
+kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+
+/* responsive: single column, larger touch targets (frame 05, §7.6) */
+@media (max-width: 640px) {
+  .row-line { flex-wrap: wrap; }
+  .meta { width: 100%; }
+  .commit, .ack, .option { min-height: 48px; }
+}
+
+/* ==========================================================================
+   Altitude panes: ambient strip, measures tiles, portfolio strip,
+   lifecycle ramp. Colour is never the only carrier of state — every state also
+   ships a glyph + word (set in the HTML), so this section may use colour.
+   ========================================================================== */
+
+:root {
+  /* §3.5/D5 state palette. `healthy` is working/waiting-in-SLA (calm), `amber`
+     is silent / waiting-breached (a question), `fault` is failed-to-start. The
+     waiting glyph stays reserved-gold ⟡ (see [data-state="waiting"] below). */
+  --pal-healthy: var(--working);
+  --pal-neutral: var(--muted);
+  --pal-amber: #a15c00;
+  --pal-fault: var(--urgent);
+  /* lifecycle ramp — single-hue teal sequential, GENERATED FROM
+     web/static/palette.json (validate_palette.js reads the same file, so the
+     shipped ramp and the CVD gate cannot drift). CVD-validated on both surfaces. */
+  --ramp-todo: #0a3a44;
+  --ramp-inprogress: #0f5f6b;
+  --ramp-implemented: #1c8b94;
+  --ramp-verified: #48b3b6;
+  --ramp-done: #8ad6d2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --pal-amber: #e0a34a; }
+}
+
+.panebar { flex-wrap: wrap; }
+
+/* ambient metrics strip — standard chrome on every pane (§5.2 ambient rule) */
+.ambient-strip { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+  overflow-x: auto; }
+.ambient-strip[data-stale="true"] { opacity: 0.72; }
+.ambient-scope { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.04em; }
+.as-of { font-size: 11px; color: var(--muted); }
+/* stale timestamps go amber and greyed — never a confident-looking stale board (§10) */
+.as-of.stale, .as-of[data-stale="true"] { color: var(--pal-amber); opacity: 0.75;
+  text-decoration: line-through dotted; }
+
+/* a figure tile: value + query chip + hardness tag (§7.6) */
+.tile { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 8px;
+  border: 1px solid var(--line); border-radius: 6px; font-size: 12px; white-space: nowrap; }
+.tile-hardness { font-size: 12px; color: var(--muted); }
+.tile-label { color: var(--muted); }
+.tile-value { font-weight: 700; color: var(--fg); }
+.tile-value.unchecked, .tile.unchecked .tile-value { font-weight: 400; color: var(--pal-amber);
+  font-style: italic; }
+.tile.tuning { border-style: dashed; }
+.tile-tuning { font-size: var(--chip-fs); text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--pal-amber); border: 1px solid var(--pal-amber); border-radius: 4px; padding: 0 4px; }
+
+/* pane body + groups */
+.pane-body { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.pane-title { font-size: 20px; }
+.pane-sub, .group-sub { font-size: 12px; color: var(--muted); font-weight: 400; }
+.rail { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.measure-group { margin: 16px 0; }
+.measure-group h2 { font-size: 14px; margin: 0 0 8px; }
+.tiles { display: flex; gap: 8px; flex-wrap: wrap; }
+.note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.delegated-panel { margin: 16px 0; padding: 12px; border: 1px dashed var(--line); border-radius: 8px; }
+
+/* state palette (§3.5): healthy/neutral/amber/fault, glyph + word carry it too */
+.pal-healthy { color: var(--pal-healthy); }
+.pal-neutral { color: var(--pal-neutral); }
+.pal-amber { color: var(--pal-amber); }
+.pal-fault { color: var(--pal-fault); }
+/* an in-SLA waiting row is CALM — the reserved gold ⟡, not an alarm colour (§3.5) */
+[data-state="waiting"] .glyph { color: var(--gold); }
+
+/* blocked-on list (epic) */
+.blocked-list { list-style: none; margin: 8px 0; padding: 0; }
+.blocked-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0;
+  border-bottom: 1px solid var(--line); }
+.blocked-title { flex: 1; color: var(--fg); text-decoration: none; font-weight: 500; }
+
+/* portfolio running-automations strip (§3.4) */
+.cell-strip { margin: 16px 0; }
+.automations { width: 100%; border-collapse: collapse; font-size: 12px; }
+.automations th { text-align: left; color: var(--muted); font-weight: 600;
+  border-bottom: 1px solid var(--line); padding: 6px 8px; text-transform: lowercase; }
+.automations td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.automation-row.silent .col-state { color: var(--pal-amber); } /* amber-as-a-question, never green */
+.cell-tile { }
+.cell-tile.unchecked { color: var(--pal-amber); font-style: italic; }
+
+/* lifecycle ramp — single-hue sequential + 2px surface gaps (§7.6) */
+.lifecycle-legend { margin: 16px 0; }
+.lifecycle-ramp { display: flex; gap: 2px; border-radius: 6px; overflow: hidden; max-width: 640px; }
+.lifecycle-ramp .seg { flex: 1; padding: 8px 6px; font-size: 11px; text-align: center;
+  color: #f5fbfb; white-space: nowrap; }
+.seg-todo { background: var(--ramp-todo); }
+.seg-inprogress { background: var(--ramp-inprogress); }
+.seg-implemented { background: var(--ramp-implemented); }
+.seg-verified { background: var(--ramp-verified); color: #06282c; }
+.seg-done { background: var(--ramp-done); color: #06282c; }
+
+/* responsive: portfolio table becomes stacked cards below 640px (§7.6) */
+@media (max-width: 640px) {
+  .automations, .automations thead, .automations tbody, .automations tr, .automations td { display: block; }
+  .automations thead { display: none; }
+  .automations tr { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; padding: 4px; }
+  .ambient-strip { flex-wrap: nowrap; }
+}
+
+/* ---- Ask Assay pane (the service contract, §7.5 / §7.6) -------------------- */
+/* 44px targets, ≥11px type, and state carried by a word as well as by colour:
+   `could-not-check` is spelled out on every refused figure, never signalled by
+   an amber tint alone. */
+.ask-form { display: flex; gap: 8px; margin: 12px 0 4px; }
+.ask-input { flex: 1; min-height: 44px; padding: 0 12px; font-size: 14px;
+  color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; }
+.ask-submit { min-height: 44px; min-width: 88px; padding: 0 16px; font-size: 14px;
+  color: var(--panel); background: var(--focus); border: 1px solid var(--focus);
+  border-radius: 8px; cursor: pointer; }
+.ask-form kbd, .note kbd { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; color: var(--muted); }
+
+/* the three distinct renders — each says something different (§7.6) */
+.ask-state { margin: 16px 0; padding: 12px; border: 1px dashed var(--line); border-radius: 8px; }
+.ask-loading { border-style: solid; }
+.ask-unknown { border-color: var(--gold); background: var(--gold-bg); }
+.unchecked-token { color: var(--gold); font-style: italic; font-size: var(--body-fs); margin: 0 0 6px; }
+
+.transcript { margin: 16px 0; display: grid; gap: 12px; }
+.turn { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.turn[data-role="you"] { background: transparent; }
+.turn-role { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+/* Model text. pre-wrap so a reply's own line breaks survive without any markup
+   being interpreted — the characters are shown, never parsed. */
+.turn-text { margin: 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.figures { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.figure-chip, .figure-nochip { display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 4px 10px; font-size: 12px;
+  border: 1px solid var(--line); border-radius: 6px; text-decoration: none; color: var(--fg); }
+.figure-chip:hover, .figure-chip:focus-visible { border-color: var(--focus); }
+.figure-chip.unchecked, .figure-nochip { border-color: var(--gold); border-style: dashed; }
+.figure-key { color: var(--muted); font-size: 11px; }
+.figure-value { font-weight: 700; }
+.figure-value.unchecked { font-weight: 400; font-style: italic; color: var(--gold); }
+.no-figures { margin: 10px 0 0; }
+
+.tool-calls { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.tool-calls summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.tool-call-list { list-style: none; margin: 0; padding: 0 0 0 4px; display: grid; gap: 3px; }
+.tool-call-list li[data-ok="false"] { color: var(--gold); }
+.backend-note { margin-top: 12px; }
+
+/* ==========================================================================
+   Spatial fleet map (the service contract, one-week experiment). Repo lanes on
+   one pan/zoom canvas; tokens carry the SAME .pal-* state palette as every
+   other pane (§3.5/D5), never a fifth color. Staleness is a SEPARATE overlay
+   dimension on the LANE (fetch age), not folded into a token's own state
+   color. Read-only: this section styles hover/pan/zoom chrome
+   only, nothing here is a control that writes.
+   ========================================================================== */
+
+.fleet-canvas-controls { display: flex; gap: 6px; margin: 10px 0; }
+.fleet-canvas-controls button { min-height: 36px; min-width: 36px; padding: 4px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  color: var(--fg); font-size: 14px; cursor: pointer; }
+.fleet-canvas-controls button:hover, .fleet-canvas-controls button:focus-visible { border-color: var(--focus); }
+
+.fleet-viewport { border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  height: min(70vh, 640px); cursor: grab; background: var(--panel); }
+.fleet-viewport.panning { cursor: grabbing; }
+.fleet-canvas { transform-origin: 0 0; display: flex; gap: 16px; padding: 16px;
+  width: max-content; transition: transform 0.05s linear; }
+
+.fleet-lane { min-width: 220px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px; background: var(--bg); flex-shrink: 0; }
+.fleet-lane.unchecked { border-style: dashed; }
+/* the lane's own fetch-age staleness — orthogonal to any token's state color */
+.fleet-lane.stale { border-color: var(--pal-amber); }
+.fleet-lane-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.fleet-lane-repo { font-weight: 600; font-size: 13px; }
+.fleet-lane-age { font-size: 11px; color: var(--muted); }
+.fleet-lane-age.stale, .fleet-lane-age[data-stale="true"] { color: var(--pal-amber);
+  font-weight: 600; }
+.fleet-lane-age.unchecked { color: var(--pal-amber); font-style: italic; }
+.fleet-lane-empty { margin: 4px 0 0; }
+
+.fleet-tokens { display: flex; flex-direction: column; gap: 6px; }
+.fleet-token { display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); font-size: 12px; }
+.fleet-token.pal-healthy { border-left: 4px solid var(--pal-healthy); }
+.fleet-token.pal-neutral { border-left: 4px solid var(--pal-neutral); }
+.fleet-token.pal-amber { border-left: 4px solid var(--pal-amber); }
+.fleet-token.pal-fault { border-left: 4px solid var(--pal-fault); }
+.fleet-token.token-stale { border-style: dashed; border-color: var(--pal-amber); }
+.fleet-token-key { font-weight: 600; }
+.fleet-token-holder { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-token-age { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.fleet-legend { margin-top: 12px; }
+.fleet-legend span { margin-right: 3px; }

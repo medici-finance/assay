@@ -1,8 +1,7 @@
 package main
 
 import (
-	"regexp"
-	"strings"
+	"github.com/medici-finance/assay/statusgen/workref/trailers"
 )
 
 // prlink is the tree-side half of the PR→brief link (derived-board/02). deskpr refuses
@@ -31,11 +30,6 @@ const (
 	PRLinkMultiLinked PRLinkVerdict = "multi-linked"
 )
 
-var (
-	rePRLinkBrief = regexp.MustCompile(`^[ \t]*Brief:[ \t]*\S`)
-	rePRLinkFence = regexp.MustCompile("^[ \t]*```")
-)
-
 // ClassifyPRLink maps each PR number to its link verdict, counting Brief: trailer
 // lines outside fenced code blocks (a trailer inside a code sample is documentation,
 // not a link — same grammar as deskkit.ParseTrailers).
@@ -43,20 +37,15 @@ func ClassifyPRLink(records []PRLinkRecord) map[int]PRLinkVerdict {
 	out := make(map[int]PRLinkVerdict, len(records))
 	for _, r := range records {
 		n := 0
-		inFence := false
-		for _, raw := range strings.Split(r.Body, "\n") {
-			if rePRLinkFence.MatchString(raw) {
-				inFence = !inFence
-				continue
-			}
-			if !inFence && rePRLinkBrief.MatchString(raw) {
+		for _, t := range trailers.Scan([]byte(r.Body)) {
+			if t.Kind == trailers.TrailerBrief {
 				n++
 			}
 		}
-		switch {
-		case n == 0:
+		switch n {
+		case 0:
 			out[r.Number] = PRLinkUnlinked
-		case n == 1:
+		case 1:
 			out[r.Number] = PRLinkLinked
 		default:
 			out[r.Number] = PRLinkMultiLinked

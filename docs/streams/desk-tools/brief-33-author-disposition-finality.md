@@ -120,6 +120,11 @@ not new evidence about the disposition, though it can be new evidence about the 
   CR clears at the next push or by the human — the Accept move's flip-gate interaction is
   stated in full above, so the reviewer never has to guess.
 
+files:
+- `tools/desk/cmd/deskdispatch/references/review-prompt.md` — Task 1 (the clause, outside the lane markers)
+- `plugins/assay/skills/pr-review-desk/SKILL.md` — Task 2
+- `changelog/desk-tools-33.md` (planned) — Task 3
+
 ## Task
 
 **Task 1 — the clause.** Add the disposition-finality clause to
@@ -139,11 +144,6 @@ its new-evidence exception.
 reviewer's bar stating the rule and pointing at the clause's home.
 
 **Task 3 — changelog fragment.** changelog/desk-tools-33.md (planned), one bullet.
-
-files:
-- `tools/desk/cmd/deskdispatch/references/review-prompt.md` — Task 1 (the clause, outside the lane markers)
-- `plugins/assay/skills/pr-review-desk/SKILL.md` — Task 2
-- changelog/desk-tools-33.md (planned) — Task 3
 
 ## Verify (executable — no prose-only DoD items)
 

@@ -1,0 +1,1 @@
+- Require fresh full-inventory permission recovery and explicit native response limits before mirror activation; bind the independent Store and request-order controls to the acceptance briefs.

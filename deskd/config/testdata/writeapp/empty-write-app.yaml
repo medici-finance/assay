@@ -1,0 +1,20 @@
+# Verify row 3 fixture (the service contract): a PRESENT-but-blank write_app: "" is a
+# config error, mirroring the app-non-empty rule. cellsvalidate must exit
+# non-zero on this file. (Omitting the key entirely is legal — that is the
+# common back-compat case; blank is the error.)
+cells:
+  - name: writeapp-empty-fixture
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [deepseek-chat, glm-5.2]
+        app: assay-reviewer-app
+        write_app: ""
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none

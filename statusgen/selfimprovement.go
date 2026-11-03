@@ -377,7 +377,7 @@ type selfImprovementDetailFetcher func(ownerRepo string, number int) (selfImprov
 // degrades to a could-not-check on parse rather than walking a cursor), and
 // the merged closing PR's author via closedByPullRequestsReferences. Actor
 // __typename is carried so a Bot actor is re-suffixed "[bot]" the same way
-// ghIssueMetricLister and the trust query already do (GraphQL renders a Bot's
+// deskreadIssueMetricLister and the trust query already do (GraphQL renders a Bot's
 // bare slug, unlike REST's "<name>[bot]").
 const selfImprovementDetailQuery = `query($owner:String!,$name:String!,$number:Int!){` +
 	`repository(owner:$owner,name:$name){issue(number:$number){` +
@@ -397,9 +397,9 @@ func ghSelfImprovementDetailFetcher(ownerRepo string, number int) (selfImproveme
 	if !ok || owner == "" || name == "" {
 		return selfImprovementDetail{}, fmt.Errorf("bad repo %q", ownerRepo)
 	}
-	out, err := exec.Command("gh", "api", "graphql",
+	out, err := ghGuard(exec.Command("gh", "api", "graphql",
 		"-f", "query="+selfImprovementDetailQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number)).Output()
+		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number))).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -539,7 +539,7 @@ func gatherSelfImprovementDetails(records []issueMetricRecord, fetch selfImprove
 // Self-contained diagnostic sub-command — never reads or writes STATUS.md,
 // same discipline as --issues/--dora.
 func runSelfImprovement(root string, asJSON, series bool, staleDays int, teamLoginsCSV string) int {
-	records, repos, listCouldNotCheck := gatherIssueRecords(ghIssueMetricLister)
+	records, repos, listCouldNotCheck := gatherIssueRecords(defaultIssueMetricLister)
 	cfg := assembleIssueConfig(staleDays, teamLoginsCSV)
 	classifiable, details, detailCouldNotCheck := gatherSelfImprovementDetails(records, selfImprovementDetailLister)
 	couldNotCheck := append(append([]string{}, listCouldNotCheck...), detailCouldNotCheck...)

@@ -34,7 +34,7 @@ consumers:
 
 ## Context
 
-files: statusgen/difflint.go, statusgen/difflint_test.go, statusgen/main.go, docs/verify-row-strength.md, changelog/notice-ratchet.md
+files: statusgen/difflint.go, statusgen/difflint_test.go, statusgen/noticeratchet.go, statusgen/noticeratchet_test.go, statusgen/main.go, docs/verify-row-strength.md, changelog/notice-ratchet.md
 facts:
 - Rule membership, exclusions and derivable/author-owed dispositions are defined by the [public rule-family inventory](README.md#public-rule-family-inventory); use that shared inventory for this brief's Task and Verify acceptance.
 - runDiffLintOne currently compares head PROBLEMs with base PROBLEMs and passes head NOTICEs through unchanged.

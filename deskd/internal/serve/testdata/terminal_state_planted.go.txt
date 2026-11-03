@@ -1,0 +1,34 @@
+// Planted second instances for TestTerminalStateFrameClassGuard. Not compiled
+// (the .go.txt suffix keeps it out of every build and toolchain walk); the
+// guard parses it and MUST report all three functions below. Duplicate state
+// declarations are intentional: these are separate mutations, parsed only.
+package serve
+
+import "github.com/medici-finance/assay/deskd/internal/contract"
+
+// pollCase is the r7 shape: the poll tick builds its own state frame, stamped
+// with whatever cursor the stream holds, while a wake may still be pending.
+func (st *terminalStream) pollCase() bool {
+	state, title, at := st.f.State()
+	return st.emit(contract.EventTerminalState, contract.TerminalStateData{State: string(state), Title: title, At: at})
+}
+
+// state is the owner with its drain removed — the pre-fix body.
+func (st *terminalStream) state(force bool) bool {
+	state, title, at := st.f.State()
+	if !force && st.sentState && string(state) == st.lastState && title == st.lastTitle {
+		return true
+	}
+	st.sentState, st.lastState, st.lastTitle = true, string(state), title
+	return st.emit(contract.EventTerminalState, contract.TerminalStateData{State: string(state), Title: title, At: at})
+}
+
+// state with drain before snapshot: ingestion between the two calls leaves
+// the new title stamped with the cursor from before its bytes.
+func (st *terminalStream) state(force bool) bool {
+	if !st.drain(true) {
+		return false
+	}
+	state, title, at := st.f.State()
+	return st.emit(contract.EventTerminalState, contract.TerminalStateData{State: string(state), Title: title, At: at})
+}

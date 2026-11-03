@@ -1,0 +1,9 @@
+{
+  "encoding": "typed-v2-malformed",
+  "options": null,
+  "options_rev": "",
+  "problems": [
+    "marker present but no `#### `\u003cid\u003e` — \u003clabel\u003e` heading parsed (note: the id/label separator is U+2014 EM DASH, not an ASCII hyphen)"
+  ],
+  "confidence": "could-not-check"
+}

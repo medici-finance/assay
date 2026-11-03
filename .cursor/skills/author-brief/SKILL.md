@@ -2,7 +2,7 @@
 name: author-brief
 description: >-
   Author and structure a phase plan as self-contained briefs organized into dependency
-  waves, with a critical path. Use this WHENEVER the user wants to plan multi-step work and split it
+  waves, with a critical path and mappings to delivery milestones. Use this WHENEVER the user wants to plan multi-step work and split it
   up: "break this into briefs and waves", "create a phase plan", "do for phase N what we did for
   phase 1", "this brief is too big, split it", "turn this into tasks with dependencies", or when
   scoping a body of work that several people/agents will pick up. Encodes a brief format
@@ -53,6 +53,29 @@ and continue/adapt/hold rather than assume the authoring snapshot is still curre
 Use the explicit manual bootstrap until the shared operation is shipped and supported.
 Do not rewrite completed Evidence or let a draft proposal veto approved work.
 
+## Map work to delivery milestones
+
+When the source defines delivery milestones or the request needs staged outcomes,
+read the [shared milestone authoring procedure](../../references/milestone-authoring.md),
+including its support check and **Author-brief** section. Map existing/new briefs to
+`<stream>:m-<NN>` outcomes and criteria; prefer `<stream>:b-<NN>` for new briefs
+with optional `@<brief-version>` on references; use full
+`<cell>:<repo>:<stream>:b-<NN>` IDs in brief definitions. Once the pinned generator
+and required readers support brief §3.8, write colon-only forms and preserve legacy
+aliases as compatibility reads. Until then use
+supported legacy IDs for executable briefs and `b-` labels in scoping proposals;
+disclose the limitation. Do not rewrite existing identities or Evidence. Membership is
+owned by the milestone, not a second brief field. Separate actual brief start needs
+from prerequisites for final outcome acceptance. If the source lacks a consequential
+outcome/scope decision, reconcile it with `author-spec` before committing affected work;
+continue independent authoring. Unsupported declarations remain proposals, not live YAML.
+
+For a source using simulated dependencies, apply the shared procedure's **Outcomes
+delivered with simulated dependencies** section. Preserve its real/substitute matrix
+and evidence limits in the affected briefs. Separate profile setup, contract/fake work
+and the joined real-consumer qualification where they have different owners; record
+actual producer prerequisites rather than adding another controller to hide a gap.
+
 ## The most important judgment call: find the REAL head of the critical path
 
 The critical path is the chain that, if it slips, slips everything. The recurring failure is putting
@@ -62,6 +85,8 @@ upstream bug — tracked elsewhere — was fixed; that bug was the true head and
 Before you finalize the order: for each "smallest unblocking move," **verify it actually works** —
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
+State the head and how you established it in one passage: what you read to confirm it, or that it
+is unproven and is the head for that reason.
 
 ## Carry quality obligations into execution
 
@@ -107,9 +132,18 @@ author can otherwise get wrong. Run `statusgen newbrief --help` for the flags.
 
 ### Brief file template (data-first)
 
+Select the identifier/schema pair before writing. With negotiated prefixed-label
+support, write `brief: <cell>:<repo>:<stream>:b-<NN>` and keep the authored revision
+in `version:`. Dependency refs may use `:b-<NN>@<version>`; no suffix binds the selected
+source snapshot. Use that supporting schema for references
+and dependency fields. The template below shows the currently supported legacy
+`brief-v2` pair; do not combine its schema with an unsupported `b-` identifier.
+The unprefixed label is deprecated for new authoring after adoption, not invalid for
+legacy consumers. Existing canonical fullIds and filenames remain unchanged (brief §3.8).
+
 ```markdown
 ---
-brief: <stream>/<NN>                # typed ID, matches stream README table row
+brief: <cell>:<repo>:<stream>:<NN>   # current brief-v2 fullId; board label is <stream>/<NN>
 title: <one line>
 why: <prose>                        # REQUIRED for every NEW brief — one to three lines a non-engineer
                                     # could read and justify the work from. Not the WHAT (that's title
@@ -576,11 +610,19 @@ it is an authoring convention only.
 | `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `no-output-assertion` | an Expect of exactly `exit 0` on a command whose output nobody asserts on (use `exit 0; output contains "<literal>"` or `exit 0; <N> lines`) | advisory |
+| `pattern-containment-set` | a containment list that is not exactly the five containment values, on a node that is not an effect-free human decision, with a pre-selected default, or a signal pattern without exactly one containment node — containment could become an automated act | fatal |
+| `pattern-culprit-record` | a culprit record whose fields are not the fixed six, or whose default or withheld class is not judgement, or whose withheld file is not null — a withheld or unresolved culprit could route to the mechanical exit | fatal |
+| `pattern-decision-options` | `options`, `default` or `containment` on a node that is not a decision, a default outside the node's options, or a duplicate option — a non-decision node would carry a person's choice | fatal |
 | `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |
 | `pattern-effect-target-not-owned` | a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary | fatal |
 | `pattern-join-not-check` | a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check | fatal |
+| `pattern-judgement-no-default` | a signal class whose judgement exit is not a human decision with options and a default among them — the person closing the decision gets no recommended next step | fatal |
+| `pattern-remedy-set-open` | a signal class listing a remedy outside the closed remedy set, a mechanical exit with no remedy or not kind effect, or no `.github/` refused-path while any node declares effects — an automated fix could touch gate configuration | fatal |
+| `pattern-replay-not-mandatory` | a signal pattern with no node producing the reserved `replay-fixture` artifact, or a producer that owes it under no mandatory command claim — a fix could land with no reproduction of the failure | fatal |
 | `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
 | `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
+| `pattern-signal-admission-open` | a signal class admitting a trigger outside schedule/push, push from a ref other than refs/heads/main, or no admission at all while any node in the pattern declares effects — a run of unchecked provenance could reach an automated effect | fatal |
+| `pattern-signal-input` | a signal pattern whose signal input is malformed or off an entry node, whose input classes differ from the declared signal classes, that has a node unreachable from the signal input, or whose class names a missing exit or an incomplete gate-red record — a class could escape the rules that range over the input | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `prose-led-command` | a Command cell whose lift — the `cmd:`-marked command, else the first code span — is not a command: a prose mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), a shell comment, or a shell no-op (`:`, a cmd.exe `REM` / `::` remark); verifyrun and the desk executors record the row could-not-run. Fix a mention by marking the real command with a `cmd:` code span; fix a comment or no-op, marked or not, by replacing it with the command that performs the check | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
@@ -767,7 +809,12 @@ could-not-check runs serial.
    move" and a warning if any tempting-but-wrong first step is a dead end.
 3. **Dependency waves** — `Wave 0: [..]  Wave 1: [..]←0  …`, plus the one-line critical path
    (`0→8→1→2→5`).
-4. (Optional) "Before starting" prereqs and "Shared conventions" the briefs inherit.
+4. **Delivery milestones when applicable** — link the canonical records and show outcome,
+   contributor wave span, remaining work, acceptance outstanding and prerequisite holds
+   per the shared procedure. Keep generated projections in their own supported region;
+   do not add milestone rows to the Briefs table or hand-edit generated cells. Until
+   supported, put the proposed mapping in the scoping document and link it from authored prose.
+5. (Optional) "Before starting" prereqs and "Shared conventions" the briefs inherit.
 
 ## When a spec is approved: file the authoring follow-on in the same motion
 
@@ -785,12 +832,17 @@ layer; the floor does not wait on one.)
 
 ## Working method
 
-1. **Inventory the work** — list the discrete units. Each becomes a brief; keep them roughly equal-
+1. **Reconcile outcomes and inventory the work** — preserve the source's milestone promises;
+   map criterion coverage to existing briefs before adding new units. Follow the shared
+   procedure for milestone dependencies, versions and reader support. Each new unit becomes
+   a brief; keep them roughly equal-
    sized (split anything too big — e.g. one brief doing two distinct roles becomes two).
 2. **Map dependencies** — for each unit, what must exist first (`Depends on`) and what it enables
    (`Unblocks`). This gives the waves (Wave 0 = no deps; Wave N = depends only on <N).
-3. **Derive + verify the critical path** — the longest dependency chain. Verify its head per the
-   judgment-call section above.
+3. **Derive + verify the critical path** — for each selected milestone, include its contributing
+   work, actual execution dependencies and final acceptance prerequisites. Validate mixed-graph
+   cycles and qualify paths with unknown root/evidence coverage. Verify the head per the
+   judgment-call section above; a wave summary alone is not readiness.
 4. **Write the README first** (table + path + waves), then the briefs. Cross-link both directions.
 5. **Convert relative dates to absolute** (e.g. "by next week" → the actual date) — these docs
    outlive the conversation.
@@ -807,7 +859,7 @@ layer; the floor does not wait on one.)
    part of authoring the brief.
 8. **Link the authoring PR with `Authors:`, never `Brief:`.** The PR that writes brief files
    carries exactly one link line `Authors: <stream>/<NN>[, <stream>/<NN> …]` naming every brief it
-   adds (or `Issue: #<N>` when the authoring answers an issue). `Brief: <stream>/<NN>` means the
+   adds (or `Issue: #<N>` when the authoring answers an issue, or `Fixes: #<N>` when merging the authoring PR should close it — never for an issue carrying `needs-decision` or `human-decided`, or any decision-gate issue; those link with `Issue: #<N>`). `Brief: <stream>/<NN>` means the
    PR DELIVERS that brief: the dispatcher's phantom check, the planner and the derived board all
    read it that way, so an authoring PR carrying it makes the brief it just wrote look delivered
    the moment it merges, and the brief is never dispatched. `deskpr create` refuses a `Brief:`

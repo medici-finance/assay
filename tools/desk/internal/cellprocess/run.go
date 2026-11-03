@@ -8,9 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
@@ -75,7 +77,19 @@ func observeLaunch(ctx context.Context, started func(int) error) context.Context
 // One custody boundary covers cadence, interactive and detached tmux wrappers.
 // A crash or uncertain child cleanup leaves a durable active-cache record.
 func withCache(env []string, child func() (int, bool, error)) (int, bool, error) {
+	began := time.Now()
 	lease, err := cellcache.Acquire(env)
+	enabled := false
+	for _, value := range env {
+		if k, v, ok := strings.Cut(value, "="); ok && k == "ASSAY_TELEMETRY" {
+			enabled = v == "1"
+		}
+	}
+	phaseCode := deskkit.ExitOK
+	if err != nil {
+		phaseCode = deskkit.ExitCodeOf(err)
+	}
+	deskkit.PerfStepEnabled(enabled, "cellctl", "launch-cache-enrollment", time.Since(began), phaseCode)
 	if err != nil {
 		return -1, false, err
 	}

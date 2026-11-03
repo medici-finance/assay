@@ -1,0 +1,18 @@
+{{define "teams.html"}}{{template "panehead" "teams"}}
+<body class="pane teams">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+{{template "panenav" "teams"}}
+{{template "ambient" .Ambient}}
+<main class="pane-body">
+  <h1 class="pane-title">Teams <span class="pane-sub">work by WHO, not WHAT (§3.1)</span></h1>
+  <section class="delegated-panel">
+    {{template "tile" .Delegated}}
+    {{template "tile" .HandoffWaits}}
+    <p class="note">The orthogonal pivot — per-team queue and WIP, the gates each team owns, and the
+      cross-team handoff waits TOC exists to name — needs an owning-team dimension the escalation
+      index does not carry in this build (§3.1). It renders could-not-check, never an empty team
+      list, while the team-scoped ambient strip above renders live.</p>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body></html>{{end}}

@@ -393,6 +393,10 @@ type OutcomeReceiptInput struct {
 	// when the record carries none, so a bare #N blocker_ref resolves against the repository the
 	// record lands in — the same repository the writer's own reference check resolved it in.
 	Repo string
+	// SiblingSources is the attested source commit of each further sibling
+	// repository the brief declares, by owner/repo (#4876): one repo-source key
+	// each. It only ever comes from the run's attestation binding.
+	SiblingSources map[string]string
 }
 
 // checkNonPassBlocker refuses a non-pass record whose caller-supplied blocker fields cannot
@@ -454,9 +458,10 @@ func CheckSuppliedReceipt(r WakeReceipt) error {
 // A pass record is returned unchanged. A verify-fail or blocked record gets a complete
 // verify-wake-v1 receipt:
 //
-//   - inputs: one file:<path> key per declared path that exists at the record's sha (every
-//     file under a declared directory), read from the brief AT that sha; plus
-//     file:<brief-path> hashed as the brief lands; plus tool = in.ToolVersion;
+//   - inputs: one scope: membership key per declaration and one file:<path> key per declared
+//     file that exists at the record's sha, read from the brief AT that sha; a declared
+//     directory is one file:<dir>/ key over every member (DirInputDigest) unless it holds the
+//     brief; plus file:<brief-path> hashed as the brief lands; plus tool = in.ToolVersion;
 //   - wake_predicate relevant-input-changed, wake_schema, a stable receipt_id, tool_version;
 //   - repo = in.Repo (the landing repository) when the record names none, so the planner reads
 //     a bare #N blocker_ref in the repository the record lands in.
@@ -503,17 +508,58 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 	if err != nil {
 		return nil, err
 	}
-	scope, err := ResolveDeclaredScope(declarations, tree)
+	// A ../<sibling>/ declaration is never read from this tree; it is covered
+	// below by that sibling's own attested source commit, or refused.
+	local, siblings := SplitSiblingDeclarations(declarations)
+	scope, err := ResolveDeclaredScope(local, tree)
 	if err != nil {
 		return nil, err
 	}
 	inputs := scope.Shapes
-	for _, f := range scope.Files {
+	digests := map[string]string{}
+	digestOf := func(f string) (string, error) {
+		if d, ok := digests[f]; ok {
+			return d, nil
+		}
 		b, rerr := tree.ReadFile(f)
 		if rerr != nil {
-			return nil, Unverifiable("could-not-check: inputs — cannot read "+f+" at "+sha, rerr)
+			return "", Unverifiable("could-not-check: inputs — cannot read "+f+" at "+sha, rerr)
 		}
-		inputs[inputKeyFilePrefix+f] = Sha256Hex(b)
+		digests[f] = Sha256Hex(b)
+		return digests[f], nil
+	}
+	// #4865: a declared directory's members are covered by ONE file:<dir>/ digest over
+	// their paths and content, never by one file:<member> key each, so no member name can
+	// put a 64-hex digest after a credential-shaped identifier. A directory holding the
+	// brief keeps one key per member: the brief's own file: key is the one input a pending
+	// landing substitutes, and the brief's bytes must not hide inside a directory digest.
+	folded := map[string]bool{}
+	for dir, members := range scope.Dirs {
+		holdsBrief := false
+		for _, f := range members {
+			holdsBrief = holdsBrief || f == in.BriefPath
+		}
+		if holdsBrief {
+			continue
+		}
+		d, derr := DirInputDigest(members, digestOf)
+		if derr != nil {
+			return nil, derr
+		}
+		inputs[DirInputKey(dir)] = d
+		for _, f := range members {
+			folded[f] = true
+		}
+	}
+	for _, f := range scope.Files {
+		if folded[f] {
+			continue
+		}
+		d, derr := digestOf(f)
+		if derr != nil {
+			return nil, derr
+		}
+		inputs[inputKeyFilePrefix+f] = d
 	}
 	inputs[inputKeyFilePrefix+in.BriefPath] = Sha256Hex(in.LandedBrief)
 	inputs[inputKeyTool] = in.ToolVersion
@@ -523,6 +569,17 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 			return nil, Refused("incomplete cross-repository outcome source")
 		}
 		inputs[InputKeyRepoSourcePrefix+in.SourceRepo] = in.Source
+	}
+	for repo, commit := range in.SiblingSources {
+		_, commitErr := hex.DecodeString(commit)
+		if !IsAllowedRepo(repo) || len(commit) != 40 || commitErr != nil || in.SourceRepo == "" ||
+			strings.EqualFold(repo, in.Repo) || strings.EqualFold(repo, in.SourceRepo) || !declaresSibling(siblings, repo) {
+			return nil, Refused("incomplete cross-repository sibling source " + repo)
+		}
+		inputs[InputKeyRepoSourcePrefix+repo] = commit
+	}
+	if err := CheckSiblingCoverage(siblings, inputs); err != nil {
+		return nil, err
 	}
 
 	id := Sha256Hex([]byte(strings.Join([]string{r.Brief, sha, r.TS, r.Outcome, r.BlockerKind, r.BlockerRef}, "\x00")))

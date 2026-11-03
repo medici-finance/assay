@@ -1,0 +1,29 @@
+{
+  "test": "go test ./internal/runnercmds -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL - a gate row's program becomes an instrument",
+    "file": "internal/runnercmds/runnercmds.go",
+    "old": "\t\t\tif class != \"check\" && class != \"check:ci\" {",
+    "new": "\t\t\tif false && class != \"check\" && class != \"check:ci\" {"
+  },
+  "mutations": [
+    {
+      "name": "a refused cell names an instrument",
+      "file": "internal/runnercmds/runnercmds.go",
+      "old": "\t\t\tif verifycmd.Refused(cell(cmdCol)) != \"\" {",
+      "new": "\t\t\tif false && verifycmd.Refused(cell(cmdCol)) != \"\" {"
+    },
+    {
+      "name": "a suffixed row id names an instrument",
+      "file": "internal/runnercmds/runnercmds.go",
+      "old": "\t\t\tif _, err := strconv.Atoi(cell(numCol)); err != nil {",
+      "new": "\t\t\tif _, err := strconv.Atoi(cell(numCol)); false && err != nil {"
+    },
+    {
+      "name": "an escaped pipe is left in the command",
+      "file": "internal/runnercmds/runnercmds.go",
+      "old": "verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol)))",
+      "new": "verifycmd.Lift(cell(cmdCol))"
+    }
+  ]
+}

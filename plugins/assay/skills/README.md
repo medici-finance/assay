@@ -23,6 +23,7 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 | ask-decision | `assay:ask-decision` | Puts the pending human decisions to the driver one at a time — context, options with a recommended default, reply shape, verification — and relays each ruling back onto its issue |
 | human-runsheet | `assay:human-runsheet` | Writes the acts owed to the driver — not decisions, acts only the driver can perform — as exact `! <command>` lines with why, what was done instead, and the resume step |
 | session-coach | `assay:session-coach` | Reviews a session's own history and writes a three-part coaching note (what was worked on, what it cost with one cheaper routing choice, one process correction) outside any repository, never committed and never into a memory file |
+| trace-path-to-live | `assay:trace-path-to-live` | Turns an objective into its prerequisite brief graph across every stream root — live status, gate, PR, claim, eligibility, critical path — and a ranked move list per owning role, rendered as one self-contained page; read-only |
 
 These are the portable, domain-neutral methodology skills every Assay bundle ships. A project
 authoring its own project-local skills follows the same naming convention above and keeps them in

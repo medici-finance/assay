@@ -28,11 +28,12 @@ id: 8b86c40d-4687-4c5c-b80a-69d4fc4000e4
 # Brief 03 — Self-improvement metric (self-healed vs human-touched)
 
 ## Context
-files: extends `statusgen/issues.go` (the statusgen/02 deliverable) with a self-improvement
-classifier + segment; `statusgen/issues_test.go` (planned).
+files:
+- **extends** `statusgen/issues.go` (the statusgen/02 deliverable, with a self-improvement classifier + segment)
+- `statusgen/issues_test.go` (planned)
 
-This brief builds on statusgen/02's `--issues` infrastructure (author classification + the
-`raised-by:<desk>` label). Where statusgen/02 leaves the by-desk cut `unattributed` until the desks
+This brief builds on statusgen/02's `--issues` infrastructure (author classification +
+the `raised-by:<desk>` label). Where statusgen/02 leaves the by-desk cut `unattributed` until the desks
 stamp the label, this metric degrades the same way — a resolved issue with no raised-by stamp is
 classified from the author signal alone.
 

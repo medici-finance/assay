@@ -44,6 +44,14 @@ const (
 	VisibilityPublic
 	// VisibilityPrivate — the ONLY value that does not risk-class on visibility alone.
 	VisibilityPrivate
+	// VisibilityInternal — visible to every account on the forge instance (GitHub
+	// Enterprise and GitLab `internal`). It is NOT private: every consumer that asks
+	// "is this private?" answers no, so it is risk-classed, scanned and stamped exactly
+	// like a public repo. It exists so the configured claim can NAME what the forge
+	// reports — the public-repo write gate requires the two to agree — rather than
+	// forcing an internal repo to be mislabelled `:public`. Appended after Private so
+	// no existing value is renumbered.
+	VisibilityInternal
 )
 
 func (v Visibility) String() string {
@@ -52,21 +60,26 @@ func (v Visibility) String() string {
 		return "public"
 	case VisibilityPrivate:
 		return "private"
+	case VisibilityInternal:
+		return "internal"
 	default:
 		return "unknown"
 	}
 }
 
-// ParseVisibility maps a GitHub API `visibility` string to a Visibility. ONLY the two
-// exact strings "public" and "private" parse. Anything else — "internal", "", a future
-// value, a truncated read — is VisibilityUnknown, which fails closed at every consumer
-// and is reported as drift rather than guessed at.
+// ParseVisibility maps a forge API `visibility` string to a Visibility. ONLY the three
+// exact strings "public", "private" and "internal" parse. Anything else — "", a re-cased
+// or padded read, a future value, a truncated read — is VisibilityUnknown, which fails
+// closed at every consumer and is reported as drift rather than guessed at. "internal"
+// parses to VisibilityInternal, which is not private, so recognising it widens nothing.
 func ParseVisibility(s string) Visibility {
 	switch s {
 	case "public":
 		return VisibilityPublic
 	case "private":
 		return VisibilityPrivate
+	case "internal":
+		return VisibilityInternal
 	default:
 		return VisibilityUnknown
 	}
@@ -82,7 +95,7 @@ func ParseVisibility(s string) Visibility {
 // widens the blast radius of every desk tool, so the effective value is echoed on every
 // run (P3) — a change appears in run output and CI history rather than only in settings.
 //
-// The value format is `owner/name[:ci|:no-ci][:public|:private]`, and BOTH policy
+// The value format is `owner/name[:ci|:no-ci][:public|:private|:internal]`, and BOTH policy
 // defaults fail closed: a repo configured with no CI token is CI-required (an empty
 // status rollup then reads as "not reported yet", never as green), and one with no
 // visibility token is VisibilityUnknown, which risk-classes every PR on it.
@@ -240,7 +253,7 @@ func visibilityDriftAgainst(policy map[string]repoPolicy, observed map[string]st
 		}
 		if got == VisibilityUnknown {
 			out = append(out, fmt.Sprintf("%s: API returned unrecognised visibility %q (configured %q) — "+
-				"only \"public\"/\"private\" are understood", repo, raw, want))
+				"only \"public\"/\"private\"/\"internal\" are understood", repo, raw, want))
 			continue
 		}
 		if got != want {
@@ -382,7 +395,7 @@ func BoardScopeError() error {
 				"Source consulted: %s (class %s).\n"+
 				"CI: set the repository or organization Actions variable %s.\n"+
 				"Locally: add it to %s, mode 0600 — write-class tools do NOT read the environment.\n"+
-				"Format: owner/name[:ci|:no-ci][:public|:private], or owner/* to admit every repo "+
+				"Format: owner/name[:ci|:no-ci][:public|:private|:internal], or owner/* to admit every repo "+
 				"under owner (IsAllowedRepo only — see allowedRepos's doc comment), comma-separated.",
 			EnvBlessLogin, c.Source, c.Class, EnvAllowedRepos, ConfigHomePath()), nil)
 	}

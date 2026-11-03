@@ -1,0 +1,9 @@
+{
+  "encoding": "typed-v2-malformed",
+  "options": null,
+  "options_rev": "",
+  "problems": [
+    "duplicate option id `retry` — ids must be unique within one escalation (spec §1.1.1)"
+  ],
+  "confidence": "could-not-check"
+}

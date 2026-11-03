@@ -1,0 +1,39 @@
+# Negative-path fixture for cellsvalidate (the service contract Task 1, the
+# fourth dev-only fixture: "bare-context").
+#
+# The entry scopes itself by CLUSTER alone and declares no namespaces. It
+# reads as though it were narrow — one named cluster, tier dev, read-only —
+# and it is the most dangerous shape in the set, because in this fleet dev and
+# prod are sibling NAMESPACES inside one cluster reached through one context
+# (`kubernetes-admin@fixture-cluster`). A cluster name therefore bounds nothing:
+# an environment scoped to "the cluster" is scoped to prod as well.
+#
+# `cluster:` is informational and no check reads it. The namespace list is the
+# authorization unit, so an empty one must be a hard error rather than a
+# permissive default — the failure direction matters, and "no namespaces
+# declared" must never mean "not restricted to any namespace".
+#
+# Expect: non-zero exit, error naming `namespaces`.
+cells:
+  - name: assay
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [deepseek-chat, glm-5.2]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    environments:
+      - name: tracker-dev
+        kind: k8s
+        tier: dev
+        cluster: fixture-cluster
+        namespaces: []
+        access: [read]
+        runner_pool: example-verify-tracker

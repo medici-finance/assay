@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // Count real work, not elapsed time: every candidate must be judged while the

@@ -1,0 +1,41 @@
+{{define "epic.html"}}{{template "panehead" "epic"}}
+<body class="pane epic">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+{{template "panenav" "epic"}}
+{{template "ambient" .Ambient}}
+<main class="pane-body">
+  <h1 class="pane-title">Epic <span class="pane-sub">{{.EpicID}}</span></h1>
+  <section class="rail" aria-label="epic-scoped rails">
+    {{template "tile" .WaitingRail}}
+    {{template "tile" .RecentRecord}}
+  </section>
+
+  <section class="blocked-on" aria-label="blocked-on escalations">
+    <h2>Blocked on</h2>
+    {{if .BlockedOn}}
+    <ul class="blocked-list">
+      {{range .BlockedOn}}
+      <li class="blocked-row" data-state="{{.State}}" data-palette="{{.Palette}}">
+        <span class="attn-state pal-{{.Palette}}"><span class="glyph">{{.Glyph}}</span> {{.Word}}</span>
+        <a class="blocked-title" href="{{.InboxLink}}">{{.Title}}</a>
+        <span class="age">{{.Age}}</span>
+        <a class="platform-link" href="{{.PlatformURL}}" target="_blank" rel="noopener">on GitHub ↗</a>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="note">No open escalation is holding this epic's work right now — an in-SLA
+      <code>waiting</code> row is the system working (§3.5), so its absence here is a real
+      checked-clean "nothing blocked", not a could-not-check.</p>
+    {{end}}
+  </section>
+
+  <section class="delegated-panel">
+    {{template "tile" .Delegated}}
+    <p class="note">The stream README rendered live — work items on their dependency waves, the
+      critical path marked, findings ⚠ stale-knowledge flags — is statusgen's; the pane renders,
+      statusgen stays the single writer (§5, §7.3). Delegated and could-not-check until ingested.</p>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body></html>{{end}}

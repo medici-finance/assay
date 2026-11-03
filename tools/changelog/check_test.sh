@@ -310,6 +310,67 @@ PR_NUMBER=77 BASE_REF=main GITHUB_BASE_REF=other run_case "P12 explicit BASE_REF
 proxyrepo "$PROXY_WITH_BULLET"
 PR_NUMBER=$'999\n77' run_case "P13 embedded-newline PR_NUMBER rejected, not laundered into PR 77's proxy" 1
 
+# ── N: the FLAT-FRAGMENT rule (assay#4186). The aggregator reads only
+#       changelog/*.md, so a fragment ADDED below the top level must RED even
+#       though it would satisfy a path-glob gate. Fail-first: against the
+#       pre-guard check.sh N1, N2, N3 and N7 PASS (the hole) and so are RED here.
+
+# N1: a PR adds changelog/feat/x.md (the default feat/<key> branch shape) → REFUSE.
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+mkdir -p "$R/changelog/feat"; echo '- `nested` fragment.' > "$R/changelog/feat/x.md"; commit "add nested fragment"
+run_case "N1 added nested fragment refused" 1
+
+# N2: the skip label does not excuse a nested fragment (it would still be dropped).
+SKIP=true run_case "N2 nested fragment refused even with changelog:skip" 1
+
+# N3: a nested fragment next to a valid flat one still REDs (the nested one is dropped).
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+mkdir -p "$R/changelog/wd1025"; echo '- `nested` fragment.' > "$R/changelog/wd1025/y.md"
+echo '- `flat` fragment.' > "$R/changelog/z.md"; commit "nested + flat"
+run_case "N3 nested next to a flat fragment still refused" 1
+
+# N4: nested fragments that PRE-EXIST at base are not judged; a PR adding a flat
+#     fragment greens. (The two open PRs that predate the rule are judged only on
+#     what they ADD.)
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"
+mkdir -p "$R/changelog/feat"; echo '- `old` nested fragment.' > "$R/changelog/feat/old.md"
+commit init; git -C "$R" tag base
+echo '- `flat` fragment.' > "$R/changelog/new.md"; commit "add flat fragment"
+run_case "N4 pre-existing nested fragment not judged; flat add greens" 0
+
+# N5: the recovery move itself (nested → flat via git mv) never trips the
+#     refusal; alongside the PR's own flat fragment it greens. (A bare rename
+#     is not an added/modified fragment, so it is not what satisfies the gate.)
+git -C "$R" tag -f base >/dev/null
+git -C "$R" mv changelog/feat/old.md changelog/old.md
+echo '- `mover` recovered stranded fragments.' > "$R/changelog/mover.md"; commit "move to top level"
+run_case "N5 moving a nested fragment to the top level (plus own fragment) greens" 0
+
+# N6: a PR whose only changelog touch is MODIFYING a pre-existing nested fragment
+#     does not satisfy the gate (that fragment is never aggregated) → RED.
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"
+mkdir -p "$R/changelog/feat"; echo '- `old` nested fragment.' > "$R/changelog/feat/old.md"
+commit init; git -C "$R" tag base
+echo '- `old` nested fragment, edited.' > "$R/changelog/feat/old.md"; commit "edit nested"
+run_case "N6 editing a nested fragment does not satisfy the gate" 1
+
+# N7: the refusal NAMES the flat rule and the basename-derived path (message text
+#     only; the exit code is N1's).
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+mkdir -p "$R/changelog/feat"; echo '- `nested` fragment.' > "$R/changelog/feat/x.md"; commit "add nested fragment"
+n7_base="$(git -C "$R" rev-parse base)"; n7_head="$(git -C "$R" rev-parse HEAD)"
+n7_out="$( cd "$R" && SKIP=false HEAD_REF=feat/x BASE_SHA="$n7_base" HEAD_SHA="$n7_head" bash "$CHECK" 2>&1 )"
+if printf '%s' "$n7_out" | grep -q 'DIRECTLY under changelog/' && printf '%s' "$n7_out" | grep -q 'changelog/feat/x.md changelog/x.md'; then
+  ok "N7 refusal names the flat rule and the top-level path to use"
+else
+  bad "N7 refusal names the flat rule and the top-level path to use"
+fi
+
 echo "---"
 echo "check_test: $pass passed, $fail failed (impl: $CHECK)"
 [ "$fail" = 0 ]

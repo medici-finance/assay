@@ -1,0 +1,107 @@
+{
+  "test": "go test . -run 'HistoricalNotice|NoticeInventory|NoticeSubject|HeldRule|CouldNotCheckLines|ProseLedCommandClosed|SecondSite|NonLintModes|FragmentRules|ArchiveExcluded|ClosedBriefsKeepRecords|ProseLedCommandLintReaches|UnfailablePostBase' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL \u2014 the report demotes nothing (every notice stays actionable)",
+    "file": "notice_report.go",
+    "old": "\thistorical = included && !held && (",
+    "new": "\thistorical = false && included && !held && ("
+  },
+  "mutations": [
+    {
+      "name": "subject is the first brief path ANYWHERE in the line (the pre-fix matcher)",
+      "file": "notice_report.go",
+      "old": "(\\S+?\\.md)(?::\\d+)?(?::|\\s|$)`)",
+      "new": "(?:.*?)(\\S*brief-[0-9]+\\S*?\\.md)`)"
+    },
+    {
+      "name": "held-actionable set emptied (security-review-absent demoted again)",
+      "file": "notice_report.go",
+      "old": "\t_, held := noticeHeldActionable[f.Rule]\n",
+      "new": "\theld := false\n"
+    },
+    {
+      "name": "could-not-check lines lose their NOTICE: prefix",
+      "file": "notice_report.go",
+      "old": "\"NOTICE: %s %s: %s\\n\", noticeCouldNotCheckTag",
+      "new": "\"%.0s%s %s: %s\\n\", \"NOTICE:\", noticeCouldNotCheckTag"
+    },
+    {
+      "name": "a bracket tag is read anywhere in the line, including quoted author text",
+      "file": "notice_report.go",
+      "old": "noticeTagRe.FindAllStringSubmatch(noticeHead(line), -1)",
+      "new": "noticeTagRe.FindAllStringSubmatch(line, -1)"
+    },
+    {
+      "name": "ordering-gate recognised anywhere, not only as the line prefix",
+      "file": "notice_report.go",
+      "old": "\t\t\tif strings.HasPrefix(line, f.fragment) {",
+      "new": "\t\t\tif strings.Contains(line, f.fragment) {"
+    },
+    {
+      "name": "verify-row-portability emitter spells the literal tag again",
+      "file": "verifyportability.go",
+      "old": "[%s] OS-specific command",
+      "new": "[verify-row-portability]%.0s OS-specific command"
+    },
+    {
+      "name": "the closure-baseline could-not-check state is never raised",
+      "file": "notice_report.go",
+      "old": "\"closure-baseline\"",
+      "new": "\"closure-baseline-off\""
+    },
+    {
+      "name": "the record index is built for --lint only (write/check/record runs print closed rows one by one)",
+      "file": "main.go",
+      "old": "\t{\n\t\tgrandfathered, baseOK := closedAtBase(root, streams)\n",
+      "new": "\tif mode == \"lint\" {\n\t\tgrandfathered, baseOK := closedAtBase(root, streams)\n"
+    },
+    {
+      "name": "non-lint modes print notices unchanged again (the pre-fix emitLintNotices)",
+      "file": "notice_report.go",
+      "old": "\trep := buildNoticeReport(notices, activeRecordIndex)\n\tif mode == \"lint\" && lintJSONMode {\n",
+      "new": "\tif mode != \"lint\" {\n\t\temitNotices(notices)\n\t\treturn\n\t}\n\trep := buildNoticeReport(notices, activeRecordIndex)\n\tif mode == \"lint\" && lintJSONMode {\n"
+    },
+    {
+      "name": "fragment rules match the whole line, quoted author text included (a Reviewed cell quoting another rule's phrase steers the held security-review-absent notice to a demotable rule)",
+      "file": "notice_report.go",
+      "old": "strings.Contains(noticeUnquoted(line), f.fragment)",
+      "new": "strings.Contains(line, f.fragment)"
+    },
+    {
+      "name": "fragment rules read only the head before the first quote (drops phrases that follow the quoted entry)",
+      "file": "notice_report.go",
+      "old": "strings.Contains(noticeUnquoted(line), f.fragment)",
+      "new": "strings.Contains(noticeHead(line), f.fragment)"
+    },
+    {
+      "name": "--all no longer restores the historical per-row lines",
+      "file": "notice_report.go",
+      "old": "\trenderNoticeText(os.Stderr, rep, lintDetailAll)\n",
+      "new": "\trenderNoticeText(os.Stderr, rep, false)\n"
+    },
+    {
+      "name": "emitter drops a closed brief's gotest-run-vacuous rows (the per-row record is lost)",
+      "file": "verifyrows.go",
+      "old": "\t\t\t\t\tline := fmt.Sprintf(\"%s: %s [%s] %s\", path, where, f.rule, f.msg)\n",
+      "new": "\t\t\t\t\tif closed && !postBase && f.rule == ruleGoTestRunVacuous {\n\t\t\t\t\t\tcontinue\n\t\t\t\t\t}\n\t\t\t\t\tline := fmt.Sprintf(\"%s: %s [%s] %s\", path, where, f.rule, f.msg)\n"
+    },
+    {
+      "name": "emitter drops a closed brief's prose-led-command rows (the per-row record is lost)",
+      "file": "verifyrows.go",
+      "old": "\t\t\t\t\tline := fmt.Sprintf(\"%s: %s [%s] %s\", path, where, f.rule, f.msg)\n",
+      "new": "\t\t\t\t\tif closed && !postBase && f.rule == ruleProseLedCommand {\n\t\t\t\t\t\tcontinue\n\t\t\t\t\t}\n\t\t\t\t\tline := fmt.Sprintf(\"%s: %s [%s] %s\", path, where, f.rule, f.msg)\n"
+    },
+    {
+      "name": "docs/archive is no longer excluded from lifecycle classification",
+      "file": "lifecyclelint.go",
+      "old": "\t\tif strings.HasPrefix(f, archive) {\n",
+      "new": "\t\tif false && strings.HasPrefix(f, archive) {\n"
+    },
+    {
+      "name": "the lifecycle exclusion widens to every docs file",
+      "file": "lifecyclelint.go",
+      "old": "archive := filepath.Join(root, \"docs\", \"archive\") + string(filepath.Separator)",
+      "new": "archive := filepath.Join(root, \"docs\") + string(filepath.Separator)"
+    }
+  ]
+}

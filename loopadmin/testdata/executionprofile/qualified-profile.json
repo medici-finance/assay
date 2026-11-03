@@ -1,0 +1,51 @@
+{
+  "digest": "sha256:51cbc2f67d191b7272d5a15dcf3879cecd8438b087526064cadf1c0f950b3ac9",
+  "runner_profile": "profile-a",
+  "roles": [
+    "worker"
+  ],
+  "harness": {
+    "implementation": "harness-x",
+    "version": "1.4.2",
+    "bundle_digest": "sha256:a02a49f49507c2acda4c89a292c70db848da8684014c4491e8719ae853746128",
+    "bundle_provenance": "attestations/harness-x-1.4.2"
+  },
+  "model": {
+    "profile": "model-profile-a",
+    "model": "model-a"
+  },
+  "backend": {
+    "profile": "backend-local",
+    "platform": "linux-arm64"
+  },
+  "preservation": {
+    "resume": {
+      "files": "supported",
+      "conversation": "unsupported",
+      "process_memory": "unsupported",
+      "descendants": "unknown",
+      "pending_interactions": "unknown"
+    },
+    "restart": {
+      "files": "supported",
+      "conversation": "unknown",
+      "process_memory": "unknown",
+      "descendants": "unknown",
+      "pending_interactions": "unknown"
+    }
+  },
+  "cancellation": "supported",
+  "budget_scopes": [
+    "launch",
+    "request"
+  ],
+  "telemetry": "complete",
+  "qualification": {
+    "evidence": [
+      "qualification/harness-x-1.4.2"
+    ],
+    "limits": [
+      "linux-arm64 only"
+    ]
+  }
+}

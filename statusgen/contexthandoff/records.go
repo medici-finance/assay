@@ -5,6 +5,7 @@ package contexthandoff
 const (
 	HandoffSchema   = "context-handoff-v1"
 	HandoffSchemaV2 = "context-handoff-v2"
+	HandoffSchemaV3 = "context-handoff-v3" // v2 plus the required product-binding section
 	ManifestSchema  = "amendment-manifest-v1"
 )
 
@@ -16,8 +17,10 @@ const (
 	TargetApproved = "approved"
 )
 
-// Handoff is a context-handoff-v1/v2 record: the seven handoff records of the
-// future-state model, bound to the brief that declares them.
+// Handoff is a context-handoff-v1/v2/v3 record: the seven handoff records of
+// the future-state model, bound to the brief that declares them. Product is
+// present exactly when the schema is context-handoff-v3; a v1 or v2 record
+// carries no product section and refuses one.
 type Handoff struct {
 	Schema     string       `json:"schema"`
 	DeclaredBy string       `json:"declared_by"`
@@ -28,6 +31,7 @@ type Handoff struct {
 	History    []History    `json:"history"`
 	ActiveWork []ActiveWork `json:"active_work"`
 	Readiness  Readiness    `json:"readiness"`
+	Product    *Product     `json:"product,omitempty"`
 }
 
 // Target is the "target and intent" record.

@@ -30,6 +30,8 @@ package main
 // wherever it is used.
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"regexp"
 	"strconv"
 	"strings"
@@ -114,15 +116,7 @@ func gitlabHumanIdentityFromEmail(email string) (username string, id int64, ok b
 // shape). This is what lets `bitbucket:some-slug:12345` be recognised as naming a forge
 // this build does not understand — and turned into could-not-check-naming-the-forge —
 // instead of failing the whole roster as an unparseable id.
-func scanLooksLikeExplicitForge(head, rest string) bool {
-	if head == "" {
-		return false
-	}
-	if _, err := strconv.ParseInt(head, 10, 64); err == nil {
-		return false // a numeric head is the id half of a legacy slug:id, not a forge
-	}
-	return strings.Contains(rest, ":")
-}
+func scanLooksLikeExplicitForge(head, rest string) bool { return trustcore.ExplicitForge(head, rest) }
 
 // scanSplitBotEntry parses one ASSAY_TRUSTED_BOT_SLUGS entry (the optional `role=`
 // prefix already stripped by the caller). ok is false when the slug-or-login is empty
@@ -139,28 +133,18 @@ func scanLooksLikeExplicitForge(head, rest string) bool {
 // could-not-check naming the forge, per forge-neutral/07 task 3 — this is the one
 // deliberate divergence, and it never rounds an unknown forge up to a pass).
 func scanSplitBotEntry(entry string) (scanBotIdentity, bool) {
-	b := scanBotIdentity{Forge: forgeGitHub, ForgeRaw: forgeGitHub.String(), ForgeInferred: true}
-	head, rest, found := strings.Cut(entry, ":")
-	h := strings.ToLower(strings.TrimSpace(head))
-	if found {
-		switch h {
-		case forgeGitHub.String():
-			b.Forge, b.ForgeRaw, b.ForgeInferred, entry = forgeGitHub, h, false, rest
-		case forgeGitLab.String():
-			b.Forge, b.ForgeRaw, b.ForgeInferred, entry = forgeGitLab, h, false, rest
-		default:
-			if scanLooksLikeExplicitForge(h, rest) {
-				b.Forge, b.ForgeRaw, b.ForgeInferred, entry = forgeUnknown, h, false, rest
-			}
-		}
-	}
-	slug, id, ok := scanSplitIdentity(entry)
+	b, ok := trustcore.ParseBot(entry, trustcore.ObserveUnknownForge)
 	if !ok {
 		return scanBotIdentity{}, false
 	}
-	b.Slug = slug
-	b.ID = id
-	return b, true
+	forge := forgeUnknown
+	switch b.Forge {
+	case "github":
+		forge = forgeGitHub
+	case "gitlab":
+		forge = forgeGitLab
+	}
+	return scanBotIdentity{Forge: forge, ForgeRaw: b.Forge, ForgeInferred: b.Inferred, Slug: b.Slug, ID: b.ID}, true
 }
 
 // acceptedLogins is the per-forge set of login renderings this identity is recognised
@@ -171,12 +155,5 @@ func scanSplitBotEntry(entry string) (scanBotIdentity, bool) {
 // decoration for it. An unrecognised forge has no trustable rendering, so it accepts
 // none. KEEP IN SYNC with deskkit.BotIdentity.AcceptedLogins.
 func (b scanBotIdentity) acceptedLogins() []string {
-	switch b.Forge {
-	case forgeGitLab:
-		return []string{b.Slug}
-	case forgeGitHub:
-		return []string{b.Slug + "[bot]", "app/" + b.Slug}
-	default:
-		return nil
-	}
+	return trustcore.AcceptedLogins(b.Forge.String(), b.Slug)
 }
