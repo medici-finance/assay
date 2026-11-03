@@ -253,6 +253,11 @@
     },
     {
       "class": "test",
+      "pattern": "forgeread/mirror/mutate.py",
+      "reason": "source-only offline mutation runner owned by forge-neutral/46; copies the module into disposable directories and requires bounded named Go tests to fail on planted production-source defects; never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "statusgen/domain/mutate.py",
       "reason": "source-only offline mutation runner owned by graph-execution/28; copies declared domain sources and fixtures into disposable directories and requires bounded Go tests to fail on planted defects; never installed, packaged or released as an operator CLI"
     },
