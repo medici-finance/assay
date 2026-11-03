@@ -151,6 +151,32 @@ mutations += [
      "A snapshot or backup restore may present operator-control state",
      "TestRuledCustodyRestrictions"),
 ]
+# GE/16 store-neutral protocol: compiling mutations of actual admission/boundary
+# and accounting code; no test source is mutated and compile failures are rejected.
+mutations += [
+ ("cell-outbox-unreserved", "ownership.go", "return j.Authority.Commit(ctx, r)", "return nil", "TestCellOwnership"),
+ ("cell-capability-unbound", "ownership.go", 'p.AdmissionDigest == "" || p.AdmissionDigest != CellAdmissionDigest(r)', "false", "TestCellOwnership"),
+ ("cell-authentication-ignored", "ownership.go", "return a.Capabilities.CheckCellCapability(ctx, p)", "return nil", "TestCellOwnership"),
+ ("cell-no-intent-authorized", "ownership.go", 'return errors.New("effect has no admitted intent")', "return nil", "TestCellOwnership"),
+ ("cell-stale-writer-authorized", "incarnation.go", "if presented != owned {", "if false {", "TestCellOwnershipStaleWriterDenied"),
+ ("cell-outstanding-not-charged", "budget.go", "if old.BalanceRef == q.BalanceRef {", "if false {", "TestCellBudgetConcurrentReservations"),
+ ("cell-unknown-handback-released", "ownership.go", "len(s.Pending) != 0 || len(s.Checkpoint.PendingEffects) != 0", "false", "TestOwnershipBackendHandbackUnknown"),
+ ("cell-incarnation-ignored", "ownership.go", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); false {", "TestIncarnationStaleRefused"),
+ ("cell-restored-sql-current", "ownership.go", "current, err := a.Current.CurrentIncarnation(ctx, p.Ownership.CellID)", "current, err := OperatorIncarnation{Schema:IncarnationSchema,CellID:s.Checkpoint.Ownership.CellID,ID:s.Checkpoint.Activation.IncarnationID,KeyRef:s.Checkpoint.Activation.KeyRef}, error(nil)", "TestIncarnationMismatchPaused"),
+ ("cell-contract-field-drift", "../spec/operator-incarnation-v1.md", "- `KeyRef` — `key_ref`; an authorized reference", "- `OldKeyRef` — `key_ref`; an authorized reference", "TestIncarnationSpecMatchesFields"),
+ ("cell-unknown-reservation-lost", "ownership.go", "s.Checkpoint.Budget.Reservations[index].Unknown = true", "s.Checkpoint.Budget.Reservations = append(s.Checkpoint.Budget.Reservations[:index], s.Checkpoint.Budget.Reservations[index+1:]...)", "TestCellBudgetRestoreAllAttempts"),
+ ("cell-pacing-seed-zero", "budget.go", "n := *p.Seed", "n := uint64(0)", "TestCellPacingRestartNoMultiply"),
+ ("cell-pacing-other-process-ignored", "budget.go", "r.PacingScope == scope && r.PacingWindow == window", "false && r.PacingScope == scope && r.PacingWindow == window", "TestCellPacingRestartNoMultiply"),
+]
+budget_source = (root / "budget.go").read_text()
+unknown_brake = '''if found == nil || found.Consumed == nil {
+			return errors.New("brake usage unavailable")
+		}'''
+mutations.append(("cell-unknown-brake-zero", "budget.go", unknown_brake,
+ '''if found == nil { return errors.New("brake usage unavailable") }; if found.Consumed == nil { n := uint64(0); found.Consumed = &n }''', "TestCellBrakeCountUnavailableHolds"))
+start = budget_source.index('case "effect":')
+end = budget_source.index('case "read":', start)
+mutations.append(("cell-pacing-cached-only", "budget.go", budget_source[start:end], 'case "effect": n = p.Cached\n\t', "TestCellPacingRestartNoMultiply"))
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}

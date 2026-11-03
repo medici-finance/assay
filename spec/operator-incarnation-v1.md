@@ -152,3 +152,19 @@ These are implementation tests of a pure record contract. They do not satisfy th
 whole GE/16 Verify table, prove real provider fencing or qualify PostgreSQL rollback,
 host control-state custody, Kubernetes containment, signatures or live credentials.
 All existing Verify rows, independent Evidence and human activation gates remain.
+
+
+## Store-neutral consuming seam
+
+GE/16's `CellAuthority` now reads `IncarnationSource` at admission and at the
+separately invoked provider check. `CellPermit` must be authenticated for its exact
+ownership tuple, scope/expiry and admission digest by `CellCapabilityCheck`.
+`CellRecovery` is a trusted operator port: it confirms group stop, invalidated
+credentials/capabilities and reconciliation, and rotates identity and key outside
+PostgreSQL. `Transfer` persists pause first; failures leave it paused. The returned
+current state must equal an independent protected read and rotate identity, key
+reference and ownership generation. Existing stop/cancel and budgets survive.
+These ports install no source, signer, control-volume policy or runtime consumer.
+The earlier preparation account above is retained as history. Actual custody,
+provider boundaries and credential cutover remain separately qualified before
+activation, including the two ruled restrictions and external restore provenance.

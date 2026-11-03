@@ -72,3 +72,35 @@ crash/concurrent-owner/unknown-handback tests; production restore and pacing/bra
 failure cases; consumer wiring and full Verify rows 1–11 with independent evidence.
 GE/19 retains real PostgreSQL rollback qualification, GE/26 launch enforcement.
 R3 exclusive repository assignment remains outside this amendment.
+
+
+## Store-neutral transaction and accounting seam
+
+The original checkpoint wire schema remains unchanged. `CellState` is the new
+library's typed store interface, not a second serialized wire format: it contains
+Version, Checkpoint, Pending/Completed admissions, pacing observations and a
+settlement ledger. The qualified store owns its versioned representation and must
+strictly preserve the checkpoint's unknowns/holds on restore.
+
+`CellStore.Transaction` checks the expected version across processes and invokes
+its callback on an isolated state copy. On any validation, cancellation or commit
+error it publishes none of that copy. A successful acknowledged durable commit
+increments Version once. `CellAuthority.Commit` binds authenticated original work,
+attempt/request, operation, runner bound and all quota reservations to one intent.
+`CellJournal` adapts the existing outbox contract; no frozen Loop/Config method
+changes. GE/19 implements this seam in the one planned PostgreSQL runtime store.
+
+Authoritative usage settlement is separate from receipt completion. Unknown
+charges keep reservations; numeric usage is unchanged. The settlement ledger makes
+same-source retries idempotent and refuses altered evidence. A later observation
+names its exact predecessor SourceRef and retains earlier unknown provenance.
+Trust and quota-unit mapping are checked by the explicit usage-authority adapter,
+never inferred from SourceRef syntax. No credentials or raw provider payloads are
+accepted. Independent reset history is read outside the runtime database before
+pacing admission; restoring a cache row cannot issue a fresh reset.
+
+Local qualification now includes concurrent reservations, exact restart/usage/hold
+preservation, direct fake-provider refusal, unknown handback and real processes
+sharing intents through the test-only filesystem adapter. This is not PostgreSQL,
+live provider, key custody, credential cutover or activation qualification. The
+preparation account above remains historical; independent acceptance is still owed.

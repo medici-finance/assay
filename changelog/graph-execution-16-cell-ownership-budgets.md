@@ -1,0 +1,1 @@
+- Add the store-neutral Cell ownership, quota reservation, effect-intent and recovery protocol, with refusing authority ports and offline concurrent/process restart qualification. Runtime PostgreSQL and consumer activation remain separately gated.

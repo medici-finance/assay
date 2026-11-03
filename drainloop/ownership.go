@@ -2,6 +2,8 @@ package drainloop
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -174,4 +176,466 @@ func requireFields(v any, t reflect.Type, path string) error {
 		}
 	}
 	return nil
+}
+
+// ErrCellConflict means a transaction lost its expected-version comparison.
+var ErrCellConflict = errors.New("cell version conflict")
+
+// CellState belongs to the existing coordination authority, not a second store.
+// Reservations, ownership and the effect intent commit in one transaction.
+type CellState struct {
+	Version     uint64
+	Checkpoint  CellCheckpoint
+	Pending     []CellAdmission
+	Completed   []CellAdmission
+	Pacing      []CellPacing
+	Settlements []CellSettlement
+}
+
+// CellStore invokes change on an isolated copy under a cross-process atomic
+// expected-version check. Errors publish none of the copy. A successful durable
+// commit increments Version exactly once. ReadCell returns an isolated snapshot.
+// RequiredDurability refuses unqualified adapters; implementing this interface
+// does not prove durability. GE/19 implements and qualifies PostgreSQL.
+type CellStore interface {
+	RequiredDurability(context.Context) error
+	ReadCell(context.Context, string) (CellState, error)
+	Transaction(context.Context, string, uint64, func(*CellState) error) error
+}
+
+// CellPermit is an immutable capability reference, not authority by itself.
+// CapabilityCheck authenticates caller, tuple, scope and validity independently.
+type CellPermit struct {
+	Ownership                         CellOwnership
+	CapabilityRef                     string
+	WorkID, AttemptID, RequestID, Key string
+	AdmissionDigest                   string
+}
+
+// CellCapabilityCheck owns authentication, expiry, scope and qualified provider
+// restrictions. Absent legacy-credential cutover must refuse. The provider calls
+// it independently at its atomic effect boundary, not only in the scheduler.
+type CellCapabilityCheck interface {
+	CheckCellCapability(context.Context, CellPermit) error
+}
+
+// CellAdmission couples one stable operation to its reservations and capability.
+// An uncertain operation remains pending until authoritative reconciliation.
+type CellAdmission struct {
+	Permit                    CellPermit
+	Intent                    Intent
+	Reservations              []BudgetReservation
+	ControlBoundary           string
+	UpperBoundRef             string
+	PacingScope, PacingWindow string
+}
+
+// CellAuthority is the store-neutral admission seam. Current comes from protected
+// operator state independently of the runtime database. No adapter is installed.
+type CellAuthority struct {
+	Store        CellStore
+	Current      IncarnationSource
+	Capabilities CellCapabilityCheck
+	Pacing       CellPacingAuthority
+	Usage        CellUsageAuthority
+}
+
+func (a CellAuthority) ready(ctx context.Context) error {
+	if a.Store == nil || a.Current == nil || a.Capabilities == nil {
+		return errors.New("cell authority unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return a.Store.RequiredDurability(ctx)
+}
+func (a CellAuthority) check(ctx context.Context, s CellState, p CellPermit) error {
+	current, err := a.Current.CurrentIncarnation(ctx, p.Ownership.CellID)
+	if err != nil {
+		return err
+	}
+	if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {
+		return err
+	}
+	if s.Checkpoint.Schema != CellCheckpointSchema || s.Checkpoint.Stopped || s.Checkpoint.CancelRequested {
+		return errors.New("cell stopped or cancelled")
+	}
+	if p.CapabilityRef == "" || p.WorkID == "" || p.AttemptID == "" || p.RequestID == "" || p.Key == "" {
+		return errors.New("cell capability incomplete")
+	}
+	return a.Capabilities.CheckCellCapability(ctx, p)
+}
+
+// Commit reserves all balances and records the intent in the same transaction.
+// It never returns an allowance on conflict, unavailable state or commit failure.
+func (a CellAuthority) Commit(ctx context.Context, r CellAdmission) error {
+	if err := a.ready(ctx); err != nil {
+		return err
+	}
+	p := r.Permit
+	s, err := a.Store.ReadCell(ctx, p.Ownership.CellID)
+	if err != nil {
+		return err
+	}
+	return a.Store.Transaction(ctx, p.Ownership.CellID, s.Version, func(s *CellState) error {
+		if p.AdmissionDigest == "" || p.AdmissionDigest != CellAdmissionDigest(r) {
+			return errors.New("admission capability binding mismatch")
+		}
+		if err := a.check(ctx, *s, p); err != nil {
+			return err
+		}
+		e := r.Intent.Event
+		if e.Kind != "EFFECT-INTENT" || e.Key != p.Key || e.RunID != p.WorkID || e.AttemptID != p.AttemptID || e.Generation != p.Ownership.Generation || e.ItemID == "" {
+			return errors.New("cell intent identity mismatch")
+		}
+		for _, old := range append(append([]CellAdmission{}, s.Pending...), s.Completed...) {
+			if old.Permit.Key == p.Key {
+				return errors.New("operation recorded; reconcile")
+			}
+		}
+		if r.ControlBoundary != "request" && (r.ControlBoundary != "launch" || r.UpperBoundRef == "") {
+			return errors.New("runner request bound unavailable")
+		}
+		if err := reserveBudget(&s.Checkpoint.Budget, r, e.Time); err != nil {
+			return err
+		}
+		if r.PacingScope != "" {
+			if a.Pacing == nil {
+				return errors.New("pacing reset authority unavailable")
+			}
+			epoch, err := a.Pacing.PacingEpoch(ctx, p.Ownership.CellID, r.PacingScope, r.PacingWindow, p.Ownership.IncarnationID)
+			if err != nil {
+				return err
+			}
+			if err := cellPacing(*s, r.PacingScope, r.PacingWindow, p.Ownership.IncarnationID, epoch); err != nil {
+				return err
+			}
+		}
+		s.Pending = append(s.Pending, r)
+		s.Checkpoint.PendingEffects = append(s.Checkpoint.PendingEffects, p.Key)
+		return nil
+	})
+}
+
+// CheckEffect belongs INSIDE a separately enforcing provider's atomic apply/dedupe
+// boundary. A check followed by an unrestricted external write is not a fence.
+// It re-reads ownership, protected incarnation, authenticated scope and intent.
+func (a CellAuthority) CheckEffect(ctx context.Context, p CellPermit) error {
+	if err := a.ready(ctx); err != nil {
+		return err
+	}
+	s, err := a.Store.ReadCell(ctx, p.Ownership.CellID)
+	if err != nil {
+		return err
+	}
+	if err := a.check(ctx, s, p); err != nil {
+		return err
+	}
+	for _, r := range s.Pending {
+		if r.Permit == p {
+			if CellAdmissionDigest(r) != p.AdmissionDigest {
+				return errors.New("stored admission binding changed")
+			}
+			for _, required := range r.Reservations {
+				present := false
+				for _, held := range s.Checkpoint.Budget.Reservations {
+					if held.ID == required.ID && held.WorkID == required.WorkID && held.AttemptID == required.AttemptID && held.RequestID == required.RequestID && held.BalanceRef == required.BalanceRef && held.Amount == required.Amount {
+						present = true
+					}
+				}
+				if !present {
+					return errors.New("effect reservation unavailable")
+				}
+				known := false
+				for _, balance := range s.Checkpoint.Budget.Balances {
+					if balance.Ref == required.BalanceRef && balance.Consumed != nil {
+						known = true
+					}
+				}
+				if !known {
+					return errors.New("effect brake usage unavailable")
+				}
+			}
+			return nil
+		}
+	}
+	return errors.New("effect has no admitted intent")
+}
+
+// CellJournal joins the existing transactional outbox flow to CellAuthority.
+// Request maps an enumerated effect to trusted policy, never a model-authored cap.
+// No Loop method or ordinary zero-value Config behavior changes.
+type CellJournal struct {
+	Authority CellAuthority
+	CellID    string
+	Request   func(Intent) (CellAdmission, error)
+}
+
+func (j CellJournal) Generation(ctx context.Context, _ string) (string, error) {
+	if err := j.Authority.ready(ctx); err != nil {
+		return "", err
+	}
+	s, err := j.Authority.Store.ReadCell(ctx, j.CellID)
+	if err != nil {
+		return "", err
+	}
+	return s.Checkpoint.Ownership.Generation, nil
+}
+func (j CellJournal) CommitIntent(ctx context.Context, i Intent) error {
+	if j.Request == nil {
+		return errors.New("cell request mapping absent")
+	}
+	r, err := j.Request(i)
+	if err != nil {
+		return err
+	}
+	if r.Intent != i || r.Permit.Ownership.CellID != j.CellID {
+		return errors.New("cell mapping changed intent")
+	}
+	return j.Authority.Commit(ctx, r)
+}
+func (j CellJournal) Pending(ctx context.Context, run string) ([]Intent, error) {
+	if err := j.Authority.ready(ctx); err != nil {
+		return nil, err
+	}
+	s, err := j.Authority.Store.ReadCell(ctx, j.CellID)
+	if err != nil {
+		return nil, err
+	}
+	out := []Intent{}
+	for _, r := range s.Pending {
+		if r.Intent.Event.RunID == run {
+			out = append(out, r.Intent)
+		}
+	}
+	return out, nil
+}
+func (j CellJournal) Record(e Event) error {
+	if e.Kind != "EFFECT-DONE" {
+		return nil
+	} // ordinary attribution is not an admission receipt.
+	ctx := context.Background()
+	if err := j.Authority.ready(ctx); err != nil {
+		return err
+	}
+	s, err := j.Authority.Store.ReadCell(ctx, j.CellID)
+	if err != nil {
+		return err
+	}
+	return j.Authority.Store.Transaction(ctx, j.CellID, s.Version, func(s *CellState) error {
+		for n, r := range s.Pending {
+			if r.Intent.Event.Key == e.Key && r.Intent.Event.Generation == e.Generation && r.Intent.Event.RunID == e.RunID && r.Intent.Event.ItemID == e.ItemID && e.Ref != "" {
+				s.Completed = append(s.Completed, r)
+				s.Pending = append(s.Pending[:n], s.Pending[n+1:]...)
+				for n, key := range s.Checkpoint.PendingEffects {
+					if key == e.Key {
+						s.Checkpoint.PendingEffects = append(s.Checkpoint.PendingEffects[:n], s.Checkpoint.PendingEffects[n+1:]...)
+						break
+					}
+				}
+				// Keep reservations charged until authoritative usage reconciliation.
+				return nil
+			}
+		}
+		return errors.New("completion has no matching key/generation")
+	})
+}
+
+// CellRecovery is a trusted operator port. Confirm validates whole-group stop,
+// legacy credentials/sockets invalidation and reconciliation, and rotates identity
+// AND signing key outside PostgreSQL. Artifact strings alone grant no authority.
+type CellRecovery interface {
+	ConfirmCellRecovery(context.Context, CellOwnership) (OperatorIncarnation, CellActivation, CellOwnership, error)
+}
+
+// Transfer retains budgets, stop/cancel and overrides. Unknown effects or usage
+// prevent handback; pause is durable before rotation, including on later failure.
+func (a CellAuthority) Transfer(ctx context.Context, cell string, operator CellRecovery) error {
+	if err := a.ready(ctx); err != nil {
+		return err
+	}
+	if operator == nil {
+		return errors.New("operator recovery unavailable")
+	}
+	s, err := a.Store.ReadCell(ctx, cell)
+	if err != nil {
+		return err
+	}
+	if err := a.Store.Transaction(ctx, cell, s.Version, func(s *CellState) error {
+		if len(s.Pending) != 0 || len(s.Checkpoint.PendingEffects) != 0 {
+			return errors.New("unknown effects prevent handback")
+		}
+		for _, r := range s.Checkpoint.Budget.Reservations {
+			if r.Unknown {
+				return errors.New("unknown usage prevents handback")
+			}
+		}
+		s.Checkpoint.Activation.Paused = true
+		return nil
+	}); err != nil {
+		return err
+	}
+	current, active, owned, err := operator.ConfirmCellRecovery(ctx, s.Checkpoint.Ownership)
+	if err != nil {
+		return err
+	}
+	if current.ID == s.Checkpoint.Ownership.IncarnationID || current.KeyRef == s.Checkpoint.Activation.KeyRef || owned.Generation == s.Checkpoint.Ownership.Generation {
+		return errors.New("recovery did not rotate authority")
+	}
+	protected, err := a.Current.CurrentIncarnation(ctx, cell)
+	if err != nil || protected != current {
+		return errors.New("recovery is not protected current state")
+	}
+	if err := MatchCellFence(current, active, owned, owned); err != nil {
+		return err
+	}
+	return a.Store.Transaction(ctx, cell, s.Version+1, func(s *CellState) error {
+		s.Checkpoint.Ownership, s.Checkpoint.Activation = owned, active
+		return nil
+	})
+}
+
+// CellAdmissionDigest binds all reservation, runner and pacing policy coordinates
+// to the authenticated capability. The issuer authorizes this digest, not fields
+// subsequently supplied by a worker. This hash supplies integrity, not identity.
+func CellAdmissionDigest(r CellAdmission) string {
+	r.Permit.AdmissionDigest = ""
+	body, err := json.Marshal(r)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(body))
+}
+
+// CellPacingAuthority reads the reset anchor outside the lost runtime store. Epoch
+// zero means intact history; one means the single recorded unseeded reset. Missing
+// or second-reset state returns error. This port installs no reset/reopen policy.
+type CellPacingAuthority interface {
+	PacingEpoch(context.Context, string, string, string, string) (uint64, error)
+}
+
+// CellSettlement is authoritative usage for one reservation. Nil charge retains
+// the entire reservation as unknown; numeric usage measurements stay untouched.
+type CellSettlement struct {
+	ReservationID     string
+	PreviousSourceRef string
+	Charged           *uint64
+	Usage             AttemptUsage
+}
+
+// CellUsageAuthority resolves authenticated, trust-gated usage under the original
+// work/policy and separate account/provider/unit balances. No raw provider payload
+// or credential is accepted. A syntax-valid SourceRef alone is not qualification.
+type CellUsageAuthority interface {
+	CellUsage(context.Context, CellPermit) ([]CellSettlement, error)
+}
+
+// Settle records every attempt phase (failed/fallback/verification included).
+// Missing telemetry remains charged; authoritative zero is distinct from unknown.
+func (a CellAuthority) Settle(ctx context.Context, p CellPermit) error {
+	if err := a.ready(ctx); err != nil {
+		return err
+	}
+	if a.Usage == nil {
+		return errors.New("usage authority unavailable")
+	}
+	settlements, err := a.Usage.CellUsage(ctx, p)
+	if err != nil {
+		return err
+	}
+	s, err := a.Store.ReadCell(ctx, p.Ownership.CellID)
+	if err != nil {
+		return err
+	}
+	return a.Store.Transaction(ctx, p.Ownership.CellID, s.Version, func(s *CellState) error {
+		// Reconciliation of old work is allowed while paused, but an authenticated
+		// exact recorded operation is required; it grants no new effect.
+		found := false
+		for _, r := range append(append([]CellAdmission{}, s.Pending...), s.Completed...) {
+			if r.Permit == p {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("usage has no recorded operation")
+		}
+		for _, x := range settlements {
+			u := x.Usage
+			if u.WorkID != p.WorkID || u.AttemptID != p.AttemptID || u.RequestID != p.RequestID || u.SourceRef == "" || u.Account == "" || u.Provider == "" || u.Model == "" || u.PricingRef == "" {
+				return errors.New("usage identity/policy mismatch")
+			}
+			switch u.Phase {
+			case "preparation", "summary", "execution", "fallback", "verification":
+			default:
+				return errors.New("unknown attempt phase")
+			}
+			duplicate := false
+			for _, old := range s.Settlements {
+				if old.ReservationID == x.ReservationID && old.Usage.SourceRef == u.SourceRef && old.Usage.Phase == u.Phase {
+					if !reflect.DeepEqual(old, x) {
+						return errors.New("settlement changed after recording")
+					}
+					duplicate = true
+				}
+			}
+			if duplicate {
+				continue
+			}
+			seenUsage := false
+			latestSource := ""
+			for _, old := range s.Checkpoint.Budget.Usage {
+				if old.WorkID == u.WorkID && old.AttemptID == u.AttemptID && old.RequestID == u.RequestID && old.Phase == u.Phase {
+					if old.SourceRef == u.SourceRef {
+						if !reflect.DeepEqual(old, u) {
+							return errors.New("usage evidence changed")
+						}
+						seenUsage = true
+					}
+					latestSource = old.SourceRef
+				}
+			}
+			if !seenUsage && latestSource != x.PreviousSourceRef {
+				return errors.New("usage reconciliation has no exact predecessor")
+			}
+			index := -1
+			for i, q := range s.Checkpoint.Budget.Reservations {
+				if q.ID == x.ReservationID && q.WorkID == p.WorkID && q.AttemptID == p.AttemptID && q.RequestID == p.RequestID {
+					index = i
+					break
+				}
+			}
+			if index < 0 {
+				return errors.New("usage reservation unavailable")
+			}
+			q := s.Checkpoint.Budget.Reservations[index]
+			if x.Charged == nil {
+				s.Checkpoint.Budget.Reservations[index].Unknown = true
+			} else {
+				balance := -1
+				for i, b := range s.Checkpoint.Budget.Balances {
+					if b.Ref == q.BalanceRef {
+						if balance >= 0 {
+							return errors.New("usage balance ambiguous")
+						}
+						balance = i
+					}
+				}
+				if balance < 0 {
+					return errors.New("usage balance unavailable")
+				}
+				b := &s.Checkpoint.Budget.Balances[balance]
+				if b.Consumed == nil || b.Account != u.Account || b.Provider != u.Provider || *x.Charged > ^uint64(0)-*b.Consumed {
+					return errors.New("usage count unavailable/overflow")
+				}
+				charged := *b.Consumed + *x.Charged
+				b.Consumed = &charged
+				s.Checkpoint.Budget.Reservations = append(s.Checkpoint.Budget.Reservations[:index], s.Checkpoint.Budget.Reservations[index+1:]...)
+			}
+			if !seenUsage {
+				s.Checkpoint.Budget.Usage = append(s.Checkpoint.Budget.Usage, u)
+			}
+			s.Settlements = append(s.Settlements, x)
+		}
+		return nil
+	})
 }

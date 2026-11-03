@@ -221,3 +221,21 @@ it. Current operator custody, signature authentication, durable ownership and
 reservation transactions, real provider fencing and restore admission remain
 required implementation/qualification. Existing human gates and the whole GE/16
 Verify table stand; these tests are not independent acceptance Evidence.
+
+
+### GE/16 store-neutral admission seam
+
+The Cell library now couples ownership, reservations and effect intent through the
+existing coordination authority's `CellStore` transaction and adapts the existing
+transactional journal with `CellJournal`. An unqualified/non-durable required
+adapter refuses. `CheckEffect` is a contract for a separately enforcing provider
+inside its atomic apply/dedupe boundary; a check-before-unrestricted-write wrapper
+supplies no fencing guarantee. Current incarnation, authenticated capability and
+independent reset/usage sources are explicit trusted ports, not installed services.
+
+Offline tests exercise a test-only sync/rename filesystem fixture, a separate fake
+provider and actual processes sharing retained intents after cache loss/restarts.
+Production PostgreSQL, signing/control custody, actual provider restrictions and
+legacy credential cutover remain consumer/profile qualifications. No runtime
+backend or live effect path is activated. Human activation gates remain binding;
+implementation tests are not independent accepted Verify Evidence.
