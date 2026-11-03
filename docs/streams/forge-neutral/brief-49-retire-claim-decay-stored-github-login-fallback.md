@@ -11,7 +11,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: fe04a55d-04af-4fb1-b046-f0158330f4de
 authored: 2026-11-03 by statusgen newbrief
 design: DR-forge-library
@@ -30,6 +30,7 @@ consumers:
   - "statusgen/storedlogin_test.go: fixed-here (claim-decay retirement control only; other guard/ruling tests unchanged)"
   - "statusgen/forgecredential.go: fixed-here (comment-only retirement inventory; no guard logic edits)"
   - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (parent consumes this contribution; its entire original Verify table remains)"
+  - "docs/streams/desktools-v2/brief-08-hold-statusgen-at-zero.md: fixed-here (prose-only child ownership correction; Task, Verify and gates unchanged)"
   - "docs/streams/forge-neutral/README.md: fixed-here (bounded contribution and source-count inventory)"
   - "changelog/claim-decay-no-stored-login.md: fixed-here"
   - "tools/desk/scripts/forge-ban.sh: out-of-scope (existing scan unchanged; observe its count, never raise a ceiling or weaken a control)"
@@ -45,6 +46,7 @@ files:
 - `statusgen/storedlogin_test.go` (TestStoredLoginClaimDecay only)
 - `statusgen/forgecredential.go` (comment-only retirement inventory)
 - `docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md`
+- `docs/streams/desktools-v2/brief-08-hold-statusgen-at-zero.md` (prose-only ownership correction)
 - `docs/streams/forge-neutral/README.md`
 - `changelog/claim-decay-no-stored-login.md` (planned)
 

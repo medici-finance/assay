@@ -24,9 +24,8 @@ package main
 // Stored CLI logins are never consulted, even outside verification. Missing
 // explicit credentials are a named could-not-check before any provider request.
 // An endpoint guessed from the origin host (a GitHub Enterprise Server) gets
-// only an enterprise credential, never the github.com one (githubDecayToken). GitHub's GraphQL API refuses unauthenticated
-// calls, so no credential at all is a named could-not-check before any request,
-// never an anonymous try.
+// only an enterprise credential, never the github.com one (githubDecayToken).
+// GitHub's GraphQL API refuses unauthenticated reads; no anonymous try is made.
 //
 // Three-state contract (docs/three-state-instrument-rule.md): every exit is a
 // listing that was read in full, or an error naming why it could not be. A
@@ -164,7 +163,7 @@ func githubBranchPRPages(root string) ([]byte, error) {
 				"(the github.com credential is never sent to another host); the GitHub GraphQL API does not answer unauthenticated reads",
 				host, strings.Join(vars, " or "))
 		}
-		return nil, fmt.Errorf("no GitHub API token: set %s (in a workflow, the job's token with pull-requests read), "+
+		return nil, fmt.Errorf("no GitHub API token: set %s (in a workflow, the job's token with pull-requests read); "+
 			"the GitHub GraphQL API does not answer unauthenticated reads", strings.Join(vars, " or "))
 	}
 	owner, name, err := githubDecayRepo(root)

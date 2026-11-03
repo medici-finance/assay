@@ -64,7 +64,7 @@ consumers:
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated, or added by forge-neutral/33, and has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
-version: 6
+version: 7
 id: 6ccc64a7-c32b-48ba-b6ac-d3a8165f15f9
 ---
 
@@ -280,17 +280,19 @@ What changes for this brief:
   the dead-claim decay change that removed its `gh` dependency. The row names it, at its
   measured count. This brief adds no file and raises no count; /77 takes every entry except
   /35's `decisionruling.go` to `0`.
-- **The claim-decay `gh auth token` fallback retires here, not in /77.** `githubDecayToken` in
-  `statusgen/claimdecay_github.go` (lines 96 and 99 at `d6a2ff244`) looks `gh` up on `PATH` and
+- **The claim-decay `gh auth token` fallback retires through child /49, consumed here.**
+  `githubDecayToken` in `statusgen/claimdecay_github.go` (lines 96 and 99 at `d6a2ff244`) looks `gh` up on `PATH` and
   runs `gh auth token --hostname <host>` when no forge-token variable is set. Those are two
   non-test `"gh"` lines, so row 3 counts them, and desktools-v2/08 rows 1 and 2 (which follow
-  this brief and /35 only) need them gone. This brief deletes the fallback and the lookup in
-  Task 6: with no token variable set, the GitHub decay read takes the existing no-token path
+  this brief and /35 only) need them gone. Child forge-neutral/49 deletes the fallback and
+  lookup; this brief consumes that delivery in Task 6: with no token variable set, the GitHub
+  decay read takes the existing no-token path
   (`githubBranchPRPages`), which reports could-not-check with the variables to set, and its
   message drops the `gh auth login` hint. The ruling forbids an ambient-token fallback, so this
   only tightens the read. The file's environment-token reads stay on row 22's ratchet until
   desktools-v2/77; /77's no-`gh`-fallback row stays as the regression hold. Row 3's completion
-  value stays `2`, because the two claim-decay lines are this brief's own.
+  value stays `2`, because the two claim-decay lines belong to this brief's census and retire
+  through /49.
 - **The three class c GraphQL blocks retire here.** `forge-ban.sh` sums four classes into
   its `statusgen sites:` total. This brief's moved reads build three `pullRequest(` blocks
   (`autonomy.go:548`, `:557`, `autoflip.go:1470` at `e07782de2`); they go with their launches
@@ -442,12 +444,13 @@ different total has found either a drifted brief or a new call site, and either 
 `exec.CommandContext` launch at `autonomy.go:539`. The current per-site list is forge-neutral/33's
 census.)
 
-**The claim-decay credential fallback is here (amended 2026-10-25).** `githubDecayToken`'s
+**The claim-decay credential fallback is owned by child /49 (amended 2026-10-25).**
+`githubDecayToken`'s
 `gh auth token --hostname` fallback in `statusgen/claimdecay_github.go` is not a read but a
 credential source. It added two `"gh"` lines after the freshness base and is not in the census
-above. This brief deletes it and its `exec.LookPath("gh")` guard, leaving the variable reads to
-row 22 and desktools-v2/77 (see the shared forge library amendment). A planted copy of the
-fallback must raise row 3's count from `2` to `4`.
+above. Child forge-neutral/49 deletes it and its `exec.LookPath("gh")` guard; this brief
+consumes that delivery, leaving the variable reads to row 22 and desktools-v2/77 (see the
+shared forge library amendment). A planted copy of the fallback must raise row 3's count from `2` to `4`.
 
 The stored-login lookup/fallback retirement is now the bounded contribution
 [49](brief-49-retire-claim-decay-stored-github-login-fallback.md), its single implementation
