@@ -7,9 +7,12 @@ import (
 	"github.com/medici-finance/assay/forgeread/mirror"
 	"github.com/medici-finance/assay/forgeread/mirror/mirrortest"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -67,19 +70,58 @@ func ingestRow(provider ForgeKind, kind mirror.RecordKind, n int, stamp time.Tim
 }
 func ingestFixture(t *testing.T, provider ForgeKind, kind mirror.RecordKind, rt http.RoundTripper, now *time.Time) (*mirrorIngestSource, mirror.Scope, *mirrortest.TestAdmission) {
 	t.Helper()
-	c := &http.Client{Transport: rt}
+	var observed atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp, err := rt.RoundTrip(r)
+		observed.Add(1)
+		if err != nil {
+			conn, _, e := w.(http.Hijacker).Hijack()
+			if e == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		defer resp.Body.Close()
+		for k, values := range resp.Header {
+			for _, v := range values {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(server.Close)
+	transport := server.Client().Transport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	dial := transport.DialContext
+	if dial == nil {
+		dial = (&net.Dialer{}).DialContext
+	}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if fixture, ok := rt.(*ingestTransport); ok && fixture.failure != nil {
+			fixture.hits++
+			if fixture.onRead != nil {
+				fixture.onRead()
+			}
+			observed.Add(1)
+			return nil, fixture.failure
+		}
+		return dial(ctx, network, address)
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+	c := &http.Client{Transport: transport}
 	var f Forge
 	if provider == ForgeGitHub {
-		f = &GitHubForge{Token: ciFixtureToken, BaseURL: "https://api.github.com", Client: c, onlyRepo: "o/r"}
+		f = &GitHubForge{Token: ciFixtureToken, BaseURL: server.URL, Client: c, onlyRepo: "o/r"}
 	} else {
-		f = &GitLabForge{Token: glTestToken, BaseURL: "https://gitlab.example.invalid", Client: c, onlyRepo: "o/r"}
+		f = &GitLabForge{Token: glTestToken, BaseURL: server.URL, Client: c, onlyRepo: "o/r"}
 	}
 	read, e := NewMirrorReadSource(ReadOnly(f), ForgeResolution{Kind: provider, Repo: ForgeRepo{Owner: "o", Name: "r"}})
 	if e != nil {
 		t.Fatal(e)
 	}
 	a := &mirrortest.TestAdmission{Name: "admission-a", Allowed: true}
-	source, e := NewMirrorIngestSource(read, a.ID(), func() time.Time { return *now })
+	source, e := NewMirrorIngestSource(read, a.ID(), "fixture-source", func() time.Time { _ = observed.Load(); return *now }, &compatMirrorAuthority{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -92,7 +134,7 @@ func ingestApply(t *testing.T, store mirror.Store, s mirror.Source, a mirror.Adm
 	if e != nil {
 		t.Fatal(e)
 	}
-	p, e := mirror.PlanRefresh(old, now, policy)
+	p, e := ingestPlan(old, now, policy)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -145,7 +187,7 @@ func TestMirrorSourceFlow(t *testing.T) {
 				}
 				now = now.Add(time.Minute)
 				stamp := now.Add(-time.Second)
-				p, _ := mirror.PlanRefresh(second, now, policy)
+				p, _ := ingestPlan(second, now, policy)
 				if p.FullInventory || !p.Since.Equal(newest.Add(-time.Minute)) || !p.PriorObservedUpTo.Equal(newest) {
 					t.Fatalf("incremental plan: %+v", p)
 				}
@@ -188,7 +230,7 @@ func testIngestCompletion(t *testing.T) {
 			rt.onRead = func() { now = start.Add(2 * time.Second) }
 			store := mirrortest.NewStore()
 			old, _ := store.Read(context.Background(), a, scope)
-			plan, e := mirror.PlanRefresh(old, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+			plan, e := ingestPlan(old, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -215,13 +257,13 @@ func TestMirrorSourceScope(t *testing.T) {
 			rt := &ingestTransport{payload: "[]"}
 			source, scope, a := ingestFixture(t, provider, mirror.Issues, rt, &now)
 			for _, badID := range []string{"", " admission-a", "admission-a "} {
-				if _, e := NewMirrorIngestSource(source.source, badID, source.now); e == nil || rt.hits != 0 {
+				if _, e := NewMirrorIngestSource(source.source, badID, source.sourceID, source.now, source.authority); e == nil || rt.hits != 0 {
 					t.Fatal("invalid constructor admission accepted", badID, e)
 				}
 			}
 			store := mirrortest.NewStore()
 			blank, _ := store.Read(context.Background(), a, scope)
-			plan, _ := mirror.PlanRefresh(blank, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+			plan, _ := ingestPlan(blank, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
 			for _, change := range []func(*mirror.Scope, *mirror.ScanPlan){func(s *mirror.Scope, p *mirror.ScanPlan) { s.AdmissionID = "other" }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Host = "other.example.invalid" }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Path = "b/r" },
 				func(s *mirror.Scope, p *mirror.ScanPlan) { s.Repository.Path = "O/r"; p.Scope = *s }, func(s *mirror.Scope, p *mirror.ScanPlan) { s.Kind = "unsupported" }, func(s *mirror.Scope, p *mirror.ScanPlan) {
 					if s.Repository.Provider == mirror.GitHub {
@@ -242,6 +284,7 @@ func TestMirrorSourceScope(t *testing.T) {
 			otherScope.AdmissionID = alternate.ID()
 			otherPlan := plan
 			otherPlan.Scope = otherScope
+			otherPlan.AttemptGrant.Scope = otherScope
 			if got, e := source.Scan(context.Background(), alternate, otherScope, otherPlan); !errors.Is(e, mirror.ErrPermission) || rt.hits != 0 {
 				canary := len(got.Records) > 0 && got.Records[0].Title == "private-canary"
 				t.Fatalf("source credential relabelled: error=%v requests=%d rows=%d canary=%v", e, rt.hits, len(got.Records), canary)
@@ -268,6 +311,7 @@ func TestMirrorSourceScope(t *testing.T) {
 			foreign.Repository = source.repository
 			bp := plan
 			bp.Scope = foreign
+			bp.AttemptGrant.Scope = foreign
 			if _, e := source.Scan(context.Background(), a, foreign, bp); e == nil || rt.hits != 0 {
 				t.Fatalf("native lower scope bypass: %v hits=%d", e, rt.hits)
 			}
@@ -295,7 +339,7 @@ func testIngestRecheck(t *testing.T) {
 					}
 				}
 				old := mirror.Snapshot{Scope: scope, Coverage: mirror.Coverage{State: mirror.NeverRead}}
-				plan, e := mirror.PlanRefresh(old, start, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+				plan, e := ingestPlan(old, start, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -347,7 +391,7 @@ func TestMirrorSourceUncertainty(t *testing.T) {
 					rt.failure = original
 				}
 				now = now.Add(time.Minute)
-				plan, e := mirror.PlanRefresh(initial, now, policy)
+				plan, e := ingestPlan(initial, now, policy)
 				if e != nil {
 					t.Fatal(e)
 				}

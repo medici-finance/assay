@@ -151,7 +151,8 @@ shared-library migration reuses this native composition rather than adding a sec
 
 Desk-tools provides `NewMirrorIngestSource` over its existing `MirrorReadSource`,
 implementing `mirror.Source.Scan` with a trusted bound source-admission ID and
-explicit observation clock. Composition derives that ID alongside the source from
+explicit observation clock, a constructor-bound source identity and the canonical
+`mirror.AttemptAuthority`. Composition derives that ID alongside the source from
 the canonical credential owner; requests do not select it. Each call matches both
 Scope.AdmissionID and current Admission.ID to the bound value before and after
 the independently scoped native read, rechecking authorization before returning
@@ -270,10 +271,33 @@ An unknown later observation never erases an earlier positive floor. Consumed
 JSON bytes, response completeness and wire bytes are distinct. Final aggregates
 cannot close, refund or reconcile missing individual attempt observations.
 
-The current fixture qualifies only these shared ports and coordinator propagation.
-Native leaf instrumentation, provider-header parsing and actual lower request
-refusal remain unqualified until their production implementation and controls land.
-No SQL, cross-process or activation proof follows from the fixture.
+The admitted native source instruments the existing base RoundTripper. It checks
+current admission and exact provider origin, encoded repository path, closed
+operation and page query before authority access and every base call. Metered
+mirror reads refuse redirects; ordinary native reads keep their previous behavior.
+Unknown wrappers, including an opaque legacy cache, hold rather than treating
+cached replay as fresh provider inventory or replacing admitted TLS/custody.
+
+Each base entry owns one unique reservation and one bounded observation after
+the existing decoded-body read, before SDK return. Exact consumed JSON prefixes
+are measured bytes even when the response is incomplete; compressed wire bytes
+remain unknown. Observe failure leaves the reservation held. Finite concurrent
+reservations may already be in flight when a floor is published; later authority
+checks observe that durable floor. Final aggregates cannot reconcile missing reports.
+
+Pinned go-gh REST and GitLab WithoutRetries configurations have no hidden retry
+engine. Actual SDK pagination and 503 controls qualify that configuration; repeated
+composed-leaf controls prove the lower boundary, not a newly enabled SDK retry.
+Before any repeated entry, the local maximum retry floor or unknown hold refuses
+work before authority/base access. Only bounded Retry-After and GitHub exhausted
+primary reset facts leave the transport. Provider remaining values never measure
+this source's own work, and observed absent constraints promise no universal allowance.
+
+`TestMirrorNativeAttemptReceipt`, `TestMirrorNativeAttemptGrant`,
+`TestMirrorNativeRetryReceipt`, `TestMirrorNativeObservationBoundary`,
+`TestMirrorNativeFreshnessBoundary` and `TestMirrorNativeReceiptBoundary` use
+synthetic local SDK/transport fixtures and compiling production mutations. They
+qualify no SQL, cross-process budget, real credential selection or activation.
 
 
 The native receipt contract also requires `AttemptReceipt.ObservedAt`: the latest
