@@ -137,8 +137,12 @@ const storedLoginPlaceholder = "stored-login-refused"
 // on the site's existing error path); otherwise it runs with
 // CELLCTL_GH_AMBIENT removed and any unset token family replaced by a
 // placeholder, so the CLI authenticates only with the variable it was given.
-// When it does not refuse, the command is returned unchanged.
+// CI snapshots the effective environment here, its existing single source, so
+// retries use the same credential. Outside CI an allowed command is unchanged.
 func ghGuard(cmd *exec.Cmd) *exec.Cmd {
+	if cmd.Env == nil && os.Getenv("GITHUB_ACTIONS") == "true" {
+		cmd.Env = os.Environ()
+	}
 	why := storedLoginRefusal()
 	if why == "" {
 		return cmd
