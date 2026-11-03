@@ -4,7 +4,7 @@ title: Durable instance store and production coverage binding
 why: A task must survive its parent process without losing intent, artifacts or the evidence obligations that make
   it acceptable.
 wave: 6
-depends: ["graph-execution/09", "graph-execution/03", "statusgen/15", "graph-execution/28", "graph-execution/29", "graph-execution/04", "graph-execution/16", "graph-execution/30"]
+depends: ["graph-execution/09", "graph-execution/03", "statusgen/15", "graph-execution/28", "graph-execution/29", "graph-execution/04", "graph-execution/16", "graph-execution/30", "graph-execution/36"]
 unblocks:
 - graph-execution/23
 - graph-execution/21
@@ -46,7 +46,7 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 8
+version: 9
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
@@ -178,6 +178,16 @@ the named test exists. Existing Task/Verify rows and Evidence are preserved.
 ## Consumer integration amendment — 2026-10-23
 
 Version 8 strengthens Tasks 3–4 and Verify rows 1–2 with actual shared-domain record persistence and assessment, exact restored bindings, positive baselines and independent mutation controls. Verify rows 3–13, dependencies and historical Evidence remain unchanged. These prospective implementation obligations are mapped in [the acceptance and consumer integration manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md#contract-acceptance-and-consumer-integration--23-october-2026); no passing result is claimed.
+
+## PostgreSQL foundation precursor — 2026-11-03
+
+[Brief 36](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) brings forward only this owner's module, explicit PostgreSQL connection boundary, one forward-only migration ledger, foundation-only contract section and disposable test harness. It has no execution, claims, admission, outbox, activation or reconstruction APIs, so its start does not require this brief's effect-bearing dependencies. It is the same `workflow/store` owner, not a second database or interchangeable backend.
+
+This brief consumes the landed compatible foundation and extends its single manifest. All existing dependencies, Tasks and 13 Verify Class/Command pairs remain; no parent row is discharged by the foundation delivery. In particular rows 10–11 still cover the complete runtime/schema obligations and may not be satisfied by relabelling a ledger-only schema as the full contract. The domain-table section remains explicitly planned until this brief implements it. Full binding, incarnation, transactional handoff, reconstruction, claim semantics, brake/pacing and restore qualification remain here.
+
+Read-only mirror persistence may use that landed foundation after its own explicit prerequisite amendment, without waiting for write/execution delivery. That consumer must extend the same migrations and preserve its full joined persistence acceptance, retention gate and independent admission checks. Full /19 completion is still required by any consumer whose unchanged contract names the full runtime delivery.
+
+The inspected open desk-instance authoring PRs 5033 and 4429 add enduring desk records and a separate restore obligation to this unfinished owner. This additive split does not supersede their requested scope, introduce exact role-capacity slots or qualify their future rows; recheck their actual landed revision before extending domain schemas.
 
 ## Task
 
