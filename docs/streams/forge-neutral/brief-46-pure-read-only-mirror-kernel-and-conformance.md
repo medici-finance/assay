@@ -34,6 +34,7 @@ consumers:
   - "forgeread/mirror/mirrortest/: follow-up forge-neutral/46"
   - "forgeread/README.md: follow-up forge-neutral/46"
   - "docs/contracts.md: follow-up forge-neutral/46"
+  - "docs/streams/desktools-v2/cli-migration.json: follow-up forge-neutral/46 (exact mutation harness test classification only)"
   - "changelog/forge-mirror-kernel.md: follow-up forge-neutral/46"
   - "workflow/store/, trusted mirror ingestion, coalescing and populated reader flow: follow-up forge-neutral/37"
   - "statusgen/: out-of-scope (no import, transport or eligibility change in this contribution)"
@@ -47,6 +48,7 @@ files:
 - `forgeread/mirror/` (planned)
 - `forgeread/README.md`
 - `docs/contracts.md`
+- `docs/streams/desktools-v2/cli-migration.json`
 - `changelog/forge-mirror-kernel.md` (planned)
 
 Reuse the existing source-only checker in tools/forge-import-check without copying it.
