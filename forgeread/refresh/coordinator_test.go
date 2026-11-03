@@ -546,7 +546,7 @@ func checkReadCommitRace(t *testing.T) {
 			go func() { r, e := f.c[1].Read(context.Background(), f.a, f.q, f.caller); out <- answer{r, e} }()
 		}
 		await(t, allReads)
-		f.clock.step(time.Second)
+		f.clock.step(100 * time.Millisecond)
 		completedAt := f.clock.Now()
 		close(sourceRelease)
 		select {
@@ -580,7 +580,7 @@ func checkReadCommitRace(t *testing.T) {
 			f := setup(t)
 			f.c[0].store = &interceptReadStore{Store: f.store, before: func(_ context.Context, n int64) error {
 				if n == tc.read {
-					f.clock.step(time.Second)
+					f.clock.step(100 * time.Millisecond)
 					commitReadFixture(t, f)
 				}
 				return nil
@@ -609,7 +609,7 @@ func checkReadCommitRace(t *testing.T) {
 		f.c[1].gate = armAfterWait{Gate: f.gate, arm: func() { armed.Store(true) }}
 		f.c[1].store = &interceptReadStore{Store: f.store, before: func(context.Context, int64) error {
 			if armed.Load() {
-				once.Do(func() { f.clock.step(time.Second); commitReadFixture(t, f) })
+				once.Do(func() { f.clock.step(100 * time.Millisecond); commitReadFixture(t, f) })
 			}
 			return nil
 		}}
