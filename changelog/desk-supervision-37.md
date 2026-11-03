@@ -1,0 +1,3 @@
+### Added
+- `deskperf reruns` counts verification re-runs per brief from the verify-outcome register and joins each attempt window to verifier perf rows: total cost, the uncredited-plus-discarded part and its share. A pruned, missing or ambiguous measure is stated with its reason, never reported as 0.
+- Verify-outcome records take an optional `attempts` list (one entry per run of the Verify table, with window, rows run, disposition and reason). The writer validates it, and every reader re-validates stored records. The verify-desk dispatch passes the brief's qualified `--perf-work` ref so verifier perf rows can be joined.

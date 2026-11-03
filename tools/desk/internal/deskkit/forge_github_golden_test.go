@@ -3,10 +3,12 @@ package deskkit
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -81,7 +83,8 @@ type goldenServer struct {
 	// contentsGet names, so a case that serves a plain file needs no second fixture.
 	fileEntry map[string]any
 	// pullsList is the GET /pulls list response (OpenChangeForBranch's head-filtered read).
-	pullsList []map[string]any
+	pullsList         []map[string]any
+	incrementalIssues []map[string]any
 	// searchIssues is the GET /search/issues response (SearchIssues).
 	searchIssues map[string]any
 	// repoLabels is the GET /repos/{o}/{r}/labels response (ListLabels).
@@ -307,6 +310,8 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 			"id": 1, "node_id": "IC_node1",
 			"html_url": "https://example/pull/7#issuecomment-1",
 		})
+	case r.Method == http.MethodGet && gIssueRoot.MatchString(path):
+		enc(s.incrementalIssues)
 	case r.Method == http.MethodPost && gIssueRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createResp)
@@ -416,6 +421,24 @@ func TestForgeGithubGolden(t *testing.T) {
 		setup func(s *goldenServer)
 		run   func(f *GitHubForge) (any, error)
 	}{
+		{
+			name: "incremental_changes",
+			setup: func(s *goldenServer) {
+				s.pullsList = []map[string]any{{"number": 7, "state": "closed", "updated_at": "2026-10-01T12:00:00Z", "merged_at": "2026-10-01T12:00:00Z", "head": map[string]any{"sha": "head", "ref": "topic"}, "base": map[string]any{"sha": "base", "ref": "main", "repo": map[string]any{"full_name": forgeTestRepo.Slug()}}}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ChangesUpdatedSince(context.Background(), forgeTestRepo, adapters.UpdateQuery{})
+			},
+		},
+		{
+			name: "incremental_issues",
+			setup: func(s *goldenServer) {
+				s.incrementalIssues = []map[string]any{{"number": 8, "state": "closed", "state_reason": "not_planned", "updated_at": "2026-10-01T12:00:00Z", "title": "issue", "body": "body", "user": map[string]any{"id": 7, "login": "author", "type": "User"}}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.IssuesUpdatedSince(context.Background(), forgeTestRepo, adapters.UpdateQuery{})
+			},
+		},
 		{
 			name: "get_pull_request",
 			setup: func(s *goldenServer) {

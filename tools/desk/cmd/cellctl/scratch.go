@@ -122,8 +122,9 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 		if err = r.Close(); err != nil {
 			die("scratch release: %v", err)
 		}
-		// Finalization retains the record and evidence. Explicit sweep owns all
-		// recursive accounting and reclamation, outside the task critical path.
+		// Finalization retains the record and evidence. The scratch sweep, explicit
+		// or a supervisor's periodic one, owns all recursive accounting and
+		// reclamation, outside the task critical path.
 		if code < 0 {
 			code = 1
 		}
@@ -141,7 +142,9 @@ func scratchJSON(v any) {
 	}
 }
 
-// This explicit maintenance boundary is the only cellctl caller of Sweep.
+// This explicit maintenance boundary is cellctl's only direct caller of Sweep. The
+// other route to reclamation is the supervisor's periodic SweepIfDue
+// (scratch_maintain.go); neither runs on the launch or completion path.
 func sweepScratch(s *cellscratch.Store, p cellscratch.Policy, apply bool) (cellscratch.Report, error) {
 	return s.Sweep(p, apply)
 }

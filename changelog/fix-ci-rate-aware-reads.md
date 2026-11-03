@@ -1,0 +1,1 @@
+- Retry rate-limited CI forge reads once after the provider reset with the same credential and a shared bounded wait; retain the actual CLI denial without printing supplied credentials.
