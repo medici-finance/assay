@@ -1,2 +1,0 @@
-### Fixed
-- The `comms` module's dependency-boundary test no longer depends on where its temporary directory sits: its missing-module control failed under Go 1.27, where `go list -e` exits 0 outside a module. The closure walk now requires positive proof it walked this module (the matched packages load and include the module's own), and two new controls fail a walk of an unrelated module and a module package whose broken import block hides a forbidden import.

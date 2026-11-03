@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -17,6 +18,8 @@ const originMain = plumbing.ReferenceName("refs/remotes/origin/main")
 // disposable directory. Only the new repository's HEAD/index/worktree are written.
 // Its object alternate retains the original commit objects and their real history;
 // no synthetic commit, copied identity configuration, network or credential is used.
+// Only the source origin's repository URL survives, with URL credentials, query and
+// fragment removed. Approval readers still require their explicit network opt-in.
 // The caller owns dest and its cleanup. Missing history fails rather than falling
 // back to the source home's (deliberately frozen) HEAD.
 //
@@ -72,6 +75,18 @@ func CheckoutLocalCommit(source, dest, commit, baseline string) error {
 	if err != nil {
 		return err
 	}
+	// Preserve repository authority for every consumer of this history snapshot.
+	// Never copy the source config: helpers, headers, hooks and identity stay home.
+	// A reset also masks an inherited global origin when metadata is unavailable.
+	// Without it, omitting a local remote could expose another scope's authority.
+	urls := []string{""}
+	if origin := src.snapshotOrigin(); origin != "" {
+		urls = append(urls, origin)
+	}
+	if _, err := r.repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: urls}); err != nil {
+		return err
+	}
+
 	if _, err := r.repo.CommitObject(plumbing.NewHash(commit)); err != nil {
 		return fmt.Errorf("gitcore: landed commit unavailable locally; fetch the target branch before publishing: %w", err)
 	}

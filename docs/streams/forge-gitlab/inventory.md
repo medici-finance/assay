@@ -454,3 +454,12 @@ because a log read must never require the capability that can cancel or delete r
 terminal control sequences before it is printed. The goldens `run_log*` and `retry_run*` on both backends pin
 the wire against recorded fixtures, including a multi-job GitLab pipeline whose every job trace is read and a
 retry that touches only failed jobs; no live run or pipeline is exercised.
+
+
+| 65 | `ChangesUpdatedSince(ctx, repo, query)` | Bounded all-state changes updated at or after an inclusive bound; consumed by the admitted `MirrorReadSource` | `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc`, bounded descending walk/filter; the endpoint has no server-side since filter, reported explicitly | `GET /projects/:id/merge_requests?state=all&updated_after=…&order_by=updated_at&sort=desc`, bounded pages; MR identities and explicit merge state preserved | implemented |
+| 66 | `IssuesUpdatedSince(ctx, repo, query)` | Bounded issues-only incremental observations; consumed by the admitted `MirrorReadSource` | `GET /repos/{o}/{r}/issues?state=all&since=…&sort=updated&direction=desc`, PR entries excluded | `GET /projects/:id/issues?state=all&updated_after=…&order_by=updated_at&sort=desc`, issue numbering retained | implemented |
+
+The incremental source reads use existing admitted transports and explicit read-only wrappers.
+A ceiling is `Incomplete`, a failed page returns no successful population, and the conditional
+capability is explicitly unsupported in this baseline. They grant no mirror retention,
+scheduling, persistence, review/check completeness or service activation.
