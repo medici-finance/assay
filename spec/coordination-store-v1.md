@@ -227,6 +227,9 @@ individual attempt, then observation scope/records. Identity-only lookups before
 those locks are rechecked. Native HTTP runs after reservation commit with no SQL
 locks/pool connection retained. Different admissions sharing a source budget use
 the same budget row and never acquire a second admission lock.
+Shared profiles require `Limits.Refresh.FailureBackoff == 0`; the Gate is the sole
+shared retry authority. Construction rejects nonzero values before I/O rather than
+normalizing them. The standalone mirror planner retains its own policy contract.
 
 Usage is debited before the actual native base-transport entry, not after a scan.
 An individual opaque reservation is required; its qualified observation can close

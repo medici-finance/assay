@@ -146,6 +146,9 @@ It implements the shared refresh Gate and native AttemptAuthority against the sa
 pool and Goose ledger. It creates no policy or accounting: missing, unknown and
 mismatched SQL profiles hold. Only synthetic tests initialize known usage here;
 production initialization, repair and activation remain separately owned.
+Shared profiles must explicitly use `Limits.Refresh.FailureBackoff == 0`. Nonzero
+values refuse before I/O because the Gate owns shared retry eligibility; the
+standalone mirror planner is unchanged.
 
 Migration00003 separates source budgets, admission/caller usage, base fill leases,
 waiters and individual native reservations. HTTP is authorized before each actual
