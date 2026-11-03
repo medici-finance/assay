@@ -221,7 +221,7 @@
       "name": "widen abandoned build names",
       "file": "internal/cellscratch/store.go",
       "old": "return ok && tool != \"\" && suffix != \"\"",
-      "new": "return tool != \"\" || suffix != \"\""
+      "new": "return ok || tool != \"\" || suffix != \"\""
     },
     {
       "name": "accept any name after a build prefix",
@@ -323,25 +323,25 @@
       "name": "accept empty bin suffix",
       "file": "internal/cellscratch/store.go",
       "old": "return ok && tool != \"\" && suffix != \"\"",
-      "new": "return ok && tool != \"\""
+      "new": "return ok && tool != \"\" && len(suffix) >= 0"
     },
     {
       "name": "accept empty bin prefix",
       "file": "internal/cellscratch/store.go",
       "old": "return ok && tool != \"\" && suffix != \"\"",
-      "new": "return ok && suffix != \"\""
+      "new": "return ok && len(tool) >= 0 && suffix != \"\""
     },
     {
       "name": "plan Git per task again",
       "file": "internal/cellscratch/store.go",
       "old": "case (git || allGit) && !abandoned:",
-      "new": "case git || allGit:"
+      "new": "case (git || allGit) && (abandoned || !abandoned):"
     },
     {
       "name": "drop per-entry Git check",
       "file": "internal/cellscratch/store.go",
       "old": "\t\tif git {\n\t\t\tcontinue",
-      "new": "\t\tif false {\n\t\t\tcontinue"
+      "new": "\t\tif git && false {\n\t\t\tcontinue"
     },
     {
       "name": "recheck abandoned task whole",
