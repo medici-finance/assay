@@ -188,7 +188,7 @@ implementation layers are present: original observation/classification extractio
 No second extraction or classifier is needed. The remaining lifecycle hold is the
 record-specific human design ruling on #4521. Proposed `DR-desk-tools-39` supplies
 the reviewable record; it does not select option A on the human's behalf. After a
-valid ruling exists, bind it and `design:` and use the native reconciler with the
+valid ruling exists, bind it and `design:` and use the native `statusgen reconcile` command with the
 actual merged witness. Do not substitute consumer routing for delivery qualification.
 
 The canonical row stays `todo`; all four original Verify rows, Evidence and the
