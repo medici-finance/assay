@@ -70,7 +70,7 @@ files:
 - `tools/go-analysis/pins.env` (explicitly authorized Go-loader repair using existing Go 1.27.1 archive pins)
 - `tools/go-analysis/runner.py`, `scripts/tests/go-analysis.py`, `scripts/tests/go-analysis-mutations.py` (retain prior platform/tag coverage for both owners)
 - `Dockerfile`, `images/assay-harness/Dockerfile`, `images/verify-runner/Dockerfile`, `statusgen/testdata/verification-handoff/mutate.py`
-- **CI consumer targets:** `.github/workflows/ci.yml`, `.github/workflows/assay-statusgen.yml`, `.github/workflows/git-maintenance-windows.yml` and `ci/staged-workflows/assay-statusgen.yml` (the existing twin) — live activation remains the existing maintainer-owned act, not an implicit permission of this brief
+- **CI consumer targets:** `.github/workflows/ci.yml`, `.github/workflows/assay-statusgen.yml` and `ci/staged-workflows/assay-statusgen.yml` (the existing twin; the native-Windows `git-maintenance-windows.yml` consumer was retired with the rest of the native-Windows CI, #4106) — live activation remains the existing maintainer-owned act, not an implicit permission of this brief
 - **Source-bound mutation maps and acceptance callers whose old `internal/gitcore` paths or test-module working directories change with the lift**
 - `changelog/statusgen-go-git.md` (planned)
 
