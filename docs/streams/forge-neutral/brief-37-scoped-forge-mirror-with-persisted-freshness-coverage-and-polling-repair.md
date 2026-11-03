@@ -312,10 +312,10 @@ existing completed batching/conditional requests are baseline, not this brief's 
    the in-memory reference store and the PostgreSQL store. Restart keeps rows and
    watermarks. Deleting the mirror tables and rebuilding starts every scope at `never-read` and
    claims no earlier completeness.
-8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` MirrorReadSource
+8. **Composition and floor.** Reuse /47's `tools/desk/internal/deskkit/mirrorsource.go` (planned) MirrorReadSource
    and its two provider operations, including the lower-layer refusal of a repository outside the
    credential's scope before any request. Implement the joined assembly/observation mapper in
-   `tools/desk/internal/deskkit/mirroringest.go` (planned here), connecting that admitted source to /46's
+   `tools/desk/internal/deskkit/mirroringest.go` (planned), connecting that admitted source to /46's
    mirror contracts and this brief's PostgreSQL store. The assembly supplies the composition-derived
    admission ID with each access and the query-time authorizer over the same admitted repository set
    to both library and store. It derives query admission from the authenticated caller; a
