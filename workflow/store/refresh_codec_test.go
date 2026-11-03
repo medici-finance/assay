@@ -8,7 +8,7 @@ import (
 )
 
 // regression: F-refresh-canonical-byte-identity
-func TestPGRefreshIdentityCodec(t *testing.T) {
+func checkRefreshIdentityCodec(t *testing.T) {
 	c := testRefreshConfig()
 	c.AccessEpoch = "opaque\x00\xff"
 	one, e := refreshBytes(c)

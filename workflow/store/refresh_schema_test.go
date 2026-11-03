@@ -6,12 +6,16 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/forgeread/mirror"
 )
 
 // regression: F-refresh-independent-sql-schema
 func TestPGRefreshSchemaBoundary(t *testing.T) {
+	t.Run("raw-expired-completion", checkRawExpiredRefresh)
+	t.Run("identity-codec", checkRefreshIdentityCodec)
+	TestPGFoundationBoundary(t)
 	r := sqlRefresh(t)
 	ctx := context.Background()
 	raw, e := os.ReadFile("../../spec/coordination-store-v1.md")
@@ -72,4 +76,15 @@ func TestPGRefreshSchemaBoundary(t *testing.T) {
 	if reflect.DeepEqual(want, changed) {
 		t.Fatal("extra refresh table accepted")
 	}
+}
+
+func checkRawExpiredRefresh(t *testing.T) {
+	cfg := testRefreshConfig()
+	cfg.Limits.FillTimeout = 300 * time.Millisecond
+	r := sqlRefreshConfig(t, cfg)
+	_, u := mirrorInput()
+	ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	time.Sleep(350 * time.Millisecond)
+	key, _, _ := fillIndex(r.demand(u.Scope, "caller-a").Key)
+	rawRefused(t, r.raw, key, `UPDATE public.refresh_fills SET state='done',completion_xid=pg_current_xact_id() WHERE fill_key=$1 AND generation=$2`, []byte(ticket.Generation))
 }

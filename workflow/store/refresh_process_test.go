@@ -73,7 +73,7 @@ func TestPGRefreshProcess(t *testing.T) {
 		receipt := knownRefreshAttempt(t, r, ticket)
 		if p.Mixed {
 			for range 3 {
-				_ = knownRefreshAttempt(t, r, ticket)
+				receipt = knownRefreshAttempt(t, r, ticket)
 			}
 			receipt.HTTP.Value = 4
 		}
@@ -111,6 +111,7 @@ func refreshProcessCommand(t *testing.T, p refreshProcessPacket) *exec.Cmd {
 
 // regression: F-refresh-process-ownership-lock-order
 func TestPGRefreshGateProcesses(t *testing.T) {
+	t.Run("expiry", checkRefreshExpiry)
 	for _, mixed := range []bool{false, true} {
 		t.Run(fmt.Sprint("mixed=", mixed), func(t *testing.T) {
 			r := sqlRefresh(t)

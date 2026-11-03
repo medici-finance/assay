@@ -50,6 +50,7 @@ CREATE TABLE public.refresh_fills (
  scope_key bytea NOT NULL CHECK(octet_length(scope_key)=32),
  generation bytea NOT NULL CHECK(octet_length(generation)>0),
  owner_id bytea NOT NULL CHECK(octet_length(owner_id)>0),
+ owner_reviews boolean NOT NULL,
  expires_at timestamptz NOT NULL,
  retire_at timestamptz NOT NULL,
  state text NOT NULL CHECK(state IN ('pending','done','held')),
@@ -61,6 +62,7 @@ CREATE TABLE public.refresh_fills (
  attempts_used bigint NOT NULL DEFAULT 0 CHECK(attempts_used>=0),
  attempt_limit bigint NOT NULL CHECK(attempt_limit>0 AND attempts_used<=attempt_limit),
  attempt_held boolean NOT NULL DEFAULT false,
+ review_only_partial boolean NOT NULL DEFAULT false CHECK(NOT review_only_partial OR state='done' AND owner_reviews),
  completion_xid xid8
 );
 CREATE TABLE public.refresh_waiters (
@@ -84,8 +86,10 @@ CREATE TABLE public.refresh_attempts (
  expires_at timestamptz NOT NULL,
  observed boolean NOT NULL DEFAULT false,
  unknown_hold boolean NOT NULL DEFAULT false,
- http_count bigint CHECK(http_count=1),
- decoded_bytes bigint CHECK(decoded_bytes>=0),
+ http_count bigint NOT NULL DEFAULT 0 CHECK(http_count>=0),
+ http_known boolean NOT NULL DEFAULT false,
+ decoded_bytes bigint NOT NULL DEFAULT 0 CHECK(decoded_bytes>=0),
+ decoded_known boolean NOT NULL DEFAULT false,
  response_complete boolean NOT NULL DEFAULT false,
  status integer NOT NULL DEFAULT 0 CHECK(status BETWEEN 0 AND 599),
  retry_knowledge text NOT NULL DEFAULT 'unknown' CHECK(retry_knowledge IN ('unknown','not-before','no-observed-constraint','qualified-no-response')),
@@ -135,7 +139,7 @@ END $$;
 CREATE TRIGGER refresh_admission_guard BEFORE UPDATE OR DELETE ON public.refresh_admissions FOR EACH ROW EXECUTE FUNCTION public.guard_refresh_usage();
 CREATE TRIGGER refresh_caller_guard BEFORE UPDATE OR DELETE ON public.refresh_callers FOR EACH ROW EXECUTE FUNCTION public.guard_refresh_usage();
 CREATE FUNCTION public.guard_refresh_fill() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE current_version bigint; current_xid xid8;
+DECLARE current_version bigint; current_xid xid8; current_state text; current_complete boolean;
 BEGIN
  IF TG_OP='INSERT' OR NEW.generation<>OLD.generation THEN
   IF NOT EXISTS(SELECT 1 FROM public.refresh_admissions WHERE admission=NEW.admission AND known AND write_xid=pg_current_xact_id()) OR NOT EXISTS(SELECT 1 FROM public.refresh_callers WHERE admission=NEW.admission AND caller_id=NEW.owner_id AND known AND write_xid=pg_current_xact_id()) THEN RAISE EXCEPTION 'fill usage not reserved'; END IF;
@@ -149,12 +153,13 @@ BEGIN
   IF OLD.state='pending' AND OLD.expires_at>clock_timestamp() OR EXISTS(SELECT 1 FROM public.refresh_attempts WHERE fill_key=OLD.fill_key AND (NOT observed OR unknown_hold)) THEN RAISE EXCEPTION 'fill takeover refused'; END IF;
   IF NEW.state<>'pending' OR NEW.attempts_used<>0 THEN RAISE EXCEPTION 'fill reset refused'; END IF;
  ELSE
-  IF NEW.owner_id<>OLD.owner_id OR NEW.expires_at<>OLD.expires_at OR NEW.attempt_limit<>OLD.attempt_limit OR NEW.attempts_used<OLD.attempts_used THEN RAISE EXCEPTION 'fill owner refused'; END IF;
-  IF OLD.state<>'pending' AND NEW.state<>OLD.state THEN RAISE EXCEPTION 'completion replay refused'; END IF;
+  IF NEW.owner_id<>OLD.owner_id OR NEW.owner_reviews<>OLD.owner_reviews OR NEW.expires_at<>OLD.expires_at OR NEW.attempt_limit<>OLD.attempt_limit OR NEW.attempts_used<OLD.attempts_used THEN RAISE EXCEPTION 'fill owner refused'; END IF;
+  IF OLD.state<>'pending' AND (NEW.state<>OLD.state OR NEW.review_only_partial<>OLD.review_only_partial) THEN RAISE EXCEPTION 'completion replay refused'; END IF;
   IF NEW.state='done' AND OLD.state='pending' THEN
    IF OLD.expires_at<=clock_timestamp() OR NEW.completion_xid IS DISTINCT FROM pg_current_xact_id() THEN RAISE EXCEPTION 'unfenced completion'; END IF;
-   SELECT version,write_xid INTO current_version,current_xid FROM public.mirror_scopes WHERE scope_key=NEW.scope_key;
+   SELECT version,write_xid,state,complete_scan INTO current_version,current_xid,current_state,current_complete FROM public.mirror_scopes WHERE scope_key=NEW.scope_key;
    IF COALESCE(current_version,0)<>NEW.snapshot_version OR (NEW.snapshot_version<>OLD.snapshot_version AND current_xid IS DISTINCT FROM pg_current_xact_id()) THEN RAISE EXCEPTION 'completion outside observation transaction'; END IF;
+   IF NEW.review_only_partial AND (NEW.reason<>'' OR current_state IS DISTINCT FROM 'partial' OR current_complete OR current_xid IS DISTINCT FROM pg_current_xact_id()) THEN RAISE EXCEPTION 'unqualified review-only partial'; END IF;
   END IF;
  END IF;
  RETURN NEW;
@@ -169,7 +174,7 @@ CREATE TRIGGER refresh_waiter_guard BEFORE INSERT ON public.refresh_waiters FOR 
 CREATE FUNCTION public.guard_refresh_attempt_insert() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.refresh_budgets WHERE source_id=NEW.source_id AND known AND NOT unknown_hold AND write_xid=pg_current_xact_id() AND (retry_at IS NULL OR retry_at<=clock_timestamp()) AND (SELECT count(*) FROM public.refresh_attempts WHERE source_id=NEW.source_id AND NOT observed)<inflight_limit AND (SELECT count(*) FROM public.refresh_attempts WHERE source_id=NEW.source_id)<reservation_limit) OR NOT EXISTS(SELECT 1 FROM public.refresh_admissions WHERE admission=NEW.admission AND source_id=NEW.source_id AND known AND write_xid=pg_current_xact_id()) OR NOT EXISTS(SELECT 1 FROM public.refresh_callers WHERE admission=NEW.admission AND caller_id=NEW.caller_id AND known AND write_xid=pg_current_xact_id()) OR NOT EXISTS(SELECT 1 FROM public.refresh_fills WHERE fill_key=NEW.fill_key AND admission=NEW.admission AND generation=NEW.generation AND owner_id=NEW.caller_id AND NEW.grant_id=NEW.generation AND expires_at=NEW.expires_at AND state='pending' AND expires_at>clock_timestamp() AND attempts_used=(SELECT count(*)+1 FROM public.refresh_attempts WHERE fill_key=NEW.fill_key AND generation=NEW.generation)) THEN RAISE EXCEPTION 'attempt not reserved'; END IF;
- IF NEW.observed OR NEW.unknown_hold OR NEW.http_count IS NOT NULL OR NEW.decoded_bytes IS NOT NULL OR NEW.observed_at IS NOT NULL THEN RAISE EXCEPTION 'pre-observed attempt refused'; END IF;
+ IF NEW.observed OR NEW.unknown_hold OR NEW.http_count<>0 OR NEW.http_known OR NEW.decoded_bytes<>0 OR NEW.decoded_known OR NEW.observed_at IS NOT NULL THEN RAISE EXCEPTION 'pre-observed attempt refused'; END IF;
  RETURN NEW;
 END $$;
 CREATE TRIGGER refresh_attempt_insert_guard BEFORE INSERT ON public.refresh_attempts FOR EACH ROW EXECUTE FUNCTION public.guard_refresh_attempt_insert();
@@ -179,7 +184,13 @@ BEGIN
  IF NEW.reservation_id<>OLD.reservation_id OR NEW.admission<>OLD.admission OR NEW.source_id<>OLD.source_id OR NEW.fill_key<>OLD.fill_key OR NEW.generation<>OLD.generation OR NEW.caller_id<>OLD.caller_id OR NEW.grant_id<>OLD.grant_id OR NEW.expires_at<>OLD.expires_at OR OLD.observed THEN RAISE EXCEPTION 'attempt report identity refused'; END IF;
  IF NOT NEW.observed THEN RAISE EXCEPTION 'attempt report required'; END IF;
  NEW.observed_at:=clock_timestamp();
- IF NOT NEW.unknown_hold AND (NEW.http_count IS DISTINCT FROM 1 OR NEW.source_observed_at IS NULL OR NEW.retry_knowledge='unknown' OR NEW.retry_knowledge='qualified-no-response' AND (NEW.status<>0 OR NEW.response_complete OR NEW.reported_retry_at IS NOT NULL OR NEW.delay_known) OR NEW.retry_knowledge='no-observed-constraint' AND (NEW.status<100 OR NEW.reported_retry_at IS NOT NULL OR NEW.delay_known) OR NEW.retry_knowledge='not-before' AND (NEW.status<100 OR NEW.reported_retry_at IS NULL)) THEN RAISE EXCEPTION 'unqualified observation'; END IF;
+ IF NOT NEW.unknown_hold THEN
+  IF NOT NEW.http_known OR NEW.source_observed_at IS NULL THEN RAISE EXCEPTION 'unqualified observation'; END IF;
+  IF NEW.http_count=0 THEN
+   IF NEW.status<>0 OR NEW.response_complete OR NEW.decoded_bytes<>0 OR NOT NEW.decoded_known OR NEW.retry_knowledge<>'no-observed-constraint' OR NEW.reported_retry_at IS NOT NULL OR NEW.delay_known OR NEW.retry_delay_ns<>0 THEN RAISE EXCEPTION 'unqualified zero-entry observation'; END IF;
+  ELSIF NEW.http_count<>1 OR NEW.retry_knowledge='unknown' OR NEW.retry_knowledge='qualified-no-response' AND (NEW.status<>0 OR NEW.response_complete OR NEW.reported_retry_at IS NOT NULL OR NEW.delay_known) OR NEW.retry_knowledge='no-observed-constraint' AND (NEW.status<100 OR NEW.reported_retry_at IS NOT NULL OR NEW.delay_known) OR NEW.retry_knowledge='not-before' AND (NEW.status<100 OR NEW.reported_retry_at IS NULL) THEN RAISE EXCEPTION 'unqualified observation'; END IF;
+ END IF;
+
  NEW.retry_at:=NULL;
  IF NEW.reported_retry_at IS NOT NULL THEN
   NEW.retry_at:=to_timestamp(floor(NEW.reported_retry_at/1000000000)::double precision)+ceil((NEW.reported_retry_at-floor(NEW.reported_retry_at/1000000000)*1000000000)/1000)::double precision*interval '1 microsecond';

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,10 +79,11 @@ func knownRefreshAttempt(t *testing.T, r refreshRig, ticket refresh.Ticket) mirr
 	if e != nil {
 		t.Fatal(e)
 	}
+	decodedAt := time.Now().UTC()
 	if e = r.g.ObserveAttempt(ctx, res, mirror.AttemptObservation{HTTP: mirror.WorkCount{Value: 1, Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Status: 200, ResponseComplete: true, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now()}); e != nil {
 		t.Fatal(e)
 	}
-	return mirror.AttemptReceipt{Grant: ticket.AttemptGrant, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
+	return mirror.AttemptReceipt{Grant: ticket.AttemptGrant, ObservedAt: decodedAt, HTTP: mirror.WorkCount{Value: 1, Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}
 }
 func completionRefresh(r refreshRig, ticket refresh.Ticket, u *mirror.ScanUpdate) refresh.Completion {
 	q := refresh.Query{Query: mirror.Query{Scope: ticket.AttemptGrant.Scope, MaxAge: time.Hour, Now: time.Now()}}
@@ -136,7 +138,7 @@ func TestPGRefreshGateAtomicCompletion(t *testing.T) {
 	next := acquireRefresh(t, r, r.demand(u.Scope, "caller-b"))
 	u.ExpectedVersion = snap.Version
 	u.Upsert[0].Title = "must roll back"
-	u.Coverage.LastAttempted = u.Coverage.LastAttempted.Add(time.Second)
+	u.Coverage.LastAttempted = time.Now().UTC()
 	u.Coverage.LastComplete = u.Coverage.LastAttempted
 	u.Coverage.LastInventory = u.Coverage.LastAttempted
 	if _, e = r.raw.Exec(`CREATE FUNCTION public.fixture_refresh_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='done' THEN RAISE EXCEPTION 'synthetic completion failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fixture_refresh_failure BEFORE UPDATE ON public.refresh_fills FOR EACH ROW EXECUTE FUNCTION public.fixture_refresh_failure()`); e != nil {
@@ -152,6 +154,12 @@ func TestPGRefreshGateAtomicCompletion(t *testing.T) {
 
 // regression: F-refresh-native-reservations
 func TestPGRefreshAttemptAuthority(t *testing.T) {
+	t.Run("known-zero-entry", checkRefreshKnownZeroEntry)
+	t.Run("unknown-decoded-prefix", checkRefreshUnknownDecodedPrefix)
+	t.Run("native-data-bound", checkRefreshNativeDataBound)
+	t.Run("shared-ceilings", checkRefreshSharedHTTPBudget)
+	t.Run("no-aggregate-reconciliation", checkRefreshAggregateCannotReconcile)
+	t.Run("provider-floor", checkRefreshProviderRetryFloor)
 	r := sqlRefresh(t)
 	_, u := mirrorInput()
 	ctx := context.Background()
@@ -200,6 +208,8 @@ func TestPGRefreshAttemptAuthority(t *testing.T) {
 
 // regression: F-refresh-requirement-generation
 func TestPGRefreshRequirementBackoff(t *testing.T) {
+	t.Run("strong-owner-base-join", checkRefreshStrongOwnerIsolation)
+	t.Run("snapshot-version-fence", checkRefreshOutcomeVersion)
 	r := sqlRefresh(t)
 	a, u := mirrorInput()
 	ctx := context.Background()
@@ -250,6 +260,9 @@ func TestPGRefreshRequirementBackoff(t *testing.T) {
 
 // regression: F-refresh-capacity-known-accounting
 func TestPGRefreshCapacityCancellation(t *testing.T) {
+	t.Run("postcommit-caller-refusal", checkRefreshPostcommitRefusal)
+	t.Run("direct-deadline", checkRefreshDirectDeadline)
+	t.Run("caller-fairness", checkRefreshFairBudget)
 	r := sqlRefresh(t)
 	_, u := mirrorInput()
 	ctx := context.Background()
@@ -293,7 +306,7 @@ func TestPGRefreshCapacityCancellation(t *testing.T) {
 }
 
 // regression: F-refresh-expiry-without-invented-receipt
-func TestPGRefreshExpiry(t *testing.T) {
+func checkRefreshExpiry(t *testing.T) {
 	for _, issued := range []bool{false, true} {
 		t.Run(fmt.Sprint("issued=", issued), func(t *testing.T) {
 			cfg := testRefreshConfig()
@@ -308,7 +321,7 @@ func TestPGRefreshExpiry(t *testing.T) {
 				}
 			}
 			time.Sleep(350 * time.Millisecond)
-			newer, e := r.g.Acquire(ctx, r.demand(u.Scope, "caller-b"))
+			newer, e := r.g.Acquire(ctx, r.demand(u.Scope, "caller-a"))
 			if issued {
 				if e == nil {
 					t.Fatal("unknown issued attempt recovered as zero")
@@ -331,7 +344,7 @@ func TestPGRefreshExpiry(t *testing.T) {
 }
 
 // regression: F-refresh-caller-fair-budget
-func TestPGRefreshFairBudget(t *testing.T) {
+func checkRefreshFairBudget(t *testing.T) {
 	cfg := testRefreshConfig()
 	cfg.Limits.CallerFillsPerWindow = 1
 	cfg.Limits.QueuedCallers = 1
@@ -357,7 +370,7 @@ func TestPGRefreshFairBudget(t *testing.T) {
 }
 
 // regression: F-refresh-shared-native-ceilings
-func TestPGRefreshSharedHTTPBudget(t *testing.T) {
+func checkRefreshSharedHTTPBudget(t *testing.T) {
 	t.Run("caller", func(t *testing.T) {
 		cfg := testRefreshConfig()
 		cfg.Native.CallerPerWindow = 1
@@ -407,7 +420,7 @@ func TestPGRefreshSharedHTTPBudget(t *testing.T) {
 }
 
 // regression: F-refresh-no-invented-individual-observation
-func TestPGRefreshAggregateCannotReconcile(t *testing.T) {
+func checkRefreshAggregateCannotReconcile(t *testing.T) {
 	r := sqlRefresh(t)
 	a, u := mirrorInput()
 	ctx := context.Background()
@@ -433,7 +446,7 @@ func TestPGRefreshAggregateCannotReconcile(t *testing.T) {
 }
 
 // regression: F-refresh-canonical-rate-floor
-func TestPGRefreshProviderRetryFloor(t *testing.T) {
+func checkRefreshProviderRetryFloor(t *testing.T) {
 	r := sqlRefresh(t)
 	a, u := mirrorInput()
 	ctx := context.Background()
@@ -459,5 +472,268 @@ func TestPGRefreshProviderRetryFloor(t *testing.T) {
 	}
 	if _, e = r.g.Acquire(ctx, r.demand(u.Scope, "caller-b")); e == nil {
 		t.Fatal("failure retry floor ignored by another caller")
+	}
+}
+
+func checkRefreshOutcomeVersion(t *testing.T) {
+	r := sqlRefresh(t)
+	a, u := mirrorInput()
+	now := time.Now().UTC()
+	u.Coverage.LastAttempted = now
+	u.Coverage.LastComplete = now
+	u.Coverage.LastInventory = now
+	u.Coverage.ObservedUpTo = now
+	u.Upsert[0].UpdatedAt = now
+	u.Upsert[0].ObservedAt = now
+	ctx := context.Background()
+	d := r.demand(u.Scope, "caller-a")
+	owner := acquireRefresh(t, r, d)
+	waiter := acquireRefresh(t, r, r.demand(u.Scope, "caller-b"))
+	c := completionRefresh(r, owner, &u)
+	c.Attempts = knownRefreshAttempt(t, r, owner)
+	if e := r.g.Complete(ctx, owner, r.s, a, c); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := r.g.Leave(ctx, waiter, refresh.Outcome{Checked: true, Fulfilled: false, SnapshotVersion: "999"}); e != nil {
+		t.Fatal(e)
+	}
+	if next, e := r.g.Acquire(ctx, r.demand(u.Scope, "caller-b")); e != nil || !next.Owner {
+		t.Fatal("foreign snapshot outcome poisoned current generation")
+	}
+}
+
+func checkRefreshDirectDeadline(t *testing.T) {
+	// Nil contexts refuse before context.WithTimeout; direct callers cannot panic
+	// into an unbounded operation or erase an earlier deadline.
+	cfg := testRefreshConfig()
+	cfg.Limits.WaitTimeout = time.Second
+	r := sqlRefreshConfig(t, cfg)
+	_, u := mirrorInput()
+	ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	if _, e := r.g.Acquire(nil, r.demand(u.Scope, "caller-a")); e == nil {
+		t.Fatal("nil Acquire context")
+	}
+	if _, e := r.g.Wait(nil, ticket); e == nil {
+		t.Fatal("nil Wait context")
+	}
+	if e := r.g.Complete(nil, ticket, r.s, nil, refresh.Completion{}); e == nil {
+		t.Fatal("nil Complete context")
+	}
+	if _, e := r.g.Leave(nil, ticket, refresh.Outcome{}); e == nil {
+		t.Fatal("nil Leave context")
+	}
+	if _, e := r.g.BeforeAttempt(nil, ticket.AttemptGrant); e == nil {
+		t.Fatal("nil attempt context")
+	}
+	if e := r.g.ObserveAttempt(nil, mirror.AttemptReservation{}, mirror.AttemptObservation{}); e == nil {
+		t.Fatal("nil observation context")
+	}
+	ctx := context.Background()
+	lock, e := r.raw.Begin()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer lock.Rollback()
+	var source []byte
+	if e = lock.QueryRow(`SELECT source_id FROM public.refresh_budgets WHERE source_id=$1 FOR UPDATE`, []byte(r.cfg.SourceID)).Scan(&source); e != nil {
+		t.Fatal(e)
+	}
+	started := time.Now()
+	if _, e = r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e == nil {
+		t.Fatal("blocked native authority granted an attempt")
+	}
+	if time.Since(started) > 2*time.Second {
+		t.Fatal("direct authority ignored configured deadline")
+	}
+	lock.Rollback()
+	var used int
+	if e = r.raw.QueryRow(`SELECT http_used FROM public.refresh_budgets WHERE source_id=$1`, source).Scan(&used); e != nil || used != 0 {
+		t.Fatal("timed-out authorization fabricated work allowance")
+	}
+	// The first waiter's own deadline elapsed while SQL was blocked. Renew only
+	// demand (not the still-current fill or its budget) before the positive probe.
+	renewed := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	if _, e = r.g.BeforeAttempt(ctx, renewed.AttemptGrant); e != nil {
+		t.Fatal("expired SQL operation leaked its locks")
+	}
+
+}
+
+func checkRefreshNativeDataBound(t *testing.T) {
+	for _, future := range []bool{false, true} {
+		t.Run(fmt.Sprint("future=", future), func(t *testing.T) {
+			r := sqlRefresh(t)
+			a, u := mirrorInput()
+			ctx := context.Background()
+			ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+			receipt := knownRefreshAttempt(t, r, ticket)
+			receipt.ObservedAt = time.Time{}
+			if future {
+				receipt.ObservedAt = time.Now().Add(time.Hour)
+			}
+			c := completionRefresh(r, ticket, &u)
+			c.Attempts = receipt
+			if e := r.g.Complete(ctx, ticket, r.s, a, c); e != nil {
+				t.Fatal(e)
+			}
+			state, e := r.g.Wait(ctx, ticket)
+			if e != nil || !state.AttemptHeld {
+				t.Fatal("unqualified native data time accepted")
+			}
+			if snap := readMirror(t, r.s, a, u.Scope); snap.Version != "" {
+				t.Fatal("missing/future native bound promoted coverage")
+			}
+		})
+	}
+}
+
+func checkRefreshStrongOwnerIsolation(t *testing.T) {
+	r := sqlRefresh(t)
+	a, u := mirrorInput()
+	ctx := context.Background()
+	u.Scope.Kind = mirror.Changes
+	u.Upsert[0].ID.Kind = "pull-request"
+	now := time.Now().UTC()
+	u.Upsert[0].ObservedAt = now
+	u.Upsert[0].UpdatedAt = now
+	strong := r.demand(u.Scope, "caller-a")
+	strong.Requirements.RequireReviews = true
+	base := r.demand(u.Scope, "caller-b")
+	owner := acquireRefresh(t, r, strong)
+	waiter := acquireRefresh(t, r, base)
+	baseline := readMirror(t, r.s, a, u.Scope)
+	plan, e := mirror.PlanRefresh(baseline, now, r.cfg.Limits.Refresh)
+	if e != nil {
+		t.Fatal(e)
+	}
+	partial, e := mirror.PlanScan(baseline, plan, mirror.ScanResult{Records: u.Upsert}, now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := completionRefresh(r, owner, &partial)
+	c.Query.RequireReviews = true
+	c.Attempts = knownRefreshAttempt(t, r, owner)
+	if !c.ReviewOnlyPartial() {
+		t.Fatal("fixture lacks canonical owner-review class")
+	}
+	if e = r.g.Complete(ctx, owner, r.s, a, c); e != nil {
+		t.Fatal(e)
+	}
+	snapshot := readMirror(t, r.s, a, u.Scope)
+	if snapshot.Coverage.State != mirror.Partial || !snapshot.Coverage.LastComplete.IsZero() {
+		t.Fatal("review-only partial upgraded scope coverage")
+	}
+	state, e := r.g.Leave(ctx, waiter, refresh.Outcome{Checked: true, Fulfilled: false, SnapshotVersion: snapshot.Version, Reason: mirror.Truncated})
+	if e != nil || !state.RetryAt.IsZero() {
+		t.Fatal("strong owner review gap poisoned joined base demand")
+	}
+	state, e = r.g.Leave(ctx, owner, refresh.Outcome{Checked: true, Fulfilled: false, SnapshotVersion: snapshot.Version, Reason: mirror.Truncated})
+	if e != nil || state.RetryAt.IsZero() {
+		t.Fatal("strong requirement gap lost shared backoff")
+	}
+	next := acquireRefresh(t, r, base)
+	if !next.Owner {
+		t.Fatal("base demand lost its one legitimate refetch")
+	}
+	if _, e = r.g.Acquire(ctx, strong); e == nil {
+		t.Fatal("base refetch erased stronger requirement failure")
+	}
+	u.ExpectedVersion = snapshot.Version
+	now = time.Now().UTC()
+	u.Coverage = mirror.Coverage{State: mirror.Complete, LastAttempted: now, LastComplete: now, LastInventory: now, ObservedUpTo: u.Upsert[0].UpdatedAt}
+	c = completionRefresh(r, next, &u)
+	c.Attempts = knownRefreshAttempt(t, r, next)
+	if e = r.g.Complete(ctx, next, r.s, a, c); e != nil {
+		t.Fatal(e)
+	}
+	fresh := readMirror(t, r.s, a, u.Scope)
+	if fresh.Coverage.State != mirror.Complete || fresh.Coverage.LastComplete.IsZero() {
+		t.Fatal("base refetch failed to recover qualified inventory")
+	}
+}
+
+func checkRefreshUnknownDecodedPrefix(t *testing.T) {
+	r := sqlRefresh(t)
+	_, u := mirrorInput()
+	ctx := context.Background()
+	ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	res, e := r.g.BeforeAttempt(ctx, ticket.AttemptGrant)
+	if e != nil {
+		t.Fatal(e)
+	}
+	o := mirror.AttemptObservation{HTTP: mirror.WorkCount{Value: 1, Known: true}, DecodedBytes: mirror.WorkCount{Value: 17, Known: false}, Status: 200, ResponseComplete: false, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now()}
+	if e = r.g.ObserveAttempt(ctx, res, o); e != nil {
+		t.Fatal("byte-prefix uncertainty poisoned qualified HTTP/retry observation")
+	}
+	var value int64
+	var known, unknown bool
+	if e = r.raw.QueryRow(`SELECT decoded_bytes,decoded_known,unknown_hold FROM public.refresh_attempts WHERE reservation_id=$1`, []byte(res.ID)).Scan(&value, &known, &unknown); e != nil || value != 17 || known || unknown {
+		t.Fatal("unknown decoded prefix was dropped or promoted to a total")
+	}
+	if _, e = r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e != nil {
+		t.Fatal("unknown byte total blocked otherwise eligible HTTP work")
+	}
+}
+
+type postcommitRefusalAuthority struct{ calls atomic.Int32 }
+
+func (a *postcommitRefusalAuthority) Authorize(ctx context.Context, c refresh.Caller, s mirror.Scope) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	if c.ID == "caller-a" && a.calls.Add(1) >= 3 {
+		return mirror.ErrPermission
+	}
+	return nil
+}
+func checkRefreshPostcommitRefusal(t *testing.T) {
+	cfg := testRefreshConfig()
+	cfg.Limits.FillTimeout = 2 * time.Second
+	r := sqlRefreshConfig(t, cfg)
+	_, u := mirrorInput()
+	ctx := context.Background()
+	owner := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	r.g.authority = &postcommitRefusalAuthority{}
+	if permit, e := r.g.BeforeAttempt(ctx, owner.AttemptGrant); e == nil || permit.ID != "" {
+		t.Fatal("revoked caller received native permit")
+	}
+	var charged int
+	if e := r.raw.QueryRow(`SELECT http_used FROM public.refresh_budgets WHERE source_id=$1`, []byte(r.cfg.SourceID)).Scan(&charged); e != nil || charged != 1 {
+		t.Fatal("postcommit refusal refunded its charged reservation")
+	}
+	if wait := time.Until(owner.AttemptGrant.ExpiresAt) + 50*time.Millisecond; wait > 0 {
+		time.Sleep(wait)
+	}
+	other, e := r.g.Acquire(ctx, r.demand(u.Scope, "caller-b"))
+	if e != nil || !other.Owner {
+		t.Fatal("definite no-permit caller refusal poisoned eligible B after expiry")
+	}
+	var observed, known, unknown bool
+	var count int64
+	if e = r.raw.QueryRow(`SELECT observed,http_count,http_known,unknown_hold FROM public.refresh_attempts WHERE generation=$1`, []byte(owner.Generation)).Scan(&observed, &count, &known, &unknown); e != nil || !observed || !known || count != 0 || unknown {
+		t.Fatal("certain zero-entry work was not distinguished from unknown completion")
+	}
+}
+
+func checkRefreshKnownZeroEntry(t *testing.T) {
+	r := sqlRefresh(t)
+	_, u := mirrorInput()
+	ctx := context.Background()
+	ticket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	res, e := r.g.BeforeAttempt(ctx, ticket.AttemptGrant)
+	if e != nil {
+		t.Fatal(e)
+	}
+	zero := mirror.AttemptObservation{HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Status: 0, ResponseComplete: false, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now()}
+	if e = r.g.ObserveAttempt(ctx, res, zero); e != nil {
+		t.Fatal("qualified lower pre-base refusal held as unknown HTTP")
+	}
+	var charged, http int
+	var known bool
+	if e = r.raw.QueryRow(`SELECT b.http_used,a.http_count,a.http_known FROM public.refresh_budgets b JOIN public.refresh_attempts a USING(source_id) WHERE reservation_id=$1`, []byte(res.ID)).Scan(&charged, &http, &known); e != nil || charged != 1 || http != 0 || !known {
+		t.Fatal("zero entry lost reservation charge or measured-zero distinction")
+	}
+	if _, e = r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e != nil {
+		t.Fatal("known zero-entry slot poisoned eligible future work")
 	}
 }

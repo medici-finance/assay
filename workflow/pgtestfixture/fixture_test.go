@@ -71,9 +71,10 @@ func TestOwnedRefreshSeed(t *testing.T) {
 	second := New(t)
 	saved := f.Config
 	f.Config = second.Config
-	if conn, e := f.ConnectOwned(ctx); e == nil {
+	conn, err := f.ConnectOwned(ctx)
+	f.Config = saved
+	if err == nil {
 		conn.Close()
 		t.Fatal("foreign owned marker accepted")
 	}
-	f.Config = saved
 }

@@ -14,6 +14,11 @@ func grantKey(grant mirror.AttemptGrant) refresh.FillKey {
 	return refresh.FillKey{Scope: grant.Scope, SourceID: grant.SourceID, AccessEpoch: grant.AccessEpoch, ConfigEpoch: grant.ConfigEpoch, PolicyClass: grant.PolicyClass, PolicyEpoch: grant.PolicyEpoch}
 }
 func (g *RefreshGate) BeforeAttempt(ctx context.Context, grant mirror.AttemptGrant) (mirror.AttemptReservation, error) {
+	if g == nil || ctx == nil {
+		return mirror.AttemptReservation{}, attemptHeld(mirror.AttemptUnknownHeld)
+	}
+	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	defer cancel()
 	k := grantKey(grant)
 	if !g.keyOK(k) || grant.CallerID == "" {
 		return mirror.AttemptReservation{}, attemptHeld(mirror.AttemptAdmissionHeld)
@@ -81,10 +86,17 @@ func (g *RefreshGate) BeforeAttempt(ctx context.Context, grant mirror.AttemptGra
 	if e = tx.Commit(); e != nil {
 		return mirror.AttemptReservation{}, attemptHeld(mirror.AttemptUnknownHeld)
 	}
+	reservation := mirror.AttemptReservation{ID: id, Grant: grant}
 	if g.current(ctx, grant.CallerID, grant.Scope) != nil {
+		// Commit was acknowledged but no permit has escaped this function. Record
+		// certain zero-entry work without refunding the charged reservation. If this
+		// bounded bookkeeping is uncertain, its unresolved slot continues to hold.
+		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), g.config.Limits.WaitTimeout)
+		_ = g.ObserveAttempt(cleanup, reservation, mirror.AttemptObservation{HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now().UTC()})
+		stop()
 		return mirror.AttemptReservation{}, attemptHeld(mirror.AttemptCallerHeld)
 	}
-	return mirror.AttemptReservation{ID: id, Grant: grant}, nil
+	return reservation, nil
 }
 
 // ceilRefreshTime preserves a lower retry bound when PostgreSQL rounds its
@@ -100,10 +112,13 @@ func ceilRefreshTime(t time.Time) time.Time {
 	return u
 }
 func validAttemptObservation(o mirror.AttemptObservation) bool {
-	if o.ObservedAt.IsZero() || !o.HTTP.Known || o.HTTP.Value != 1 || o.DecodedBytes.Value < 0 || o.Status < 0 || o.Status > 599 || o.Retry.Delay < 0 {
+	if o.ObservedAt.IsZero() || !o.HTTP.Known || o.DecodedBytes.Value < 0 || o.Status < 0 || o.Status > 599 || o.Retry.Delay < 0 {
 		return false
 	}
-	if !o.DecodedBytes.Known && o.DecodedBytes.Value != 0 {
+	if o.HTTP.Value == 0 {
+		return o.Status == 0 && !o.ResponseComplete && o.DecodedBytes.Known && o.DecodedBytes.Value == 0 && o.Retry.Knowledge == mirror.RetryNoConstraint && o.Retry.NotBefore.IsZero() && !o.Retry.DelayKnown && o.Retry.Delay == 0
+	}
+	if o.HTTP.Value != 1 {
 		return false
 	}
 	switch o.Retry.Knowledge {
@@ -120,6 +135,11 @@ func validAttemptObservation(o mirror.AttemptObservation) bool {
 	}
 }
 func (g *RefreshGate) ObserveAttempt(ctx context.Context, r mirror.AttemptReservation, o mirror.AttemptObservation) error {
+	if g == nil || ctx == nil {
+		return attemptHeld(mirror.AttemptUnknownHeld)
+	}
+	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	defer cancel()
 	k := grantKey(r.Grant)
 	if r.ID == "" || !g.keyOK(k) {
 		return attemptHeld(mirror.AttemptAdmissionHeld)
@@ -147,13 +167,10 @@ func (g *RefreshGate) ObserveAttempt(ctx context.Context, r mirror.AttemptReserv
 		return attemptHeld(mirror.AttemptAdmissionHeld)
 	}
 	known := validAttemptObservation(o)
-	var httpCount, decoded any
-	if o.HTTP.Known && o.HTTP.Value == 1 {
-		httpCount = int64(1)
-	}
-	if o.DecodedBytes.Known && o.DecodedBytes.Value >= 0 {
-		decoded = o.DecodedBytes.Value
-	}
+	httpCount := max(o.HTTP.Value, 0)
+	decoded := max(o.DecodedBytes.Value, 0)
+	httpKnown := o.HTTP.Known && o.HTTP.Value >= 0
+	decodedKnown := o.DecodedBytes.Known && o.DecodedBytes.Value >= 0
 	// SQL anchors and publishes the floor with this individual report. It keeps
 	// the positive reported bound even when other receipt knowledge is unknown.
 	var floor *time.Time
@@ -165,7 +182,7 @@ func (g *RefreshGate) ObserveAttempt(ctx context.Context, r mirror.AttemptReserv
 	if status < 0 || status > 599 {
 		status = 0
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE public.refresh_attempts SET observed=true,unknown_hold=$2,http_count=$3,decoded_bytes=$4,response_complete=$5,status=$6,retry_knowledge=$7,retry_at=$8,observed_at=$9,source_observed_at=$10,reported_retry_at=$11,retry_delay_ns=$12,delay_known=$13 WHERE reservation_id=$1 AND NOT observed`, []byte(r.ID), !known, httpCount, decoded, o.ResponseComplete, status, retry, floor, now, stamp(o.ObservedAt), stamp(o.Retry.NotBefore), max(int64(o.Retry.Delay), 0), o.Retry.DelayKnown); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE public.refresh_attempts SET observed=true,unknown_hold=$2,http_count=$3,decoded_bytes=$4,response_complete=$5,status=$6,retry_knowledge=$7,retry_at=$8,observed_at=$9,source_observed_at=$10,reported_retry_at=$11,retry_delay_ns=$12,delay_known=$13,http_known=$14,decoded_known=$15 WHERE reservation_id=$1 AND NOT observed`, []byte(r.ID), !known, httpCount, decoded, o.ResponseComplete, status, retry, floor, now, stamp(o.ObservedAt), stamp(o.Retry.NotBefore), max(int64(o.Retry.Delay), 0), o.Retry.DelayKnown, httpKnown, decodedKnown); e != nil {
 		return attemptHeld(mirror.AttemptUnknownHeld)
 	}
 

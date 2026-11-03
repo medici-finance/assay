@@ -151,6 +151,7 @@ func (g *RefreshGate) rollWindow(ctx context.Context, tx *sql.Tx, now time.Time,
 }
 
 type refreshFill struct {
+	reviewOnlyPartial                       bool
 	attemptHeld                             bool
 	key, identity, scope, generation, owner []byte
 	state                                   string
@@ -162,13 +163,18 @@ type refreshFill struct {
 
 func readRefreshFill(ctx context.Context, tx *sql.Tx, key []byte) (f refreshFill, e error) {
 	f.key = key
-	e = tx.QueryRowContext(ctx, `SELECT identity,scope_key,generation,owner_id,state,expires_at,reason,retry_at,base_retry_at,review_retry_at,snapshot_version,attempts_used,attempt_held FROM public.refresh_fills WHERE fill_key=$1 FOR UPDATE`, key).Scan(&f.identity, &f.scope, &f.generation, &f.owner, &f.state, &f.expires, &f.reason, &f.retry, &f.base, &f.reviews, &f.version, &f.attempts, &f.attemptHeld)
+	e = tx.QueryRowContext(ctx, `SELECT identity,scope_key,generation,owner_id,state,expires_at,reason,retry_at,base_retry_at,review_retry_at,snapshot_version,attempts_used,attempt_held,review_only_partial FROM public.refresh_fills WHERE fill_key=$1 FOR UPDATE`, key).Scan(&f.identity, &f.scope, &f.generation, &f.owner, &f.state, &f.expires, &f.reason, &f.retry, &f.base, &f.reviews, &f.version, &f.attempts, &f.attemptHeld, &f.reviewOnlyPartial)
 	return
 }
 func (g *RefreshGate) grant(f refreshFill, k refresh.FillKey) mirror.AttemptGrant {
 	return mirror.AttemptGrant{ID: string(f.generation), Generation: string(f.generation), SourceID: k.SourceID, Scope: k.Scope, CallerID: string(f.owner), AccessEpoch: k.AccessEpoch, ConfigEpoch: k.ConfigEpoch, PolicyClass: k.PolicyClass, PolicyEpoch: k.PolicyEpoch, MaxHTTPAttempts: g.config.Native.PerFill, ExpiresAt: f.expires}
 }
 func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ticket, error) {
+	if g == nil || ctx == nil {
+		return refresh.Ticket{}, refresh.ErrHeld
+	}
+	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	defer cancel()
 	if !g.keyOK(d.Key) || d.CallerID == "" || d.Limits != g.config.Limits || d.Requirements.RequireReviews && d.Key.Scope.Kind != mirror.Changes {
 		return refresh.Ticket{}, refresh.ErrPolicy
 	}
@@ -261,9 +267,9 @@ func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ti
 		}
 		expires := now.Add(g.config.Limits.FillTimeout)
 		if fresh {
-			_, e = tx.ExecContext(ctx, `INSERT INTO public.refresh_fills(fill_key,admission,identity,scope_key,generation,owner_id,expires_at,state,attempt_limit,retire_at) VALUES($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9)`, key, []byte(g.config.AdmissionID), identity, scope, []byte(generation), []byte(d.CallerID), expires, g.config.Native.PerFill, expires.Add(g.config.Limits.FailureTTL))
+			_, e = tx.ExecContext(ctx, `INSERT INTO public.refresh_fills(fill_key,admission,identity,scope_key,generation,owner_id,expires_at,state,attempt_limit,retire_at,owner_reviews) VALUES($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10)`, key, []byte(g.config.AdmissionID), identity, scope, []byte(generation), []byte(d.CallerID), expires, g.config.Native.PerFill, expires.Add(g.config.Limits.FailureTTL), d.Requirements.RequireReviews)
 		} else {
-			_, e = tx.ExecContext(ctx, `UPDATE public.refresh_fills SET generation=$2,owner_id=$3,expires_at=$4,state='pending',reason='',retry_at=NULL,attempt_held=false,attempts_used=0,completion_xid=NULL WHERE fill_key=$1`, key, []byte(generation), []byte(d.CallerID), expires)
+			_, e = tx.ExecContext(ctx, `UPDATE public.refresh_fills SET generation=$2,owner_id=$3,expires_at=$4,state='pending',reason='',retry_at=NULL,attempt_held=false,review_only_partial=false,owner_reviews=$5,attempts_used=0,completion_xid=NULL WHERE fill_key=$1`, key, []byte(generation), []byte(d.CallerID), expires, d.Requirements.RequireReviews)
 		}
 		if e != nil {
 			return refresh.Ticket{}, refresh.ErrHeld
@@ -323,6 +329,11 @@ func refreshState(f refreshFill, now time.Time, reviews bool) refresh.State {
 	return s
 }
 func (g *RefreshGate) Wait(ctx context.Context, t refresh.Ticket) (refresh.State, error) {
+	if g == nil || ctx == nil {
+		return refresh.State{}, refresh.ErrHeld
+	}
+	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	defer cancel()
 	timer := time.NewTicker(g.config.PollInterval)
 	defer timer.Stop()
 	for {
@@ -350,6 +361,11 @@ func (g *RefreshGate) Wait(ctx context.Context, t refresh.Ticket) (refresh.State
 	}
 }
 func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.Store, a mirror.Admission, c refresh.Completion) error {
+	if g == nil || ctx == nil {
+		return refresh.ErrHeld
+	}
+	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.FillTimeout)
+	defer cancel()
 	if s != g.store || !t.Owner {
 		return refresh.ErrStale
 	}
@@ -361,11 +377,11 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	if e = g.lockCaller(ctx, tx, c.Caller.ID); e != nil {
 		return e
 	}
-	f, k, caller, _, e := g.ticket(ctx, tx, t)
+	f, k, caller, ownerReviews, e := g.ticket(ctx, tx, t)
 	if e != nil {
 		return e
 	}
-	if caller != string(f.owner) || caller != c.Caller.ID || c.Caller != g.caller(caller) || c.Query.Scope != k.Scope || f.state != "pending" || !now.Before(f.expires) {
+	if caller != string(f.owner) || caller != c.Caller.ID || c.Caller != g.caller(caller) || c.Query.Scope != k.Scope || c.Query.RequireReviews != ownerReviews || f.state != "pending" || !now.Before(f.expires) {
 		return refresh.ErrStale
 	}
 	// A denied caller may close its ownership without reading/applying rows or
@@ -387,17 +403,35 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 		return refresh.ErrStale
 	}
 
-	var count, observed, unknown, incomplete int64
-	if tx.QueryRowContext(ctx, `SELECT count(*),count(*) FILTER(WHERE observed),count(*) FILTER(WHERE unknown_hold),count(*) FILTER(WHERE NOT response_complete OR status<200 OR status>=300) FROM public.refresh_attempts WHERE fill_key=$1 AND generation=$2`, f.key, f.generation).Scan(&count, &observed, &unknown, &incomplete) != nil {
+	var count, observed, unknown, incomplete, measuredHTTP int64
+	if tx.QueryRowContext(ctx, `SELECT count(*),count(*) FILTER(WHERE observed),count(*) FILTER(WHERE unknown_hold),count(*) FILTER(WHERE NOT response_complete OR status<200 OR status>=300),coalesce(sum(http_count) FILTER(WHERE observed AND http_known),0) FROM public.refresh_attempts WHERE fill_key=$1 AND generation=$2`, f.key, f.generation).Scan(&count, &observed, &unknown, &incomplete, &measuredHTTP) != nil {
 		return refresh.ErrHeld
 	}
 	receipt := c.Attempts
 	held := receipt.Held != "" || count != observed || unknown > 0
-	if c.Update != nil && (count == 0 || c.Update.CompleteScan && incomplete > 0) {
+	if c.Update != nil && (measuredHTTP == 0 || c.Update.CompleteScan && incomplete > 0) {
 		held = true
 	}
+	// Successful native data carries its qualified pre-observer completion bound.
+	// It is data age only; canonical lease/window/floor time remains the DB clock.
+	if c.Update != nil && c.Failure == "" && (c.Update.CompleteScan || len(c.Update.Upsert) > 0) {
+		bound := receipt.ObservedAt
+		if bound.IsZero() || bound.After(now) {
+			held = true
+		} else {
+			if c.Update.CompleteScan && (c.Update.Coverage.LastComplete.After(bound) || c.Update.Coverage.LastInventory.After(bound)) {
+				held = true
+			}
+			for _, record := range c.Update.Upsert {
+				if record.ObservedAt.After(bound) {
+					held = true
+				}
+			}
+		}
+	}
+
 	if c.Update != nil || count > 0 || c.Failure != "" {
-		held = held || !receipt.Grant.Equal(g.grant(f, k)) || !receipt.HTTP.Known || receipt.HTTP.Value != count || receipt.Retry.Knowledge == mirror.RetryUnknown
+		held = held || !receipt.Grant.Equal(g.grant(f, k)) || !receipt.HTTP.Known || receipt.HTTP.Value != measuredHTTP || receipt.Retry.Knowledge == mirror.RetryUnknown
 	}
 	if c.AdmissionDenied {
 		held = true
@@ -406,6 +440,7 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	if held {
 		c.Update = nil
 	}
+	reviewOnlyPartial := c.ReviewOnlyPartial()
 	c.Authority = g.authority
 	c.Now = now
 	c.Query.RequireReviews = false
@@ -460,7 +495,7 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	}
 	// The expiry/current-generation predicate is deliberately in SQL immediately
 	// before publication, not only in an upper cooperative context check.
-	r, e := tx.ExecContext(ctx, `UPDATE public.refresh_fills SET state=$3,reason=$4,retry_at=$5,snapshot_version=$6,completion_xid=pg_current_xact_id(),attempt_held=$7,retire_at=$8 WHERE fill_key=$1 AND generation=$2 AND state='pending' AND expires_at>clock_timestamp()`, f.key, f.generation, state, string(reason), retry, version, held, now.Add(g.config.Limits.FailureTTL))
+	r, e := tx.ExecContext(ctx, `UPDATE public.refresh_fills SET state=$3,reason=$4,retry_at=$5,snapshot_version=$6,completion_xid=pg_current_xact_id(),attempt_held=$7,retire_at=$8,review_only_partial=$9 WHERE fill_key=$1 AND generation=$2 AND state='pending' AND expires_at>clock_timestamp()`, f.key, f.generation, state, string(reason), retry, version, held, now.Add(g.config.Limits.FailureTTL), reviewOnlyPartial && !held)
 	if e != nil {
 		return refresh.ErrHeld
 	}
@@ -486,6 +521,11 @@ func (g *RefreshGate) Complete(ctx context.Context, t refresh.Ticket, s mirror.S
 	return admitMirror(ctx, a, k.Scope)
 }
 func (g *RefreshGate) Leave(ctx context.Context, t refresh.Ticket, o refresh.Outcome) (refresh.State, error) {
+	if g == nil || ctx == nil {
+		return refresh.State{}, refresh.ErrHeld
+	}
+	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	defer cancel()
 	tx, now, e := g.start(ctx)
 	if e != nil {
 		return refresh.State{}, e
@@ -500,17 +540,26 @@ func (g *RefreshGate) Leave(ctx context.Context, t refresh.Ticket, o refresh.Out
 	}
 	checked := o.Checked && g.current(ctx, caller, k.Scope) == nil && ctx.Err() == nil && f.state == "done" && !f.attemptHeld && f.reason == ""
 	var version int64
-	if checked && tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT version FROM public.mirror_scopes WHERE scope_key=$1),0)`, f.scope).Scan(&version) != nil {
-		return refresh.State{}, refresh.ErrHeld
+	if checked {
+		header, err := readMirrorHeader(ctx, tx, f.scope, k.Scope, g.store.limits.MaxBytes, true)
+		if err != nil {
+			return refresh.State{}, refresh.ErrHeld
+		}
+		if header.snapshot.Version != "" {
+			version, err = strconv.ParseInt(header.snapshot.Version, 10, 64)
+			if err != nil {
+				return refresh.State{}, refresh.ErrHeld
+			}
+		}
 	}
-	if checked && o.SnapshotVersion == strconv.FormatInt(version, 10) && version == f.version {
+	if checked && version > 0 && o.SnapshotVersion == strconv.FormatInt(version, 10) && version == f.version {
 		column := "base_retry_at"
 		if reviews {
 			column = "review_retry_at"
 		}
 		if o.Fulfilled {
 			_, e = tx.ExecContext(ctx, `UPDATE public.refresh_fills SET `+column+`=NULL WHERE fill_key=$1 AND generation=$2`, f.key, f.generation)
-		} else {
+		} else if reviews || !f.reviewOnlyPartial {
 			retryAt, err := g.retryTime(ctx, tx, now)
 			if err != nil {
 				return refresh.State{}, err

@@ -176,6 +176,7 @@ an allowance. Only the disposable test fixture seeds known profiles.
 | refresh_fills | scope_key | bytea |
 | refresh_fills | generation | bytea |
 | refresh_fills | owner_id | bytea |
+| refresh_fills | owner_reviews | boolean |
 | refresh_fills | expires_at | timestamp with time zone |
 | refresh_fills | retire_at | timestamp with time zone |
 | refresh_fills | state | text |
@@ -187,6 +188,7 @@ an allowance. Only the disposable test fixture seeds known profiles.
 | refresh_fills | attempts_used | bigint |
 | refresh_fills | attempt_limit | bigint |
 | refresh_fills | attempt_held | boolean |
+| refresh_fills | review_only_partial | boolean |
 | refresh_fills | completion_xid | xid8 |
 | refresh_waiters | ticket_id | bytea |
 | refresh_waiters | admission | bytea |
@@ -207,7 +209,9 @@ an allowance. Only the disposable test fixture seeds known profiles.
 | refresh_attempts | observed | boolean |
 | refresh_attempts | unknown_hold | boolean |
 | refresh_attempts | http_count | bigint |
+| refresh_attempts | http_known | boolean |
 | refresh_attempts | decoded_bytes | bigint |
+| refresh_attempts | decoded_known | boolean |
 | refresh_attempts | response_complete | boolean |
 | refresh_attempts | status | integer |
 | refresh_attempts | retry_knowledge | text |
@@ -227,8 +231,17 @@ the same budget row and never acquire a second admission lock.
 Usage is debited before the actual native base-transport entry, not after a scan.
 An individual opaque reservation is required; its qualified observation can close
 only that slot. Duplicates/foreign reports cannot replace another reservation.
-A final scan aggregate cannot synthesize missing individual observations. Unknown
-reports and expired unobserved reservations hold new work without refund. Explicit
+A final scan aggregate cannot synthesize missing individual observations.
+Count/prefix values and knowledge are stored separately: a positive decoded prefix
+with unknown total is retained and does not make qualified HTTP/retry knowledge
+unknown. Decoded work is actual consumed bytes, independent of response completeness;
+there is no byte quota. Unknown
+reports and expired unobserved reservations hold new work without refund. A
+qualified zero-entry observation (permit never returned, or lower pre-base refusal)
+closes only its own slot with known zero HTTP; its budget charge remains consumed.
+It is distinct from a known entered transport with no response and from unknown
+commit/report. Postcommit caller refusal records this bounded bookkeeping before
+returning no permit; uncertain bookkeeping retains its hold. Explicit
 finite source concurrency permits already-authorized in-flight work; a published
 floor applies to every later reservation. Missing/unknown timing is a hold.
 
@@ -245,7 +258,11 @@ identity fields alongside an index hash; opaque string bytes are preserved.
 All scope/source/admission/epoch/policy fields are matched before use. This is a
 private storage encoding, not a request protocol. Requirements failure classes
 are the two bounded base/Reviews cases, separately bound to generation and actual
-queried snapshot version. Unchecked outcomes only release their waiter debit.
+queried snapshot version. The canonical `Completion.ReviewOnlyPartial` class is
+persisted only after its qualified partial Apply; a weaker joined query cannot
+install a review-owner-induced failure. Strong requirements and actual source
+failures retain their backoff without upgrading LastComplete. Unchecked outcomes
+only release their waiter debit.
 
 `Complete` verifies its exact bound canonical Store, current generation/lease and
 current caller/admission before any observation write. Its private transaction-
