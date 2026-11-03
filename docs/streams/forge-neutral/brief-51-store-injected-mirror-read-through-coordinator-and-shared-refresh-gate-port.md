@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 7
+version: 8
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
@@ -33,7 +33,7 @@ exec-tier-why: "Concurrency, cancellation, admission epochs and a partial nil-er
 domain: complicated
 consumers:
   - "forgeread/refresh/: fixed-here (coordinator and typed gate port only)"
-  - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: fixed-here (canonical pure snapshot query evaluation; no authorization or I/O)"
+  - "forgeread/mirror/query.go, forgeread/mirror/kernel_test.go: fixed-here (canonical guarded snapshot acquisition and explicit-time evaluation; no transport or custody)"
   - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: fixed-here"
   - "tools/forge-import-check/, tools/desk/internal/regression/mirrorimports_test.go, tools/desk/internal/deskkit/citrigger_test.go: fixed-here (closed-target checker reuse and existing CI reader)"
   - "workflow/store/: follow-up forge-neutral/37 (one R2-owned production refresh-gate adapter and persistence integration; no implementation here)"
@@ -64,6 +64,15 @@ files:
 - `tools/desk/internal/deskkit/citrigger_test.go`
 
 Boundary reuse edits the listed existing checker and CI reader; no workflow edit.
+
+Preserve QueryScope's explicit-time evaluation contract. Factor its existing admission/store
+acquisition into ReadScopeSnapshot, which returns an owned raw snapshot or an explicit
+unavailable reason without evaluating freshness. The coordinator samples its trusted clock
+AFTER every acquired query/baseline snapshot and before evaluation or PlanRefresh. A
+concurrent committed observation is not future merely because I/O began earlier; timestamps
+truly beyond the post-read clock still refuse. Preserve current admission/caller/deadline
+checks at release and the independently captured source-observation time; do not retimestamp
+coverage, add a clock callback to the kernel, or change Gate/store semantics.
 
 facts:
 - At the pinned main, `forgeread/mirror` exports `QueryScope`, `PlanRefresh`, `Source.Scan`, `PlanScan` and `Store.Read/Apply`. `PlanRefresh.NotBefore` is advisory; it neither schedules nor provides cross-process ownership. The reference store is synthetic conformance support, not runtime persistence.
