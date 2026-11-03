@@ -179,3 +179,11 @@ adapter. Its tests share a stateful fake gate and reference Store between two
 independently constructed coordinators; that proves port/coordinator behavior,
 not process durability, SQL atomicity, authenticated serving or activation. Full
 forge-neutral/37 retains its joined persisted mapper/watermark criterion.
+
+The current mirror ScanResult/native budget receipt and refresh Completion do not
+carry a qualified provider retry floor. Fixture cooldown/RetryAt therefore proves
+local shared failure suppression only; it is not HTTP Retry-After compliance or
+permission to retry a real provider. Real source/gate integration remains held until
+the joined owner propagates typed qualified retry timing or an explicit unknown-retry
+hold. Do not infer it from error text, retain response bodies/headers here, or install
+a blind fixed interval as a production substitute.
