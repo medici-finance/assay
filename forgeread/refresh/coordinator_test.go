@@ -84,9 +84,20 @@ type gateEntry struct {
 	waiters    int
 }
 type gateWaiter struct {
-	entry  *gateEntry
-	caller string
-	left   bool
+	entry        *gateEntry
+	caller       string
+	requirements Requirements
+	left         bool
+}
+
+type requirementKey struct {
+	fill         FillKey
+	requirements Requirements
+}
+type queryFailure struct {
+	state               State
+	expiry              time.Time
+	generation, version string
 }
 
 // fakeGate is stateful contract support only. It is deliberately in a test file:
@@ -99,6 +110,9 @@ type fakeGate struct {
 	windows         map[accountKey]fillCounter
 	mu              sync.Mutex
 	entries         map[FillKey]*gateEntry
+	failures        map[requirementKey]queryFailure
+	generations     map[FillKey]string
+	versions        map[FillKey]string
 	waiters         map[string]*gateWaiter
 	serial          int
 	down, leaveDown bool
@@ -108,7 +122,7 @@ type fakeGate struct {
 }
 
 func newGate() *fakeGate {
-	return &fakeGate{windows: map[accountKey]fillCounter{}, entries: map[FillKey]*gateEntry{}, waiters: map[string]*gateWaiter{}, active: map[accountKey]int{}, queued: map[accountKey]int{}, acquired: make(chan struct{}, 256), completions: make(chan error, 256)}
+	return &fakeGate{windows: map[accountKey]fillCounter{}, entries: map[FillKey]*gateEntry{}, failures: map[requirementKey]queryFailure{}, generations: map[FillKey]string{}, versions: map[FillKey]string{}, waiters: map[string]*gateWaiter{}, active: map[accountKey]int{}, queued: map[accountKey]int{}, acquired: make(chan struct{}, 256), completions: make(chan error, 256)}
 }
 func (g *fakeGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
 	g.mu.Lock()
@@ -122,6 +136,11 @@ func (g *fakeGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
 	for k, e := range g.entries {
 		if !e.state.Pending && e.state.Reason != "" && !d.Now.Before(e.expiry) {
 			delete(g.entries, k)
+		}
+	}
+	for k, failure := range g.failures {
+		if !d.Now.Before(failure.expiry) {
+			delete(g.failures, k)
 		}
 	}
 	if g.queued[accountKey{d.Key.Scope.AdmissionID, d.CallerID}] >= d.Limits.QueuedCallers {
@@ -143,14 +162,24 @@ func (g *fakeGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
 			}
 		}
 	}
+	for k := range g.failures {
+		if k.fill.Scope.AdmissionID == d.Key.Scope.AdmissionID {
+			failed++
+		}
+	}
 	if admQueued >= d.Limits.AdmissionWaiters {
 		return Ticket{}, ErrQuota
 	}
 	e := g.entries[d.Key]
 	owner := false
-	if e != nil && !e.state.Pending && e.state.Reason != "" && !d.Now.Before(e.state.RetryAt) {
-		delete(g.entries, d.Key)
-		e = nil
+	if e == nil || !e.state.Pending {
+		failure, cached := g.failures[requirementKey{d.Key, d.Requirements}]
+		if cached && d.Now.Before(failure.state.RetryAt) && (e == nil || !d.Now.Before(e.state.RetryAt) || e.state.RetryAt.Before(failure.state.RetryAt)) {
+			e = &gateEntry{key: d.Key, generation: g.generations[d.Key], ready: make(chan struct{}), state: failure.state, limits: d.Limits}
+			close(e.ready)
+		} else if e != nil && (e.state.Reason == "" || !d.Now.Before(e.state.RetryAt)) {
+			e = nil
+		}
 	}
 	if e == nil {
 		window := d.Now.UnixNano() / int64(d.Limits.FillWindow)
@@ -179,12 +208,13 @@ func (g *fakeGate) Acquire(ctx context.Context, d Demand) (Ticket, error) {
 		g.serial++
 		e = &gateEntry{key: d.Key, generation: fmt.Sprint(g.serial), ready: make(chan struct{}), state: State{Pending: true}, limits: d.Limits, owner: d.CallerID}
 		g.entries[d.Key] = e
+		g.generations[d.Key] = e.generation
 		g.active[accountKey{d.Key.Scope.AdmissionID, d.CallerID}]++
 		owner = true
 	}
 	g.serial++
 	id := fmt.Sprint(g.serial)
-	g.waiters[id] = &gateWaiter{entry: e, caller: d.CallerID}
+	g.waiters[id] = &gateWaiter{entry: e, caller: d.CallerID, requirements: d.Requirements}
 	e.waiters++
 	g.queued[accountKey{d.Key.Scope.AdmissionID, d.CallerID}]++
 	g.acquired <- struct{}{}
@@ -206,7 +236,7 @@ func (g *fakeGate) Wait(ctx context.Context, t Ticket) (State, error) {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.entries[w.entry.key] != w.entry || w.entry.generation != t.Generation {
+	if (w.entry.state.Pending && g.entries[w.entry.key] != w.entry) || w.entry.generation != t.Generation {
 		return State{}, ErrStale
 	}
 	return w.entry.state, nil
@@ -229,12 +259,15 @@ func (g *fakeGate) Complete(ctx context.Context, t Ticket, s mirror.Store, a mir
 	// The same test Store is the bound backend. Real R2 must enforce this binding
 	// and use its actual SQL transaction, not this fake's mutex.
 	result, applyErr := ApplyCompletion(ctx, s, a, c)
+	if snapshot, readErr := s.Read(ctx, a, c.Query.Scope); readErr == nil {
+		g.versions[e.key] = snapshot.Version
+	}
 	e.state = State{}
 	g.active[accountKey{e.key.Scope.AdmissionID, e.owner}]--
 	if c.AdmissionDenied || errors.Is(applyErr, mirror.ErrPermission) {
 		e.state = State{Reason: mirror.Unknown}
 		e.expiry = c.Now
-	} else if applyErr != nil || !result.Fulfilled {
+	} else if applyErr != nil || c.Failure != "" {
 		e.state.Reason = result.Reason
 		if e.state.Reason == "" {
 			e.state.Reason = mirror.Unknown
@@ -246,21 +279,50 @@ func (g *fakeGate) Complete(ctx context.Context, t Ticket, s mirror.Store, a mir
 	err = applyErr
 	return err
 }
-func (g *fakeGate) Leave(_ context.Context, t Ticket) error {
+func (g *fakeGate) Leave(_ context.Context, t Ticket, outcome Outcome) (State, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.leaveDown {
-		return ErrHeld
+		return State{}, ErrHeld
 	}
 	if w := g.waiters[t.ID]; w != nil && !w.left {
 		w.left = true
 		w.entry.waiters--
 		g.queued[accountKey{w.entry.key.Scope.AdmissionID, w.caller}]--
+		key := requirementKey{w.entry.key, w.requirements}
+		if outcome.Checked && !w.entry.state.Pending && outcome.SnapshotVersion != "" && w.entry.generation == t.Generation && g.generations[w.entry.key] == t.Generation && g.versions[w.entry.key] == outcome.SnapshotVersion {
+			if outcome.Fulfilled {
+				delete(g.failures, key)
+			} else if w.entry.state.Reason == "" {
+				prior, exists := g.failures[key]
+				if exists && prior.generation == t.Generation && prior.version == outcome.SnapshotVersion && outcome.Now.Before(prior.state.RetryAt) {
+					return prior.state, nil
+				}
+				count := 0
+				for k := range g.failures {
+					if k.fill.Scope.AdmissionID == key.fill.Scope.AdmissionID {
+						count++
+					}
+				}
+				if _, exists := g.failures[key]; !exists && count >= w.entry.limits.FailureEntries {
+					return State{}, ErrHeld
+				}
+				reason := outcome.Reason
+				if reason == "" {
+					reason = mirror.Unknown
+				}
+				g.failures[key] = queryFailure{state: State{Reason: reason, RetryAt: outcome.Now.Add(w.entry.limits.Cooldown)}, expiry: outcome.Now.Add(w.entry.limits.FailureTTL), generation: t.Generation, version: outcome.SnapshotVersion}
+			}
+		}
 		if w.entry.waiters == 0 && !w.entry.state.Pending && w.entry.state.Reason == "" && g.entries[w.entry.key] == w.entry {
 			delete(g.entries, w.entry.key)
 		}
+		if failure, ok := g.failures[key]; ok {
+			return failure.state, nil
+		}
+		return w.entry.state, nil
 	}
-	return nil
+	return State{}, nil
 }
 func (g *fakeGate) takeOver() {
 	g.mu.Lock()
@@ -402,7 +464,361 @@ func TestRefreshSharedGate(t *testing.T) {
 }
 
 // regression: #5399
+func TestRefreshMixedDemandBackoff(t *testing.T) {
+	checkMixedDemandBackoff(t)
+}
+
+func checkMixedDemandBackoff(t *testing.T) {
+	f := setup(t)
+	f.q.Scope.Kind = mirror.Changes
+	stronger := f.q
+	stronger.RequireReviews = true
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	f.source.fn = func(ctx context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: s.Repository, Kind: "pull-request", Number: 1}, InInventory: true}}}, nil
+		case <-ctx.Done():
+			return mirror.ScanResult{}, ctx.Err()
+		}
+	}
+	baseOut, strongerOut := make(chan Result, 1), make(chan Result, 1)
+	go func() { r, _ := f.c[0].Read(context.Background(), f.a, f.q, f.caller); baseOut <- r }()
+	await(t, entered)
+	await(t, f.gate.acquired)
+	go func() { r, _ := f.c[1].Read(context.Background(), f.a, stronger, f.caller); strongerOut <- r }()
+	await(t, f.gate.acquired)
+	close(release)
+	if !result(t, baseOut).Fulfilled || result(t, strongerOut).Fulfilled {
+		t.Fatal("mixed demand did not preserve independent fulfilment")
+	}
+	r, err := f.c[1].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || r.Fulfilled || !r.RetryAt.After(f.clock.Now()) || f.source.calls.Load() != 1 {
+		t.Fatalf("unfulfilled stronger joined query had no shared backoff: fulfilled=%v retry=%v source calls=%d err=%v", r.Fulfilled, r.RetryAt, f.source.calls.Load(), err)
+	}
+	retryAt := r.RetryAt
+	f.clock.step(30 * time.Second)
+	r, err = f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || r.RetryAt != retryAt || f.source.calls.Load() != 1 {
+		t.Fatalf("cached observation extended cooldown or retried: %+v %v", r, err)
+	}
+	f.clock.step(30 * time.Second)
+	_, _ = f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if f.source.calls.Load() != 2 {
+		t.Fatal("bounded query cooldown did not permit one retry at original expiry")
+	}
+}
+
+func checkRequirementIsolation(t *testing.T) {
+	f := setup(t)
+	f.q.Scope.Kind = mirror.Changes
+	stronger := f.q
+	stronger.RequireReviews = true
+	f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: scope.Repository, Kind: "pull-request", Number: 1}, InInventory: true}}}, nil
+	}
+	r, err := f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || r.Fulfilled || r.RetryAt.IsZero() {
+		t.Fatalf("strong query did not install shared requirement failure: %+v %v", r, err)
+	}
+	retry := r.RetryAt
+	r, err = f.c[1].Read(context.Background(), f.a, f.q, f.caller)
+	if err != nil || !r.Fulfilled || f.source.calls.Load() != 2 {
+		t.Fatalf("strong requirement poisoned weaker base demand: %+v calls=%d %v", r, f.source.calls.Load(), err)
+	}
+	r, err = f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || r.Fulfilled || r.RetryAt != retry || f.source.calls.Load() != 2 {
+		t.Fatalf("base recovery cleared stronger failure: %+v calls=%d %v", r, f.source.calls.Load(), err)
+	}
+	f.clock.step(time.Minute)
+	f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: scope.Repository, Kind: "pull-request", Number: 1}, InInventory: true, Reviews: mirror.ReviewObservations{State: mirror.Complete}}}}, nil
+	}
+	r, err = f.c[1].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || !r.Fulfilled || f.source.calls.Load() != 3 {
+		t.Fatalf("stronger requirement did not recover: %+v %v", r, err)
+	}
+	f.gate.mu.Lock()
+	failed := len(f.gate.failures)
+	f.gate.mu.Unlock()
+	if failed != 0 {
+		t.Fatal("qualified stronger recovery retained query failure")
+	}
+}
+
+type delayedOutcomeGate struct {
+	Gate
+	entered chan Outcome
+	release chan struct{}
+	held    atomic.Bool
+}
+
+func (g *delayedOutcomeGate) Leave(ctx context.Context, ticket Ticket, outcome Outcome) (State, error) {
+	if outcome.Checked && !outcome.Fulfilled && g.held.CompareAndSwap(false, true) {
+		g.entered <- outcome
+		select {
+		case <-g.release:
+		case <-ctx.Done():
+			return State{}, ctx.Err()
+		}
+	}
+	return g.Gate.Leave(ctx, ticket, outcome)
+}
+
+func checkLateOutcomeRecovery(t *testing.T) {
+	f := setup(t)
+	f.q.Scope.Kind = mirror.Changes
+	stronger := f.q
+	stronger.RequireReviews = true
+	stronger.MaxAge = time.Second
+	entered, release := make(chan struct{}), make(chan struct{})
+	f.source.fn = func(ctx context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		close(entered)
+		select {
+		case <-release:
+			return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: s.Repository, Kind: "pull-request", Number: 1}, InInventory: true}}}, nil
+		case <-ctx.Done():
+			return mirror.ScanResult{}, ctx.Err()
+		}
+	}
+	delay := &delayedOutcomeGate{Gate: f.gate, entered: make(chan Outcome, 1), release: make(chan struct{})}
+	f.c[1].gate = delay
+	baseOut, olderOut := make(chan Result, 1), make(chan Result, 1)
+	go func() { r, _ := f.c[0].Read(context.Background(), f.a, f.q, f.caller); baseOut <- r }()
+	await(t, entered)
+	await(t, f.gate.acquired)
+	go func() { r, _ := f.c[1].Read(context.Background(), f.a, stronger, f.caller); olderOut <- r }()
+	await(t, f.gate.acquired)
+	close(release)
+	if !result(t, baseOut).Fulfilled {
+		t.Fatal("base owner did not finish")
+	}
+	select {
+	case outcome := <-delay.entered:
+		if outcome.SnapshotVersion == "" {
+			t.Fatal("post-query outcome omitted actual version")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("older post-query outcome was not delayed")
+	}
+	f.clock.step(time.Second)
+	f.source.fn = func(_ context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+		return mirror.ScanResult{Complete: true, ObservedUpTo: f.clock.Now(), Records: []mirror.Observation{{ID: mirror.RecordID{Repository: s.Repository, Kind: "pull-request", Number: 1}, InInventory: true, Reviews: mirror.ReviewObservations{State: mirror.Complete}}}}, nil
+	}
+	r, err := f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || !r.Fulfilled || f.source.calls.Load() != 2 {
+		t.Fatalf("new generation did not recover: %+v %v", r, err)
+	}
+	close(delay.release)
+	if result(t, olderOut).Fulfilled {
+		t.Fatal("older observation fabricated fulfilment")
+	}
+	f.gate.mu.Lock()
+	failed := len(f.gate.failures)
+	f.gate.mu.Unlock()
+	if failed != 0 {
+		t.Fatal("late unfulfilled outcome poisoned later qualified recovery")
+	}
+	f.clock.step(2 * time.Second)
+	r, err = f.c[0].Read(context.Background(), f.a, stronger, f.caller)
+	if err != nil || !r.Fulfilled || f.source.calls.Load() != 3 {
+		t.Fatalf("late failure suppressed legitimate later refresh: %+v calls=%d %v", r, f.source.calls.Load(), err)
+	}
+}
+
+func checkOutcomeFence(t *testing.T) {
+	t.Run("late-waiter-recovery", checkLateOutcomeRecovery)
+	for _, fence := range []string{"generation", "version", "unchecked"} {
+		t.Run(fence, func(t *testing.T) {
+			f := setup(t)
+			r, err := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+			if err != nil || !r.Fulfilled {
+				t.Fatal("fixture did not qualify snapshot")
+			}
+			key := FillKey{Scope: f.q.Scope, SourceID: "issue-inventory", AccessEpoch: f.caller.AccessEpoch, ConfigEpoch: f.caller.ConfigEpoch, PolicyClass: f.caller.PolicyClass, PolicyEpoch: f.caller.PolicyEpoch}
+			ticket, err := f.gate.Acquire(context.Background(), Demand{Key: key, CallerID: f.caller.ID, Limits: f.caller.Limits, Now: f.clock.Now()})
+			if err != nil || !ticket.Owner {
+				t.Fatal("fixture did not acquire generation")
+			}
+			if err := f.gate.Complete(context.Background(), ticket, f.store, f.a, Completion{Query: f.q, Now: f.clock.Now(), Authority: f.auth, Caller: f.caller}); err != nil {
+				t.Fatal(err)
+			}
+			if fence == "generation" {
+				newer, e := f.gate.Acquire(context.Background(), Demand{Key: key, CallerID: f.caller.ID, Limits: f.caller.Limits, Now: f.clock.Now()})
+				if e != nil || !newer.Owner || newer.Generation == ticket.Generation {
+					t.Fatal("later owner did not change generation with the same store version")
+				}
+			} else if fence == "version" {
+				old, e := f.store.Read(context.Background(), f.a, f.q.Scope)
+				if e != nil {
+					t.Fatal(e)
+				}
+				newer, e := f.store.Apply(context.Background(), f.a, mirror.ScanUpdate{Scope: f.q.Scope, ExpectedVersion: old.Version, CompleteScan: true, FullInventory: true, Coverage: old.Coverage, Upsert: old.Records})
+				if e != nil {
+					t.Fatal(e)
+				}
+				f.gate.mu.Lock()
+				f.gate.versions[key] = newer.Version
+				f.gate.mu.Unlock()
+			}
+			state, err := f.gate.Leave(context.Background(), ticket, Outcome{Checked: fence != "unchecked", SnapshotVersion: r.Snapshot.Version, Reason: mirror.Unknown, Now: f.clock.Now()})
+			if err != nil || state.Reason != "" {
+				t.Fatalf("old %s outcome installed failure: %+v %v", fence, state, err)
+			}
+			f.gate.mu.Lock()
+			failed := len(f.gate.failures)
+			f.gate.mu.Unlock()
+			if failed != 0 {
+				t.Fatalf("old %s poisoned shared query state", fence)
+			}
+		})
+	}
+}
+
+type afterLeaveGate struct {
+	Gate
+	after func()
+}
+
+func (g afterLeaveGate) Leave(ctx context.Context, ticket Ticket, outcome Outcome) (State, error) {
+	state, err := g.Gate.Leave(ctx, ticket, outcome)
+	g.after()
+	return state, err
+}
+
+// regression: #5399
+func TestRefreshReleaseAfterLeave(t *testing.T) {
+	checkReleaseAfterLeave(t)
+}
+
+func checkReleaseAfterLeave(t *testing.T) {
+	for _, mode := range []string{"admission", "caller", "epoch", "deadline", "freshness"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			ctx := context.Background()
+			if mode == "deadline" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			f.c[0].gate = afterLeaveGate{Gate: f.gate, after: func() {
+				switch mode {
+				case "admission":
+					f.a.allowed.Store(false)
+				case "caller":
+					f.auth.revoke(f.caller.ID)
+				case "epoch":
+					current := f.caller
+					current.AccessEpoch = "revoked-epoch"
+					f.auth.set(current)
+				case "deadline":
+					<-ctx.Done()
+				case "freshness":
+					f.clock.step(2 * time.Minute)
+				}
+			}}
+			r, err := f.c[0].Read(ctx, f.a, f.q, f.caller)
+			if mode == "freshness" {
+				if err != nil || r.Fulfilled || !r.Stale || r.Available {
+					t.Fatalf("Leave I/O aged snapshot but result remained fulfilled: %+v %v", r, err)
+				}
+			} else if err == nil || r.Fulfilled || len(r.Snapshot.Records) != 0 {
+				t.Fatalf("gate cleanup changed release authority/deadline but rows escaped: %+v %v", r, err)
+			}
+		})
+	}
+}
+
+type hitObserver struct{ after func() }
+
+type authorityHook struct {
+	CallerAuthority
+	after func()
+}
+
+func (a authorityHook) Authorize(ctx context.Context, caller Caller, scope mirror.Scope) error {
+	err := a.CallerAuthority.Authorize(ctx, caller, scope)
+	a.after()
+	return err
+}
+
+type admissionHook struct {
+	mirror.Admission
+	after func()
+}
+
+func (a admissionHook) Authorize(ctx context.Context, repository mirror.RepositoryID) error {
+	err := a.Admission.Authorize(ctx, repository)
+	a.after()
+	return err
+}
+
+func (o hitObserver) Observe(_ context.Context, event Observation) error {
+	if event.Kind == "cache-hit" {
+		o.after()
+	}
+	return nil
+}
+func checkHitObserverRelease(t *testing.T) {
+	for _, mode := range []string{"admission", "freshness"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			f.seed(t)
+			f.c[0].observer = hitObserver{after: func() {
+				if mode == "admission" {
+					f.a.allowed.Store(false)
+				} else {
+					f.clock.step(2 * time.Minute)
+				}
+			}}
+			r, err := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+			if mode == "admission" {
+				if err == nil || r.Fulfilled || len(r.Snapshot.Records) != 0 {
+					t.Fatalf("observer revoked admission but rows escaped: %+v %v", r, err)
+				}
+			} else if err != nil || r.Fulfilled || !r.Stale || r.Available {
+				t.Fatalf("observer aged snapshot but result remained fulfilled: %+v %v", r, err)
+			}
+			if f.source.calls.Load() != 0 {
+				t.Fatal("observer callback triggered provider fallback")
+			}
+		})
+	}
+}
+
+func checkAuthorityFreshness(t *testing.T) {
+	for _, mode := range []string{"caller", "admission"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			f.seed(t)
+			var armed atomic.Bool
+			var once sync.Once
+			after := func() {
+				if armed.Load() {
+					once.Do(func() { f.clock.step(2 * time.Minute) })
+				}
+			}
+			var admission mirror.Admission = f.a
+			if mode == "caller" {
+				f.c[0].authority = authorityHook{CallerAuthority: f.auth, after: after}
+			} else {
+				admission = admissionHook{Admission: f.a, after: after}
+			}
+			f.c[0].observer = hitObserver{after: func() { armed.Store(true) }}
+			r, err := f.c[0].Read(context.Background(), admission, f.q, f.caller)
+			if err != nil || r.Fulfilled || !r.Stale || r.Available || f.source.calls.Load() != 0 {
+				t.Fatalf("authorization I/O aged cache after freshness evaluation: %+v source=%d %v", r, f.source.calls.Load(), err)
+			}
+		})
+	}
+}
+
+// regression: #5399
 func TestRefreshFailureBackoff(t *testing.T) {
+	t.Run("mixed-demand", checkMixedDemandBackoff)
+	t.Run("requirement-isolation", checkRequirementIsolation)
 	checkPermissionRecovery(t)
 	checkNotModifiedReviews(t)
 	checkReviews(t)
@@ -563,6 +979,12 @@ func TestRefreshWaiterCancel(t *testing.T) {
 	if e := <-first; !errors.Is(e, context.Canceled) {
 		t.Fatalf("cancelled waiter: %v", e)
 	}
+	f.gate.mu.Lock()
+	failed := len(f.gate.failures)
+	f.gate.mu.Unlock()
+	if failed != 0 {
+		t.Fatal("unchecked cancelled waiter installed requirement failure")
+	}
 	close(release)
 	if !result(t, out).Fulfilled || f.source.calls.Load() != 1 {
 		t.Fatal("one waiter's context cancelled the shared fill")
@@ -571,6 +993,7 @@ func TestRefreshWaiterCancel(t *testing.T) {
 
 // regression: #5399
 func TestRefreshGateFence(t *testing.T) {
+	t.Run("query-outcome", checkOutcomeFence)
 	checkUnknownCompletion(t)
 	t.Run("missing", func(t *testing.T) {
 		f := setup(t)
@@ -663,6 +1086,18 @@ func (g armAfterWait) Wait(ctx context.Context, t Ticket) (State, error) {
 
 // regression: #5399
 func TestRefreshReleaseAuthority(t *testing.T) {
+	t.Run("after-leave", checkReleaseAfterLeave)
+	t.Run("hit-observer", checkHitObserverRelease)
+	t.Run("authority-age", checkAuthorityFreshness)
+	t.Run("store-age", func(t *testing.T) {
+		f := setup(t)
+		f.seed(t)
+		f.c[0].store = &revokeReadStore{Store: f.store, revoke: func() { f.clock.step(2 * time.Minute) }}
+		r, err := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+		if err != nil || !r.Fulfilled || f.source.calls.Load() != 1 || !r.Snapshot.Coverage.LastComplete.Equal(f.clock.Now()) {
+			t.Fatalf("store I/O aged cache but did not use bounded read-through: %+v calls=%d %v", r, f.source.calls.Load(), err)
+		}
+	})
 	for _, mode := range []string{"fresh-caller", "fresh-admission", "fresh-epoch", "joined", "completion"} {
 		t.Run(mode, func(t *testing.T) {
 			f := setup(t)
@@ -803,6 +1238,12 @@ func TestRefreshAdmissionDenial(t *testing.T) {
 	s, _ := f.store.Read(context.Background(), f.a, f.q.Scope)
 	if s.Coverage.State != mirror.NeverRead {
 		t.Fatal("admission refusal installed source coverage")
+	}
+	f.gate.mu.Lock()
+	failed := len(f.gate.failures)
+	f.gate.mu.Unlock()
+	if failed != 0 {
+		t.Fatal("unchecked source admission refusal installed requirement failure")
 	}
 	f.source.fn = func(_ context.Context, _ mirror.Admission, s mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
 		return f.scan(s, "eligible"), nil

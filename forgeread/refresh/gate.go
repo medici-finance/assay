@@ -12,6 +12,9 @@ import (
 // Caller/admission denial (including typed mirror.ErrPermission) must not create
 // a shared source-failure cooldown; other eligible callers retain their allowance.
 // Each ticket accounts for one waiter; Leave is required on every exit.
+// Leave atomically accounts for a checked post-query outcome, separately keyed by
+// the Demand's bounded Requirements. An old generation or queried snapshot version
+// cannot install or clear a newer failure. Unchecked outcomes install no failure.
 //
 // Complete must reject a stale generation BEFORE Store.Apply, even if the expected
 // snapshot version still matches. It must bind store to its own canonical backend,
@@ -23,7 +26,7 @@ type Gate interface {
 	Acquire(context.Context, Demand) (Ticket, error)
 	Wait(context.Context, Ticket) (State, error)
 	Complete(context.Context, Ticket, mirror.Store, mirror.Admission, Completion) error
-	Leave(context.Context, Ticket) error
+	Leave(context.Context, Ticket, Outcome) (State, error)
 }
 
 // ApplyCompletion is the typed shared Store.Apply -> QueryScope seam used inside

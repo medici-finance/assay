@@ -55,12 +55,14 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if err != nil {
 		return held(q, mirror.Unknown), err
 	}
+	q.Now = c.clock.Now()
+	r, err = mirror.EvaluateSnapshot(r.Snapshot, q.Query)
+	if err != nil {
+		return held(q, mirror.Unknown), err
+	}
 	if sufficient(r, q) {
-		out, e := c.release(ctx, a, q, caller, r, State{}, nil)
-		if e == nil && out.Fulfilled {
-			c.observe(ctx, "cache-hit", "query", q.Scope, "")
-		}
-		return out, e
+		c.observe(ctx, "cache-hit", "query", q.Scope, "")
+		return c.release(ctx, a, q, caller, r, State{}, nil)
 	}
 	baseline, err := c.store.Read(ctx, a, q.Scope)
 	if err != nil {
@@ -74,7 +76,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		return c.release(ctx, a, q, caller, r, State{}, err)
 	}
 	key := FillKey{Scope: q.Scope, SourceID: c.sourceID, AccessEpoch: caller.AccessEpoch, ConfigEpoch: caller.ConfigEpoch, PolicyClass: caller.PolicyClass, PolicyEpoch: caller.PolicyEpoch}
-	ticket, err := c.gate.Acquire(ctx, Demand{Key: key, CallerID: caller.ID, Limits: caller.Limits, Now: q.Now})
+	ticket, err := c.gate.Acquire(ctx, Demand{Key: key, Requirements: Requirements{RequireReviews: q.RequireReviews}, CallerID: caller.ID, Limits: caller.Limits, Now: q.Now})
 	if err != nil {
 		out, releaseErr := c.release(ctx, a, q, caller, r, State{Reason: mirror.Unknown}, err)
 		if releaseErr != nil {
@@ -86,15 +88,24 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		return out, err
 	}
 	// Cleanup gets its own finite context: a cancelled waiter cannot leak its debit.
+	var outcome Outcome
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(c.lifetime), caller.Limits.WaitTimeout)
 		defer cancel()
-		if e := c.gate.Leave(cleanup, ticket); e != nil {
+		state, e := c.gate.Leave(cleanup, ticket, outcome)
+		if e != nil {
 			result = held(q, mirror.Unknown)
 			if err == nil {
 				err = e
 			}
+			return
 		}
+		if !result.Fulfilled && !state.RetryAt.IsZero() {
+			result.RetryAt = state.RetryAt
+		}
+		// Leave performs shared-store I/O after the query. It cannot be the last
+		// boundary before rows escape: current permission and deadline apply here too.
+		result, err = c.release(ctx, a, q, caller, result.Result, State{Reason: result.Reason, RetryAt: result.RetryAt}, err)
 	}()
 	if ticket.ID == "" || ticket.Generation == "" {
 		return held(q, mirror.Unknown), ErrHeld
@@ -124,7 +135,11 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if err != nil {
 		return held(q, mirror.Unknown), err
 	}
-	return c.release(ctx, a, q, caller, r, state, nil)
+	result, err = c.release(ctx, a, q, caller, r, state, nil)
+	if err == nil && r.Snapshot.Version != "" && ctx.Err() == nil {
+		outcome = Outcome{Checked: true, Fulfilled: result.Fulfilled, SnapshotVersion: r.Snapshot.Version, Reason: result.Reason, Now: c.clock.Now()}
+	}
+	return result, err
 }
 
 func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q Query, plan mirror.ScanPlan, caller Caller) {
@@ -149,6 +164,13 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 	}
 	q.Now = c.clock.Now()
 	current, err := mirror.QueryScope(ctx, c.store, a, q.Query)
+	if err != nil {
+		complete.Failure = mirror.Unknown
+		finish()
+		return
+	}
+	q.Now = c.clock.Now()
+	current, err = mirror.EvaluateSnapshot(current.Snapshot, q.Query)
 	if err != nil {
 		complete.Failure = mirror.Unknown
 		finish()
@@ -206,6 +228,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		scan.NotModified = false
 		scan.Records = nil
 	}
+	qualifiedPopulation := scan.Complete || scan.NotModified
 	if q.RequireReviews {
 		if scan.NotModified {
 			for _, o := range baseline.Records {
@@ -234,7 +257,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		return
 	}
 	complete.Update = &update
-	if !scan.Complete {
+	if !scan.Complete && !qualifiedPopulation {
 		complete.Failure = scan.Failure
 		if complete.Failure == "" {
 			complete.Failure = mirror.Truncated
@@ -255,7 +278,15 @@ func (c *Coordinator) release(ctx context.Context, a mirror.Admission, q Query, 
 	if err := ctx.Err(); err != nil {
 		return held(q, mirror.Transport), errors.Join(cause, err)
 	}
-	return present(r, q, state), cause
+	q.Now = c.clock.Now()
+	if err := ctx.Err(); err != nil {
+		return held(q, mirror.Transport), errors.Join(cause, err)
+	}
+	evaluated, err := mirror.EvaluateSnapshot(r.Snapshot, q.Query)
+	if err != nil {
+		return held(q, mirror.Unknown), errors.Join(cause, err)
+	}
+	return present(evaluated, q, state), cause
 }
 
 func (c *Coordinator) observe(ctx context.Context, kind, unit string, scope mirror.Scope, generation string) {

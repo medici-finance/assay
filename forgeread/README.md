@@ -170,6 +170,21 @@ advance completeness. Caller/admission refusal creates no shared source-failure
 cooldown or confirmed permission-loss record. Source-confirmed permission coverage
 remains a separate kernel outcome, with retention still human-gated. Current caller
 and repository admission are checked after store I/O before releasing any rows.
+The same checks and caller deadline apply after gate cleanup I/O.
+After the last observer/cleanup callback, release uses the mirror owner's pure
+`EvaluateSnapshot` with trusted current time, then checks current permission and
+deadline. The evaluator reuses canonical validation/freshness, performs no I/O and
+grants no authorization; holders of its typed snapshot must still authorize release.
+
+Base fill identity stays separate from bounded observation `Requirements` (currently
+complete existing reviews). `Demand` carries that requirement class; no request id,
+projection or arbitrary freshness value fragments it. After its actual requery,
+each waiter reports a typed `Outcome` through `Leave`. The shared gate atomically
+records requirement-qualified failure/cooldown and waiter accounting, independently
+checking current ticket generation and queried snapshot version. Unchecked
+cancellation, deadline, admission or epoch refusals install no failure. Repeated
+cached outcomes cannot slide the original cooldown, and a late older observation
+cannot poison a later qualified recovery. This remains a canonical R2 obligation.
 
 The R2 implementation must bind the injected store to its canonical PostgreSQL
 backend and atomically check refresh generation, apply/query through

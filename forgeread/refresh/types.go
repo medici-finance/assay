@@ -54,11 +54,17 @@ type FillKey struct {
 	Scope                                                        mirror.Scope
 	SourceID, AccessEpoch, ConfigEpoch, PolicyClass, PolicyEpoch string
 }
+
+// Requirements is a bounded observation class, separate from base-fill identity.
+// Freshness windows, projections and request identities do not fragment this key.
+type Requirements struct{ RequireReviews bool }
+
 type Demand struct {
-	Key      FillKey
-	CallerID string
-	Limits   Limits
-	Now      time.Time
+	Key          FillKey
+	Requirements Requirements
+	CallerID     string
+	Limits       Limits
+	Now          time.Time
 }
 type Ticket struct {
 	ID, Generation string
@@ -69,6 +75,16 @@ type State struct {
 	Pending bool
 	Reason  mirror.Reason
 	RetryAt time.Time
+}
+
+// Outcome describes an authorized post-query observation, never query data.
+// Unchecked cancellation/deadline/refusal outcomes only release waiter accounting.
+// The gate independently checks ticket generation and current snapshot version.
+type Outcome struct {
+	Checked, Fulfilled bool
+	SnapshotVersion    string
+	Reason             mirror.Reason
+	Now                time.Time
 }
 
 // CallerAuthority revalidates current trusted caller, policy and epoch facts.
@@ -84,8 +100,10 @@ type Completion struct {
 	Caller          Caller
 	Query           Query
 	Update          *mirror.ScanUpdate
-	Failure         mirror.Reason
-	Now             time.Time
+	// Failure describes an unqualified source population, not missing fields
+	// for one waiter's Requirements; those are accounted by checked Leave outcomes.
+	Failure mirror.Reason
+	Now     time.Time
 }
 type Result struct {
 	mirror.Result
