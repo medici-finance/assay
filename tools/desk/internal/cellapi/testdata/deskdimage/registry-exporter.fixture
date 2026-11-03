@@ -1,0 +1,5 @@
+# A registry exporter leaves the local image store.
+want: registry-exporter
+file: Makefile
+replace: "\tdocker build -f"
+with: "\tdocker build --output type=registry -f"

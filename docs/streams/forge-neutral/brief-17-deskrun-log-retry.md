@@ -77,11 +77,8 @@ either — there is no `Forge` operation for either, and no `deskrun` subcommand
 because brief 14, which creates the verb, has not landed.
 
 files:
-- `tools/desk/internal/deskkit/forge.go` (planned) — two new operations, `RunLog(repo, runID)`
-  and `RetryRun(repo, runID)`, added beside brief 14's `RunWorkflow`/`ApproveGate`/`RunStatus`.
-  Not touched by this authoring brief itself — this is the future implementer's file list.
-- `tools/desk/internal/deskkit/forge_github.go`, `forge_gitlab.go` (planned) — both backends'
-  mappings.
+- `tools/desk/internal/deskkit/forge.go` (planned) — two new operations, `RunLog(repo, runID)` and `RetryRun(repo, runID)`, added beside brief 14's `RunWorkflow`/`ApproveGate`/`RunStatus`. Not touched by this authoring brief itself — this is the future implementer's file list.
+- `tools/desk/internal/deskkit/forge_github.go`, `tools/desk/internal/deskkit/forge_gitlab.go` (planned) — both backends' mappings.
 - `tools/desk/cmd/deskrun/` (planned) — the `log` and `retry` subcommands on brief 14's verb.
 - `docs/streams/forge-gitlab/inventory.md` (planned) — two appended rows.
 

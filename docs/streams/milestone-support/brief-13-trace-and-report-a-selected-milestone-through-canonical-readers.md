@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: `plugins/assay/skills/trace-path-to-live/SKILL.md`, `plugins/assay/skills/trace-path-to-live/references/` (planned), `plugins/assay/skills/author-spec/SKILL.md`, `plugins/assay/skills/author-brief/SKILL.md`, `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/references/milestone-authoring.md`, `statusgen/testdata/milestone-support/13/` (planned), `tools/desk/cmd/deskboard/`, `changelog/milestone-support-13.md` (planned), `statusgen/testdata/milestone-support/13-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `plugins/assay/skills/trace-path-to-live/SKILL.md`, `plugins/assay/skills/trace-path-to-live/references/` (planned), `plugins/assay/skills/author-spec/SKILL.md`, `plugins/assay/skills/author-brief/SKILL.md`, `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/references/milestone-authoring.md`, `statusgen/testdata/milestone-support/13/` (planned), `tools/desk/cmd/deskboard/`, `changelog/milestone-support-13.md` (planned), `statusgen/testdata/milestone-support/13-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.

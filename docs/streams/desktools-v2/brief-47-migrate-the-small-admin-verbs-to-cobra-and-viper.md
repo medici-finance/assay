@@ -109,5 +109,30 @@ Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's s
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 4` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 4` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 4` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-47.json` | pass exit=0 | sha256:2af1fb2dc8e3 | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdisable/... ./cmd/deskmigrate/... ./cmd/deskaudit/... ./cmd/deskversion/...` | pass exit=0 | sha256:7df2120e07a4 | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskdisable ./cmd/deskmigrate ./cmd/deskaudit ./cmd/deskversion` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/47 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:12f2d6334941 | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:48c82cb1a8c9 | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:4996d4604fe0 | 2026-11-01 | assay-verifier-app[bot] @ f548ba572add (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5155 run=6f2550806dca8f728651805cc53b34b5d749b73dd3ea5d739bc171bf001b7f7c source=f548ba572add507a5624560a640e1fb69598ebfb brief=docs/streams/desktools-v2/brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — rows 1 to 8 observed passing; row 9 exited 0 but checked nothing, so it carries no acceptance credit. On the clean admitted tree its output (reproduced at the same digest, sha256:4996d4604fe0) ends `consumers: no brief files in the diff against f548ba572add507a5624560a640e1fb69598ebfb — nothing to corroborate`. Needed: a reviewed amendment of row 9 that names the delivery. Nothing observed fails the brief.
+
+Supplemental host observations, no acceptance credit; each was run outside the witness:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| S4 | row 4's command, rerun to read its last line | exit 0 | `Totals: 12 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; the spec declares 12 mutations | 2026-11-01 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S8 | row 8's command, rerun to read its last line | exit 0 | `seed passes=26` | 2026-11-01 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S9a | row 9's command with only the Evidence edit in the tree | exit 0 | 0 corroborated, 0 disproved, 13 unchecked: the brief is in the diff but its consumers lines are unchanged since the merge-base | 2026-11-01 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| S9b | `statusgen --root . --consumers --delivery 0ce631327963a306078f6965a595685c8944b1e4 --base eeaa65d08810d6b9db1422b9ffb2f4bdc779cb8b --brief desktools-v2/47` | exit 0 | 13 corroborated, 0 disproved, 0 unchecked. All 13 are follow-ups naming this brief; the delivery diff touches the 4 command packages and the registry, and none of the 8 consumer documents | 2026-11-01 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

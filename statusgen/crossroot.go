@@ -240,7 +240,10 @@ func integrationTip(path string) (string, error) {
 			ref = t
 		}
 	}
-	out, err := exec.Command("git", "-C", path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Output()
+	out, err, supported := commitReadOutput(ordinaryCommitRead(path, ref), ref)
+	if !supported {
+		out, err = exec.Command("git", "-C", path, "rev-parse", "--verify", "--quiet", ref+"^{commit}").Output()
+	}
 	sha := strings.TrimSpace(string(out))
 	if err != nil || !mergeSHARe.MatchString(sha) {
 		return "", fmt.Errorf("%s does not resolve (fetch origin, or `git remote set-head origin -a`)", ref)

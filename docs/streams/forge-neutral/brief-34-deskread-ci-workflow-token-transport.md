@@ -141,10 +141,7 @@ files:
 - `tools/desk/internal/deskkit/forgeresolve.go`: the second constructor, `ReadOnlyForgeForCIToken` (name is a suggestion), beside `ResolveForge`, and its API-base test seam.
 - `tools/desk/internal/deskkit/readonlyforge.go`: the default-deny decorator.
 - `tools/desk/internal/deskkit/remoterepo.go`: `ValidRepoSlug`, shared by the CI admission checks.
-- Tests beside each: `tools/desk/cmd/deskread/ci_test.go`,
-  `tools/desk/internal/deskkit/citransport_test.go`,
-  `tools/desk/internal/deskkit/citransport_recorder_test.go`,
-  `tools/desk/internal/deskkit/citoken_guard_test.go`, and the existing guard tests named in Task 5.
+- `tools/desk/cmd/deskread/ci_test.go`, `tools/desk/internal/deskkit/citransport_test.go`, `tools/desk/internal/deskkit/citransport_recorder_test.go`, `tools/desk/internal/deskkit/citoken_guard_test.go` — Tests beside each: `tools/desk/cmd/deskread/ci_test.go`, `tools/desk/internal/deskkit/citransport_test.go`, `tools/desk/internal/deskkit/citransport_recorder_test.go`, `tools/desk/internal/deskkit/citoken_guard_test.go`, and the existing guard tests named in Task 5.
 
 This inventory names the implementation locations in PR #2377. The original design and
 security requirements below remain the contract; the inventory correction adds no deliverable.

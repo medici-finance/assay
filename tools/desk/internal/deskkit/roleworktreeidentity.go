@@ -45,16 +45,10 @@ func RoleWorktreeCommitIdentity(role string) (name, email string, err error) {
 	// branch (and never the reverse). An unbound role has no entry; both arms below then
 	// return the fail-closed refusal their resolver already computed.
 	if ident, bound := EffectiveConfig().RoleBotIdentity(r); bound && ident.Forge == ForgeGitLab {
-		n, e, ok := RoleGitLabCommitIdentity(r)
-		if !ok {
-			return "", "", Refused("refused: role " + r + " is a GitLab identity (" + ident.Slug + "); its " +
-				"service-account commit email (service_account_group_<group-id>_<suffix>@noreply.<host>) embeds a " +
-				"group id and per-account suffix the roster does not carry, so it cannot be constructed — and it " +
-				"must NOT fall back to the GitHub noreply shape. Configure the trusted GitLab session / implementer " +
-				"commit address in " + EnvGitLabSessionEmails + " (the two-identity mechanism; to commit AS " +
-				"the service account, list its provisioned noreply address there), in " + ConfigHomePath())
-		}
-		return n, e, nil
+		// RoleGitLabCommitIdentity owns every GitLab refusal (no address, an invalid
+		// per-role binding, an address it cannot attribute to this role), so it is
+		// returned as-is.
+		return RoleGitLabCommitIdentity(r)
 	}
 	n, e, ok := RoleBotCommitIdentity(r)
 	if !ok {

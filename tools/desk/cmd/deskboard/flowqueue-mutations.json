@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL — count every implemented brief toward verify depth (the old throughput meaning)",
     "file": "cmd/deskboard/throughput.go",
-    "old": "row.Status == \"implemented\" && row.Class == queueClassJudgment",
-    "new": "row.Status == \"implemented\""
+    "old": "verifyqueue.JudgmentWork(row.Status, row.Class)",
+    "new": "verifyqueue.JudgmentWork(row.Status, verifyqueue.Judgment)"
   },
   "mutations": [
     {

@@ -1,0 +1,5 @@
+# deskd-image dropped from .PHONY (and so from the Windows parity set).
+want: target-missing
+file: Makefile
+replace: "deskd-build deskd-image "
+with: "deskd-build "

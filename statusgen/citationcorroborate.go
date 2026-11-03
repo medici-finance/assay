@@ -432,8 +432,8 @@ func fetchCitedArtifact(repo string, number int) (*citedArtifact, error) {
 	art := &citedArtifact{}
 	// Issue comments (covers both issues and PRs). This endpoint is also the
 	// existence probe: a 404 here means the cited artifact is absent (a bogus ref).
-	out, err := exec.Command("gh", "api", "--paginate", "--slurp",
-		fmt.Sprintf("repos/%s/issues/%d/comments", repo, number)).Output()
+	out, err := ghGuard(exec.Command("gh", "api", "--paginate", "--slurp",
+		fmt.Sprintf("repos/%s/issues/%d/comments", repo, number))).Output()
 	if err != nil {
 		if ghErrIsNotFound(err) {
 			return art, nil // observed 404: empty artifact -> MISSING downstream
@@ -458,8 +458,8 @@ func fetchCitedArtifact(repo string, number int) (*citedArtifact, error) {
 	// failure). Any OTHER error means we could not read the reviews, so we cannot
 	// rule out a corroborating APPROVED review: surface it as a fetch failure rather
 	// than reporting a possibly-false absence.
-	out, err = exec.Command("gh", "api", "--paginate", "--slurp",
-		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, number)).Output()
+	out, err = ghGuard(exec.Command("gh", "api", "--paginate", "--slurp",
+		fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, number))).Output()
 	if err != nil {
 		if !ghErrIsNotFound(err) {
 			return nil, fmt.Errorf("gh api pulls/%d/reviews: %w", number, err)

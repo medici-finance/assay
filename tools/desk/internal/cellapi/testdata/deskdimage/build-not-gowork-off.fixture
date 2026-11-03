@@ -1,0 +1,5 @@
+# The local build honours a workspace file.
+want: build-not-gowork-off
+file: Makefile
+replace: "cd deskd && GOWORK=off go build"
+with: "cd deskd && go build"

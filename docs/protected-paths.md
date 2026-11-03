@@ -217,6 +217,16 @@ ambiguous bases and octopus merges refuse. The amendment increments the existing
 brief-v2 `version:` by exactly one; the current version and Verify section must
 still match it. Historical Evidence must survive unchanged through amendment and
 remain a prefix of the current record. No earlier result receives new credit.
+The delivery-to-pre-amendment prefix check has one bounded exception, approved in
+[the #4563 ruling](https://github.com/medici-finance/assay/issues/4563#issuecomment-6528575948):
+when the complete delivered Evidence is exactly the generated comment
+`<!-- Independent verifier appends one row per Verify command after implementation. -->`
+(ignoring surrounding whitespace), that same exact comment may survive as a
+Markdown quotation in pre-amendment history. A missing or edited placeholder,
+another comment, or any substantive delivered result still requires the ordinary
+byte prefix. The amendment must still preserve its parent's entire Evidence
+exactly, and current Evidence must still retain that entire history as its prefix.
+This exception grants no witness, approval, admission or lifecycle credit.
 
 A human recognized by the existing external human-login roster posts an unedited
 comment on a same-repository decision issue. That issue contains
@@ -286,7 +296,14 @@ CI invocation** that will read that record: lint, coverage/status regeneration,
 model auto-flip, reconciliation and their retry commands. Supply the existing
 `GH_TOKEN`/`GITHUB_TOKEN` read credential and external mapped-human configuration
 through that workflow's established credential boundary; do not expose privileged
-credentials to untrusted branch code. The repository's workflow approval is the
+credentials to untrusted branch code. Those two variables are the ruling read's
+only credential inside an admitted `statusgen verifyrun` and in any process its
+Verify rows start: there it never falls back to a stored forge login (`gh auth
+token` or the cell's ambient copy of it), and with neither variable set the read
+is a could-not-check. The same holds wherever verifier admission would be
+required, even with no verifyrun running: a `DESK_LOOP` naming a verify loop, or
+a working repository holding the verifier attestation file. Where none of those
+signals holds, the stored-login fallback is unchanged. The repository's workflow approval is the
 opt-in. A desk command's flag does not change later CI jobs. An old pinned binary
 cannot receive this flag, and a default offline CI invocation will hold the record
 or fail lint. Verify the upgraded workflow can corroborate the exact ruling before

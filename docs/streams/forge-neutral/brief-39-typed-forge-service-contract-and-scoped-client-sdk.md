@@ -47,8 +47,7 @@ consumers:
 
 ## Context
 
-files: `forgeread/service/` (planned), `forgeread/client/` (planned), `forgeread/testdata/service/` (planned), `spec/forge-service-v1.md` (planned), `schemas/forge-service-v1.json` (planned), `docs/forge-service.md` (planned), `docs/library-first.md`, `docs/contracts.md`, `changelog/forge-service-contract.md` (planned), `forgeread/service/reviewmapping_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files: `forgeread/service/` (planned), `forgeread/client/` (planned), `forgeread/testdata/service/` (planned), `spec/forge-service-v1.md` (planned), `schemas/forge-service-v1.json` (planned), `docs/forge-service.md` (planned), `docs/library-first.md`, `docs/contracts.md`, `changelog/forge-service-contract.md` (planned), `forgeread/service/reviewmapping_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - forgeread is a dependency-free module. Its root OpenIssues/Result and OfflineReader remain the supported current surface; service packages are new deliverables.

@@ -31,6 +31,12 @@ func (c *Cell) kubeProfileE() (*kc.Profile, string, error) {
 	if c.Harness != "claude" || c.Env.Get("CELL_PROVIDER") != "" || c.Env.Get("CELL_MODEL_POLICY") != "" || c.Env.Get("CELL_ROLE_CONTEXT") != "" || c.Env.Get("CELL_COCKPIT") != "" || (c.Env.Get("CELL_CADENCE") != "" && c.Env.Get("CELL_CADENCE") != "off") {
 		return nil, "", errors.New("compatibility requires pinned Claude profile; host policies, role context, providers, cockpits and cadences unsupported")
 	}
+	if c.Env.Get("CELL_DB_DSN") != "" {
+		return nil, "", errors.New("CELL_DB_DSN is a host-cell database key and a Kubernetes compatibility cell cannot honour it; unset it")
+	}
+	if c.Env.Get("CELL_DB_PASSFILE") != "" {
+		return nil, "", errors.New("CELL_DB_PASSFILE is a host-cell database key and a Kubernetes compatibility cell cannot honour it; unset it")
+	}
 	for _, role := range c.Roles {
 		if _, ok := p.Roles[role]; !ok {
 			return nil, "", errors.New("unconfigured compatibility role")

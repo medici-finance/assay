@@ -26,7 +26,15 @@ type Verdict struct {
 }
 type observationStats struct{ Paths, Callouts int }
 
-func (c Config) evaluate(tool, target string) (Verdict, writepolicy.Outcome, observationStats) {
+// classifiedCall is a tool call with the hook's one classification of it: run
+// makes it once for a Bash call in a desk session and hands the same value to
+// the ambient-token refusal and to evaluateWith.
+type classifiedCall struct {
+	tool, target, cwd string
+	cl                writepolicy.Classification
+}
+
+func classifyCall(tool, target, cwd string) *classifiedCall {
 	home, _ := os.UserHomeDir()
 	env := map[string]string{}
 	for _, entry := range os.Environ() {
@@ -39,8 +47,22 @@ func (c Config) evaluate(tool, target string) (Verdict, writepolicy.Outcome, obs
 	if runtime.GOOS == "windows" {
 		platform = writepolicy.Windows
 	}
-	cl := writepolicy.Classify(writepolicy.Request{Tool: tool, Target: target}, writepolicy.LexicalContext{
-		Platform: platform, Cwd: c.Cwd, Home: home, Env: env})
+	return &classifiedCall{tool: tool, target: target, cwd: cwd,
+		cl: writepolicy.Classify(writepolicy.Request{Tool: tool, Target: target}, writepolicy.LexicalContext{
+			Platform: platform, Cwd: cwd, Home: home, Env: env})}
+}
+
+func (c Config) evaluate(tool, target string) (Verdict, writepolicy.Outcome, observationStats) {
+	return c.evaluateWith(nil, tool, target)
+}
+
+// evaluateWith evaluates call's classification when it is of this tool call
+// (same tool, target and cwd), and classifies the call itself otherwise.
+func (c Config) evaluateWith(call *classifiedCall, tool, target string) (Verdict, writepolicy.Outcome, observationStats) {
+	if call == nil || call.tool != tool || call.target != target || call.cwd != c.Cwd {
+		call = classifyCall(tool, target, c.Cwd)
+	}
+	cl := call.cl
 	claim := writepolicy.ClaimObservation{Source: writepolicy.NoClaim}
 	if c.claim != nil {
 		claim = *c.claim

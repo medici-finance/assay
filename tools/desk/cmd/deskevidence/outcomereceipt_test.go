@@ -52,13 +52,14 @@ func TestDeriveReceiptFromGit(t *testing.T) {
 	if err := json.Unmarshal(out, &wr); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"file:foo/bar.go", "file:foo/pkg/a.go", "file:foo/pkg/b.go", "file:" + receiptBriefPath, "tool"} {
+	for _, k := range []string{"file:foo/bar.go", "file:foo/pkg/", "file:" + receiptBriefPath, "tool"} {
 		if wr.Inputs[k] == "" {
 			t.Errorf("inputs has no %s: %v", k, wr.Inputs)
 		}
 	}
-	if len(wr.Inputs) != 8 {
-		t.Errorf("inputs = %v, want 5 content/tool keys and 3 scope keys (including planned absence)", wr.Inputs)
+	if len(wr.Inputs) != 7 {
+		// #4865: the declared directory carries one file:foo/pkg/ digest, not a key per member.
+		t.Errorf("inputs = %v, want 4 content/tool keys and 3 scope keys (including planned absence)", wr.Inputs)
 	}
 	if wr.Inputs["file:"+receiptBriefPath] != deskkit.Sha256Hex([]byte(landed)) {
 		t.Errorf("the brief input is not the brief as it lands")
@@ -109,7 +110,7 @@ func TestOutcomeWriteLandsReceipt(t *testing.T) {
 		t.Errorf("landed at %s but its bytes name %s", w.File, want)
 	}
 	if !strings.Contains(string(w.Content), `"wake_schema":"`+deskkit.SchemaWakeV1+`"`) ||
-		!strings.Contains(string(w.Content), `"file:foo/pkg/b.go"`) {
+		!strings.Contains(string(w.Content), `"file:foo/pkg/"`) {
 		t.Errorf("landed record carries no derived receipt: %s", w.Content)
 	}
 }

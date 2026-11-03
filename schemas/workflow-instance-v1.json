@@ -168,11 +168,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "node", "role", "actor", "effects", "evidence"],
+        "required": ["id", "node", "role", "effects", "evidence"],
+        "if": {"properties": {"role": {"const": "human"}}, "required": ["role"]},
+        "then": {"not": {"required": ["actor"]}, "properties": {"effects": {"maxItems": 0}, "attempts": {"maxItems": 0}}},
+        "else": {"required": ["actor"]},
         "properties": {
           "id": { "type": "string" },
           "node": { "description": "The pattern node id this instantiates.", "type": "string" },
-          "role": { "type": "string", "enum": ["desk", "reviewer", "verifier", "worker"] },
+          "role": { "type": "string", "enum": ["desk", "reviewer", "verifier", "worker", "human"] },
           "actor": {
             "description": "The resolved actor binding: a reference to the roster binding, the Cell it acts in, and the effect kinds that binding already holds. Recorded, never granted.",
             "type": "object",
