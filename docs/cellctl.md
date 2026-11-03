@@ -738,7 +738,7 @@ closes a session, a workspace, a sibling's window or another cell's. A role with
 or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
 cell-wide `down` can close it.
 
-### Lifecycle — `pause`, `resume`, `drain`
+### Lifecycle — `pause`, `resume`, `drain`, `cycle`
 
 ```bash
 cellctl pause  <cell> [role...]
@@ -800,6 +800,37 @@ behind one internal interface in `tools/desk/cmd/cellctl/lifecycle.go`:
 
 This is the first implementation, not the design. The runner lifecycle and its coordination store
 replace it, and the proposal above records that migration.
+
+#### `cycle` — drain, sync, check, restart
+
+`cellctl cycle <cell> [role...]` takes each role window (default: the cell's `ROLES`) through drain,
+sync, check and restart, one role at a time. The first role that does not come back stops the cycle,
+so a bad pin never takes down more than one role. `--all-at-once` drains every targeted role together.
+
+1. **Stop new work and drain.** This is `drain` itself, bounded by `--drain-timeout` (default 30m).
+   An interactive role's stop needs the operator's confirm, as it does under `drain`. On timeout the
+   role is not restarted. The cycle lifts its own stops so the role keeps running, names each claim
+   still held, and exits non-zero. With `--force-after-timeout` it plans the stop the way
+   `drain --now` does, listing each held claim as abandoned, and applies it only on the confirm.
+2. **Sync and check.** The role's harness placement is brought to the marketplace pin
+   (`extraKnownMarketplaces.assay.source.ref` in the role worktree's `.claude/settings.json`):
+   - **claude:** `claude plugin update assay@assay -s project` in the worktree, with the settings
+     bytes restored afterwards. The worktree's project record is then read back and compared with
+     the pin. A record still behind the pin fails the check and names the uninstall → install
+     remedy. The cycle never uninstalls.
+   - **cursor:** `deskinstall --harness cursor --release v<pin> --check`, placing on drift and
+     checking again.
+   - **codex:** no placement mode exists, so the check is could-not-check.
+
+   A failed check leaves the role down and says why. A could-not-check one restarts the role, and the
+   cycle's outcome is could-not-check, never ok.
+3. **Restart.** The window reopens as `up <cell> --role <role> --no-attach` does, and its cadence is
+   resumed.
+4. **Heartbeat.** The cycle waits up to `--heartbeat-wait` for a heartbeat in the role's cadence
+   checkpoint that is newer than the restart.
+
+The report is one line per role (`report:<role>`): drained or forced, the plugin version before and
+after, and the heartbeat. A role that was down before the cycle is skipped and says so.
 
 **List:** `cellctl ls` prints the cells under the cells root. No cells is not an error.
 

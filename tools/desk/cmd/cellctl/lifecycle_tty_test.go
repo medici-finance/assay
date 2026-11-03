@@ -101,6 +101,8 @@ func TestPauseResumeDrainRefuseOffTTY(t *testing.T) {
 		{"drain", "example"},
 		{"drain", "example", "--now"},
 		{"down", "example", "worker-desk"},
+		{"cycle", "example"},
+		{"cycle", "example", "worker-desk", "--force-after-timeout"},
 	} {
 		for _, m := range modes {
 			code, out := runMixed(t, w, m.stdin, m.stdout, args...)
