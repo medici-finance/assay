@@ -22,7 +22,7 @@ import (
 // visibleVerbs is every documented verb. The three internal entrypoints (model-policy,
 // cache-run, container-run) are covered by the legacy-forms and boundary tests.
 var visibleVerbs = []string{
-	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down",
+	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down", "pause", "resume", "drain",
 	"reset", "models", "smoke", "status", "attach", "cadence", "scratch", "cache", "comms", "defaults", "hotfix", "providers",
 }
 

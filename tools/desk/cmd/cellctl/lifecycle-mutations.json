@@ -1,0 +1,131 @@
+{
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestLifecycleTransitions|TestResumeLeavesForeignStops|TestRecordedResumeNotExecuted|TestPerRoleDownClosesOneSurface|TestIdleSignalPerMode|TestDrainWaitsForInFlight|TestDrainTimeoutDoesNotStop|TestInterimMappingPinned|TestDrainEmitsCellOpV1|TestPauseResumeDrainRefuseOffTTY|TestDrainNowInteractiveOnly)$'",
+  "control": {
+    "name": "invert the one-close assertion",
+    "file": "cmd/cellctl/lifecycle_test.go",
+    "old": "if got := w.closes(); len(got) != 1 || got[0] != c.close {",
+    "new": "if got := w.closes(); len(got) == 1 && got[0] == c.close {"
+  },
+  "mutations": [
+    {
+      "name": "1 lifecycle-states: stop from running",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "case ev == evStop && (from == statePaused || from == stateDrained):",
+      "new": "case ev == evStop && (from == statePaused || from == stateDrained || from == stateRunning):"
+    },
+    {
+      "name": "1b resume-foreign-stops: resume lifts every cell stop",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "\t\tlifted = append(lifted, f.Path)\n\t}\n\trec.Flags = remain",
+      "new": "\t\tlifted = append(lifted, f.Path)\n\t}\n\tif m, _ := filepath.Glob(filepath.Join(l.c.Config, \"STOP*\")); len(m) > 0 {\n\t\tfor _, p := range m {\n\t\t\t_ = os.Remove(p)\n\t\t}\n\t}\n\trec.Flags = remain"
+    },
+    {
+      "name": "1c lifecycle-off-tty: one terminal is enough",
+      "file": "cmd/cellctl/cellop_cli.go",
+      "old": "func interactive() bool { return isTTY(os.Stdin) && isTTY(os.Stdout) }",
+      "new": "func interactive() bool { return isTTY(os.Stdin) || isTTY(os.Stdout) }"
+    },
+    {
+      "name": "1d recorded-allowlist: a denylist of resume/start/restart",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "\tif q.Foreign != \"\" || q.Now {\n\t\treturn false\n\t}\n\tswitch q.Transition {",
+      "new": "\tif q.Transition != \"resume\" && q.Transition != \"start\" && q.Transition != \"restart\" {\n\t\treturn true\n\t}\n\tif q.Foreign != \"\" || q.Now {\n\t\treturn false\n\t}\n\tswitch q.Transition {"
+    },
+    {
+      "name": "1d recorded-allowlist: stop without the idle re-measure",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "if rd := lc.Idle(role); !rd.idle() {",
+      "new": "if rd := lc.Idle(role); false && !rd.idle() {"
+    },
+    {
+      "name": "1d recorded-allowlist: the record's state is believed",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "if rd := lc.Idle(role); !rd.idle() {",
+      "new": "if rd := lc.Idle(role); q.State != \"idle\" && !rd.idle() {"
+    },
+    {
+      "name": "1d recorded-allowlist: stop the whole cell",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "\tfor _, role := range q.Roles {\n\t\tpaused, err := lc.Paused(role)",
+      "new": "\tfor _, role := range knownRoles {\n\t\tpaused, err := lc.Paused(role)"
+    },
+    {
+      "name": "1e per-role-close: unreadable herdr pane read as a match",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "\t\t\troots, err := k.herdrPaneProcs(rec.Pane)\n\t\t\tif err != nil {\n\t\t\t\treturn liveSurface{}, err\n\t\t\t}",
+      "new": "\t\t\troots, err := k.herdrPaneProcs(rec.Pane)\n\t\t\tif err != nil {\n\t\t\t\troots = []int{rec.HarnessPID}\n\t\t\t}"
+    },
+    {
+      "name": "1e per-role-close: unreadable start time read as a match",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "\tif err != nil {\n\t\treturn mismatch(\"harness pid %d start time unreadable",
+      "new": "\tif err != nil && false {\n\t\treturn mismatch(\"harness pid %d start time unreadable"
+    },
+    {
+      "name": "1e per-role-close: no identity check",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "\tmismatch := func(format string, a ...any) error {",
+      "new": "\tif true {\n\t\treturn nil\n\t}\n\tmismatch := func(format string, a ...any) error {"
+    },
+    {
+      "name": "1e per-role-close: close the whole session",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "_, err = k.exec(\"tmux\", \"kill-window\", \"-t\", rec.Surface)",
+      "new": "_, err = k.exec(\"tmux\", \"kill-session\", \"-t\", rec.Session)"
+    },
+    {
+      "name": "1e per-role-close: no receipt read as nothing to close",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "\tif !cr.Held && rec == nil {",
+      "new": "\tif rec == nil {"
+    },
+    {
+      "name": "1f idle-per-mode: interactive Running read as busy",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "\t\tr.Mode = \"interactive\"\n\t\tr.HarnessUnmeasured = true",
+      "new": "\t\tr.Mode = \"interactive\"\n\t\tr.HarnessUnmeasured = true\n\t\tr.Busy = append(r.Busy, \"the checkpoint records a running harness\")"
+    },
+    {
+      "name": "1f idle-per-mode: the harness read as measured",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "\t\tr.HarnessUnmeasured = true",
+      "new": "\t\tr.HarnessUnmeasured = false"
+    },
+    {
+      "name": "2 drain-waits-in-flight: stop without waiting for idle",
+      "file": "cmd/cellctl/drain.go",
+      "old": "\t\t\tif !rd.measuredIdle() {\n\t\t\t\tstill = append(still, role)",
+      "new": "\t\t\tif false && !rd.measuredIdle() {\n\t\t\t\tstill = append(still, role)"
+    },
+    {
+      "name": "3 drain-timeout: the timeout falls through to the stop",
+      "file": "cmd/cellctl/drain.go",
+      "old": "\tif len(pending) > 0 {\n\t\tfor _, role := range pending {",
+      "new": "\tif false && len(pending) > 0 {\n\t\tfor _, role := range pending {"
+    },
+    {
+      "name": "3 drain-timeout: no poll cap",
+      "file": "cmd/cellctl/drain.go",
+      "old": "\tif p > drainPollMax {\n\t\tp = drainPollMax\n\t}",
+      "new": "\tif p > drainPollMax {\n\t\tp = bound / 2\n\t}"
+    },
+    {
+      "name": "4 drain-now-interactive: no abandon action in the plan",
+      "file": "cmd/cellctl/drain.go",
+      "old": "ID: \"abandon:\" + cl.Key, Cell: cell,",
+      "new": "ID: \"release:\" + cl.Key, Cell: cell,"
+    },
+    {
+      "name": "5 interim-mapping: pause sets a flag the guard does not read",
+      "file": "cmd/cellctl/lifecycle.go",
+      "old": "return filepath.Join(l.c.Config, deskkit.CellStopFlagName(l.c.Name, loop))",
+      "new": "return filepath.Join(l.c.Config, \"PAUSE.\"+deskkit.CellStopFlagName(l.c.Name, loop))"
+    },
+    {
+      "name": "8j drain-cell-op-v1: an off-schema reason",
+      "file": "cmd/cellctl/drain.go",
+      "old": "r.Finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, fmt.Sprintf(\"%s: idle could not be measured: %v\"",
+      "new": "r.Finish(cellop.CouldNotCheck, \"idle-unreadable\", fmt.Sprintf(\"%s: idle could not be measured: %v\""
+    }
+  ]
+}

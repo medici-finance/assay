@@ -204,6 +204,8 @@ prior tool output as *evicted*. That note orients the next cycle; it never subst
 read — see the reference for the nine-section schema and the re-probe rule that keeps a resumed
 session from acting on a remembered answer.
 
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+
 ### Stop-flag check — run at every iteration boundary
 
 Before each loop cycle (monitor wakeup, board sweep, dispatch), check for active stop flags:
