@@ -96,6 +96,11 @@ fill too: during its bounded cooldown, equivalent queries receive explicit unava
 or explicitly permitted stale data with its original coverage and age, without another
 source request. An authenticated reader may learn only its admitted failure outcome.
 After cooldown, one eligible probe may refill; a successful fill clears the failure.
+Successful means sufficient for that query's required coverage, revision and freshness,
+not merely HTTP 200 or a nil error. A partial/truncated source walk can return no error
+while leaving the query unfulfilled: retain its explicit partial facts, prior complete
+watermark and the existing Partial/Unavailable refresh backoff instead of clearing the
+failure hold or promoting the result to complete-empty.
 Respect provider Retry-After and existing budgets in addition to cache expiry. Configure
 finite entry/count/byte bounds, injected-clock expiry and bounded backoff through trusted
 composition; do not invent a new cache daemon or a client-specific retry authority.
