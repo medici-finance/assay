@@ -178,6 +178,14 @@ func (g AttemptGrant) Validate(now time.Time) error {
 	return nil
 }
 
+// Equal compares expiry instants without requiring process-local monotonic or
+// location metadata to survive a canonical database round trip.
+func (g AttemptGrant) Equal(other AttemptGrant) bool {
+	expires, otherExpires := g.ExpiresAt, other.ExpiresAt
+	g.ExpiresAt, other.ExpiresAt = time.Time{}, time.Time{}
+	return g == other && expires.Equal(otherExpires)
+}
+
 // A reservation is one canonical BeforeAttempt result, not an HTTP send. An
 // uncertain call cannot be closed or refunded from an aggregate receipt.
 type AttemptReservation struct {

@@ -36,6 +36,15 @@ func TestRefreshSourceReceiptFlow(t *testing.T) {
 			f.clock.step(2 * time.Minute)
 			var want mirror.AttemptReceipt
 			f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, p mirror.ScanPlan) (mirror.ScanResult, error) {
+				roundTrip := p.AttemptGrant
+				roundTrip.ExpiresAt = roundTrip.ExpiresAt.In(time.FixedZone("alternate-utc", 0))
+				if !p.AttemptGrant.Equal(roundTrip) {
+					t.Error("same expiry instant changed grant identity")
+				}
+				roundTrip.ExpiresAt = roundTrip.ExpiresAt.Add(time.Nanosecond)
+				if p.AttemptGrant.Equal(roundTrip) {
+					t.Error("different expiry instant retained grant identity")
+				}
 				if p.AttemptGrant.Validate(f.clock.Now()) != nil || p.AttemptGrant.Scope != scope || p.AttemptGrant.SourceID != "issue-inventory" || p.ExpectedVersion != prior.Version || p.PriorObservedUpTo != prior.Coverage.ObservedUpTo {
 					t.Error("final re-plan did not retain the actual snapshot and trusted grant")
 				}
@@ -1429,6 +1438,48 @@ func checkFailureCapacity(t *testing.T) {
 
 // regression: #5399
 func TestRefreshOwnerDeadline(t *testing.T) {
+	t.Run("late-typed-refusal", func(t *testing.T) {
+		f := setup(t)
+		old := f.seed(t)
+		f.clock.step(2 * time.Minute)
+		f.caller.Limits.FillTimeout = 50 * time.Millisecond
+		f.auth.set(f.caller)
+		f.source.fn = func(ctx context.Context, _ mirror.Admission, _ mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+			<-ctx.Done()
+			return mirror.ScanResult{}, mirror.ErrPermission
+		}
+		r, err := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+		snapshot, readErr := f.store.Read(context.Background(), f.a, f.q.Scope)
+		if err != nil || readErr != nil || r.Fulfilled || snapshot.Version != old.Version || !snapshot.Coverage.LastComplete.Equal(old.Coverage.LastComplete) {
+			t.Fatalf("typed refusal became source coverage: %+v %v %v", r, err, readErr)
+		}
+		eligible := f.caller
+		eligible.ID = "caller-b"
+		f.auth.set(eligible)
+		f.source.fn = func(_ context.Context, _ mirror.Admission, scope mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+			return f.scan(scope, "eligible"), nil
+		}
+		r, err = f.c[1].Read(context.Background(), f.a, f.q, eligible)
+		if err != nil || !r.Fulfilled || f.source.calls.Load() != 2 {
+			t.Fatalf("owner timeout masked typed refusal and poisoned eligible retry: %+v calls=%d %v", r, f.source.calls.Load(), err)
+		}
+	})
+	t.Run("late-nil-error", func(t *testing.T) {
+		f := setup(t)
+		old := f.seed(t)
+		f.clock.step(2 * time.Minute)
+		f.caller.Limits.FillTimeout = 50 * time.Millisecond
+		f.auth.set(f.caller)
+		f.source.fn = func(ctx context.Context, _ mirror.Admission, scope mirror.Scope, _ mirror.ScanPlan) (mirror.ScanResult, error) {
+			<-ctx.Done()
+			return f.scan(scope, "late"), nil
+		}
+		r, err := f.c[0].Read(context.Background(), f.a, f.q, f.caller)
+		snapshot, readErr := f.store.Read(context.Background(), f.a, f.q.Scope)
+		if err != nil || readErr != nil || r.Fulfilled || !snapshot.Coverage.LastComplete.Equal(old.Coverage.LastComplete) {
+			t.Fatalf("late nil-error source advanced expired owner: fulfilled=%v lastComplete=%v prior=%v err=%v readErr=%v", r.Fulfilled, snapshot.Coverage.LastComplete, old.Coverage.LastComplete, err, readErr)
+		}
+	})
 	f := setup(t)
 	f.caller.Limits.FillTimeout = 100 * time.Millisecond
 	f.auth.set(f.caller)
