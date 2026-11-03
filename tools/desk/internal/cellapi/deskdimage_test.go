@@ -578,10 +578,16 @@ func makeLines(makefile string) []string {
 // comment. A tab-led line is returned alone: it is a recipe line, whose
 // continuations go to the shell and are read by recipeLines.
 func joinContinued(lines []string, i int) (string, int) {
-	l := lines[i]
-	if strings.HasPrefix(l, "\t") {
-		return l, i + 1
+	if strings.HasPrefix(lines[i], "\t") {
+		return lines[i], i + 1
 	}
+	return joinLines(lines, i)
+}
+
+// joinLines joins lines[i] with the lines after it while the line so far ends
+// in an odd number of backslashes, whatever the line starts with.
+func joinLines(lines []string, i int) (string, int) {
+	l := lines[i]
 	j := i + 1
 	for j < len(lines) && (len(l)-len(strings.TrimRight(l, `\`)))%2 == 1 {
 		l = strings.TrimRight(strings.TrimSuffix(l, `\`), " \t") + " " + strings.TrimLeft(lines[j], " \t")
@@ -590,38 +596,66 @@ func joinContinued(lines []string, i int) (string, int) {
 	return l, j
 }
 
+// topIndex returns the index of the first byte of s that is in set and outside
+// every $(...) or ${...} expansion, or -1. make reads a :, = or # inside an
+// expansion as part of it, not as a separator or a comment. $$ is a literal $.
+func topIndex(s, set string) int {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '$' && i+1 < len(s) && s[i+1] == '$':
+			i++
+		case c == '$' && i+1 < len(s) && (s[i+1] == '(' || s[i+1] == '{'):
+			depth++
+			i++
+		case depth > 0 && (c == '(' || c == '{'):
+			depth++
+		case depth > 0 && (c == ')' || c == '}'):
+			depth--
+		case depth == 0 && strings.IndexByte(set, c) >= 0:
+			return i
+		}
+	}
+	return -1
+}
+
 // ruleHeader reads a logical makefile line as a rule: the targets before its
 // colon (blanks around them allowed, any number of them, a double colon or a
 // grouped-target &: included) and the recipe text after a ; on the same line,
-// if there is one. ok is false for a recipe line, a comment, a variable
-// assignment (=, :=, ::=, :::=, ?=, +=, !=) or a line with no colon.
+// if there is one. A :, =, # or ; inside an expansion is part of it, as make
+// reads it. ok is false for a recipe line, a comment, a variable assignment
+// (=, :=, ::=, :::=, ?=, +=, !=) or a line with no colon outside an expansion.
 func ruleHeader(line string) (targets []string, inline string, hasInline, ok bool) {
 	if strings.HasPrefix(line, "\t") {
 		return nil, "", false, false
 	}
-	before, after, found := strings.Cut(line, ":")
-	if !found || strings.ContainsAny(before, "#=") {
+	c := topIndex(line, ":=#")
+	if c < 0 || line[c] != ':' {
 		return nil, "", false, false
 	}
+	before, after := line[:c], line[c+1:]
 	// a b&: is the grouped-target form of a b: (GNU make 4.3 onward).
 	before = strings.TrimSuffix(strings.TrimRight(before, " \t"), "&")
 	after = strings.TrimPrefix(after, ":")
 	if strings.HasPrefix(after, "=") || strings.HasPrefix(after, ":=") {
 		return nil, "", false, false
 	}
-	if pre, post, semi := strings.Cut(after, ";"); semi && !strings.Contains(pre, "#") {
-		inline, hasInline = post, true
+	if s := topIndex(after, ";#"); s >= 0 && after[s] == ';' {
+		inline, hasInline = after[s+1:], true
 	}
 	return strings.Fields(before), inline, hasInline, true
 }
 
 // makeRecipe returns target's first recipe and whether the rule exists. A rule
-// is any logical line whose targets, as ruleHeader reads them, name target or
-// carry an expansion ($), which the checker cannot resolve and so counts as
-// naming it; its recipe is the text after a ; on that line, if any, then the
-// tab-led lines below it. The - marker is recorded per line rather than dropped
-// silently: a line make runs with its status ignored can fail without failing
-// the target.
+// is any logical line whose targets, as ruleHeader reads them, name target
+// literally; its recipe is the text after a ; on that line, if any, then the
+// tab-led lines below it. A rule whose targets carry an expansion ($), which
+// the checker cannot resolve, may name target too, so a recipe it carries is
+// counted as one more recipe for target; it never stands in for target's own
+// rule, which only a literal name can. The - marker is recorded per line
+// rather than dropped silently: a line make runs with its status ignored can
+// fail without failing the target.
 func makeRecipe(makefile, target string) (makeRule, bool) {
 	lines := makeLines(makefile)
 	var r makeRule
@@ -630,13 +664,12 @@ func makeRecipe(makefile, target string) (makeRule, bool) {
 		head, next := joinContinued(lines, i)
 		i = next
 		targets, inline, hasInline, ok := ruleHeader(head)
-		names := slices.ContainsFunc(targets, func(t string) bool {
-			return t == target || strings.Contains(t, "$")
-		})
-		if !ok || !names {
+		literal := slices.Contains(targets, target)
+		unresolved := slices.ContainsFunc(targets, func(t string) bool { return strings.Contains(t, "$") })
+		if !ok || (!literal && !unresolved) {
 			continue
 		}
-		found = true
+		found = found || literal
 		rest := lines[next:]
 		if hasInline {
 			rest = append([]string{"\t" + inline}, rest...)
@@ -646,7 +679,7 @@ func makeRecipe(makefile, target string) (makeRule, bool) {
 			continue
 		}
 		r.recipes++
-		if r.recipes == 1 {
+		if literal && r.lines == nil {
 			r.lines, r.ignored = body, ignored
 		}
 	}
@@ -700,8 +733,12 @@ func recipeLines(lines []string) ([]string, []bool) {
 // any .RECIPEPREFIX (which changes what make reads as a recipe line), and
 // $(eval), which can create any of these where no line spells it. Each name
 // is matched in any form: a mention the checker cannot read as a plain setting
-// is refused. Lines are read as make reads them, backslash continuations joined
-// first, so a setting split across physical lines is the one setting it is.
+// is refused. Lines are read with backslash continuations joined first, so a
+// setting split across physical lines is the one setting it is. Tab-led lines
+// are read too: make reads one as a makefile line, not a recipe line, where no
+// rule is open (after an assignment, or at the top of the file), and a recipe
+// line is expanded by make before it runs. A tab-led line is not cut at a #,
+// because make expands a recipe line whole.
 func makeIgnoresErrors(makefile string, targets []string) []string {
 	const assignOp = `\s*(?:\+|:|::|:::|\?|!)?=`
 	ignoreRule := regexp.MustCompile(`^\s*\.IGNORE\s*::?(.*)$`)
@@ -711,11 +748,10 @@ func makeIgnoresErrors(makefile string, targets []string) []string {
 	lines := makeLines(makefile)
 	for i := 0; i < len(lines); {
 		var l string
-		l, i = joinContinued(lines, i)
-		if strings.HasPrefix(l, "\t") {
-			continue
+		l, i = joinLines(lines, i)
+		if !strings.HasPrefix(l, "\t") {
+			l, _, _ = strings.Cut(l, "#")
 		}
-		l, _, _ = strings.Cut(l, "#")
 		q := strconv.Quote(strings.TrimSpace(l))
 		if regexp.MustCompile(`\$[({]eval\s`).MatchString(l) {
 			why = append(why, "$(eval) can define rules and settings (.IGNORE, MAKEFLAGS, SHELL) the checker cannot read: "+q)
@@ -826,13 +862,17 @@ func phonyTargets(makefile string) map[string]bool {
 // line marked - (or starting with an expansion, which can yield one), .IGNORE,
 // MAKEFLAGS, MFLAGS or GNUMAKEFLAGS with -i, .ONESHELL, a SHELL other than
 // /bin/sh, .SHELLFLAGS, .RECIPEPREFIX, $(eval) and a second recipe for the
-// target are refused in checkMakefile. Makefile lines are read after joining
-// backslash continuations. A rule is found by the targets before its colon:
-// blanks around them, several targets, a double colon, the grouped-target &:
-// and a recipe after ; are read as make reads them, and a target carrying an
-// expansion ($), which the checker cannot resolve, counts as naming the target.
-// Blank and comment lines among recipe lines are skipped, as make skips them.
-// .PHONY is read from the same joined lines, its names ending at a # or a ;.
+// target are refused in checkMakefile. Those settings are looked for on every
+// line, tab-led ones included. Makefile lines are read after joining backslash
+// continuations. A rule is found by the targets before its colon: blanks around
+// them, several targets, a double colon, the grouped-target &: and a recipe
+// after ; are read as make reads them, and a :, =, # or ; inside a $(...) or
+// ${...} expansion is read as part of the expansion. A rule whose targets carry
+// an expansion, which the checker cannot resolve, has its recipe counted as a
+// second recipe for the target; only a rule naming the target literally is
+// read as the target's own rule. Blank and comment lines among recipe lines
+// are skipped, as make skips them. .PHONY is read from the same joined lines,
+// its names ending at a # or a ;.
 //
 // These rules match spellings, so a spelling none of them names can still
 // escape; they guard against the forms a regression is likely to take, not
@@ -842,8 +882,12 @@ func phonyTargets(makefile string) map[string]bool {
 // evals); a makefile pulled in through include, whose lines are never read;
 // make flags other than -i that stop recipes running (-n, -t and their long
 // forms); a variable whose name is computed by an expansion (MAKE$(F)); a value
-// holding an escaped \#, which is cut at the # before it is read; and a PATH
-// set so that a step's command resolves to another program. Out of this file's
+// holding an escaped \#, which is cut at the # before it is read; a PATH set so
+// that a step's command resolves to another program; a conditional directive
+// (ifeq, ifdef and the rest) between a rule and its recipe, which ends the
+// recipe for the checker but not for make; and lines inside a define body or a
+// conditional branch make never reads, which the checker reads as if make ran
+// them (a rule or a .PHONY line there counts). Out of this file's
 // reach, and so not held here: a caller running make -i or exporting MAKEFLAGS
 // or SHELL.
 
