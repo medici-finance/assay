@@ -232,6 +232,8 @@ func loadStreams(root string) ([]*Stream, []Finding, error) {
 		streams = append(streams, s)
 	}
 	sort.Slice(streams, func(i, j int) bool { return streams[i].Name < streams[j].Name })
+	// Opted-in streams only (milestones.go); legacy streams stay untouched.
+	attachMilestonePlans(root, streams)
 
 	// Load findings from the per-entry directory (new format).
 	findings, err := parseFindings(root)

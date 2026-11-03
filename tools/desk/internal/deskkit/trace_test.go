@@ -305,14 +305,17 @@ var awsKeyIDFixture = "AK" + "IAIOSFODNN7EXAMPLE"
 // place a credential has actually been observed to travel through a diagnostic.
 func TestScrubRedactsEveryTransportShape(t *testing.T) {
 	secret := "ghp_" + strings.Repeat("B", 36)
+	urlPw := "s3cr3t" + "value" // concatenated: no URL-userinfo password sits in the source
 	cases := []struct {
 		name, in, mustNotContain, mustContain string
 	}{
 		{"github token", "remote said: " + secret + " rejected", secret, "rejected"},
 		{"url userinfo", "https://x-access-token:" + secret + "@github.com/o/r.git",
 			secret, "x-access-token"},
-		{"generic url userinfo", "https://oauth2:s3cr3tvalue@gitlab.com/o/r.git",
-			"s3cr3tvalue", "oauth2"},
+		{"generic url userinfo", "https://oauth2:" + urlPw + "@gitlab.com/o/r.git",
+			urlPw, "oauth2"},
+		{"empty-user url userinfo", "redis://:" + urlPw + "@cache.example.com:6379",
+			urlPw, "@cache.example.com"},
 		{"authorization header", "Authorization: Bearer abcdefghijklmnop", "abcdefghijklmnop", "Authorization"},
 		{"env assignment", "GH_TOKEN=abcdefghijklmnop", "abcdefghijklmnop", "GH_TOKEN="},
 		{"env assignment lowercase name", "gitlab_pat=abcdefghijklmnop", "abcdefghijklmnop", "gitlab_pat="},

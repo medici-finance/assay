@@ -2,10 +2,12 @@ package deskkit
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -788,6 +790,16 @@ type glCase struct {
 
 func glCases() []glCase {
 	return []glCase{
+		{name: "incremental_changes", method: "ChangesUpdatedSince", setup: func(s *glServer) {
+			s.mrList = []map[string]any{glMR(map[string]any{"state": "merged", "merged_at": "2026-10-01T12:00:00Z"})}
+		}, run: func(f *GitLabForge) (any, error) {
+			return f.ChangesUpdatedSince(context.Background(), glRepo, adapters.UpdateQuery{})
+		}},
+		{name: "incremental_issues", method: "IssuesUpdatedSince", setup: func(s *glServer) {
+			s.issueList = []map[string]any{glIssue(map[string]any{"state": "closed", "title": "issue", "description": "body", "updated_at": "2026-10-01T12:00:00Z"})}
+		}, run: func(f *GitLabForge) (any, error) {
+			return f.IssuesUpdatedSince(context.Background(), glRepo, adapters.UpdateQuery{})
+		}},
 		{
 			name: "get_pull_request", method: "GetPullRequest",
 			setup: func(s *glServer) { s.mr = glMR(nil) },

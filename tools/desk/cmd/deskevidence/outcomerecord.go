@@ -101,6 +101,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: --outcome-record ts %s is more than %s ahead of now", rec.TS, deskkit.MaxClockSkew))
 	}
+	// ParseJoinInput also runs deskkit.CheckAttempts (issue #4163): an `attempts` list
+	// is validated here and then lands byte-for-byte with the rest of the record; a refused one
+	// is exit 5 before anything is written. No redaction applies: an attempt carries no
+	// identifier beyond cause_ref, which takes blocker_ref's grammar.
 	join, jerr := deskkit.ParseJoinInput(rec.Raw)
 	if jerr != nil {
 		return jerr

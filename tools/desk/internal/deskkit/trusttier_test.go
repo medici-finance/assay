@@ -244,6 +244,38 @@ func TestTrustTierLedgerRowGrants(t *testing.T) {
 	}
 }
 
+// TestTrustTierLedgerNoMaintainer: `maintainer` is roster membership and is
+// resolved from the roster, never from the ledger. A well-formed, pinned ledger
+// row that names a NON-roster identity at `maintainer` must grant nothing — not
+// the top tier, and not a lower one either. Otherwise one write to the ledger
+// would be enough to mint the top tier.
+//
+// regression: #5210
+func TestTrustTierLedgerNoMaintainer(t *testing.T) {
+	withRoster(t, map[string]string{
+		EnvBlessLogin:    "ada:2001",
+		EnvTrustedLogins: "ada:2001",
+	})
+	for _, name := range []string{"maintainer", "Maintainer", " MAINTAINER "} {
+		fakeLedger(t, []LedgerRow{
+			{
+				Repo: "medici-finance/example", Login: "upstart", ID: 7007,
+				Tier: name, Date: "2026-09-01", Recorder: "human:example",
+				Reason: "negative control — the ledger must never mint the roster tier",
+			},
+		})
+		tier, prov := ResolveTier("medici-finance/example", "upstart", 7007)
+		t.Logf("ledger tier %q: ResolveTier = tier=%s provenance=%s", name, tier, prov)
+		if tier != TierUnknown || prov != ProvenanceDefaultAbsent {
+			t.Errorf("ledger row tier %q for a non-roster identity resolved (%s, %s), want (unknown, %s)",
+				name, tier, prov, ProvenanceDefaultAbsent)
+		}
+	}
+	if got, ok := parseTier("maintainer"); ok {
+		t.Errorf("parseTier(\"maintainer\") = (%s, true), want ok=false — a ledger row cannot carry the roster tier", got)
+	}
+}
+
 // TestTrustTierCapabilityTableGrantsNoMergeAuthority pins the one invariant the
 // brief states in prose: no tier's capability set may ever be extended with a
 // merge-authority-shaped entry. There is no "merge" Capability constant; this
