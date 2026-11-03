@@ -178,7 +178,7 @@ func (s *mirrorAttemptState) roundTrip(base http.RoundTripper, r *http.Request) 
 	if s.page < 1 || s.page > maxPages {
 		return nil, s.hold(mirror.AttemptUnknownHeld)
 	}
-	if r == nil || r.URL == nil || r.Method != http.MethodGet || r.URL.Scheme != s.origin.Scheme || r.URL.Host != s.origin.Host || r.URL.User != nil || r.URL.Opaque != "" || r.URL.Fragment != "" || r.URL.EscapedPath() != s.path || r.URL.RawQuery != s.query() || s.grant.Validate(now) != nil || s.grant.Scope != s.scope || s.scope.Repository != s.repository || s.grant.SourceID != s.sourceID || s.scope.AdmissionID != s.admissionID || s.pending != nil || nilMirrorInput(s.authority) {
+	if r == nil || r.URL == nil || r.Method != http.MethodGet || r.URL.Scheme != s.origin.Scheme || r.URL.Host != s.origin.Host || (r.Host != "" && r.Host != s.origin.Host) || r.URL.User != nil || r.URL.Opaque != "" || r.URL.Fragment != "" || r.URL.EscapedPath() != s.path || r.URL.RawQuery != s.query() || s.grant.Validate(now) != nil || s.grant.Scope != s.scope || s.scope.Repository != s.repository || s.grant.SourceID != s.sourceID || s.scope.AdmissionID != s.admissionID || s.pending != nil || nilMirrorInput(s.authority) {
 		return nil, s.hold(mirror.AttemptUnknownHeld)
 	}
 	if err := r.Context().Err(); err != nil {

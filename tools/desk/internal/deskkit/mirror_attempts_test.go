@@ -468,7 +468,7 @@ func TestMirrorNativeAttemptGrant(t *testing.T) {
 		}
 	})
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
-		for _, mode := range []string{"host", "scheme", "userinfo", "method", "path", "escaped-dot", "double-escape", "query", "duplicate-query", "page", "missing", "scope", "kind", "relabel-repository", "relabel-host", "source", "expired", "taken-over", "foreign-caller", "caller-quota", "uncertain", "ceiling"} {
+		for _, mode := range []string{"host", "host-header", "scheme", "userinfo", "method", "path", "escaped-dot", "double-escape", "query", "duplicate-query", "page", "missing", "scope", "kind", "relabel-repository", "relabel-host", "source", "expired", "taken-over", "foreign-caller", "caller-quota", "uncertain", "ceiling"} {
 			t.Run(string(provider)+"/"+mode, func(t *testing.T) {
 				f := newNativeFixture(t, provider, mirror.Issues, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "[]") })
 				calls := 0
@@ -477,6 +477,8 @@ func TestMirrorNativeAttemptGrant(t *testing.T) {
 				switch mode {
 				case "host":
 					req.URL.Host = "foreign.example.invalid"
+				case "host-header":
+					req.Host = "foreign.example.invalid"
 				case "scheme":
 					req.URL.Scheme = "http"
 				case "userinfo":
