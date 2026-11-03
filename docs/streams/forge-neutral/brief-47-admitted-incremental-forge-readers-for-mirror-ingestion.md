@@ -13,7 +13,7 @@ gate-why: "The new reads handle private issue/change data. The human accepts dem
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 id: 91f28e5a-12cc-4e3d-8e9a-846bef0fd93d
 outcome: none
 design: DR-forge-library
@@ -29,6 +29,7 @@ exec-tier: strong
 exec-tier-why: "Truncated pagination, scope bypass or unsupported filtering can silently turn incomplete/private observations into complete answers across two providers."
 domain: complicated
 consumers:
+  - "statusgen/forgeread_sdk_test.go: follow-up forge-neutral/47 (synthetic module version fixture only; production online path unchanged)"
   - "forgeread/reader.go APIVersion and forgeread/README.md: follow-up forge-neutral/47"
   - "tools/desk/internal/deskkit/readonlyforge.go, citransport_recorder_test.go, outbound_test.go: follow-up forge-neutral/47"
   - "forgeread/adapters/updated.go, forgeread/adapters/github/updated.go, forgeread/adapters/gitlab/updated.go and tests: follow-up forge-neutral/47"
@@ -44,7 +45,7 @@ consumers:
 
 ## Context
 
-files: `forgeread/reader.go` (APIVersion additive minor bump), `forgeread/adapters/updated.go` (planned), `forgeread/adapters/{github,gitlab}/updated.go` (planned) and tests; `tools/desk/internal/deskkit/{mirrorsource.go,mirrorsource_test.go}` (planned), `forge.go`, `forge_github.go`, `forge_gitlab.go`, `forge_surface_deskread_test.go`, `forge_gitlab_test.go`, `forge_github_golden_test.go`, `readonlyforge.go`, `citransport_recorder_test.go`, `outbound_test.go`; `docs/streams/forge-gitlab/inventory.md`; `forgeread/README.md`; `changelog/forge-incremental-reads.md` (planned).
+files: `statusgen/forgeread_sdk_test.go` (synthetic publication/version fixture only), `forgeread/reader.go` (APIVersion additive minor bump), `forgeread/adapters/updated.go` (planned), `forgeread/adapters/{github,gitlab}/updated.go` (planned) and tests; `tools/desk/internal/deskkit/{mirrorsource.go,mirrorsource_test.go}` (planned), `forge.go`, `forge_github.go`, `forge_gitlab.go`, `forge_surface_deskread_test.go`, `forge_gitlab_test.go`, `forge_github_golden_test.go`, `readonlyforge.go`, `citransport_recorder_test.go`, `outbound_test.go`; `docs/streams/forge-gitlab/inventory.md`; `forgeread/README.md`; `changelog/forge-incremental-reads.md` (planned).
 
 facts:
 - Source `7c62923293d0b640ec90afbf318cae2497908f28` contains forgeread/36's admitted Access, both provider adapters and deskkit's scopedAccess/delegating composition. Those are the only new-delivery prerequisites here.
@@ -84,7 +85,7 @@ This decision gates acceptance and activation. Offline implementation and synthe
 
 1. Define adapter-owned `UpdateQuery` with explicit Since and reduced typed IssueUpdate/ChangeUpdate/Actor results in `forgeread/adapters/updated.go` (planned). Results carry Incomplete/PageCount/ObservedUpTo and explicit conditional-supported status. Preserve provider-qualified identity, actual state and relevant head/source fields. These are transport observations, not mirror-owned coverage/admission or dispatch/approval facts. Freeze the narrow concrete API in the implementation PR.
 2. Add `Adapter.ChangesUpdatedSince(ctx, repo, query)` and `Adapter.IssuesUpdatedSince(ctx, repo, query)` for GitHub and GitLab. Use provider-supported update bounds/order where available, walk every page to an explicit ceiling using actual pagination signals and preserve the inclusive boundary. For an endpoint without server-side update filtering, use a bounded correct full read/filter and report the capability/cost honestly or return could-not-check; never claim an unsupported parameter filters results. Never return a truncated/failed population as complete. Preserve correct issue versus PR/MR filtering, update ordering and unknown timestamps.
-3. Own the additive module API version bump to 1.2.0 in reader.go; preserve EnvelopeSchema=1 and all root reader/wire behavior. The independent kernel contribution does not edit reader.go.
+3. Own the additive module API version bump to 1.2.0 in reader.go; preserve EnvelopeSchema=1 and all root reader/wire behavior. Update only the synthetic published-module version and expected API output in statusgen/forgeread_sdk_test.go; preserve its network-disabled file-proxy behavior and every production statusgen import/online path. The independent kernel contribution does not edit reader.go.
 4. Baseline conditional behavior is explicitly unsupported. No page validator, 304 cache or inferred not-modified completeness is added here. Preserve enough exact query/page/result provenance for the later /37 optional conditional adapter to extend without changing these results' meaning. Existing OpenIssues methods and fixtures remain unchanged.
 5. Extend the frozen Forge interface with exactly `ChangesUpdatedSince` and `IssuesUpdatedSince`; implement both backend methods by delegating to the shared admitted adapters. Add a concrete typed `MirrorReadSource` in deskkit that consumes these operations for an explicit provider/repository/record-kind/update bound and returns their observations/uncertainty. It does not import the /46 kernel or implement its refresh/coverage policy. Reuse scopedAccess and the current native backend transport rather than adding another HTTP/SDK client. A source request cannot pick a role, endpoint or credential.
 6. Prove lower-layer scope refusal with the upper caller check bypassed: A-only transport rejects B before any provider request. Both providers' actual method-to-adapter-to-Access paths are tested, including cancellation, malformed response, page-2 failure and ceiling. Exactly two operation names enter the frozen surface and GitLab inventory with this concrete source consumer. Preserve read guards and the current /75 future migration owner; no claim that /75 custody is implemented.
@@ -109,6 +110,8 @@ Named tests are planned deliverables; require exact PASS lines so missing/skippe
 | 6 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/47 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Exit 0 on actual implementing diff; corroborate own consumers while /37 and /75 follow-up routes remain honest. No service/store/cutover acceptance is claimed. |
 
 | 7 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReadOnlyForgeRefusesEveryWriteMethod$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestReadOnlyForgeRefusesEveryWriteMethod ' "$o" && GOWORK=off go test -count=1 -v -run '^TestCITransportRefusesWriteMethods$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestCITransportRefusesWriteMethods ' "$o" && GOWORK=off go test -count=1 -v -run '^TestOutboundForgeWrapsEveryWriteMethod$' ./internal/deskkit/ > "$o" && grep -F -- '--- PASS: TestOutboundForgeWrapsEveryWriteMethod ' "$o")` | Existing read-only and CI write fences still refuse every write and outbound classification covers the new methods; each named test runs/PASS. Removing a write fence or misclassifying an added method fails its production-path control. |
+
+| 8 | check:ci +flow | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off GOPROXY=off go test -count=1 -v -run '^TestReaderSDKExternalConsumer$/^a_consumer_builds_against_the_published_module_with_no_workspace$' . > "$o" && grep -F -- '--- PASS: TestReaderSDKExternalConsumer ' "$o")` | The actual isolated external-consumer fixture publishes current source through its file proxy, builds without a workspace and prints the unchanged schema plus API1.2.0; no production online-reader/import change. |
 
 ## Evidence
 
