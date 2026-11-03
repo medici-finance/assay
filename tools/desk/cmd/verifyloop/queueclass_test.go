@@ -420,12 +420,16 @@ func captureStdout(t *testing.T, fn func()) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Drain concurrently: plan JSON can exceed the platform pipe buffer.
+	var buf bytes.Buffer
+	drained := make(chan error, 1)
+	go func() { _, err := io.Copy(&buf, r); drained <- err }()
 	os.Stdout = w
+	defer func() { os.Stdout = old; _ = w.Close(); _ = r.Close() }()
 	fn()
 	_ = w.Close()
 	os.Stdout = old
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
+	if err := <-drained; err != nil {
 		t.Fatal(err)
 	}
 	return buf.String()

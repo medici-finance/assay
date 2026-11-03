@@ -65,6 +65,9 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	context, seenContext, block, found := false, false, false, false
 	fence := ""
 	endedByBlank := false
+	// The current "- " bullet's indent, and whether its declaration reached a
+	// description a deeper-indented line may wrap; -1 and false outside one.
+	bulletIndent, described := -1, false
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(content, "\n") {
@@ -165,9 +168,25 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 		if !block {
 			continue
 		}
-		paths, err := declarationLine(line)
+		indent := len(raw) - len(strings.TrimLeftFunc(raw, unicode.IsSpace))
+		// A "- " bullet whose declaration reached its description (" — " or ':')
+		// may wrap that description onto deeper-indented lines (#3697). Such a
+		// line that the declaration grammar cannot read is the description's
+		// prose, exactly as it is when joined onto the bullet. One that does read
+		// as declarations is still declarations, so a wrap never drops a path the
+		// line would declare on its own; a list item or quote is never a wrap.
+		wrap := described && indent > bulletIndent && scopeListPrefix(line) == 0 && !strings.HasPrefix(line, ">")
+		paths, desc, err := declarationLine(line)
 		if err != nil {
+			if wrap && ExitCodeOf(err) == ExitRefused {
+				continue
+			}
 			return nil, err
+		}
+		if strings.HasPrefix(strings.TrimSpace(raw), "- ") {
+			bulletIndent, described = indent, desc
+		} else if !wrap {
+			bulletIndent, described = -1, false
 		}
 		for _, p := range paths {
 			expanded, err := expandDeclaration(p)
@@ -233,6 +252,12 @@ func scopeMarkerText(line string) string {
 	}
 }
 
+// scopeBroadFilesMarker reports a line that looks like a files field without
+// being the accepted "files:" form, so the caller refuses it instead of reading
+// a malformed declaration as an empty scope. Whitespace after "files" is always
+// a marker, hard-wrapped prose included: neither the line nor its neighbours
+// can tell a sentence from a declaration that lost its colon (sec-4809-1). A
+// brief whose prose wraps onto "files " is reflowed, not exempted (#4199).
 func scopeBroadFilesMarker(line string) bool {
 	if !strings.HasPrefix(line, "files") {
 		return false
@@ -268,15 +293,17 @@ func scopeLooseContinuation(raw, line string) bool {
 		scopeListPrefix(line) != 0 || strings.HasPrefix(line, "`") || strings.HasPrefix(line, ">"))
 }
 
-func declarationLine(line string) ([]string, error) {
+// declarationLine reads one line's declarations. described reports that the line
+// ended in a description (after " — " or a ':'), which a wrapped line may continue.
+func declarationLine(line string) (paths []string, described bool, err error) {
 	for _, sep := range []string{" — "} {
 		if i := strings.Index(line, sep); i >= 0 {
-			line = line[:i]
+			line, described = line[:i], true
 		}
 	}
 	line = strings.TrimSpace(strings.TrimPrefix(line, "- "))
 	if line == "their tests," {
-		return nil, nil
+		return nil, described, nil
 	}
 	var result []string
 	for line != "" {
@@ -288,7 +315,7 @@ func declarationLine(line string) ([]string, error) {
 		if strings.HasPrefix(line, "**") {
 			end := strings.Index(line[2:], "**")
 			if end < 0 {
-				return nil, Refused("refused: unclosed Context files: action annotation")
+				return nil, false, Refused("refused: unclosed Context files: action annotation")
 			}
 			line = strings.TrimSpace(line[end+4:])
 			continue
@@ -297,7 +324,7 @@ func declarationLine(line string) ([]string, error) {
 		if strings.HasPrefix(line, "`") {
 			i := strings.IndexByte(line[1:], '`')
 			if i < 0 {
-				return nil, Refused("refused: unclosed Context files: path quote")
+				return nil, false, Refused("refused: unclosed Context files: path quote")
 			}
 			p, line = TrimScopeAnnotation(line[1:i+1]), line[i+2:]
 		} else {
@@ -319,7 +346,7 @@ func declarationLine(line string) ([]string, error) {
 			p, line = line[:i], line[i:]
 		}
 		if p == "" {
-			return nil, Refused("refused: empty Context files: path")
+			return nil, false, Refused("refused: empty Context files: path")
 		}
 		result = append(result, p)
 		line = strings.TrimSpace(line)
@@ -329,7 +356,7 @@ func declarationLine(line string) ([]string, error) {
 			for strings.HasPrefix(line, "(") {
 				i := strings.IndexByte(line, ')')
 				if i < 0 {
-					return nil, Refused("refused: unclosed Context files: annotation")
+					return nil, false, Refused("refused: unclosed Context files: annotation")
 				}
 				line = strings.TrimSpace(line[i+1:])
 			}
@@ -341,6 +368,7 @@ func declarationLine(line string) ([]string, error) {
 			line = strings.TrimSpace(rest)
 		}
 		if strings.HasPrefix(line, ":") {
+			described = true
 			break
 		} // description after a declaration and its annotations
 		if line == "" || line == "." || line == "their tests," {
@@ -354,9 +382,9 @@ func declarationLine(line string) ([]string, error) {
 			line = strings.TrimSpace(line[4:])
 			continue
 		}
-		return nil, Refused("refused: unsupported Context files: declaration tail " + line)
+		return nil, false, Refused("refused: unsupported Context files: declaration tail " + line)
 	}
-	return result, nil
+	return result, described, nil
 }
 
 // TrimScopeAnnotation drops the trailing " (…)" annotations an author wrote
@@ -512,6 +540,17 @@ func SplitSiblingDeclarations(declarations []string) (local, siblings []string) 
 	return local, siblings
 }
 
+// declaresSibling reports whether a sibling declaration names repo's repository.
+func declaresSibling(siblings []string, repo string) bool {
+	_, name := splitRepo(repo)
+	for _, decl := range siblings {
+		if sibling, _, ok := SiblingDeclaration(decl); ok && name != "" && strings.EqualFold(sibling, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // CheckSiblingCoverage requires every sibling declaration to name exactly one
 // repo-source:<owner>/<sibling> input. That key pins the whole deliverable
 // commit, so any change to it wakes the receipt; a sibling the run did not bind
@@ -535,14 +574,78 @@ func CheckSiblingCoverage(siblings []string, inputs map[string]string) error {
 }
 
 // DeclaredScope has one membership digest per canonical declaration, and every
-// existing file it selects. No bytes are taken from a different tree.
+// existing file it selects. Dirs maps every path a declaration observed as a
+// directory (a literal directory, or one a glob matched) to its sorted members.
+// No bytes are taken from a different tree.
 type DeclaredScope struct {
 	Files  []string
 	Shapes map[string]string
+	Dirs   map[string][]string
+}
+
+// Uncovered returns the selected files that inputs does not cover with a digest:
+// neither a file:<path> key nor a file:<dir>/ key for a declared directory holding
+// it. Presence only; the values are bound elsewhere (re-derivation, the wake read).
+func (s DeclaredScope) Uncovered(inputs map[string]string) []string {
+	covered := map[string]bool{}
+	for dir, members := range s.Dirs {
+		if _, ok := inputs[DirInputKey(dir)]; ok {
+			for _, f := range members {
+				covered[f] = true
+			}
+		}
+	}
+	var out []string
+	for _, f := range s.Files {
+		if _, ok := inputs[inputKeyFilePrefix+f]; !ok && !covered[f] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// DirInputKey is the content input key of a declared directory: file:<dir>/. Its value
+// is DirInputDigest over every member, so one key covers what one file:<member> key per
+// member covered before #4865. The trailing slash keeps the digest where the pattern
+// sweep's generic-api-key rule never reads it as a secret: that rule's identifier cannot
+// span a slash, and nothing follows the last one.
+func DirInputKey(dir string) string { return inputKeyFilePrefix + dir + "/" }
+
+// ParseDirInputKey returns the directory a file:<dir>/ key names. It strips exactly one
+// slash and never normalises: a file key without one, an empty or non-canonical
+// directory, or a double slash is ok=false.
+func ParseDirInputKey(key string) (string, bool) {
+	rest, found := strings.CutPrefix(key, inputKeyFilePrefix)
+	if !found {
+		return "", false
+	}
+	dir, slash := strings.CutSuffix(rest, "/")
+	if !slash || !canonicalRepoPath(dir) {
+		return "", false
+	}
+	return dir, true
+}
+
+// DirInputDigest binds a directory's membership AND each member's content: sha256 over
+// the sorted members' "<path>\x00<sha256 of its bytes>" terms, NUL-joined. Adding,
+// removing, renaming or editing any member changes it. digest returns a member's content
+// digest (a symlink's link text, as git stores it).
+func DirInputDigest(members []string, digest func(string) (string, error)) (string, error) {
+	sorted := append([]string(nil), members...)
+	sort.Strings(sorted)
+	terms := make([]string, 0, len(sorted))
+	for _, f := range sorted {
+		d, err := digest(f)
+		if err != nil {
+			return "", err
+		}
+		terms = append(terms, f+"\x00"+d)
+	}
+	return Sha256Hex([]byte(strings.Join(terms, "\x00"))), nil
 }
 
 func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScope, error) {
-	result := DeclaredScope{Shapes: map[string]string{}}
+	result := DeclaredScope{Shapes: map[string]string{}, Dirs: map[string][]string{}}
 	files := map[string]bool{}
 	work := 0
 	consume := func(n int) error {
@@ -637,6 +740,7 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 					files[f] = true
 					shape = append(shape, "blob:"+f)
 				}
+				result.Dirs[p] = members
 			default:
 				return result, Refused("refused: unsupported declared input kind " + kind + " for " + p)
 			}
@@ -703,6 +807,10 @@ func (rr *RootRevisionReader) CheckReceiptScope(receipt WakeReceipt) error {
 	for k, v := range receipt.Inputs {
 		if strings.HasPrefix(k, InputKeyScopePrefix) && !scopeDigestFormat.MatchString(v) {
 			return fmt.Errorf("%s value is not a scope digest", k)
+		}
+		// The same holds for a file:<dir>/ key (#4865): its value is a digest or nothing.
+		if strings.HasPrefix(k, inputKeyFilePrefix) && strings.HasSuffix(k, "/") && !scopeDigestFormat.MatchString(v) {
+			return fmt.Errorf("%s value is not a directory digest", k)
 		}
 	}
 	// Only local declarations carry scope: keys. A ../<sibling>/ declaration is

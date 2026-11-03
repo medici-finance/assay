@@ -25,14 +25,15 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/milestones.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/milestones_test.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/parse.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/model.go: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/testdata/milestone-support/03/: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "schemas/milestone-v1.json: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "spec/milestone-v1.md: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
-  - "spec/stream-v1.md: follow-up milestone-support/03 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/milestones.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/milestones_test.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/parse.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/load.go: fixed-here milestone-support/03 (production loadStreams seam attaches plans after stream discovery)"
+  - "statusgen/model.go: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "statusgen/testdata/milestone-support/03/: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "schemas/milestone-v1.json: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "spec/milestone-v1.md: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
+  - "spec/stream-v1.md: fixed-here milestone-support/03 (opt-in record loader, validation and unknown coverage)"
   - "docs/streams/milestone-support/brief-05-build-the-combined-milestone-and-brief-dependency-graph.md: follow-up milestone-support/05 (consumes this delivery; exact runtime readers enumerated at pickup)"
 ---
 
@@ -40,7 +41,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/milestones.go` (planned), `statusgen/milestones_test.go` (planned), `statusgen/parse.go`, `statusgen/model.go`, `statusgen/testdata/milestone-support/03/` (planned), `schemas/milestone-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `changelog/milestone-support-03.md` (planned), `statusgen/testdata/milestone-support/03-mutations.json` (planned). New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/milestones.go` (planned), `statusgen/milestones_test.go` (planned), `statusgen/parse.go`, `statusgen/model.go`, `statusgen/testdata/milestone-support/03/` (planned), `schemas/milestone-v1.json` (planned), `spec/milestone-v1.md`, `spec/stream-v1.md`, `changelog/milestone-support-03.md` (planned), `statusgen/testdata/milestone-support/03-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -104,6 +105,38 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 ## Evidence
 
 <!-- Empty by design. Independent verifier records actual commit, environment, command/exit, named test and mutation result, coverage/unknowns and evidence location. -->
+
+Verifier pass, 2026-11-02, by a non-implementer (model claude-opus-5-5, tier strong) at merged main fede422ee8a5da893f395a34c62b1a982b61a2ff. This is the first verification of this brief. Delivering change: #5337, merge commit f4dffce678faea6be3c977d0e6b0ade4946f9b2a, first parent 5eb4ad04881243f9414658dae103b7b7d9c48059. No file the delivery changed under statusgen or schemas has changed between that merge and this source. Pre-work admission: deskdispatch --check-verifier exited 0 for this home and brief before any row (run 056d54d37fb0, attestation #5352, tool v1.0.70, runtime darwin-arm64). Installed statusgen v1.0.70 on the host and in the image. The Verify table re-derived with 2 rows and 0 author-added (deskpathguard rederive, base fede422ee8a5).
+
+Rows 1-2 (check:ci) ran in one closed container bracket. Image: verify-runner v1.0.70, pinned by its linux/arm64 platform manifest digest (Container-Image below; the tag's manifest list is sha256:45926fbe65687db26f02c9b30493dd4bde6cce2702a81c9240554b4d6b52353b), go 1.27.3, git 2.56.0, run on the host's local Docker engine (OrbStack) with --network none, the engine's default seccomp profile, the host uid, GOPROXY=off, GOTOOLCHAIN=local, KUBECONFIG=/dev/null and a fresh GOCACHE outside the home. The home, its git dir, the receipt and the Go module cache were mounted read-only; only the witness output and Go scratch directories were writable, both outside the home. No forge credential entered the container. Each row's output hash is the empty-output digest because the command sends its test output to a temporary file and checks it with grep -q, so exit 0 is the named-PASS result. Both named tests drive the production loadStreams seam (statusgen/milestones_test.go calls loadStreams at lines 236, 383, 413, 427 and 442). Neither row carries a risk-bearing tag and the brief answers every risk question no, so no fail-first base witness applies. The close step re-admitted the run and --bracket-digest reports verdict=match.
+
+Row S1 is supplemental and carries no acceptance credit. It ran the brief's declared mutation manifest in the same image with --network none against a tracked-file snapshot of this source outside the home.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| S1 | python3 statusgen/testdata/milestone-support/03-mutate.py, against a snapshot of fede422ee8a5 | every manifest plant turns its named test red | exit 0; 19 of 19 manifest cases printed CAUGHT (6 against TestMilestoneRecords, including filename-version-inference, duplicate-version-accepted, owner-not-checked and unknown-key-ignored; 13 against TestMilestoneUnknownCoverage, including missing-dir-as-empty, unreadable-dir-as-empty, unreadable-record-parsed, escape-not-refused and uncovered-criterion-hidden); both named baselines passed first; no case missed; the snapshot was clean afterwards | 2026-11-02 | assay-verifier-app[bot] @ fede422ee8a5 (on-behalf-of human:ian) (forge-identity) |
+
+Risk-bearing values. The brief carries risk metadata, all no, and is not irreversible. Enumerated over every non-test Go file in the diff of 5eb4ad048812..f4dffce678fa (statusgen/milestones.go, statusgen/load.go, statusgen/model.go, statusgen/parse.go) and the schema schemas/milestone-v1.json. load.go, model.go and parse.go add only a call, struct fields and an opt-in read, with no literal. Literals found: milestoneSchema = "milestone-v1" (statusgen/milestones.go:53); the coverage states "known" and "unknown" (:60-61); the record filename pattern (:165), criterion ID pattern (:166) and ID-or-wave-label title pattern (:167); the closed frontmatter key set (:169-170) and required body sections (:173-174); the contract-version floor version < 1 (:310); the canonical directory path docs/streams/<stream>/milestones (:656) and the ignored README.md index (:239); the empty-cell markers "—", "-" and "none" (:580); and in the schema the schema const (schemas/milestone-v1.json:20), the milestone ID pattern (:25), contract-version minimum 1 (:29) and the contributes and requires-milestones reference patterns (:52, :60). No value is irreversible; each is undone by an edit and a release. A wrong one mis-reads, refuses or wrongly accepts a milestone record. The coverage state names, the empty-cell markers and the README.md exclusion are internal spellings ranked last. Ranked top entries:
+
+- RISK-VALUE: DERIVED — milestoneSchema = "milestone-v1" @ statusgen/milestones.go:53 — spec/milestone-v1.md:81 and :103 name exactly this schema, and schemas/milestone-v1.json:20 pins it as const; the loader, the schema and the spec agree.
+- RISK-VALUE: DERIVED — contract-version floor = version < 1 refused @ statusgen/milestones.go:310 — spec/milestone-v1.md:82 and :105 define contract-version as a positive integer, and schemas/milestone-v1.json:29 sets minimum 1; zero and negatives are refused and the version is taken only from this key (:314), as spec/milestone-v1.md:35 requires.
+- RISK-VALUE: DERIVED — milestoneFileRe = `^m-[0-9]{2,}-[a-z0-9][a-z0-9-]*\.md$` @ statusgen/milestones.go:165 — spec/milestone-v1.md:354 names records m-<NN>-<slug>.md and :40-41 pins NN to at least two digits; the slug class admits the -v2 suffix spec/milestone-v1.md:35 allows, and a name that does not match leaves coverage unknown rather than hiding a record.
+- RISK-VALUE: DERIVED — milestoneCritRe = `^C[0-9]{2,}$` @ statusgen/milestones.go:166 — spec/milestone-v1.md:381 requires criterion IDs of the form C<NN>, with the same at-least-two-digit padding as m-<NN>.
+- RISK-VALUE: DERIVED — milestone ID pattern = `^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*[:/]m-[0-9]{2,}$` @ schemas/milestone-v1.json:25 — the three segments plus m-<NN> match the full colon-only ID at spec/milestone-v1.md:39-41, and the [:/] alternative admits the earlier slash spelling that spec/milestone-v1.md:58-59 and :365 keep as a compatibility input.
+- RISK-VALUE: NAMED, NOT DERIVED — milestoneLabelRe = `(?i)^(m-?[0-9]+|wave[ -]?[0-9]+|w[0-9]+)$` @ statusgen/milestones.go:167 — spec/milestone-v1.md:106 and :376 refuse a title that is only an ID or wave label but give no grammar for a wave label; the w<N>, wave <N> and m<N> spellings are the implementer's reading and the spec offers no list to derive the set from.
+
+This brief is gate: model with every risk answer no; on this PASS, the same branch flips the stream index row 03 from implemented to verified (the verifier makes that flip; CI owns verified to done).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneRecords$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneRecords ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ fede422ee8a5 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneUnknownCoverage$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneUnknownCoverage ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ fede422ee8a5 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:50b95da02cf2100dcfdf85f5f03d28396ff13cda4a48a5c31bd11d09a1662cfe
+Container-Image: sha256:c556f436ff2789b07b2097d50a9d7b5f1266b09f3c40f51b4f02e52bbac7f217
+Verification-Attestation: medici-finance/assay#5352 run=056d54d37fb04a5a8ee8e65c3ec4b8393f3be97152131a93ed88788364a7db4b source=fede422ee8a5da893f395a34c62b1a982b61a2ff brief=docs/streams/milestone-support/brief-03-load-and-validate-versioned-milestone-records.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=056d54d37fb04a5a8ee8e65c3ec4b8393f3be97152131a93ed88788364a7db4b source=fede422ee8a5da893f395a34c62b1a982b61a2ff tree=sha256:50b95da02cf2100dcfdf85f5f03d28396ff13cda4a48a5c31bd11d09a1662cfe witness=sha256:00269f6b7c7ab5327c10759ab9ce360345815a8d90ff10397a8bb1b8d68141d9 opened=2026-11-02T22:34:29Z closed=2026-11-02T22:35:16Z before=receipt after=check-verifier
+
+**VERIFY: PASS** — rows 1-2 pass in one closed container bracket (verdict=match) at fede422ee8a5, and 19 of 19 manifest mutations were caught (supplemental, no acceptance credit).
 
 ## Review
 

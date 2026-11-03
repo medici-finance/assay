@@ -60,15 +60,14 @@ two repos): the code half is one PR against `statusgen/`, the register migration
 ## Context
 
 files:
-- `statusgen/model.go` (Finding struct — add Parked state fields)
-- `statusgen/parse.go` / the findings loader (parse the new frontmatter fields)
-- `statusgen/alarms.go` (`standingAlarmNotices` / `computeAlarms` — shelving suppression)
+- `statusgen/model.go` (Finding struct) — add Parked state fields
+- `statusgen/parse.go` — the findings loader (parse the new frontmatter fields)
+- `statusgen/alarms.go` (`standingAlarmNotices` / `computeAlarms`) — shelving suppression
 - `statusgen/corroborate.go` (extend the guard to `resolved`/`affects`/`parked-*` transitions)
 - `statusgen/*_test.go` (TDD coverage for every new branch)
-- the board CI wiring that invokes the guard on register-touching PRs
+- `.github/workflows/` — the board CI wiring that invokes the guard on register-touching PRs
 - `docs/streams/statusgen/README.md` (status-table row + waves for statusgen/06)
-- the findings register (migrate any free-text `parked:` entries to the bounded form; none exist on
-  a freshly-bootstrapped board, so this half is conditional — it applies as soon as a park is filed)
+- `docs/streams/findings/` — the findings register: migrate any free-text `parked:` entries to the bounded form; none exist on a freshly-bootstrapped board, so this half is conditional — it applies as soon as a park is filed
 
 facts:
 - register source of truth: per-entry `docs/streams/findings/<date>-<slug>.md` files; the

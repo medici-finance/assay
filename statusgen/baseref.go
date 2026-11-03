@@ -26,7 +26,10 @@ func exactRefCommit(root, ref string) string {
 	if !isObjectID(oid) {
 		return ""
 	}
-	out, err = exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "--end-of-options", oid+"^{commit}").Output()
+	out, err, supported := commitReadOutput(ordinaryCommitRead(root, oid), oid)
+	if !supported {
+		out, err = exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "--end-of-options", oid+"^{commit}").Output()
+	}
 	if err != nil {
 		return ""
 	}

@@ -999,6 +999,93 @@ RISK-VALUE: DERIVED — branchProtectionRead = "administration:read" @ tools/des
 Holds independently read as OPEN on 2026-10-27: medici-finance/assay#2810 (row 12, and the row 14 selector) and medici-finance/assay#2811 (the three live measurements). medici-finance/assay#1915, the class issue for row 12, is closed, but this row still exits 2 as authored. No deliverable defect was observed.
 
 **VERIFY: BLOCKED** — at merged main b1d3c0a44a01a8fbf65f030c5e08a1e520037e07 the network-off container witness (closed admission bracket, verdict=match) records 16 of 17 rows pass; row 12 as authored exits 2 against Expect exit 0 (check definition, medici-finance/assay#2810); row 14 as authored passes while running no test (an RE2 literal pipe in its selector, medici-finance/assay#2810), so it carries no acceptance credit; the declared live measurements remain open (medici-finance/assay#2811); no deliverable defect was observed.
+### Container re-verification — 2026-10-29 (source 4264d1027198)
+
+A fresh, independent claude-opus-5-5 verifier (tier strong) ran this pass. deskdispatch --check-verifier admitted it (rc 0, attestation medici-finance/assay#4851) before any row ran, and again before landing. The source is merged main 4264d1027198b8f257a95e1630f07cac358fcd6f. The delivery is the squash merge 08d96323a459d4f30a5ba2244d6e1109d7464b3a of medici-finance/assay#1260; its only parent, ca81ea0a960387bb34f9dbc22b188802097d5251, is the fail-first base. Between the source of the pass above (b1d3c0a44a01) and this source, the deskapps command package, the deskapps doc, the desk-tools README and the forgeban allowlist have an empty diff; the only change in the stream is Evidence and sibling-brief text.
+
+Execution witness: the container admission bracket.
+
+1. On the host, `statusgen verifyrun --open-bracket` recorded the home tree digest at 18:56:02Z with the installed statusgen v1.0.65. Inside the container ran the statusgen v1.0.65 release for linux-arm64, its sha256 matched against the release checksums file.
+2. In the container, the rows ran under these settings:
+   - the local image assay-verify:go1.27 (go1.27.2 linux/arm64; its id is the Container-Image line below);
+   - `--network none` and the engine's default seccomp profile (only the loopback and the inert tunnel device present);
+   - read-only bind mounts for the home, for the repository's git directory and for a pre-warmed Go module cache;
+   - a tmpfs over the git directory's worktrees folder, with the home's own worktree entry mounted read-only back on top, so that the fail-first base checkout wrote nothing to the real git directory;
+   - an exec-enabled tmpfs at /tmp;
+   - GOPROXY=off, GOSUMDB=off and GOTOOLCHAIN=local.
+
+   The run used `--fail-first --base ca81ea0a960387bb34f9dbc22b188802097d5251`. Row 14 is the only row statusgen classes as risk-bearing (its Expect says "end-to-end"); the brief-wide risk block is all no. The step exited 1: 16 rows passed, and row 12 failed with exit=2. Row 14 was red at the base, where the deskapps package does not exist, and passed at the head.
+3. On the host, `--close-bracket` closed the bracket at 18:58:01Z, and `--bracket-digest` then reported verdict=match.
+
+The block directly below is the closed witness file, byte for byte. verifyrun emits the Tree-Digest, Container-Image, Verification-Attestation and Admission-Bracket lines directly under the table, with no blank line between them; they are kept as emitted because the bracket-digest check reads these exact bytes.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskapps/ -count=1` | pass exit=0 sandbox=container-netns | sha256:4de98b2e55fc | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 2 | `cd tools/desk && go build -o /tmp/deskapps ./cmd/deskapps && /tmp/deskapps init --tier team --org example --no-browser --dry-run 2>&1 \| grep -cE -e 'http://127\.0\.0\.1:[0-9]+/' -e 'example-read' -e 'example-act'` | pass exit=0 sandbox=container-netns | sha256:1121cfccd591 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 3 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestManifest' -count=1 -v 2>&1 \| grep -cE -e 'family.*6 manifests' -e 'team.*2 manifests' -e 'requiredDuties covered'` | pass exit=0 sandbox=container-netns | sha256:1121cfccd591 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 4 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestNoSecretInPage' -count=1` | pass exit=0 sandbox=container-netns | sha256:f66d462a7144 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 5 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestNoSecretInLogs' -count=1` | pass exit=0 sandbox=container-netns | sha256:ae880752b5d4 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 6 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestCallbackBadState' -count=1` | pass exit=0 sandbox=container-netns | sha256:276390183474 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 7 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindLoopbackOnly' -count=1` | pass exit=0 sandbox=container-netns | sha256:d51bf5ea25fe | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 8 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPemMode' -count=1` | pass exit=0 sandbox=container-netns | sha256:011cd9867879 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindingsWritten' -count=1 -v 2>&1 \| grep -cE -e 'REVIEWER_APP=example-act' -e 'WORKER_APP=example-act' -e 'READ_APP=example-read'` | pass exit=0 sandbox=container-netns | sha256:1121cfccd591 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 10 | `grep -cE -e '^## Measured' docs/desk-tools/deskapps.md && grep -cE -e 'throttle' -e 'org owner' -e 'Enterprise Server' docs/desk-tools/deskapps.md` | pass exit=0 sandbox=container-netns | sha256:70df52893449 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | pass exit=0 sandbox=container-netns | sha256:cf046ab7372c | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 12 | `statusgen --root . --consumers --brief apps-installer/02` | fail exit=2 sandbox=container-netns | sha256:17efb7292b92 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 13 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRunInitManifestAndTierMutuallyExclusive' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:4f798ba941d7 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 14 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesRedirectURL\|TestRunInitManifestBadFileReportsAndExits' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:62be56e91d07 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=ca81ea0a9603 red rc=1 · head=4264d1027198 |
+| 15 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestLoadManifestFileRefusesHookURL' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:60047b1203f5 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 16 | `cd tools/desk && go test ./cmd/deskapps/ -run 'OmitsHookAttr' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:99cd13cb033f | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+| 17 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPemNeverWrittenOnOrgOwnerMismatch' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:814d69cac0ba | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=4264d1027198 |
+Tree-Digest: sha256:c3b9c02a14b638ecab5889a16e3de6d00f2cdd40631b04114a808fa12fcd1016
+Container-Image: sha256:955fd6c46c93ee746d8f560b4c90b172a759d2543337d8173cdaabcd2013bca4
+Verification-Attestation: medici-finance/assay#4851 run=296f3ac2fc61f4424143b00823e45b3fbb323cc1730a5224a2c8d4edf64579db source=4264d1027198b8f257a95e1630f07cac358fcd6f brief=docs/streams/apps-installer/brief-02-deskapps-manifest-flow.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=296f3ac2fc61f4424143b00823e45b3fbb323cc1730a5224a2c8d4edf64579db source=4264d1027198b8f257a95e1630f07cac358fcd6f tree=sha256:c3b9c02a14b638ecab5889a16e3de6d00f2cdd40631b04114a808fa12fcd1016 witness=sha256:a7a3618d38d58e6fd2583c63e5fa91e72d2043030b6cba9f08bbcaa7fc5492e4 opened=2026-10-29T18:56:02Z closed=2026-10-29T18:58:01Z before=receipt after=check-verifier
+
+Supplemental container observation, no acceptance credit. These diagnostics ran outside the bracket, in the same image with the same network-off settings and mounts. They show the values behind the witness rows whose output is a count, and the test names behind rows 11, 14, 16 and 17.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 2 | the row 2 command, its count printed | 3 | count 3 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | the row 3 command, its count printed | ≥ 3 | count 3 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 9 | the row 9 command, its count printed | ≥ 3 | count 3 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 10 | the row 10 command, both counts printed | 1 then ≥ 3 | counts 1 then 8 (the Measured section still records all three facts as assumed, pending measurement) | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 11 | the row 11 command with -v | both mutants present | TestMutationCorpusHasCallbackStateDrop and TestMutationCorpusHasResponseBodyLog both PASS; exit 0 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 12 | the row 12 command with an explicit delivery 08d96323a459 and its first parent ca81ea0a9603 as base | exit 0 | exit 0; 3 corroborated, 0 disproved, 1 unchecked (the out-of-repo apps.env format entry, not visible from a repository root) | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 14 | the row 14 command with a plain alternation in its selector | both named tests run and pass | TestLoadManifestFileRefusesRedirectURL and TestRunInitManifestBadFileReportsAndExits both PASS; exit 0 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 16 | the row 16 command | three pins pass | TestManifestJSONOmitsHookAttrsWhenUnset, TestManifestJSONOmitsHookAttrsManifestPath and TestBuildManifestJSONOmitsHookAttributesTierPath all PASS; exit 0 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 17 | the row 17 command | exit 0 | TestPemNeverWrittenOnOrgOwnerMismatch PASS; exit 0 | 2026-10-29 | assay-verifier-app[bot] @ 4264d1027198 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Row 12, as authored, exits 2 in the witness and again on the host with the same message as the passes above: "COULD-NOT-CHECK: assay:assay:apps-installer:02 is not in the diff against 4264d1027198b8f257a95e1630f07cac358fcd6f, and the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery. No routing claim was corroborated and none was disproved." The tool names its own remedy, an explicit --delivery and --base; the supplemental row above shows that form exits 0 with no claim disproved, but adopting it is a change to the row's definition, which medici-finance/assay#2810 owns. No routing claim was disproved.
+
+Row 14, as authored, passes in the witness but proves nothing. Its -run selector carries a backslash-escaped pipe, which reaches go test unchanged, so RE2 reads it as a literal pipe: in this container the command as authored prints "testing: warning: no tests to run" and exits 0. The same command with a plain alternation runs both named tests, and both pass (supplemental row 14 above, no credit). The row cannot carry an acceptance closure until its command is repaired; that check-definition defect is tracked on medici-finance/assay#2810.
+
+Mutation check, supplemental and no acceptance credit. Each of the two mutants in the delivered mutations corpus was applied, exactly as the corpus spells it, to its own tracked snapshot of the source outside the home, and its guard test was run in the same network-off image. With the callback state check dropped (Task item 7a), TestCallbackBadState fails: the request panics with a nil pointer dereference instead of returning 403. With the conversion response body logged (Task item 7b), TestNoSecretInLogs fails, reporting that real stdout carried the fake PEM. On the unmutated snapshot both tests pass. Rows 6 and 5 therefore catch their mutants, as row 11's Expect requires.
+
+Risk-bearing values. The brief's risk block is all no and it is not irreversible; the enumeration still ran over the delivered deskapps package and the deskapps allowance on the forgeban allowlist, each re-read at this source:
+- records.go:28, the 24-byte nonce;
+- records.go:39 and :42, 0o700;
+- records.go:50 and :53, 0o600;
+- server.go:161, :390 and :395, the 127.0.0.1 redirect, bind and fallback listener;
+- server.go:287, the empty-owner refusal;
+- manifest.go:33, administration:read;
+- allowlist.go:94, the ceiling of 6, and allowlist.go:106, the single deskapps runGH allowance;
+- convert.go:22, the API base https://api.github.com, and manifest.go:308 and :310, the personal and org App-creation URLs on github.com.
+
+Reversible operational knobs rank last and need no derivation: the default port 41873 at main.go:66, the 10-minute throttle timeout at server.go:50, the 15-second sweep ticker at server.go:351, the 20-second conversion client timeout at convert.go:25 and the 1 MiB response cap at convert.go:69.
+RISK-VALUE: DERIVED — key/record mode = 0o600 @ tools/desk/cmd/deskapps/records.go:50 — owner read/write with no group or other access is the narrowest mode that still lets the owner use the credential, as the brief requires; the re-chmod at :53 covers files that already exist.
+RISK-VALUE: DERIVED — credential directory mode = 0o700 @ tools/desk/cmd/deskapps/records.go:39 — the owner needs traversal to reach the keys and group/other need nothing; :42 re-applies it to a directory that already exists.
+RISK-VALUE: DERIVED — state nonce length = 24 bytes @ tools/desk/cmd/deskapps/records.go:28 — 192 bits from the system random source makes a foreign callback guessing a live state infeasible within the run window.
+RISK-VALUE: DERIVED — loopback bind = "127.0.0.1:%d" @ tools/desk/cmd/deskapps/server.go:390 — the run page serves live nonces, so the listener must be reachable only from this host; the redirect at :161 and the ephemeral listener at :395 name the same address.
+RISK-VALUE: DERIVED — absent-owner sentinel = "" @ tools/desk/cmd/deskapps/server.go:287 — an absent expected or reported owner cannot establish ownership, so an empty value on either side refuses instead of matching.
+RISK-VALUE: DERIVED — allowance key = "cmd/deskapps/identity.go::runGH::gh" @ tools/desk/internal/forgeban/allowlist.go:106 — the driver ruled a one-site, pre-token identity read for deskapps init, and identity.go:38 still passes exactly the two fixed arguments api and user; the ratchet ceiling of 6 at allowlist.go:94 is unchanged since the pass above.
+RISK-VALUE: DERIVED — branchProtectionRead = "administration:read" @ tools/desk/cmd/deskapps/manifest.go:33 — the brief requires reading legacy branch protection, which needs administration read and nothing wider.
+RISK-VALUE: DERIVED — githubAPIBase = "https://api.github.com" @ tools/desk/cmd/deskapps/convert.go:22 — the manifest conversion and identity reads must reach the public GitHub API over TLS; Enterprise Server repointing is the open measurement on medici-finance/assay#2811, not a defect in this value.
+
+Holds independently read as OPEN on 2026-10-29: medici-finance/assay#2810 (row 12, and the row 14 selector) and medici-finance/assay#2811 (the three live measurements, which need a signed-in browser on a throwaway account and are a human act). No deliverable defect was observed.
+
+**VERIFY: BLOCKED** — at merged main 4264d1027198b8f257a95e1630f07cac358fcd6f the network-off container witness (closed admission bracket, verdict=match) records 16 of 17 rows pass; row 12 as authored exits 2 against Expect exit 0 (check definition, medici-finance/assay#2810); row 14 as authored passes while running no test (an RE2 literal pipe in its selector, medici-finance/assay#2810), so it carries no acceptance credit; the declared live measurements remain open (medici-finance/assay#2811); no deliverable defect was observed.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table. Reviewer answers the two

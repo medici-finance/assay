@@ -20,6 +20,9 @@ func (c *Cell) prepareLaunch() (bool, error) {
 	if _, err := c.scratchPolicy(); err != nil {
 		return false, err
 	}
+	if _, err := c.scratchSweepInterval(); err != nil {
+		return false, err
+	}
 	if err := c.cacheAdmission(); err != nil {
 		return false, err
 	}

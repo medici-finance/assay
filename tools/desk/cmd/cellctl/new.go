@@ -93,7 +93,7 @@ func scaffoldCell(cell string, v *cli.Values) {
 	switch kind {
 	case "k8s":
 	case "house":
-		newHouse(e, root, cell, repo, roots, roles, port)
+		newHouse(e, root, cell, repo, roots, roles, port, houseForge{forge: forge, group: group, apiBase: gitlabAPIBase, tokenStore: tokenStore})
 		return
 	default:
 		die("new: --kind must be k8s, house, container or scrubbed, got '%s'", kind)
@@ -312,12 +312,25 @@ func newContainer(e *Env, root, cell, repo, launcher, roles, roots string) {
 // act to leave for a hand step — the cell home's .config/assay IS the operator's config home,
 // reached by ONE directory symlink, and nothing is copied. What the scaffold fixes is what a
 // hand boot gets wrong: the stream-root map, the per-role worktree, and the pinned model.
-func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
+//
+// The forge is the operator's explicit --forge, chosen as the k8s arm chooses it: github (the
+// default; an empty value reads as github, as it always has on a house cell) writes the github
+// cell.env and links the gh CLI config; gitlab writes CELL_FORGE=gitlab with its endpoint and
+// never links a gh config, which is GitHub custody (`check` reports that row n/a there).
+func newHouse(e *Env, root, cell, repo, roots, roles, port string, f houseForge) {
 	if repo == "" || roots == "" {
 		die("new: --kind house needs --repo <checkout> and --roots '<owner>/<repo>=<abs path>,...'")
 	}
 	if cell == "" {
 		die("new: a cell name is required (cellctl new <cell> --kind house …)")
+	}
+	gitlab := false
+	switch f.forge {
+	case "", "github":
+	case "gitlab":
+		gitlab = true
+	default:
+		die("new: --forge must be github or gitlab, got '%s'", f.forge)
 	}
 	if !rootsValid(roots) {
 		die("new: --roots is malformed")
@@ -352,23 +365,52 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	}
 	s.must(s.mkdir(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"), filepath.Join(d, "worktrees"), filepath.Join(d, "shim")))
 	s.must(s.link(l, realCfg, filepath.Join(d, "home", ".config", "assay"), "the config home"))
-	s.must(s.linkIfPresent(l, ghLinkSource(runtime.GOOS, e, home), filepath.Join(d, "home", ghConfigRelPath), "the gh config"))
+	if !gitlab {
+		s.must(s.linkIfPresent(l, ghLinkSource(runtime.GOOS, e, home), filepath.Join(d, "home", ghConfigRelPath), "the gh config"))
+	}
 	s.must(s.linkIfPresent(l, filepath.Join(home, ".gitconfig"), filepath.Join(d, "home", ".gitconfig"), "the gitconfig"))
 	s.must(s.chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config")))
-	githubHost := e.GetOr("GITHUB_HOST", "github.com")
+	shape, forgeName, forgeLines := "house", "github", "FORGE_API_BASE=https://api."+e.GetOr("GITHUB_HOST", "github.com")+"\n"
+	if gitlab {
+		shape, forgeName, forgeLines = "house, gitlab", "gitlab", houseGitlabLines(f)
+	}
 	today := time.Now().UTC().Format("2006-01-02")
-	s.write(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (house, scaffolded %s)
+	s.write(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (%s, scaffolded %s)
 CELL=%s
 CELL_KIND=house
-CELL_FORGE=github
+CELL_FORGE=%s
 CELL_REPO=%s
 # The stream-root map, exported to every role window as DESK_ROOTS.
 CELL_ROOTS=%s
-FORGE_API_BASE=https://api.%s
-ROLES="%s"
-`+houseCellEnvTail, cell, today, cell, repo, roots, githubHost, roles, cell, cell, port))
+%sROLES="%s"
+`+houseCellEnvTail, cell, shape, today, cell, forgeName, repo, roots, forgeLines, roles, cell, cell, port))
 	s.write(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
 	fmt.Printf("[new] scaffolded %s (house cell) — cellctl check %s, then cellctl desk %s <role>\n", d, cell, cell)
+}
+
+// houseForge is the forge a house cell is scaffolded for, from `new`'s --forge, --group,
+// --gitlab-api-base and --gitlab-token-store.
+type houseForge struct{ forge, group, apiBase, tokenStore string }
+
+// houseGitlabLines is a gitlab house cell.env's endpoint block. The API base defaults as on a k8s
+// gitlab cell; the group is needed only by a deskd (DESKD=1), so an absent one is left as a
+// commented line rather than refused; an absent token store reads as the cell's config home at
+// load, so it is written only when given.
+func houseGitlabLines(f houseForge) string {
+	base := f.apiBase
+	if base == "" {
+		base = "https://gitlab.com/api/v4"
+	}
+	lines := "FORGE_API_BASE=" + base + "\nGITLAB_API_BASE=" + base + "\n"
+	if f.group != "" {
+		lines += "GITLAB_GROUP=" + f.group + "\n"
+	} else {
+		lines += "# GITLAB_GROUP=<group>   (needed only with DESKD=1: the GitLab group deskd reads)\n"
+	}
+	if f.tokenStore != "" {
+		lines += "GITLAB_TOKEN_STORE=" + f.tokenStore + "\n"
+	}
+	return lines
 }
 
 // houseCellEnvTail is every trailing block a house cell.env carries, in order. Assembled with a

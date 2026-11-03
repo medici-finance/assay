@@ -115,3 +115,28 @@ func TestLabelTableMatchesDeskfleet(t *testing.T) {
 		t.Errorf("fleetLabels drifted from cmd/deskfleet's:\n%s\nwant:\n%s", strings.Join(ours, "\n"), strings.Join(theirs, "\n"))
 	}
 }
+
+// TestPushTokenMatchesDeskfleet pins the board-push credential's name, variable, scope and
+// role to deskfleet's: the two provisioners must mint the same credential class.
+func TestPushTokenMatchesDeskfleet(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "deskfleet", "tables.go"))
+	if err != nil {
+		t.Fatalf("reading cmd/deskfleet/tables.go: %v", err)
+	}
+	ours := map[string]string{"pushTokenVariable": pushTokenVariable, "pushTokenName": pushTokenName,
+		"pushTokenScope": pushTokenScope, "pushTokenAccessLevel": pushTokenAccessLevel}
+	for name, want := range ours {
+		m := regexp.MustCompile(`(?m)^\s*` + name + `\s*=\s*(\S+)\s*$`).FindStringSubmatch(string(b))
+		if m == nil {
+			t.Errorf("no %s constant in cmd/deskfleet/tables.go", name)
+			continue
+		}
+		theirs := m[1]
+		if s, err := strconv.Unquote(theirs); err == nil {
+			theirs = s
+		}
+		if theirs != want {
+			t.Errorf("%s = %q here, %q in deskfleet", name, want, theirs)
+		}
+	}
+}

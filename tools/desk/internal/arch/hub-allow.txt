@@ -11,5 +11,4 @@
 # Landing values: `go list -f '{{join .Imports "\n"}}' ./internal/deskkit` at this branch's head.
 # grow hub +1 https://github.com/medici-finance/assay/issues/1898#issuecomment-6422188481
 credential
-gitcore
 topology

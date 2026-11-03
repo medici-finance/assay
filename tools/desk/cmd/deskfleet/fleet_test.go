@@ -608,11 +608,13 @@ func TestFleetNeverFollowsRedirect(t *testing.T) {
 // keeps the script's defaults.
 func TestFleetReadbackAbsentMergeLevel(t *testing.T) {
 	body := []byte(`{"merge_access_levels":[],"allow_force_push":false}`)
-	if r := parseProtectedRule(body, true); r.merge != levelNone || r.push != levelNone {
-		t.Fatalf("read-back parsed an absent level as merge=%d push=%d, want none (%d)", r.merge, r.push, levelNone)
+	// An absent push side is NO entries in both modes: the deciding read takes that as No one
+	// (pushIsNoOne), and the read-back records it as could-not-check (readbackProtectedMain).
+	if r := parseProtectedRule(body, true); r.merge != levelNone || len(r.push) != 0 {
+		t.Fatalf("read-back parsed an absent level as merge=%d push=%s, want none (%d) and no entries", r.merge, r.pushList(), levelNone)
 	}
-	if r := parseProtectedRule(body, false); r.merge != mergeAccessLevel || r.push != 0 {
-		t.Fatalf("deciding read parsed merge=%d push=%d, want the script's defaults 40 / 0", r.merge, r.push)
+	if r := parseProtectedRule(body, false); r.merge != mergeAccessLevel || !r.pushIsNoOne() {
+		t.Fatalf("deciding read parsed merge=%d push=%s, want the script's defaults 40 / No one", r.merge, r.pushList())
 	}
 	f := newFakeForge(t)
 	f.plan = "free"

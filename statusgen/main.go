@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"path/filepath"
 	"sort"
@@ -232,6 +233,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// `inputs:` Context field (statusgen/36): the declaration reads, and the
+	// literal-path lower bound over each Verify row's Command.
+	problems = append(problems, witnessInputsProblems(root, checkStreams)...)
 	ph.enter("lint")
 	// Split-flag conservation: a child brief may not carry a weaker gate/risk flag
 	// than the brief it was split from (splitflags.go). checkStreams is the scoped
@@ -1200,29 +1204,7 @@ func runGateScores(root string) int {
 	// yields "" and the field is omitted.
 	repo, _ := rootRepo(streams)
 	// JSON rows for deskboard consumption.
-	type row struct {
-		Brief        string `json:"brief"`
-		Score        int    `json:"score"`
-		BlockedCount int    `json:"blockedCount"`
-		Stream       string `json:"stream"`
-		Status       string `json:"status"`
-		Repo         string `json:"repo,omitempty"`
-		// Queue contract (desk-tools/45, awaiting_bucket.go queueFor): the
-		// CURRENT owned-bucket classification, additive after the legacy
-		// fields. queueVersion lets a consumer refuse a shape it does not
-		// know; queueValid=false with queueWhy marks a could-not-check row
-		// (unknown, never zero).
-		QueueVersion      int    `json:"queueVersion"`
-		QueueClass        string `json:"queueClass"`
-		QueueBucket       string `json:"queueBucket,omitempty"`
-		QueueOwner        string `json:"queueOwner,omitempty"`
-		QueueNextAct      string `json:"queueNextAct,omitempty"`
-		QueueGate         string `json:"queueGate,omitempty"`
-		QueueRisk         bool   `json:"queueRisk"`
-		QueueIrreversible bool   `json:"queueIrreversible"`
-		QueueValid        bool   `json:"queueValid"`
-		QueueWhy          string `json:"queueWhy,omitempty"`
-	}
+	type row = verifyqueue.Row
 	rows := make([]row, 0, len(gates))
 	for _, g := range gates {
 		br := g.Brief
@@ -1360,6 +1342,11 @@ func main() {
 	// witnessNotices); producing one is always an explicit invocation.
 	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
 		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	// `statusgen witnessdigest` — the canonical v2 content digests of a brief at
+	// a revision (witnessdigest.go, statusgen/36); read-only, own flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "witnessdigest" {
+		exitProcess(runWitnessDigest(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
@@ -2603,24 +2590,20 @@ func main() {
 			changedPaths = append(changedPaths, r.Paths...)
 		}
 	}
-	// Differential register lint: --diff-base makes --lint compare the
-	// register at the base against the working tree, firing PROBLEM only for
-	// diff-introduced problems. Meaningful only in lint mode — an ordinary
-	// regen/check/record has no PR base to diff against.
-	if *diffBaseFlag != "" {
-		if mode != "lint" {
-			fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
-			exitProcess(2)
-		}
-		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
+	// Validate the differential-mode option before any reader preflight.
+	if *diffBaseFlag != "" && mode != "lint" {
+		fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
+		exitProcess(2)
 	}
-	// Brief-reading version gate (derived-board/06 §6): a STAMPED statusgen below
-	// v1.0.0 refuses to read a brief-v2 tree (exit 6), pointing at
-	// assay:upgrade-assay. An unstamped local build reports "dev" and behaves as
-	// latest, so running from source is never gated. This is the SEPARATE, release-
-	// boundary control alongside parseBriefFile's #271 fail-closed trap.
+	// Capability and retained release-boundary refusals cover both ordinary
+	// and differential readers before they inspect the selected records.
 	if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {
 		exitProcess(gate)
+	}
+	// Differential register lint compares the base and current register; it
+	// does not bypass mandatory-capability admission.
+	if *diffBaseFlag != "" {
+		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
 	}
 	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
 	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only

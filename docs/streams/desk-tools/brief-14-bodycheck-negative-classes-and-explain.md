@@ -69,8 +69,7 @@ files:
 - `tools/desk/internal/deskkit/testdata/corpus/pos-digit-token-wearing-slashes.txt` (NEW)
 - `tools/desk/internal/deskkit/testdata/corpus/pos-k8s-secret-literal-in-fence.txt` (NEW)
 - `tools/desk/internal/deskkit/corpus_test.go` (the catalogued-shape list gains three entries)
-- `tools/desk/cmd/deskpr/`, `tools/desk/cmd/deskpost/`, `tools/desk/cmd/deskreply/` (`--explain`
-  plumbing: the refusal carries the explanation; no verb changes its verdict)
+- `tools/desk/cmd/deskpr/`, `tools/desk/cmd/deskpost/`, `tools/desk/cmd/deskreply/` (`--explain` plumbing: the refusal carries the explanation; no verb changes its verdict)
 - `tools/desk/README.md` (the explain output shape)
 
 facts:

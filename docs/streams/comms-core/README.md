@@ -20,7 +20,7 @@ owns the target and separates initial compatibility refactors from broker migrat
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Extract the comms contract and isolate Assay policy](brief-01-extract-the-comms-contract-and-isolate-assay-policy.md) | 0 | M | todo | — | — |
+| 01 | [Extract the comms contract and isolate Assay policy](brief-01-extract-the-comms-contract-and-isolate-assay-policy.md) | 0 | M | implemented | — | — |
 | 02 | [Extract the comms server over the existing file backend](brief-02-extract-the-comms-server-over-the-existing-file-backend.md) | 1 | L | todo | — | — |
 | 03 | [Extract the client SDK and make deskcomms an adapter](brief-03-extract-the-client-sdk-and-make-deskcomms-an-adapter.md) | 2 | M | todo | — | — |
 | 04 | [Unify comms configuration and extend cellctl management](brief-04-unify-comms-configuration-and-extend-cellctl-management.md) | 3 | M | todo | — | — |

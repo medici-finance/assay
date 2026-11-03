@@ -1,0 +1,5 @@
+# A SHELL that is not /bin/sh runs no recipe as written: /bin/true exits 0 for every line.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/true\n"

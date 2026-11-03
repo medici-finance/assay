@@ -128,25 +128,17 @@ behaviour is an invalidation that makes a failure MORE likely to be reported, no
 or written by any of it flips the answer.
 
 files:
-- `tools/desk/internal/deskkit/roletoken.go` (existing) — the memo: a package-level map keyed
-  `(role, owner)` behind a mutex, the age guard, the mint counter and its exported reader,
-  and the test-only reset.
+- `tools/desk/internal/deskkit/roletoken.go` (existing) — the memo: a package-level map keyed `(role, owner)` behind a mutex, the age guard, the mint counter and its exported reader, and the test-only reset.
 - `tools/desk/internal/deskkit/roletoken_memo_test.go` (planned) (new) — rows 2 to 5.
-- `tools/desk/cmd/desktoken/desktoken.go` (existing) — the cache-first resolution order, the
-  owner sidecar (write on mint AND on reuse), the install-id cache read/write/invalidRoute,
-  and the `--fresh` bypass.
+- `tools/desk/cmd/desktoken/desktoken.go` (existing) — the cache-first resolution order, the owner sidecar (write on mint AND on reuse), the install-id cache read/write/invalidRoute, and the `--fresh` bypass.
 - `tools/desk/cmd/desktoken/installidcache_test.go` (planned) (new) — rows 8 to 14.
-- `tools/desk/cmd/desktoken/mutations.json` (existing) — the new mutation entries for the
-  cache-first order and the sidecar match.
-- `tools/desk/internal/deskkit/mutations.json` (existing) — the new mutation entries for the
-  memo key and its age guard.
+- `tools/desk/cmd/desktoken/mutations.json` (existing) — the new mutation entries for the cache-first order and the sidecar match.
+- `tools/desk/internal/deskkit/mutations.json` (existing) — the new mutation entries for the memo key and its age guard.
 - `tools/desk/cmd/deskboard/tokenforks_test.go` (planned) (new) — row 6.
 - `tools/desk/cmd/deskflip/tokenforks_test.go` (planned) (new) — row 7.
 - `tools/desk/cmd/deskflip/exec.go` (existing) — a comment correction only (see facts).
-- `tools/desk/README.md` (existing) — a short subsection on the two caches, where they live,
-  and how to clear them.
-- `changelog/<implementing branch slug>.md` (planned) (new) — the per-PR fragment this repo's
-  changelog check requires.
+- `tools/desk/README.md` (existing) — a short subsection on the two caches, where they live, and how to clear them.
+- **add** — `changelog/<implementing branch slug>.md` (planned) (new) — the per-PR fragment this repo's changelog check requires.
 
 facts (read at `e428134c`, 2026-09-14):
 

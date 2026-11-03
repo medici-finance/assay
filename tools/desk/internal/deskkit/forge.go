@@ -21,9 +21,11 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"strconv"
 	"strings"
 	"time"
@@ -906,6 +908,11 @@ type OpenChanges struct {
 // straddle a push — N sequential reads can see the list at one head and a change's reviews
 // after a newer head landed. Truncation carries the SAME meaning as OpenChanges.
 type ReviewQueue struct {
+	// Visibility is the live repository visibility when the backend carries it in
+	// this same snapshot: public, private or internal. Empty means unavailable,
+	// not private. Consumers needing it must then retain their explicit live probe.
+	// It is not a cross-run cache or an authorization decision.
+	Visibility string `json:",omitempty"`
 	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
 	Changes []QueuedChange
 	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
@@ -1709,6 +1716,12 @@ func validateGateName(gate string) (string, error) {
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
 // change.
 type Forge interface {
+	// ChangesUpdatedSince and IssuesUpdatedSince are bounded incremental source
+	// observations consumed by MirrorReadSource. An incomplete list is never an
+	// inventory; review/check coverage remains outside these endpoint reads.
+	ChangesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.ChangeUpdates, error)
+	IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error)
+
 	// --- Reads ---
 
 	// GetPullRequest reads a change's head/state/draft/node-id/changed-file-count/author.

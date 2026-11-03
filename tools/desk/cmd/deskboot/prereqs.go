@@ -97,7 +97,8 @@ func deskToolsProvenance(o bootOpts) (prov, gap string) {
 	}
 	where := "no " + deskkit.AssayVersionsFile + " at or above " + o.root
 	if dir != "" {
-		where = pinFile + " carries no `desk-tools`, `" + deskkit.DeskToolsPlatformArtifact(hostPlatform) +
+		names := append([]string{deskkit.DeskToolsArtifact}, deskkit.DeskToolsPlatformArtifacts(hostPlatform)...)
+		where = pinFile + " carries no `" + strings.Join(names, "`, `") +
 			"` or full-commit `desk-tools-source` line (statusgen lines do not pin the desk tools)"
 	}
 	return "", fmt.Sprintf(

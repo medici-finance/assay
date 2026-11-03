@@ -46,14 +46,18 @@ type fakePR struct {
 // etagForge is the GitHub stand-in. Charged holds "METHOD path" for every answer that was not
 // a 304; All holds every request; Conditional counts requests that carried a validator.
 type etagForge struct {
-	mu          sync.Mutex
-	prs         []fakePR
-	remaining   int
-	reset       int64
-	charged     []string
-	all         []string
-	conditional int
-	unknown     []string
+	mu  sync.Mutex
+	prs []fakePR
+	// Optional live repository scalar carried by the queue snapshot. Nil keeps
+	// the older-backend fixture, which must still use the metadata fallback.
+	snapshotVisibility *string
+	metadataFailure    bool
+	remaining          int
+	reset              int64
+	charged            []string
+	all                []string
+	conditional        int
+	unknown            []string
 }
 
 type sweepResult struct {
@@ -168,6 +172,10 @@ func (ff *etagForge) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"not served"}`, http.StatusNotFound)
 		return
 	case r.URL.Path == "/repos/example-org/tracker":
+		if ff.metadataFailure {
+			http.Error(w, `{"message":"metadata unavailable"}`, http.StatusForbidden)
+			return
+		}
 		body = map[string]any{"name": "tracker", "full_name": fakeRepo, "private": true, "visibility": "private"}
 	case reCommits.MatchString(r.URL.Path):
 		body = []any{map[string]any{"sha": "aaaa000000000000000000000000000000000001",
@@ -259,7 +267,11 @@ func (ff *etagForge) snapshotLocked() any {
 					"contexts": map[string]any{"nodes": checks}}}}}},
 		})
 	}
-	return map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{"nodes": nodes}}}}
+	repository := map[string]any{"pullRequests": map[string]any{"nodes": nodes}}
+	if ff.snapshotVisibility != nil {
+		repository["visibility"] = *ff.snapshotVisibility
+	}
+	return map[string]any{"data": map[string]any{"repository": repository}}
 }
 
 // boardRows decodes the actions JSON rows by PR number.
