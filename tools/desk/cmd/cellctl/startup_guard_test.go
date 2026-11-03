@@ -32,7 +32,9 @@ func startupWalkSites(name string, src []byte) ([]string, error) {
 				return true
 			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if ok && sel.Sel.Name == "Sweep" && fn.Name.Name != "sweepScratch" {
+			// Every Sweep* entry point walks history: the explicit command and the
+			// supervisor's deferred maintenance are the only callers (#5353).
+			if ok && strings.HasPrefix(sel.Sel.Name, "Sweep") && fn.Name.Name != "sweepScratch" && fn.Name.Name != "deferredScratchSweep" {
 				bad = append(bad, name+":"+fn.Name.Name)
 			}
 			if ok {
@@ -56,9 +58,9 @@ func startupWalkSites(name string, src []byte) ([]string, error) {
 	return bad, nil
 }
 func startupWalkGuard(t *testing.T) {
-	planted, err := startupWalkSites("second.go", []byte("package main;import cache \"github.com/medici-finance/assay/tools/desk/internal/cellcache\";func secondStartup(){s.Sweep(p,true)};func secondCacheStartup(){cache.Check(p,true)};func secondMaintainStartup(){cache.Maintain(ctx,p)}"))
+	planted, err := startupWalkSites("second.go", []byte("package main;import cache \"github.com/medici-finance/assay/tools/desk/internal/cellcache\";func secondStartup(){s.Sweep(p,true)};func secondCacheStartup(){cache.Check(p,true)};func secondMaintainStartup(){cache.Maintain(ctx,p)};func secondPeriodic(){s.SweepIfDue(p,i,true)}"))
 	must(t, err)
-	if len(planted) != 3 || planted[0] != "second.go:secondStartup" || planted[1] != "second.go:secondCacheStartup" || planted[2] != "second.go:secondMaintainStartup" {
+	if len(planted) != 4 || planted[0] != "second.go:secondStartup" || planted[1] != "second.go:secondCacheStartup" || planted[2] != "second.go:secondMaintainStartup" || planted[3] != "second.go:secondPeriodic" {
 		t.Fatal("planted second walking caller escaped", planted)
 	}
 	entries, err := os.ReadDir(".")

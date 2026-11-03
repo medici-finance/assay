@@ -502,6 +502,14 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 		}
 		unread = append(unread, cl.partials.unread...)
 	}
+	// A PR that merged in ANOTHER configured root with this brief's `Brief:`
+	// trailer is a delivery witness too (crossroot.go). It cannot have authored
+	// a file in this tree, so it skips the authoring classifier.
+	self, bRoot := root, ""
+	if found {
+		self, bRoot = boardRoot, boardRoot
+	}
+	kept = append(kept, crossRootPRRecords(self, repo, bRoot, inScope, stderr)...)
 	in.PRs = kept
 	for _, m := range unread {
 		fmt.Fprintf(stderr, "reconcile: %s\n", m)

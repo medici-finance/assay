@@ -25,7 +25,7 @@ id: "a4787a6a-d6e4-452b-ae9f-b275a91a97d4"
 
 ## Context
 
-files: `loopadmin/runner/lifecycle.go` (planned), `loopadmin/runner/lifecycle_test.go` (planned), `loopadmin/supervisor/` (planned), `tools/desk/internal/cellop/`, `tools/desk/cmd/cellctl/`, `schemas/loop-admin-lifecycle-v1.json` (planned), `docs/cellctl-machine-seam.md`. All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
+files: `loopadmin/runner/lifecycle.go` (planned), `loopadmin/runner/lifecycle_test.go` (planned), `loopadmin/supervisor/` (planned), `tools/desk/internal/cellop/`, `tools/desk/cmd/cellctl/`, `schemas/loop-admin-lifecycle-v1.json` (planned), `docs/cellctl-machine-seam.md` — All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
 
 single-point-of-failure: projection source/subject binding — backed by existing authoritative acceptance checks and a read-only client which cannot launch or acknowledge work.
 

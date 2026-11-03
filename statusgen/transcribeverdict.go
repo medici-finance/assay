@@ -318,9 +318,9 @@ type verdictIssueResolver func(repo string, issue int) (verdictIssue, error)
 // and labels do not touch it), which is exactly the cl.2 timeline signal — an
 // edited body is a refusal.
 func ghVerdictIssueResolver(repo string, issue int) (verdictIssue, error) {
-	out, err := exec.Command("gh", "api",
+	out, err := ghGuard(exec.Command("gh", "api",
 		fmt.Sprintf("repos/%s/issues/%d", repo, issue),
-		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body, edited: (.last_edited_at != null)}").Output()
+		"--jq", "{login: .user.login, id: .user.id, type: .user.type, body: .body, edited: (.last_edited_at != null)}")).Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -391,9 +391,9 @@ func ghVerdictMainHealth(root string) mainHealthChecker {
 		if repo == "" {
 			return false, "", nil
 		}
-		out, err := exec.Command("gh", "issue", "list",
+		out, err := ghGuard(exec.Command("gh", "issue", "list",
 			"--repo", repo, "--state", "open", "--limit", "200",
-			"--json", "number,title,createdAt").Output()
+			"--json", "number,title,createdAt")).Output()
 		if err != nil {
 			detail := ""
 			if ee, ok := err.(*exec.ExitError); ok {

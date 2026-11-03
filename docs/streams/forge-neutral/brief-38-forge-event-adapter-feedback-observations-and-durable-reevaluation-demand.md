@@ -49,11 +49,16 @@ consumers:
 
 ## Context
 
-files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/events/` (new), `forgeread/mirror/` (feedback kinds, hint intake), `forgeread/events/reviewrepair_test.go` (planned)
-`tools/desk/internal/deskkit/mirrorsource.go` (planned) and tests, `workflow/store/` (planned by
-graph-execution/19; delivery inbox, the pending-feedback use and the graph-execution/28 mapping),
-`forgeread/README.md`,
-`changelog/forge-events-reevaluation.md` (new).
+files:
+- `tools/forge-import-check/check_env_imports.go` (source-only helper)
+- `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures)
+- `forgeread/events/` (new)
+- `forgeread/mirror/` (feedback kinds, hint intake)
+- `forgeread/events/reviewrepair_test.go` (planned)
+- `tools/desk/internal/deskkit/mirrorsource.go` (planned) and tests
+- `workflow/store/` (planned by graph-execution/19; delivery inbox, the pending-feedback use and the graph-execution/28 mapping)
+- `forgeread/README.md`
+- `changelog/forge-events-reevaluation.md` (new)
 
 facts (4696d598e, 2026-10-13):
 - forge-neutral/37 supplies the mirror, its refresh planner, coverage states and `mirror.Store`;

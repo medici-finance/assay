@@ -31,7 +31,9 @@ replaces (`ts`, `brief`, `outcome`, `sha`) plus additive keys. The verify-wake-v
 required on every new `verify-fail` / `blocked` record, and a record claiming verify-wake-v1 also
 carries the join keys (`prs`, `verifier_tier`, `started`, `finished`; optional `dispatch_ref`).
 `row_results` is optional in the wire schema; [new producers](../../verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows)
-require it whenever `rows` is non-empty. Earlier records are not backfilled. Field definitions, dereference and
+require it whenever `rows` is non-empty. An optional `attempts` list records every run of the
+Verify table in the dispatch (window, `rows_run`, disposition and reason); a record without it
+reads as one `unrecorded` run, and `deskperf reruns` counts both. Earlier records are not backfilled. Field definitions, dereference and
 redaction rules: `docs/streams/desk-supervision/verify-wake-v1.md`.
 Records are **immutable**: a correction is a NEW record (a fresh `ts`/digest), never an edit of
 an existing one.

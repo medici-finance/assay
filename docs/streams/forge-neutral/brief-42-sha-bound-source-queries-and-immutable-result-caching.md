@@ -50,8 +50,7 @@ consumers:
 
 ## Context
 
-files: `forgeread/source/` (planned), `forgeread/testdata/source/` (planned), `tools/desk/internal/forgesource/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/gitcore/`, `tools/desk/cmd/deskread/`, `docs/forge-service.md` (planned), `docs/library-first.md`, `changelog/forge-source-query.md` (planned), `tools/desk/internal/forgesource/reviewcontext_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
-files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
+files: `forgeread/source/` (planned), `forgeread/testdata/source/` (planned), `tools/desk/internal/forgesource/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/gitcore/`, `tools/desk/cmd/deskread/`, `docs/forge-service.md` (planned), `docs/library-first.md`, `changelog/forge-source-query.md` (planned), `tools/desk/internal/forgesource/reviewcontext_test.go` (planned) — Paths not present at the source pin are planned deliverables; existing files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
 - gitcore is internal to tools/desk and includes native/go-git and alternate-store readers. Trusted composition can reuse it; forgeread cannot import it.

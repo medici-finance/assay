@@ -1,0 +1,5 @@
+# A workspace file could pull in modules outside deskd/go.sum.
+want: gowork-not-off
+file: Dockerfile
+replace: "ENV GOWORK=off"
+with: "ENV GOWORK=auto"

@@ -44,7 +44,7 @@ files:
 - `tools/desk/internal/hotspot/hotspot_test.go` (planned): NEW. `TestHotspotFixture` (planned), `TestCouplingFixture` (planned), `TestPrintHotspots` (planned) (test-only flags `-root`, `-since`, `-until`, `-top`), `TestShallowIsCouldNotCheck` (planned).
 - `tools/desk/internal/hotspot/testdata/log.txt` (planned): NEW. A captured `git log --name-only` fixture with hand-known counts.
 - `docs/contracts.md`: add `## Brittle marks` after the semantic-owner index (brief 01).
-- `docs/streams/findings/<date>-brittle-<module>.md`: one entry per mark, `id: F-brittle-<module>`, `resolved: false` until cleared.
+- `docs/streams/findings/*-brittle-*.md` (one `<date>-brittle-<module>.md` per mark): one entry per mark, `id: F-brittle-<module>`, `resolved: false` until cleared.
 - `changelog/build-less-brittle-08.md` (planned)
 
 facts:

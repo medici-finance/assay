@@ -15,7 +15,7 @@ import (
 // gitLastTouch returns the commit time of the last commit touching relDir,
 // falling back to the directory's mtime when untracked or git is unavailable.
 func gitLastTouch(root, relDir string) time.Time {
-	out, err := exec.Command("git", "-C", root, "log", "-1", "--format=%ct", "--", relDir).Output()
+	out, err := gitLastPathTimeOutput(root, relDir)
 	s := strings.TrimSpace(string(out))
 	if err == nil && s != "" {
 		if sec, perr := strconv.ParseInt(s, 10, 64); perr == nil {
@@ -32,7 +32,7 @@ func gitLastTouch(root, relDir string) time.Time {
 // unavailable (e.g. a non-git checkout — testdata fixtures copied to a plain
 // tempdir have no .git, and that is not an error worth failing a run over).
 func gitCurrentSHA(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	out, err := gitHeadOutput(root)
 	if err != nil {
 		return ""
 	}

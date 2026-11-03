@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // EnvPushGuardScanOverride carries an audited override reason into the deskpushguard

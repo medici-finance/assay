@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // vpFault is the text of the injected failure. Its parts are looked for one by one too.

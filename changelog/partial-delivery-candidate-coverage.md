@@ -1,5 +1,0 @@
-### Fixed
-- `statusgen reconcile`'s historical backfill no longer treats a PR that only mentions a brief as that brief's implementation witness. When the body or branch match is backfill-only, a PR whose own link trailer names a different brief (`Brief:` for another brief, `Authors:` only, or `Issue:` with no `Brief:`) is now walked past, using the same trailer reading as the trailer path. Before this change, derived-board/07 picked a newer mention-only PR as its witness on the backfill path. With the fix it correctly stays in progress.
-
-### Added
-- Coverage tests for derived-board/07's partial-delivery cohort. A committed hash-bound inventory of all 2339 PR records at one dated snapshot, plus 14 dispositioned members, replaces the hardcoded five-number regression. The tests derive membership through the existing collection and matching seams and fail by name on any missing, duplicate, unexplained or planted candidate. Two opt-in rows recheck the inventory: one against two fresh bounded forge walks (`ASSAY_COHORT_RECHECK=1`), and one against a privately held exact-bytes replay (`ASSAY_COHORT_REPLAY`).

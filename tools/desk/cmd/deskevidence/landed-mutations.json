@@ -1,4 +1,5 @@
 {
+  "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskevidence && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/deskkit && (cd ../../gitcore && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null .)",
   "test": "go test ./cmd/deskevidence ./internal/deskkit -run 'Landed|PinnedEvidence' -count=1 -timeout=90s",
   "control": {
     "name": "frozen attribution history",
@@ -21,9 +22,33 @@
     },
     {
       "name": "remote baseline dropped",
-      "file": "internal/gitcore/checkout.go",
-      "old": "r.repo.Storer.SetReference(baseline)",
-      "new": "r.repo.Storer.RemoveReference(baseline.Name())"
+      "file": "../../gitcore/checkout.go",
+      "old": "r.repo.Storer.SetReference(plumbing.NewHashReference(originMain, mainRef.Hash()))",
+      "new": "r.repo.Storer.RemoveReference(originMain)"
+    },
+    {
+      "name": "cross-repository baseline read from the read root",
+      "file": "cmd/deskevidence/landed.go",
+      "old": "if receipt.Binding.Version != 2 {",
+      "new": "if true {"
+    },
+    {
+      "name": "cross-repository baseline taken from the landing branch",
+      "file": "cmd/deskevidence/landed.go",
+      "old": "return baseline, nil",
+      "new": "return landedFetchRefs + \"branch/\" + branch, nil"
+    },
+    {
+      "name": "immutable caller drops cross-repository receipt",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "false, fg, fr, branch, receipt)",
+      "new": "false, fg, fr, branch, deskkit.VerifierReceipt{})"
+    },
+    {
+      "name": "second caller drops cross-repository receipt",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "remoteExists, fg, fr, branch, receipt)",
+      "new": "remoteExists, fg, fr, branch, deskkit.VerifierReceipt{})"
     },
     {
       "name": "whole parent condition dropped",

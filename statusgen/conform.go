@@ -81,7 +81,7 @@ import (
 // the canonical repo-root schemas/*.json are mirrored here byte-for-byte;
 // TestEmbeddedSchemaMatchesCommitted pins each pair identical.
 //
-//go:embed schemas/brief-v1.json schemas/brief-v2.json schemas/brief-v3.json
+//go:embed schemas/brief-v1.json schemas/brief-v2.json schemas/brief-v3.json schemas/brief-v4.json
 var embeddedSchemaFS embed.FS
 
 // embeddedBriefV1SchemaName / embeddedBriefV2SchemaName are the embedded paths of
@@ -90,6 +90,7 @@ const (
 	embeddedBriefV1SchemaName = "schemas/brief-v1.json"
 	embeddedBriefV2SchemaName = "schemas/brief-v2.json"
 	embeddedBriefV3SchemaName = "schemas/brief-v3.json"
+	embeddedBriefV4SchemaName = "schemas/brief-v4.json"
 )
 
 // embeddedBriefSchemaNames maps each brief-schema MARKER to the embedded artifact
@@ -102,6 +103,7 @@ var embeddedBriefSchemaNames = map[string]string{
 	briefSchemaCurrent: embeddedBriefV1SchemaName, // brief-v1
 	briefSchemaV2:      embeddedBriefV2SchemaName, // brief-v2
 	briefSchemaV3:      embeddedBriefV3SchemaName, // brief-v3
+	briefSchemaV4:      embeddedBriefV4SchemaName, // brief-v4
 }
 
 // embeddedBriefSchemaMarkers returns the known markers in sorted order (brief-v1,
@@ -367,7 +369,8 @@ var schemaKeywords = map[string]bool{
 	"$schema": true, "$id": true, "title": true, "description": true,
 	"type": true, "const": true, "enum": true, "required": true,
 	"properties": true, "additionalProperties": true, "items": true,
-	"minItems": true, "minimum": true, "pattern": true,
+	"minItems": true, "maxItems": true, "minimum": true, "pattern": true,
+	"if": true, "then": true, "else": true, "not": true,
 }
 
 // validateValue validates v against schema, returning human-readable violations
@@ -381,6 +384,20 @@ func validateNode(node map[string]any, v any, path string) []string {
 	label := path
 	if label == "" {
 		label = "(root)"
+	}
+
+	// Conditional shape constraints used by effect-free human decision nodes.
+	if condition, ok := node["if"].(map[string]any); ok {
+		branch := "else"
+		if len(validateNode(condition, v, path)) == 0 {
+			branch = "then"
+		}
+		if selected, ok := node[branch].(map[string]any); ok {
+			out = append(out, validateNode(selected, v, path)...)
+		}
+	}
+	if forbidden, ok := node["not"].(map[string]any); ok && len(validateNode(forbidden, v, path)) == 0 {
+		out = append(out, fmt.Sprintf("%s: matches forbidden schema", label))
 	}
 
 	// type
@@ -435,6 +452,9 @@ func validateNode(node map[string]any, v any, path string) []string {
 
 	// array keywords
 	if arr, isArr := v.([]any); isArr {
+		if limit, ok := numericValue(node["maxItems"]); ok && float64(len(arr)) > limit {
+			out = append(out, fmt.Sprintf("%s: array has %d items, maximum is %v", label, len(arr), limit))
+		}
 		out = append(out, validateArray(node, arr, path)...)
 	}
 

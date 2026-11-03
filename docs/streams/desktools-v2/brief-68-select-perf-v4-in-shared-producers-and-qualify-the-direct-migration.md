@@ -33,7 +33,7 @@ consumers:
 
 ## Context
 
-files: tools/desk/internal/deskkit/perf.go; tools/desk/internal/cli/; tools/desk/cmd/{desktoken,verifyloop,deskperf}; statusgen/perfrecord.go and actual recorder call sites; maintained performance inventory.
+files: tools/desk/internal/deskkit/perf.go; tools/desk/internal/cli/; tools/desk/cmd/{desktoken,verifyloop,deskperf}; statusgen/perfrecord.go — and actual recorder call sites; maintained performance inventory.
 facts: At af897c3c112bd426cbbc794839dca6d41df911d6 source has 68 desk invocation producers plus statusgen. Two tools in retained local v3 history do not imply only two capable producers. /64 and /65 independent verification remain prerequisites, not waived by the v4 successor.
 
 Design-fit: implement the producer transition specified by desktools-v2/69; change the shared selector and adapters using /67's codec; reuse context resolution, recorder isolation and observation reducers. Preserve all per-tool phase/counter obligations. /60 snapshot implementation is already merged and is not reimplemented here.

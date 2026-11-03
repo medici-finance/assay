@@ -2,7 +2,9 @@ component: assay/harness-cursor
 version: 0.28.0
 # The Cursor harness adapter (§9): owns the generated resident-rules Cursor
 # rule (`tools/harnessgen cursor`, source at plugins/assay/cursor/assay.mdc)
-# that an adopting repo installs as its always-apply `.cursor/rules` rule
+# that an adopting repo installs as its always-apply `.cursor/rules` rule,
+# and the generated Cursor plugin manifest plus root marketplace a Cursor
+# team-marketplace import reads
 # (docs/streams/harness-portability/README.md). Files stay where they are;
 # this manifest just names the ownership; its apply step runs harnessgen.
 #
@@ -21,5 +23,9 @@ apply:
     effect: generate and install the Cursor always-apply rule at .cursor/rules (tools/harnessgen cursor, source plugins/assay/cursor/assay.mdc)
     boundary: inside
     inverse: remove the generated .cursor/rules rule (tools/harnessgen cursor output)
+  - id: cursor-plugin-manifest
+    effect: install plugins/assay/.cursor-plugin/plugin.json and the root .cursor-plugin/marketplace.json (tools/harnessgen cursor)
+    boundary: inside
+    inverse: remove the generated plugins/assay/.cursor-plugin/plugin.json and .cursor-plugin/marketplace.json
 intercept: []
 config: {}

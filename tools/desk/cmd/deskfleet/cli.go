@@ -41,7 +41,10 @@ const provisionLong = `provision creates the seven role service accounts, their 
 account created by this run) one PAT each, written owner-only to gitlab-<role>.token in
 --out-dir (default: the config home, where desktoken --forge gitlab <role> reads it). With
 --project it also protects main, sets MR approvals, protects release tags, sets the pipeline
-and discussion merge checks, and creates the fleet labels. With --avatars-dir, each new
+and discussion merge checks, creates the fleet labels, and mints the board-push credential:
+a write_repository-only project access token at Maintainer, stored as the masked, protected
+CI/CD variable STATUSGEN_PUSH_TOKEN (never a role-fleet PAT; where the forge cannot mint
+one, a recorded failure naming the manual step). With --avatars-dir, each new
 account sets <dir>/<role>.png as its own avatar, signed in as itself; without it (or with
 --no-avatars) the avatar step is SKIPPED and named (no icon is fetched from the web).
 

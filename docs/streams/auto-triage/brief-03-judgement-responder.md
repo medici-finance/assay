@@ -7,8 +7,8 @@ why: >-
   deterministic fix to draft — but the red still must not sit silent. This brief files the
   bug and ROUTES it with a recommended default, so a human gets a named next-step instead
   of a bare stack trace, without the automation ever guessing a fix or a withheld token.
-wave: 2
-depends: ["auto-triage/01"]
+wave: 3
+depends: ["auto-triage/01", "graph-execution/35"]
 unblocks: ["auto-triage/04"]
 effort: M
 gate: human
@@ -38,6 +38,7 @@ exec-tier-why: >-
   the boundary between what CI exposes and what it withholds — a wrong call there leaks a
   withheld token onto a public issue.
 consumers:
+  - "deskdispatch --signal-gate (planned): follow-up auto-triage/03 (this brief; it flips to fixed-here when the live path calls the gate)"
   - "tools/autotriage/ (the Classify seam from brief 01): follow-up auto-triage/03 (this brief; consumes 01's output schema, flips to fixed-here when the router implementation reads it)"
 version: 1
 id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
@@ -47,13 +48,19 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 
 > **Contract note, 2026-10-18.** This brief is the live judgement exit of the gate-red class that graph-execution/08 now defines; every route still carries a recommended default. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
 
+> **Contract note, 2026-11-01.** <!-- graph: encoded graph-execution/35→auto-triage/03 --> Going live means activating the gate-red class of a signal pattern, so this brief depends on graph-execution/35. Before any live effect, this responder calls that gate (`deskdispatch --signal-gate`) and proceeds only on exit 0. Every other result stops it: a refuse (5), a hold (6), a usage error, a disabled or rate-limited tool, a missing binary or a crash.
+
+> What it passes, and from where. Trigger and the fully qualified ref come from the values the CI platform sets for the run, never from model output or a log (auto-triage/01's `origin.ref` may hold a short branch or a sha, and the gate needs the full ref). Class is the literal `gate-red`. Culprit class comes from auto-triage/01's classifier record once this brief supplies a binding for it, and is absent when there is none. That record is the run's own output, so it isn't a value the run can't choose, and no binding exists today (#5150). This brief MUST supply the binding before its caller passes a culprit class, and until it does its caller MUST pass none: the gate then selects the judgement exit, refuses a node only on the mechanical route, and can't select the mechanical exit. Node and pattern name come from this brief's reviewed source or configuration. The expected sha256 comes from outside any root the run can write: reading it from a writable checkout doesn't count, and neither does computing it from one. Root is the CI workspace value. The gate's origin has no repository term and reads the ref only on `push`, so this responder itself refuses a fork's run and a scheduled run on any other branch than the default.
+
+> Liveness. No brief owns a liveness result for gate-red's source today (#5148). Until one does, this responder passes none, the gate holds and the responder stays out of live mode. Once one does, the value passed is that brief's observation made at run time, taken again for each node. A constant or otherwise unprobed value is not a liveness result. That hold stands, and this note doesn't close it. A hold stops this responder only, never a person acting on the red gate. A held responder has acted on nothing, so auto-triage/04's watchdog escalates the red gate to a person, as it does for any red no responder acted on. This brief's own controls stay as written, and the stricter rule applies.
+
 ## Context
 
 single-point-of-failure: this responder's routing message is the one artifact a human acts
 on for a judgement/opaque red — but it takes no fixing action, so its worst failure is a
 misleading recommendation (a closed/re-labelled issue), not a bad change to `main`. Three
-layers stand behind the single control: the responder NEVER drafts a fix or merges (it only
-files + routes), the opaque-red path is content-blind by construction (it routes leak-sweep
+layers stand behind the single control: the responder NEVER drafts a fix or merges (it
+only files + routes), the opaque-red path is content-blind by construction (it routes leak-sweep
 by CHECK identity and never reads or echoes the withheld detail), and the forge-write
 identity itself holds no merge/review/bypass/workflow authority (credential-layer control,
 independent of both).

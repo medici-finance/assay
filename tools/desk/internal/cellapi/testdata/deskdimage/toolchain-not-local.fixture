@@ -1,0 +1,5 @@
+# GOTOOLCHAIN=auto may download a different toolchain at build time.
+want: toolchain-not-local
+file: Dockerfile
+replace: "GOTOOLCHAIN=local"
+with: "GOTOOLCHAIN=auto"

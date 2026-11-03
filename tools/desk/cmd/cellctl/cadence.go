@@ -73,7 +73,10 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 			}
 		}
 		childArgs := scratchArgv(harness, argv, childEnv)
+		// The terminal is the child's: maintenance logs to its file only.
+		stopMaintenance := c.startScratchMaintenance(child, role, nil)
 		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
+		stopMaintenance()
 		c.recordRoleChild(0)
 		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
 		scratch.finish(&result)
@@ -107,9 +110,11 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	ctx, stop := cellprocess.NotifyContext(context.Background())
 	defer stop()
 	fmt.Printf("[cadence] cell=%s role=%s interval=%s budget=%s state=%s; Go supervisor owns subsequent passes\n", c.Name, role, c.Cadence.Interval, c.Cadence.Budget, c.cadenceDir(role))
+	stopMaintenance := c.startScratchMaintenance(ctx, role, os.Stderr)
 	err = c.cadenceLease.Run(ctx, c.cadenceConfig(role), func(pass context.Context) cellcadence.Result {
 		return c.executeCadencePass(pass, role, harness, args, env, wt)
 	})
+	stopMaintenance()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		die("cadence: %v", err)
 	}

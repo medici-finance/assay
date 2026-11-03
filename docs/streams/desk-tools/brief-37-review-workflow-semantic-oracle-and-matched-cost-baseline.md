@@ -210,6 +210,212 @@ RISK-VALUE: DERIVED — probe timeout = 45s @ tools/desk/internal/reviewtest/qua
 RISK-VALUE: DERIVED — truncation cap = 100 @ tools/desk/internal/reviewtest/qualification_test.go:587 and :603, Seed = 37 @ qualification_test.go:550 — the cap mirrors the deskboard adapter's population cap of 100 so the growth cohort exercises truncation; the seed is a fixed label for reproducible cohort ordering.
 
 **VERIFY: BLOCKED** — all 4 rows pass in the network-off container witness at source e25479a69d69, inside a closed admission bracket (`verdict=match`), and every row 1 and row 2 mutation probe was killed, including the unknown-to-zero case that failed on 2026-10-20. Closure is blocked because row 3's amended command (#4415) has no recorded human acceptance-transition approval. The amendment is only creditable through that approval, and the host transition run and its combination with a container witness remain limited (#1800, #4299, #4505). The README row stays `implemented`.
+### Container re-verification — 2026-10-27 (source 0f2b208cebc3)
+
+Observed source: merged main 0f2b208cebc3, in a detached home admitted by `deskdispatch --check-verifier` (attestation medici-finance/assay#4680). The delivery and amendment facts are unchanged from the block above:
+
+- The delivery is merged PR #3331: squash e28201023c74, first parent f92d2e9f2425.
+- Row 3's Command was amended by merged PR #4415 (two-parent merge 0440eb71c7c8, version 3 to 4). The amendment is on the observed source's first-parent history.
+- `deskpathguard rederive` at the observed source reports 4 rows and 0 author-added.
+- Since the e25479a69d69 run, the reviewtest package is unchanged. Production files in the issue board and the shared desk kit did change, and the oracle still passes over them.
+
+The table directly below is the execution witness. It was produced by `statusgen verifyrun` v1.0.63, non-dry, with `--sandbox=container-netns`, inside a closed admission bracket:
+
+- The bracket was opened on the host at 2026-10-27T22:25:27Z and closed on the host at 22:29:41Z.
+- `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match`.
+- The witness bytes follow unchanged, including the `Admission-Bracket:` line and the tool-written Runner cells.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowOracle$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestWorkflowOracle ' "$o")` | pass exit=0 sandbox=container-netns | sha256:1eed10ba3bd6 | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCostCohort$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestCostCohort ' "$o")` | pass exit=0 sandbox=container-netns | sha256:a1317d3fa02a | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/37 --delivery e28201023c74b5f407ae98f9833ee4f79999f1db --base f92d2e9f24251bb3ac57c6447f229916d7748dfc` | pass exit=0 sandbox=container-netns | sha256:f3051911c67b | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestGitPackagesInstallQuiet$' ./internal/gitquiet)` | pass exit=0 sandbox=container-netns | sha256:215c5e666d71 | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:967400362d17a6106bb17c36de7d9c68c9e3de682b7a814d93ecf1f748b167b5
+Container-Image: sha256:3a3cb3913f1311f1a9bf13ddd53c4f27361566f74ac90c89f78991e5452644b8
+Verification-Attestation: medici-finance/assay#4680 run=291277efd810c94bce3e9a6bf3ade707b84dfbdbfa2ced8f21724414fead30c8 source=0f2b208cebc30af31269e7482b8b9159b602867d brief=docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=291277efd810c94bce3e9a6bf3ade707b84dfbdbfa2ced8f21724414fead30c8 source=0f2b208cebc30af31269e7482b8b9159b602867d tree=sha256:967400362d17a6106bb17c36de7d9c68c9e3de682b7a814d93ecf1f748b167b5 witness=sha256:53b55a8c9aca7ca92e7fad843c485394f2dd2090b54b316d9232b2476e824a02 opened=2026-10-27T22:25:27Z closed=2026-10-27T22:29:41Z before=receipt after=check-verifier
+
+Environment: the container used the published verify-runner image pinned by digest (sha256:3a3cb3913f13, linux/amd64, run under the engine's amd64 emulation). That image carries statusgen v1.0.63, Go 1.27.2 and git 2.56.0, and its digest matches the one the v1.0.63 release names. The container ran with `--network none`, the engine's default seccomp profile and no added privileges, and with GOPROXY=off and GOFLAGS=-mod=readonly. The home, its git directory, the Go module cache and the admission receipt were bind-mounted read-only; the only writable mount was a new directory for the witness file. The host statusgen is the same release (darwin-arm64, sha256 matches the release checksums). The container's admission step recomputed the mounted home's tree digest and matched the sha256:967400362d17 value the host recorded at the open step.
+
+Disclosed attempt: the first container launch under this bracket was refused before any row ran: `container admission refused; no Verify rows executed`. A host-side quoting error in the bind-mount arguments meant the home was not mounted at its own path, so the digest computed over the mount was the empty-tree digest. The mount arguments were corrected, and the second launch under the same open bracket produced the witness above. No row result from the refused launch exists.
+
+Primary output (supplemental, no acceptance credit): the four row commands were re-run in a separate network-off container, from the same pinned image at the same source, with output kept for inspection.
+
+| # | Exit | Key output | Output sha256 | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | 0 | `--- PASS: TestWorkflowOracle (52.81s)`; 29 named subtests pass. These include the board, planner, dispatch and issue cases, the built-in controls `wrong-head`, `missing-WAIT`, `changed-order` and `wrong-depth`, the five printed-output controls, and the production overlays `production-reviewloop` and `production-deskdispatch` | 01fb7044b85f | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+| 2 | 0 | `--- PASS: TestCostCohort (25.42s)`; subtests `cold-small`, `steady-small`, `skew-growth`, `concurrent`, `partial`, `failed` and `attempts-304-and-unknown` all pass | 124067617267 | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+| 3 | 0 | `consumers corroboration — base f92d2e9f2425..e28201023c74 (immutable delivered snapshot)`; `summary: 4 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing` | 1ee8f4cd9b35 | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+| 4 | 0 | `--- PASS: TestGitPackagesInstallQuiet (1.82s)` | 6fee80709d4c | 2026-10-27 | assay-verifier-app[bot] @ 0f2b208cebc3 (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+
+Mutation probes (supplemental, no acceptance credit). Each probe ran in a network-off container from the same pinned image, against a throwaway copy of the observed source, with exactly one change applied and then reverted.
+
+- Row 1: every probe was killed, exit 1.
+  - A comparator that always accepts fails with `oracle accepted planted mutation`.
+  - A production dispatch scope changed from DELTA to OMITTED fails with `command output missing "- Scope: DELTA (clause 19)"`.
+  - Dropping the production planner rows fails with `command output rows got []`.
+- Row 2: the control and all 9 corruptions in the package's cost-mutations fixture each turn the row red, exit 1, and the unmutated copy passes afterwards. Examples: setting the production command's descendant CPU to zero fails with `cold-small invocation 0 ("deskboard"): descendantCpuMs must be explicit null, got "0"`, and making the HTTP retry lineage known-false fails with `retry must be explicit null, got "false"`. The control fails with `unknown-cost control descendantCpuMs escaped its assertion`. The second-site Git agent's descendant CPU, inclusive CPU and quota points made zero, and each of the four serialized fields removed, are also killed.
+
+Disclosed attempts:
+
+- A first launch of these probes was discarded before any result was read. Its output went to a path outside the mounted output directory and was lost. That copy was set aside, and a fresh copy of the observed source was extracted.
+- The row 2 probes then first ran on that copy without a git repository. Every probe failed, and so did the unmutated copy (`qualification_test.go:526: exit status 128`), because TestCostCohort reads the module's git revision. Those results are void and are not counted.
+- The copy was then made a scratch git repository with one local commit. The unmutated row 1 and row 2 commands passed in it, and the row 2 probes above were re-run there once. The row 1 probes are counted from the first run: each failed on its own planted change, not on the missing repository.
+
+Risk-bearing rows: none. The risk metadata is present and every answer is no. No Verify row carries a risk-bearing, live, mutating or end-to-end tag (rows 1 and 2 are tagged `+flow +mutation`), so no fail-first witness is required.
+
+Closure gate: unchanged from the block above. The protected `Verification-Table:` record names delivery e28201023c74, base f92d2e9f2425 and original f92d2e9f2425. Row 3's delivered command differs from its current command, so closure needs the explicit human-approved acceptance transition in docs/protected-paths.md. A merge or review of #4415 is not that approval.
+
+At landing time, no issue in this repository carries the acceptance-transition marker for this brief, and no `Approve acceptance-transition v1` comment exists for it. #4599 asks for that request. The verifier drafted it in the required form, but it is not yet on the forge.
+
+The limits recorded above still apply even after an approval lands:
+
+- A transition run is host-only, and on a darwin host every check:ci row is could-not-run (#1800).
+- The delivery rewrote row 1's Expect and added row 4. Whether the transition route accepts that change is #4505.
+- Between delivery and the amendment, main briefly changed row 3 and then restored it. The tables at the delivery, at the amendment's first parent and at its merge base are identical.
+
+`statusgen verifyrun --check` on this block, applied to a scratch checkout at the observed source: it refuses, exit 2: `refused — protected table: refusing: verdict mismatch: the latest recorded verdict is VERIFY: BLOCKED, not PASS`. That is the expected outcome for a BLOCKED record, and it produces no N-pass summary line.
+
+Input drift: none. The home stayed detached at the observed source for the whole run, and the attestation's source is the observed source.
+
+Risk-value: the item is not irreversible and its risk metadata is all no. Re-reading the delivered test harness at the observed source finds only reversible test knobs; none is a production bound.
+
+RISK-VALUE: DERIVED — oracle population floor = 15 @ tools/desk/internal/reviewtest/qualification_test.go:237 — the Task requires a frozen population wide enough to cover every board, planner, dispatch and issue lane. The oracle fixture holds 18 cases at the observed source. The floor only refuses a narrowed fixture; it never lets a failing case pass.
+RISK-VALUE: DERIVED — probe timeout = 45s @ tools/desk/internal/reviewtest/qualification_test.go:110, build timeout = 3m @ qualification_test.go:58 and :370 — harness ceilings on local fixture work; exceeding one fails the test, never passes it.
+RISK-VALUE: DERIVED — truncation cap = 100 @ tools/desk/internal/reviewtest/qualification_test.go:587 and :603, Seed = 37 @ qualification_test.go:550 — the cap mirrors the deskboard adapter's population cap of 100 so the growth cohort exercises truncation. The seed is a fixed label for reproducible cohort ordering.
+
+**VERIFY: BLOCKED** — all 4 rows pass in the network-off container witness at source 0f2b208cebc3, inside a closed admission bracket (`verdict=match`), and every row 1 and row 2 mutation probe was killed. Closure is blocked because row 3's amended command (#4415) has no recorded human acceptance-transition approval, and the amendment is creditable only through that approval. Even with approval, the host transition run remains limited (#1800, #4505). The README row stays `implemented`.
+### Container re-verification — 2026-10-29 (source 1304d40f5c32)
+
+Observed source: merged main 1304d40f5c32, in a detached home admitted by `deskdispatch --check-verifier` (attestation medici-finance/assay#4899). The delivery and amendment facts are unchanged from the blocks above:
+
+- The delivery is merged PR #3331: squash e28201023c74, first parent f92d2e9f2425.
+- Row 3's Command was amended by merged PR #4415 (two-parent merge 0440eb71c7c8, version 3 to 4). The amendment is on the observed source's first-parent history.
+- `deskpathguard rederive` at the observed source reports 4 rows and 0 author-added.
+- Since the 0f2b208cebc3 run, the delivered test files changed only to follow the Git core package's move to the shared module: the review preparation test now names that package by its module path, and the gitquiet test, its mutation list and one guard fixture were updated with it. The qualification harness and its fixtures are unchanged. Production files under the desk commands and the shared desk kit also changed, and the oracle still passes over them.
+
+The table directly below is the execution witness. It was produced by `statusgen verifyrun` v1.0.65, non-dry, with `--sandbox=container-netns`, inside a closed admission bracket:
+
+- The bracket was opened on the host at 2026-10-29T22:44:29Z and closed on the host at 22:48:10Z.
+- `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match`.
+- The witness bytes follow unchanged, including the `Admission-Bracket:` line and the tool-written Runner cells.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowOracle$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestWorkflowOracle ' "$o")` | pass exit=0 sandbox=container-netns | sha256:baf33288552f | 2026-10-29 | assay-verifier-app[bot] @ 1304d40f5c32 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCostCohort$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestCostCohort ' "$o")` | pass exit=0 sandbox=container-netns | sha256:56079c70ab06 | 2026-10-29 | assay-verifier-app[bot] @ 1304d40f5c32 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/37 --delivery e28201023c74b5f407ae98f9833ee4f79999f1db --base f92d2e9f24251bb3ac57c6447f229916d7748dfc` | pass exit=0 sandbox=container-netns | sha256:a8f526d1f832 | 2026-10-29 | assay-verifier-app[bot] @ 1304d40f5c32 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestGitPackagesInstallQuiet$' ./internal/gitquiet)` | pass exit=0 sandbox=container-netns | sha256:cfffba1302f0 | 2026-10-29 | assay-verifier-app[bot] @ 1304d40f5c32 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ea9e09df341a0d8bd1ed087777cbb72caf2bc818f7b187385030c70ea3bec5c6
+Container-Image: sha256:1af55e60c9222ad09dab8376b629725135c54912bb3583c13591833db90f2d8f
+Verification-Attestation: medici-finance/assay#4899 run=5ccd2ebd5758ea493032d3d16fff00f1c685ad55969bf0efd73d4d62fb0a2395 source=1304d40f5c32cae5136e87f6b1f0cbe5a008c72a brief=docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=5ccd2ebd5758ea493032d3d16fff00f1c685ad55969bf0efd73d4d62fb0a2395 source=1304d40f5c32cae5136e87f6b1f0cbe5a008c72a tree=sha256:ea9e09df341a0d8bd1ed087777cbb72caf2bc818f7b187385030c70ea3bec5c6 witness=sha256:e2a757e9587bf9ac5810ee386b2d656492c90723f7dee12add9e550e1887f25a opened=2026-10-29T22:44:29Z closed=2026-10-29T22:48:10Z before=receipt after=check-verifier
+
+Environment: the container used the published verify-runner image pinned by digest (sha256:1af55e60c922, linux/amd64, run under the engine's amd64 emulation). That image carries statusgen v1.0.65, Go 1.27.3 and git 2.56.0, and its digest matches the one the v1.0.65 release names. The container ran with `--network none`, as an unprivileged user, with the engine's default seccomp profile and no added privileges, and with GOPROXY=off and GOFLAGS=-mod=readonly; Go modules came from the image's own baked module cache. The home, its git directory and the admission receipt were bind-mounted read-only; the only writable mount was a new directory for the witness file. The host statusgen is the same release (darwin-arm64, sha256 matches the release checksums). The container's admission step recomputed the mounted home's tree digest and matched the sha256:ea9e09df341a value the host recorded at the open step. The first container launch under this bracket produced the witness; no launch was refused or discarded.
+
+Primary output (supplemental, no acceptance credit): the four row commands were re-run on 2026-10-29 by the verifier App (claude-opus-5-5 verifier) in a separate network-off container, from the same pinned image at the same source 1304d40f5c32, with output kept for inspection. These are not Evidence rows and carry no runner stamp.
+
+- Row 1: exit 0, output sha256 896aad996c1f. `--- PASS: TestWorkflowOracle (73.48s)`, and 29 named subtests pass. These include the board, planner, dispatch and issue cases, the built-in controls `wrong-head`, `missing-WAIT`, `changed-order` and `wrong-depth`, the five printed-output controls, and the production overlays `production-reviewloop` and `production-deskdispatch`.
+- Row 2: exit 0, output sha256 08b354df7ed5. `--- PASS: TestCostCohort (28.41s)`, and the subtests `cold-small`, `steady-small`, `skew-growth`, `concurrent`, `partial`, `failed` and `attempts-304-and-unknown` all pass.
+- Row 3: exit 0, output sha256 a8f526d1f832, which equals the witness row 3 hash. `consumers corroboration — base f92d2e9f2425..e28201023c74 (immutable delivered snapshot)` and `summary: 4 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`.
+- Row 4: exit 0, output sha256 e8b282691039. `--- PASS: TestGitPackagesInstallQuiet (1.31s)`.
+
+Mutation probes (supplemental, no acceptance credit). Each probe ran the exact row command in a network-off container from the same pinned image, against a throwaway copy of the observed source, with exactly one change applied and then reverted. Each copy was a scratch git repository with one local commit, because TestCostCohort reads the module's git revision. The unmutated row command passed in each copy before the probes and again after them.
+
+- Row 1: every probe was killed, exit 1.
+  - A comparator that always accepts fails with `oracle accepted planted mutation`.
+  - A production dispatch scope changed from DELTA to OMITTED fails the dispatch cases with `command output missing "- Scope: DELTA (clause 19)"`. The test's own scope overlay then also reports that its target no longer matches.
+  - Dropping the production planner rows fails with `command output rows got []`.
+- Row 2: the control and all 9 corruptions in the package's cost-mutations fixture each turn the row red, exit 1. Examples:
+  - The control fails with `unknown-cost control descendantCpuMs escaped its assertion`.
+  - Setting the production command's descendant CPU to zero fails with `cold-small invocation 0 ("deskboard"): descendantCpuMs must be explicit null, got "0"`.
+  - Making the HTTP retry lineage known-false fails with `retry must be explicit null, got "false"`.
+  - Zero quota points fail with `invented fixture quota points`.
+  - The second-site Git agent's descendant CPU and the production inclusive CPU made zero are killed, and so is each of the four serialized fields removed.
+
+No probe attempt was discarded or re-run.
+
+Risk-bearing rows: none. The risk metadata is present and every answer is no. No Verify row carries a risk-bearing, live, mutating or end-to-end tag (rows 1 and 2 are tagged `+flow +mutation`), so no fail-first witness is required.
+
+Closure gate: unchanged from the blocks above. The protected `Verification-Table:` record names delivery e28201023c74, base f92d2e9f2425 and original f92d2e9f2425. Row 3's delivered command differs from its current command, so closure needs the explicit human-approved acceptance transition in docs/protected-paths.md. A merge or review of #4415 is not that approval.
+
+At this run, #4599 is still open. Its only comment is the verifier's drafted request carrying the acceptance-transition marker for this brief and the approval payload (amendment 0440eb71c7c8, rows=3). No roster human has posted an `Approve acceptance-transition v1` comment on it or on any other issue carrying that marker. Commit fbba43b55 on main adds support for explicitly approved Expect-only transitions, but it does not stand in for the missing approval, and #4505 is still open. Even after an approval lands, a transition run is host-only, and on a darwin host every check:ci row is could-not-run (#1800).
+
+`statusgen verifyrun --check` on this block, applied to a scratch checkout at the observed source: it refuses, exit 2: `refused — protected table: refusing: verdict mismatch: the latest recorded verdict is VERIFY: BLOCKED, not PASS`. That is the expected outcome for a BLOCKED record, and it produces no N-pass summary line. `statusgen --lint` on the same scratch checkout reports no problem for this brief. Its four remaining problems are in other briefs, and they are identical with and without this block.
+
+Input drift: none. The home stayed detached at the observed source for the whole run, and the attestation's source is the observed source.
+
+Risk-value: the item is not irreversible and its risk metadata is all no. Re-reading the delivered test harness at the observed source finds only reversible test knobs; none is a production bound.
+
+RISK-VALUE: DERIVED — oracle population floor = 15 @ tools/desk/internal/reviewtest/qualification_test.go:237 — the Task requires a frozen population wide enough to cover every board, planner, dispatch and issue lane. The oracle fixture holds 18 cases at the observed source. The floor only refuses a narrowed fixture; it never lets a failing case pass.
+RISK-VALUE: DERIVED — probe timeout = 45s @ tools/desk/internal/reviewtest/qualification_test.go:110, build timeout = 3m @ qualification_test.go:58 and :370 — harness ceilings on local fixture work; exceeding one fails the test, never passes it.
+RISK-VALUE: DERIVED — truncation cap = 100 @ tools/desk/internal/reviewtest/qualification_test.go:587 and :603, Seed = 37 @ qualification_test.go:550 — the cap mirrors the deskboard adapter's population cap of 100 so the growth cohort exercises truncation. The seed is a fixed label for reproducible cohort ordering.
+
+**VERIFY: BLOCKED** — all 4 rows pass in the network-off container witness at source 1304d40f5c32, inside a closed admission bracket (`verdict=match`), and every row 1 and row 2 mutation probe was killed. Closure is blocked because row 3's amended command (#4415) has no recorded human acceptance-transition approval (#4599 open, no approval comment), and the amendment is creditable only through that approval. Even with approval, the host transition run remains limited (#1800, #4505). The README row stays `implemented`.
+
+### Container re-verification with the approved transition — 2026-11-01 (source ab6803d9f65c)
+
+Observed source: merged main ab6803d9f65c, in a detached home admitted by `deskdispatch --check-verifier` (attestation #5162). The delivery and amendment facts:
+
+- The delivery is merged PR #3331: e28201023c74, base and original f92d2e9f2425.
+- The amendment is two-parent merge 0440eb71c7c8, on the observed source's first-parent history.
+- `deskpathguard rederive` at the observed source reports 4 rows and 0 author-added.
+- The approval is comment 6561647076 on #5157, unedited, on the issue carrying this brief's acceptance-transition marker. Its payload names this amendment and rows 1 and 3.
+
+Two witnesses follow, unaltered, both produced in this run by `statusgen` v1.0.67:
+
+- The host block is the transition record. It selects row 4 only, with `--acceptance-record` and `--acceptance-forge`. **Row 4 did not execute.** It records exit=- and the empty-output hash, because a check:ci row needs a network-off sandbox and this host is darwin (#1800). The host run still exited 0. Row 4 carries no acceptance credit, and no result for it is claimed.
+- The second table is the container witness for rows 1, 2 and 3, from `--sandbox=container-netns` inside a closed admission bracket opened and closed on the host. The home was clean when the bracket opened and again before the host run.
+
+Container environment: verify-runner image digest sha256:f073d208c69e, taken from the release v1.0.67 `verify-runner-image.txt` and equal to the local repo digest. The image is linux/amd64 and ran under emulation on an arm64 host. The network was off, the home was mounted read-only, and all capabilities were dropped. Sigstore and checksum verification of the image were not run. Beyond the home and the receipt, the container also mounted a new writable witness directory, which `--witness` needs, and a read-only git directory, which the rows need for history. That git directory is a sanitized copy with credential and push settings removed. No key or token directory was mounted.
+
+Verdict basis. The witness holds only hashes, so a supplemental network-off rerun from the same image kept full output, with no acceptance credit:
+
+- Row 1, against the approved amended Expect: exit 0, `--- PASS: TestWorkflowOracle`. All 18 literal fixture subtests pass across board, planner, dispatch and issues. The 9 mutation-control subtests pass, covering wrong-head, missing-WAIT, changed-order, wrong-depth and the printed row, depth, proposal and idle controls. The production-reviewloop and production-deskdispatch overlays also pass.
+- Row 2, against its original Expect: exit 0, `--- PASS: TestCostCohort`. Subtests cold-small, steady-small, skew-growth, concurrent, partial, failed and attempts-304-and-unknown pass. Each cohort logs its coverage as partial, and the report check requires explicit null for unknown costs.
+- Row 3, under the approved amended Command: exit 0, `summary: 4 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`. The rerun's captured output is not hash-comparable to the witness, because it combines stderr and an exit marker. The container has no roster by design, and the configuration notice about that did not stop the corroboration.
+
+Mutation probes (supplemental, no acceptance credit). Each probe ran the row's test in a network-off container from the same image, against a throwaway copy of the observed source, with one change applied and then reverted. The unmutated copy passed rows 1 and 2 first. Every probe below turned its row red, exit 1:
+
+- Row 1, a comparator that always accepts: `oracle accepted planted mutation`.
+- Row 1, reviewloop stops rendering planner rows: `command output rows got []`.
+- Row 2, production command descendant CPU set to zero: `cold-small invocation 0 ("deskboard"): descendantCpuMs must be explicit null, got "0"`.
+
+Not re-run here: the idle-gate, DELTA-to-OMITTED and remaining cost-corruption probes from earlier blocks. The test files under the reviewtest package are unchanged since source 1304d40f5c32, where those were killed. Production files under the desk commands did change.
+
+Disclosed attempts:
+
+- An earlier uncommitted attempt in this home ran every row on the host. All rows were could-not-run on darwin, exit 2. It was discarded without landing, and its logs were lost with its scratch directory.
+- Two preflight containers ran no `verifyrun` and no rows. The first had a bad mount spelling. Neither touched the home.
+- The supplemental rerun overlapped the host run, so its later rows read a home whose Evidence section already held the host block. The rerun carries no credit.
+
+Risk-bearing rows: none. The risk metadata is present and every answer is no. No Verify row carries a risk-bearing, live, mutating or end-to-end tag, so no fail-first witness is required.
+
+Acceptance-Changes: 1=Expect,3=Command
+Verification-Table: delivery=e28201023c74b5f407ae98f9833ee4f79999f1db base=f92d2e9f24251bb3ac57c6447f229916d7748dfc original=f92d2e9f24251bb3ac57c6447f229916d7748dfc
+Acceptance-Transition: amendment=0440eb71c7c828ae894de2e221dd48608054cdb7 approval=https://github.com/medici-finance/assay/issues/5157#issuecomment-6561647076
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `(cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestGitPackagesInstallQuiet$' ./internal/gitquiet)` | author-added; execution exit=- sandbox=unshare; no acceptance credit | sha256:e3b0c44298fc | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c63121d2272bc140d306220d7ccba (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5162 run=60eb6b5b7106ae08cad86d6bd76deb580bfa9524f4f2dc83cb67a4493a8dfb23 source=ab6803d9f65c63121d2272bc140d306220d7ccba brief=docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowOracle$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestWorkflowOracle ' "$o")` | pass exit=0 sandbox=container-netns | sha256:d120f22e3ebe | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCostCohort$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestCostCohort ' "$o")` | pass exit=0 sandbox=container-netns | sha256:14cf8a855fc2 | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/37 --delivery e28201023c74b5f407ae98f9833ee4f79999f1db --base f92d2e9f24251bb3ac57c6447f229916d7748dfc` | pass exit=0 sandbox=container-netns | sha256:aa29c5169c9f | 2026-11-01 | assay-verifier-app[bot] @ ab6803d9f65c (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:10f092095bf85ce892e374fe0f983b28b53adf644b8127d135f634f8707cb0fe
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5162 run=60eb6b5b7106ae08cad86d6bd76deb580bfa9524f4f2dc83cb67a4493a8dfb23 source=ab6803d9f65c63121d2272bc140d306220d7ccba brief=docs/streams/desk-tools/brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=60eb6b5b7106ae08cad86d6bd76deb580bfa9524f4f2dc83cb67a4493a8dfb23 source=ab6803d9f65c63121d2272bc140d306220d7ccba tree=sha256:10f092095bf85ce892e374fe0f983b28b53adf644b8127d135f634f8707cb0fe witness=sha256:d556f86361ec102f1415a6c786d179d3c86c330a682fdd5de84c99ad5b081520 opened=2026-11-01T18:05:38Z closed=2026-11-01T18:10:14Z before=receipt after=check-verifier
+
+RISK-VALUE: DERIVED — oracle population floor = 15 @ tools/desk/internal/reviewtest/qualification_test.go:237 — the Task requires a frozen population wide enough to cover every board, planner, dispatch and issue lane. The oracle fixture holds 18 cases at the observed source. The floor only refuses a narrowed fixture; it never lets a failing case pass.
+RISK-VALUE: DERIVED — probe timeout = 45s @ tools/desk/internal/reviewtest/qualification_test.go:110, build timeout = 3m @ qualification_test.go:58 and :370 — harness ceilings on local fixture work; exceeding one fails the test, never passes it.
+RISK-VALUE: DERIVED — truncation cap = 100 @ tools/desk/internal/reviewtest/qualification_test.go:587 and :603, Seed = 37 @ qualification_test.go:550 — the cap mirrors the deskboard adapter's population cap of 100 so the growth cohort exercises truncation. The seed is a fixed label for reproducible cohort ordering.
+
+**VERIFY: PASS** — rows 1, 2 and 3 pass in the network-off container witness at source ab6803d9f65c, inside a closed admission bracket, against the transition approved on #5157. Row 4 is author-added, did not execute on this host (exit=-) and earns no acceptance credit.
 
 ## Review
 

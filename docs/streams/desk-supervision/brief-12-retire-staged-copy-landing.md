@@ -53,10 +53,8 @@ consumers:
 
 files:
 - **remove or reduce to a pointer** `tools/ci-load/activation/` and `ci/staged-workflows/` — the two staging areas. If reduced rather than removed, the pointer file is named `POINTER.md` at each staging area's root (`tools/ci-load/activation/POINTER.md` (planned), `ci/staged-workflows/POINTER.md` (planned)) — pinned here so Verify rows 2/3 name a real deliverable rather than an unenumerated "a pointer". Any live-and-current staged delta is first carried through the workflow App PR path (desk-supervision/11), never landed verbatim (verbatim landing of a stale copy reverts fixes — #1187).
-- **edit** the READMEs and `docs/adopting-assay.md` sections that instruct the `cp <staged>
-  .github/workflows/` hand-copy step — rewrite them to the workflow-only-PR path.
-- **verify (not edit here)** that the release/changelog-fragment handling (#722) is not re-stranded
-  by the removal.
+- **edit** `docs/adopting-assay.md` (and the READMEs) — the sections that instruct the `cp <staged> .github/workflows/` hand-copy step — rewrite them to the workflow-only-PR path.
+- **verify (not edit here)** — that the release/changelog-fragment handling (#722) is not re-stranded by the removal.
 - **out of scope, named so it is not silently assumed** — the existing direct-to-default-branch promote route (today's human-dispatched job) is NOT retired by this brief; only the staging *directories* are. If closing that route is wanted, it is a branch-protection change (who may push to the default branch) tracked separately, not implied by this removal (DR "What is explicitly NOT decided here").
 
 facts:

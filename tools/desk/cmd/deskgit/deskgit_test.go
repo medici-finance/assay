@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/gitcore/gittest"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
-	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // allowedSlug is in the allowed-repo set; deniedSlug is not. The test upstream is a bare repo

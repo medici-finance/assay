@@ -24,6 +24,7 @@ delivery:
   - {in: "assay#1053", covers: partial, note: "slice 1: the deskread issues read, offline lint by default, one git walk for attribution, the memoised brief parse"}
   - {in: "assay#1262", covers: partial, note: "the --changed-only CI gate, the offline-safety proof, the history memo and the identity/surface regressions"}
   - {in: "assay#2312", covers: partial, note: "the stamp-validated read memo for --lint; the remaining gh sites need Forge reads that forge-neutral/33 authors"}
+  - {in: "assay#4385", covers: partial, note: "decision-queue and issue-metric list reads onto deskread; the remaining statusgen forge reads are not delivered"}
 schema: brief-v2
 authored: 2026-09-14 by forge-neutral authoring session
 sources:
@@ -98,25 +99,25 @@ files:
 no human-ruling resolver, and changes no control's accept or refuse rule. Several sites it
 moves do feed a control. Each keeps the same signal from a new source, and the table in Task 6
 names the old and the new source for each. Every site it moves is a read: the
-same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves —
-`forge-neutral/07`'s roster parity and `forge-neutral/01`'s resolver locally, and in CI the
+same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves — `forge-neutral/07`'s
+roster parity and `forge-neutral/01`'s resolver locally, and in CI the
 opt-in workflow-token transport that #2253's ruling chose (the CI-transport brief in #2314).
 For the CI-lane reads that identity is new: today they run under the job's own `gh` login, and
 afterwards under the transport, which is why this brief depends on that brief and adds `issue`,
 plus each further kind its CI-lane sites need, to `ciTransportKinds` by reviewed diff. The
 acting identity statusgen RECORDS is unchanged (row 14). Two resolvers and one issue read are
-deliberately not here, and forge-neutral/35, human-gated, moves all three. The first is the ruling resolver in
-`decisionruling.go`, with its `gh auth token` fallback at `:643`. Moving it rewrites the inputs
+deliberately not here, and forge-neutral/35, human-gated, moves all three. The first is the ruling resolver in `decisionruling.go`,
+with its `gh auth token` fallback at `:643`. Moving it rewrites the inputs
 of the ruling-authenticity control (deleted-comment detection, the comment-to-issue binding,
-edit detection, the bot check) and the credential it reads under. The second is
-`ghCommentResolver` in `transcribescan.go`, the sign-off check both transcribe lanes'
+edit detection, the bot check) and the credential it reads under. The second is `ghCommentResolver`
+in `transcribescan.go`, the sign-off check both transcribe lanes'
 enactment gates read. Moving it changes how the comment is found (a thread read selected by
-id instead of a single read by id) and where the author type comes from. The third is
-`ghVerdictIssueResolver` in `transcribeverdict.go`, the issue read behind the verdict and
+id instead of a single read by id) and where the author type comes from. The third is `ghVerdictIssueResolver`
+in `transcribeverdict.go`, the issue read behind the verdict and
 scan-delta lanes' author pins and edited-issue refusals. Its old source never set the edit flag,
-so moving it turns those refusals on, which changes an accept-or-refuse outcome. Row 3 excludes
-`decisionruling.go` by path and counts the two lines left in `ghCommentResolver` and
-`ghVerdictIssueResolver`; rows 19 and 20 pin each line to its function. One read this brief does move sits next to a human ratification:
+so moving it turns those refusals on, which changes an accept-or-refuse outcome. Row 3 excludes `decisionruling.go`
+by path and counts the two lines left in `ghCommentResolver` and `ghVerdictIssueResolver`;
+rows 19 and 20 pin each line to its function. One read this brief does move sits next to a human ratification:
 the decision-gate anchor's issue read (`decisiongateanchor.go:229`), whose closer the anchor
 matches against the blessing authority's login (`:157`). The anchor's rule is unchanged, and
 the closer login comes from `Issue.ClosedBy` instead of REST `closed_by`, so its signal does
@@ -124,8 +125,8 @@ not change. What this brief
 does change is the REACH of a check, and the two places that could go wrong are the offline
 default and the scope-narrowed mode. Neither removes a control: the issue-debt line is a NOTICE
 that is already `gh`-guarded and already degrades to the empty string on any failure
-(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and
-`--changed-only` is specified as REFUSING outright in the CI gate rather than narrowing quietly.
+(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and `--changed-only`
+is specified as REFUSING outright in the CI gate rather than narrowing quietly.
 Both are guarded by mandatory negative-path rows (5, 6, 11).
 
 single-point-of-failure: for the offline default, the one control between "this lint is green

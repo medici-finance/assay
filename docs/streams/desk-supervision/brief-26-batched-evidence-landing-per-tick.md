@@ -52,11 +52,9 @@ consumers:
 files:
 - **edit** `tools/desk/cmd/deskevidence/` — add `batch.go` (planned) + `batch_test.go` (planned); the usage text in `main.go`.
 - **edit** `tools/desk/internal/deskkit/` — a multi-file commit on the `Forge` interface and its GitHub and GitLab implementations, with golden tests beside the existing forge goldens.
-- **edit** `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`,
-  `tools/desk/README.md`.
-- **add** a test in `tools/desk/cmd/deskflip/` pinning that a batch holding a flagged entry cannot
-  flip (the existing CHANGES_REQUESTED and stale-head refusals, exercised on a batch).
-- **add** `changelog/<branch>.md` — the fragment this repo enforces.
+- **edit** `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`, `tools/desk/README.md`.
+- **add** `tools/desk/cmd/deskflip/` — a test in it pinning that a batch holding a flagged entry cannot flip (the existing CHANGES_REQUESTED and stale-head refusals, exercised on a batch).
+- **add** — `changelog/<branch>.md` — the fragment this repo enforces.
 
 facts (2026-09-27 @ b227b4076; re-establish from the named files and commands at pickup):
 - **The skill today.** `plugins/assay/skills/verify-desk/SKILL.md`, "Public repo (PR-required main)": one Evidence PR per
