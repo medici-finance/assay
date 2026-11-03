@@ -1,10 +1,12 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,8 +39,13 @@ func testRefreshConfig() RefreshConfig {
 func seedRefresh(t *testing.T, db *sql.DB, g *RefreshGate, callers ...string) {
 	t.Helper()
 	c := g.config
-	if _, e := db.Exec(`INSERT INTO public.refresh_budgets(source_id,profile,known,window_at,window_ns,http_used,http_limit,inflight_limit,reservation_limit) VALUES($1,$2,true,clock_timestamp(),$3,0,$4,$5,$6)`, []byte(c.SourceID), g.budgetProfile, int64(c.Native.Window), c.Native.SourcePerWindow, c.Native.Concurrent, c.Native.Reservations); e != nil {
+	if _, e := db.Exec(`INSERT INTO public.refresh_budgets(source_id,profile,known,window_at,window_ns,http_used,http_limit,inflight_limit,reservation_limit) VALUES($1,$2,true,clock_timestamp(),$3,0,$4,$5,$6) ON CONFLICT(source_id) DO NOTHING`, []byte(c.SourceID), g.budgetProfile, int64(c.Native.Window), c.Native.SourcePerWindow, c.Native.Concurrent, c.Native.Reservations); e != nil {
 		t.Fatal(e)
+	}
+	var existing []byte
+	var known bool
+	if db.QueryRow(`SELECT profile,known FROM public.refresh_budgets WHERE source_id=$1`, []byte(c.SourceID)).Scan(&existing, &known) != nil || !known || !bytes.Equal(existing, g.budgetProfile) {
+		t.Fatal("synthetic shared source profile mismatch")
 	}
 	if _, e := db.Exec(`INSERT INTO public.refresh_admissions(admission,source_id,profile,known,window_at,window_ns,fills_used,fill_limit,http_used,http_limit,active_limit,waiter_limit,failure_limit) VALUES($1,$2,$3,true,clock_timestamp(),$4,0,$5,0,$6,$7,$8,$9)`, []byte(c.AdmissionID), []byte(c.SourceID), g.profile, int64(c.Limits.FillWindow), c.Limits.AdmissionFillsPerWindow, c.Native.AdmissionPerWindow, c.Limits.AdmissionFills, c.Limits.AdmissionWaiters, c.Limits.FailureEntries); e != nil {
 		t.Fatal(e)
@@ -154,6 +161,7 @@ func TestPGRefreshGateAtomicCompletion(t *testing.T) {
 
 // regression: F-refresh-native-reservations
 func TestPGRefreshAttemptAuthority(t *testing.T) {
+	t.Run("cross-admission-source-lock", checkRefreshCrossAdmissionLock)
 	t.Run("known-zero-entry", checkRefreshKnownZeroEntry)
 	t.Run("unknown-decoded-prefix", checkRefreshUnknownDecodedPrefix)
 	t.Run("native-data-bound", checkRefreshNativeDataBound)
@@ -735,5 +743,93 @@ func checkRefreshKnownZeroEntry(t *testing.T) {
 	}
 	if _, e = r.g.BeforeAttempt(ctx, ticket.AttemptGrant); e != nil {
 		t.Fatal("known zero-entry slot poisoned eligible future work")
+	}
+}
+
+func checkRefreshCrossAdmissionLock(t *testing.T) {
+	cfg := testRefreshConfig()
+	cfg.Native.Concurrent = 1
+	cfg.Limits.FillTimeout = 20 * time.Second
+	r := sqlRefreshConfig(t, cfg)
+	_, u := mirrorInput()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	bcfg := cfg
+	bcfg.AdmissionID = "synthetic-b"
+	otherDB, e := Open(ctx, r.config)
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { otherDB.Close() })
+	otherStore, _ := otherDB.Mirror(r.s.limits)
+	other, e := otherDB.Refresh(otherStore, bcfg, refreshTestAuthority{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	seedRefresh(t, r.raw, other, "caller-b")
+	aTicket := acquireRefresh(t, r, r.demand(u.Scope, "caller-a"))
+	bScope := u.Scope
+	bScope.AdmissionID = bcfg.AdmissionID
+	bRig := refreshRig{mirrorRig: r.mirrorRig, g: other, cfg: bcfg}
+	bTicket := acquireRefresh(t, bRig, bRig.demand(bScope, "caller-b"))
+	block, e := r.raw.BeginTx(ctx, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer block.Rollback()
+	var source []byte
+	if e = block.QueryRowContext(ctx, `SELECT source_id FROM public.refresh_budgets WHERE source_id=$1 FOR UPDATE`, []byte(cfg.SourceID)).Scan(&source); e != nil {
+		t.Fatal(e)
+	}
+	type answer struct {
+		gate        *RefreshGate
+		grant       mirror.AttemptGrant
+		reservation mirror.AttemptReservation
+		err         error
+	}
+	answers := make(chan answer, 2)
+	var workers sync.WaitGroup
+	for _, input := range []struct {
+		gate  *RefreshGate
+		grant mirror.AttemptGrant
+	}{{r.g, aTicket.AttemptGrant}, {other, bTicket.AttemptGrant}} {
+		workers.Add(1)
+		go func(g *RefreshGate, grant mirror.AttemptGrant) {
+			defer workers.Done()
+			res, e := g.BeforeAttempt(ctx, grant)
+			answers <- answer{g, grant, res, e}
+		}(input.gate, input.grant)
+	}
+	t.Cleanup(func() { cancel(); block.Rollback(); workers.Wait() })
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		var waiting int
+		if e = r.raw.QueryRowContext(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%public.refresh_budgets%FOR UPDATE%'`).Scan(&waiting); e != nil {
+			t.Fatal(e)
+		}
+		if waiting == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("both independent admissions did not block on source anchor")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if e = block.Rollback(); e != nil {
+		t.Fatal(e)
+	}
+	one, two := <-answers, <-answers
+	winner, loser := one, two
+	if winner.err != nil {
+		winner, loser = loser, winner
+	}
+	if winner.err != nil || loser.err == nil {
+		t.Fatal("two admissions overspent one canonical in-flight slot")
+	}
+	if e = winner.gate.ObserveAttempt(ctx, winner.reservation, mirror.AttemptObservation{HTTP: mirror.WorkCount{Value: 1, Known: true}, Status: 200, ResponseComplete: true, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}, ObservedAt: time.Now()}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = loser.gate.BeforeAttempt(ctx, loser.grant); e != nil {
+		t.Fatal("qualified shared slot release did not admit waiting domain")
 	}
 }
