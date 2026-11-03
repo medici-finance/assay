@@ -1,0 +1,1 @@
+- Claim decay now requires an explicitly supplied token for its current host and reports unavailable without launching a stored-login credential subprocess when that token is missing.

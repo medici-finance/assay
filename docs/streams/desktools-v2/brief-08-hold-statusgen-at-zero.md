@@ -35,7 +35,7 @@ consumers:
 exec-tier: strong
 exec-tier-why: Cross-module capability checks must tell the permitted offline packages apart from indirect credential or write reach.
 domain: complicated
-version: 8
+version: 9
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -123,8 +123,8 @@ changes here, and what does not:
   statusgen column of `forge-ban.sh`'s class a line, not the `statusgen sites:` total, which
   also sums classes b to d. The class a sites all retire under forge-neutral/18 and /35, which
   this brief follows; that includes the two `"gh"` lines of the claim-decay `gh auth token`
-  fallback (`statusgen/claimdecay_github.go`), which /18 deletes. So rows 1 to 3 can reach `0`
-  without /77.
+  fallback (`statusgen/claimdecay_github.go`), retired by child forge-neutral/49 and
+  consumed by /18. So rows 1 to 3 can reach `0` without /77.
 - **The rest of the statusgen total is not this brief's.** At `e07782de2` (and unchanged at
   `8169a8281`) `forge-ban.sh` prints `statusgen sites: 38`: class a 30, b 1, c 3, d 4. Class c
   (`autonomy.go:548`, `:557`, `autoflip.go:1470`, the GraphQL blocks of reads /18 moves) is

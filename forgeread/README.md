@@ -130,7 +130,19 @@ retaining additional records. A page that crosses that budget ends the walk with
 `Incomplete=true`, `LimitReason=byte-limit` and a zero `ObservedUpTo`. `ResponseBytes` includes
 that fetched page and `PageCount` includes its request. The byte count measures raw JSON,
 not compressed network bytes. A page-ceiling stop uses `LimitReason=page-limit` and also clears
-the bound. This bounds accepted multi-page payload, not the existing native backend's
-single-response `io.ReadAll` allocation or total decoded-object overhead. A transport-level
-single-response limit remains required before consumer activation and belongs to the full
-mirror/shared-library integration; this contribution does not claim that limit is implemented.
+the bound. This bounds accepted multi-page payload, not total decoded-object overhead.
+
+Desk-tools separately bounds each native incremental response to 8 MiB of decoded JSON
+before either provider SDK buffers or decodes it, including error responses. Its private
+mirror client copies reuse the admitted transport, cancellation and scope checks; ordinary
+reads, logs, archives and writes keep their previous behavior. The bound reads at most one
+additional decoded byte to detect overflow, closes the original body, and returns an
+inspectable limit/could-not-check cause without a population or observed bound.
+On native guard failure, known HTTP error status remains inspectable alongside the original
+limit or read cause. The added HTTP metadata contains status only. Automatic
+HTTP gzip decoding and explicitly encoded gzip responses use the same decoded-byte cap;
+unsupported content encodings refuse. Content-Length never substitutes for counting bytes.
+This native contribution does not qualify the future mapper's preservation of persisted
+watermarks, PostgreSQL, scheduling, coalescing, retention or reader cutover. Those remain
+with the joined mirror delivery, including its row-23 production-flow acceptance. The
+shared-library migration reuses this native composition rather than adding a second bound.
