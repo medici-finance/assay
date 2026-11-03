@@ -137,7 +137,9 @@ before either provider SDK buffers or decodes it, including error responses. Its
 mirror client copies reuse the admitted transport, cancellation and scope checks; ordinary
 reads, logs, archives and writes keep their previous behavior. The bound reads at most one
 additional decoded byte to detect overflow, closes the original body, and returns an
-inspectable limit/could-not-check cause without a population or observed bound. Automatic
+inspectable limit/could-not-check cause without a population or observed bound.
+Known HTTP error status remains available beneath that cause, without retaining response
+body, headers or endpoint metadata. Automatic
 HTTP gzip decoding and explicitly encoded gzip responses use the same decoded-byte cap;
 unsupported content encodings refuse. Content-Length never substitutes for counting bytes.
 This native contribution does not qualify the future mapper's preservation of persisted
