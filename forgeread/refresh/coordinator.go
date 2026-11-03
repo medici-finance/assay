@@ -44,6 +44,9 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if !caller.valid(a, q.Query) {
 		return held(q, mirror.Permission), ErrPolicy
 	}
+	readCtx, cancelRead := context.WithTimeout(ctx, caller.Limits.WaitTimeout)
+	defer cancelRead()
+	ctx = readCtx
 	if err := c.authority.Authorize(ctx, caller, q.Scope); err != nil {
 		return held(q, mirror.Permission), err
 	}

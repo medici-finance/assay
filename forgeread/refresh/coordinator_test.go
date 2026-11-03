@@ -487,6 +487,7 @@ func TestRefreshScopeEpochs(t *testing.T) {
 
 // regression: #5399
 func TestRefreshFairBudgets(t *testing.T) {
+	t.Run("whole-read-deadline", checkReadDeadline)
 	checkWindowBudget(t)
 	checkFailureCapacity(t)
 	f := setup(t)
@@ -1028,3 +1029,38 @@ func checkPermissionRecovery(t *testing.T) {
 		}
 	})
 }
+
+type blockingReadStore struct{ mirror.Store }
+
+func (s blockingReadStore) Read(ctx context.Context, _ mirror.Admission, _ mirror.Scope) (mirror.Snapshot, error) {
+	<-ctx.Done()
+	return mirror.Snapshot{}, ctx.Err()
+}
+
+// regression: #5399
+func checkReadDeadline(t *testing.T) {
+	f := setup(t)
+	f.caller.Limits.WaitTimeout = 50 * time.Millisecond
+	f.auth.set(f.caller)
+	f.c[0].store = blockingReadStore{Store: f.store}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	out := make(chan error, 1)
+	go func() { _, e := f.c[0].Read(ctx, f.a, f.q, f.caller); out <- e }()
+	select {
+	case e := <-out:
+		if !errors.Is(e, context.DeadlineExceeded) {
+			t.Fatalf("blocking read deadline: %v", e)
+		}
+	case <-time.After(500 * time.Millisecond):
+		cancel()
+		<-out
+		t.Fatal("initial store read escaped the finite caller deadline")
+	}
+	if f.source.calls.Load() != 0 {
+		t.Fatal("store outage fell back to provider")
+	}
+}
+
+// regression: #5399
+func TestRefreshReadDeadline(t *testing.T) { checkReadDeadline(t) }
