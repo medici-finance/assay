@@ -269,3 +269,12 @@ The current fixture qualifies only these shared ports and coordinator propagatio
 Native leaf instrumentation, provider-header parsing and actual lower request
 refusal remain unqualified until their production implementation and controls land.
 No SQL, cross-process or activation proof follows from the fixture.
+
+
+The native receipt contract also requires `AttemptReceipt.ObservedAt`: the latest
+qualified decoded-data completion time before authority observation I/O. It
+qualifies source observation stamps and coverage planning, including empty
+inventories. Current query time stays current so slow reporting cannot refresh old
+data. A successful production native scan requires this bound; a legacy fake zero
+is unknown. Individual attempt timing and canonical R2 quota/lease/database clocks
+keep their separate meanings.

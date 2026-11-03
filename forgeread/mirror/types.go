@@ -262,7 +262,10 @@ type AttemptAuthority interface {
 // This invocation's own work only. The aggregate never closes/refunds individual
 // reservations or invents missing reports.
 type AttemptReceipt struct {
-	Grant              AttemptGrant
+	Grant AttemptGrant
+	// Qualified decoded-data completion before authority observation I/O.
+	// Zero is unknown; this is never quota, lease or callback-completion time.
+	ObservedAt         time.Time
 	HTTP, DecodedBytes WorkCount
 	Retry              RetryEvidence
 	Held               AttemptHold
