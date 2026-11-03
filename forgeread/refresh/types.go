@@ -20,6 +20,8 @@ var (
 
 // Limits are trusted composition input, never decoded from a caller request.
 // The gate enforces these across coordinators; there are no local allowances.
+// Refresh.FailureBackoff must be zero: this composition has one shared retry
+// authority in Gate, while the standalone mirror planner retains general backoff.
 type Limits struct {
 	CallerFillsPerWindow, AdmissionFillsPerWindow                                int
 	FillWindow, MinFreshness, MaxFreshness                                       time.Duration
@@ -29,7 +31,7 @@ type Limits struct {
 }
 
 func (l Limits) valid() bool {
-	return l.CallerFillsPerWindow > 0 && l.AdmissionFillsPerWindow >= l.CallerFillsPerWindow && l.FillWindow > 0 && l.MinFreshness > 0 && l.MaxFreshness >= l.MinFreshness && l.ActiveFills > 0 && l.QueuedCallers > 0 && l.AdmissionFills >= l.ActiveFills && l.AdmissionWaiters >= l.QueuedCallers && l.FailureEntries > 0 && l.WaitTimeout > 0 && l.FillTimeout > 0 && l.Cooldown > 0 && l.FailureTTL >= l.Cooldown && l.Refresh.Overlap >= 0 && l.Refresh.FullInventoryInterval > 0 && l.Refresh.FailureBackoff >= 0
+	return l.CallerFillsPerWindow > 0 && l.AdmissionFillsPerWindow >= l.CallerFillsPerWindow && l.FillWindow > 0 && l.MinFreshness > 0 && l.MaxFreshness >= l.MinFreshness && l.ActiveFills > 0 && l.QueuedCallers > 0 && l.AdmissionFills >= l.ActiveFills && l.AdmissionWaiters >= l.QueuedCallers && l.FailureEntries > 0 && l.WaitTimeout > 0 && l.FillTimeout > 0 && l.Cooldown > 0 && l.FailureTTL >= l.Cooldown && l.Refresh.Overlap >= 0 && l.Refresh.FullInventoryInterval > 0 && l.Refresh.FailureBackoff == 0
 }
 
 // Caller is a trusted identity/policy snapshot. A caller-facing adapter must derive

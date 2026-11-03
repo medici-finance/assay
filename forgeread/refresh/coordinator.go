@@ -219,11 +219,7 @@ func (c *Coordinator) fill(ctx context.Context, t Ticket, a mirror.Admission, q 
 		finish()
 		return
 	}
-	if q.Now.Before(plan.NotBefore) {
-		complete.Failure = mirror.Unknown
-		finish()
-		return
-	}
+	// Admitted composition has zero kernel backoff; Gate owns retry eligibility.
 	if err := c.authority.Authorize(ctx, caller, q.Scope); err != nil {
 		complete.AdmissionDenied = true
 		complete.Failure = mirror.Permission
