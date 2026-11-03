@@ -387,7 +387,7 @@ describes that preparation checkpoint.
 The canonical row remains `todo` because the risk-gated lifecycle requires a formal
 `design:` record. Proposed `DR-graph-exec-16` transcribes the existing bounded
 profile and its restrictions; no record-specific ruling or design stamp is invented.
-After its exact human provenance is bound, use the native reconciler to assess the
+After its exact human provenance is bound, use the native `statusgen reconcile` command to assess the
 `implemented` transition with the actual #5386 witness. Independent verification,
 human acceptance and activation are subsequent distinct acts.
 
