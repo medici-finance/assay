@@ -742,15 +742,18 @@ func TestCellJournalProvenAbsence(t *testing.T) {
 func TestCellCompletionGeneration(t *testing.T) {
 	d, c, a := cellFixture(t)
 	r := cellRequest(t, d, c, "completion", 1)
-	if err := a.Commit(context.Background(), r); err != nil {
+	journal := CellJournal{Authority: a, CellID: "cell", Request: func(i Intent) (CellAdmission, error) { r.Intent = i; r = c.issue(r); return r, nil }}
+	if err := journal.Record(r.Intent.Event); err != nil {
 		t.Fatal(err)
+	}
+	if len(cellRead(t, d).Pending) != 1 {
+		t.Fatal("ordinary Journal intent acknowledged without durable admission")
 	}
 	provider := cellProvider(a)
 	receipt, err := provider.apply(context.Background(), r.Permit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal := CellJournal{Authority: a, CellID: "cell"}
 	done := r.Intent.Event
 	done.Kind = "EFFECT-DONE"
 	done.Ref = receipt.Ref

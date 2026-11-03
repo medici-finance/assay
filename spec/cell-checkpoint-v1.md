@@ -143,3 +143,7 @@ the stricter Cap, within the Cap+C bound, and grants no extra slots from C.
 Matching EFFECT-DONE completion retains its actual receipt reference, key, claim
 generation and observation event alongside the unchanged signed admission. A
 completion from another generation never removes the pending operation.
+
+The inherited Journal.Record(EFFECT-INTENT) entrypoint delegates to the same
+transactional CommitIntent implementation. It never acknowledges a discarded
+mandatory intent; ordinary best-effort attribution does not include intent writes.

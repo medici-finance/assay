@@ -461,6 +461,9 @@ func (j CellJournal) Pending(ctx context.Context, run string) ([]Intent, error) 
 	return out, nil
 }
 func (j CellJournal) Record(e Event) error {
+	if e.Kind == "EFFECT-INTENT" {
+		return j.CommitIntent(context.Background(), Intent{Event: e})
+	}
 	if e.Kind != "EFFECT-DONE" {
 		return nil
 	} // ordinary attribution is not an admission receipt.

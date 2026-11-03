@@ -206,6 +206,7 @@ mutations += [
  ("cell-usage-unrecorded-empty", "ownership.go", "if !found {", "if false && !found {", "TestCellUsageRefusals"),
  ("cell-usage-predecessor-ignored", "ownership.go", "if !seenUsage && latestSource != x.PreviousSourceRef {", "if false && !seenUsage && latestSource != x.PreviousSourceRef {", "TestCellUsageRefusals"),
  ("cell-settlement-change-accepted", "ownership.go", "if !reflect.DeepEqual(old, x) {", "if false && !reflect.DeepEqual(old, x) {", "TestCellUsageRefusals"),
+ ("cell-record-intent-discarded", "ownership.go", "return j.CommitIntent(context.Background(), Intent{Event: e})", "return nil", "TestCellCompletionGeneration"),
  ("cell-completion-receipt-dropped", "ownership.go", "s.Receipts = append(s.Receipts, e)", "s.Receipts = s.Receipts", "TestCellCompletionGeneration"),
  ("cell-completion-generation-ignored", "ownership.go", "r.Intent.Event.Generation == e.Generation &&", "true &&", "TestCellCompletionGeneration"),
 ]
