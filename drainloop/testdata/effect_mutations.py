@@ -199,6 +199,16 @@ mutations += [
  ("cell-authority-clock-ignored", "ownership.go", "reserveBudget(&s.Checkpoint.Budget, r, a.Now())", "reserveBudget(&s.Checkpoint.Budget, r, e.Time)", "TestCellAuthorityWindow"),
  ("cell-lower-window-ignored", "ownership.go", "if err := balanceWindow(balance, a.Now()); err != nil {", "if err := balanceWindow(balance, a.Now()); false {", "TestCellAuthorityWindow"),
 ]
+# Security lane: isolate each stored-binding/settlement/completion guard.
+mutations += [
+ ("cell-stored-policy-unbound", "ownership.go", "if CellAdmissionDigest(r) != p.AdmissionDigest {", "if false && CellAdmissionDigest(r) != p.AdmissionDigest {", "TestCellEffectRestoredRecords"),
+ ("cell-usage-identity-ignored", "ownership.go", 'return errors.New("usage identity/policy mismatch")', "_ = u", "TestCellUsageRefusals"),
+ ("cell-usage-unrecorded-empty", "ownership.go", "if !found {", "if false && !found {", "TestCellUsageRefusals"),
+ ("cell-usage-predecessor-ignored", "ownership.go", "if !seenUsage && latestSource != x.PreviousSourceRef {", "if false && !seenUsage && latestSource != x.PreviousSourceRef {", "TestCellUsageRefusals"),
+ ("cell-settlement-change-accepted", "ownership.go", "if !reflect.DeepEqual(old, x) {", "if false && !reflect.DeepEqual(old, x) {", "TestCellUsageRefusals"),
+ ("cell-completion-receipt-dropped", "ownership.go", "s.Receipts = append(s.Receipts, e)", "s.Receipts = s.Receipts", "TestCellCompletionGeneration"),
+ ("cell-completion-generation-ignored", "ownership.go", "r.Intent.Event.Generation == e.Generation &&", "true &&", "TestCellCompletionGeneration"),
+]
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}

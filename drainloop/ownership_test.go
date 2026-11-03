@@ -258,6 +258,8 @@ func cellProvider(a CellAuthority) *fakeCellProvider {
 
 func TestCellOwnership(t *testing.T) {
 	t.Run("authoritative-resolution", TestCellJournalProvenAbsence)
+	t.Run("restored-records", TestCellEffectRestoredRecords)
+	t.Run("completion-generation", TestCellCompletionGeneration)
 	ctx := context.Background()
 	d, c, a := cellFixture(t)
 	r := cellRequest(t, d, c, "one", 30)
@@ -339,7 +341,7 @@ func TestCellOwnership(t *testing.T) {
 	})
 }
 func TestCellEffectRestoredRecords(t *testing.T) {
-	for _, name := range []string{"changed-intent", "missing-reservation", "unknown-brake", "stale-claim", "released-claim"} {
+	for _, name := range []string{"changed-intent", "changed-policy", "missing-reservation", "unknown-brake", "stale-claim", "released-claim"} {
 		t.Run(name, func(t *testing.T) {
 			d, c, a := cellFixture(t)
 			r := cellRequest(t, d, c, name, 1)
@@ -350,6 +352,8 @@ func TestCellEffectRestoredRecords(t *testing.T) {
 				switch name {
 				case "changed-intent":
 					s.Pending[0].Reservations[0].Amount = 2
+				case "changed-policy":
+					s.Pending[0].UpperBoundRef = "ref:changed-policy"
 				case "missing-reservation":
 					s.Checkpoint.Budget.Reservations = nil
 				case "unknown-brake":
@@ -732,5 +736,38 @@ func TestCellJournalProvenAbsence(t *testing.T) {
 				t.Fatal("failed spend left original work")
 			}
 		})
+	}
+}
+
+func TestCellCompletionGeneration(t *testing.T) {
+	d, c, a := cellFixture(t)
+	r := cellRequest(t, d, c, "completion", 1)
+	if err := a.Commit(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	provider := cellProvider(a)
+	receipt, err := provider.apply(context.Background(), r.Permit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := CellJournal{Authority: a, CellID: "cell"}
+	done := r.Intent.Event
+	done.Kind = "EFFECT-DONE"
+	done.Ref = receipt.Ref
+	done.Generation = "other-generation"
+	before := cellRead(t, d)
+	if err := journal.Record(done); err == nil {
+		t.Fatal("wrong generation completed pending intent")
+	}
+	if !reflect.DeepEqual(before, cellRead(t, d)) {
+		t.Fatal("wrong completion changed state")
+	}
+	done.Generation = r.Permit.ClaimGeneration
+	if err := journal.Record(done); err != nil {
+		t.Fatal(err)
+	}
+	completed := cellRead(t, d)
+	if len(completed.Pending) != 0 || len(completed.Receipts) != 1 || completed.Receipts[0].Ref != receipt.Ref || completed.Receipts[0].Generation != r.Permit.ClaimGeneration {
+		t.Fatal("matching completion/receipt not retained")
 	}
 }

@@ -201,6 +201,7 @@ type CellState struct {
 	Pacing      []CellPacing
 	Settlements []CellSettlement
 	Resolutions []CellResolutionRecord
+	Receipts    []Event
 }
 
 // CellStore invokes change on an isolated copy under a cross-process atomic
@@ -475,6 +476,7 @@ func (j CellJournal) Record(e Event) error {
 		for n, r := range s.Pending {
 			if r.Intent.Event.Key == e.Key && r.Intent.Event.Generation == e.Generation && r.Intent.Event.RunID == e.RunID && r.Intent.Event.ItemID == e.ItemID && e.Ref != "" {
 				s.Completed = append(s.Completed, r)
+				s.Receipts = append(s.Receipts, e)
 				s.Pending = append(s.Pending[:n], s.Pending[n+1:]...)
 				for n, key := range s.Checkpoint.PendingEffects {
 					if key == e.Key {

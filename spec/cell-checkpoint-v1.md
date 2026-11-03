@@ -79,7 +79,8 @@ R3 exclusive repository assignment remains outside this amendment.
 
 The original checkpoint wire schema remains unchanged. `CellState` is the new
 library's typed store interface, not a second serialized wire format: it contains
-Version, Checkpoint, Pending/Completed admissions, pacing observations and a
+Version, Checkpoint, current item claims, Pending/Completed admissions, receipt
+events, qualified resolution records, pacing observations and a
 settlement ledger. The qualified store owns its versioned representation and must
 strictly preserve the checkpoint's unknowns/holds on restore.
 
@@ -138,3 +139,7 @@ injected authority clock (`CellAuthority.Now`), never the historical intent's
 `Event.Time`. A missing/zero clock refuses; capability expiry remains independently
 required. `CellPacing.C` is configuration/qualification metadata: this seam enforces
 the stricter Cap, within the Cap+C bound, and grants no extra slots from C.
+
+Matching EFFECT-DONE completion retains its actual receipt reference, key, claim
+generation and observation event alongside the unchanged signed admission. A
+completion from another generation never removes the pending operation.

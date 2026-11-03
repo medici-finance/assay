@@ -87,6 +87,7 @@ func (u usageFixture) CellUsage(context.Context, CellPermit) ([]CellSettlement, 
 }
 func TestCellBudgetRestoreAllAttempts(t *testing.T) {
 	t.Run("signed-request-phase", TestCellUsagePhaseBound)
+	t.Run("usage-refusals", TestCellUsageRefusals)
 	d, c, a := cellFixture(t)
 	ctx := context.Background()
 	phases := []string{"preparation", "summary", "execution", "fallback", "verification"}
@@ -418,4 +419,97 @@ func TestCellAuthorityWindow(t *testing.T) {
 	if _, err := provider.apply(context.Background(), r.Permit); err == nil || provider.applied != 0 {
 		t.Fatal("provider bypassed closed authority window")
 	}
+}
+
+func TestCellUsageRefusals(t *testing.T) {
+	for _, name := range []string{"wrong-work", "wrong-attempt", "wrong-request", "missing-source", "missing-model", "missing-pricing"} {
+		t.Run(name, func(t *testing.T) {
+			d, c, a := cellFixture(t)
+			r := cellRequest(t, d, c, name, 5)
+			if err := a.Commit(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			u := usageFor(r.Permit, "ref:source", "execution")
+			switch name {
+			case "wrong-work":
+				u.WorkID = "other-work"
+			case "wrong-attempt":
+				u.AttemptID = "other-attempt"
+			case "wrong-request":
+				u.RequestID = "other-request"
+			case "missing-source":
+				u.SourceRef = ""
+			case "missing-model":
+				u.Model = ""
+			case "missing-pricing":
+				u.PricingRef = ""
+			}
+			a.Usage = usageFixture{rows: []CellSettlement{{ReservationID: r.Reservations[0].ID, Charged: uintRef(1), Usage: u}}}
+			before := cellRead(t, d)
+			if err := a.Settle(context.Background(), r.Permit); err == nil {
+				t.Fatal("mismatched usage identity/policy accepted")
+			}
+			if !reflect.DeepEqual(before, cellRead(t, d)) {
+				t.Fatal("refused usage changed state")
+			}
+		})
+	}
+	t.Run("unrecorded-empty", func(t *testing.T) {
+		d, c, a := cellFixture(t)
+		r := cellRequest(t, d, c, "unrecorded", 1)
+		if err := a.Commit(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+		unrecorded := r.Permit
+		unrecorded.CapabilityRef = "ref:unrecorded"
+		a.Usage = usageFixture{}
+		if err := a.Settle(context.Background(), unrecorded); err == nil {
+			t.Fatal("unrecorded operation returned successful empty settlement")
+		}
+	})
+	t.Run("wrong-predecessor", func(t *testing.T) {
+		d, c, a := cellFixture(t)
+		r := cellRequest(t, d, c, "predecessor", 5)
+		if err := a.Commit(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+		u := usageFor(r.Permit, "ref:initial", "execution")
+		x := CellSettlement{ReservationID: r.Reservations[0].ID, Usage: u}
+		a.Usage = usageFixture{rows: []CellSettlement{x}}
+		if err := a.Settle(context.Background(), r.Permit); err != nil {
+			t.Fatal(err)
+		}
+		x.Usage.SourceRef = "ref:next"
+		x.PreviousSourceRef = "ref:wrong"
+		x.Charged = uintRef(1)
+		a.Usage = usageFixture{rows: []CellSettlement{x}}
+		before := cellRead(t, d)
+		if err := a.Settle(context.Background(), r.Permit); err == nil {
+			t.Fatal("wrong predecessor accepted")
+		}
+		if !reflect.DeepEqual(before, cellRead(t, d)) {
+			t.Fatal("wrong predecessor published a charge")
+		}
+	})
+	t.Run("changed-same-source", func(t *testing.T) {
+		d, c, a := cellFixture(t)
+		r := cellRequest(t, d, c, "changed", 5)
+		if err := a.Commit(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+		x := CellSettlement{ReservationID: r.Reservations[0].ID, Charged: uintRef(1), Usage: usageFor(r.Permit, "ref:fixed", "execution")}
+		a.Usage = usageFixture{rows: []CellSettlement{x}}
+		if err := a.Settle(context.Background(), r.Permit); err != nil {
+			t.Fatal(err)
+		}
+		x.Charged = uintRef(2)
+		a.Usage = usageFixture{rows: []CellSettlement{x}}
+		before := cellRead(t, d)
+		if err := a.Settle(context.Background(), r.Permit); err == nil {
+			t.Fatal("changed immutable settlement accepted")
+		}
+		if !reflect.DeepEqual(before, cellRead(t, d)) {
+			t.Fatal("changed settlement charged twice")
+		}
+	})
 }
