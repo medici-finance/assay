@@ -39,7 +39,7 @@ consumers:
 ## Context
 
 files:
-- .github/workflows/celllaunch-windows.yml (native amd64 contract witnesses for Verify rows 1–3)
+- .github/workflows/celllaunch-windows.yml (retired, #4106: was the native amd64 witness for Verify rows 1–3; native Windows execution is no longer CI-proven, so those rows need an operator run on a native Windows host)
 - tools/desk/internal/celllaunch/ (new contract and tests)
 - docs/cellctl-windows.md (new implementation contract)
 - changelog/cellctl-windows-00.md (release note)
