@@ -151,6 +151,72 @@ mutations += [
      "A snapshot or backup restore may present operator-control state",
      "TestRuledCustodyRestrictions"),
 ]
+# GE/16 store-neutral protocol: compiling mutations of actual admission/boundary
+# and accounting code; no test source is mutated and compile failures are rejected.
+mutations += [
+ ("cell-outbox-unreserved", "ownership.go", "return j.Authority.Commit(ctx, r)", "return nil", "TestCellOwnership"),
+ ("cell-capability-unbound", "ownership.go", 'p.AdmissionDigest == "" || p.AdmissionDigest != CellAdmissionDigest(r)', "false", "TestCellOwnership"),
+ ("cell-authentication-ignored", "ownership.go", "return a.Capabilities.CheckCellCapability(ctx, p)", "return nil", "TestCellOwnership"),
+ ("cell-no-intent-authorized", "ownership.go", 'return errors.New("effect has no admitted intent")', "return nil", "TestCellOwnership"),
+ ("cell-claim-group-conflated", "ownership.go", "return generation, nil", "return s.Checkpoint.Ownership.Generation, nil", "TestCellOwnership"),
+ ("cell-claim-other-item", "ownership.go", "claim.ItemID == item && claim.Owner == s.Checkpoint.Ownership", "claim.Owner == s.Checkpoint.Ownership", "TestCellItemClaimGeneration"),
+ ("cell-stale-group-class", "ownership.go", [
+  ("if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); false {"),
+  ("claim.Owner != s.Checkpoint.Ownership ||", "false ||")
+ ], None, "TestCellOwnershipStaleWriterDenied"),
+ ("cell-stale-claim-class", "ownership.go", [
+  ("claim.Generation != r.Permit.ClaimGeneration || claim.Generation != r.Intent.Event.Generation", "false")
+ ], None, "TestCellEffectRestoredRecords"),
+ ("cell-released-claim-authorized", "ownership.go", "if matches != 1 {", "if false {", "TestCellEffectRestoredRecords"),
+ ("cell-outstanding-not-charged", "budget.go", "if old.BalanceRef == q.BalanceRef {", "if false {", "TestCellBudgetConcurrentReservations"),
+ ("cell-unknown-handback-released", "ownership.go", "len(s.Pending) != 0 || len(s.Checkpoint.PendingEffects) != 0", "false", "TestOwnershipBackendHandbackUnknown"),
+ ("cell-incarnation-ignored", "ownership.go", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); err != nil {", "if err = MatchCellFence(current, s.Checkpoint.Activation, s.Checkpoint.Ownership, p.Ownership); false {", "TestIncarnationStaleRefused"),
+ ("cell-restored-sql-current", "ownership.go", "func (a CellAuthority) check(ctx context.Context, s CellState, p CellPermit) error {\n\tcurrent, err := a.Current.CurrentIncarnation(ctx, p.Ownership.CellID)", "func (a CellAuthority) check(ctx context.Context, s CellState, p CellPermit) error {\n\tcurrent, err := OperatorIncarnation{Schema:IncarnationSchema,CellID:s.Checkpoint.Ownership.CellID,ID:s.Checkpoint.Activation.IncarnationID,KeyRef:s.Checkpoint.Activation.KeyRef}, error(nil)", "TestIncarnationMismatchPaused"),
+ ("cell-contract-field-drift", "../spec/operator-incarnation-v1.md", "- `KeyRef` — `key_ref`; an authorized reference", "- `OldKeyRef` — `key_ref`; an authorized reference", "TestIncarnationSpecMatchesFields"),
+ ("cell-unknown-reservation-lost", "ownership.go", "s.Checkpoint.Budget.Reservations[index].Unknown = true", "s.Checkpoint.Budget.Reservations = append(s.Checkpoint.Budget.Reservations[:index], s.Checkpoint.Budget.Reservations[index+1:]...)", "TestCellBudgetRestoreAllAttempts"),
+ ("cell-pacing-seed-zero", "budget.go", "n := *p.Seed", "n := uint64(0)", "TestCellPacingRestartNoMultiply"),
+ ("cell-pacing-other-process-ignored", "budget.go", "r.PacingScope == scope && r.PacingWindow == window", "false && r.PacingScope == scope && r.PacingWindow == window", "TestCellPacingRestartNoMultiply"),
+]
+budget_source = (root / "budget.go").read_text()
+unknown_brake = '''if found == nil || found.Consumed == nil {
+			return errors.New("brake usage unavailable")
+		}'''
+mutations.append(("cell-unknown-brake-zero", "budget.go", unknown_brake,
+ '''if found == nil { return errors.New("brake usage unavailable") }; if found.Consumed == nil { n := uint64(0); found.Consumed = &n }''', "TestCellBrakeCountUnavailableHolds"))
+start = budget_source.index('case "effect":')
+end = budget_source.index('case "read":', start)
+mutations.append(("cell-pacing-cached-only", "budget.go", budget_source[start:end], 'case "effect": n = p.Cached\n\t', "TestCellPacingRestartNoMultiply"))
+# GE/16 review: safe retirement is authoritative, not a free retry or usage reset.
+mutations += [
+ ("cell-resolution-not-retired", "ownership.go", "s.Pending = append(s.Pending[:index], s.Pending[index+1:]...)", "s.Pending = s.Pending", "TestCellJournalProvenAbsence"),
+ ("cell-resolution-unfenced", "ownership.go", 'result.FenceRef == ""', "false", "TestCellJournalProvenAbsence"),
+ ("cell-resolution-unknown-class", "ownership.go", [
+  ("if held.ID == q.ID {", "if false && held.ID == q.ID {"),
+  ('if !known {\n\t\t\t\treturn errors.New("complete usage proof unavailable")', 'if false && !known {\n\t\t\t\treturn errors.New("complete usage proof unavailable")')
+ ], None, "TestCellJournalProvenAbsence"),
+ ("cell-resolution-lineage-reused", "ownership.go", "old.Admission.Permit.AttemptID == p.AttemptID || old.Admission.Permit.RequestID == p.RequestID", "false", "TestCellJournalProvenAbsence"),
+ ("cell-usage-phase-unbound", "ownership.go", "if u.Phase != phase {", "if false && u.Phase != phase {", "TestCellUsagePhaseBound"),
+ ("cell-authority-clock-ignored", "ownership.go", "reserveBudget(&s.Checkpoint.Budget, r, a.Now())", "reserveBudget(&s.Checkpoint.Budget, r, e.Time)", "TestCellAuthorityWindow"),
+ ("cell-lower-window-ignored", "ownership.go", "if err := balanceWindow(balance, a.Now()); err != nil {", "if err := balanceWindow(balance, a.Now()); false {", "TestCellAuthorityWindow"),
+]
+# Security lane: isolate each stored-binding/settlement/completion guard.
+mutations += [
+ ("cell-stored-policy-unbound", "ownership.go", "if CellAdmissionDigest(r) != p.AdmissionDigest {", "if false && CellAdmissionDigest(r) != p.AdmissionDigest {", "TestCellEffectRestoredRecords"),
+ ("cell-usage-identity-ignored", "ownership.go", 'return errors.New("usage identity/policy mismatch")', "_ = u", "TestCellUsageRefusals"),
+ ("cell-usage-unrecorded-empty", "ownership.go", "if !found {", "if false && !found {", "TestCellUsageRefusals"),
+ ("cell-usage-shared-lineage", "ownership.go", "prior.ReservationID == x.ReservationID &&", "true &&", "TestCellMultiBalanceUsage"),
+ ("cell-usage-predecessor-ignored", "ownership.go", "if latestSource != x.PreviousSourceRef {", "if false && latestSource != x.PreviousSourceRef {", "TestCellUsageRefusals"),
+ ("cell-settlement-change-accepted", "ownership.go", "if !reflect.DeepEqual(old, x) {", "if false && !reflect.DeepEqual(old, x) {", "TestCellUsageRefusals"),
+ ("cell-resolution-not-applied-ignored", "ownership.go", 'if !result.NotApplied || result.Ref == "" || result.FenceRef == "" {', 'if result.Ref == "" || result.FenceRef == "" {', "TestCellResolutionRefusals"),
+ ("cell-resolution-reference-ignored", "ownership.go", 'if !result.NotApplied || result.Ref == "" || result.FenceRef == "" {', 'if !result.NotApplied || result.FenceRef == "" {', "TestCellResolutionRefusals"),
+ ("cell-resolution-current-shape-ignored", "ownership.go", 'if current.Schema != IncarnationSchema || current.CellID != p.Ownership.CellID || current.ID == "" || current.KeyRef == "" {', 'if false && (current.Schema != IncarnationSchema || current.CellID != p.Ownership.CellID || current.ID == "" || current.KeyRef == "") {', "TestCellResolutionRefusals"),
+ ("cell-request-phase-ignored", "ownership.go", 'return errors.New("request phase unavailable")', '_ = r.Phase', "TestCellAdmissionRefusals"),
+ ("cell-resolved-work-ignored", "ownership.go", 'old.Admission.Permit.WorkID != p.WorkID ||', '', "TestCellAdmissionRefusals"),
+ ("cell-completion-reference-ignored", "ownership.go", ' && e.Ref != "" {', ' {', "TestCellCompletionGeneration"),
+ ("cell-record-intent-discarded", "ownership.go", "return j.CommitIntent(context.Background(), Intent{Event: e})", "return nil", "TestCellCompletionGeneration"),
+ ("cell-completion-receipt-dropped", "ownership.go", "s.Receipts = append(s.Receipts, e)", "s.Receipts = s.Receipts", "TestCellCompletionGeneration"),
+ ("cell-completion-generation-ignored", "ownership.go", "r.Intent.Event.Generation == e.Generation &&", "true &&", "TestCellCompletionGeneration"),
+]
 selected = sys.argv[1:]
 if selected:
     unknown = set(selected) - {m[0] for m in mutations}
@@ -160,9 +226,13 @@ for name, filename, old, new, test in mutations:
     path = root / filename
     original = path.read_bytes()
     source = original.decode()
-    if source.count(old) != 1: raise SystemExit(name + ": mutation site is not unique")
+    edits = old if isinstance(old, list) else [(old, new)]
+    mutated = source
+    for before, after in edits:
+        if mutated.count(before) != 1: raise SystemExit(name + ": mutation site is not unique")
+        mutated = mutated.replace(before, after)
     try:
-        path.write_text(source.replace(old, new))
+        path.write_text(mutated)
         result = subprocess.run(
             ["go", "test", "-timeout", "30s", "-count=1", "-v", "-run", "^" + test + "$", "."],
             cwd=root, env={**os.environ, "GOWORK": "off"}, capture_output=True, text=True, timeout=45)

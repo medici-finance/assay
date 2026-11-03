@@ -52,7 +52,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'spec/operator-incarnation-v1.md: fixed-here (record contract landed by the 2026-10-31 schema/test preparation; enforcement remains owed)'
 - 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
-version: 7
+version: 8
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -62,7 +62,7 @@ id: db922112-28f0-44c0-b120-9d6c4f56e103
 
 Schema/test preparation (2026-10-31) added `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py` and `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` to the `files:` line below. These are partial preparation; all original delivery obligations remain.
 
-files: `drainloop/ownership.go`, `drainloop/ownership_test.go` (planned), `drainloop/budget.go`, `drainloop/budget_test.go` (planned), `drainloop/restore_test.go`, `drainloop/checkpoint_decode_test.go`, `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md`, `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`, `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py`, `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`.
+files: `drainloop/ownership.go`, `drainloop/ownership_test.go`, `drainloop/budget.go`, `drainloop/budget_test.go`, `drainloop/restore_test.go`, `drainloop/checkpoint_decode_test.go`, `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md`, `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`, `spec/cell-checkpoint-v1.md`, `drainloop/testdata/cell-checkpoint.json`, `drainloop/testdata/effect_mutations.py`, `docs/superpowers/plans/2026-10-31-ge16-schema-tests.md` — Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md`, `drainloop/incarnation.go`, `drainloop/incarnation_test.go`.
 
 facts: 04 owns basic effect receipts and reconcile-before-retry. This extension adds ownership/budgets without replacing that protocol or widening the six-method Loop interface.
 
@@ -319,6 +319,42 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
+
+## Store-neutral implementation — 3 November 2026
+
+The library implements `CellAuthority`, `CellStore`, `CellJournal`, authenticated
+capability binding, all-balance reservations, retained usage settlement and held
+transfer. `CellJournal` consumes the existing transactional handoff and the frozen
+Loop/Config/effect flow unchanged. `CellStore` is the existing coordination owner:
+its compare/commit must publish ownership, reservation and intent together, or
+publish none. No runtime backend or additional claim authority is installed.
+
+`CheckEffect` belongs inside the provider's independently enforcing atomic effect
+boundary, with current protected incarnation, authenticated capability and matching
+intent/reservations. A wrapper that checks and then invokes an unrestricted write
+is not a conforming provider. Required durability, current operator custody,
+authentication/expiry/policy, credential cutover, reset history and authoritative
+usage are explicit refusing ports, not inferred from record contents.
+
+Offline qualification uses a test-only local-filesystem transactional fixture and
+a separately invoked fake provider, plus actual child processes sharing one state
+file and an independent reset anchor. These qualify library semantics and the
+fixture's acknowledged sync/rename behavior only. GE/19 still owes PostgreSQL
+transactions/rollback/conformance; GE/26 and the effect consumers still owe their
+concrete launch/provider integration. Real control-volume custody, provider fencing
+and credential cutover remain could-not-check until those profiles are qualified.
+No runtime consumer, activation, signing material or deployment is supplied.
+
+The group ownership and per-item claim generations are distinct. The existing
+claim authority retains exact work/attempt/owner bindings in `CellState.Claims`;
+admission and the separately invoked effect boundary reject stale or released item
+claims. Crash-before-apply and proven-failure retirement require authoritative absence,
+independent old-writer fencing and complete known usage through an explicit port;
+unknowns stay held. A fresh attempt/request may then resume in the same claim
+generation without losing failed spend or creating a free retry. Provider requests
+bind one signed phase, and budget-window checks use an injected authority clock.
+The original eleven Verify Class/Command/Expect rows are unchanged. Their
+implementation tests are not independent acceptance Evidence or an activation ruling.
 
 ## Evidence
 
