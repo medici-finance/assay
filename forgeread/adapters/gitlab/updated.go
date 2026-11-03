@@ -106,7 +106,7 @@ func updatedQuery(q adapters.UpdateQuery, page int) url.Values {
 	return v
 }
 
-func (a *Adapter) updatedPage(ctx context.Context, repo, rel string, q url.Values) ([]updatedWire, bool, error) {
+func (a *Adapter) updatedPage(ctx context.Context, repo, rel string, q url.Values, coverage *adapters.UpdateCoverage) ([]updatedWire, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -116,6 +116,9 @@ func (a *Adapter) updatedPage(ctx context.Context, repo, rel string, q url.Value
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
+	}
+	if !coverage.ObservePage(len(pg.Body)) {
+		return nil, false, nil
 	}
 	var rows []updatedWire
 	if err := json.Unmarshal(pg.Body, &rows); err != nil || rows == nil {
@@ -132,11 +135,13 @@ func (a *Adapter) IssuesUpdatedSince(ctx context.Context, repo string, q adapter
 		return adapters.IssueUpdates{}, err
 	}
 	for page := 1; page <= MaxPages; page++ {
-		rows, more, err := a.updatedPage(ctx, repo, "issues", updatedQuery(q, page))
+		rows, more, err := a.updatedPage(ctx, repo, "issues", updatedQuery(q, page), &out.UpdateCoverage)
 		if err != nil {
 			return adapters.IssueUpdates{}, err
 		}
-		out.PageCount = page
+		if out.Incomplete {
+			return out, nil
+		}
 		for _, w := range rows {
 			r, err := w.issue(repo, false)
 			if err != nil {
@@ -154,7 +159,7 @@ func (a *Adapter) IssuesUpdatedSince(ctx context.Context, repo string, q adapter
 			return out, nil
 		}
 	}
-	out.Incomplete = true
+	out.MarkIncomplete(adapters.UpdatePageLimit)
 	return out, nil
 }
 
@@ -166,11 +171,13 @@ func (a *Adapter) ChangesUpdatedSince(ctx context.Context, repo string, q adapte
 		return adapters.ChangeUpdates{}, err
 	}
 	for page := 1; page <= MaxPages; page++ {
-		rows, more, err := a.updatedPage(ctx, repo, "merge_requests", updatedQuery(q, page))
+		rows, more, err := a.updatedPage(ctx, repo, "merge_requests", updatedQuery(q, page), &out.UpdateCoverage)
 		if err != nil {
 			return adapters.ChangeUpdates{}, err
 		}
-		out.PageCount = page
+		if out.Incomplete {
+			return out, nil
+		}
 		for _, w := range rows {
 			base, err := w.issue(repo, true)
 			if err != nil {
@@ -207,6 +214,6 @@ func (a *Adapter) ChangesUpdatedSince(ctx context.Context, repo string, q adapte
 			return out, nil
 		}
 	}
-	out.Incomplete = true
+	out.MarkIncomplete(adapters.UpdatePageLimit)
 	return out, nil
 }

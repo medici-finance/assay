@@ -161,9 +161,15 @@ func TestIncrementalReadLowerScope(t *testing.T) {
 	}
 }
 
-type wrongIncrementalForge struct{ Forge }
+type wrongIncrementalForge struct {
+	Forge
+	result *adapters.IssueUpdates
+}
 
-func (wrongIncrementalForge) IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error) {
+func (f wrongIncrementalForge) IssuesUpdatedSince(context.Context, ForgeRepo, adapters.UpdateQuery) (adapters.IssueUpdates, error) {
+	if f.result != nil {
+		return *f.result, nil
+	}
 	return adapters.IssueUpdates{UpdateCoverage: adapters.UpdateCoverage{Provider: "gitlab", Repository: "other/repo", PageCount: 1}}, nil
 }
 
@@ -173,6 +179,12 @@ func TestIncrementalSourceProvenance(t *testing.T) {
 	if _, err := source.Read(context.Background(), MirrorIssues, adapters.UpdateQuery{}); err == nil {
 		t.Fatal("foreign source passed through")
 	}
+	unsafe := adapters.IssueUpdates{UpdateCoverage: adapters.UpdateCoverage{Provider: "github", Repository: "o/r", PageCount: 1, Incomplete: true, ObservedUpTo: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}}
+	source.forge = wrongIncrementalForge{result: &unsafe}
+	if _, err := source.Read(context.Background(), MirrorIssues, adapters.UpdateQuery{}); err == nil {
+		t.Fatal("incomplete source exposed an advanceable bound")
+	}
+
 	if _, err := source.Read(context.Background(), "route/from/request", adapters.UpdateQuery{}); err == nil {
 		t.Fatal("arbitrary source kind accepted")
 	}

@@ -62,7 +62,6 @@ never retries through that path.
 cd forgeread && GOWORK=off go test ./...
 ```
 
-
 ## Incremental source reads (Go API 1.2)
 
 The provider adapters add `ChangesUpdatedSince` and `IssuesUpdatedSince` over the same
@@ -79,3 +78,28 @@ not implemented; `ConditionalSupported` is false while every requested page is r
 Desk-tools' `MirrorReadSource` is the concrete consumer through existing scoped backends and
 read-only wrappers. Persistent mirror integration and the later shared forge-library custody
 migration retain their separate owners.
+
+These update-descending walks use offset pages over a changing provider population.
+A concurrent update can move an item between pages; duplicate numbers and missed observations
+are possible. Later ingestion must apply records by qualified identity, poll with an overlap
+window and periodically repair from a full inventory. Only a successful, complete walk's nonzero
+`ObservedUpTo` can inform the next provider-time bound, with that overlap; it is never a wall-clock
+watermark or an atomic snapshot. Incomplete walks or walks with no source rows return zero.
+A complete filtered-empty walk can report an older provider stamp; preserve the prior bound
+instead of regressing it. Only advance the previous complete bound when the observed stamp is newer.
+
+`RequestedReviewers` describes individual user accounts only. GitHub's `requested_teams` is not
+read by this contribution, so an explicitly empty user collection does not mean no team review
+was requested. Complete reviewer assignment/approval coverage remains with mirror integration.
+`MirrorReadSource` currently has no production command caller; these operations remain inert
+until that separately qualified integration.
+
+Each operation accepts at most 8 MiB of aggregate raw JSON payload before decoding and
+retaining additional records. A page that crosses that budget ends the walk with
+`Incomplete=true`, `LimitReason=byte-limit` and a zero `ObservedUpTo`. `ResponseBytes` includes
+that fetched page and `PageCount` includes its request. The byte count measures raw JSON,
+not compressed network bytes. A page-ceiling stop uses `LimitReason=page-limit` and also clears
+the bound. This bounds accepted multi-page payload, not the existing native backend's
+single-response `io.ReadAll` allocation or total decoded-object overhead. A transport-level
+single-response limit remains required before consumer activation and belongs to the full
+mirror/shared-library integration; this contribution does not claim that limit is implemented.

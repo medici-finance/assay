@@ -20,12 +20,13 @@ import (
 var updateBound = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 type incrementalAccess struct {
-	provider string
-	kind     string
-	pages    []string
-	queries  []url.Values
-	errPage  int
-	endless  bool
+	provider   string
+	kind       string
+	pages      []string
+	queries    []url.Values
+	errPage    int
+	endless    bool
+	moreOnLast bool
 }
 
 func (a *incrementalAccess) GetPage(ctx context.Context, repo, rel string, q url.Values) (adapters.Page, error) {
@@ -54,12 +55,12 @@ func (a *incrementalAccess) GetPage(ctx context.Context, repo, rel string, q url
 		return adapters.Page{}, errors.New("provider permission denied")
 	}
 	if a.endless {
-		return adapters.Page{Body: []byte("[]"), More: true}, nil
+		return adapters.Page{Body: []byte("[" + updateRow(a.provider, a.kind, 1, "2026-10-01T12:00:02Z") + "]"), More: true}, nil
 	}
 	if p > len(a.pages) {
 		return adapters.Page{}, fmt.Errorf("read beyond fixture")
 	}
-	return adapters.Page{Body: []byte(a.pages[p-1]), More: p < len(a.pages)}, nil
+	return adapters.Page{Body: []byte(a.pages[p-1]), More: p < len(a.pages) || a.moreOnLast}, nil
 }
 
 func updateRow(provider, kind string, n int, stamp string) string {
@@ -114,6 +115,11 @@ func TestIncrementalPagination(t *testing.T) {
 				if coverage.Incomplete || coverage.ConditionalSupported || coverage.PageCount != 3 || len(a.queries) != 3 || !coverage.ObservedUpTo.Equal(updateBound.Add(2*time.Second)) {
 					t.Fatalf("coverage/requests: %+v %v", coverage, a.queries)
 				}
+				wantServerFilter := provider != "github" || kind == "issues"
+				if coverage.ServerSideSince != wantServerFilter {
+					t.Fatalf("server-side capability: got %v, want %v for %s/%s", coverage.ServerSideSince, wantServerFilter, provider, kind)
+				}
+
 				var records []adapters.IssueUpdate
 				if kind == "issues" {
 					records = issues
@@ -156,6 +162,8 @@ func TestIncrementalPagination(t *testing.T) {
 			})
 		}
 	}
+	t.Run("github/pulls-old-page", testPullsBoundary)
+
 }
 
 // regression: F-incremental-source
@@ -181,14 +189,29 @@ func TestIncrementalUncertainty(t *testing.T) {
 					t.Fatalf("page failure became a short success: %+v %+v %v", issues, changes, err)
 				}
 				a = &incrementalAccess{provider: provider, kind: kind, endless: true}
-				coverage, _, _, err := readUpdates(context.Background(), provider, kind, a, adapters.UpdateQuery{})
+				coverage, partialIssues, partialChanges, err := readUpdates(context.Background(), provider, kind, a, adapters.UpdateQuery{})
 				wantPages := gh.MaxPages
 				if provider == "gitlab" {
 					wantPages = gl.MaxPages
 				}
-				if err != nil || !coverage.Incomplete || coverage.PageCount != wantPages || len(a.queries) != wantPages {
+				if err != nil || !coverage.Incomplete || !coverage.ObservedUpTo.IsZero() || len(partialIssues)+len(partialChanges) == 0 || coverage.LimitReason != "page-limit" || coverage.PageCount != wantPages || len(a.queries) != wantPages {
 					t.Fatalf("ceiling not explicit: %+v %v", coverage, err)
 				}
+				padded := "[" + updateRow(provider, kind, 1, "2026-10-01T12:00:02Z") + "]" + strings.Repeat(" ", int(adapters.MaxUpdateBytes/2))
+				overbudget := "invalid-json" + strings.Repeat(" ", int(adapters.MaxUpdateBytes/2))
+				a = &incrementalAccess{provider: provider, kind: kind, pages: []string{padded, overbudget, "[]"}}
+				limited, li, lc, le := readUpdates(context.Background(), provider, kind, a, adapters.UpdateQuery{})
+				if le != nil || !limited.Incomplete || limited.LimitReason != "byte-limit" || !limited.ObservedUpTo.IsZero() || limited.PageCount != 2 || limited.ResponseBytes != int64(len(padded)+len(overbudget)) || len(a.queries) != 2 || len(li)+len(lc) != 1 {
+					t.Fatalf("aggregate budget: %+v records=%d requests=%d err=%v", limited, len(li)+len(lc), len(a.queries), le)
+				}
+
+				exact := "[]" + strings.Repeat(" ", int(adapters.MaxUpdateBytes)-2)
+				a = &incrementalAccess{provider: provider, kind: kind, pages: []string{exact}}
+				atLimit, _, _, limitErr := readUpdates(context.Background(), provider, kind, a, adapters.UpdateQuery{})
+				if limitErr != nil || atLimit.Incomplete || atLimit.ResponseBytes != adapters.MaxUpdateBytes || atLimit.PageCount != 1 {
+					t.Fatalf("exact budget control: %+v %v", atLimit, limitErr)
+				}
+
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
 				a = &incrementalAccess{provider: provider, kind: kind, pages: []string{"[]"}}
@@ -255,5 +278,22 @@ func TestIncrementalProviderKinds(t *testing.T) {
 		if err != nil || len(records) != 1 || records[0].State != "closed" || !records[0].MergedAt.IsZero() {
 			t.Fatalf("closed inferred as merged: %+v %v", records, err)
 		}
+	}
+}
+
+// regression: F1 (PR #5367)
+func testPullsBoundary(t *testing.T) {
+	newer := updateRow("github", "changes", 3, "2026-10-01T12:00:02Z")
+	equal := updateRow("github", "changes", 2, "2026-10-01T12:00:00Z")
+	older := updateRow("github", "changes", 1, "2026-10-01T11:59:59Z")
+	a := &incrementalAccess{provider: "github", kind: "changes", pages: []string{"[" + newer + "," + equal + "]", "[" + older + "]"}, moreOnLast: true}
+	got, err := gh.New(a, nil).ChangesUpdatedSince(context.Background(), "o/r", adapters.UpdateQuery{Since: updateBound})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Page 2 still advertises More; a third request is unreadable. The old
+	// page must end the bounded walk without making that irrelevant request.
+	if got.Incomplete || got.ServerSideSince || got.PageCount != 2 || len(a.queries) != 2 || len(got.Records) != 2 || got.Records[0].Number != 3 || got.Records[1].Number != 2 {
+		t.Fatalf("bounded local filter: %+v requests=%d", got, len(a.queries))
 	}
 }

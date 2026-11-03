@@ -9,6 +9,8 @@
   "result": {
     "Incomplete": false,
     "PageCount": 1,
+    "ResponseBytes": 414,
+    "LimitReason": "",
     "Provider": "gitlab",
     "Repository": "medici-finance/assay",
     "Since": "0001-01-01T00:00:00Z",

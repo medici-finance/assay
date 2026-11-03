@@ -85,7 +85,7 @@ func (s *MirrorReadSource) Read(ctx context.Context, kind MirrorRecordKind, q ad
 	valid := func(provider, repo string, n int) bool {
 		return provider == string(s.provider) && strings.EqualFold(repo, s.repo.Slug()) && n > 0
 	}
-	if out.Provider != string(s.provider) || !strings.EqualFold(out.Repository, s.repo.Slug()) || !out.Since.Equal(q.Since) || out.PageCount < 1 || out.ConditionalSupported {
+	if out.Provider != string(s.provider) || !strings.EqualFold(out.Repository, s.repo.Slug()) || !out.Since.Equal(q.Since) || out.PageCount < 1 || out.ConditionalSupported || (out.Incomplete && !out.ObservedUpTo.IsZero()) {
 		return MirrorReadResult{}, Unverifiable("incremental mirror source returned incompatible source/query provenance", nil)
 	}
 	for _, r := range out.Issues {

@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+// MaxUpdateBytes bounds the aggregate raw JSON payload accepted for one walk.
+// Access has already read each response; this is not a per-response transport cap.
+const MaxUpdateBytes int64 = 8 << 20
+
+const (
+	UpdateByteLimit = "byte-limit"
+	UpdatePageLimit = "page-limit"
+)
+
 // UpdateQuery is a fixed incremental read. A zero Since requests the bounded full
 // inventory; a nonzero bound is inclusive. It never selects an endpoint or a host.
 type UpdateQuery struct {
@@ -44,13 +53,15 @@ type IssueUpdate struct {
 // comment data remain unknown; these records never claim those collections complete.
 type ChangeUpdate struct {
 	IssueUpdate
-	Kind               string
-	HeadSHA            string
-	BaseSHA            string
-	HeadBranch         string
-	BaseBranch         string
-	SourceRepository   string
-	SourceProjectID    int64
+	Kind             string
+	HeadSHA          string
+	BaseSHA          string
+	HeadBranch       string
+	BaseBranch       string
+	SourceRepository string
+	SourceProjectID  int64
+	// RequestedReviewers contains individual accounts only. GitHub requested teams
+	// are not read here; an empty slice does not assert no teams were requested.
 	RequestedReviewers []UpdateActor
 	MergedAt           time.Time
 }
@@ -60,14 +71,40 @@ type ChangeUpdate struct {
 // Conditional support is explicitly false in this full-read baseline; validators
 // and 304 reuse belong to the later mirror ingestion integration.
 type UpdateCoverage struct {
-	Incomplete           bool
-	PageCount            int
-	Provider             string
-	Repository           string
-	Since                time.Time
-	ServerSideSince      bool
+	Incomplete bool
+	PageCount  int
+	// ResponseBytes counts raw JSON bytes fetched, including a page rejected by
+	// the aggregate budget. It is not a compressed-wire or allocation measure.
+	ResponseBytes   int64
+	LimitReason     string
+	Provider        string
+	Repository      string
+	Since           time.Time
+	ServerSideSince bool
+	// ObservedUpTo is the maximum provider stamp observed, never the wall clock.
+	// It is zero when no source rows were seen or the walk is incomplete.
+	// A complete filtered-empty walk can have an older stamp; never regress the
+	// previous complete bound. It is not an atomic snapshot.
 	ObservedUpTo         time.Time
 	ConditionalSupported bool
+}
+
+// ObservePage accounts for a fetched page before it is decoded or retained.
+func (c *UpdateCoverage) ObservePage(bodyBytes int) bool {
+	c.PageCount++
+	c.ResponseBytes += int64(bodyBytes)
+	if c.ResponseBytes > MaxUpdateBytes {
+		c.MarkIncomplete(UpdateByteLimit)
+		return false
+	}
+	return true
+}
+
+// MarkIncomplete prevents a partial observation from becoming a future bound.
+func (c *UpdateCoverage) MarkIncomplete(reason string) {
+	c.Incomplete = true
+	c.LimitReason = reason
+	c.ObservedUpTo = time.Time{}
 }
 
 type IssueUpdates struct {
