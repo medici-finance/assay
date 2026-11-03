@@ -558,3 +558,16 @@ graph-execution/36 migration ledger and container fixture. This brings forward d
 mirror storage without action admission, execution claims or outboxes. Shared refresh
 ownership/accounting and actual admitted source/coordinator joins remain here, including
 row23. All23 original Class/Command pairs and existing human gates remain unchanged.
+
+## Read-through coordinator ownership — 3 November 2026
+
+The bounded contribution assay:assay:forge-neutral:51 supplies the store-injected
+coordinator and typed read-refresh gate port over the existing mirror kernel. This
+brief consumes that coordinator at trusted deskkit composition and implements its
+production gate through the same canonical R2 PostgreSQL store: generation-bound
+apply/completion, shared retry eligibility, finite caller/admission accounting and
+independent-process/restart controls. No second store or execution claim is added.
+The synthetic gate/reference-store profile does not discharge the real mapper,
+durable Store and preserved-watermark join in row23. Every existing Task, all23
+Class/Command pairs, retention decision, acceptance gate and historical Evidence
+remain unchanged.

@@ -30,11 +30,8 @@ func admit(ctx context.Context, a Admission, scope Scope) error {
 // Store errors become explicit unavailable results; malformed contract data is an
 // error. Permission refusals expose neither stored records nor stored coverage.
 func QueryScope(ctx context.Context, store Store, a Admission, q Query) (Result, error) {
-	if err := q.Scope.Validate(); err != nil {
+	if err := validateQuery(q); err != nil {
 		return Result{}, err
-	}
-	if q.Now.IsZero() || q.MaxAge <= 0 {
-		return Result{}, invalid("query needs explicit time and positive freshness window")
 	}
 	if err := ctx.Err(); err != nil {
 		return unavailable(q.Scope, Transport), err
@@ -51,6 +48,26 @@ func QueryScope(ctx context.Context, store Store, a Admission, q Query) (Result,
 			return unavailable(q.Scope, Permission), nil
 		}
 		return unavailable(q.Scope, Transport), nil
+	}
+	return EvaluateSnapshot(s, q)
+}
+
+func validateQuery(q Query) error {
+	if err := q.Scope.Validate(); err != nil {
+		return err
+	}
+	if q.Now.IsZero() || q.MaxAge <= 0 {
+		return invalid("query needs explicit time and positive freshness window")
+	}
+	return nil
+}
+
+// EvaluateSnapshot evaluates an already-owned snapshot using explicit query time.
+// It performs no I/O and grants no authorization. Callers remain responsible for
+// current admission/caller/deadline checks before releasing any result.
+func EvaluateSnapshot(s Snapshot, q Query) (Result, error) {
+	if err := validateQuery(q); err != nil {
+		return Result{}, err
 	}
 	if s.Scope != q.Scope {
 		return Result{}, invalid("store returned a different scope")
