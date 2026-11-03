@@ -8,6 +8,8 @@ unblocks: ["forge-neutral/39", "desk-tools/40", "desk-tools/41", "graph-executio
 effort: M
 gate: human
 decision-issue: 4521
+design: DR-desk-tools-39
+ruling: "https://github.com/medici-finance/assay/issues/4521#issuecomment-6615602021"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
@@ -185,13 +187,15 @@ implementation layers are present: original observation/classification extractio
 | Task 4: compatibility, authority and intended behavior | `tools/desk/internal/reviewtest/observation_contract_test.go`, `tools/desk/internal/reviewtest/observation_boundary_test.go`, `tools/desk/internal/reviewtest/selection_test.go`: named contract, boundary and priority-join tests |
 | Task 5 and candidate amendment | existing source contracts, command adapters and selection amendment; consumer routing and implementation acceptance still require the original checks and review |
 
-No second extraction or classifier is needed. The remaining lifecycle hold is the
-record-specific human design ruling on #4521. Proposed `DR-desk-tools-39` supplies
-the reviewable record; it does not select option A on the human's behalf. After a
-valid ruling exists, bind it and `design:` and use the native `statusgen reconcile` command with the
-actual merged witness. Do not substitute consumer routing for delivery qualification.
+The record-specific human ruling is now bound through `DR-desk-tools-39` and
+the frontmatter `design:`/`ruling:` fields:
+https://github.com/medici-finance/assay/issues/4521#issuecomment-6615602021
 
-The canonical row stays `todo`; all four original Verify rows, Evidence and the
-existing human gate are unchanged. Named tests were inspected as source, not run as
+No second extraction or classifier is needed. After this metadata lands, the
+native `statusgen reconcile` command can assess implemented against the actual
+merged deliveries. No generated board row is hand-edited in this change. Do not
+substitute consumer routing for delivery qualification.
+
+All four original Verify rows, Evidence and the existing human gate are unchanged. Named tests were inspected as source, not run as
 independent verification. Runtime collection/adoption remains with the declared
 follow-on briefs, and final human acceptance stays separate.
