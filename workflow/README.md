@@ -3,7 +3,8 @@
 `store` is the canonical PostgreSQL connection/migration substrate. It uses pgx v5.12.0
 and Goose v3.29.0, selected by `docs/go-engineering.md`; version-specific assessment and
 the exact driver age exception are recorded in [issue 5396](https://github.com/medici-finance/assay/issues/5396).
-No controller, execution claim, outbox, activation, mirror persistence or server is present.
+The bounded mirror Store shares this substrate. No controller, execution claim, outbox,
+activation or server is present.
 The schema contract is [coordination-store-v1](../spec/coordination-store-v1.md).
 
 Call `store.Migrate(ctx, explicitConfig)` for an explicitly authorized migration operation.
@@ -72,7 +73,7 @@ The standalone CI job supplies its own disposable container and executes the com
 No provider, cluster or production contact is part of these tests.
 
 Schema/migration changes are forward-only additions to `store/migrations`; do not modify
-recorded SQL checksums. Add future mirror/domain tables there, never in a competing ledger.
+recorded SQL checksums. Add future domain tables there, never in a competing ledger.
 `TestPGFoundationSchema` dereferences the actual database catalog in both directions.
 `TestPGFoundationConcurrent` launches two independent test processes against the same
 explicit fixture; local goroutines alone do not qualify cross-process migration locking.
@@ -91,3 +92,34 @@ and forces the wrong upstream execution mode, so the real failed-DDL rollback as
 must fail; this is one composite execution fault, not three independently qualified guards.
 Cleanup after an acknowledged fixture creation is bounded. An uncertain creation whose
 ownership cannot be established is retained and reported, never deleted speculatively.
+
+
+## Bounded mirror Store
+
+After explicit migration/open, call `db.Mirror(store.MirrorLimits{MaxRecords: ..., MaxBytes: ...})`
+with finite positive limits selected by composition. There is no production threshold default.
+The returned `mirror.Store` admits direct Read/Apply calls independently, partitions by full
+provider/host/repository/kind/admission identity, and commits SQL CAS, rows and coverage together.
+The byte limit includes scope strings, opaque validators/revision and encoded record facts;
+row limits also bound incoming update/absence lists. Oversize input or persisted state refuses.
+
+Codec1 stores opaque strings as bytea and retains BodyKnown, nil versus known-empty
+collections, review provenance and exact nanosecond instants. Coverage uses numeric Unix
+nanoseconds. An old visible row never supplies retention history; RetainedFrom stays unknown.
+SQL transitions independently refuse incomplete watermark advancement, partial absence,
+regression and unqualified permission-hold recovery. This contribution performs no retention
+operation, source request or credential lookup. A status-only hold retains synthetic facts
+while QueryScope withholds their content. Current authorization is checked before and after
+I/O and immediately before commit; revocation detected after a durable commit cannot undo it.
+
+Naked Apply has no shared refresh-generation fence. Future integration must check the current
+generation and join Apply plus completion/cooldown in the same canonical SQL transaction.
+Do not use this Store alone to claim a production coordinator safely fences stale workers.
+Full forge-neutral/37 joined persisted evidence, retention and activation remain owed.
+
+`TestPGMirrorConformance` runs the unchanged kernel conformance suite against PostgreSQL.
+The remaining named mirror tests cover raw SQL bypasses and atomic rollback, separate-process
+first/update races, independent client restart and canonical owned-table rebuild, mid-I/O
+revocation, exact field presence/history, and schema/CI boundaries. Table rebuild is solely
+a synthetic fixture control; no production reset or automatic reconstruction API is exposed.
+The canonical ledger is neither deleted nor rewound during that control.

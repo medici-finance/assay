@@ -203,6 +203,7 @@ func TestDeskdImageContractCI(t *testing.T) {
 // TestWorkflowFoundationCI keeps this contract reader live without tools.yml.
 func TestWorkflowFoundationCI(t *testing.T) {
 	ciAssertPublicLayoutRow(t, "workflow/store/foundation_test.go")
+	ciAssertPublicLayoutRow(t, "workflow/store/mirror_test.go")
 }
 
 // ciAssertPublicLayoutRow runs one registry row's event reachability and read
@@ -341,6 +342,12 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "workflow/store/mirror_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
+			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
+			reads:      []string{"spec/coordination-store-v1.md", "forgeread/go.mod", "forgeread/mirror/", ".github/workflows/assay-workflow.yml"},
+			runInvokes: []string{"cd workflow", "go test -count=1 -race -timeout=180s ./..."},
+			why:        "the canonical SQL mirror consumes the kernel, conformance helpers, schema and workflow through executable controls"},
+
 		{test: "workflow/store/foundation_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
 			reads:      []string{"spec/coordination-store-v1.md", ".github/workflows/assay-workflow.yml"},
