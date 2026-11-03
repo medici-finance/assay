@@ -122,7 +122,20 @@ another caller's authorization.
 
 One canceled waiter cannot cancel the fill for other admitted waiters. Bound fill lifetime,
 waiter count and memory independently of any single caller. Only the shared owner may
-retry within policy. Measure actual source attempts once per fill, coalesced waiters,
+retry within policy. Before starting a new fill, apply the existing read owner's finite
+per-admission and stable authenticated-caller fill/concurrency/queue limits, alongside its
+global source/provider budget. Use trusted identity, not a caller-selected request id or
+diagnostic label. Schedule available capacity fairly so a flood of distinct cold keys by
+one permitted caller cannot consume every fill slot reserved for other permitted callers.
+Caller-local quota refusals never become a shared source failure. Reuse the existing
+refresh/service policy ports and accounting; add no quota authority or ledger. Coalesced
+waiters do not multiply the actual provider-attempt charge, while their own request/waiter
+bounds still apply. In a deterministic fixture with available global budget, saturating
+caller A's share must still permit caller B's useful fill; exhausting the actual global
+budget instead returns explicit limited/unavailable, never a fabricated success. Removing
+the per-caller gate or keying it by untrusted request ids must fail that fixture.
+
+Measure actual source attempts once per fill, coalesced waiters,
 failure-cache hits, age and retry eligibility using existing bounded observability seams;
 missing instrumentation is unknown. Read-through is a required acceptance behavior, not
 an operational or savings claim. No identity, scope, retention, deployment or activation
