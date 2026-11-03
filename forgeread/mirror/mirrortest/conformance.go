@@ -32,6 +32,7 @@ func (a *TestAdmission) Authorize(context.Context, mirror.RepositoryID) error {
 // durable adapter can reuse these controls; this asserts no SQL/restart behavior.
 func Check(t *testing.T, newStore func() mirror.Store) {
 	CheckPermissionHold(t, newStore)
+	CheckHoldRecovery(t, newStore)
 	t.Helper()
 	ctx := context.Background()
 	store := newStore()
@@ -119,5 +120,81 @@ func CheckPermissionHold(t *testing.T, newStore func() mirror.Store) {
 				t.Fatalf("bypassed planner disclosed content: %+v %v", r, err)
 			}
 		})
+	}
+}
+
+// CheckHoldRecovery tests the recovery transition with the planner bypassed.
+func CheckHoldRecovery(t *testing.T, newStore func() mirror.Store) {
+	t.Helper()
+	ctx := context.Background()
+	store := newStore()
+	a := &TestAdmission{Name: "admission-a", Allowed: true}
+	repo := mirror.RepositoryID{Provider: mirror.GitHub, Host: "forge.example", Path: "example/project"}
+	scope := mirror.Scope{Repository: repo, Kind: mirror.Issues, AdmissionID: a.Name}
+	now := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	initial := mirror.ScanUpdate{Scope: scope, Coverage: mirror.Coverage{State: mirror.Complete, LastAttempted: now, LastComplete: now, LastInventory: now}, CompleteScan: true, FullInventory: true, Upsert: []mirror.Observation{{ID: mirror.RecordID{Repository: repo, Kind: "issue", Number: 1}, Title: "held-canary", InInventory: true}}}
+	snap, err := store.Apply(ctx, a, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loss := mirror.ScanUpdate{Scope: scope, ExpectedVersion: snap.Version, Coverage: snap.Coverage, RetentionDecisionRequired: true}
+	loss.Coverage.State, loss.Coverage.Reason = mirror.Unavailable, mirror.Permission
+	loss.Coverage.LastAttempted = now.Add(time.Minute)
+	held, err := store.Apply(ctx, a, loss)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := now.Add(2 * time.Minute)
+	recovery := mirror.ScanUpdate{Scope: scope, ExpectedVersion: held.Version, CompleteScan: true, FullInventory: true, Coverage: mirror.Coverage{State: mirror.Complete, LastAttempted: fresh, LastComplete: fresh, LastInventory: fresh}}
+	for _, name := range []string{"stale-completeness", "equal-completeness", "stale-inventory", "equal-inventory", "incremental", "incremental-fresh-inventory", "marked-partial", "marked-partial-old-watermark"} {
+		t.Run(name, func(t *testing.T) {
+			u := recovery
+			switch name {
+			case "stale-completeness":
+				u.Coverage.LastComplete, u.Coverage.LastInventory = now, now
+			case "equal-completeness":
+				u.Coverage.LastComplete, u.Coverage.LastInventory = loss.Coverage.LastAttempted, now
+			case "stale-inventory":
+				u.Coverage.LastInventory = now
+			case "equal-inventory":
+				u.Coverage.LastInventory = loss.Coverage.LastAttempted
+			case "incremental":
+				u.FullInventory = false
+				u.Coverage.LastInventory = now
+			case "incremental-fresh-inventory":
+				u.FullInventory = false
+			case "marked-partial":
+				u.Coverage.State, u.Coverage.Reason = mirror.Partial, mirror.Truncated
+			case "marked-partial-old-watermark":
+				u.Coverage.State, u.Coverage.Reason = mirror.Partial, mirror.Truncated
+				u.Coverage.LastComplete, u.Coverage.LastInventory = now, now
+			}
+			if err := u.Validate(); err != nil {
+				t.Fatalf("control did not reach Store: %v", err)
+			}
+			if _, err := store.Apply(ctx, a, u); !errors.Is(err, mirror.ErrInvalid) {
+				t.Fatalf("invalid recovery accepted: %v", err)
+			}
+			s, err := store.Read(ctx, a, scope)
+			if err != nil || s.Version != held.Version || s.Coverage.Reason != mirror.Permission {
+				t.Fatalf("refusal changed hold: %+v %v", s, err)
+			}
+			r, err := mirror.QueryScope(ctx, store, a, mirror.Query{Scope: scope, Now: fresh, MaxAge: time.Hour})
+			if err != nil || r.Available || len(r.Snapshot.Records) != 0 {
+				t.Fatalf("invalid recovery disclosed rows: %+v %v", r, err)
+			}
+		})
+	}
+	for _, bad := range []mirror.Admission{&TestAdmission{Name: "admission-b", Allowed: true}, &TestAdmission{Name: a.Name, Allowed: false}} {
+		if _, err := store.Apply(ctx, bad, recovery); !errors.Is(err, mirror.ErrPermission) {
+			t.Fatalf("recovery ignored current matching admission: %v", err)
+		}
+	}
+	if _, err := store.Apply(ctx, a, recovery); err != nil {
+		t.Fatalf("fresh full recovery refused: %v", err)
+	}
+	r, err := mirror.QueryScope(ctx, store, a, mirror.Query{Scope: scope, Now: fresh, MaxAge: time.Hour})
+	if err != nil || !r.Available || len(r.Snapshot.Records) != 1 {
+		t.Fatalf("fresh full recovery failed: %+v %v", r, err)
 	}
 }

@@ -1,2 +1,2 @@
 - Add a read-only mirror kernel with admission-bound observations, explicit coverage and freshness, deterministic scan planning, and synthetic Store conformance support. Durable storage, source integration and operational rollout remain separate work.
-- Keep permission-lost observations withheld across failed or partial refreshes, with independent Store enforcement until a successful complete observation confirms recovery.
+- Keep permission-lost observations withheld across failed or partial refreshes, with independent Store enforcement until a fresh complete full inventory confirms recovery under current matching admission, with both completeness and inventory watermarks newer than the held attempt. Incremental, conditional and replayed updates cannot recover the hold.

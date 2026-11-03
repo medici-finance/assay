@@ -14,7 +14,7 @@ func PlanRefresh(s Snapshot, now time.Time, p RefreshPolicy) (ScanPlan, error) {
 	}
 	plan := ScanPlan{Scope: s.Scope, ExpectedVersion: s.Version}
 	c := s.Coverage
-	plan.FullInventory = c.State == NeverRead || c.LastComplete.IsZero() || c.ObservedUpTo.IsZero() || c.LastInventory.IsZero() || now.Sub(c.LastInventory) >= p.FullInventoryInterval
+	plan.FullInventory = c.Reason == Permission || c.State == NeverRead || c.LastComplete.IsZero() || c.ObservedUpTo.IsZero() || c.LastInventory.IsZero() || now.Sub(c.LastInventory) >= p.FullInventoryInterval
 	if !plan.FullInventory {
 		plan.Since = c.ObservedUpTo.Add(-p.Overlap)
 	}

@@ -389,6 +389,21 @@ func checkPermissionHold(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if !plan.FullInventory || !plan.Since.IsZero() {
+				t.Fatal("permission recovery did not request full inventory")
+			}
+			incremental := plan
+			incremental.FullInventory = false
+			incremental.Since = instant
+			if _, err := mirror.PlanScan(held, incremental, mirror.ScanResult{Complete: true}, recoveryTime); err == nil {
+				t.Fatal("incremental observation cleared permission hold")
+			}
+			// Bypass backoff planning to isolate the strict recovery watermark.
+			replay := plan
+			replay.NotBefore = time.Time{}
+			if _, err := mirror.PlanScan(held, replay, mirror.ScanResult{Complete: true}, held.Coverage.LastAttempted); err == nil {
+				t.Fatal("same-attempt observation cleared permission hold")
+			}
 			// An unchanged validator is not a complete observation from an unavailable baseline.
 			if _, err := mirror.PlanScan(held, plan, mirror.ScanResult{Complete: true, NotModified: true, ConditionalSupported: true, Validator: "validator-1", Revision: "revision-1"}, recoveryTime); err == nil {
 				t.Fatal("not-modified cleared permission hold")
@@ -399,7 +414,7 @@ func checkPermissionHold(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if recovered.RetentionDecisionRequired || recovered.Coverage.Reason != "" || !recovered.CompleteScan {
+			if recovered.RetentionDecisionRequired || recovered.Coverage.Reason != "" || !recovered.CompleteScan || !recovered.FullInventory || !recovered.Coverage.LastComplete.After(held.Coverage.LastAttempted) || !recovered.Coverage.LastInventory.After(held.Coverage.LastAttempted) {
 				t.Fatalf("complete recovery did not clear hold: %+v", recovered)
 			}
 			if _, err := store.Apply(ctx, a, recovered); err != nil {

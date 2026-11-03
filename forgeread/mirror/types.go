@@ -24,6 +24,8 @@ const (
 	Changes RecordKind = "change"
 )
 
+// RepositoryID uses canonical provider identity. Trusted composition must canonicalize
+// GitHub owner/repository case before constructing a Scope; aliases are not resolved here.
 type RepositoryID struct {
 	Provider   Provider
 	Host, Path string
@@ -94,6 +96,8 @@ const (
 	Unknown     Reason = "unknown"
 )
 
+// Coverage.RetainedFrom is optional; zero means unknown. The durable Store must
+// derive retained coverage under its selected policy, never from the oldest visible row.
 type Coverage struct {
 	// A conditional validator binds this exact scan request, separately from source revision.
 	Validator                                                              string
@@ -153,8 +157,9 @@ type Source interface {
 // Store must independently admit every Read and Apply, enforce ExpectedVersion,
 // and atomically commit rows with a complete scan's watermark. An implementation
 // must refuse incomplete watermark advancement even with the planner bypassed.
-// A persisted Permission hold survives every non-complete update; only a
-// CompleteScan with Complete coverage may clear it.
+// A persisted Permission hold survives until a CompleteScan with Complete coverage
+// and FullInventory, under current matching admission, advances both LastComplete
+// and LastInventory strictly beyond the held snapshot's LastAttempted.
 type Store interface {
 	Read(context.Context, Admission, Scope) (Snapshot, error)
 	Apply(context.Context, Admission, ScanUpdate) (Snapshot, error)
