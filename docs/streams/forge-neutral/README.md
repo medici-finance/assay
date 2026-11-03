@@ -253,6 +253,8 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
+| 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
+| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -755,3 +757,30 @@ loses two lines (one executable lookup and one possible subprocess). This retire
 neither every remaining forge read nor the parent contribution.
 Explicit token inputs and host separation remain until /77's migration. /18 remains
 partial and retains every original acceptance row and remaining read/CI obligation.
+
+### Read-only observation mapper contribution — 3 November 2026
+
+Fresh main `863c43db` contains the kernel, admitted readers and native response bound.
+[50](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) joins those
+existing ports with conservative field presence and coverage, using synthetic native
+transports and the reference Store. Its wave is 4 (`46 + 47 + 48 → 50`); no SQL,
+execution or serving dependency is needed to prepare this source adapter. The
+PostgreSQL foundation and shared read-through coordination remain separate work.
+The smallest unblock is the typed mapper and its presence semantics: source inspection
+found no mirror.Source implementation, and Observation lacks the readers' BodyKnown.
+This contribution retains /37's full 23-row acceptance, including persisted row 23,
+and every existing retention, independent verification and activation gate.
+
+### Read-through coordinator contribution — 3 November 2026
+
+[51](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md)
+authors a store-injected coordinator over the existing mirror kernel and admitted source
+ports. It separates offline fake-gate/reference-store qualification from the later
+canonical R2 PostgreSQL gate/store integration. The shared gate owns refresh acquisition,
+completion and failure eligibility; callers never install their own fallback poller.
+This contribution does not deliver full /37, its persisted row 23, retention selection,
+remote custody, reader cutover or activation. Its typed offline start prerequisite is the existing kernel (`46 → 51`, wave3).
+Mapper50 is a compatible Source implementation for later real-source integration,
+not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and joined
+mapper qualification remain later acceptance requirements. Existing lifecycle and
+acceptance cells are unchanged.
