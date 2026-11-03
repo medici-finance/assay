@@ -27,7 +27,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/64 | 2026-11-03 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-03 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/47 | 2026-11-03 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/35 | 2026-11-03 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/35 | 2026-11-03 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-02 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-01 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-11-02 |  |
@@ -145,18 +145,17 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (10 for the desk · 46 for the driver · 58 for workers · 18 for an operator · 44 runner-pending — of 180 total; 4 could-not-check)
+## Awaiting verification / review (10 for the desk · 45 for the driver · 58 for workers · 18 for an operator · 44 runner-pending — of 179 total; 4 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-### Awaiting human gate (46)
+### Awaiting human gate (45)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | desktools-v2 | 16 [exec:strong] | implemented | 29000 | 56 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite #2240 | — | — |
-| graph-execution | 33 [exec:strong] | implemented | 18500 | 33 | — | driver | close the sign-off card | — | — |
 | desk-tools | 37 [exec:strong] | verified | 17510 | 33 | — | driver | human action, cite #4599 | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
 | graph-execution | 31 [exec:strong] | implemented | 15500 | 27 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | forge-neutral | 36 [exec:strong] | implemented | 11500 | 19 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3662 | — | — |
@@ -794,7 +793,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 mirror-freshness gate: fail the release/CI when a mirrored stamped value drifts from its source — todo (wave 0)
 - 06 reconcile ref-resolution across the brief-v2 id flag-day — todo (wave 0)
 
-### graph-execution (33 open)
+### graph-execution (32 open)
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — verified (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
@@ -826,7 +825,6 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 30 Derived evaluation context and bounded validity — verified (wave 3)
 - 31 Accountable principal and assurance provenance — implemented (wave 3)
 - 32 Investigate criterion-level evidence freshness — verified (wave 0)
-- 33 Merge as a human decision node, and a derived risk-input mapping — implemented (wave 0)
 - 34 Signal input, signal classes and decision options in the workflow-pattern schema — implemented (wave 1)
 - 35 Runtime gate for signal patterns - admission refusal, class routes and the liveness hold — todo (wave 2)
 
@@ -1078,10 +1076,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — done (wave 4)
 - 12 deskboard non-board reads onto the seam — done (wave 4)
 
-### graph-execution (2 done)
+### graph-execution (3 done)
 
 - 01 Eligibility evaluator — gates and feathers become gating, with a reason — done (wave 0)
 - 10 Typed advice and separate deterministic policy records — done (wave 0)
+- 33 Merge as a human decision node, and a derived risk-input mapping — done (wave 0)
 
 ### harness-portability (5 done)
 
@@ -1171,4 +1170,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**36** streams (**26** active, **0** paused, **10** parked) · **114/576** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**36** streams (**26** active, **0** paused, **10** parked) · **115/576** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
