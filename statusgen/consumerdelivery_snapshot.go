@@ -230,7 +230,7 @@ func writeConsumerSnapshotFile(dest, name, mode string, source io.Reader) error 
 func (s *consumerSnapshot) resolve(name string) (string, error) {
 	pending := strings.Split(name, "/")
 	var parts []string
-	visited := map[string]bool{}
+	linksWalked := 0
 	for len(pending) != 0 {
 		part := pending[0]
 		pending = pending[1:]
@@ -246,10 +246,13 @@ func (s *consumerSnapshot) resolve(name string) (string, error) {
 		}
 		candidate := strings.Join(append(append([]string{}, parts...), part), "/")
 		if s.modes[candidate] == "120000" {
-			if visited[candidate] {
-				return "", fmt.Errorf("cyclic delivery link: %s", name)
+			// Match filepath.EvalSymlinks' ceiling. Revisiting a link with
+			// fewer pending components can be finite; link identity alone
+			// must not be mistaken for a cycle.
+			linksWalked++
+			if linksWalked > 255 {
+				return "", fmt.Errorf("cyclic or excessive-depth delivery link: %s", name)
 			}
-			visited[candidate] = true
 			target := s.links[candidate]
 			if target == "" || strings.HasPrefix(target, "/") || filepath.IsAbs(target) || filepath.VolumeName(target) != "" ||
 				strings.ContainsAny(target, "\\\x00") || (len(target) >= 2 && target[1] == ':') {

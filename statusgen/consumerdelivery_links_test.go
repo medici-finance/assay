@@ -33,7 +33,7 @@ func linkedConsumerDelivery(t *testing.T, links map[string]string) (string, stri
 // regression: #5395
 func TestDeliveryUnchangedContainedLinks(t *testing.T) {
 	root, base, delivery := linkedConsumerDelivery(t, map[string]string{
-		"aliases/view": "../web", "aliases/file": "../web/fixed.go", "aliases/chain": "view", "aliases/parent": "view/../web/fixed.go",
+		"aliases/view": "../web", "aliases/file": "../web/fixed.go", "aliases/chain": "view", "aliases/parent": "view/../web/fixed.go", "aliases/repeated": "view/../aliases/view/fixed.go",
 	})
 	if got := runDeliveryConsumers(root, base, "alpha/01", delivery); got != 0 {
 		t.Fatalf("unchanged contained links prevented immutable consumer evaluation: exit %d", got)

@@ -21,7 +21,7 @@ an independently reviewed claim.
 An unrelated symlink no longer makes every historical consumer check unreadable.
 Only an unchanged link whose complete target chain names existing entries inside
 that same immutable snapshot may resolve. Changed links, absolute or escaping
-links, broken or cyclic chains, submodules, and links on board inputs (`docs`,
+links, broken, cyclic or excessive-depth chains, submodules, and links on board inputs (`docs`,
 `docs/streams/**` and `docs/archive/**`) remain could-not-check. Link targets come
 from the delivered archive, never the current checkout or a file outside it.
 
