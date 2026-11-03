@@ -571,6 +571,7 @@ func TestOverrideAuditRowHoldsDigestNotText(t *testing.T) {
 // none (or only backend-composed fixed strings) and pass straight through; "read" methods
 // write nothing. A method added to the interface without a row here fails the test.
 var obClass = map[string]string{
+	"ChangesUpdatedSince": "read", "IssuesUpdatedSince": "read",
 	"FileIssue": "text", "PostComment": "text", "PostCommentTyped": "text", "EditComment": "text",
 	"CreateDraftChange": "text", "EditChange": "text", "PostReview": "text", "ApplyLabels": "text",
 	"WriteFile": "text",
