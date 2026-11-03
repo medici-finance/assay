@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5365
 issues: []
 schema: brief-v2
-version: 9
+version: 10
 id: cf6f3530-04b7-4c11-b611-e4c02c24a0f4
 outcome: none
 design: DR-forge-library
@@ -46,11 +46,11 @@ consumers:
 ## Context
 
 files:
-- `forgeread/mirror/` (planned)
+- `forgeread/mirror/`
 - `forgeread/README.md`
 - `docs/contracts.md`
 - `docs/streams/desktools-v2/cli-migration.json`
-- `changelog/forge-mirror-kernel.md` (planned)
+- `changelog/forge-mirror-kernel.md`
 
 Reuse the existing source-only checker in tools/forge-import-check without copying it.
 
@@ -113,7 +113,7 @@ Named tests below are deliverables, not claimed existing results. Exact PASS out
 | 4 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorStoreConformance$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorStoreConformance ' "$o")` | Shared conformance exercises reference Store with caller checks bypassed: wrong admission and incomplete watermark advance refuse, authorized complete update succeeds, expected-version mismatch preserves old snapshot; direct Store updates cannot clear a permission-loss hold without a fresh complete full inventory under the current matching admission and LastComplete and LastInventory both strictly after the held snapshot’s LastAttempted. Crafted CompleteScan=true with non-complete coverage, incremental recovery and stale/replayed completeness refuse with the planner bypassed. Removing the independent Store hold (`permission-hold-store`) or making the reference Store permissive fails its bypass control. No SQL/restart acceptance is claimed. |
 | 5 | check:ci +flow | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelFlow$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelFlow ' "$o" && GOWORK=off go test -count=1 ./...)` | External package consumer applies synthetic observation then queries exact admitted scope through production API; canary and complete-empty controls pass, unknown/stale remain explicit, caller mutation cannot alter stored data. Existing root/OpenIssues suites pass. |
 | 6 | check:ci +mutation +dereference | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/mirror && (cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelBoundaries$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelBoundaries ' "$o")` | Exit 0; source checker prints 0 and the test emits its named PASS; actual source-only checker rejects os/syscall imports including raw/escaped/build-tagged plants. Implement TestMirrorKernelBoundaries in the module suite to reject HTTP/process/database dependencies, new module requirements and root imports of mirror. Missing package/check execution fails. |
-| 7 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/46 --delivery "${DELIVERY:?Full landed implementation SHA required}" --base "${BASE:?Full delivery first-parent SHA required}"` | Post-merge only: pin the full actual mainline implementation delivery and its first parent, fetched from main. Before that delivery exists this check is could-not-check. Exit 0 corroborates the consumer declarations recorded at that immutable snapshot; unchecked exclusions remain reviewer obligations. This proves path routing, not newer Task/Verify semantics, independent acceptance or activation. |
+| 7 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/46 --delivery a07f6cc85ad145a5a5b634f2f2a046974f44cf44 --base 2a796ec43b59f4fa4bf97c5ebfedac869beffb00` | The literal pins name the actual /46 mainline delivery and its first parent, fetched from main. Exit 0 corroborates the consumer declarations recorded at that immutable snapshot; unchecked exclusions remain reviewer obligations. This proves path routing, not newer Task/Verify semantics, independent acceptance or activation. |
 
 ## Evidence
 
