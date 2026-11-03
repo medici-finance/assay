@@ -505,6 +505,30 @@ func TestPGMirrorPresenceHistory(t *testing.T) {
 	if !got.Coverage.RetainedFrom.IsZero() {
 		t.Fatal("old visible row fabricated history")
 	}
+	for _, provider := range []mirror.Provider{mirror.GitHub, mirror.GitLab} {
+		changes := u
+		changes.Scope.Kind = mirror.Changes
+		changes.Scope.Repository.Provider = provider
+		reviewed := known
+		reviewed.ID.Repository = changes.Scope.Repository
+		reviewed.ID.Number = 1
+		reviewed.ID.Kind = "pull-request"
+		reviewed.Labels = []string{"observed-label\x00"}
+		reviewed.Author = mirror.Actor{ID: "author-id", Login: "author", Type: "User"}
+		reviewed.RequestedReviewers = []mirror.Actor{{ID: "reviewer-id", Login: "reviewer", Type: "User"}}
+		reviewed.Reviews = mirror.ReviewObservations{State: mirror.Partial}
+		if provider == mirror.GitHub {
+			reviewed.Reviews.GitHub = []mirror.GitHubReview{{ID: "review-id", Author: reviewed.Author, State: "APPROVED", Commit: "revision", SubmittedAt: u.Coverage.LastAttempted}}
+		} else {
+			reviewed.ID.Kind = "merge-request"
+			reviewed.Reviews.GitLab = []mirror.GitLabApproval{{User: reviewed.Author, Approved: true, ObservedAt: u.Coverage.LastAttempted}}
+		}
+		changes.Upsert = []mirror.Observation{reviewed}
+		applyMirror(t, r.s, a, changes)
+		if observed := readMirror(t, r.s, a, changes.Scope); !reflect.DeepEqual(observed.Records, changes.Upsert) {
+			t.Fatal("review provenance, actors or nested timestamps lost")
+		}
+	}
 	payload, err := encodeFact(known, 1<<20)
 	if err != nil {
 		t.Fatal(err)
