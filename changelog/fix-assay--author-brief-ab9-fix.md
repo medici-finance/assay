@@ -1,2 +1,0 @@
-### Fixed
-- `author-brief` now requires the critical-path head to be checked while the plan is authored and stated in one explicit form ("I verified … by reading …; it showed …" or "… is unproven, so it is the real head"), never taken from the requester's stated edges or left to brief 01's Task; and its freshness rule now withholds a fix brief only when the site is shown already fixed, so a stated read yields the brief with its `freshness-checked` stamp instead of a held draft.
