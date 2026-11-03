@@ -1,0 +1,1 @@
+- Refuse inserted shadow arms and fall-through edits before executing the offline verification witness fixture.

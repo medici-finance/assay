@@ -72,6 +72,12 @@ type Edge struct {
 	Ref    string
 	Type   string
 	Reason string
+	// Resolved, when set, is a state the caller already derived through another
+	// canonical evaluation (a milestone start requirement resolved over the
+	// combined milestone graph, BuildMilestoneGraph). The evaluator does not
+	// re-resolve Ref by the §3.3 grammar then; Why carries the explanation.
+	Resolved EligibilityState
+	Why      string
 }
 
 // Brief is the eligibility-relevant observation of one brief.
@@ -185,7 +191,7 @@ func EvaluateEligibility(in EligibilityInput) map[string]Eligibility {
 				}
 			}
 			for _, edge := range b.Gates {
-				state, why := resolveGraphEdge(edge.Ref, in)
+				state, why := resolveEdge(edge, in)
 				if state != StateSatisfied {
 					e.Holds = append(e.Holds, EdgeVerdict{
 						Ref: edge.Ref, Type: edge.Type, Reason: edge.Reason, State: state, Why: why,
@@ -193,7 +199,7 @@ func EvaluateEligibility(in EligibilityInput) map[string]Eligibility {
 				}
 			}
 			for _, edge := range b.Feathers {
-				state, why := resolveGraphEdge(edge.Ref, in)
+				state, why := resolveEdge(edge, in)
 				if state != StateSatisfied {
 					e.Notices = append(e.Notices, EdgeVerdict{
 						Ref: edge.Ref, Type: edge.Type, Reason: edge.Reason, State: state, Why: why,
@@ -248,6 +254,14 @@ func TargetSatisfies(b Brief, dependsEdge bool) bool {
 		return true
 	}
 	return dependsEdge && b.HumanGatePassRecorded
+}
+
+// resolveEdge returns a caller-resolved state as given, else resolves the ref.
+func resolveEdge(edge Edge, in EligibilityInput) (EligibilityState, string) {
+	if edge.Resolved != "" {
+		return edge.Resolved, edge.Why
+	}
+	return resolveGraphEdge(edge.Ref, in)
 }
 
 // resolveGraphEdge resolves one gates:/feathers: ref to its state, using the

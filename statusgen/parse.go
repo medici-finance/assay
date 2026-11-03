@@ -226,7 +226,13 @@ func parseStreamREADME(path string) (*Stream, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	mission, missionDiags := parseMissionBlock(&fm.Mission)
+	// Milestone opt-in is negotiated only through the reader-requirements
+	// envelope; it never changes how the legacy fields above are read.
+	optInReq, optIn, optInErr := milestoneOptIn(raw)
 	return &Stream{
+		MilestoneOptIn:     optIn,
+		MilestoneOptInErr:  optInErr,
+		MilestoneReqs:      optInReq,
 		Name:               fm.Stream,
 		Dir:                filepath.Dir(path),
 		Status:             fm.Status,

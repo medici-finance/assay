@@ -49,7 +49,7 @@ consumers:
   - "docs/contributor-trust.md: fixed-here (the published tier model)"
   - "the identity predicate contributor-trust/09 asks 'is this author external?' through: follow-up contributor-trust/09 (the release-note credit resolver reuses this reader rather than re-deriving the answer from the raw roster)"
   - "tools/desk/internal/deskkit/trust.go (the existing binary bar): out-of-scope (this brief ADDS a tier resolver beside it and changes no existing predicate; every current caller keeps its current answer, which is what makes the change inert until a row is written)"
-version: 2
+version: 3
 ---
 
 # Brief 02 — Trust tiers and the contributor ledger
@@ -161,16 +161,16 @@ Default if no answer: none — blocks until answered. Everything downstream keys
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTier' -count=1` | exit 0; output contains `ok` | check |
-| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierAbsentLedger' -count=1 -v` | exit 0; output contains `default-absent`; output contains `unknown` | check |
-| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierUnreadableLedger' -count=1 -v` | exit 0; output contains `default-unreadable`; output contains `unknown`; output does not contain `contributor` | check +mutation |
-| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierRosterWins' -count=1 -v` | exit 0; output contains `maintainer` (negative control: a ledger row naming a roster identity at a lower tier does not lower it) | check |
-| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierUnpinnedHuman' -count=1 -v` | exit 0; output contains `unknown` (a ledger row for a human login with no pinned numeric id grants nothing on the strict path) | check +mutation |
-| 6 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'RosterCoupling' -count=1` | exit 0; output contains `ok` (the statusgen twin reads the new key identically) | check +flow +neighbour |
+| 1 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestTrustTier' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestTrustTierOrderingAndNames ' "$o" && grep -Fq -- '--- PASS: TestTrustTierLedgerNoMaintainer ' "$o")` | exit 0; output contains `ok` | check |
+| 2 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestTrustTierAbsentLedger$' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestTrustTierAbsentLedger ' "$o")` | exit 0; output contains `default-absent`; output contains `unknown` | check |
+| 3 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestTrustTierUnreadableLedger$' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestTrustTierUnreadableLedger ' "$o")` | exit 0; output contains `default-unreadable`; output contains `unknown`; output does not contain `contributor` | check +mutation |
+| 4 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestTrustTierRosterWins$' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestTrustTierRosterWins ' "$o")` | exit 0; output contains `maintainer` (negative control: a ledger row naming a roster identity at a lower tier does not lower it) | check |
+| 5 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestTrustTierUnpinnedHuman$' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestTrustTierUnpinnedHuman ' "$o")` | exit 0; output contains `unknown` (a ledger row for a human login with no pinned numeric id grants nothing on the strict path) | check +mutation |
+| 6 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestContributorLedgerRosterCoupling$' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestContributorLedgerRosterCoupling ' "$o")` | exit 0; output contains `ok` (the statusgen twin reads the new key identically) | check +flow +neighbour |
 | 7 | `grep -n 'never published' docs/contributor-trust.md` | exit 0; at least one matching line | check |
 | 8 | `git -C . grep -n -E 'unknown.*blessed-once.*contributor.*maintainer' -- docs/contributor-trust.md` | exit 0; at least one matching line (the four tiers are named in order in the published model) | check |
 | 9 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | exit 0 | check:ci |
-| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierPublishedModelMatchesTable' -count=1 -v` | exit 0; output contains `PASS` (the test parses the tier and capability names out of `docs/contributor-trust.md` (planned) and compares them to the capability table in code, so a published model that claims a capability the code does not grant fails) | check +dereference |
+| 10 | `cd tools/desk && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test ./internal/deskkit/ -run '^TestTrustTierPublishedModelMatchesTable$' -count=1 -v > "$o" 2>&1; s=$?; cat "$o"; test "$s" -eq 0 && grep -Fq -- '--- PASS: TestTrustTierPublishedModelMatchesTable ' "$o")` | exit 0; output contains `PASS` (the test parses the tier and capability names out of `docs/contributor-trust.md` (planned) and compares them to the capability table in code, so a published model that claims a capability the code does not grant fails) | check +dereference |
 | 11 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief assay:assay:contributor-trust:02 --delivery 849f93e5f50687aab773330669abaad8f9566bcc --base 0ac980f40ae84ff548da68cf8d492b4b896f0827 > "$o" && cat "$o" && grep -Fxq 'summary: 5 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The ledger is absent on a fresh machine and every external

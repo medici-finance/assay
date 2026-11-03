@@ -23,6 +23,7 @@ Local-to-CNPG migration is explicit: pin compatible PostgreSQL/extension version
 | PR/MR/issues, reviews, comments and provider check/status facts | Forge, mirrored in PostgreSQL | Re-enumerate permitted current state. Old versions/deleted content are recoverable only if retained elsewhere; missing history is explicit. |
 | Attempts, leases, schedules, effect intents and receipts | PostgreSQL operational store | Normally durable through transactions, backup and replication. After complete loss, reconstruct obligations, reconcile external state, mark lost/unknown attempts and allow safe repeated work. |
 | Graph indexes, query caches, cursors, heartbeats and connections | Rebuildable/transient service state | Recompute or reset. An old heartbeat is not proof a process is alive. |
+| Optional performance observations (performance-event-v1) | Local `performance-events/` spool; later a separate optional performance database, never the PostgreSQL operational store | Losing it loses observations only. Retired, unsent or lost data is recorded as coverage loss, never as zero, and no operational record depends on it. The collection stream owns this data class and does not take over any measurement meaning. |
 | Unpublished drafts, human attention, local overrides and detailed diagnostics | Policy must classify each field | Persist important accepted changes through their canonical path. Any disposable fields need an explicit loss policy; do not quietly promise their recovery. |
 
 The database is an operational authority, not the sole canonical record of Assay's intent and accepted outcomes. Calling it a cache does not mean clearing it during normal execution is harmless. The recovery contract is **semantic reconstruction with documented gaps and repeated work**, rather than a bit-for-bit recreation of all transient state.
@@ -203,6 +204,12 @@ and native harness IDs never cross that boundary. Preserve immutable invocation 
 causal links, units, nullable point/timing coverage and mergeable distributions through
 retention/replay. This adds no operational database table, cross-database foreign key,
 mandatory dual write or performance dependency to the forge service/cell.
+
+Local collection, 1 November 2026: performance-collection/01 delivers the local spool and its
+[`performance-event-v1`](../../../spec/performance-event-v1.md) batch/receipt contract. The
+later optional performance database is a separate database with its own credentials and
+retention. It consumes that contract and its conformance fixtures. It never becomes a table in
+the operational store.
 
 ## Planner refresh consumers — requested 23 October 2026
 

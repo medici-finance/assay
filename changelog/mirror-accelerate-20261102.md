@@ -1,0 +1,1 @@
+- Split the early read-only mirror kernel and admitted incremental provider readers into independent contributions while retaining the full mirror's persistence, retention and rollout acceptance.

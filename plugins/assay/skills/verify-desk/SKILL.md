@@ -299,8 +299,14 @@ existing grants.
 1. **`verifyloop plan --root <repo>`** from `$WT`: the deterministic scheduler prints the Awaiting
    queue, each item's tier, and the exact dispatch instruction (or human-route note). It spawns nothing
    and writes nothing. **Do not hand-compute the queue** — the plan IS the worklist.
-2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier --model <actual-model> --tier <selected-tier> --brief <path>`
-   (claim → worktree → roster → decision gate → model stamp → prompt). Tier 1 (`implemented`, empty
+2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier --model <actual-model> --tier <selected-tier> --brief <path> --perf-work '{"kind":"brief","repo":"<owner/repo>","brief":"<qualified-brief-id>"}'`
+   (claim → worktree → roster → decision gate → model stamp → prompt).
+   `<qualified-brief-id>` is the brief file's frontmatter `brief:` value with the number's leading
+   zeros dropped (deskkit `PerfBriefRef`): `assay:assay:desk-supervision:37`, or
+   `assay:assay:graph-execution:2` for graph-execution/02. perfrec silently drops a work ref
+   carrying the `<stream>/<NN>` key or a zero-padded number, and then `deskperf reruns` has no
+   cost row to join. The work ref is local perf context only. It changes nothing about what is
+   credited. Tier 1 (`implemented`, empty
    Evidence) before Tier 2 (`verified → done` closes), oldest-first within a tier; Tier 2 is never
    hidden — a filtered-out free close becomes permanent debt. A brief whose Verify table carries ≥4
    risk-bearing rows fans out into per-row sub-verifications inside that dispatched pass (the
@@ -411,7 +417,7 @@ delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` wi
 `strong`, equal to your admitted tier; never a model name), `started` and `finished` (RFC3339 UTC,
 `started <= finished <= ts`), plus the existing `rows_passed` / `rows_total`.
 When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results.
-This includes non-contiguous numeric and suffixed inventories. Each exact result is
+This includes non-contiguous numeric, suffixed and label inventories. Each exact result is
 `{row, result}` (`pass` / `fail` / `could-not-run` / `deferred`); when `rows` is empty
 or omitted, `row_results` remains optional.
 `rows` names only exact identities still held by the receipt, never every covered row;
@@ -675,7 +681,9 @@ IS the report. **In addition** write one outcome record and land it with `deskev
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
 computable from prose). Write the record to the dispatcher-named outcome path from your prompt —
 never invent one, and never write it inside the home, where it is an untracked file that refuses
-admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcome-record`. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
+admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcome-record`. The record carries
+`attempts`: one entry per run of the Verify table in the dispatch, as the verifier reported them (window,
+`rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
 refresh only the brief in the verifier home from the target branch
@@ -705,8 +713,11 @@ and run join keys described above for automatic non-pass derivation. Use `blocke
 `verify-fail` when no acceptance obligation failed.
 
 ```
-{"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<full-evidence-commit-sha>"}
+{"ts":"<ISO8601Z>","brief":"<brief-key>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<full-evidence-commit-sha>","attempts":[{"attempt":1,"disposition":"discarded","reason":"env-fault","cause_ref":"<owner/repo#N>","started":"<ISO8601Z>","finished":"<ISO8601Z>","rows_run":<k>},{"attempt":2,"disposition":"credited","started":"<ISO8601Z>","finished":"<ISO8601Z>","rows_run":<N>}]}
 ```
+
+`<brief-key>` is the register's own `<stream>/<NN>` key (the record's file path derives from it),
+never the qualified `--perf-work` brief id.
 
 **A failed/blocked verify also creates a durable REPAIR OBLIGATION** (`repair-obligation-v1`;
 `docs/streams/desk-supervision/repair-obligation-v1.md`) — a versioned marker in the sibling

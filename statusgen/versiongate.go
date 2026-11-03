@@ -126,7 +126,8 @@ func treeHasBriefV2(root string) bool {
 			// brief-v3 is brief-v2 plus the withdrawn keys: a v3 tree is a v2 tree
 			// for this boundary.
 			if t == "schema: "+briefSchemaV2 || t == "schema: \""+briefSchemaV2+"\"" ||
-				t == "schema: "+briefSchemaV3 || t == "schema: \""+briefSchemaV3+"\"" {
+				t == "schema: "+briefSchemaV3 || t == "schema: \""+briefSchemaV3+"\"" ||
+				t == "schema: "+briefSchemaV4 || t == "schema: \""+briefSchemaV4+"\"" {
 				found = true
 				return filepath.SkipAll
 			}

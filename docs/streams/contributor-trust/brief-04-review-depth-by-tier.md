@@ -588,5 +588,41 @@ Tally: 12 met, 0 fail, 0 not run, of 12 Verify rows, at b1d3c0a44a01. Rows 1–7
 
 **VERIFY: PASS** — 12/12 rows pass at b1d3c0a44a01: rows 1–7 and 10–12 on the admitted host witness, check:ci rows 8 and 9 on the admission-bracketed container-netns witness; 0 fail, 0 could-not-run. Both mutation probes killed. Gate is model; risk all no.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1` | pass exit=0 | sha256:f9ce087c78e7 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v` | pass exit=0 | sha256:e810c326c4dc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v` | pass exit=0 | sha256:94b9c7660445 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v` | pass exit=0 | sha256:d07fe901e9c7 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v` | pass exit=0 | sha256:2360e46c7d08 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 | sha256:affec666f7bd | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 | sha256:fb5b5d540866 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | pass exit=0 | sha256:2611e35e23f8 | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | pass exit=0 | sha256:adbbf2cdd7ae | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `d=; d=$(mktemp -d "${TMPDIR:-/tmp}/ct04-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 2083064fdeb279d886f4b40e5761b3e958961c61 && statusgen --consumers --root "$d" --brief assay:assay:contributor-trust:04 --base cabdc0b8455aa532fcb9267946c0e8da2e93bb5f; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | pass exit=0 | sha256:ff31e38ba17c | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#5241 run=3d16ed539a81d06af7f77b2363a2f72bba47faed93c89271ce0e7ee7982e9c93 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/contributor-trust/brief-04-review-depth-by-tier.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 8 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:c501f3246bef | 2026-11-02 | assay-verifier-app[bot] @ 2c6c21336a60 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:abe7ab86639d6b1b63009dfdd618b21f1e1a993fd259362ec0cd646671ce1611
+Container-Image: sha256:f073d208c69e1e2f5ce5b680ad536d7a3cef3c80756823b9643cab4f7d1068aa
+Verification-Attestation: medici-finance/assay#5241 run=3d16ed539a81d06af7f77b2363a2f72bba47faed93c89271ce0e7ee7982e9c93 source=2c6c21336a606e64df057294f21177f16db7b9f8 brief=docs/streams/contributor-trust/brief-04-review-depth-by-tier.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=3d16ed539a81d06af7f77b2363a2f72bba47faed93c89271ce0e7ee7982e9c93 source=2c6c21336a606e64df057294f21177f16db7b9f8 tree=sha256:abe7ab86639d6b1b63009dfdd618b21f1e1a993fd259362ec0cd646671ce1611 witness=sha256:f7289d0847484bc903049c5e3d004c73e406fe7a52ec5b9f4df8e522cf525933 opened=2026-11-02T00:22:00Z closed=2026-11-02T00:27:35Z before=receipt after=check-verifier
+
+Risk-bearing values, enumerated over the implementing diff 2083064fdeb2 against cabdc0b8455a; reviewlanes.go is unchanged between 2083064fdeb2 and 2c6c21336a60. The diff has no numeric constants. In rank order:
+
+RISK-VALUE: DERIVED — laneTable rows (unknown and blessed-once get strong correctness, security, fact-check and fail-first; contributor and maintainer get correctness and security) @ tools/desk/internal/deskkit/reviewlanes.go:119-122 — matches the brief's lane-set-by-tier contract; row 3 is the negative control for the contributor row
+RISK-VALUE: DERIVED — out-of-range tier falls back to laneTable[TierUnknown] @ tools/desk/internal/deskkit/reviewlanes.go:137 — fails closed to the deepest set, per the brief's unknown-tier rule; rows 2 and 11 exercise it
+RISK-VALUE: DERIVED — ExecTier = "strong" on the deep-set correctness lane @ tools/desk/internal/deskkit/reviewlanes.go:105 (with the same literal at :80, :88, :96) — matches the brief's strong-tier requirement for the deep set
+RISK-VALUE: DERIVED — ClaimState strings "confirmed", "contradicted", "unverified" @ tools/desk/internal/deskkit/reviewlanes.go:182-184, with extraction seeding ClaimUnverified @ :270 and :277 — matches the brief's every-claim-starts-unverified rule; row 4 pins it
+RISK-VALUE: NAMED, NOT DERIVED — claimMarkerRe claim-marker pattern @ tools/desk/internal/deskkit/reviewlanes.go:232 — extraction recall is a review-gate judgement per the brief's pre-mortem; no Verify row asserts recall
+
+Tally: 12 met, 0 fail, 0 could-not-run, of 12 Verify rows, at 2c6c21336a60 (batch re-witness pin). Rows 1–7 and 10–12 are on the admitted host witness; check:ci rows 8 and 9 are on the admission-bracketed container-netns witness (OrbStack engine behind the default docker context, image pinned by digest, network none). Row 9's exit is that of its trailing echo; a separately labelled host probe (no acceptance credit) produced output with the same sha256 prefix c501f3246bef, ending in rc=0. deskpathguard rederive: 12 rows, 0 author-added. Gate is model; risk all no.
+
+**VERIFY: PASS** — 12/12 rows pass at 2c6c21336a60: rows 1–7 and 10–12 on the admitted host witness, check:ci rows 8 and 9 on the admission-bracketed container-netns witness; 0 fail, 0 could-not-run.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

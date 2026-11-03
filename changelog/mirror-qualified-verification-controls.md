@@ -1,0 +1,1 @@
+- Pin both merged mirror contributions to their actual delivery snapshots and add failing controls for canonical repository scopes and qualified retained-history bounds.
