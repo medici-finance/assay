@@ -182,7 +182,7 @@ func TestScratchSweepIfDueStampsCompletion(t *testing.T) {
 	finish(t, r, 0)
 	stamp := filepath.Join(s.Path, maintenanceStampName)
 	original := s.remove
-	s.remove = func(string) error { return errors.New("injected deletion failure") }
+	s.remove = func(string, pins) error { return errors.New("injected deletion failure") }
 	rep, ran, err := s.SweepIfDue(DefaultPolicy(), time.Hour, true)
 	if !ran || err == nil || !rep.Partial {
 		t.Fatalf("injected failure did not leave a partial sweep: ran=%v err=%v %+v", ran, err, rep)
@@ -195,9 +195,9 @@ func TestScratchSweepIfDueStampsCompletion(t *testing.T) {
 	}
 	backdateAttempt(t, s, 11*time.Minute)
 	stampedEarly := false
-	s.remove = func(path string) error {
+	s.remove = func(path string, seen pins) error {
 		stampedEarly = stampedEarly || exists(t, stamp)
-		return original(path)
+		return original(path, seen)
 	}
 	rep, ran, err = s.SweepIfDue(DefaultPolicy(), time.Hour, true)
 	if !ran || err != nil || rep.Partial || rep.Reclaimed == 0 {
@@ -307,13 +307,13 @@ func TestScratchAbandonedBuildLinkAtDeletion(t *testing.T) {
 	backdate(t, s, older, p.MaxAge+2*time.Hour)
 	backdate(t, s, swapped, p.MaxAge+time.Hour)
 	original, once := s.remove, false
-	s.remove = func(path string) error {
+	s.remove = func(path string, seen pins) error {
 		if !once {
 			once = true
 			must(t, os.Rename(swapped.Work(), swapped.Work()+".moved"))
 			linkWork(t, swapped, live)
 		}
-		return original(path)
+		return original(path, seen)
 	}
 	got := sweep(t, s, p, true)
 	rows := map[string]Entry{}

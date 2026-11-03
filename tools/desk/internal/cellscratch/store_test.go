@@ -192,7 +192,7 @@ func TestScratchPartial(t *testing.T) {
 	acknowledge(t, r)
 	finish(t, r, 0)
 	original := s.remove
-	s.remove = func(path string) error {
+	s.remove = func(path string, seen pins) error {
 		if err := s.root.Remove(path + "/build"); err != nil {
 			return err
 		}
@@ -284,7 +284,7 @@ func TestScratchPartialWorkspaceRestart(t *testing.T) {
 			finish(t, r, code)
 			original := s.remove
 			var calls []string
-			s.remove = func(path string) error {
+			s.remove = func(path string, seen pins) error {
 				calls = append(calls, path)
 				if path != r.Record.ID+"/work" {
 					t.Fatalf("metadata retired before workspace: %s", path)
