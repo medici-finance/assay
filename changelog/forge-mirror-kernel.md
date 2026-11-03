@@ -1,0 +1,1 @@
+- Add a read-only mirror kernel with admission-bound observations, explicit coverage and freshness, deterministic scan planning, and synthetic Store conformance support. Durable storage, source integration and operational rollout remain separate work.

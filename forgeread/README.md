@@ -61,3 +61,25 @@ never retries through that path.
 ```sh
 cd forgeread && GOWORK=off go test ./...
 ```
+
+## Mirror kernel
+
+`mirror/` owns provider-qualified observations, admission-bound scopes, coverage,
+explicit-time refresh/scan plans and admitted queries over caller-supplied ports.
+`QueryScope` checks current admission before reading a Store; the Store must also
+check admission independently. Complete-empty is available only with complete,
+fresh coverage. Partial scans retain prior rows and their completeness watermark;
+full inventory absence means not-in-inventory, never closed. Full-inventory time
+is tracked separately so incremental success cannot postpone repair indefinitely.
+
+The package has no network, credential, filesystem, process, database or scheduler
+implementation. `mirror/mirrortest` is synthetic reference-store/conformance support,
+not production persistence. Permission loss returns unavailable coverage and a
+retention-decision-required signal, without choosing keep-history or purge. The
+persisted mirror integration retains PostgreSQL transactions/restart, authenticated
+source mapping, refresh coalescing, review population completeness, domain mapping,
+retention policy and reader rollout. These are not supplied by the kernel.
+
+The root API and its JSON envelope stay unchanged. Later shared-library composition
+can consume the kernel without moving credentials into this package. Targeted
+kernel checks run with `go test -run '^TestMirror' ./mirror/...`.
