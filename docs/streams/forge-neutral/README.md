@@ -254,7 +254,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | todo | — | — |
 | 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
-| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 5 | M | todo | — | — |
+| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -779,6 +779,8 @@ ports. It separates offline fake-gate/reference-store qualification from the lat
 canonical R2 PostgreSQL gate/store integration. The shared gate owns refresh acquisition,
 completion and failure eligibility; callers never install their own fallback poller.
 This contribution does not deliver full /37, its persisted row 23, retention selection,
-remote custody, reader cutover or activation. Its typed start prerequisites are the kernel and mapper50 (`46 + 50 → 51`, wave5);
-real R2 gate/store integration remains a later acceptance requirement. Existing
-lifecycle and acceptance cells are unchanged.
+remote custody, reader cutover or activation. Its typed offline start prerequisite is the existing kernel (`46 → 51`, wave3).
+Mapper50 is a compatible Source implementation for later real-source integration,
+not a prerequisite for synthetic coordinator fixtures. Real R2 gate/store and joined
+mapper qualification remain later acceptance requirements. Existing lifecycle and
+acceptance cells are unchanged.

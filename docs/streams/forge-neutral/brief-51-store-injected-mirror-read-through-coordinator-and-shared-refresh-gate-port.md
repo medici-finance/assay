@@ -2,8 +2,8 @@
 brief: assay:assay:forge-neutral:51
 title: Store-injected mirror read-through coordinator and shared refresh gate port
 why: "A missing or stale shared answer should trigger one admitted refresh, while equivalent readers wait for that result. A reusable coordinator makes failures and cooldown visible without making every client poll the forge or waiting for write execution features."
-wave: 5
-depends: ["forge-neutral/46", "forge-neutral/50"]
+wave: 3
+depends: ["forge-neutral/46"]
 unblocks: []
 split-from: forge-neutral/37
 effort: M
@@ -65,7 +65,7 @@ single-point-of-failure: the shared gate's acquire/join/completion and retry-eli
 
 ## Read first and architecture pickup
 
-Read current `/37`, `/46`–`/48`, DR-forge-library, library-first and Go engineering guidance, the current read-through amendment, and the actual mapper/foundation child contracts. Record their revisions, actual APIs, source availability, and continue/adapt/hold before implementation. Mapper50 is a typed dependency, carried by genuine two-parent merge of its authoring commit; that contract is not claimed as an implementation delivery. At dispatch inspect its actual source/port availability and the supported offline preparation path; missing required capability holds rather than inventing another mapper. No graph-execution admission, claim, outbox or effect prerequisite is added to this offline orchestration unit.
+Read current `/37`, `/46`–`/48`, DR-forge-library, library-first and Go engineering guidance, the current read-through amendment, and the actual mapper/foundation child contracts. Record their revisions, actual APIs, source availability, and continue/adapt/hold before implementation. Mapper50 is a compatibility reference and later real-source integration owner, not an offline start dependency: Source.Scan, ScanResult and Store already exist in46. The coordinator treats Observation as opaque and compiles without50's additional presence fields. Its authoring commit is retained in genuine merge history, without claiming implementation delivery. Actual50+51+PostgreSQL qualification remains the joined integration owner; do not invent another mapper. No graph-execution admission, claim, outbox or effect prerequisite is added to this offline orchestration unit.
 
 The real critical-path head for durable read-through is the canonical R2 foundation and shared-gate adapter, absent at the inspected main. Independent coordinator implementation can proceed with the explicit substitutes below; it cannot claim that head delivered.
 
