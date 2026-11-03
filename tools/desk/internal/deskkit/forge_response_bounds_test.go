@@ -8,11 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/medici-finance/assay/forgeread/adapters"
+	"github.com/medici-finance/assay/perfrec"
 )
 
 const nativeTestLimit = 8 << 20
@@ -21,6 +23,13 @@ type nativeCountBody struct {
 	io.Reader
 	read   int
 	closed bool
+}
+
+type nativeRequestSink struct{ requests []perfrec.RequestObservation }
+
+func (s *nativeRequestSink) ObserveRequest(r perfrec.RequestObservation) bool {
+	s.requests = append(s.requests, r)
+	return true
 }
 
 func (b *nativeCountBody) Read(p []byte) (int, error) {
@@ -54,6 +63,9 @@ func (f *nativeFixtureTransport) RoundTrip(r *http.Request) (*http.Response, err
 	f.body = &nativeCountBody{Reader: bytes.NewReader(payload)}
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
+	if f.length >= 0 {
+		h.Set("Content-Length", strconv.FormatInt(f.length, 10))
+	}
 	if f.redirect != "" {
 		h.Set("Location", f.redirect)
 	}
@@ -115,7 +127,16 @@ func TestMirrorResponseBoundIsolation(t *testing.T) {
 			q := url.Values{"page": {"1"}}
 			payload := `[]` + strings.Repeat(" ", nativeTestLimit+512)
 			rt := &nativeFixtureTransport{payload: payload, length: -1}
-			f := nativeBackend(provider, rt)
+			// This admitted client already counts native sends. Context and bound
+			// composition must preserve that leaf, not count it a second time.
+			f := nativeBackend(provider, countRoundTrips(rt))
+			sink := &nativeRequestSink{}
+			observer := RequestObserver{Sink: sink, Origin: perfrec.OriginPoll}
+			if g, ok := f.(*GitHubForge); ok {
+				g.Observer = observer
+			} else {
+				f.(*GitLabForge).Observer = observer
+			}
 			before := perfForgeCalls.Load()
 			got, err := nativeAccess(f, context.Background()).GetPage(context.Background(), "o/r", "issues", q)
 			var limit interface{ LimitBytes() int64 }
@@ -124,6 +145,9 @@ func TestMirrorResponseBoundIsolation(t *testing.T) {
 			}
 			if perfForgeCalls.Load()-before != 1 || rt.hits != 1 {
 				t.Fatalf("attempts counted more than once: %d/%d", perfForgeCalls.Load()-before, rt.hits)
+			}
+			if len(sink.requests) != 1 || sink.requests[0].Bytes == nil || *sink.requests[0].Bytes != nativeTestLimit+1 {
+				t.Fatalf("overflow response bytes were lost or duplicated: %+v", sink.requests)
 			}
 			beforeHits := rt.hits
 			_, err = nativeAccess(f, context.Background()).GetPage(context.Background(), "other/repo", "issues", q)

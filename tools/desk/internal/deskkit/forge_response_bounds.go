@@ -32,7 +32,17 @@ func mirrorResponseClient(base *http.Client) *http.Client {
 	if next == nil {
 		next = http.DefaultTransport
 	}
-	c.Transport = mirrorResponseTransport{next: next}
+	// Keep counting/observation at the actual native leaf, beneath the bounded
+	// read. Otherwise overflow would be reported as zero response bytes after
+	// this adapter had already consumed the detection prefix. Preserve an
+	// existing counted leaf rather than hiding it behind the context wrapper.
+	if contextual, ok := next.(forgeContextTransport); ok {
+		contextual.next = countRoundTrips(contextual.next)
+		next = contextual
+	} else {
+		next = countRoundTrips(next)
+	}
+	c.Transport = countedTransport{next: mirrorResponseTransport{next: next}}
 	return c
 }
 
