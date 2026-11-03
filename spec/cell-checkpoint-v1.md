@@ -147,3 +147,8 @@ completion from another generation never removes the pending operation.
 The inherited Journal.Record(EFFECT-INTENT) entrypoint delegates to the same
 transactional CommitIntent implementation. It never acknowledges a discarded
 mandatory intent; ordinary best-effort attribution does not include intent writes.
+
+Usage predecessor lineage is scoped by reservation plus original work, attempt,
+request and signed phase. Input/output or other independent balance reservations
+may use distinct immutable source references; evidence deduplication does not
+merge their predecessor chains or quota units.

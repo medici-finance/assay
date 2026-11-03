@@ -260,6 +260,8 @@ func TestCellOwnership(t *testing.T) {
 	t.Run("authoritative-resolution", TestCellJournalProvenAbsence)
 	t.Run("restored-records", TestCellEffectRestoredRecords)
 	t.Run("completion-generation", TestCellCompletionGeneration)
+	t.Run("resolution-refusals", TestCellResolutionRefusals)
+	t.Run("admission-refusals", TestCellAdmissionRefusals)
 	ctx := context.Background()
 	d, c, a := cellFixture(t)
 	r := cellRequest(t, d, c, "one", 30)
@@ -766,6 +768,14 @@ func TestCellCompletionGeneration(t *testing.T) {
 		t.Fatal("wrong completion changed state")
 	}
 	done.Generation = r.Permit.ClaimGeneration
+	done.Ref = ""
+	if err := journal.Record(done); err == nil {
+		t.Fatal("empty receipt completed pending intent")
+	}
+	if !reflect.DeepEqual(before, cellRead(t, d)) {
+		t.Fatal("empty completion changed state")
+	}
+	done.Ref = receipt.Ref
 	if err := journal.Record(done); err != nil {
 		t.Fatal(err)
 	}
@@ -773,4 +783,85 @@ func TestCellCompletionGeneration(t *testing.T) {
 	if len(completed.Pending) != 0 || len(completed.Receipts) != 1 || completed.Receipts[0].Ref != receipt.Ref || completed.Receipts[0].Generation != r.Permit.ClaimGeneration {
 		t.Fatal("matching completion/receipt not retained")
 	}
+}
+
+func TestCellResolutionRefusals(t *testing.T) {
+	for _, mode := range []string{"not-absent", "no-reference", "bad-schema", "wrong-cell", "empty-incarnation", "empty-key"} {
+		t.Run(mode, func(t *testing.T) {
+			d, c, a := cellFixture(t)
+			r := cellRequest(t, d, c, "resolution-guard", 1)
+			if err := a.Commit(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			proof := CellResolution{Ref: "ref:absence", FenceRef: "ref:fenced", NotApplied: true, Settlements: []CellSettlement{{ReservationID: r.Reservations[0].ID, Charged: uintRef(0), Usage: usageFor(r.Permit, "ref:resolved", "execution")}}}
+			switch mode {
+			case "not-absent":
+				proof.NotApplied = false
+			case "no-reference":
+				proof.Ref = ""
+			case "bad-schema":
+				c.current.Schema = "unsupported"
+			case "wrong-cell":
+				c.current.CellID = "other-cell"
+			case "empty-incarnation":
+				c.current.ID = ""
+			case "empty-key":
+				c.current.KeyRef = ""
+			}
+			a.Resolution = resolutionFixture{provider: cellProvider(a), control: c, result: proof}
+			before := cellRead(t, d)
+			if err := a.ResolvePending(context.Background(), r.Permit); err == nil {
+				t.Fatal("unqualified resolution retired pending intent")
+			}
+			if !reflect.DeepEqual(before, cellRead(t, d)) {
+				t.Fatal("unqualified resolution changed state")
+			}
+		})
+	}
+}
+
+func TestCellAdmissionRefusals(t *testing.T) {
+	t.Run("unknown-phase", func(t *testing.T) {
+		d, c, a := cellFixture(t)
+		r := cellRequest(t, d, c, "unknown-phase", 1)
+		r.Phase = "unqualified-phase"
+		r = c.issue(r)
+		before := cellRead(t, d)
+		if err := a.Commit(context.Background(), r); err == nil {
+			t.Fatal("unknown signed phase admitted")
+		}
+		if !reflect.DeepEqual(before, cellRead(t, d)) {
+			t.Fatal("unknown phase published partial state")
+		}
+	})
+	t.Run("retired-key-other-work", func(t *testing.T) {
+		d, c, a := cellFixture(t)
+		r := cellRequest(t, d, c, "work-lineage", 1)
+		if err := a.Commit(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+		proof := CellResolution{Ref: "ref:absence", FenceRef: "ref:fenced", NotApplied: true, Settlements: []CellSettlement{{ReservationID: r.Reservations[0].ID, Charged: uintRef(0), Usage: usageFor(r.Permit, "ref:resolved", "execution")}}}
+		a.Resolution = resolutionFixture{provider: cellProvider(a), control: c, result: proof}
+		if err := a.ResolvePending(context.Background(), r.Permit); err != nil {
+			t.Fatal(err)
+		}
+		r.Permit.WorkID = "other-work"
+		r.Permit.AttemptID += "-retry"
+		r.Permit.RequestID += "-retry"
+		r.Intent.Event.RunID = r.Permit.WorkID
+		r.Intent.Event.AttemptID = r.Permit.AttemptID
+		r.Reservations[0].ID += "-retry"
+		r.Reservations[0].WorkID = r.Permit.WorkID
+		r.Reservations[0].AttemptID = r.Permit.AttemptID
+		r.Reservations[0].RequestID = r.Permit.RequestID
+		cellEdit(t, d, func(s *CellState) { s.Claims[0].WorkID = r.Permit.WorkID; s.Claims[0].AttemptID = r.Permit.AttemptID })
+		r = c.issue(r)
+		before := cellRead(t, d)
+		if err := a.Commit(context.Background(), r); err == nil {
+			t.Fatal("retired operation moved to other work")
+		}
+		if !reflect.DeepEqual(before, cellRead(t, d)) {
+			t.Fatal("other-work retry changed state")
+		}
+	})
 }

@@ -88,6 +88,7 @@ func (u usageFixture) CellUsage(context.Context, CellPermit) ([]CellSettlement, 
 func TestCellBudgetRestoreAllAttempts(t *testing.T) {
 	t.Run("signed-request-phase", TestCellUsagePhaseBound)
 	t.Run("usage-refusals", TestCellUsageRefusals)
+	t.Run("multi-balance-lineage", TestCellMultiBalanceUsage)
 	d, c, a := cellFixture(t)
 	ctx := context.Background()
 	phases := []string{"preparation", "summary", "execution", "fallback", "verification"}
@@ -512,4 +513,73 @@ func TestCellUsageRefusals(t *testing.T) {
 			t.Fatal("changed settlement charged twice")
 		}
 	})
+}
+
+func TestCellMultiBalanceUsage(t *testing.T) {
+	for _, mode := range []string{"known-settle", "unknown-to-known", "resolve"} {
+		t.Run(mode, func(t *testing.T) {
+			d, c, a := cellFixture(t)
+			cellEdit(t, d, func(s *CellState) {
+				s.Checkpoint.Budget.Balances = append(s.Checkpoint.Budget.Balances, BudgetBalance{Ref: "ref:output", Account: "account", Provider: "provider", Unit: "reported-output-tokens", WindowStart: "2026-11-03T00:00:00Z", WindowEnd: "2026-11-04T00:00:00Z", Limit: 100, Headroom: 10, Consumed: uintRef(0)})
+			})
+			r := cellRequest(t, d, c, "multi-usage", 10)
+			second := r.Reservations[0]
+			second.ID += "-output"
+			second.BalanceRef = "ref:output"
+			second.Amount = 20
+			r.Reservations = append(r.Reservations, second)
+			r = c.issue(r)
+			if err := a.Commit(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			firstUsage := usageFor(r.Permit, "ref:input-report", "execution")
+			firstUsage.Input = uintRef(3)
+			firstUsage.Output = nil
+			secondUsage := usageFor(r.Permit, "ref:output-report", "execution")
+			secondUsage.Input = nil
+			secondUsage.Output = uintRef(5)
+			rows := []CellSettlement{{ReservationID: r.Reservations[0].ID, Charged: uintRef(3), Usage: firstUsage}, {ReservationID: r.Reservations[1].ID, Charged: uintRef(5), Usage: secondUsage}}
+			if mode == "unknown-to-known" {
+				initial := append([]CellSettlement{}, rows...)
+				initial[0].Charged = nil
+				initial[1].Charged = nil
+				a.Usage = usageFixture{rows: initial}
+				if err := a.Settle(context.Background(), r.Permit); err != nil {
+					t.Fatal("separate unknown reservation sources refused", err)
+				}
+				for n := range rows {
+					rows[n].PreviousSourceRef = rows[n].Usage.SourceRef
+					rows[n].Usage.SourceRef += "-confirmed"
+				}
+			}
+			provider := cellProvider(a)
+			proof := CellResolution{Ref: "ref:absence", FenceRef: "ref:fenced", NotApplied: true}
+			if mode == "resolve" {
+				proof.Settlements = rows
+			} else {
+				a.Usage = usageFixture{rows: rows}
+				if err := a.Settle(context.Background(), r.Permit); err != nil {
+					t.Fatal("separate reservation sources refused", err)
+				}
+				if err := a.Settle(context.Background(), r.Permit); err != nil {
+					t.Fatal("multi-reservation idempotence failed", err)
+				}
+			}
+			a.Resolution = resolutionFixture{provider: provider, control: c, result: proof}
+			if err := a.ResolvePending(context.Background(), r.Permit); err != nil {
+				t.Fatal("multi-reservation resolution failed", err)
+			}
+			s := cellRead(t, d)
+			if len(s.Checkpoint.Budget.Reservations) != 0 || len(s.Pending) != 0 || len(s.Resolutions) != 1 || *s.Checkpoint.Budget.Balances[0].Consumed != 3 || *s.Checkpoint.Budget.Balances[1].Consumed != 5 {
+				t.Fatal("independent unit charges or retirement lost", s)
+			}
+			wantUsage := 2
+			if mode == "unknown-to-known" {
+				wantUsage = 4
+			}
+			if len(s.Checkpoint.Budget.Usage) != wantUsage {
+				t.Fatal("reservation lineage lost evidence")
+			}
+		})
+	}
 }

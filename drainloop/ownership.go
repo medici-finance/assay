@@ -649,6 +649,11 @@ func settleCellState(s *CellState, p CellPermit, settlements []CellSettlement) e
 		}
 		seenUsage := false
 		latestSource := ""
+		for _, prior := range s.Settlements {
+			if prior.ReservationID == x.ReservationID && prior.Usage.WorkID == u.WorkID && prior.Usage.AttemptID == u.AttemptID && prior.Usage.RequestID == u.RequestID && prior.Usage.Phase == u.Phase {
+				latestSource = prior.Usage.SourceRef
+			}
+		}
 		for _, old := range s.Checkpoint.Budget.Usage {
 			if old.WorkID == u.WorkID && old.AttemptID == u.AttemptID && old.RequestID == u.RequestID && old.Phase == u.Phase {
 				if old.SourceRef == u.SourceRef {
@@ -657,10 +662,9 @@ func settleCellState(s *CellState, p CellPermit, settlements []CellSettlement) e
 					}
 					seenUsage = true
 				}
-				latestSource = old.SourceRef
 			}
 		}
-		if !seenUsage && latestSource != x.PreviousSourceRef {
+		if latestSource != x.PreviousSourceRef {
 			return errors.New("usage reconciliation has no exact predecessor")
 		}
 		index := -1
