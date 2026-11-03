@@ -31,6 +31,7 @@ consumers:
   - "tools/desk/internal/deskkit/forge_response_bounds.go, forge_response_bounds_test.go: follow-up forge-neutral/48"
   - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go, mirrorsource.go: follow-up forge-neutral/48 (mirror-only native response composition)"
   - "forgeread/README.md: follow-up forge-neutral/48"
+  - "docs/contracts.md: follow-up forge-neutral/48 (register the native response bound and its weight)"
   - "workflow/store/, mirroringest.go and persisted watermark failure flow: follow-up forge-neutral/37"
   - "forgeclient/: follow-up desktools-v2/75 (relocate this implementation if present)"
   - "statusgen/: out-of-scope (no reader cutover or import change)"
@@ -48,6 +49,7 @@ files:
 - `tools/desk/internal/deskkit/mirrorsource.go`
 - `tools/desk/internal/deskkit/mirrorsource_test.go`
 - `forgeread/README.md`
+- `docs/contracts.md`
 - `changelog/native-mirror-response-bound.md` (planned)
 
 facts:
@@ -77,7 +79,7 @@ This gate covers acceptance and activation. Offline implementation and synthetic
 2. Apply only to enumerated mirror page reads, including later conditional variants. Preserve unrelated logs, archives, ordinary reads and writes. Reuse private backend copies, cancellation, scope, no-redirect custody and request accounting.
 3. Oversize produces a typed limit/could-not-check result: no successful population, no nonzero ObservedUpTo, no valid truncated prefix and no complete-empty success. Preserve /47's independent aggregate budget.
 4. Through both actual native provider paths test below-limit and exact-limit valid populations; oversized valid JSON with known, absent or false lengths, chunking, supported compression expansion and error bodies. Count consumed bytes, close the body and prove cancellation. Direct native-access tests bypass aggregate accounting.
-5. Plant and restore a production-path bypass independently for each provider; the named test must fail. Preserve admitted scope, readonly and frozen-surface controls and neighboring non-mirror behavior. Update the README and fragment; retain the joined row-23 obligation and shared-library relocation owner.
+5. Plant and restore a production-path bypass independently for each provider; the named test must fail. Preserve admitted scope, readonly and frozen-surface controls and neighboring non-mirror behavior. Register the guard and its weight in docs/contracts.md; update the README and fragment. Retain the joined row-23 obligation and shared-library relocation owner.
 
 design-fit:
   owner: trusted deskkit native mirror response composition
