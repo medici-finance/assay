@@ -150,9 +150,13 @@ shared-library migration reuses this native composition rather than adding a sec
 ## Admitted observation mapping
 
 Desk-tools provides `NewMirrorIngestSource` over its existing `MirrorReadSource`,
-implementing `mirror.Source.Scan` with a trusted explicit observation clock. Each
-call checks current admission and exact source scope before the independently
-scoped native transport. No command, source credential discovery, listener,
+implementing `mirror.Source.Scan` with a trusted bound source-admission ID and
+explicit observation clock. Composition derives that ID alongside the source from
+the canonical credential owner; requests do not select it. Each call matches both
+Scope.AdmissionID and current Admission.ID to the bound value before and after
+the independently scoped native read, rechecking authorization before returning
+observations. This validates binding consistency, not independent proof of actual
+credential-installation selection; that real joined composition remains /37. No command, source credential discovery, listener,
 polling loop or alternate page walker is added. The adapter currently has no
 production command caller; fixtures exercise its actual native-to-reference-Store flow.
 
