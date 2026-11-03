@@ -2590,24 +2590,20 @@ func main() {
 			changedPaths = append(changedPaths, r.Paths...)
 		}
 	}
-	// Differential register lint: --diff-base makes --lint compare the
-	// register at the base against the working tree, firing PROBLEM only for
-	// diff-introduced problems. Meaningful only in lint mode — an ordinary
-	// regen/check/record has no PR base to diff against.
-	if *diffBaseFlag != "" {
-		if mode != "lint" {
-			fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
-			exitProcess(2)
-		}
-		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
+	// Validate the differential-mode option before any reader preflight.
+	if *diffBaseFlag != "" && mode != "lint" {
+		fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
+		exitProcess(2)
 	}
-	// Brief-reading version gate (derived-board/06 §6): a STAMPED statusgen below
-	// v1.0.0 refuses to read a brief-v2 tree (exit 6), pointing at
-	// assay:upgrade-assay. An unstamped local build reports "dev" and behaves as
-	// latest, so running from source is never gated. This is the SEPARATE, release-
-	// boundary control alongside parseBriefFile's #271 fail-closed trap.
+	// Capability and retained release-boundary refusals cover both ordinary
+	// and differential readers before they inspect the selected records.
 	if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {
 		exitProcess(gate)
+	}
+	// Differential register lint compares the base and current register; it
+	// does not bypass mandatory-capability admission.
+	if *diffBaseFlag != "" {
+		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
 	}
 	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
 	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only

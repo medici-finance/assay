@@ -2016,7 +2016,8 @@ sets `CELL_KUBERNETES_CONFIG` to an absolute `cell-kube-compat-v1` JSON file.
 The closed schema and unresolved example are in
 `containers/k8s/compatibility/`. The example pins the published v1.0.65 role images
 for `linux/amd64`, but is not deployable: agent, initialization and actual operator
-values need qualification. A missing or invalid explicit profile makes no API operation. There is no ambient context discovery,
+values need qualification. A missing or invalid explicit profile makes no API
+operation. There is no ambient context discovery,
 credential-plugin execution, proxy, insecure TLS or redirect fallback.
 
 Use the opt-in `containers/k8s/components/compatibility-cellctl` root only after
@@ -2040,6 +2041,13 @@ for the child so cell-scoped STOP and role/claim controls retain their owners; n
 plugin enable command or second agent invocation runs during boot. Explicit
 `desk-session --prepare` creates cold history only where no history exists.
 Ordinary boot never invents first-boot permission from absent history.
+
+The [custodian preparation guide](kubernetes-compatibility-preparation.md) gives
+the approved-input inventory, descriptor/preparation/readback commands and exact
+profile/workload mapping for all five roles. `launch_id` is the canonical
+descriptor hash retained in `.assay-compat/state.json`, not a descriptor field or
+the checksum of its pretty-printed JSON. Preparation and offline configuration
+checks do not authorize the live sequence below.
 
 For a prepared cell named `example`, the bounded sequence is:
 

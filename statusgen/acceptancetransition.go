@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // The transport is deliberately unavailable until a command explicitly opts in.
@@ -165,7 +167,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("cannot read historical Evidence")
 	}
 	deliveredEvidence, err := flipEvidenceAt(dir, delivery, file)
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(deliveredEvidence)) {
+	if err != nil || !transitionDeliveredEvidencePreserved(historical, deliveredEvidence) {
 		return fail("pre-amendment history lost delivered Evidence")
 	}
 	atAmendment, e := flipEvidenceAt(dir, amendment, file)
@@ -227,11 +229,21 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("cannot resolve brief path")
 	}
 	rel = filepath.ToSlash(rel)
-	origin, err := historyGit(root, "remote", "get-url", "origin").Output()
-	if err != nil || remoteHost(string(origin)) != "github.com" {
+	// Command-priority config could replace even a snapshot's explicit reset.
+	// It is outside the snapshot profile and cannot supply approval authority.
+	if gitcore.OriginConfigInjected() {
+		return fail("could-not-check repository authority: injected Git configuration is unsupported")
+	}
+	// The owner's error names a fixed unavailability class, never a URL,
+	// credential or path, so it is reported verbatim.
+	origin, err := gitcore.OriginAuthority(root)
+	if err != nil {
+		return fail("could-not-check repository authority: " + err.Error())
+	}
+	if remoteHost(origin) != "github.com" {
 		return fail("could-not-check repository authority: approval requires a github.com origin")
 	}
-	repo := originOwnerRepo(strings.TrimSpace(string(origin)))
+	repo := originOwnerRepo(strings.TrimSpace(origin))
 	if repo == "" {
 		return fail("cannot bind approval to the repository origin")
 	}
@@ -373,4 +385,32 @@ func expectOnlyChange(original, next verifyRow) bool {
 	comparable := next
 	comparable.Expect, comparable.RiskText = original.Expect, original.RiskText
 	return reflect.DeepEqual(original, comparable)
+}
+
+// transitionDeliveredEvidencePreserved retains the byte-prefix rule for every
+// substantive result. Only the exact generated empty-Evidence placeholder may
+// instead survive as an exact Markdown quotation (#4563, human ruling
+// https://github.com/medici-finance/assay/issues/4563#issuecomment-6528575948).
+// Amendment and current-history preservation are checked separately, unchanged.
+func transitionDeliveredEvidencePreserved(historical, delivered string) bool {
+	if strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(delivered)) {
+		return true
+	}
+	const placeholder = "<!-- Independent verifier appends one row per Verify command after implementation. -->"
+	if strings.TrimSpace(delivered) != placeholder {
+		return false
+	}
+	for _, line := range strings.Split(historical, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, ">") {
+			continue
+		}
+		for strings.HasPrefix(line, ">") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+		}
+		if line == placeholder {
+			return true
+		}
+	}
+	return false
 }

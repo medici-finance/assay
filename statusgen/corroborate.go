@@ -860,8 +860,10 @@ var ghPRBaseRefFn = ghPRBaseRef
 
 // ghPRBaseRef returns the PR's base branch name (e.g. "main").
 func ghPRBaseRef(repo string, pr int) string {
-	out, err := ghGuard(exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
-		"--repo", repo, "--json", "baseRefName", "-q", ".baseRefName")).Output()
+	out, err := forgeCLIRead("graphql", func() *exec.Cmd {
+		return ghGuard(exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
+			"--repo", repo, "--json", "baseRefName", "-q", ".baseRefName"))
+	})
 	if err != nil {
 		return ""
 	}
@@ -1146,9 +1148,9 @@ func fetchPRFiles(repo string, pr int) ([]ghPRFile, error) {
 	// error, so a caller that decides anything from the ABSENCE of a path must
 	// check the listing's completeness (fetchPRChangedFiles) or derive the
 	// answer locally — the register-transition lane does both.
-	cmd := ghGuard(exec.Command("gh", "api", "--paginate", "--slurp",
-		fmt.Sprintf("repos/%s/pulls/%d/files", repo, pr)))
-	out, err := cmd.Output()
+	out, err := forgeCLIRead("core", func() *exec.Cmd {
+		return ghGuard(exec.Command("gh", "api", "--paginate", "--slurp", fmt.Sprintf("repos/%s/pulls/%d/files", repo, pr)))
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
@@ -1170,8 +1172,10 @@ func fetchPRFiles(repo string, pr int) ([]ghPRFile, error) {
 // only when its length equals this count — the same refusal shapeFromListing
 // applies to the model-autoflip lane.
 func fetchPRChangedFiles(repo string, pr int) (int, error) {
-	out, err := ghGuard(exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr),
-		"--jq", ".changed_files")).Output()
+	out, err := forgeCLIRead("core", func() *exec.Cmd {
+		return ghGuard(exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr),
+			"--jq", ".changed_files"))
+	})
 	if err != nil {
 		return 0, fmt.Errorf("gh api pulls/%d: %w", pr, err)
 	}
@@ -1192,9 +1196,9 @@ type ghPRData struct {
 // fetchPRData runs `gh pr view <N> --json reviews,comments` for the given repo and
 // PR and unmarshals the result.
 func fetchPRData(repo string, pr int) (*ghPRData, error) {
-	cmd := ghGuard(exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
-		"--repo", repo, "--json", "reviews,comments"))
-	out, err := cmd.Output()
+	out, err := forgeCLIRead("graphql", func() *exec.Cmd {
+		return ghGuard(exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr), "--repo", repo, "--json", "reviews,comments"))
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gh pr view %d --json reviews,comments: %w", pr, err)
 	}

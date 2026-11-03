@@ -70,8 +70,8 @@
     {
       "name": "row 12 — a refused POST does not re-apply the rule that was read (main left unprotected)",
       "file": "cmd/deskfleet/project.go",
-      "old": "\t\tresp, err := p.gl.do(\"POST\", pp+\"/protected_branches\", restoreBody(prev))",
-      "new": "\t\tresp, err := apiResponse{Status: 500}, error(nil)"
+      "old": "\t\tresp, err := p.gl.do(\"POST\", pp+\"/protected_branches\", body)\n\t\tif err == nil && resp.Status == 201 {\n\t\t\tp.fail(\"protected-branch step failed; 'main' was restored",
+      "new": "\t\t_ = body\n\t\tresp, err := apiResponse{Status: 500}, error(nil)\n\t\tif err == nil && resp.Status == 201 {\n\t\t\tp.fail(\"protected-branch step failed; 'main' was restored"
     },
     {
       "name": "settings steps — a failed approvals write aborts every later settings step",
@@ -118,8 +118,8 @@
     {
       "name": "F2 — the read-back parses an absent merge level as the intended 40",
       "file": "cmd/deskfleet/project.go",
-      "old": "\t\tpush, merge, forceDefault = levelNone, levelNone, \"unknown\"",
-      "new": "\t\tpush, merge, forceDefault = levelNone, mergeAccessLevel, \"unknown\""
+      "old": "\t\tmerge, forceDefault = levelNone, \"unknown\"",
+      "new": "\t\tmerge, forceDefault = mergeAccessLevel, \"unknown\""
     },
     {
       "name": "F3 — a new account's avatar is never uploaded although --avatars-dir was given",

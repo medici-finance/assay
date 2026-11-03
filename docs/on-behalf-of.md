@@ -26,6 +26,14 @@ On-behalf-of: human:<who> mode:unattended
   `:private`, and the roster's neutral **name** for that same human — the
   `ASSAY_HUMAN_LOGIN_MAP` key, i.e. the given name the map already carries as that
   human's public form — on every other target. See "Which form" below.
+  The name carries no whitespace (the trailer is space-delimited): a map entry whose name
+  has a space between its words (`Ada Lovelace:<login>`), or any other whitespace character
+  in it such as a no-break space, is not applied — the config echo prints a `NOTICE` naming
+  it, that human has no neutral name, so a write that needs one refuses, and the
+  ruling-impersonation guard does not recognise that name — while every other entry and key
+  of the roster still loads. A space directly before the colon (`ada :<login>`) is still
+  malformed and refuses the whole roster, as it always has. Only a comma, semicolon, line
+  break, space or tab separates entries. Write the name as `ada-lovelace:<login>`.
 - ` mode:unattended` — appended only when the resolving session carried no live
   interactive roster beacon (a cron loop: `scanloop`, `verifyloop`, …, as opposed to a
   desk/worker session with a registered role). Its absence means the session was
@@ -49,13 +57,13 @@ a trailing parenthetical never perturbs the runner-agreement comparison.
 A trailer stamped onto a write to a **public** repo is world-readable for good — a posted
 review cannot be edited afterwards, and a commit message cannot be taken back out of
 history. So the form the trailer names is chosen from the target repo's **configured**
-visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` token, read with no network call
+visibility (`ASSAY_ALLOWED_REPOS`' `:public` / `:private` / `:internal` token, read with no network call
 — the same value `VisibilityRiskClassed` reads):
 
 | Target | The trailer names |
 |---|---|
 | A repo the roster states is `:private` | the mapped login — unchanged |
-| Everything else — `:public`, an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
+| Everything else — `:public`, `:internal` (visible instance-wide), an unstated visibility, a repo admitted only by an `owner/*` pattern, a repo the roster does not carry, or no repo at all | the roster's neutral **name** for that human |
 
 The rule is stated in the fail-closed direction on purpose, exactly as
 `VisibilityRiskClassed` states its own: *everything except a repo declared private takes the

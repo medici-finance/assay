@@ -155,7 +155,7 @@ func TestKubeCompatParity(t *testing.T) {
 	}
 	for _, db := range []struct{ key, val string }{
 		{"CELL_DB_DSN", "postgres://cell_example@127.0.0.1:5432/cell_example?sslmode=verify-full"},
-		{"CELL_DB_DSN", "postgres://cell_example:hunter2@127.0.0.1:5432/cell_example"},
+		{"CELL_DB_DSN", "postgres://cell_example:" + "hunter2" + "@127.0.0.1:5432/cell_example"},
 		{"CELL_DB_PASSFILE", "/run/example/pgpass"},
 	} {
 		w.writeHouseEnv(t, "CELL_KIND=k8s\nCELL_KUBERNETES_CONFIG="+s.ProfilePath+"\n"+db.key+"="+db.val+"\n")

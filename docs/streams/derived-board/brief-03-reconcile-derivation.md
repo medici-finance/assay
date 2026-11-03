@@ -831,6 +831,74 @@ RISK-VALUE: DERIVED — status != http.StatusOK @ statusgen/ghfetch.go:128 (pair
 RISK-VALUE: DERIVED — openIssuePages = 20 @ statusgen/reconcilefold.go:312 — a full last page at the cap returns lookedAt=false (statusgen/reconcilefold.go:350), so the value fails closed at any repository size.
 RISK-VALUE: DERIVED — blockingIssueLabels = {question, needs-decision, help wanted} @ statusgen/lifecycle.go:160 — identical to the blocked row of the derivation table in docs/streams/derived-board/spec.md §2.
 
+### Non-implementer verifier re-run — VERIFY: BLOCKED (rows 4 and 9 could-not-run: the admitted row environment holds no read token, and both rows need one) — 2026-10-30, assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main c887e24dd9521953b29d79414f95bc3757029719
+
+Independent verifier, not the implementer, on merged main at c887e24dd9521953b29d79414f95bc3757029719. The home is a detached worktree at that source, admitted by `deskdispatch --check-verifier` before any row and again after this Evidence edit (attestation below). The fixture row 5 writes (statusgen/testdata/tmp-v2.md) was removed after the run, so the home holds only this Evidence edit.
+
+Environment. Online, read-only against the live forge. Every row ran on the host (darwin/arm64, go1.27.2; no row is check:ci, so no container bracket applies) under `statusgen verifyrun --fail-first --base 51e4a86cb49c073434781b3c790ddf3c961a0341 --timeout 30m` (installed statusgen v1.0.67). The base is the parent of 8471d921ab93 (#2472), the merge that wired the fold's four inputs. No Command was changed. The verifier App's read token was exported as GITHUB_TOKEN to the invoking process, with GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-trimpath and KUBECONFIG=/dev/null. gate: model. Risk metadata is present and every field is no (irreversible: no).
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd statusgen && ok=0; for f in Lifecycle:20 BriefV2:14 GHFetch:5; do s=${f%%:*}; out=$(go test . -run "$s" -count=1 -v) \|\| { echo "suite $s failed"; exit 1; }; n=$(printf '%s\n' "$out" \| grep -c '^--- PASS'); [ "$n" -ge "${f##*:}" ] && ok=$((ok+1)) \|\| echo "suite $s: $n passes, below ${f##*:}"; done; echo "suites-at-floor=$ok"` | pass exit=0 | sha256:51393e15c6f7 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | pass exit=0 | sha256:7d63c6b8d01f | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | fail exit=1 | sha256:a0d40cbbdd8e | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | pass exit=0 | sha256:e48909b142fc | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | pass exit=0 | sha256:e6c21e8d260f | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 7 | `grep -c 'reconcile' statusgen/README.md` | pass exit=0 | sha256:238903180cc1 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+| 9 | `F=$(mktemp) && cd statusgen && { go test . -run '^TestFoldWiresAllInputs$' -count=1 -v > "$F" 2>&1 && grep -qF -e '--- PASS: TestFoldWiresAllInputs' "$F"; } \|\| { echo fold-test-failed; exit 1; }; go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt'] and not d.get('unread'),'a fold read is unread: %s'%d.get('unread');bl=[b for b in d['briefs'] if b['cell']=='blocked' and b['witness'].startswith('linked issue label')];assert bl,'no brief derives blocked from a linked issue label - the fold inputs are not wired (#1787)';print('fold-wired')"` | fail exit=1 | sha256:0c4f820fd5b3 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=51e4a86cb49c red rc=1 · head=c887e24dd952 |
+| 10 | `T=$(mktemp -d) && (cd tools/desk && go build -o "$T/muhar" ./cmd/muhar) && cd statusgen && "$T/muhar" -spec reconcilefold-mutations.json -j 4 > "$T/out" 2>&1; rc=$?; L=$(tail -1 "$T/out"); echo "$L"; [ $rc -eq 0 ] && [ "$L" = 'Totals: 36 caught, 0 NOT CAUGHT, 0 could-not-mutate.' ]` | pass exit=0 | sha256:076108ff58b9 | 2026-10-30 | assay-verifier-app[bot] @ c887e24dd952 (on-behalf-of human:ian) (forge-identity) | base=- not-selected · head=c887e24dd952 |
+Verification-Attestation: medici-finance/assay#5052 run=d1fb126346e6d7e3c5bb40efe024fb622f8ee8f987f735123aa18050ebbf51fb source=c887e24dd9521953b29d79414f95bc3757029719 brief=docs/streams/derived-board/brief-03-reconcile-derivation.md model=claude-opus-5-5 tier=strong
+
+Row accounting. Rows 1, 2, 3, 5, 6, 7, 8 and 10 pass. Rows 4 and 9 exited 1 under verifyrun, and `verifyrun --check` reports 8 pass, 2 fail. They are counted could-not-run, not as failures of the delivered behaviour, for the reason below. Row 9's fail-first base run is red (rc=1) at 51e4a86cb49c, but that base run had no read token either, so its red does not show the row discriminates.
+
+The output digests were compared with the sha256 of the expected text, and these match: row 1 `suites-at-floor=3`, row 2 `ok`, row 10 `Totals: 36 caught, 0 NOT CAUGHT, 0 could-not-mutate.` Rows 6 and 7 hash to the counts 16 and 15, which meet their floors of 3 and 1. Rows 3 and 5 carry extra stderr, so their digests were not decoded; the supplemental runs below cover those Expect cells.
+
+Cause. An admitted verifyrun row drops GH_TOKEN, GITHUB_TOKEN and their enterprise twins (statusgen/verifieradmission.go:146 and :194), and since 5e2cc2848 statusgen started inside such a row also refuses to fall back to a stored forge login. Rows 4 and 9 both say they need a read token in env, and neither command supplies one. The cause is unchanged from the 2026-10-29 run, and blocker #4173 is still open. The repair is either a sanctioned read-credential lane for admitted rows or a reviewed re-authoring of rows 4 and 9; neither is made here.
+
+Supplemental, no row credit, all at this source:
+
+- Row 4's reconcile with GITHUB_TOKEN and GH_TOKEN unset (157 s): lookedAt=true with 877 `unread` entries across 581 briefs. stderr holds 822 HTTP 429 and 40 HTTP 403 lines, and the `unread` entries sampled also carry the stored-login refusal. `assay:assay:derived-board:02` derives `unknown` ("could-not-check whether PR #80 implemented derived-board/02 (HTTP 429 …)"). That is the exit 1 of row 4's assertion and of row 9's `not d.get('unread')`. The engine held the cell unknown rather than printing a negative.
+- The same reconcile with the verifier App's read token in env (1021 s, about 930 core REST calls): lookedAt=true with no `unread` entry across 581 briefs (todo 276, implemented 269, unknown 20, in-progress 10, blocked 6). `assay:assay:derived-board:02` is `implemented` with witness "PR #80 (merged c93ae91)", which is row 4's Expect. Six briefs derive `blocked` from a linked issue label, which is row 9 half (b)'s Expect.
+- Row 9 half (a), run on its own, printed `--- PASS: TestFoldWiresAllInputs` and `ok`.
+- Row 3's reconcile printed lookedAt=False with reason "HTTP 401: Bad credentials", so this pass came from the auth failure and not a transport error (the weakness #4173 names in row 3's assertion).
+- Row 5's lint exited rc=0 and printed `[eligibility-could-not-check] demo/01: held by rec:ingest/06`.
+- Suite counts behind row 1: Lifecycle 21 (floor 20), BriefV2 14 (floor 14), GHFetch 5 (floor 5). BriefV2 and GHFetch sit exactly at their floors.
+
+These show rows 4 and 9 meet their Expect when the run holds a read token; they earn no row.
+
+Reviewer question (1). No input found prints a negative without lookedAt=true. A pull list still returning full pages at fetchAllPullsMaxPages returns lookedAt=false, "not provably complete" (statusgen/ghfetch.go:140). The open-issues cap returns lookedAt=false (statusgen/reconcilefold.go:350). A failed per-PR delivery read makes the brief undecided and held `unknown` with the reason (statusgen/briefauthoring.go:365-370), never `todo`; the token-less supplemental above shows that path live.
+
+Reviewer question (2). deriveOne (statusgen/lifecycle.go:188) applies: lookedAt=false gives `unknown` with the reason; else a latest merge gives `implemented`, an open PR `in-progress`, otherwise `todo` citing the search; Undecided gives `unknown`; the witness overlay gives `verified` then `done`, a stale version or unreleased coverage demotes to `unknown`; `blocked` overlays only `in-progress` or `todo`. The precedence read here matches the derivation table in docs/streams/derived-board/spec.md §2.
+
+Open against this brief's facts, recorded and not scored: the brief states "Rate limits: one list call per repo per run, paged; never per-brief calls", while a live reconcile at this source makes per-PR reads (about 930 core calls here). This is already on #4173.
+
+Risk-bearing value. Trigger: none fires (risk is present, every field is no, irreversible: no, no risk-classed path). Enumeration recorded anyway, over statusgen/ghfetch.go, statusgen/reconcile.go, statusgen/lifecycle.go, statusgen/briefv2.go and statusgen/reconcilefold.go at this source, every line re-read here:
+
+- githubAPIBase = "https://api.github.com" @ statusgen/ghfetch.go:49
+- http.Client Timeout = 30 * time.Second @ statusgen/ghfetch.go:56
+- fetchAllPullsMaxPages = 1000 @ statusgen/ghfetch.go:107; perPage = 100 @ statusgen/ghfetch.go:121
+- status != http.StatusOK @ statusgen/ghfetch.go:128 and :197; status != 200 @ statusgen/reconcilefold.go:331
+- reviews per_page=100 @ statusgen/ghfetch.go:192
+- blockingIssueLabels @ statusgen/lifecycle.go:160
+- uuidV4Re @ statusgen/briefv2.go:79; Version < 1 refused @ statusgen/briefv2.go:433; default Version = 1 @ statusgen/briefv2.go:218 and statusgen/reconcilefold.go:89
+- openIssuePages = 20 @ statusgen/reconcilefold.go:312; perPage = 100 @ statusgen/reconcilefold.go:323
+- reconcileOK = 0 @ statusgen/reconcile.go:76, reconcileUsageErr = 2 @ :77, reconcileCouldNotCheck = 3 @ :81
+
+Ranking. None is irreversible: the tool only reads, and `reconcile --apply` writes only README Status cells in a working tree, so an edit and a redeploy undo any of them. Highest are the PR page cap and page size (they bound the witness set), then the success-status guards (the three-state invariant), then the issues page cap; the timeout and API base are reversible knobs.
+
+rows_passed=8 rows_total=10 (rows 1, 2, 3, 5, 6, 7, 8 and 10 pass; rows 4 and 9 could-not-run: the admitted row environment removes the read token both declare they need; 0 attributed failures of the delivered behaviour)
+
+**VERIFY: BLOCKED** — On merged main c887e24dd9521953b29d79414f95bc3757029719, 8 of 10 rows pass in an online read-only run. Rows 4 and 9 exited 1 because admitted verifyrun rows hold no forge token, so their live reads are refused; a supplemental authenticated run met both rows' Expect but earns no credit. Blocker: environment, #4173. Status stays implemented.
+
+RISK-VALUE: DERIVED — perPage = 100 @ statusgen/ghfetch.go:121 — 100 is the GitHub REST maximum per_page for the pulls list, so it uses the fewest list calls; completeness is decided by a short page, not by the page size, so a smaller value only costs calls.
+RISK-VALUE: DERIVED — fetchAllPullsMaxPages = 1000 @ statusgen/ghfetch.go:107 — a non-termination bound (100,000 pulls at 100 a page), not a size limit; reaching it returns lookedAt=false (statusgen/ghfetch.go:140), so any value fails closed.
+RISK-VALUE: DERIVED — status != http.StatusOK @ statusgen/ghfetch.go:128 (paired at :197; status != 200 @ statusgen/reconcilefold.go:331) — 200 is the HTTP success constant; any other status returns lookedAt=false with the status text, the brief's three-state ground rule.
+RISK-VALUE: DERIVED — openIssuePages = 20 @ statusgen/reconcilefold.go:312 — a full last page at the cap returns lookedAt=false (statusgen/reconcilefold.go:350), so the value fails closed at any repository size.
+RISK-VALUE: DERIVED — blockingIssueLabels = {question, needs-decision, help wanted} @ statusgen/lifecycle.go:160 — identical to the blocked row of the derivation table in docs/streams/derived-board/spec.md §2.
+
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer questions: (1) find one input combination where the engine prints a negative

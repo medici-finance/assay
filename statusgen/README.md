@@ -898,3 +898,21 @@ pull request, and on push to `main` regenerates and commits `STATUS.md`
 self-triggering loop). Adopters wiring this into their own repo should copy
 the workflow and adjust the `docs/streams/**` path filters if their stream
 docs live elsewhere.
+
+### CI rate-limit recovery
+
+In GitHub Actions (`GITHUB_ACTIONS=true`), statusgen's read-only REST client
+and the four PR corroboration CLI reads retry a rate-limited read once with the
+same credential. REST waits require `Retry-After` or an exhausted
+`X-RateLimit-Remaining` with a valid reset. CLI reads preserve the provider's
+error and, only for a rate-limit error, consult `/rate_limit` for the relevant
+REST or GraphQL reset. Ordinary permission/authentication errors never retry.
+
+HTTP and CLI reads share a 65-minute wait budget for the whole process: one
+hourly quota window plus a small reset margin. A repeated denial, missing or
+unusable reset, cancellation or exhausted wait budget still fails closed.
+Outside GitHub Actions these reads keep their immediate failure behavior. No
+stored-login fallback, additional token, permission, stale response cache or
+clean result is introduced. CLI diagnostics redact explicit credential values.
+This recovery does not reduce the request count of full-history reconciliation;
+its cadence and query cost remain separate operational concerns.
