@@ -20,10 +20,14 @@ type ingestTransport struct {
 	more    bool
 	hits    int
 	failure error
+	onRead  func()
 }
 
 func (r *ingestTransport) RoundTrip(q *http.Request) (*http.Response, error) {
 	r.hits++
+	if r.onRead != nil {
+		r.onRead()
+	}
 	if r.failure != nil {
 		return nil, r.failure
 	}
@@ -170,6 +174,37 @@ func TestMirrorSourceFlow(t *testing.T) {
 			})
 		}
 	}
+	testIngestCompletion(t)
+}
+
+func testIngestCompletion(t *testing.T) {
+	t.Helper()
+	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
+		t.Run(string(provider)+"/completion-clock", func(t *testing.T) {
+			start := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+			now := start
+			rt := &ingestTransport{payload: "[" + ingestRow(provider, mirror.Issues, 1, start.Add(time.Second), true) + "]"}
+			source, scope, a := ingestFixture(t, provider, mirror.Issues, rt, &now)
+			rt.onRead = func() { now = start.Add(2 * time.Second) }
+			store := mirrortest.NewStore()
+			old, _ := store.Read(context.Background(), a, scope)
+			plan, e := mirror.PlanRefresh(old, now, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+			if e != nil {
+				t.Fatal(e)
+			}
+			scan, e := source.Scan(context.Background(), a, scope, plan)
+			if e != nil || !scan.Complete || len(scan.Records) != 1 || !scan.Records[0].ObservedAt.Equal(now) {
+				t.Fatalf("completion stamp missing: complete=%v rows=%d error=%v", scan.Complete, len(scan.Records), e)
+			}
+			update, e := mirror.PlanScan(old, plan, scan, now)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = store.Apply(context.Background(), a, update); e != nil {
+				t.Fatal(e)
+			}
+		})
+	}
 }
 
 // regression: forge-neutral/50
@@ -219,6 +254,40 @@ func TestMirrorSourceScope(t *testing.T) {
 		bp.Scope = foreign
 		if _, e := source.Scan(context.Background(), a, foreign, bp); e == nil || rt.hits != 0 {
 			t.Fatalf("native lower scope bypass: %v hits=%d", e, rt.hits)
+		}
+	}
+	testIngestRecheck(t)
+}
+
+func testIngestRecheck(t *testing.T) {
+	t.Helper()
+	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
+		for _, scenario := range []string{"revoked", "clock-regressed"} {
+			t.Run(string(provider)+"/"+scenario, func(t *testing.T) {
+				start := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+				now := start
+				rt := &ingestTransport{payload: "[" + ingestRow(provider, mirror.Issues, 1, start.Add(-2*time.Minute), true) + "]"}
+				source, scope, a := ingestFixture(t, provider, mirror.Issues, rt, &now)
+				rt.onRead = func() {
+					if scenario == "revoked" {
+						a.Allowed = false
+					} else {
+						now = start.Add(-time.Minute)
+					}
+				}
+				old := mirror.Snapshot{Scope: scope, Coverage: mirror.Coverage{State: mirror.NeverRead}}
+				plan, e := mirror.PlanRefresh(old, start, mirror.RefreshPolicy{FullInventoryInterval: time.Hour})
+				if e != nil {
+					t.Fatal(e)
+				}
+				scan, e := source.Scan(context.Background(), a, scope, plan)
+				if e == nil || scan.Complete || len(scan.Records) != 0 || scan.Failure == mirror.Permission {
+					t.Fatalf("in-flight refusal leaked observations: complete=%v rows=%d reason=%s error=%v", scan.Complete, len(scan.Records), scan.Failure, e)
+				}
+				if scenario == "revoked" && !errors.Is(e, mirror.ErrPermission) {
+					t.Fatal("revocation did not remain admission refusal", e)
+				}
+			})
 		}
 	}
 }

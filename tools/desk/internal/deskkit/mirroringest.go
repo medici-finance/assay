@@ -92,6 +92,16 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if err := ctx.Err(); err != nil {
 		return mirror.ScanResult{Failure: mirror.Transport}, err
 	}
+	// Current admission must still hold when observations escape the source;
+	// revocation is a caller refusal, never source failure/retention authority.
+	if err := a.Authorize(ctx, scope.Repository); err != nil {
+		return mirror.ScanResult{}, mirror.ErrPermission
+	}
+	completed := s.now()
+	if completed.IsZero() || completed.Before(now) {
+		return mirror.ScanResult{Failure: mirror.Unknown}, fmt.Errorf("%w: observation clock regressed", mirror.ErrInvalid)
+	}
+	now = completed
 	validRepo := r.Repository == s.source.repo.Slug()
 	if s.source.provider == ForgeGitHub {
 		validRepo = strings.EqualFold(r.Repository, s.source.repo.Slug())
