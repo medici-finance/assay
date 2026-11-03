@@ -14,7 +14,7 @@ decision-trigger: spec
 decision-issue: 5399
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 outcome: none
 design: DR-forge-library
 authored: 2026-11-03 by statusgen newbrief
@@ -32,8 +32,9 @@ exec-tier: strong
 exec-tier-why: "Concurrency, cancellation, admission epochs and a partial nil-error source result cross independent boundaries; a process-local coalescer can appear correct while separate coordinators stampede."
 domain: complicated
 consumers:
-  - "forgeread/refresh/: follow-up forge-neutral/51 (coordinator and typed gate port only)"
-  - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: follow-up forge-neutral/51"
+  - "forgeread/refresh/: fixed-here (coordinator and typed gate port only)"
+  - "forgeread/README.md, docs/contracts.md, changelog/mirror-read-through-coordinator.md: fixed-here"
+  - "tools/forge-import-check/, tools/desk/internal/regression/mirrorimports_test.go, tools/desk/internal/deskkit/citrigger_test.go: fixed-here (closed-target checker reuse and existing CI reader)"
   - "workflow/store/: follow-up forge-neutral/37 (one R2-owned production refresh-gate adapter and persistence integration; no implementation here)"
   - "tools/desk/internal/deskkit/: follow-up forge-neutral/37 (joined mapper, admitted composition and durable flow; source-only mapper contribution remains separate)"
   - "forgeread/service/, forgeread/client/: follow-up forge-neutral/39 (wire contract stays separate)"
@@ -45,7 +46,7 @@ consumers:
 
 ## Context
 
-files: `forgeread/refresh/types.go` (planned), `forgeread/refresh/gate.go` (planned), `forgeread/refresh/coordinator.go` (planned), `forgeread/refresh/coordinator_test.go` (planned), `forgeread/refresh/boundary_test.go` (planned), `forgeread/README.md`, `docs/contracts.md`, `changelog/mirror-read-through-coordinator.md` (planned).
+files: `forgeread/refresh/types.go`, `forgeread/refresh/gate.go`, `forgeread/refresh/coordinator.go`, `forgeread/refresh/coordinator_test.go`, `forgeread/refresh/boundary_test.go`, `forgeread/README.md`, `docs/contracts.md`, `changelog/mirror-read-through-coordinator.md`. Boundary reuse also edits existing `tools/forge-import-check/check_env_imports.go`, `tools/forge-import-check/check_env_imports_test.go`, `tools/desk/internal/regression/mirrorimports_test.go` and `tools/desk/internal/deskkit/citrigger_test.go`; no workflow edit.
 
 facts:
 - At the pinned main, `forgeread/mirror` exports `QueryScope`, `PlanRefresh`, `Source.Scan`, `PlanScan` and `Store.Read/Apply`. `PlanRefresh.NotBefore` is advisory; it neither schedules nor provides cross-process ownership. The reference store is synthetic conformance support, not runtime persistence.
@@ -118,7 +119,7 @@ Tests set up fresh reference store and fake gate per case, seed only synthetic r
 
 ## Verify
 
-Named tests below are prospective implementation deliverables, absent at authoring. A missing package/test or unavailable required fixture fails the row; no skip-to-PASS.
+Named tests exercise the delivered coordinator and kernel through explicit synthetic Source/gate/reference-store fixtures. No PostgreSQL, provider, custody or activation pass follows. Missing packages/tests or required fixtures fail; no skip-to-PASS. The existing cross-module trigger/staleness instruments currently skip on their absent legacy tools.yml fixture; that gap is recorded on issue5390, never credited as passing coverage.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
@@ -129,9 +130,11 @@ Named tests below are prospective implementation deliverables, absent at authori
 | 5 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshFairBudgets$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshFairBudgets ' "$out")` | named PASS; finite fixture limits bound queue/fills/wait/attempts/failure retention; saturated A is rejected, eligible B completes under the stated fairness rule, and A's quota refusal never poisons B or creates a source-failure entry. Mutate per-caller accounting to one global denial; B's positive control fails. |
 | 6 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshWaiterCancel$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshWaiterCancel ' "$out")` | named PASS; cancel one waiter while another receives the shared result; waiter accounting releases and all work terminates by its finite owner deadline. Mutate shared lifetime to the first waiter's context; the surviving caller fails. |
 | 7 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshGateFence$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshGateFence ' "$out")` | named PASS; missing/unreachable gate causes held/unavailable and zero Source calls, with no local fallback. Fixture takeover rejects stale owner's Apply/completion even with unchanged snapshot version; unknown completion re-queries rather than replaying blindly. Mutate production bypass of gate ownership or fallback; named test fails. Real SQL atomicity is explicitly not credited. |
-| 8 | check:ci +dereference +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBoundary$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshBoundary ' "$out" && GOWORK=off go test -count=1 ./...)` | named PASS and module suite PASS; actual production dependency closure has no HTTP, SQL, process, credential or external-module access, and source inspection reuses the shared environment-import checker for direct decoded os/syscall imports; root imports no subpackage and pure mirror never imports refresh. A planted forbidden import is rejected; useful injected gate/source controls remain. Rows 2 and 7 independently reject a process-local production gate/fallback. |
+| 8 | check:ci +dereference +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBoundary$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshBoundary ' "$out" && GOWORK=off go test -count=1 ./...)` | named PASS and module suite PASS; actual production dependency closure has no HTTP, SQL, process, credential or external-module access, and row12 independently reuses the shared environment-import checker for direct decoded os/syscall imports; root imports no subpackage and pure mirror never imports refresh. A planted forbidden import is rejected; useful injected gate/source controls remain. Rows 2 and 7 independently reject a process-local production gate/fallback. |
 | 9 | check:ci | `cd forgeread && GOWORK=off go test -race -count=1 ./refresh/...` | exit 0; all named coordinator cases pass under race; no owned work/blocked waiter leaks at teardown. |
 | 10 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/51 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | Pre-merge on the implementing branch: exit 0; actual fixed-here edits corroborate, deferred routing proves no producer use, and unchecked remains unchecked. Before post-merge verification, bind this row to the independently established immutable mainline delivery and its first parent with --delivery and --base. A branch-relative check on merged main is never a pass. Authoring claims no implementation delivery. |
+| 11 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshReleaseAuthority$' ./refresh/... > "$out" && grep -F -- '--- PASS: TestRefreshReleaseAuthority ' "$out")` | named PASS; deterministic Store.Read revokes caller, repository admission or access epoch after the initial check. Fresh, joined and completion returns expose zero rows. Mutate post-I/O release checks independently and the named controls fail. |
+| 12 | check:ci +dereference +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/refresh` | exit 0; output is 0; the existing closed-target checker scans refresh. Existing mirror/events and arbitrary-target refusals remain; compiler-valid raw/escaped forbidden imports planted independently in refresh are rejected by the actual always-on checker fixture suite. No arbitrary target or environment access is admitted. |
 
 ## Evidence
 

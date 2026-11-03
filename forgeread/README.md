@@ -146,3 +146,36 @@ This native contribution does not qualify the future mapper's preservation of pe
 watermarks, PostgreSQL, scheduling, coalescing, retention or reader cutover. Those remain
 with the joined mirror delivery, including its row-23 production-flow acceptance. The
 shared-library migration reuses this native composition rather than adding a second bound.
+
+## Store-injected read-through coordination
+
+`refresh` composes the existing mirror query/planner/source/store ports. It has no
+production gate, store, provider walker, credential, listener or caller cutover.
+`New` requires an explicit host lifetime, clock, admitted source/store, trusted
+caller-authority checker and shared gate. Missing dependencies hold; there is no
+process-local gate or failure-cache fallback. The root package and pure mirror
+never import orchestration.
+
+Trusted caller policy supplies current admission/access/configuration/policy epochs,
+allowed freshness, finite concurrent/queued demand, per-caller/admission fill-window
+reservations, owner/wait deadlines and failure capacity/expiry. One owner attempts
+at most one Source.Scan. A fill reservation counts coordinator work, not HTTP pages,
+provider retries or GraphQL points. Optional observations count own scan calls,
+cache hits and joined waiters; missing instrumentation is unknown.
+
+A miss uses the real kernel, joins/acquires the shared gate, scans, plans an update,
+applies through the gate-bound Store seam and requeries. A partial nil-error result
+or insufficient review/not-modified observation remains unfulfilled and cannot
+advance completeness. Caller/admission refusal creates no shared source-failure
+cooldown or confirmed permission-loss record. Source-confirmed permission coverage
+remains a separate kernel outcome, with retention still human-gated. Current caller
+and repository admission are checked after store I/O before releasing any rows.
+
+The R2 implementation must bind the injected store to its canonical PostgreSQL
+backend and atomically check refresh generation, apply/query through
+`ApplyCompletion`, and commit completion/cooldown. An old owner with a still-matching
+snapshot version must be refused before apply. The package supplies no such SQL
+adapter. Its tests share a stateful fake gate and reference Store between two
+independently constructed coordinators; that proves port/coordinator behavior,
+not process durability, SQL atomicity, authenticated serving or activation. Full
+forge-neutral/37 retains its joined persisted mapper/watermark criterion.
