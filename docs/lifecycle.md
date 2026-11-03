@@ -48,7 +48,9 @@ distinct, owned step, not a side effect of merge.
   `spec/workflow-pattern-v1.md`), the working-diff/PR review above is the pattern's `review`
   node (role `reviewer`, `evidence: review`); post-merge verification is the pattern's `verify`
   node (role `verifier`, `evidence: witness`), which is also the pattern's `join` — its
-  integration check.
+  integration check. Between review and verify, `merge` is a human decision node
+  (`role: human`, no actor or effects), closed by the person's authenticated merge of the
+  approved head. Its decision record declares that act; it does not authenticate its author.
 - A **workflow instance** (`spec/workflow-instance-v1.md`) binds that pattern to one work
   item in one Cell and pins the acceptance version the gates review against. A brief's
   `version:` bump makes an instance bound to the earlier version stale; it is superseded by a
@@ -70,7 +72,15 @@ publication receipt and retirement are separate observations. Execution can succ
 while acceptance is held; accepted work can await publication; Complete can retain a
 resource-retirement hold. Observation times and typed hold owners/events are explicit.
 This contract wires no runtime and changes no independent review, verification, human
-decision or publication gate. Complete applicability context remains graph-execution/30.
+decision or publication gate. [`evaluation-context-v1`](../spec/evaluation-context-v1.md) adds complete explicit
+source/fact/dependency frontiers, evaluator/query/options/policy/environment identities,
+access epoch, generation, cutoff and lease/access expiry. Its fingerprint identifies
+immutable derivation, not authority. Pure applicability holds incomplete inputs and
+requires reevaluation when membership, epochs, policies or generations change, or at
+the earliest expiry even with unchanged source hashes. Current admission independently
+checks authorization and authority; offline computation retains its snapshot cutoff.
+Planned admission /14 consumes current context; store /19 preserves original bounds
+on reload rather than renewing them. No production gate cache is activated.
 
 ## STATUS.md — a single-writer generated artifact
 

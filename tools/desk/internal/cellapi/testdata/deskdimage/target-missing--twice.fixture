@@ -1,0 +1,6 @@
+# A second deskd-image recipe overrides the first: make runs the LATER one
+# (with an "overriding recipe" warning), so the held recipe is not what runs.
+want: target-missing
+file: Makefile
+replace: "\n## skillslint: validate"
+with: "\ndeskd-image:\n\t@echo \"deskd-image: skipped\"\n\n## skillslint: validate"

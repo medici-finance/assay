@@ -51,10 +51,8 @@ gate. If the body line and the environment approval ever disagree, the environme
 authority.
 
 files:
-- `.github/workflows/release.yml` (implementation home) — the `resolve` job's outputs and the
-  create-release step's notes body.
-- `tools/desk/internal/deskkit/` — a source-coupling test in the shape of the existing
-  release-workflow stamp test, so the field cannot be dropped silently.
+- `.github/workflows/release.yml` (implementation home) — the `resolve` job's outputs and the create-release step's notes body.
+- `tools/desk/internal/deskkit/` — a source-coupling test in the shape of the existing release-workflow stamp test, so the field cannot be dropped silently.
 
 facts:
 - **The actor is already resolved; do not add a second source for it.** `resolve` has

@@ -1,0 +1,1 @@
+- Strengthen verification image capability checks for seed/probe flag refusal and malformed source SHAs with exact behavioural mutation controls.

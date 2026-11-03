@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -333,6 +334,7 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	if rows := payloadValue(it, "wake_passed_rows"); rows != "" {
 		fmt.Fprintf(&b, "Prior receipt PASS observations (do NOT re-run or relabel as fresh Evidence, and never infer a whole-brief PASS): %s\n\n", rows)
 	}
+	b.WriteString("Evidence submission: keep separate Date (YYYY-MM-DD) and Runner cells on every execution observation in PASS, FAIL and BLOCKED submissions, including unrun rows and supplemental host observations with no acceptance credit. For unrun rows attribute observation of the blocker, not execution. A dated heading or commit author is insufficient. Recover missing attribution from retained run records or rerun; never guess it or invent execution witnesses. Preserve admitted witness bytes; deskevidence owns the on-behalf-of stamp. Run deskevidence --dry-run before publication and repair any refusal without a lifecycle flip.\n")
 	b.WriteString("Outcome-record producer contract: rows names only exact identities still held by this receipt; never list every covered row in rows. When rows is non-empty, row_results is required for ALL original Verify IDs and their observed results. This includes non-contiguous numeric and suffixed inventories. When rows is empty or omitted, row_results remains optional. A verified record omits rows. Derive these fields only from this run's real witnessed Evidence, never from this illustrative example. For existing draft records using covered rows, follow the producer migration at https://github.com/medici-finance/assay/blob/main/docs/verify-outcome-rows.md#producer-migration-covered-rows-are-not-held-rows; preserve historical records and report missing row evidence rather than guessing.\n")
 	b.WriteString("Outcome row metadata example: " + wakeOutcomeRowsExample + "\n")
 	b.WriteString("Gapped row metadata example: " + wakeOutcomeGappedRowsExample + "\n")
@@ -366,4 +368,31 @@ func assertNoSharedCheckout(prompt string) error {
 		}
 	}
 	return nil
+}
+
+// bindDispatchWorld is the dispatch half of the run-bound prerequisite record
+// (example-stream/50). After admission and BEFORE any prompt is emitted or child
+// launched, the item's admitted record must exist and still hold; it is then
+// bound into the receipt (and, for a run in its own home, persisted with the
+// run record so the executor's own --check-verifier recheck consumes it). A
+// missing record is could-not-check, a moved input refuses: neither spends a
+// Verify row, and neither is a FAIL about the code.
+func (v *VerifyLoop) bindDispatchWorld(it loopengine.Item, home string, receipt deskkit.VerifierReceipt, persist bool) (deskkit.VerifierReceipt, error) {
+	if v.World == nil {
+		return receipt, nil
+	}
+	w, ok := v.World.item(it.ID)
+	if !ok {
+		return receipt, deskkit.Unverifiable("environment could-not-check: "+it.ID+" has no admitted prerequisite record; re-plan before dispatch", nil)
+	}
+	if err := w.Recheck(v.World.probes); err != nil {
+		return receipt, err
+	}
+	if persist {
+		if _, err := deskkit.BindVerifierWorld(home, w); err != nil {
+			return receipt, err
+		}
+	}
+	receipt.World = &w
+	return receipt, nil
 }

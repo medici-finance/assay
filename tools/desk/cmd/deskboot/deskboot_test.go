@@ -723,7 +723,7 @@ func TestEveryKnownRoleIsBothMappedAndStoppable(t *testing.T) {
 // consumer that keys on a step name.
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"loop-identity", "worktree-prune", "worktree-lock", "roster-set",
-		"roster-preflight", "token-mint", "board-fetch", "worktree-current", "first-sweep-prereqs"}
+		"roster-preflight", "token-mint", "board-fetch", "worktree-current", "first-sweep-prereqs", "binary-pin"}
 	if len(bootSteps) != len(want) {
 		t.Fatalf("bootSteps has %d entries, want %d", len(bootSteps), len(want))
 	}

@@ -50,16 +50,11 @@ consumers:
 
 ## Context
 files:
-- **add** `tools/desk/internal/deskkit/reviewround.go` (planned) — `RoundRecord`, `ReviewRoundStampV1`,
-  `AppendReviewRoundStamp`, `ParseReviewRoundStamp`, `DeriveRoundRecords`.
+- **add** `tools/desk/internal/deskkit/reviewround.go` (planned) — `RoundRecord`, `ReviewRoundStampV1`, `AppendReviewRoundStamp`, `ParseReviewRoundStamp`, `DeriveRoundRecords`.
 - **add** `tools/desk/internal/deskkit/reviewround_test.go` (planned).
-- **edit** `tools/desk/internal/deskkit/reviewfinding.go` — `ForgeRecord` gains `At string` and
-  `ReviewerTier string`; the fold exposes per-record transitions to `DeriveRoundRecords` (no change
-  to `DeriveLedger`'s result).
-- **edit** `tools/desk/cmd/deskpost/review.go` + `review_test.go` — append the stamp; refuse a
-  planted one; keep the forge-side duplicate check neutral to the stamp.
-- **edit** `tools/desk/cmd/reviewloop/findingcontinuity.go`, `main.go` — optional `at` on each
-  payload record; new read-only `rounds` subcommand.
+- **edit** `tools/desk/internal/deskkit/reviewfinding.go` — `ForgeRecord` gains `At string` and `ReviewerTier string`; the fold exposes per-record transitions to `DeriveRoundRecords` (no change to `DeriveLedger`'s result).
+- **edit** `tools/desk/cmd/deskpost/review.go` + `tools/desk/cmd/deskpost/review_test.go` — append the stamp; refuse a planted one; keep the forge-side duplicate check neutral to the stamp.
+- **edit** `tools/desk/cmd/reviewloop/findingcontinuity.go`, `tools/desk/cmd/reviewloop/main.go` — optional `at` on each payload record; new read-only `rounds` subcommand.
 - **add** `tools/desk/cmd/reviewloop/rounds_test.go` (planned), `tools/desk/cmd/reviewloop/testdata/rounds-thread.json` (planned).
 - **edit** `docs/streams/desk-supervision/review-finding-v1.md` — a "Round records" section.
 - **edit** `tools/desk/README.md` — reviewloop and deskpost rows.

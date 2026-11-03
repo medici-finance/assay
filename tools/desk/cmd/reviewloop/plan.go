@@ -23,6 +23,8 @@ import (
 func cmdPlan(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	snapshotPath := fs.String("snapshot", "", "path to complete review-observation-v1 JSON")
+	selection := fs.String("selection", "", "JSON invocation with explicit policy, scope, freshness cutoff and capacity")
 	actionsPath := fs.String("actions", "", "path to `deskboard actions` JSON (or - for stdin) — REQUIRED")
 	prsPath := fs.String("prs", "", "path to `deskboard prs` JSON — supplies the head SHAs the actions verb omits")
 	recordsPath := fs.String("records", "", "path to a review-thread records JSON — derives the persistent finding ledger and the per-class round count for one PR")
@@ -36,10 +38,6 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("reviewloop plan: bad flags: " + err.Error())
 	}
-	if strings.TrimSpace(*actionsPath) == "" {
-		return deskkit.Refused("reviewloop plan: --actions is required. This tool refuses to run against no board at all: " +
-			"a reactor with no sweep is BLIND, and blind is not idle (#79).")
-	}
 
 	now := time.Now().UTC()
 	if strings.TrimSpace(*nowStr) != "" {
@@ -48,6 +46,20 @@ func cmdPlan(args []string, stdout io.Writer) error {
 			return deskkit.Refused("reviewloop plan: --now is not RFC3339: " + err.Error())
 		}
 		now = t
+	}
+
+	if *snapshotPath != "" {
+		if *actionsPath != "" || *prsPath != "" || *recordsPath != "" || strings.TrimSpace(*nowStr) == "" {
+			return deskkit.Refused("reviewloop plan: --snapshot requires explicit --now and excludes legacy inputs")
+		}
+		return planSnapshot(*snapshotPath, *selection, now, stdout)
+	}
+	if *selection != "" {
+		return deskkit.Refused("reviewloop plan: --selection requires --snapshot")
+	}
+	if strings.TrimSpace(*actionsPath) == "" {
+		return deskkit.Refused("reviewloop plan: --actions is required. This tool refuses to run against no board at all: " +
+			"a reactor with no sweep is BLIND, and blind is not idle (#79).")
 	}
 
 	actionsJSON, err := readInput(*actionsPath)

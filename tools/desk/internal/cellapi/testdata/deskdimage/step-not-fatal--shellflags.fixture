@@ -1,0 +1,6 @@
+# .SHELLFLAGS changes how each recipe line is run (here the line is never read),
+# so any setting is refused.
+want: step-not-fatal
+file: Makefile
+replace: "\nSHELL       := /bin/sh\n"
+with: "\nSHELL       := /bin/sh\n.SHELLFLAGS := -c true\n"

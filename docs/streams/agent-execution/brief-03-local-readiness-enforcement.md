@@ -27,7 +27,7 @@ decision-trigger: "spec"
 
 ## Context
 
-files: `loopadmin/supervisor/` (planned), `loopadmin/adapters/localharness/` (planned), `loopadmin/testdata/localharness/` (planned), `loopadmin/testdata/mutations.json`, `docs/workflow-runner-qualification.md` (planned). All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
+files: `loopadmin/supervisor/` (planned), `loopadmin/adapters/localharness/` (planned), `loopadmin/testdata/localharness/` (planned), `loopadmin/testdata/mutations.json`, `docs/workflow-runner-qualification.md` (planned) — All new paths are implementation deliverables. Include a changelog fragment and module/path-trigger changes where the implementation needs them.
 
 single-point-of-failure: supervisor launch gate — backed by independent local-adapter effective-profile validation and an isolated child with no operator/publisher credentials.
 

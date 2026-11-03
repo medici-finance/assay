@@ -249,6 +249,8 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
 | 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 8 | M | todo | — | — |
 | 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
+| 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
+| 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -488,8 +490,8 @@ findings and do not exist yet.
   18 depends on 08, 33 and 34 and stays in wave 5.
 - **Wave 1 (beside 01)** — `forge-neutral/36` (the importable fact-reader module and its first
   shared read, human-gated; depends on nothing and unblocks nothing — its library-first
-  premise is ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, and it
-  keeps its own human gate; no other brief waits on it).
+  premise was ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, since
+  superseded by `DR-forge-library`, and it keeps its own human gate; no other brief waits on it).
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -563,6 +565,15 @@ not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskrea
 every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
 enforcement in desktools-v2/08 waits for both /18 and /35.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+**Superseded 2026-10-25 (`DR-forge-library`).** The driver's later ruling on #2395 replaces the
+offline-and-frozen limit: one shared forge library for reads and writes, built by
+desktools-v2/75, which statusgen links for its forge calls (desktools-v2/77), with the credential
+held privately by the library. For this stream: /18 and /35 still move statusgen's reads onto its
+injected reader seam, and still add no credential of statusgen's own; their transport-specific
+checks (/18 rows 21 to 23) are restated so they hold for either transport, and desktools-v2/77
+swaps the seam from `deskread` to the library after both land. /36's delivered module and
+Evidence stand.
 
 ## Non-CI coordination applicability — 2026-10-13
 
@@ -687,3 +698,22 @@ measurements stay separately named; shared upstream cost is observed once and mi
 instrumentation is a gap. These remain planned todo packages at inspected main 2e02111ed,
 not claims of deployment. Reuse /63–65's local contract/adapters without creating a new
 measurement service or making local v3 depend on the future forge service.
+
+## Read-only mirror acceleration — 3 November 2026
+
+The source at `7c62923293d0b640ec90afbf318cae2497908f28` contains the admitted read adapters
+and shared reader API, but no mirror package or workflow store. Source inspection, not the stale
+completion labels, establishes that the small kernel and provider-reader contributions can start.
+The PostgreSQL adapter, its transaction proof and the permission-loss retention decision remain the
+head of the assembled mirror's critical path.
+
+The early path is `36's shipped admitted-read capability → 46 kernel + 47 provider readers → 37
+joined persistent mirror → existing service/consumer qualification`. Briefs 46 and 47 are wave 2
+and can run independently; 37 retains its existing wave and dependencies and additionally consumes
+both. No generated lifecycle row is hand-maintained.
+
+The contribution/acceptance map is in 37's dated amendment. Existing criteria, risks, human
+decisions, completed Evidence and later rollout gates remain. The early supported outcome is a
+source-bound offline consumer, not a deployed service or a fleet-saving claim. Read-only serving
+will reuse the approved shared forge library direction; the write-through service does not become
+a prerequisite for these two pure/read-adapter contributions.

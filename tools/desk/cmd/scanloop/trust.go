@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
 
@@ -44,6 +46,10 @@ type Admission struct {
 	State  AdmissionState
 	Author string // rendered login, empty when unread
 	Why    string
+	// gone is true when the trust read failed with a definite forge not-found (404/410). The
+	// verdict stays COULD-NOT-CHECK — a missing item is never admitted — but the drain may
+	// record a terminal "gone" disposition so a deleted issue does not blind every later pass.
+	gone bool
 }
 
 // Admitted reports whether the item may be queued. Only AdmissionAdmitted may.
@@ -85,6 +91,7 @@ func admitOne(it Inbound, probe TrustProbe) Admission {
 			State:  AdmissionCouldNotCheck,
 			Author: author,
 			Why:    "trust read failed: " + err.Error(),
+			gone:   forgeGone(err),
 		}
 	}
 	if deskkit.TrustedAuthor(author) {
@@ -108,6 +115,13 @@ func admitOne(it Inbound, probe TrustProbe) Admission {
 		Why: "untrusted author with no standing blessing — visible and counted, never routed; " +
 			"one comment from " + blessAuthority() + " admits it",
 	}
+}
+
+// forgeGone reports a definite "this issue does not exist" answer: 404, or 410 for an issue
+// the forge deleted. Every other failure (auth, 5xx, transport) is an unreadable surface.
+func forgeGone(err error) bool {
+	var ae *deskkit.ForgeAPIError
+	return deskkit.IsForgeNotFound(err) || (errors.As(err, &ae) && ae.Status == http.StatusGone)
 }
 
 func blessAuthority() string {

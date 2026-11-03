@@ -1,0 +1,113 @@
+{
+  "test": "go test ./cmd/issueboard ./internal/deskkit -count=1 -timeout 120s -run '^(TestCostHistoryFixture|TestHistoryBatchFlow|TestHistorySecondCaller|TestHistoryPages|TestHistoryTrustLabels|TestHistoryDuplicateRows|TestCommentBatchScope|TestCommentBatchPages|TestCommentBatchFaults|TestCommentBatchPoints)$'",
+  "control": {
+    "name": "discard successful native observations",
+    "file": "internal/deskkit/issuecomments.go",
+    "old": "return batch.issueCommentEvents(repo, numbers)",
+    "new": "_ = batch; return map[int]*TrustPayload{}, nil"
+  },
+  "mutations": [
+    {
+      "name": "return to per-issue native requests",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "ok && len(numbers) > 1 && CanBatchIssueComments(f)",
+      "new": "ok && false && CanBatchIssueComments(f)"
+    },
+    {
+      "name": "bypass opaque decorator read guard",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "default:\n\t\treturn false",
+      "new": "default:\n\t\treturn true"
+    },
+    {
+      "name": "drop admitted repository restriction",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "g.onlyRepo != \"\" && !strings.EqualFold(g.onlyRepo, repo.Slug())",
+      "new": "false"
+    },
+    {
+      "name": "accept a second alias with wrong identity",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "row == nil || row.Number != n ||",
+      "new": "row == nil ||"
+    },
+    {
+      "name": "ignore errors accompanying valid data",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "!repoSeen || hasErrors ||",
+      "new": "!repoSeen || hasErrors && false ||"
+    },
+    {
+      "name": "admit a missing alias",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "len(rows) != len(aliases)",
+      "new": "false"
+    },
+    {
+      "name": "drop per-thread cursor",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "cursors[n] = cursor",
+      "new": "cursors[n] = \"\""
+    },
+    {
+      "name": "truncate after first comment page",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "page <= forgeMaxEventPages",
+      "new": "page <= 1"
+    },
+    {
+      "name": "hide row-local incomplete history",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "if !more {\n\t\t\t\tpayload.Complete = true",
+      "new": "if true {\n\t\t\t\tpayload.Complete = true"
+    },
+    {
+      "name": "accept duplicate aliases",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "!expected || rows[n] != nil",
+      "new": "!expected"
+    },
+    {
+      "name": "ignore trailing or cancelled response tail",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "if _, err := dec.Token(); err != io.EOF {",
+      "new": "if _, err := dec.Token(); false {"
+    },
+    {
+      "name": "lose same-operation cost coverage",
+      "file": "internal/deskkit/forgepoints.go",
+      "old": "\tissueCommentBatchQuery,\n",
+      "new": ""
+    },
+    {
+      "name": "prefetch untrusted authors before blessing",
+      "file": "cmd/issueboard/board.go",
+      "old": "if !deskkit.TrustedAuthor(candidate.Author.Login) {",
+      "new": "if false {"
+    },
+    {
+      "name": "skip original REST label-history reads",
+      "file": "cmd/issueboard/board.go",
+      "old": "\t\t\tif action == actCreatePlaceholder {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "reconstruct measured points from malformed wire",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "if !wireFailed {",
+      "new": "if true {\n\t\t\t\t_ = wireFailed"
+    },
+    {
+      "name": "turn valid refused-query cost into failed coverage",
+      "file": "internal/deskkit/issuecomments.go",
+      "old": "refuse(fmt.Errorf(\"missing comment identity or page provenance for issue %d\", n))\n\t\t\t\t\t\treturn nil",
+      "new": "refuse(fmt.Errorf(\"missing comment identity or page provenance for issue %d\", n))\n\t\t\t\t\t\treturn fmt.Errorf(\"premature semantic refusal\")"
+    },
+    {
+      "name": "projection cost fake loses active alias identity",
+      "file": "cmd/issueboard/projection_cost_test.go",
+      "old": "repository[fmt.Sprintf(\"a%d\", slot)] = map[string]any{\"number\": n,",
+      "new": "repository[\"issue\"] = map[string]any{\"number\": n,"
+    }
+  ]
+}

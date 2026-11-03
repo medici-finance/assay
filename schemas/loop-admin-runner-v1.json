@@ -156,7 +156,11 @@
         "state": { "enum": ["unknown", "running", "finished", "failed", "cancel-requested", "stopped", "absent"] },
         "actual_model": { "type": "string" },
         "usage": { "$ref": "#/$defs/usage" },
-        "result": { "$ref": "#/$defs/result" }
+        "result": { "$ref": "#/$defs/result" },
+        "ext": {
+          "description": "Adapter-reported extension values, untrusted and granting no authority. Under the execution-profile/v1 extension the key execution-profile/v1 carries the execution report (schemas/loop-admin-execution-profile-v1.json#/$defs/report); a launch that extension governs is not accepted without one.",
+          "type": "object"
+        }
       }
     },
     "capabilities": {

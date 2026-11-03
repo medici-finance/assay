@@ -70,9 +70,12 @@ nothing is extracted. It does not use `set -e`, so it is safe to paste into an
 interactive shell.
 
 This catches a corrupt or truncated download. It does not catch a replaced
-release, because `checksums.txt` comes from the same release as the archive,
-and releases carry no signature or provenance attestation. To pin a binary,
-record its sha256 yourself the first time and check against that.
+release, because `checksums.txt` comes from the same release as the archive.
+To pin a binary, record its sha256 yourself the first time and check against
+that. Releases cut by a release workflow that attests its assets also carry a
+Sigstore provenance bundle beside each one (`<asset>.sigstore.json`); with the
+GitHub CLI, `gh attestation verify <asset> --repo medici-finance/assay` checks
+that the bytes were built by this repository's release workflow.
 
 On Windows the archive member is `./muhar.exe`. `muhar` runs the test command
 with `sh -c`, so it needs a POSIX `sh` on `PATH` there.

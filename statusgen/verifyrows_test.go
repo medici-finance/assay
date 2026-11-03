@@ -1089,14 +1089,16 @@ func TestGoTestRunVacuous_Shapes(t *testing.T) {
 	}
 }
 
-// TestGoTestRunVacuous_ClosedBriefsExempt drives the real entrypoint
+// TestGoTestRunVacuous_ClosedBriefsKeepRecords drives the real entrypoint
 // (unfailableRowNotices) over the gotest-run-vacuous fixture root, which
 // carries a THIRD brief beyond the usual red/green pair: brief-03-closed.md,
 // whose stream-README row is `done` and whose two Verify rows carry the same
-// defect as the red fixture. It pins Task 3: a closed brief gets no per-row
-// notice, and the run instead emits exactly one summary NOTICE counting its
-// rows and briefs.
-func TestGoTestRunVacuous_ClosedBriefsExempt(t *testing.T) {
+// defect as the red fixture. Since statusgen/28 the emitter keeps one line per
+// row for a closed brief — the private "N rows in M closed briefs" aggregate is
+// gone, because counting and historical placement belong to the one shared
+// reporter (notice_report.go, TestHistoricalNoticeReport) — so no finding is
+// summarised away here and none is lost.
+func TestGoTestRunVacuous_ClosedBriefsKeepRecords(t *testing.T) {
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/verifyrows/gotest-run-vacuous")); err != nil {
 		t.Fatal(err)
@@ -1110,26 +1112,17 @@ func TestGoTestRunVacuous_ClosedBriefsExempt(t *testing.T) {
 	}
 	notices := unfailableRowNotices(streams)
 
-	var perRowOnClosed, summary int
-	var summaryLine string
+	var perRowOnClosed int
 	for _, n := range notices {
-		if strings.Contains(n, "brief-03-closed.md") {
+		if strings.Contains(n, "brief-03-closed.md") && strings.Contains(n, "["+ruleGoTestRunVacuous+"]") {
 			perRowOnClosed++
 		}
 		if strings.HasPrefix(n, "["+ruleGoTestRunVacuous+"]") {
-			summary++
-			summaryLine = n
+			t.Errorf("the emitter must not carry a private aggregate any more, got %q", n)
 		}
 	}
-	if perRowOnClosed != 0 {
-		t.Errorf("closed brief must get NO per-row notice; got %d:\n%s", perRowOnClosed, strings.Join(notices, "\n"))
-	}
-	if summary != 1 {
-		t.Fatalf("want exactly 1 summary notice, got %d:\n%s", summary, strings.Join(notices, "\n"))
-	}
-	const want = "[gotest-run-vacuous] 2 Verify row(s) in 1 closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only"
-	if summaryLine != want {
-		t.Errorf("summary notice\n  got  %q\n  want %q", summaryLine, want)
+	if perRowOnClosed != 2 {
+		t.Errorf("closed brief must keep one line per defective row (want 2), got %d:\n%s", perRowOnClosed, strings.Join(notices, "\n"))
 	}
 }
 

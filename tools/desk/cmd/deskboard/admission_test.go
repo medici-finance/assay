@@ -111,6 +111,31 @@ func TestBoardDropsStrongAtAny(t *testing.T) {
 	}
 }
 
+// TestBoardHoldsContinuationLines pins that an exec-tier, gate or decision
+// issue line the shared parser reads as text inside another value is held at
+// the board, as the line readers held it, and never dispatched as model/any.
+func TestBoardHoldsContinuationLines(t *testing.T) {
+	root := admissionRoot(t, map[string]string{
+		"01": "tags: [a,\nexec-tier: strong]\nexec-tier: any\n",
+		"02": "gate: human\nmeta: {a: 1,\ndecision-issue: 41\n}\n",
+		"03": "exec-tier: any\n",
+	})
+	useBoardDecisions(t, &boardDecisionForge{
+		issues: map[int]*deskkit.Issue{41: {Number: 41, State: "open", Labels: []string{deskkit.DecisionLabel}}},
+	})
+
+	rep := admissionReport(root, "01", "02", "03")
+	applyBriefAdmission(rep, "any")
+	if got := rowBriefs(rep); got != "s/03" || rep.HeldByExecTier != 2 {
+		t.Fatalf("--tier any: rows %q heldByExecTier %d; want s/03 and 2", got, rep.HeldByExecTier)
+	}
+	rep = admissionReport(root, "02", "03")
+	applyBriefAdmission(rep, "strong")
+	if got := rowBriefs(rep); got != "s/03" || rep.HeldByDecision != 1 {
+		t.Fatalf("--tier strong: rows %q heldByDecision %d; want s/03 and 1", got, rep.HeldByDecision)
+	}
+}
+
 // regression: medici-finance/assay#2744
 func TestBoardDropsUnruledGate(t *testing.T) {
 	root := admissionRoot(t, map[string]string{

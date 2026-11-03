@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
-	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -40,6 +40,13 @@ func (d dryRunDurable) RouteHuman(it loopengine.Item) (string, error) {
 
 func (d dryRunDurable) FileBug(it loopengine.Item, detail string) (string, error) {
 	fmt.Fprintf(d.out, "[dry-run] file `bug` issue for %s: %s\n", it.ID, detail)
+	return "dry-run://bug/" + it.ID, nil
+}
+
+// FileBugFor prints the identity the real filer would pass to `deskfile new` (--filing-brief and
+// --filing-case with --raised-by verifier); like FileBug it files nothing.
+func (d dryRunDurable) FileBugFor(it loopengine.Item, detail string, id FilingIdentity) (string, error) {
+	fmt.Fprintf(d.out, "[dry-run] file `bug` issue for %s (filing identity %s %s): %s\n", it.ID, id.Brief, id.Case, detail)
 	return "dry-run://bug/" + it.ID, nil
 }
 

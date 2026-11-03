@@ -1,0 +1,6 @@
+{
+  "state": "finished",
+  "actual_model": "model-a",
+  "usage": { "input_tokens": 1200, "output_tokens": 300, "cost_micros": 1500 },
+  "result": { "caller": "desk-worker", "id": "inv-0001", "generation": 3, "outcome": "success", "summary": "synthetic report" }
+}

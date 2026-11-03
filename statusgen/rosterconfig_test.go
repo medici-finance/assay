@@ -755,13 +755,20 @@ func TestCouplingRepoRolesAndRejections(t *testing.T) {
 	}
 
 	for _, rc := range vec.RepoCases {
-		pol, ok := cfg.Repos[rc.Repo]
-		if ok != rc.Allowed {
-			t.Errorf("repo %q allowed = %t, want %t — %s", rc.Repo, ok, rc.Allowed, rc.Why)
+		// Admission is allowedRepo, the mirror of deskkit's IsAllowedRepo.
+		if ok := cfg.allowedRepo(rc.Repo); ok != rc.Allowed {
+			t.Errorf("allowedRepo(%q) = %t, want %t — %s", rc.Repo, ok, rc.Allowed, rc.Why)
 			continue
 		}
 		if !rc.Allowed {
 			continue
+		}
+		// A repo admitted only by an owner/* pattern has no explicit entry, so
+		// it takes the fail-closed policy deskkit's CIRequired and RepoVisibility
+		// give it; a pattern carries admission, never policy.
+		pol, ok := cfg.Repos[rc.Repo]
+		if !ok {
+			pol = "ci:unknown"
 		}
 		wantCI := "no-ci"
 		if rc.CIRequired {

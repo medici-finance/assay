@@ -1,0 +1,5 @@
+# Under set -e, trap 'exit 0' EXIT rewrites a failed build's exit status to 0.
+want: step-not-fatal
+file: Makefile
+replace: "\t@set -eu; \\\n\tsha="
+with: "\t@set -eu; trap 'exit 0' EXIT; \\\n\tsha="

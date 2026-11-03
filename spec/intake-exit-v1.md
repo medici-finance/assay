@@ -144,3 +144,23 @@ Every triaged entry (any disposition other than `new`) lands in exactly one coun
 - `stamped`: it maps and is stamped, so it is exported as one record.
 
 An untriaged entry (`disposition: new`) is in none of the three counts.
+
+## Accountable handoff companion
+
+The five exits and both exact-key writers above are unchanged. A mechanical
+`placeholder` or `bug` exit is evidence of an event route, never assignment or an
+accepted repair disposition. [verification-handoff-v1](verification-handoff-v1.md)
+defines a separately versioned companion observation over existing forge/case
+authority. It adds no required key to either intake-exit-v1 writer.
+
+Readers negotiate the companion's exact schema separately; absence, an older
+record or an unsupported version is unknown. Writers must establish support at
+each consuming operation before emitting required companion fields. Neither
+writer is armed to publish companions by this library extraction. Old records
+remain intact, with no inferred disposition or backfill.
+
+## Accountable disposition companion
+
+[intake-handoff-v1](intake-handoff-v1.md) adds an explicitly negotiated judgment
+record without changing this schema or its five exits. A mechanical exit alone
+does not establish an acknowledged successor or readiness for repair scheduling.

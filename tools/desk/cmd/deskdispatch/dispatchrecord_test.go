@@ -180,7 +180,7 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			}
 		})
 	}
-	t.Run("invalid UTF-8 brief id is null", func(t *testing.T) {
+	t.Run("invalid UTF-8 brief refuses before claim", func(t *testing.T) {
 		s := &stub{}
 		home, root := s.install(t)
 		plantScripts(t, root)
@@ -195,12 +195,16 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			rc = run([]string{"utf8--03", "--root", root, "--brief", "bad.md",
 				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 		})
-		if rc != deskkit.ExitOK {
-			t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
+		// Invalid UTF-8 is unreadable YAML, so admission fails closed before
+		// minting a claim or writing a dispatch record.
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("dispatch rc = %d, want refused\n%s", rc, errOut)
 		}
-		recs := recordLines(t, home)
-		if len(recs) != 1 || recs[0].Brief != nil {
-			t.Fatalf("want one line with a null brief, got %d lines\n%s", len(recs), errOut)
+		if len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+			t.Fatal("unreadable brief acquired a claim or worktree")
+		}
+		if recs := recordLines(t, home); len(recs) != 0 {
+			t.Fatalf("refused dispatch wrote %d records", len(recs))
 		}
 	})
 	// Free text reaching the record from the two sources the dispatcher does not itself narrow —
@@ -287,6 +291,30 @@ func TestBriefFieldsStayOnLine(t *testing.T) {
 	if f.id != nil || f.execTier != nil || f.effort != nil {
 		t.Errorf("empty fields read across a line: brief %s exec-tier %s effort %s",
 			sv(f.id), sv(f.execTier), sv(f.effort))
+	}
+}
+
+// TestBriefFieldsReadTheirOwnKey: each record field reads its own frontmatter key, never a sibling
+// key whose quoted spelling starts with the same text. The decoy keys make a reader that matches its
+// pattern against every parsed key pick the wrong value on about half its calls per field, so 200
+// calls of three fields leave it no realistic chance (2^-600) of passing; the reader that looks the
+// key up directly is right on every call.
+func TestBriefFieldsReadTheirOwnKey(t *testing.T) {
+	root := t.TempDir()
+	body := "---\nbrief: example-stream/29\n'brief: decoy': other\nexec-tier: any\n'exec-tier: decoy': other\n" +
+		"effort: M\n'effort: decoy': other\n---\n"
+	if err := os.WriteFile(filepath.Join(root, "b.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrong := 0
+	for i := 0; i < 200; i++ {
+		f := readBriefRecordFields(root, "b.md")
+		if sv(f.id) != `"example-stream/29"` || sv(f.execTier) != `"any"` || sv(f.effort) != `"M"` {
+			wrong++
+		}
+	}
+	if wrong > 0 {
+		t.Errorf("a sibling key was read in %d of 200 calls", wrong)
 	}
 }
 
@@ -617,32 +645,48 @@ func TestRecordRepoBranchAgree(t *testing.T) {
 }
 
 // regression: F2-repo-grammar-drops-record (second instance of the class: frontmatter fields)
-// TestOutOfSetBriefFieldsNull: an exec-tier or effort outside the record's closed set is
-// recorded null and the line is still written with the brief id, never refused whole.
+// Unknown execution tiers fail closed at admission. Optional reporting fields
+// retain their historical null projection and cannot discard an admitted record.
 func TestOutOfSetBriefFieldsNull(t *testing.T) {
-	s := &stub{}
-	home, root := s.install(t)
-	plantScripts(t, root)
-	fixEntropy(t)
-	s.replies = happyReplies(t.TempDir())
-	body := "---\nbrief: example-stream/28\ngate: model\nexec-tier: fast\neffort: XL\n---\n\n# fixture\n"
-	if err := os.WriteFile(filepath.Join(root, "oos.md"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var rc int
-	errOut := captureStderr(t, func() {
-		rc = run([]string{"oos--03", "--root", root, "--brief", "oos.md",
-			"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
-	})
-	if rc != deskkit.ExitOK {
-		t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
-	}
-	recs := recordLines(t, home)
-	if len(recs) != 1 {
-		t.Fatalf("want exactly one line, got %d\n%s", len(recs), errOut)
-	}
-	r := recs[0]
-	if r.BriefExec != nil || r.BriefEffort != nil || r.Brief == nil || *r.Brief != "example-stream/28" {
-		t.Errorf("brief %s exec %s effort %s: want example-stream/28 / null / null", sv(r.Brief), sv(r.BriefExec), sv(r.BriefEffort))
+	for _, tc := range []struct {
+		name, tier string
+		want       int
+	}{
+		{"unknown execution tier refuses", "fast", deskkit.ExitRefused},
+		{"unknown optional effort records null", "any", deskkit.ExitOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			plantScripts(t, root)
+			fixEntropy(t)
+			s.replies = happyReplies(t.TempDir())
+			body := "---\nbrief: example-stream/28\ngate: model\nexec-tier: " + tc.tier + "\neffort: XL\n---\n\n# fixture\n"
+			if err := os.WriteFile(filepath.Join(root, "oos.md"), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var rc int
+			errOut := captureStderr(t, func() {
+				rc = run([]string{"oos--03", "--root", root, "--brief", "oos.md",
+					"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+			})
+			if rc != tc.want {
+				t.Fatalf("dispatch rc = %d, want %d\n%s", rc, tc.want, errOut)
+			}
+			recs := recordLines(t, home)
+			if tc.want == deskkit.ExitRefused {
+				if len(recs) != 0 || len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+					t.Fatal("invalid execution tier acquired work or wrote a dispatch record")
+				}
+				return
+			}
+			if len(recs) != 1 {
+				t.Fatalf("want exactly one line, got %d\n%s", len(recs), errOut)
+			}
+			r := recs[0]
+			if r.BriefExec == nil || *r.BriefExec != "any" || r.BriefEffort != nil || r.Brief == nil || *r.Brief != "example-stream/28" {
+				t.Errorf("brief %s exec %s effort %s: want example-stream/28 / any / null", sv(r.Brief), sv(r.BriefExec), sv(r.BriefEffort))
+			}
+		})
 	}
 }

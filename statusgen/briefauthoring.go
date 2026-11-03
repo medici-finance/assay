@@ -278,7 +278,8 @@ func (a *authoringClassifier) prefetch(numbers []int) {
 // sequential match that follows answers from the cache. It replays the match
 // in waves: each wave reads, for every brief still unresolved, the next
 // candidate the match would ask about — the newest not yet shown to be
-// authoring-only — and stops a brief at its first delivery or unreadable list.
+// authoring-only or walked past by its trailer — and stops a brief at its first delivery or
+// unreadable list.
 // The set of PRs read is therefore the set the sequential walk reads, never a
 // speculative superset; only the waiting is overlapped.
 func (a *authoringClassifier) prefetchBackfill(pulls []ghPull, briefs [][2]string) {
@@ -312,11 +313,15 @@ func (a *authoringClassifier) prefetchBackfill(pulls []ghPull, briefs [][2]strin
 					break
 				}
 				only, err := a.notImplementation(n, w.id)
-				if r.err != nil || err != nil || !only {
+				if r.err != nil || err != nil {
+					w.next = len(w.cands) // unreadable: the match stops here
+					break
+				}
+				if past, _ := backfillWalkPast(w.cands[w.next].Body, w.id); !past && !only {
 					w.next = len(w.cands) // resolved: the match stops here
 					break
 				}
-				w.next++ // authoring-only: the match asks about the next one
+				w.next++ // walked past or authoring-only: the match asks about the next one
 			}
 		}
 		if len(wave) == 0 {
@@ -383,10 +388,15 @@ type backfillAuthoring func(number int, briefID string) (bool, error)
 // first, and the first delivery wins. A candidate whose file list could not be read ends the
 // search unresolved (unread non-empty, ok false): a lower-numbered match is not taken in its
 // place, because the unread PR may be the delivery.
+//
+// A TRAILER-ERA candidate that does not name the brief is walked past (backfillWalkPast,
+// derived-board/10 amendment B): the fallback exists for trailerless history, so a PR whose own
+// link trailer declares another brief, an issue or authoring only MENTIONS this brief. The rule
+// holds with and without the seam. With the seam wired the candidate's file list is read FIRST,
+// so a walk-past never skips a read that would have ended the search unknown.
 func matchBackfillPRChecked(pulls []ghPull, stream, num string, authoring backfillAuthoring) (match ghPull, ok bool, unread string) {
 	if authoring == nil {
-		m, found := matchBackfillPR(pulls, stream, num)
-		return m, found, ""
+		authoring = func(int, string) (bool, error) { return false, nil } // classifies nothing
 	}
 	id := stream + "/" + num
 	for _, p := range backfillCandidates(pulls, stream, num) {
@@ -394,11 +404,40 @@ func matchBackfillPRChecked(pulls []ghPull, stream, num string, authoring backfi
 		if err != nil {
 			return ghPull{}, false, unreadAuthoring(p.Number, id, err)
 		}
+		if past, _ := backfillWalkPast(p.Body, id); past {
+			continue
+		}
 		if !only {
 			return p, true, ""
 		}
 	}
 	return ghPull{}, false, ""
+}
+
+// backfillWalkPast is the --backfill walk's trailer rule. It is a variable only so a test can
+// disable the rule in an isolated seam and watch the mention-only witness come back.
+var backfillWalkPast = backfillTrailerWalkPast
+
+// backfillTrailerWalkPast reports whether a backfill candidate with this body is walked past for
+// briefID, and why. A body with no link trailer (`Brief:`, `Authors:` or `Issue:`, outside fenced
+// code) is trailerless history and is never walked past here. Otherwise the verdict is the shared
+// trailer predicate's (linkTrailerVerdict, the one autoflip's attributeCandidate uses): a
+// walk-past (a `Brief:` naming another brief, or `Authors:` only) walks past; a credit, or several
+// `Brief:` values, goes on to the authoring, Evidence-only and declared-partial reader. One arm is
+// backfill's own: no `Brief:` but an `Issue:` trailer walks past — that PR is an issue's.
+func backfillTrailerWalkPast(body, briefID string) (bool, string) {
+	count, briefs, issues := parseLinkTrailers(body)
+	if count == 0 && issues == 0 {
+		return false, ""
+	}
+	v, why := linkTrailerVerdict(count, briefs, briefID)
+	switch {
+	case v == candidateWalkPast:
+		return true, why
+	case v == candidateUnattributable && len(briefs) == 0 && issues > 0:
+		return true, fmt.Sprintf("it carries an `Issue:` trailer and no `Brief:` trailer — an issue's PR that only mentions %s", canonicalBriefKey(briefID))
+	}
+	return false, ""
 }
 
 // backfillCandidates lists the MERGED pulls that name stream/num in a declared
@@ -463,6 +502,14 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 		}
 		unread = append(unread, cl.partials.unread...)
 	}
+	// A PR that merged in ANOTHER configured root with this brief's `Brief:`
+	// trailer is a delivery witness too (crossroot.go). It cannot have authored
+	// a file in this tree, so it skips the authoring classifier.
+	self, bRoot := root, ""
+	if found {
+		self, bRoot = boardRoot, boardRoot
+	}
+	kept = append(kept, crossRootPRRecords(self, repo, bRoot, inScope, stderr)...)
 	in.PRs = kept
 	for _, m := range unread {
 		fmt.Fprintf(stderr, "reconcile: %s\n", m)

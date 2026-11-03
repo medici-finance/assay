@@ -1,0 +1,103 @@
+# Shared performance reader qualification
+
+The canonical `perfrec` library owns the bounded perf-v4 codec, registered typed
+facets, identity selection and common observation reduction. Desk adapters own file
+access and report projection; statusgen keeps its execution and verification
+authority. No online adapter, token resolver or generic raw payload crosses that
+boundary. This brief implements the reader first; selected producer migration is
+separate desktools-v2/68 work. Existing retained records are never rewritten.
+
+## Local fixture measurement
+
+Five alternating fresh-process pairs use the same executable and deterministic,
+equivalent 200-observation inputs. Each process measures its first decode/reduce
+and 15 warm repetitions, verifying exact record count and summed wall facts.
+Input and executable hashes plus raw logs are retained with the implementation
+artifacts. This is a local codec/reducer fixture, not a physically cold filesystem,
+whole-tool speedup, production workload or collection activation.
+
+| Metric (median across five processes) | Existing v3 | New v4 |
+|---|---:|---:|
+| Input bytes | 161000.000 | 140200.000 |
+| First decode/reduce, ms | 5.126 | 5.675 |
+| Warm p50, ms | 5.026 | 5.584 |
+| Warm p95, ms | 5.293 | 5.970 |
+| Own CPU over all 16 passes, ms | 91.000 | 105.000 |
+
+The extensible reader costs more in this fixture; no performance improvement is
+claimed for the wire migration. The independent issueboard/lint/verifyrun changes
+retain their matched original measurements until supported selected producers
+can be composed with both source variants.
+
+## Controls exercised
+
+- CI quiet-home guard reproduced the new compiled fixture starting Go under a
+  scratch home without the existing telemetry-child isolation. The fixture now
+  uses shared test-only `gitquiet/goquiet.Cmd` and checks for stray files; the
+  original guard remains unchanged. Assay recording and consent are unaffected.
+- Actual typed writer, file reader, compiled deskperf JSON/text/day report and
+  external Go consumer; mixed historical data, permission filters, STOP refusal
+  and unavailable observation coverage remain distinct.
+- Internal review reproduced padded LF/CRLF equality-bound lines being admitted;
+  the raw-byte public decoder and native file splitter now retain those bytes.
+  Below/equal/above-limit regressions retain this boundary. Multi-line regressions also
+  keep valid records after an oversized LF/CRLF line, including multi-buffer and
+  unterminated oversized tails; each oversized line contributes one skip.
+- Duplicate/case aliases, late schema downgrade, malformed known facets, bounded
+  unknown optional facets, source identity conflict and cross-schema collisions
+  fail closed without exposing discarded extension names or payloads.
+- Shared reducer and per-record coverage reject integer overflow; exact maximum
+  valid totals remain valid. Historical validator/control assertions remain.
+- Canonical local mutation baseline and distinct control are healthy: eleven new
+  codec/identity mutations, four raw-line adapter mutations, three overflow mutations,
+  eight retained v3 mutations and seven command-report mutations are caught. No survivors or
+  could-not-mutate are counted as passing. This is local harness qualification,
+  not an assertion that every spec is enforced by the CI truth matrix.
+- Full shared-library and actual deskperf suites, race/vet, relevant adapter and
+  cross-module CI-trigger checks, mutation anchors, repository lint and the
+  committed test ledger are required before publication. Independent correctness,
+  security and postmerge verification remain separate; Evidence is unchanged.
+
+## Review follow-up
+
+Correctness review 5643845827 at the original reader head requested changes for
+multi-line truncation and omitted command-view v4 exclusion counts. Both were
+reproduced before repair. The bounded splitter now drains an oversized line and
+resumes at its next LF without increasing the allocation bound; command text
+prints v4 duplicate, conflict and invalid counts. The shared reader also retains
+the published command-report repair from PR #4352, including its four regressions
+and two added mutation controls. Main's canonical forge adapter row and this
+reader's performance ownership row both survive the actual documentation conflict.
+
+Decode refusals, including over-bound lines, contribute to the file reader's
+`skipped` count, rather than the reducer's `Invalid` count. V4 request counters
+appear in the separate perf-v4 projections; the existing pooled and by-day forge
+counts do not include v4. They must not be read as all-schema provider totals.
+Command-view saturation and unavailable attribution under workflow filters remain
+nonblocking review observations; this repair does not change their semantics.
+
+The earlier codec/reducer fixture remains scoped to its measured implementation;
+no new whole-tool or selected-producer performance sample is claimed here.
+
+A follow-up boundary regression checks the historical final line without LF:
+its largest accepted legacy record still reaches the legacy decoder. The drain
+threshold uses the scanner's full existing buffer, while the v4 decoder retains
+its strict byte limit including LF. The pre-split reader passes this regression;
+the initial drain threshold failed it and the corrected threshold passes it.
+No allocation, decoder, recorder or admission-control limit was increased.
+
+The parent report correction at `f69e2e79d5a727119b22513cdb6b74687a0b22e8` is retained with its expanded tool/workflow regression and additional mutation. Reader integration distinguishes absent source tools from unmatched workflows for v3 and v4, across pooled/per-day text and JSON, while preserving whole-window identity exclusions. Diagnostic comparisons using the exact previous report file reproduce the absent-tool regression; they do not measure whole-build performance.
+
+Current parent-integration qualification retains shared-suite failures of the unchanged append timing assertion: normal p50 2.923167 ms and race p50 1.157166 ms against the existing <1 ms limit. The exact retained published reader source also fails the isolated assertion at 1.479667 ms. All 48 recorder/shared-performance source files are byte-identical between published source and candidate. These are failed checks, not passing qualification or speedup evidence; the assertion and recorder remain unchanged.
+
+Correctness review 5645677977 (second round) found the same exclusion-reporting
+gap in the by-day text: whole-window v4 duplicates, conflicts and invalid counts
+reached JSON only, and each day line re-selected already-selected records and so
+printed affirmative zeros. The by-day text now prints one whole-window v4 line
+beside the v3 one, and each day line reports only its bucket's kept records. The
+by-day JSON shape is unchanged: top-level `perfV4` carries the whole-window
+counts, and per-day summaries are post-selection buckets whose exclusion fields
+are zero by construction. A by-day text and JSON regression with one conflicting
+v4 identity covers this, and two added command-map mutations confirm it fails
+when either half is reverted. Command-view saturation and unattributed workflow
+records under a workflow filter remain the nonblocking observations above.

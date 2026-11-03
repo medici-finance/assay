@@ -1,0 +1,899 @@
+// Package local is the bounded, segmented, append-only local store of
+// performance-event-v1 records under a caller-resolved state directory:
+//
+//	<stateDir>/performance-events/
+//	  manifest.json        store layout and schema versions
+//	  source.json          random source identity, epoch and last reserved sequence
+//	  aliases-e<N>.json    private alias map of epoch N (keyed digests, never raw locators)
+//	  coverage.json        retirements, failed-write ranges, unclean ends, epoch resets
+//	  lock                 the writer lock (flock, bounded wait)
+//	  run/                 one live marker per open writer, locked before it is named live-
+//	  segments/            seg-<firstSeq>-e<epoch>-<YYYYMMDD>.jsonl, one canonical event per line
+//	  distributions/       day-<YYYY-MM-DD>.json rollups (only with distribution retention)
+//
+// The tree is distinct from audit.jsonl, dispatch-records.jsonl and perf/. Directories
+// are 0700 and files 0600, and an unsafe tree is refused (secure.go). The directories
+// are checked once and bound to handles; every later read and write is resolved
+// relative to those handles, never re-resolved from the path. Metadata is replaced
+// atomically by rename. Appends never fsync on the work path, so a crash can
+// lose the tail of the last write: the reader reports that as a partial tail or an
+// unexplained gap, never as complete coverage.
+package local
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/medici-finance/assay/perfdata"
+)
+
+// DirName is the store directory under the caller's state directory.
+const DirName = "performance-events"
+
+// StoreSchema identifies the on-disk layout.
+const StoreSchema = "performance-store-v1"
+
+// ErrOff is returned by Open when collection is not armed; nothing was created.
+var ErrOff = errors.New("perfdata/local: collection is off")
+
+var errLockTimeout = errors.New("perfdata/local: store lock wait exceeded")
+
+// ErrUnsafe is returned when a store entry is a symbolic link, is not the expected kind
+// of file, belongs to another user or is open to group or other users, or when the
+// state directory is another user's or writable by other users without the sticky bit.
+// The store never reads or writes through such an entry and never repairs it; it refuses.
+var ErrUnsafe = errors.New("perfdata/local: unsafe store entry")
+
+// Root returns the store directory of a state directory.
+func Root(stateDir string) string { return filepath.Join(stateDir, DirName) }
+
+// Options are writer options. Now and the unexported fault hook exist for tests.
+type Options struct {
+	Build    perfdata.Build
+	Now      func() time.Time
+	LockWait time.Duration
+
+	// fault, when set, is called before each effect ("append", "meta", "segment", and
+	// for the live marker "created", "live" and "rename") and its error replaces the
+	// effect's result. Tests use it for full disk, slow I/O and platform behavior.
+	fault func(op string) error
+}
+
+func (o Options) now() time.Time {
+	if o.Now != nil {
+		return o.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+// Store is one writer handle. It is safe for use by one goroutine at a time per
+// method; Write serializes internally. Several Stores (and processes) may share a tree.
+type Store struct {
+	t       *tree
+	policy  perfdata.Policy
+	profile perfdata.Profile
+	opts    Options
+
+	mu       sync.Mutex
+	liveMu   sync.Mutex
+	lockF    *os.File
+	liveF    *os.File
+	liveName string
+	aliases  *aliasFile
+	aliasSt  fileStamp
+}
+
+type sourceFile struct {
+	Schema        string `json:"schema"`
+	Source        string `json:"source"`
+	Epoch         uint32 `json:"epoch"`
+	LastSeq       uint64 `json:"lastSeq"`
+	AliasesMinted bool   `json:"aliasesMinted"`
+}
+
+type lostRange struct {
+	Source string            `json:"source"`
+	Range  perfdata.SeqRange `json:"range"`
+}
+
+type coverageFile struct {
+	Schema      string                `json:"schema"`
+	Retired     []retired             `json:"retired"`
+	Lost        []lostRange           `json:"lost"`
+	Drops       perfdata.Drops        `json:"drops"`
+	Unclean     int                   `json:"unclean"`
+	EpochResets []perfdata.EpochReset `json:"epochResets"`
+}
+
+type retired struct {
+	Source string `json:"source,omitempty"`
+	perfdata.Retirement
+}
+
+type manifest struct {
+	Schema        string `json:"schema"`
+	EventSchema   string `json:"eventSchema"`
+	BatchSchema   string `json:"batchSchema"`
+	RollupSchema  string `json:"rollupSchema"`
+	SegmentFormat string `json:"segmentFormat"`
+}
+
+const (
+	sourceSchema   = "performance-source-v1"
+	coverageSchema = "performance-coverage-v1"
+	aliasSchema    = "performance-aliases-v1"
+)
+
+// Open arms a writer on stateDir. It creates nothing and returns ErrOff unless c is
+// armed; the policy must admit the consented profile. Open recovers source identity,
+// detects writers that ended uncleanly and applies retirement.
+func Open(stateDir string, c perfdata.Consent, policy perfdata.Policy, o Options) (*Store, error) {
+	if !c.Armed {
+		return nil, ErrOff
+	}
+	if err := policy.Validate(); err != nil {
+		return nil, err
+	}
+	if !policy.Admits(c.Profile) {
+		return nil, fmt.Errorf("perfdata/local: profile %q not admitted by policy %q", c.Profile, policy.Revision)
+	}
+	if policy.SegmentBytes == 0 {
+		policy.SegmentBytes = min(perfdata.DefaultSegmentBytes, policy.ByteCap)
+	}
+	if o.LockWait == 0 {
+		o.LockWait = 2 * time.Second
+	}
+	if o.Build.Version == "" {
+		o.Build = perfdata.Build{Version: "dev", OS: "unknown", Arch: "unknown"}
+	}
+	s := &Store{policy: policy, profile: c.Profile, opts: o}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return nil, err
+	}
+	t, err := openTree(stateDir, true)
+	if err != nil {
+		return nil, err
+	}
+	s.t = t
+	if err := checkTree(t); err != nil {
+		t.close()
+		return nil, err
+	}
+	lf, err := openRegular(t.top, "lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.close()
+		return nil, err
+	}
+	s.lockF = lf
+	if err := s.openLive(); err != nil {
+		lf.Close()
+		t.close()
+		return nil, err
+	}
+	err = s.locked(func() error {
+		if err := s.ensureManifest(); err != nil {
+			return err
+		}
+		cov := s.loadCoverage()
+		s.reapLive(&cov)
+		if _, err := s.loadSource(&cov, true); err != nil {
+			return err
+		}
+		if err := s.retire(&cov); err != nil {
+			return err
+		}
+		return s.saveCoverage(cov)
+	})
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// Profile is the store's consented profile.
+func (s *Store) Profile() perfdata.Profile { return s.profile }
+
+// Policy is the store's selected policy.
+func (s *Store) Policy() perfdata.Policy { return s.policy }
+
+// Close releases the writer and removes its live marker (a clean end).
+func (s *Store) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.liveMu.Lock()
+	if s.liveF != nil {
+		unlockFile(s.liveF)
+		s.liveF.Close()
+		_ = s.t.run.Remove(s.liveName)
+		s.liveF = nil
+	}
+	s.liveMu.Unlock()
+	if s.lockF != nil {
+		s.lockF.Close()
+		s.lockF = nil
+		s.t.close()
+	}
+	return nil
+}
+
+// abandon releases the live marker WITHOUT removing it, so the next writer reports
+// an unclean end. Used when a flush budget expires.
+func (s *Store) abandon() {
+	s.liveMu.Lock()
+	defer s.liveMu.Unlock()
+	if s.liveF != nil {
+		unlockFile(s.liveF)
+		s.liveF.Close()
+		s.liveF = nil
+	}
+}
+
+func (s *Store) fault(op string) error {
+	if s.opts.fault != nil {
+		return s.opts.fault(op)
+	}
+	return nil
+}
+
+func (s *Store) locked(fn func() error) error {
+	if err := lockStore(s.t.top, s.lockF, s.opts.LockWait); err != nil {
+		return err
+	}
+	defer unlockStore(s.t.top, s.lockF)
+	return fn()
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// liveMarkers is liveMarkersSupported; tests turn it off to run the other platforms' path.
+var liveMarkers = liveMarkersSupported
+
+func (s *Store) openLive() error {
+	id := randomHex(8)
+	live := "live-" + id + ".lock"
+	if !liveMarkers {
+		// No lock is held on a marker here, so there is nothing to wait for before
+		// naming it; and an open file cannot be renamed on every platform (Windows
+		// refuses it), so the marker is created under its final name.
+		f, err := s.t.run.OpenFile(live, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+		if err != nil {
+			return err
+		}
+		s.liveF, s.liveName = f, live
+		return nil
+	}
+	// The marker is created under a name the reaper ignores, locked, and only then
+	// renamed to its live- name, so no reaper ever sees a live marker its writer has not
+	// locked yet.
+	born := "born-" + id + ".lock"
+	f, err := s.t.run.OpenFile(born, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	fail := func(err error) error {
+		f.Close()
+		_ = s.t.run.Remove(born)
+		return err
+	}
+	if err := s.fault("created"); err != nil {
+		return fail(err)
+	}
+	if !tryLockFile(f) {
+		return fail(errors.New("perfdata/local: cannot hold live marker"))
+	}
+	if err := s.fault("live"); err != nil {
+		return fail(err)
+	}
+	if err := s.fault("rename"); err != nil {
+		return fail(err)
+	}
+	if err := s.t.run.Rename(born, live); err != nil {
+		return fail(err)
+	}
+	s.liveF, s.liveName = f, live
+	return nil
+}
+
+// bornStale is how old an unlocked born- marker must be before it is removed: one left
+// behind by a writer that died between creating and renaming it.
+const bornStale = time.Minute
+
+// reapLive counts and removes live markers whose writer is gone (unclean ends).
+func (s *Store) reapLive(cov *coverageFile) {
+	if !liveMarkers {
+		return
+	}
+	ents, _ := readDir(s.t.run)
+	for _, e := range ents {
+		name := e.Name()
+		if strings.HasPrefix(name, "born-") {
+			s.reapBorn(name)
+			continue
+		}
+		if name == s.liveName || !strings.HasPrefix(name, "live-") {
+			continue
+		}
+		f, err := openRegular(s.t.run, name, os.O_RDWR, 0)
+		if err != nil {
+			continue
+		}
+		if tryLockFile(f) {
+			cov.Unclean++
+			_ = s.t.run.Remove(name)
+			unlockFile(f)
+		}
+		f.Close()
+	}
+}
+
+// reapBorn removes a born- marker whose writer died before naming it live. It is not an
+// unclean end: that writer never wrote.
+func (s *Store) reapBorn(name string) {
+	fi, err := s.t.run.Lstat(name)
+	if err != nil || !fi.Mode().IsRegular() || time.Since(fi.ModTime()) < bornStale {
+		return
+	}
+	f, err := openRegular(s.t.run, name, os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if tryLockFile(f) {
+		_ = s.t.run.Remove(name)
+		unlockFile(f)
+	}
+}
+
+// writeAtomic replaces name under r with data via a temporary file in the same
+// directory (created exclusively, so never through a link) and a rename.
+func (s *Store) writeAtomic(r *os.Root, name string, data []byte) error {
+	if err := s.fault("meta"); err != nil {
+		return err
+	}
+	tmp := name + ".tmp-" + randomHex(6)
+	f, err := r.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		r.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		r.Remove(tmp)
+		return err
+	}
+	if err := r.Rename(tmp, name); err != nil {
+		r.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func (s *Store) writeJSON(r *os.Root, name string, v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return s.writeAtomic(r, name, append(b, '\n'))
+}
+
+func (s *Store) ensureManifest() error {
+	if _, ok := regularSize(s.t.top, "manifest.json"); ok {
+		return nil
+	}
+	return s.writeJSON(s.t.top, "manifest.json", manifest{
+		Schema: StoreSchema, EventSchema: perfdata.EventSchema, BatchSchema: perfdata.BatchSchema,
+		RollupSchema: perfdata.RollupSchema, SegmentFormat: "jsonl-canonical",
+	})
+}
+
+func readCoverage(t *tree) (coverageFile, bool) {
+	cov := coverageFile{Schema: coverageSchema}
+	b, err := readRegular(t.top, "coverage.json")
+	if errors.Is(err, os.ErrNotExist) {
+		return cov, true
+	}
+	if err != nil || decodeStrict(b, &cov) != nil || cov.Schema != coverageSchema || !cov.sourcesValid() {
+		return coverageFile{Schema: coverageSchema}, false
+	}
+	return cov, true
+}
+
+// decodeStrict decodes one JSON value with no unknown fields and nothing after it.
+func decodeStrict(b []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if dec.More() {
+		return errors.New("trailing data")
+	}
+	return nil
+}
+
+// sourcesValid refuses a coverage file naming a source that is not a source id: the
+// names reach the report verbatim, so a hand-edited file must not carry control text.
+func (c coverageFile) sourcesValid() bool {
+	for _, r := range c.Retired {
+		if r.Source != "" && !perfdata.IsSource(r.Source) {
+			return false
+		}
+	}
+	for _, l := range c.Lost {
+		if !perfdata.IsSource(l.Source) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) loadCoverage() coverageFile {
+	cov, _ := readCoverage(s.t)
+	return cov
+}
+
+func (s *Store) saveCoverage(cov coverageFile) error {
+	return s.writeJSON(s.t.top, "coverage.json", cov)
+}
+
+func readSource(t *tree) (sourceFile, error) {
+	var sf sourceFile
+	b, err := readRegular(t.top, "source.json")
+	if err != nil {
+		return sf, err
+	}
+	if json.Unmarshal(b, &sf) != nil || sf.Schema != sourceSchema || !perfdata.IsSource(sf.Source) || sf.Epoch == 0 {
+		return sourceFile{}, errors.New("corrupt source metadata")
+	}
+	return sf, nil
+}
+
+// loadSource returns the current source metadata, recovering it when lost or behind.
+// A lost source file is rebuilt from the newest segment with a new epoch; a lost alias
+// map starts a new epoch so old and new aliases can never be joined; a metadata file
+// behind the segments is moved forward so a sequence is never reused.
+func (s *Store) loadSource(cov *coverageFile, scan bool) (sourceFile, error) {
+	now := perfdata.FormatTime(s.opts.now())
+	sf, err := readSource(s.t)
+	changed := false
+	if err != nil {
+		src, epoch, maxSeq, _, found := s.scanIdentity()
+		if found {
+			sf = sourceFile{Schema: sourceSchema, Source: src, Epoch: epoch + 1, LastSeq: maxSeq}
+			cov.EpochResets = append(cov.EpochResets, perfdata.EpochReset{Epoch: sf.Epoch, Reason: perfdata.ResetSourceLost, At: now})
+		} else {
+			sf = sourceFile{Schema: sourceSchema, Source: perfdata.NewSource(), Epoch: 1}
+			if !errors.Is(err, os.ErrNotExist) {
+				cov.EpochResets = append(cov.EpochResets, perfdata.EpochReset{Epoch: 1, Reason: perfdata.ResetSourceLost, At: now})
+			}
+		}
+		changed = true
+	} else if scan {
+		if src, epoch, maxSeq, first, found := s.scanIdentity(); found && src == sf.Source && maxSeq > sf.LastSeq {
+			// Appends to an open segment advance source.json lazily, so metadata
+			// behind the newest segment's own range is normal and only caught up.
+			// Metadata behind where that segment began was restored or rewritten:
+			// a new epoch makes the discontinuity visible.
+			if first > sf.LastSeq+1 {
+				sf.Epoch = max(sf.Epoch, epoch) + 1
+				sf.AliasesMinted = false
+				cov.EpochResets = append(cov.EpochResets, perfdata.EpochReset{Epoch: sf.Epoch, Reason: perfdata.ResetSeqBehind, At: now})
+			}
+			sf.LastSeq = maxSeq
+			changed = true
+		}
+	}
+	if sf.AliasesMinted {
+		if _, ok := regularSize(s.t.top, aliasName(sf.Epoch)); !ok {
+			sf.Epoch++
+			sf.AliasesMinted = false
+			cov.EpochResets = append(cov.EpochResets, perfdata.EpochReset{Epoch: sf.Epoch, Reason: perfdata.ResetAliasMapLost, At: now})
+			changed = true
+		}
+	}
+	if changed {
+		if err := s.writeJSON(s.t.top, "source.json", sf); err != nil {
+			return sf, err
+		}
+		if !scan {
+			if err := s.saveCoverage(*cov); err != nil {
+				return sf, err
+			}
+		}
+	}
+	return sf, nil
+}
+
+// segment is one segment file name, parsed.
+type segment struct {
+	name     string
+	firstSeq uint64
+	epoch    uint32
+	day      string // YYYY-MM-DD
+}
+
+func segmentName(firstSeq uint64, epoch uint32, day string) string {
+	return fmt.Sprintf("seg-%020d-e%d-%s.jsonl", firstSeq, epoch, strings.ReplaceAll(day, "-", ""))
+}
+
+func parseSegment(name string) (segment, bool) {
+	if !strings.HasPrefix(name, "seg-") || !strings.HasSuffix(name, ".jsonl") {
+		return segment{}, false
+	}
+	parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(name, "seg-"), ".jsonl"), "-")
+	if len(parts) != 3 || len(parts[0]) != 20 || !strings.HasPrefix(parts[1], "e") || len(parts[2]) != 8 {
+		return segment{}, false
+	}
+	seq, err1 := strconv.ParseUint(parts[0], 10, 64)
+	ep, err2 := strconv.ParseUint(parts[1][1:], 10, 32)
+	if err1 != nil || err2 != nil {
+		return segment{}, false
+	}
+	d := parts[2]
+	return segment{name: name, firstSeq: seq, epoch: uint32(ep), day: d[:4] + "-" + d[4:6] + "-" + d[6:]}, true
+}
+
+func listSegments(t *tree) []segment {
+	ents, _ := readDir(t.segs)
+	var out []segment
+	for _, e := range ents {
+		if sg, ok := parseSegment(e.Name()); ok {
+			out = append(out, sg)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
+
+// scanIdentity finds the source, newest epoch and highest sequence in the segments,
+// and the first sequence of the newest segment holding a decodable record.
+func (s *Store) scanIdentity() (src string, epoch uint32, maxSeq, first uint64, found bool) {
+	segs := listSegments(s.t)
+	for i := len(segs) - 1; i >= 0; i-- {
+		b, err := readRegular(s.t.segs, segs[i].name)
+		if err != nil {
+			continue
+		}
+		for _, line := range bytes.Split(b, []byte("\n")) {
+			e, err := perfdata.DecodeEvent(line)
+			if err != nil {
+				continue
+			}
+			if !found || e.Seq > maxSeq {
+				src, maxSeq, found = e.Source, e.Seq, true
+			}
+			epoch = max(epoch, e.Epoch)
+		}
+		if found {
+			return src, epoch, maxSeq, segs[i].firstSeq, true
+		}
+	}
+	return
+}
+
+// segTail describes the newest segment: whether one exists, its size, whether its
+// last line is incomplete, and the highest sequence of src among its last lines.
+type segTail struct {
+	seg     segment
+	ok      bool
+	size    int64
+	partial bool
+	lastSeq uint64
+}
+
+// newestTail reads only the end of the newest segment. Appends are serialized by the
+// store lock, so the highest sequence of a segment sits in its last complete lines.
+func (s *Store) newestTail(src string) segTail {
+	segs := listSegments(s.t)
+	if len(segs) == 0 {
+		return segTail{}
+	}
+	t := segTail{seg: segs[len(segs)-1], ok: true}
+	f, err := openRegular(s.t.segs, t.seg.name, os.O_RDONLY, 0)
+	if err != nil {
+		t.partial = true // unreadable: never append to it
+		return t
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		t.partial = true
+		return t
+	}
+	t.size = st.Size()
+	if t.size == 0 {
+		return t
+	}
+	n := min(t.size, int64(2*perfdata.MaxEventBytes+2))
+	buf := make([]byte, n)
+	if _, err := f.ReadAt(buf, t.size-n); err != nil {
+		t.partial = true
+		return t
+	}
+	t.partial = buf[n-1] != '\n'
+	decoded := false
+	for _, line := range bytes.Split(buf, []byte("\n")) {
+		if e, err := perfdata.DecodeEvent(line); err == nil && e.Source == src {
+			t.lastSeq, decoded = max(t.lastSeq, e.Seq), true
+		}
+	}
+	if !decoded && n < t.size {
+		if b, err := io.ReadAll(io.NewSectionReader(f, 0, t.size)); err == nil {
+			for _, line := range bytes.Split(b, []byte("\n")) {
+				if e, err := perfdata.DecodeEvent(line); err == nil && e.Source == src {
+					t.lastSeq = max(t.lastSeq, e.Seq)
+				}
+			}
+		}
+	}
+	return t
+}
+
+// aliasFile is the private mapping of one epoch: HMAC(secret, locator key) → alias.
+// Raw locators are never written; the secret never leaves this file.
+type aliasFile struct {
+	Schema string            `json:"schema"`
+	Epoch  uint32            `json:"epoch"`
+	Secret string            `json:"secret"`
+	Map    map[string]string `json:"map"`
+	dirty  bool
+}
+
+type fileStamp struct {
+	epoch uint32
+	size  int64
+	mod   time.Time
+}
+
+func aliasName(epoch uint32) string { return fmt.Sprintf("aliases-e%d.json", epoch) }
+
+func (s *Store) loadAliases(epoch uint32) (*aliasFile, error) {
+	p := aliasName(epoch)
+	st, err := s.t.top.Lstat(p)
+	if errors.Is(err, os.ErrNotExist) {
+		af := &aliasFile{Schema: aliasSchema, Epoch: epoch, Secret: randomHex(32), Map: map[string]string{}}
+		s.aliases, s.aliasSt = af, fileStamp{epoch: epoch}
+		return af, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, unsafeEntry(display(s.t.top, p), "not a regular file")
+	}
+	stamp := fileStamp{epoch: epoch, size: st.Size(), mod: st.ModTime()}
+	if s.aliases != nil && s.aliasSt == stamp && !s.aliases.dirty {
+		return s.aliases, nil
+	}
+	b, err := readRegular(s.t.top, p)
+	if err != nil {
+		return nil, err
+	}
+	var af aliasFile
+	if json.Unmarshal(b, &af) != nil || af.Schema != aliasSchema || af.Epoch != epoch || len(af.Secret) != 64 {
+		return nil, errors.New("corrupt alias map")
+	}
+	if af.Map == nil {
+		af.Map = map[string]string{}
+	}
+	s.aliases, s.aliasSt = &af, stamp
+	return &af, nil
+}
+
+// Alias implements perfdata.AliasMapper over the loaded epoch map.
+func (af *aliasFile) Alias(key string) (string, error) {
+	sec, _ := hex.DecodeString(af.Secret)
+	m := hmac.New(sha256.New, sec)
+	m.Write([]byte(key))
+	k := hex.EncodeToString(m.Sum(nil))
+	if a, ok := af.Map[k]; ok {
+		return a, nil
+	}
+	a := perfdata.NewAlias()
+	af.Map[k] = a
+	af.dirty = true
+	return a, nil
+}
+
+// Refused is one refused draft.
+type Refused struct {
+	Index   int               `json:"index"`
+	Refusal *perfdata.Refusal `json:"refusal"`
+}
+
+// WriteResult is the outcome of one Write.
+type WriteResult struct {
+	Lines   []json.RawMessage `json:"lines"`
+	Refused []Refused         `json:"refused"`
+}
+
+// Write seals and appends drafts as one locked unit: no other writer (goroutine or
+// process) can interleave or reuse a sequence. The next sequence is the larger of
+// source.json's reservation and the newest segment's last record; source.json is
+// rewritten (before the append) only when a segment is started or aliases are minted,
+// and after a failed append so the failed range is never reused. With partial=false
+// any refused draft refuses the whole call and nothing is written.
+func (s *Store) Write(drafts []perfdata.Draft, partial bool) (WriteResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var res WriteResult
+	if s.lockF == nil {
+		return res, errors.New("perfdata/local: store closed")
+	}
+	err := s.locked(func() error {
+		cov := coverageFile{}
+		covLoaded := false
+		loadCov := func() *coverageFile {
+			if !covLoaded {
+				cov, covLoaded = s.loadCoverage(), true
+			}
+			return &cov
+		}
+		sf, err := readSource(s.t)
+		if err != nil {
+			if sf, err = s.loadSource(loadCov(), false); err != nil {
+				return err
+			}
+		}
+		withCtx := false
+		for _, d := range drafts {
+			withCtx = withCtx || d.Ctx != nil
+		}
+		if withCtx && sf.AliasesMinted {
+			if _, ok := regularSize(s.t.top, aliasName(sf.Epoch)); !ok {
+				if sf, err = s.loadSource(loadCov(), false); err != nil { // alias map lost: new epoch
+					return err
+				}
+			}
+		}
+		tail := s.newestTail(sf.Source)
+		sf.LastSeq = max(sf.LastSeq, tail.lastSeq)
+		var af *aliasFile
+		recorded := s.opts.now()
+		var lines [][]byte
+		size := 0
+		for i, d := range drafts {
+			var ctx *perfdata.Context
+			if d.Ctx != nil {
+				if af == nil {
+					if af, err = s.loadAliases(sf.Epoch); err != nil {
+						return err
+					}
+				}
+				ctx, err = perfdata.Translate(s.profile, d.Ctx, af)
+			}
+			var line []byte
+			if err == nil {
+				var e perfdata.Event
+				id := perfdata.Identity{Source: sf.Source, Epoch: sf.Epoch, Seq: sf.LastSeq + uint64(len(lines)) + 1}
+				e, line, err = perfdata.Seal(d, id, s.profile, s.policy.Revision, s.opts.Build, ctx, recorded)
+				if err == nil {
+					err = s.policy.CheckEvent(e)
+				}
+			}
+			if err != nil {
+				res.Refused = append(res.Refused, Refused{Index: i, Refusal: perfdata.AsRefusal(err)})
+				err = nil
+				continue
+			}
+			lines = append(lines, line)
+			size += len(line) + 1
+		}
+		if len(lines) == 0 || (!partial && len(res.Refused) > 0) {
+			if af != nil && af.dirty {
+				s.aliases = nil // discard unsaved aliases
+			}
+			return nil
+		}
+		reserve := false
+		if af != nil && af.dirty {
+			if err := s.writeJSON(s.t.top, aliasName(sf.Epoch), af); err != nil {
+				s.aliases = nil
+				return err
+			}
+			af.dirty = false
+			if st, err := s.t.top.Lstat(aliasName(sf.Epoch)); err == nil {
+				s.aliasSt = fileStamp{epoch: sf.Epoch, size: st.Size(), mod: st.ModTime()}
+			}
+			sf.AliasesMinted, reserve = true, true
+		}
+		day := recorded.Format("2006-01-02")
+		seg := ""
+		if tail.ok && !tail.partial && tail.seg.epoch == sf.Epoch && tail.seg.day == day &&
+			(tail.size == 0 || tail.size+int64(size) <= s.policy.SegmentBytes) {
+			seg = tail.seg.name
+		}
+		first := sf.LastSeq + 1
+		sf.LastSeq += uint64(len(lines))
+		if seg == "" {
+			if err := s.fault("segment"); err != nil {
+				return s.lost(loadCov(), sf, first, err)
+			}
+			seg, reserve = segmentName(first, sf.Epoch, day), true
+		}
+		if reserve {
+			if err := s.writeJSON(s.t.top, "source.json", sf); err != nil {
+				return err // nothing reserved, nothing written
+			}
+		}
+		if err := s.append(seg, lines); err != nil {
+			return s.lost(loadCov(), sf, first, err)
+		}
+		for _, l := range lines {
+			res.Lines = append(res.Lines, json.RawMessage(l))
+		}
+		if seg != tail.seg.name && s.totalBytes() > s.policy.ByteCap {
+			c := loadCov()
+			if err := s.retire(c); err == nil {
+				_ = s.saveCoverage(*c)
+			}
+		}
+		return nil
+	})
+	return res, err
+}
+
+// lost reserves and records a range whose append failed, so it is never reused. Both
+// writes may fail too (a full disk); the gap then stays unexplained.
+func (s *Store) lost(c *coverageFile, sf sourceFile, first uint64, err error) error {
+	_ = s.writeJSON(s.t.top, "source.json", sf)
+	c.Lost = append(c.Lost, lostRange{Source: sf.Source, Range: perfdata.SeqRange{From: first, To: sf.LastSeq, Reason: perfdata.GapWriteFailed}})
+	_ = s.saveCoverage(*c)
+	return err
+}
+
+func (s *Store) append(name string, lines [][]byte) error {
+	if err := s.fault("append"); err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	for _, l := range lines {
+		buf.Write(l)
+		buf.WriteByte('\n')
+	}
+	f, err := openRegular(s.t.segs, name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(buf.Bytes())
+	cerr := f.Close()
+	if werr != nil {
+		return werr
+	}
+	return cerr
+}
+
+func (s *Store) totalBytes() int64 {
+	var n int64
+	for _, sg := range listSegments(s.t) {
+		if size, ok := regularSize(s.t.segs, sg.name); ok {
+			n += size
+		}
+	}
+	return n
+}

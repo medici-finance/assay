@@ -17,7 +17,15 @@ one link trailer, written at the moment the body is filled in:
   is never looked up under `--root`. A brief-risk read fails closed on it (risk-classed,
   unverifiable), since the brief's gate is not in this repo. `deskdispatch --cross-repo`
   names this exact line in the worker prompt, **or**
-- `Issue: #<N>` — issue-only work with no brief.
+- `Issue: #<N>` — issue-only work with no brief. The issue stays open when the PR merges
+  ("related, do not close"), **or**
+- `Fixes: #<N>` — the RESOLVING form of `Issue:`: the PR resolves the issue. `Closes:` and
+  `Resolves:` are accepted and mean the same thing, and `Fixes: <owner>/<repo>#<N>` names an
+  issue in another repository. Every reader of the link (the derived board, the dispatcher,
+  the planner, statusgen, the claim-key lookup) treats it exactly like `Issue:`. The line is
+  also a GitHub closing keyword (GitHub honours a colon after the keyword), so when the PR
+  merges into the repository's default branch GitHub closes the issue; deskpr writes no
+  extra line. The `#` is required, because a line without it would not close anything.
 
 `Brief:` asserts DELIVERY. The dispatcher's phantom check, `fanoutloop plan`'s
 already-represented reconciliation and the derived board all read a `Brief:` PR as the
@@ -28,11 +36,14 @@ authoring PR merges and is never dispatched (#1339). No reader keys on `Authors:
 Rules (derived-board/02):
 
 - Exactly one link per body. A second `Brief:`, `Issue:`, `Authors:` or `Cross-repo-brief:` line, or two
-  different kinds, is a refusal naming the offending lines.
+  different kinds, is a refusal naming the offending lines. `Issue:` and its resolving form
+  are one kind: a body carrying both is a duplicate.
 - The line may sit anywhere in the body; a trailer inside a fenced code block is
   documentation and is ignored.
-- `Closes #N` / `Refs #N` keep their GitHub meaning and are NOT the link — a PR may
-  close an issue and deliver a brief.
+- `Closes #N` / `Refs #N` (no colon) keep their GitHub meaning and are NOT the link — a
+  PR may close an issue and deliver a brief that way. With a colon (`Closes: #N`,
+  `Fixes: #N`, `Resolves: #N`) the line IS the link, so it cannot sit next to a `Brief:`,
+  `Authors:`, `Cross-repo-brief:` or `Issue:` line.
 - `create` checks before any network call; `update` reads the PR's existing body from
   GitHub and refuses (exit 5) with the line to add — the worker fixes the body with
   `deskpr edit` and re-runs.
@@ -43,6 +54,8 @@ Rules (derived-board/02):
   with the WRONG form (e.g. a `Brief:` line where the work delivers no brief, or vice
   versa) cannot be corrected in place: `edit` refuses the differing trailer, so the fix is
   a fresh branch and a new PR carrying the right link trailer, not an edit to this one.
+  Switching between `Issue: #N` and its resolving form `Fixes: #N` is such a change and is
+  refused; swapping one resolving keyword for another on the same issue is not.
 - `Brief: <stream>/<NN>`, and every entry of `Authors:`, must resolve to a brief file
   under `--root` (`docs/streams/<stream>/brief-<NN>-*.md`); a value that resolves to
   nothing refuses with the unresolved pattern. An `Authors:` list that is empty, holds a

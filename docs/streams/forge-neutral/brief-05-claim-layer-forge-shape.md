@@ -42,15 +42,12 @@ id: 4973f73c-f2da-46d0-8e13-edd79fc1e867
 
 ## Context
 files:
-- `tools/desk/internal/deskkit/forge_gitlab.go` — `DeleteRef` and, if the design needs it, a
-  create/read counterpart.
-- `tools/desk/internal/deskkit/forge_refpath.go` — `ValidateRefPath`, which fixes the legal
-  namespace set.
+- `tools/desk/internal/deskkit/forge_gitlab.go` — `DeleteRef` and, if the design needs it, a create/read counterpart.
+- `tools/desk/internal/deskkit/forge_refpath.go` — `ValidateRefPath`, which fixes the legal namespace set.
 - `tools/desk/cmd/fanoutloop/land.go` — the dispatch sink and the namespace constant.
 - `tools/desk/internal/loopengine/writescope_io.go` — the local claim read.
 - `tools/desk/cmd/deskdispatch/dispatch.go` — the claim-key grammar and the script contract.
-- `docs/streams/forge-neutral/claim-shape.md` (planned) — the decision record: which namespace,
-  why, and what the GitLab release path is.
+- `docs/streams/forge-neutral/claim-shape.md` (planned) — the decision record: which namespace, why, and what the GitLab release path is.
 
 **Why the risk answers are all `no` even though `tools/desk/internal/deskkit/` is a security
 path.** This brief touches no credential, no permission and no trust decision: it changes the

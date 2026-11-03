@@ -1,0 +1,5 @@
+# .IGNORE naming the target makes make ignore every failed recipe line of it.
+want: step-not-fatal
+file: Makefile
+replace: "\n## deskd-image: LOCAL image build"
+with: "\n.IGNORE: deskd-image\n\n## deskd-image: LOCAL image build"

@@ -13,8 +13,8 @@ import (
 //
 //	gh pr review <n> -R <repo> --request-changes --body-file F
 //
-// which has NO head-pinning flag — it attaches to whatever the head is when it runs. On
-// #195 that landed a CHANGES_REQUESTED written against 151ebe99 onto 2bbf529c, a commit
+// which has NO head-pinning flag — it attaches to whatever the head is when it runs. Once
+// that landed a CHANGES_REQUESTED written against an earlier commit onto a later one, a commit
 // that had already fixed two of its three findings. Under a saturated limiter the fallback
 // is the COMMON path, so the protection was off more often than on.
 //

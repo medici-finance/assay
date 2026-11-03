@@ -349,6 +349,10 @@
       "description": "Optional link to the comment on decision-issue that records the human ruling, as an issue-comment URL (https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>). Only the type is a shape rule; the link's grammar and what it must resolve to are the gate:human transition check's (lifecycle-v1 section 4.5).",
       "type": "string"
     },
+    "independence-override": {
+      "description": "Optional recorded, human-authorized override of the committer-identity independence check for this one brief, as \"human:<name> YYYY-MM-DD <reason>\". Only the type is a shape rule; the grammar, the named human and the commit that recorded it are judged by the reference validator's --lint independence check.",
+      "type": "string"
+    },
     "withdrawn-date": {
       "description": "Optional on a live brief only in the sense that the shape allows it; REQUIRED when the README Status cell is `withdrawn`: the YYYY-MM-DD date the brief was withdrawn. Only the type is a shape rule; the date grammar and the pairing with the README `withdrawn` status are the reference validator's `--lint` rules.",
       "type": "string"

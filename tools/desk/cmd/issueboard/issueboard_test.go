@@ -249,8 +249,8 @@ func TestReadsOnly(t *testing.T) {
 	t.Logf("read-only proof: %d forge ops enumerated, all reads", len(*calls))
 
 	board := out.String()
-	if !strings.Contains(board, "RETIRE") {
-		t.Errorf("expected a RETIRE row for the closed-issue placeholder; got:\n%s", board)
+	if !strings.Contains(board, "AWAIT") || !strings.Contains(board, "classification-needed") {
+		t.Errorf("expected the unclassified closed source to remain visible; got:\n%s", board)
 	}
 	if !strings.Contains(board, "CREATE-PLACEHOLDER") {
 		t.Errorf("expected a CREATE-PLACEHOLDER row for the placeholder-less open issue; got:\n%s", board)

@@ -37,8 +37,7 @@ id: c77edf22-8b5e-4f0b-9eb3-b0d0475debee
 
 files:
 - **create** `docs/harness-portability-ruling.md` (planned) — the three rulings + the per-skill degradation matrix, each ruling a single `RULED:` line with date and the deciding account
-- **create** a GitHub issue carrying the decision request (the ruling lands as a
-  maintainer comment there; the doc records and links it)
+- **create** — a GitHub issue carrying the decision request (the ruling lands as a maintainer comment there; the doc records and links it)
 
 facts:
 - The decision inputs are 01's measured matrix — this brief does not re-measure.

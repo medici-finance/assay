@@ -52,8 +52,10 @@ func vfGitCommandEnv(root string, env []string, args ...string) *exec.Cmd {
 // carrying the verifier's later FAIL; a human merges them dropping the FAIL
 // (X), the verifier merges them keeping it (Y), and another App merges Y into
 // X keeping X's Evidence (M). X and Y have TWO merge bases, and they disagree
-// about Y's Evidence: one holds the FAIL, one does not. No single base then
-// shows Y's side made no net change, so M is judged. Each case puts the FAIL
+// about Y's Evidence: one holds the FAIL, so it equals Y's Evidence, and the
+// other does not, so it equals X's. The base equal to X's Evidence shows X's
+// side made no net change while Y's side did, so M picked a side of a
+// disagreement and is judged, even though the other base matches Y's. Each case puts the FAIL
 // on a different base, so a check of only the first base git lists is red in
 // one of them whichever order git lists them in.
 func TestVflipEveryMergeBase(t *testing.T) {
@@ -102,6 +104,133 @@ func TestVflipEveryMergeBase(t *testing.T) {
 			}
 			vfExpect(t, root, readme, c.code, c.want)
 		})
+	}
+}
+
+// vfBlob is the blob id of the fixture brief at rev.
+func vfBlob(t *testing.T, root, rev string) string {
+	t.Helper()
+	return vfRev(t, root, rev+":"+vfBriefRel)
+}
+
+// vfCrissCross builds the criss-cross shape of issue #4466. From the PASS, a
+// side y leaves Evidence alone (base A) and a side x carries a verifier note
+// (base B). Each side merges the other's tip, so x and y have TWO merge bases,
+// and y's merge keeps B's Evidence. x then moves on with a second verifier
+// note; with yFail the verifier also records a later FAIL on y. Finally another
+// App merges x into y (y first parent, as a main-into-branch merge is) keeping
+// x's Evidence, and main fast-forwards to that merge. Positive controls pin the
+// blob relations the issue reports: merge = parent 2; parent 2 differs from
+// both bases; parent 1 = base B (without yFail) or neither base (with it).
+func vfCrissCross(t *testing.T, yFail bool) (root, readme string) {
+	t.Helper()
+	root, readme = vfFixture(t, vfDefaults())
+	pass := vfRev(t, root, "HEAD")
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "y", pass)
+	vfOther(t, root, "a.txt", vfMailWorker)
+	baseA := vfRev(t, root, "HEAD")
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "x", pass)
+	vfAppend(t, root, "\n\nverifier note: re-read at "+vfSHA+", nothing changed.")
+	vfCommit(t, root, vfMailVerifier)
+	baseB := vfRev(t, root, "HEAD")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", baseA)
+	runGitEnv(t, root, nil, "checkout", "-q", "y")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", baseB)
+	if yFail {
+		vfAppend(t, root, "\n\n"+vfLaterFail)
+		vfCommit(t, root, vfMailVerifier)
+	}
+	runGitEnv(t, root, nil, "checkout", "-q", "x")
+	vfAppend(t, root, "\n\nverifier note: re-read again at "+vfSHA+".")
+	vfCommit(t, root, vfMailVerifier)
+	runGitEnv(t, root, nil, "checkout", "-q", "y")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "-s", "ours", "--no-commit", "x")
+	runGitEnv(t, root, nil, "checkout", "x", "--", vfBriefRel)
+	vfGit(t, root, vfMailWorker, "commit", "-q", "-m", "merge x into y")
+	runGitEnv(t, root, nil, "checkout", "-q", "main")
+	runGitEnv(t, root, nil, "merge", "-q", "--ff-only", "y")
+
+	out, err := vfGitCommand(root, "merge-base", "--all", "HEAD^1", "HEAD^2").Output()
+	bases := strings.Fields(string(out))
+	if err != nil || len(bases) != 2 || !(bases[0] == baseA && bases[1] == baseB || bases[0] == baseB && bases[1] == baseA) {
+		t.Fatalf("positive control: the final merge's parents must have the two merge bases A and B; got %q (err %v)", out, err)
+	}
+	m, p1, p2, a, b := vfBlob(t, root, "HEAD"), vfBlob(t, root, "HEAD^1"), vfBlob(t, root, "HEAD^2"), vfBlob(t, root, baseA), vfBlob(t, root, baseB)
+	if m != p2 || p2 == a || p2 == b || a == b || (p1 == b) == yFail || p1 == a {
+		t.Fatalf("positive control: blob relations merge=%.12s p1=%.12s p2=%.12s A=%.12s B=%.12s do not match the issue's shape (yFail=%v)", m, p1, p2, a, b, yFail)
+	}
+	return root, readme
+}
+
+// regression: #4466
+// TestVflipCrissCrossNoNet: the main-into-branch merge keeps main's Evidence,
+// and the branch side made no net change since base B — though it differs
+// from the older base A. The merge is the trivial result, so its author is not
+// judged and the flip passes.
+func TestVflipCrissCrossNoNet(t *testing.T) {
+	root, readme := vfCrissCross(t, false)
+	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
+}
+
+// TestVflipCrissCrossDropsFail: the same criss-cross, but the verifier recorded
+// a FAIL on the branch side after the PASS, and the merge keeps main's Evidence,
+// dropping it. No merge base holds the branch's Evidence, so the merge is
+// judged and another App's merge refuses. The refusal must name that final
+// merge (the fixture's positive control has already shown HEAD is a merge):
+// a refusal of any other commit in the fixture is not this test passing.
+func TestVflipCrissCrossDropsFail(t *testing.T) {
+	root, readme := vfCrissCross(t, true)
+	merge := vfRev(t, root, "HEAD")
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance: commit "+merge[:12]+" changed the Evidence section")
+}
+
+// TestVflipOctopusDropsFail: an App's octopus merge onto the PASS keeps the
+// PASS-only Evidence and drops a later FAIL that only its THIRD parent
+// carries; its second parent left the brief alone. Every parent but the one
+// with the FAIL matches the merge, so a check that compares only the first
+// two parents finds nothing. The merge is judged, and the refusal names it.
+func TestVflipOctopusDropsFail(t *testing.T) {
+	root, readme := vfFixture(t, vfDefaults())
+	pass := vfRev(t, root, "HEAD")
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "q", pass)
+	vfOther(t, root, "q.txt", vfMailWorker)
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "p", pass)
+	vfAppend(t, root, "\n\n"+vfLaterFail)
+	vfCommit(t, root, vfMailVerifier)
+	runGitEnv(t, root, nil, "checkout", "-q", "main")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "-s", "ours", "--no-edit", "q", "p")
+
+	merge := vfRev(t, root, "HEAD")
+	out, err := vfGitCommand(root, "log", "-1", "--format=%P", merge).Output()
+	if got := strings.Fields(string(out)); err != nil || len(got) != 3 || got[0] != pass || got[1] != vfRev(t, root, "q") || got[2] != vfRev(t, root, "p") {
+		t.Fatalf("positive control: HEAD must be an octopus merge of the PASS, q and p, in that order; got %q (err %v)", out, err)
+	}
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance: commit "+merge[:12]+" changed the Evidence section")
+}
+
+// TestVflipSideBroughtNothingEqualEvidence: when both sides hold the same
+// Evidence the helper answers false whatever the merge bases hold, because a
+// base that matches Y's Evidence then matches X's too. If the X test depended
+// on the Y test failing first, a base equal to both would read as "Y brought
+// nothing".
+func TestVflipSideBroughtNothingEqualEvidence(t *testing.T) {
+	ev := map[string]string{"base": "pass", "other": "fail"}
+	evAt := func(rev string) (string, error) { return ev[rev], nil }
+
+	// Positive controls: with differing sides, a base equal to Y's Evidence and
+	// none equal to X's holds, and a base equal to X's does not.
+	if got, err := flipSideBroughtNothing("fail", "pass", []string{"base"}, evAt); err != nil || !got {
+		t.Fatalf("positive control: flipSideBroughtNothing(fail, pass, [base]) = %v, %v; want true", got, err)
+	}
+	if got, err := flipSideBroughtNothing("fail", "pass", []string{"base", "other"}, evAt); err != nil || got {
+		t.Fatalf("positive control: flipSideBroughtNothing(fail, pass, [base other]) = %v, %v; want false", got, err)
+	}
+	for _, e := range []string{"pass", "fail", "elsewhere"} {
+		for _, bases := range [][]string{{"base"}, {"other"}, {"base", "other"}} {
+			if got, err := flipSideBroughtNothing(e, e, bases, evAt); err != nil || got {
+				t.Errorf("flipSideBroughtNothing(%q, %q, %v) = %v, %v; want false for equal Evidence", e, e, bases, got, err)
+			}
+		}
 	}
 }
 
@@ -352,6 +481,12 @@ func TestHistoryGitIsolated(t *testing.T) {
 	}
 	for _, leak := range historyGitLeaks(t, fset, "evidenceactor.go", nil,
 		map[string]bool{"rawCommitAuthor": true, "parseRawAuthor": true, "blameEvidenceAuthors": true}) {
+		t.Error(leak)
+	}
+	// The independence-override recorder read (measured-status/05) is a provenance
+	// read of the same kind: blame picks the commit, then that commit's author.
+	for _, leak := range historyGitLeaks(t, fset, "gitinfo.go", nil,
+		map[string]bool{"frontmatterKeyLineProvenance": true}) {
 		t.Error(leak)
 	}
 }

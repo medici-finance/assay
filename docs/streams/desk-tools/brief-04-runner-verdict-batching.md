@@ -33,8 +33,9 @@ landed outside this stream (done + reviewed), so no typed `depends:` edge remain
 consumes their payload shape and row classes.
 
 ## Context
-files: `tools/desk/cmd/verifyloop/` (the drain-engine consumer), `tools/desk/internal/deskkit/`
-(verdict composition + a verdict-issue rate bucket), plus the row-classes reference doc.
+files:
+- `tools/desk/cmd/verifyloop/` (the drain-engine consumer)
+- `tools/desk/internal/deskkit/` (verdict composition + a verdict-issue rate bucket) — plus the row-classes reference doc.
 
 facts:
 - executes `check` and `check:ci` rows locally (scripts, exit-code = verdict); gate:human briefs

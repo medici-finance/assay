@@ -830,7 +830,7 @@ func TestTagNeverWidens(t *testing.T) {
 		{"fence not closed by the other kind", otherKind, "medici-finance/assay", nil},
 		{"fence not closed by a run with an info string", infoString, "medici-finance/assay", nil},
 		{"tag in frontmatter", "# Example brief\n", "medici-finance/assay",
-			[]string{"files:", "- `[example-tool]` `../example-deliverable/x.go`"}},
+			[]string{"files:", "- \"`[example-tool]` `../example-deliverable/x.go`\""}},
 		{"explicit deliverable wins", taggedBody("example-tool"), "medici-finance/assay",
 			[]string{"deliverable_repo: example-con"}},
 		{"explicit homed-in wins", taggedBody("example-tool"), "medici-finance/assay",

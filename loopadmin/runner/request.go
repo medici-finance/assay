@@ -159,6 +159,12 @@ func (r LaunchRequest) Ref() Ref {
 
 func (r Ref) key() string { return r.Caller + "\x00" + r.ID }
 
+// MaxDocumentBytes bounds every document this package decodes from outside
+// the process: a launch request, a qualified profile declaration and an
+// extension value. A longer one is refused before it is parsed, so a caller
+// that reads declarations or requests from elsewhere need not trust their size.
+const MaxDocumentBytes = 1 << 20
+
 // DecodeRequest parses a request and refuses any field this version does not
 // define: an unknown field might be mandatory, and a v1 consumer cannot tell.
 // Optional additions travel under "ext" instead.
@@ -167,9 +173,13 @@ func (r Ref) key() string { return r.Caller + "\x00" + r.ID }
 // defined field EXACTLY (encoding/json matches case-insensitively, so a
 // case-variant duplicate could silently overwrite a mandatory field), no object
 // may repeat a key, a defined field may not be null, and nothing may follow the
-// request object. Refusals name the defined path or the byte offset, never the
-// offending content.
+// request object, and the document is no longer than MaxDocumentBytes.
+// Refusals name the defined path or the byte offset, never the offending
+// content.
 func DecodeRequest(b []byte) (LaunchRequest, error) {
+	if len(b) > MaxDocumentBytes {
+		return LaunchRequest{}, fmt.Errorf("%w: request is longer than %d bytes", ErrInvalidRequest, MaxDocumentBytes)
+	}
 	if err := scanStrict(b); err != nil {
 		return LaunchRequest{}, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}

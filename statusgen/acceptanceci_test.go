@@ -48,6 +48,9 @@ func acceptanceCIProblems(wf workflow) ([]string, int) {
 					if env["ASSAY_HUMAN_LOGIN_MAP"] != "${{ vars.ASSAY_HUMAN_LOGIN_MAP }}" {
 						report("missing human map")
 					}
+					if env["ASSAY_TRUSTED_BOT_SLUGS"] != "${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}" {
+						report("missing verifier roster")
+					}
 					token := env["GH_TOKEN"]
 					if token == "" {
 						token = env["GITHUB_TOKEN"]
@@ -74,6 +77,7 @@ func acceptanceCIProblems(wf workflow) ([]string, int) {
 }
 
 // regression: #3493
+// regression: #4596
 func TestAcceptanceCI(t *testing.T) {
 	for path, want := range map[string]int{
 		"../.github/workflows/assay-statusgen.yml":        7,
@@ -101,6 +105,7 @@ func TestAcceptanceCI(t *testing.T) {
 // An independent second caller exercises the same invariant without modifying
 // any deployed step. Each mutation must identify that planted caller.
 // regression: #3493
+// regression: #4596
 func TestAcceptanceCIPlant(t *testing.T) {
 	const good = `permissions:
   contents: read
@@ -112,12 +117,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
 `
 	for _, tc := range []struct{ name, before, after, want string }{
 		{"positive", "", "", ""},
 		{"opt-in", " --acceptance-forge", "", "missing acceptance opt-in"},
+		{"roster", "${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}", "", "missing verifier roster"},
 		{"map", "${{ vars.ASSAY_HUMAN_LOGIN_MAP }}", "", "missing human map"},
 		{"token", "${{ github.token }}", "", "lacks explicit default token"},
 		{"publisher", "${{ github.token }}", appTokenExpr, "holds publisher token"},

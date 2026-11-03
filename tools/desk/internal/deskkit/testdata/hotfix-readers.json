@@ -1,0 +1,133 @@
+{
+  "schema": "hotfix-readers-v1",
+  "pin": "v1.0.41",
+  "readers": {
+    "deskkit": "deskkit.IsHotfix / pin grammar (artifactTagPattern): `hotfix` only for vX.Y.Z+hotfix-<12 lowercase hex>; `pin` for a bare or artifact-prefixed release tag; anything else is neither, so a hotfix tag can never be written as a pin",
+    "deskboard": "staleState against pin v1.0.41 (unexpired): a valid hotfix over the pin is state `hotfix` (stale=false, HOTFIX: header); normalizeTag never strips `+hotfix-`, so every other suffix is drift",
+    "deskboot": "binary-pin's own-tag check against pin v1.0.41: deskboot is never a hotfix, so a hotfix-stamped deskboot is refused; the same release is pinned; anything else is a WARN (install lagging a re-pin)",
+    "cellctl": "versionString prints the stamped tag as-is, so a hotfix build reports its hotfix tag (never dev-<sha>); cellctl itself is never a hotfix target",
+    "deskinstall": "resolvePin's pin-tag grammar (anchored): only a bare vX.Y.Z is installable, so a hotfix tag can never reach a sha256-pinned download",
+    "deskversion": "umbrella inference from per-artifact pins (bareUmbrellaTag): only bare vX.Y.Z tags infer an umbrella; a hotfix tag is refused",
+    "upgrade-assay": "bareUmbrella target grammar: only bare vX.Y.Z is a resolvable upgrade target; a hotfix tag is refused",
+    "statusgen": "gateParseVersion accepts `+<build>` metadata and gates on the base, so a hotfix is gated exactly as its pin; `dev` and non-`v` tags stay latest (unchanged)"
+  },
+  "cases": [
+    {
+      "tag": "v1.0.41+hotfix-0123456789ab",
+      "verdicts": {
+        "deskkit": "hotfix",
+        "deskboard": "hotfix",
+        "deskboot": "refuse",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "gate:v1.0.41"
+      }
+    },
+    {
+      "tag": "v1.0.41",
+      "verdicts": {
+        "deskkit": "pin",
+        "deskboard": "in-sync",
+        "deskboot": "pinned",
+        "cellctl": "as-stamped",
+        "deskinstall": "accept",
+        "deskversion": "accept",
+        "upgrade-assay": "accept",
+        "statusgen": "gate:v1.0.41"
+      }
+    },
+    {
+      "tag": "dev",
+      "verdicts": {
+        "deskkit": "neither",
+        "deskboard": "drift",
+        "deskboot": "warn",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "latest"
+      }
+    },
+    {
+      "tag": "v1.0.41+hotfix-xyz",
+      "verdicts": {
+        "deskkit": "neither",
+        "deskboard": "drift",
+        "deskboot": "warn",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "gate:v1.0.41"
+      }
+    },
+    {
+      "tag": "v1.0.41+build.7",
+      "verdicts": {
+        "deskkit": "neither",
+        "deskboard": "drift",
+        "deskboot": "warn",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "gate:v1.0.41"
+      }
+    },
+    {
+      "tag": "v1.0.41+hotfix-0123456789AB",
+      "verdicts": {
+        "deskkit": "neither",
+        "deskboard": "drift",
+        "deskboot": "warn",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "gate:v1.0.41"
+      }
+    },
+    {
+      "tag": "v1.0.41+hotfix-0123456789abc",
+      "verdicts": {
+        "deskkit": "neither",
+        "deskboard": "drift",
+        "deskboot": "warn",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "gate:v1.0.41"
+      }
+    },
+    {
+      "tag": "desk-tools/v1.0.41",
+      "verdicts": {
+        "deskkit": "pin",
+        "deskboard": "in-sync",
+        "deskboot": "pinned",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "latest"
+      }
+    },
+    {
+      "tag": "v1.0.42+hotfix-0123456789ab",
+      "verdicts": {
+        "deskkit": "hotfix",
+        "deskboard": "drift",
+        "deskboot": "refuse",
+        "cellctl": "as-stamped",
+        "deskinstall": "refuse",
+        "deskversion": "refuse",
+        "upgrade-assay": "refuse",
+        "statusgen": "gate:v1.0.42"
+      }
+    }
+  ]
+}

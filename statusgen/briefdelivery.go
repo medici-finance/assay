@@ -150,8 +150,8 @@ func markDeclaredPartials(prs []PRRecord, d declaredPartials, stderr io.Writer) 
 		}
 		pr.Partial = true
 		if stderr != nil {
-			fmt.Fprintf(stderr, "reconcile: NOTICE — PR #%d names %s, but the brief's delivery: list declares it a partial delivery, "+
-				"so it is work in progress, not a witness that the brief is implemented\n", pr.Number, canonicalBriefKey(pr.BriefRef))
+			fmt.Fprintf(stderr, "reconcile: NOTICE — %s names %s, but the brief's delivery: list declares it a partial delivery, "+
+				"so it is work in progress, not a witness that the brief is implemented\n", pr.prLabel(), canonicalBriefKey(pr.BriefRef))
 		}
 	}
 }

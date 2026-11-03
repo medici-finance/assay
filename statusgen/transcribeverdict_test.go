@@ -235,6 +235,27 @@ func TestVerdictCanonicalizeDeterministicAndIdempotent(t *testing.T) {
 	}
 }
 
+// TestVerdictVerifyBodyRequiresVerifierRole pins that the transcriber accepts only
+// a block that declares the verifier role (or declares none, the verifier default):
+// a correctly signed block that declares another role is refused, as the desk
+// verifier already does.
+func TestVerdictVerifyBodyRequiresVerifierRole(t *testing.T) {
+	key := verdictTestKey(t)
+	body := signVerdictBody(t, key, okPayload(okEntry("docs/streams/demo/brief-01-x.md", "e")))
+	marker := "<!-- " + verdictSigMarker + " v1"
+	for role, want := range map[string]verdictVerifyState{
+		"":                   verdictVerified,
+		" role=verifier":     verdictVerified,
+		" role=issue-loop":   verdictRefused,
+		" role=unknown-role": verdictRefused,
+	} {
+		b := strings.Replace(body, marker, marker+role, 1)
+		if got, why := verdictVerifyBody(b, &key.PublicKey); got != want {
+			t.Errorf("declared role %q: state %v (%s), want %v", role, got, why, want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Enactment gate (R-6)
 // ---------------------------------------------------------------------------

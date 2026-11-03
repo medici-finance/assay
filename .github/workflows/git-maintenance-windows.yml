@@ -10,6 +10,7 @@ on:
       - 'tools/desk/internal/cellcache/**'
       - 'tools/desk/internal/gitexec/**'
       - 'tools/desk/internal/gitcore/**'
+      - 'gitcore/**'
       - 'tools/desk/cmd/deskwt/**'
       - 'tools/desk/go.mod'
       - 'tools/desk/go.sum'
@@ -37,7 +38,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
           cache: false
       # Official release checksum: https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2
       # Pin the native hook-inventory API and the corrected NUL config suppression.

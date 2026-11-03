@@ -35,6 +35,8 @@ type memoRepo struct {
 
 	mu    sync.Mutex
 	calls map[string]memoAnswer
+	// v2calls holds the witness-v2 port's typed answers (coverage_witness.go).
+	v2calls map[string]memoV2Answer
 }
 
 type memoAnswer struct {

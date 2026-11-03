@@ -296,12 +296,22 @@ func TestAddBadNameRefuses(t *testing.T) {
 	calls := withEnv(t, work)
 	for _, bad := range []string{"../escape", "a/b", "..", "-flaggy"} {
 		resetCalls(calls)
-		if rc := run([]string{"add", bad}); rc != deskkit.ExitRefused {
+		// "--" ends option parsing, so a dash-led name reaches the name rule itself.
+		if rc := run([]string{"add", "--", bad}); rc != deskkit.ExitRefused {
 			t.Fatalf("add name %q rc = %d, want 5", bad, rc)
 		}
 		if hasWorktreeVerb(*calls, "add") {
 			t.Fatalf("git worktree add ran for a bad name %q: %v", bad, gitCalls(*calls))
 		}
+	}
+	// Without "--" a dash-led word is an unknown flag: a usage error, refused before any
+	// effect (the Cobra port's one parse-error code).
+	resetCalls(calls)
+	if rc := run([]string{"add", "-flaggy"}); rc != 2 {
+		t.Fatalf("add -flaggy rc = %d, want 2 (usage)", rc)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("a usage error ran git: %v", gitCalls(*calls))
 	}
 }
 
@@ -551,8 +561,10 @@ func TestRemoveNoForceFlag(t *testing.T) {
 	writeFile(t, filepath.Join(target, "README.md"), "seed\ndirty\n")
 
 	resetCalls(calls)
-	if rc := run([]string{"remove", "--force", target}); rc != deskkit.ExitRefused {
-		t.Fatalf("remove --force rc = %d, want 5 (no force flag exists)", rc)
+	// There is no --force flag, so the word is an unknown flag: refused as a usage error
+	// (exit 2) before any effect.
+	if rc := run([]string{"remove", "--force", target}); rc != 2 {
+		t.Fatalf("remove --force rc = %d, want 2 (no force flag exists)", rc)
 	}
 	assertExists(t, target)
 	if hasWorktreeVerb(*calls, "prune") {
@@ -587,8 +599,9 @@ func TestKillSwitchDisablesBothVerbs(t *testing.T) {
 // --- misc -----------------------------------------------------------------------
 
 func TestUnknownSubcommandRefuses(t *testing.T) {
-	if rc := run([]string{"frobnicate"}); rc != deskkit.ExitRefused {
-		t.Fatalf("unknown subcommand rc = %d, want 5", rc)
+	// An unknown verb is a malformed command line: the usage code, before any effect.
+	if rc := run([]string{"frobnicate"}); rc != 2 {
+		t.Fatalf("unknown subcommand rc = %d, want 2", rc)
 	}
 }
 

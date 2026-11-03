@@ -36,6 +36,9 @@ func cmdDown(cell string, v *cli.Values, extra []string, given bool) {
 		} else {
 			fmt.Printf("[cell] no session %s\n", sessname)
 		}
+		if err := c.closeHerdrWorkspace(); err != nil {
+			die("scrubbed Herdr cleanup failed: %v", err)
+		}
 		// The lock is cleared HERE — never on the harness process's own exit — and the worktrees
 		// under <cell>/worktrees/ are kept, exactly like every other kind's `down`.
 		_ = os.RemoveAll(filepath.Join(c.Dir, "run", "lock.d"))

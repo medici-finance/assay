@@ -1,0 +1,71 @@
+{
+  "test": "go test ./internal/deskkit -run '^TestFlowWorld(Bind)?$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL - a moved input no longer invalidates the record",
+    "file": "internal/deskkit/preflight.go",
+    "old": "\tif len(changed) > 0 {\n\t\treturn Refused(\"environment changed since admission: \"",
+    "new": "\tif len(changed) > 99 {\n\t\treturn Refused(\"environment changed since admission: \""
+  },
+  "mutations": [
+    {
+      "name": "an unreadable root revision is recorded as clean",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tif rev, err := p.Revision(root); err != nil {",
+      "new": "\tif rev, err := p.Revision(root); false && err != nil {"
+    },
+    {
+      "name": "desk-tools pin drift is ignored",
+      "file": "internal/deskkit/preflight.go",
+      "old": "if strings.TrimPrefix(running, DeskToolsArtifact+\"/\") != strings.TrimPrefix(tag, DeskToolsArtifact+\"/\") {",
+      "new": "if false && strings.TrimPrefix(running, DeskToolsArtifact+\"/\") != strings.TrimPrefix(tag, DeskToolsArtifact+\"/\") {"
+    },
+    {
+      "name": "instrument digest mismatch is accepted",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\tif !strings.EqualFold(sha, digest) {\n\t\t\t\treturn \"\", path, failed(\"\", \"pin drift: \"+path",
+      "new": "\t\t\tif false && !strings.EqualFold(sha, digest) {\n\t\t\t\treturn \"\", path, failed(\"\", \"pin drift: \"+path"
+    },
+    {
+      "name": "a denied capability is read as clean",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase spec.Capability.State == CheckedFailed:",
+      "new": "\tcase false && spec.Capability.State == CheckedFailed:"
+    },
+    {
+      "name": "a sibling is dropped from the recheck",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\tcase strings.HasPrefix(key, worldSibling):\n\t\t\trev, err := p.Revision(w.Paths[key])\n\t\t\tcompare(key, rev, err)",
+      "new": "\t\tcase strings.HasPrefix(key, worldSibling):"
+    },
+    {
+      "name": "attestation admission skips the bound record",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\tif r.World != nil {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {",
+      "new": "\tif r.World != nil && false {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {"
+    },
+    {
+      "name": "an instrument change is not rechecked",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\t_, digest, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))\n\t\t\tcompare(key, \"sha256:\"+digest, err)",
+      "new": "\t\t\t_, _, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))\n\t\t\tcompare(key, w.Inputs[key], err)"
+    },
+    {
+      "name": "prepare admits an empty brief",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\tspec := WorldSpecFromBrief(r.Home, raw, commands(raw))",
+      "new": "\tspec := WorldSpecFromBrief(r.Home, raw[:0], commands(raw))"
+    },
+    {
+      "name": "prepare binds an unready admission",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\tif !adm.Ready() {\n\t\treturn r.VerifierReceipt, adm.Err()\n\t}\n\treturn BindVerifierWorld",
+      "new": "\treturn BindVerifierWorld"
+    },
+    {
+      "name": "prepare runs with no command reader",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\tif commands == nil {\n",
+      "new": "\tif false && commands == nil {\n"
+    }
+  ]
+}

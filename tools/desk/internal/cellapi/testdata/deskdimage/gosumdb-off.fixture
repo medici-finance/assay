@@ -1,0 +1,5 @@
+# Checksum database switched off.
+want: gosumdb-off
+file: Dockerfile
+replace: "    GOFLAGS=-mod=readonly\n"
+with: "    GOFLAGS=-mod=readonly \\\n    GOSUMDB=off\n"

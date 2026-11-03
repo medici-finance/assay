@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
@@ -85,7 +86,7 @@ type FanoutLoop struct {
 	// exists to catch).
 	//
 	// It governs FRESH Next-up rows AND `### Awaiting implementer rework` STATUS.md rows
-	// (#1028/at#2026: a rework row whose deliverable already merged is a phantom this lane used to
+	// (#1028: a rework row whose deliverable already merged is a phantom this lane used to
 	// skip). In the FRESH lane the three outcomes are distinct (#1339): a MERGED PR → the row is
 	// landed-unreconciled and recorded for the plan's own heading, NEVER dispatched; an OPEN PR → the
 	// row is routed to the RESUME lane (started work outranks fresh); no PR → fresh dispatch. In the
@@ -175,7 +176,7 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// The already-represented reconciliation (brief IDs with an OPEN or MERGED PR, each with its PR
 	// number + merged flag, keyed on each PR's `Brief:` trailer — NEVER a branch name, so a branch
 	// spelled `feat/<repo>--<stream>--<NN>` instead of the derived `feat/<stream>-<NN>` cannot hide a
-	// phantom, at#2026). nil source = the OFFLINE reference default (no PR read) — the reconciliation
+	// phantom, #1028). nil source = the OFFLINE reference default (no PR read) — the reconciliation
 	// is inert and every row is offered exactly as before.
 	//
 	// A source ERROR is could-not-check, NOT no-PR-exists (#1339): the fresh and rework lanes — the
@@ -210,7 +211,7 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	}
 
 	// 2. Awaiting-implementer-rework STATUS.md rows — ahead of fresh dispatch. These ARE subject to the
-	// reconciliation (#1028/at#2026): a `### Awaiting implementer rework` row whose brief already has an
+	// reconciliation (#1028): a `### Awaiting implementer rework` row whose brief already has an
 	// OPEN or MERGED PR is a phantom this lane used to skip. Held on could-not-check. The DURABLE repair
 	// obligations (step 2b) stay EXEMPT: a repair obligation legitimately reworks a MERGED original via a
 	// fresh follow-up branch (§Sources of work row 5b), so a representing PR is expected there.
@@ -360,8 +361,7 @@ func (f *FanoutLoop) inboxRole() string {
 // default STATUS.md reader) carry no labels and are never addressed, exactly as
 // isForeignDispatchToken degrades.
 func addressedToRole(r BoardRow, role string) bool {
-	addr, state := deskkit.AddressedToOf(r.Labels)
-	return state == deskkit.RaisedByStamped && strings.EqualFold(addr, role)
+	return issueflow.Select(issueflow.Inbox, issueflow.CandidateForLabels(issueflow.Candidate{}, r.Labels), role)
 }
 
 // TierPolicy is in tier.go.

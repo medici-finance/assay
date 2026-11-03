@@ -27,19 +27,23 @@ on:
       - "loopadmin/**"
       - "spec/loop-admin-runner-v1.md"
       - "schemas/loop-admin-runner-v1.json"
+      - "spec/loop-admin-execution-profile-v1.md"
+      - "schemas/loop-admin-execution-profile-v1.json"
       - ".github/workflows/loopadmin.yml"
   pull_request:
     paths:
       - "loopadmin/**"
       - "spec/loop-admin-runner-v1.md"
       - "schemas/loop-admin-runner-v1.json"
+      - "spec/loop-admin-execution-profile-v1.md"
+      - "schemas/loop-admin-execution-profile-v1.json"
       - ".github/workflows/loopadmin.yml"
 
 permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
   GOWORK: "off"
 
 jobs:

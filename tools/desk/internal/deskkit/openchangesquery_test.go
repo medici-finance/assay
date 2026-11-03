@@ -91,18 +91,26 @@ func TestForgeGraphQLQueriesBalanced(t *testing.T) {
 }
 
 // TestReviewQueueQueryIsOpenChangesPlusReviews pins the one-variable claim the stream's
-// query-cost record rests on: the review-queue snapshot document is EXACTLY the open-changes
-// read plus the reviews selection, inserted once after baseRefName. Nothing else may drift —
+// historical query-cost record rests on, with the repository visibility scalar now
+// added for actions' policy-drift observation. Apart from that scalar the snapshot
+// is EXACTLY the open-changes read plus reviews, inserted once after baseRefName.
+// Nothing else may drift —
 // not the OPEN scoping, not the rollup contexts (and so not the actions:read-free shape), not
-// the page bounds — so a cost or scope difference between the two reads is the reviews
-// connection and nothing else.
+// the page bounds. The only additional connection remains reviews; the new
+// scalar is pinned separately. The original cost record remains historical,
+// rather than a fresh measurement of this extended document.
 func TestReviewQueueQueryIsOpenChangesPlusReviews(t *testing.T) {
 	if n := strings.Count(ghReviewQueueQuery, ghReviewQueueReviewsSel); n != 1 {
 		t.Fatalf("ghReviewQueueQuery carries the reviews selection %d times, want exactly 1\nquery: %s", n, ghReviewQueueQuery)
 	}
 	stripped := strings.Replace(ghReviewQueueQuery, ghReviewQueueReviewsSel+" ", "", 1)
+	const repositoryVisibility = `repository(owner:$owner,name:$name){visibility pullRequests(`
+	if strings.Count(ghReviewQueueQuery, "visibility") != 1 || !strings.Contains(ghReviewQueueQuery, repositoryVisibility) {
+		t.Fatalf("snapshot visibility must be one repository scalar, not a new connection or scope: %s", ghReviewQueueQuery)
+	}
+	stripped = strings.Replace(stripped, repositoryVisibility, `repository(owner:$owner,name:$name){pullRequests(`, 1)
 	if stripped != ghOpenChangesQuery {
-		t.Errorf("ghReviewQueueQuery minus the reviews selection != ghOpenChangesQuery\n got: %s\nwant: %s", stripped, ghOpenChangesQuery)
+		t.Errorf("ghReviewQueueQuery minus reviews and repository visibility != ghOpenChangesQuery\n got: %s\nwant: %s", stripped, ghOpenChangesQuery)
 	}
 	if !strings.Contains(ghReviewQueueQuery, "baseRefName "+ghReviewQueueReviewsSel+" labels(") {
 		t.Errorf("reviews selection must sit between baseRefName and labels\nquery: %s", ghReviewQueueQuery)

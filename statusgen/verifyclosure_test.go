@@ -161,3 +161,32 @@ func TestVerifyclosureUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+// Explicit closure acceptance has one policy even for a non-risk-bearing brief:
+// an empty Verify section and a model stamp over a human row cannot authorize it.
+func TestClosureAdaptersAgree(t *testing.T) {
+	for _, tc := range []struct{ name, from, to, stamp, want string }{
+		{name: "empty rows", from: "## Verify", to: "## Acceptance", stamp: stamped, want: "requires Verify rows"},
+		{name: "human row", from: "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n| 2 | `false` | exit 1 |", to: "| # | Class | Command | Expect |\n|---|---|---|---|\n| 1 | gate:human | `true` | exit 0 |\n| 2 | check | `false` | exit 1 |", stamp: "2026-08-13 model:fixture", want: "names no human"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := vcFixture(t, "verified", tc.stamp, witnessTableFor(witnessRowOnePass, witnessRowTwoPass))
+			path := filepath.Join(root, "docs", "streams", "vc", "brief-01-closure.md")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(raw), tc.from) {
+				t.Fatal("fixture does not contain mutation target")
+			}
+			if err := os.WriteFile(path, []byte(strings.Replace(string(raw), tc.from, tc.to, 1)), 0644); err != nil {
+				t.Fatal(err)
+			}
+			code, out, diag := runBriefInfoCapture("--root", root, "--check-verified", "vc/01")
+			sideCode, sideOut, sideErr := captureVerifyclosure(t, []string{"--root", root, "--brief", "vc/01"})
+			if code != 1 || out != "" || sideCode != 1 || !strings.Contains(diag, tc.want) || !strings.Contains(sideOut, tc.want) {
+				t.Fatalf("brief=%d %q %s; sidecar=%d %s %s", code, out, diag, sideCode, sideOut, sideErr)
+			}
+		})
+	}
+}

@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskdispatch -run '^TestFlowWorldPreparePath$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL - landing no longer rechecks the bound record",
+    "file": "internal/deskkit/verifierattestation.go",
+    "old": "\tif r.World != nil {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {",
+    "new": "\tif r.World != nil && false {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {"
+  },
+  "mutations": [
+    {
+      "name": "the dispatch prepare step binds no record",
+      "file": "cmd/deskdispatch/verifierattestation.go",
+      "old": "\treceipt, err := deskkit.AdmitAndBindVerifierWorld(home, runnercmds.Commands)",
+      "new": "\treceipt, err := deskkit.RecoverVerifierAttestation(home)"
+    },
+    {
+      "name": "attestation recovery binds no record",
+      "file": "cmd/deskdispatch/verifierattestation.go",
+      "old": "\t\t\treceipt, err = deskkit.AdmitAndBindVerifierWorld(o.root, runnercmds.Commands)",
+      "new": "\t\t\treceipt, err = deskkit.RecoverVerifierAttestation(o.root)"
+    },
+    {
+      "name": "the dispatch ignores a world it cannot record",
+      "file": "cmd/deskdispatch/verifierattestation.go",
+      "old": "\treceipt, err := deskkit.AdmitAndBindVerifierWorld(home, runnercmds.Commands)\n\tif err != nil {\n\t\treturn \"\", err\n\t}",
+      "new": "\treceipt, _ := deskkit.AdmitAndBindVerifierWorld(home, runnercmds.Commands)\n\tvar err error\n\t_ = err"
+    },
+    {
+      "name": "the dispatch prepare step does not mark the run as requiring a record",
+      "file": "cmd/deskdispatch/verifierattestation.go",
+      "old": "\tif err := deskkit.RequireVerifierWorld(home); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "admission accepts a marked run with no record",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\tif requireWorld && r.WorldRequired && r.World == nil {",
+      "new": "\tif requireWorld && r.WorldRequired && r.World == nil && false {"
+    }
+  ]
+}

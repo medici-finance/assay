@@ -98,6 +98,9 @@ func (v *VerifyLoop) dispatchNative(it loopengine.Item, tier loopengine.Tier) (l
 		return nil, fmt.Errorf("native verifier requires an explicit selected model in its runner table")
 	}
 	receipt, aerr := v.attestRun(it, dir, model)
+	if aerr == nil {
+		receipt, aerr = v.bindDispatchWorld(it, dir, receipt, v.Attest == nil)
+	}
 	if aerr != nil {
 		return nil, fmt.Errorf("verifier admission failed; retained worktree %s for coordinator recovery before any launch: %w", dir, aerr)
 	}

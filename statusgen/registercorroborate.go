@@ -217,6 +217,19 @@ func localTouchedFindings(root, base string) ([]string, error) {
 
 // repoTopLevel returns the top level of the git worktree containing dir.
 func repoTopLevel(dir string) (string, error) {
+	read := ordinaryGitCore(dir)
+	if read.err != nil {
+		return "", read.err
+	}
+	if read.native == "" {
+		why, err := read.repo.NativeDiscoveryReason()
+		if err != nil {
+			return "", err
+		}
+		if why == "" && os.Getenv("GIT_CONFIG_COUNT") == "" && os.Getenv("GIT_CONFIG_PARAMETERS") == "" {
+			return read.top, nil
+		}
+	}
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)

@@ -230,7 +230,30 @@ func TestBootPassesCompleteSetup(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("complete setup rc = %d, want 0:\n%s", rc, stderr)
 	}
-	for _, want := range []string{"first-sweep-prereqs OK", "forge github", "v1.0.9", "BOOT COMPLETE", "9/9"} {
+	for _, want := range []string{"first-sweep-prereqs OK", "forge github", "v1.0.9", "BOOT COMPLETE", "10/10"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("boot output does not carry %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// The line `assay-install.sh pin --kind desk-tools` writes — the tarball's full asset name,
+// as paired-versions.yaml publishes it — is desk-tools provenance: the refusal's own remedy
+// produces it, so the step must accept it.
+// regression: #4842
+func TestBootPassesTarballPin(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	pins := statusgenOnlyPins + "desk-tools-" + runtime.GOOS + "-" + runtime.GOARCH +
+		".tar.gz v1.0.9 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	writePins(t, root, pins)
+	s.replies = consumerStub(t, writeToken(t, home), pins)
+
+	rc, stdout, stderr := bootOutput(t, root)
+	if rc != deskkit.ExitOK {
+		t.Fatalf("installer-spelled pin rc = %d, want 0:\n%s", rc, stderr)
+	}
+	for _, want := range []string{"first-sweep-prereqs OK", ".tar.gz v1.0.9", "BOOT COMPLETE"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("boot output does not carry %q:\n%s", want, stdout)
 		}

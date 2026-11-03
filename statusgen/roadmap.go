@@ -1115,6 +1115,7 @@ func runRoadmap(root, cadence string) int {
 	// back as "merged in a sibling" as dispatchable. Notices are discarded — the
 	// deck renders its own health/blocker prose, never board NOTICE text.
 	_, _ = runSiblingMergeIfOptedIn(streams, root) // opt-in only: --sibling-merge or ASSAY_SIBLING_MERGE=1
+	holdPhantomRowsFromGit(streams, root)          // strong board-honesty findings (boardhonesty.go)
 
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
 	// The zero ClaimView says so honestly, which also means a stream that

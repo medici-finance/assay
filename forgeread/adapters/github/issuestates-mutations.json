@@ -1,0 +1,29 @@
+{
+  "test": "go test ./adapters/github -run '^TestPositiveIssueStates' -count=1",
+  "control": {
+    "name": "treat every positive state as closed",
+    "file": "adapters/github/issuestates.go",
+    "old": "state := strings.ToLower(row.State)",
+    "new": "state := \"closed\""
+  },
+  "mutations": [
+    {
+      "name": "ignore GraphQL errors beside valid business data",
+      "file": "adapters/github/issuestates.go",
+      "old": "len(env.Errors) != 0 || env.Data == nil",
+      "new": "false || env.Data == nil"
+    },
+    {
+      "name": "accept a different issue under the requested alias",
+      "file": "adapters/github/issuestates.go",
+      "old": "row.Number != n || row.Title == nil",
+      "new": "false || row.Title == nil"
+    },
+    {
+      "name": "permit unbounded positive state batches",
+      "file": "adapters/github/issuestates.go",
+      "old": "const IssueStateBatchSize = 20",
+      "new": "const IssueStateBatchSize = 95"
+    }
+  ]
+}

@@ -50,17 +50,17 @@ consumers:
 
 ## Context
 files:
-- `containers/k8s/components/postgres/kustomization.yaml` (planned) (new — `kind: Component`; namespaced resources only)
-- `containers/k8s/components/postgres/cluster.yaml` (planned) (new — the CNPG `Cluster`)
-- `containers/k8s/components/postgres/objectstore.yaml` (planned) (new — the Barman Cloud Plugin `ObjectStore`)
+- `containers/k8s/components/postgres/kustomization.yaml` (planned) (new) — `kind: Component`; namespaced resources only
+- `containers/k8s/components/postgres/cluster.yaml` (planned) (new) — the CNPG `Cluster`
+- `containers/k8s/components/postgres/objectstore.yaml` (planned) (new) — the Barman Cloud Plugin `ObjectStore`
 - `containers/k8s/components/postgres/scheduledbackup.yaml` (planned) (new)
-- `containers/k8s/components/postgres/cell-example-cell.yaml` (planned) (new — one `Database` and one `DatabaseRole`: the per-cell pattern an overlay copies)
-- `containers/k8s/components/postgres/secret.example.yaml` (planned) (new — placeholder shapes only; not listed in the component's `resources:`)
-- `containers/k8s/components/postgres-networkpolicy/kustomization.yaml` (planned) and its `networkpolicy.yaml` (planned) (new — `kind: Component`; the opt-in ingress policy; the reference overlay lists it)
-- `containers/k8s/overlays/postgres/kustomization.yaml` (planned) (new — the reference overlay: brief 06's base plus this component; what the Verify rows build)
-- `containers/k8s/overlays/postgres-kind/kustomization.yaml` (planned) (new — patches the reference overlay to one instance and the throwaway object store, for the kind drill only)
-- `containers/postgres/migrate-cell.sh` (planned) (new — one cell, local server to CNPG: preflight, final dump, restore, validate)
-- `containers/postgres/kind-drill.sh` (planned) (new — the throwaway kind flow)
+- `containers/k8s/components/postgres/cell-example-cell.yaml` (planned) (new) — one `Database` and one `DatabaseRole`: the per-cell pattern an overlay copies
+- `containers/k8s/components/postgres/secret.example.yaml` (planned) (new) — placeholder shapes only; not listed in the component's `resources:`
+- `containers/k8s/components/postgres-networkpolicy/kustomization.yaml` (planned) and `containers/k8s/components/postgres-networkpolicy/networkpolicy.yaml` (planned) (new) — `kind: Component`; the opt-in ingress policy; the reference overlay lists it
+- `containers/k8s/overlays/postgres/kustomization.yaml` (planned) (new) — the reference overlay: brief 06's base plus this component; what the Verify rows build
+- `containers/k8s/overlays/postgres-kind/kustomization.yaml` (planned) (new) — patches the reference overlay to one instance and the throwaway object store, for the kind drill only
+- `containers/postgres/migrate-cell.sh` (planned) (new) — one cell, local server to CNPG: preflight, final dump, restore, validate
+- `containers/postgres/kind-drill.sh` (planned) (new) — the throwaway kind flow
 - `docs/postgres.md` (planned) (brief 26 creates it; this brief adds the Kubernetes sections)
 - `docs/docker.md` — one pointer line in brief 06's Kubernetes section
 - `changelog/desk-containers-27-cnpg-postgres.md` (planned)

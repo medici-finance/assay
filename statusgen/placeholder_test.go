@@ -253,7 +253,8 @@ func TestCloseCandidateValidAccepted(t *testing.T) {
 // appears as a Next-up pick with its derived gate surfaced, and is claim-aware.
 func TestPlaceholderNextUpFirstClass(t *testing.T) {
 	streams, _ := placeholderRepo(t, map[string]string{
-		"issue-77.md": placeholderFile("alpha", 77, "bug, security"), // → gate human
+		"issue-77.md":  placeholderFile("alpha", 77, "bug, security", "handoff: handoff.json", `handoff-opened: "2026-10-25T12:00:00Z"`),
+		"handoff.json": `{"schema":"intake-handoff-v1","item":"example-org/tracker#77","opened":"2026-10-25T12:00:00Z","revision":1,"deciding_role":"intake-desk","disposition":"repair","route":"repair","successor":"example-org/tracker#77","evidence":"example-org/tracker#77"}`,
 	})
 
 	var alpha *Stream
