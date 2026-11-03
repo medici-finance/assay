@@ -481,7 +481,7 @@ func buildRoot() *cobra.Command {
 		return cmd.Help()
 	}
 	root.AddCommand(
-		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
+		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(),
 		smokeCmd(), statusCmd(), attachCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
@@ -774,11 +774,14 @@ func upCmd() *cobra.Command {
 
 func downCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "down <cell>",
-		Short: "tear a cell's session down",
+		Use:   "down <cell> [role...]",
+		Short: "tear a cell's session down, or stop only the named roles",
 		Long: "Tear the session (and this cell's deskd) down. What `up` opened in a non-tmux cockpit is closed where that\n" +
 			"cockpit offers a verb for it, and named for you to close by hand where it does not. A container or scrubbed\n" +
-			"cell accepts no host cockpit or deskd flags.",
+			"cell accepts no host cockpit or deskd flags.\n\n" +
+			"With role arguments, down stops exactly the named roles (the per-role interim stop): it pauses each, stops\n" +
+			"its cadence, re-measures its idle signal, re-verifies its surface against its receipt and closes that one\n" +
+			"window, tab or terminal, on this terminal's confirm. It never closes the session or a sibling's surface.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
 		Args:        cobra.ArbitraryArgs,
 	}
@@ -795,6 +798,14 @@ func downCmd() *cobra.Command {
 				die("compatibility down refuses host cockpit/deskd flags")
 			}
 			c.kubeDown(cmd, args[1:])
+			return nil
+		}
+		if len(args) > 1 && c.Kind != "container" && c.Kind != "scrubbed" {
+			// down <cell> <role...>: the per-role interim stop (desk-containers/18), never the session.
+			if cmd.Flags().Changed("keep-deskd") || cmd.Flags().Changed("cockpit") {
+				die("down <cell> <role...> stops only the named roles; it takes no --keep-deskd or --cockpit")
+			}
+			cmdDownRoles(cmd, c, args[1:])
 			return nil
 		}
 		cmdDown(cell, resolve(set, nil), args[1:], given)
