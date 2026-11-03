@@ -184,6 +184,11 @@ RUN set -eu; \
       test "$(head -n 1 "/usr/local/bin/$f")" = '#!/bin/bash'; \
     done
 
+# Exact-source library shared with the host adapter; rows cannot replace it.
+COPY images/verify-runner/source_proof.py images/verify-runner/source_proof_check.py /usr/local/lib/verify-runner/
+RUN chown -R 0:0 /usr/local/lib/verify-runner && chmod 0755 /usr/local/lib/verify-runner \
+ && chmod 0644 /usr/local/lib/verify-runner/*.py
+
 # GIT FLOOR CHECK: the last RUN of the final stage, so no later layer can bring in
 # a git unchecked. The test -x lines make a missing binary fail (ldd alone would
 # print its error to stderr and let the grep pass); the ldd gate catches a shared

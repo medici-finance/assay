@@ -664,7 +664,7 @@ func pendingWakeRows(rec deskkit.WakeReceipt, all []deskkit.VerifyRowID) ([]desk
 		}
 		for i, id := range all {
 			if string(id) != strconv.Itoa(i+1) {
-				return nil, fmt.Errorf("non-contiguous or suffixed rows require exact row_results")
+				return nil, fmt.Errorf("non-contiguous, suffixed or label rows require exact row_results")
 			}
 		}
 		if rec.RowsPassed == len(remaining) {

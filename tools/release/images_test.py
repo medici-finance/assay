@@ -1,5 +1,6 @@
 """Offline release-producer tests; fake Docker, real artifact bytes and manifests."""
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import copy
 import fnmatch
 import hashlib
@@ -11,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -921,6 +923,13 @@ def move_step(text, job, name, before):
 
 
 class ImagesTest(unittest.TestCase):
+    def test_proof_joined(self):
+        suite = HERE.parents[1] / 'images/verify-runner/source_proof_test.py'
+        result = subprocess.run([sys.executable, '-I', str(suite)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Ran 4 tests', result.stderr)
+
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -1219,20 +1228,31 @@ if args[:2] == ['image', 'inspect']:
                 with self.assertRaises(ValueError):
                     contract.validate(broken, VERSION, SOURCE, runner, 'example/assay', runner_platforms=strict)
 
+    def fresh(self):
+        """Another copy of this test's fixture, in a temporary root of its own."""
+        case = type(self)(self._testMethodName)
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        return case
+
     def test_refusals_never_publish_metadata(self):
-        for mode in ['exists', 'lookup-fail', 'stale', 'scan-fail', 'push-fail',
-                     'missing-digest', 'wrong-digest-repo', 'arch-tag-exists', 'wrong-arch',
-                     'index-no-digest', 'index-extra', 'index-dup', 'index-wrong-digest',
-                     'index-not-list']:
+        # Each refusal runs the whole publisher, about 60 fake-docker processes
+        # (#5125). The modes are independent, so each gets a fixture of its own
+        # and they run at once; every mode and assertion is unchanged.
+        modes = ['exists', 'lookup-fail', 'stale', 'scan-fail', 'push-fail',
+                 'missing-digest', 'wrong-digest-repo', 'arch-tag-exists', 'wrong-arch',
+                 'index-no-digest', 'index-extra', 'index-dup', 'index-wrong-digest',
+                 'index-not-list']
+        cases = {mode: self.fresh() for mode in modes}
+        with ThreadPoolExecutor(max_workers=min(len(modes), os.cpu_count() or 1)) as pool:
+            results = dict(zip(modes, pool.map(lambda mode: cases[mode].invoke(True, mode), modes)))
+        for mode in modes:
             with self.subTest(mode=mode):
-                stage = self.root / '.release-images'
-                if stage.exists(): shutil.rmtree(stage)
-                self.calls.unlink(missing_ok=True)
-                result = self.invoke(True, mode)
+                case, result = cases[mode], results[mode]
                 self.assertNotEqual(result.returncode, 0, result.stdout)
-                self.assertFalse((self.out / 'release-images.json').exists())
+                self.assertFalse((case.out / 'release-images.json').exists())
                 if mode in ['exists', 'lookup-fail', 'stale', 'scan-fail', 'arch-tag-exists', 'wrong-arch']:
-                    self.assertFalse(any('"push"' in s for s in self.recorded()))
+                    self.assertFalse(any('"push"' in s for s in case.recorded()))
 
     def test_release_has_one_approval_before_all_publication(self):
         root = HERE.parents[1]
