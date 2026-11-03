@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
 wave: 7
-depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47"]
+depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09", "forge-neutral/46", "forge-neutral/47", "forge-neutral/48"]
 unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "cell-api/02"]
 effort: L
 gate: human
@@ -12,7 +12,8 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 10
+version: 11
+decision-issue: 5380
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
@@ -43,8 +44,9 @@ consumers:
   - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go, forge_surface_deskread_test.go: follow-up forge-neutral/47 (create exactly the two enumerated methods, shared-adapter delegation and frozen surface entries)"
   - "tools/desk/internal/deskkit/mirrorsource.go and its base tests: follow-up forge-neutral/47 (admitted MirrorReadSource consuming the two incremental operations)"
   - "tools/desk/internal/deskkit/mirroringest.go and joined tests: follow-up forge-neutral/37 (assemble MirrorReadSource with the kernel; map provider observations, authenticated admissions and current authorizer to source/store ports)"
-  - "tools/desk/internal/deskkit/forge_response_bounds.go and forge_response_bounds_test.go: follow-up forge-neutral/37 (one native mirror-response byte-bound implementation and real-backend conformance; shared-library relocation later reuses this owner)"
-  - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/37 (compose the response bound before native mirror-page buffering/decoding on both providers; preserve admitted custody and existing read/write semantics)"
+  - "tools/desk/internal/deskkit/forge_response_bounds.go and forge_response_bounds_test.go: follow-up forge-neutral/48 (one native mirror-response bound and real-backend conformance; shared-library relocation reuses this owner)"
+  - "tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/48 (native bound composition before buffering/decoding; admitted custody and existing operation semantics)"
+  - "tools/desk/internal/deskkit/forge_response_bounds.go, forge_github.go, forge_gitlab.go, sharedread.go and mirrorsource.go: follow-up forge-neutral/37 (consume /48's native bound in joined mapper/store failure flow; no second implementation)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/47 (the two incremental-operation inventory rows)"
   - "workflow/store/ (as planned by graph-execution/19 after its R2 amendment): follow-up forge-neutral/37 (the mirror tables, their migration, the mirror.Store implementation and the graph-execution/28 fact-completeness mapping)"
   - "statusgen/testdata/regressionfloor/ (as planned by graph-execution/29): follow-up forge-neutral/37 (one frozen mirror-coverage case under 29's inventory rules)"
@@ -175,8 +177,8 @@ cutover or operational savings. Conditional requests in row 8 and coalescing in 
 47's explicit unsupported/full-read baseline does not satisfy them. Passing early fixture tests does
 not satisfy rows 7, 9, 12, 13 or 15 against the assembled production adapters.
 
-The Human decision below remains unanswered; no retention default is selected, no gate is lowered,
-and this brief remains held for the existing decision and missing durable-store prerequisites.
+The Human decision below remains unratified; no retention default is selected, no gate is lowered,
+and this brief remains held for its gate record and missing durable-store prerequisites.
 Early implementation does not claim this brief implemented or activate a cache. The current
 [DR-forge-library](../decisions/DR-forge-library.md) supersedes the older process-only integration
 boundary: trusted transport composition follows its shared-library owner, without moving credentials
@@ -202,7 +204,33 @@ Options:
 
 Default if no answer: none — blocks until answered.
 
-The mirror stays unactivated and the brief stays held until answered.
+The mirror stays unactivated and the brief stays held until its human gate is satisfied.
+
+### Implementation direction — 3 November 2026
+
+The operator requested option 2 (purge copied private content; retain identity tombstones)
+in the working conversation. Prepare the implementation and synthetic fixtures for that
+policy. This bot-authored record does not ratify the human gate: the canonical decision
+record is medici-finance/assay#5380, and only the ratifying human's own recorded ruling
+satisfies it. Preserve both options in the decision section and row 16 until that ruling
+is recorded; then select the purge criterion and remove the unchosen criterion as row 16
+requires. No storage activation or exposure follows from implementation direction.
+
+### Next contributions and critical path — 3 November 2026
+
+Native response bounds are independently extracted into
+[48](brief-48-bound-native-mirror-response-allocation-before-decoding.md). Consume that
+single implementation here. This contribution does not satisfy this brief's joined row 23,
+which still requires the actual mapper, durable Store and preserved prior watermark.
+
+The freshly inspected main 678d7ea5 has no workflow module. The persistence path remains
+graph-execution/16 → graph-execution/19 → this brief → forge-neutral/38 and /41–45.
+graph-execution/19 also requires its other declared prerequisites, including /03; /16
+alone is insufficient. The current move is /16's store-neutral ownership/reservation
+implementation, in parallel with /48. Do not introduce another mirror database, credential
+service or per-tool polling fallback. The shared-library cutover remains desktools-v2/75
+and /77 under DR-forge-library. Independent /46 and /47 re-derivation is tracked by #5377;
+GitLab case identity qualification before activation remains #5376.
 
 ## Ground rules
 
