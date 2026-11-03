@@ -11,6 +11,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The new reads handle private issue/change data. The human accepts demonstrated pagination, uncertainty and lower-layer repository scope; this grants no new identity, retention, service exposure or activation."
 decision-trigger: spec
+decision-issue: 5364
 issues: []
 schema: brief-v2
 version: 6

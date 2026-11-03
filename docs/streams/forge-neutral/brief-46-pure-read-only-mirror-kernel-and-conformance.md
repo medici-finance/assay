@@ -11,6 +11,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "The kernel's admission and completeness rules will govern private forge observations. The human accepts the demonstrated pure boundary and its limitations; synthetic fixtures do not choose retention, qualify a durable store or authorize exposure."
 decision-trigger: spec
+decision-issue: 5365
 issues: []
 schema: brief-v2
 version: 3
